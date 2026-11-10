@@ -151,7 +151,14 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
     );
     yield {
       type: 'kernel.notice',
-      data: { kind: 'retrieval', hits: retrievalHits(found.chunks), queries: plan.queries },
+      data: {
+        kind: 'retrieval',
+        hits: retrievalHits(found.chunks),
+        queries: plan.queries,
+        ...(found.attribution?.detections?.length
+          ? { detections: found.attribution.detections }
+          : {}),
+      },
     };
 
     let ranked = found.chunks;

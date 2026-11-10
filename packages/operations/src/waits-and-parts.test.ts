@@ -110,6 +110,21 @@ describe('retryable error statuses', () => {
     expect(sent).toHaveLength(5);
   });
 
+  it("a retried status that runs out of attempts keeps the provider's last body on the failure, redacted", async () => {
+    const { outcome } = await call(retried, input, [
+      token,
+      busy(),
+      busy(),
+      busy(),
+      { status: 503, type: 'text/plain', body: 'tok and connection-key still busy' },
+    ]);
+    expect(failureOf(outcome)).toMatchObject({
+      status: 503,
+      kind: 'unavailable',
+      provider: { status: 503, body: '[redacted] and [redacted] still busy' },
+    });
+  });
+
   it("a retryable status whose Retry-After is beyond the step's cap fails without waiting", async () => {
     const { outcome, slept } = await call(retried, input, [token, busy({ 'retry-after': '30' })]);
     expect(failureOf(outcome)).toMatchObject({ status: 503, kind: 'unavailable' });
@@ -170,6 +185,23 @@ describe('a step sent in parts', () => {
       bytes: 4,
       sha256: sha('%PDF'),
     });
+  });
+
+  it("a part the provider keeps refusing fails the call with the provider's status and body", async () => {
+    const refusing = { status: 503, type: 'text/plain', body: 'part store full' };
+    const { outcome, sent, slept } = await call(parseDescriptor(upload()), pdf('%PDF-1.7 hi'), [
+      json({ upload_id: 'up_1' }),
+      refusing,
+      refusing,
+      refusing,
+    ]);
+    expect(failureOf(outcome)).toMatchObject({
+      status: 503,
+      kind: 'unavailable',
+      provider: { status: 503, body: 'part store full' },
+    });
+    expect(slept).toEqual([1000, 2000]);
+    expect(sent).toHaveLength(4);
   });
 
   it('a file that needs more parts than the step allows is refused before anything leaves', async () => {

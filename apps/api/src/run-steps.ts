@@ -1,7 +1,7 @@
 import { usageUnits, type Event, type Part, type Usage } from '@genai/contracts';
 import { mediaAttachments } from '@genai/kernel';
 import { intlLocale } from '@genai/i18n';
-import { failureOf, failureReason } from './failures.js';
+import { failureOf, failureReason, type RunFailure } from './failures.js';
 import { requestLocale, t, type ApiKey } from './i18n/index.js';
 
 export interface TimelineBlock {
@@ -270,6 +270,24 @@ const filterTags = (value: unknown): string[] =>
       ...strings(r.values),
     ];
     return field ? [`${field}: ${values.join(', ')}`] : [];
+  });
+
+const detectionUses: Record<
+  string,
+  'steps.detectedHint' | 'steps.detectedBoost' | 'steps.detectedFilter'
+> = {
+  hint: 'steps.detectedHint',
+  boost: 'steps.detectedBoost',
+  filter: 'steps.detectedFilter',
+};
+
+const detectionTags = (value: unknown): string[] =>
+  (Array.isArray(value) ? value : []).flatMap((d) => {
+    const r = record(d);
+    const field = str(r.field);
+    const key = detectionUses[str(r.use) ?? ''];
+    const values = strings(r.values).join(', ');
+    return field && key && values ? [t(key, { field, values })] : [];
   });
 
 const hitLabel = (h: HitView) => h.title ?? h.document ?? h.id;
@@ -745,6 +763,9 @@ export class RunMapper {
         blocks: [],
       });
     this.searchBlocks(step, hits, queries, filters);
+    const detected = detectionTags(data.detections);
+    if (detected.length)
+      step.blocks.push({ kind: 'tags', label: t('steps.detectedLabel'), items: detected });
     if (data.fellBack === true) {
       step.state = 'partial';
       step.warning = true;
@@ -1402,7 +1423,7 @@ export class RunMapper {
       summary: failureReason(failure),
       at: this.errorStep?.at ?? this.offset(ts),
       state: 'failed',
-      blocks: this.details && failure.message ? [{ kind: 'quote', text: failure.message }] : [],
+      blocks: this.details ? failureBlocks(failure) : [],
     };
     if (this.errorStep) {
       Object.assign(this.errorStep, step);
@@ -1413,6 +1434,17 @@ export class RunMapper {
     this.errorStep = this.add(step);
   }
 }
+
+const failureBlocks = (failure: RunFailure): TimelineBlock[] => {
+  const blocks: TimelineBlock[] = failure.message ? [{ kind: 'quote', text: failure.message }] : [];
+  const { provider } = failure;
+  if (!provider) return blocks;
+  const label = t('runs.providerAnswered', { status: provider.status });
+  return [
+    ...blocks,
+    provider.body ? { kind: 'quote', label, text: provider.body } : { kind: 'note', text: label },
+  ];
+};
 
 export const mapRun = (events: Event[], options: RunMapperOptions = {}) => {
   const mapper = new RunMapper(options);

@@ -87,7 +87,7 @@ A descriptor maps usage from wherever the provider reports it: a field in the an
 
 ### 10. Errors
 
-A descriptor maps the provider's error envelope to Genki's error kinds (`invalid`, `unavailable`, `rate-limited`, `refused`, `processor`). `429` with `Retry-After` is honoured up to the step's cap. An error rule with `retry: true` makes any status retryable, such as a `503`: it waits the `Retry-After` or backs off 1, 2, 4 seconds, within the step's attempts and cap, and every retry counts toward the 100 requests of a call. An answer whose content type differs from the one declared fails the call.
+A descriptor maps the provider's error envelope to Genki's error kinds (`invalid`, `unavailable`, `rate-limited`, `refused`, `processor`). `429` with `Retry-After` is honoured up to the step's cap. An error rule with `retry: true` makes any status retryable, such as a `503`: it waits the `Retry-After` or backs off 1, 2, 4 seconds, within the step's attempts and cap, and every retry counts toward the 100 requests of a call. An answer whose content type differs from the one declared fails the call. The provider's status and the first 500 characters of its error body, JSON or plain text, with the connection's key and bound secrets redacted, go to the run's audit error and the run timeline of those who manage the service, never to the caller; the API log has the status, and the body only with `LOG_FAILURE_MESSAGES`.
 
 ### 11. Sessions
 
@@ -109,6 +109,7 @@ A descriptor may declare `checks` on an answer: `same-names` (every question has
 - The blind test and an audit found three things the step language could not say, each built since and proven with `packages/operations/src/waits-and-parts.test.ts`: a poll wait from a body field or another header (`until.after`), a retryable status other than `429` (`retry: true` on an error rule) and an upload in parts (`parts`, with the S3-style fixture `example/chunked-upload@1`). A part's size is fixed per step; a provider that names part sizes in its own answer still needs a new version of the descriptor.
 - The kernel's usage totals add open units (`units`), and the API shows them wherever usage is returned; the portal does not show them yet.
 - Bundled descriptors cannot ship modules yet; a module comes in an upload.
+- A live run on genki-test on 6 November failed with only "the service failed": the provider's error was in no run, audit event or log. The provider's status and redacted error body are now kept for the audit and shown to those who manage the service, and a non-streamed `call-operation@1` step whose result is text, or has a text field `text`, answers with that text as a streamed one does.
 
 ### What never changes
 

@@ -1,4 +1,9 @@
-import type { ResourceProvenance, Usage } from '@genai/contracts';
+import {
+  providerBodyLength,
+  type ProviderFailure,
+  type ResourceProvenance,
+  type Usage,
+} from '@genai/contracts';
 import {
   encodeBase64,
   isMediaInput,
@@ -47,13 +52,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export class OperationError extends Error {
+  readonly provider?: ProviderFailure;
   constructor(
     readonly status: number | undefined,
     message: string,
     readonly kind?: OperationErrorKind,
+    body?: string,
   ) {
     super(message);
     this.name = 'OperationError';
+    if (status !== undefined) this.provider = { status, ...(body ? { body } : {}) };
   }
 }
 
@@ -122,7 +130,12 @@ export interface WireExchange {
 
 export interface SendOptions {
   signal?: AbortSignal;
-  fail?: (status: number | undefined, message: string, kind?: OperationErrorKind) => Error;
+  fail?: (
+    status: number | undefined,
+    message: string,
+    kind?: OperationErrorKind,
+    body?: string,
+  ) => Error;
   observe?: (exchange: WireExchange) => void;
   /** Sees each classified value before it is encoded; operation@1 uses it to look for text that was not input text. */
   inspect?: (shape: Shape, value: unknown) => void;
@@ -185,19 +198,29 @@ const statusMatches = (rule: ErrorRule['status'], status: number) =>
         ? rule.includes(status)
         : rule === status;
 
-const defaultMessage = (body: unknown, status: number) => {
+const defaultMessage = (body: unknown, status: number, contentType: string | null) => {
+  if (typeof body === 'string' && body.trim() && contentType?.startsWith('text/plain'))
+    return body.trim().slice(0, providerBodyLength);
   const b = isRecord(body) ? body : {};
   const error = isRecord(b.error) ? b.error : {};
   const message = error.message ?? b.message;
-  return typeof message === 'string' ? message.slice(0, 500) : `the provider answered ${status}`;
+  return typeof message === 'string'
+    ? message.slice(0, providerBodyLength)
+    : `the provider answered ${status}`;
 };
 
-const readErrorBody = async (response: Response) => {
-  const text = await response.text().catch(() => '');
+const withoutKeys = (text: string, keys: Iterable<string>) => {
+  let out = text;
+  for (const key of keys) if (key) out = out.replaceAll(key, '[redacted]');
+  return out;
+};
+
+const readErrorBody = async (response: Response, keys: Iterable<string>) => {
+  const text = withoutKeys(await response.text().catch(() => ''), keys);
   try {
-    return JSON.parse(text) as unknown;
+    return { body: JSON.parse(text) as unknown, text };
   } catch {
-    return text.slice(0, 500);
+    return { body: text.slice(0, 500), text };
   }
 };
 
@@ -636,7 +659,11 @@ const dispatch = async (
       body: await recordedBody(recorded.body, recorded.contentType ?? null),
     };
     if (!response.ok) {
-      const errorBody = await readErrorBody(response);
+      const { body: errorBody, text: errorText } = await readErrorBody(response, [
+        credential.value,
+        await credentialValue(endpoint.credential),
+        ...state.secrets.values(),
+      ]);
       const errorHeaders = Object.fromEntries(response.headers);
       state.exchanges.push({
         step: step.name,
@@ -666,8 +693,9 @@ const dispatch = async (
         response.status,
         typeof mapped === 'string'
           ? mapped.slice(0, 500)
-          : defaultMessage(errorBody, response.status),
+          : defaultMessage(errorBody, response.status, response.headers.get('content-type')),
         rule?.kind,
+        errorText.trim().slice(0, providerBodyLength) || undefined,
       );
     }
     return { response, request };
@@ -1146,7 +1174,8 @@ async function* runDescriptor<Res>(
   options: SendOptions,
 ): AsyncGenerator<StreamedText, Answer<Res>> {
   const fail =
-    options.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
+    options.fail ??
+    ((status, message, kind, body) => new OperationError(status, message, kind, body));
   if (descriptor.resources.length > 0 && !endpoint.ledger)
     throw fail(
       undefined,
@@ -1251,7 +1280,8 @@ export const deleteProviderObject = async (
   if (!step)
     throw new ShapeError(`${descriptor.id} has no step ${resource.delete ?? ''} to delete with`);
   const fail =
-    options.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
+    options.fail ??
+    ((status, message, kind, body) => new OperationError(status, message, kind, body));
   const binding = descriptor.steps.find((s) => s.name === resource.step)?.bind[resource.field];
   if (binding?.class.kind === 'shape') {
     const checked = walk(binding.class.shape, object.objectId, { side: 'result' });

@@ -79,7 +79,8 @@ export const describedSession = async (
   const spec = step.session;
   if (!spec) throw new ShapeError(`${descriptor.id} is not a live session`);
   const at = `${descriptor.id} step ${step.name}`;
-  const fail = call.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
+  const fail =
+    call.fail ?? ((status, message, kind, body) => new OperationError(status, message, kind, body));
   const options: SendOptions = { signal: ctx.signal, fail };
   const session: GateSession = await call.gate.session(
     ctx,
