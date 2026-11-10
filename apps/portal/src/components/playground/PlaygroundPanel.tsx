@@ -175,6 +175,14 @@ const failedInService = (error: unknown): RunFailureInfo | undefined => {
 const modelDown = (error: unknown) =>
   !(error instanceof ApiError) || error.status >= 500 ? !failedInService(error) : false;
 
+const setupReason = (error: { path: string; message: string }, t: T) => {
+  const problem = { ...error, path: error.path.replace(/^(setup|compareWith)\./, '') };
+  const described = describeProblem(problem, t);
+  return described.message === problem.message
+    ? t('playground.setupNotRunnable', { section: described.section })
+    : described.message;
+};
+
 const errorText = (error: unknown, model: string, t: T) => {
   const notStored = t('playground.notStored');
   if (error instanceof ApiError && error.status === 400 && error.problem?.detail)
@@ -186,10 +194,7 @@ const errorText = (error: unknown, model: string, t: T) => {
   if (error instanceof ApiError && error.status === 422 && error.problem) {
     const first = error.problem.errors?.[0];
     return t('playground.invalidSetup', {
-      reason:
-        first && first.path !== 'input.file'
-          ? describeProblem(first, t).message
-          : error.problem.title,
+      reason: first && first.path !== 'input.file' ? setupReason(first, t) : error.problem.title,
       notStored,
     });
   }
