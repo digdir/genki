@@ -3,10 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import { createServer } from 'node:net';
+import { createMockAnsattporten, createSigningKey } from '@genai/identity';
 import {
   devProcesses,
   localModelPort,
   missingCallbacks,
+  mockAcceptsRedirect,
   portInUse,
   prefixer,
   repoRoot,
@@ -117,13 +119,89 @@ describe('dev:all', () => {
     expect(portal?.env?.VITE_ANSATTPORTEN_ISSUER).toBeUndefined();
   });
 
-  it('names the OIDC callbacks identity.yaml lacks for the ports in use', () => {
+  it('accepts registered mock loopback callbacks on other ports', () => {
     const identity = readFileSync(join(repoRoot, 'apps/api/config/local/identity.yaml'), 'utf8');
 
     expect(missingCallbacks(identity, devProcesses({}))).toEqual([]);
+    expect(
+      missingCallbacks(
+        identity,
+        devProcesses({
+          GENAI_PORTAL_PORT: '8101',
+          GENAI_CONSOLE_PORT: '8102',
+          GENAI_WORKSPACE_PORT: '8103',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    'http://localhost:5174/other',
+    'http://127.0.0.1:5174/callback',
+    'https://localhost:5174/callback',
+    'http://evil.test:5174/callback',
+    'http://localhost:70000/callback',
+    'http://localhost:5174/callback\n',
+  ])('still names a missing mock callback when only %s is registered', (uri) => {
+    const identity = JSON.stringify({
+      clients: [{ clientId: 'local-console', redirectUris: [uri] }],
+    });
     expect(missingCallbacks(identity, devProcesses({ GENAI_CONSOLE_PORT: '8102' }))).toEqual([
       'local-console http://localhost:8102/callback',
     ]);
+  });
+
+  it.each(['localhost', '127.0.0.1', '[::1]'])(
+    'accepts a callback registered on %s on any other port of the same host',
+    (host) => {
+      expect(
+        mockAcceptsRedirect([`http://${host}:5174/callback`], `http://${host}:8102/callback`),
+      ).toBe(true);
+      expect(
+        mockAcceptsRedirect([`http://${host}:5174/callback`], `http://${host}:8102/other`),
+      ).toBe(false);
+    },
+  );
+
+  it('names a callback missing exactly when the mock login would refuse it', async () => {
+    const registered = [
+      'http://localhost:5174/callback',
+      'http://localhost/callback',
+      'http://127.0.0.1:5174/callback',
+      'http://[::1]:5174/callback',
+      'https://localhost:5174/callback',
+      'http://localhost:5174/other',
+      'http://evil.test:5174/callback',
+    ];
+    const requested = [
+      'http://localhost:8102/callback',
+      'http://127.0.0.1:8102/callback',
+      'http://[::1]:8102/callback',
+      'http://127.1:8102/callback',
+      'http://LOCALHOST:8102/callback',
+    ];
+    const key = await createSigningKey();
+    for (const uri of registered) {
+      const { app } = createMockAnsattporten({
+        issuer: 'http://localhost:8080/mock/ansattporten',
+        key,
+        testData: {
+          clients: [
+            { clientId: 'c', redirectUris: [uri], postLogoutRedirectUris: [], audience: 'a' },
+          ],
+        },
+      });
+      for (const redirect_uri of requested) {
+        const response = await app.request(
+          `/authorize?${new URLSearchParams({ client_id: 'c', response_type: 'code', code_challenge: 'x', code_challenge_method: 'S256', redirect_uri })}`,
+        );
+        expect({ uri, redirect_uri, accepted: mockAcceptsRedirect([uri], redirect_uri) }).toEqual({
+          uri,
+          redirect_uri,
+          accepted: response.status === 200,
+        });
+      }
+    }
   });
 
   it('prefixes every complete line and holds a partial line until it ends', () => {

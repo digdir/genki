@@ -366,6 +366,45 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     expect(await reopened.list(ORG_B)).toEqual([]);
   });
 
+  it('counts only the latest feedback per task and credential, and filters by rating after that', async () => {
+    const { feedback } = backend().stores();
+    const kari = { kind: 'person', id: 'idporten:kari' };
+    const ola = { kind: 'person', id: 'idporten:ola' };
+    const entry = (
+      task: string,
+      rating: 'up' | 'down',
+      at: string,
+      by: { kind: string; id: string },
+      comment?: string,
+    ) => ({ tenant: ORG_A, task, rating, by, at, ...(comment ? { comment } : {}) });
+    await feedback.save(entry('latest-1', 'up', '2026-10-07T08:00:00.000Z', kari));
+    await feedback.save(
+      entry('latest-1', 'up', '2026-10-07T08:05:00.000Z', kari, 'Kilden var riktig'),
+    );
+    await feedback.save(entry('latest-1', 'down', '2026-10-07T08:06:00.000Z', ola));
+    await feedback.save(entry('latest-2', 'up', '2026-10-07T09:00:00.000Z', kari));
+    await feedback.save(entry('latest-2', 'down', '2026-10-07T09:10:00.000Z', kari));
+    await feedback.save(entry('latest-3', 'up', '2026-10-07T10:00:00.000Z', kari));
+    await feedback.save(entry('latest-3', 'down', '2026-10-07T10:00:00.000Z', kari, 'Samme tid'));
+
+    const reopened = (await backend().reopen()).feedback;
+    const mine = (f: { task: string }) => f.task.startsWith('latest-');
+    const all = (await reopened.list(ORG_A)).filter(mine);
+
+    expect(all.map((f) => [f.task, f.by.id, f.rating, f.comment])).toEqual([
+      ['latest-3', 'idporten:kari', 'down', 'Samme tid'],
+      ['latest-2', 'idporten:kari', 'down', undefined],
+      ['latest-1', 'idporten:ola', 'down', undefined],
+      ['latest-1', 'idporten:kari', 'up', 'Kilden var riktig'],
+    ]);
+    expect((await reopened.list(ORG_A, { rating: 'up' })).filter(mine).map((f) => f.task)).toEqual([
+      'latest-1',
+    ]);
+    expect((await reopened.list(ORG_A, { task: 'latest-2' })).map((f) => f.rating)).toEqual([
+      'down',
+    ]);
+  });
+
   it('saves test case candidates and updates their status', async () => {
     const { candidates } = backend().stores();
     await candidates.save(candidate('c1', ORG_A, '2026-10-07T08:00:00.000Z'));

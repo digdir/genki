@@ -84,9 +84,9 @@ Typed chat and decide calls carry the connection's processor record to the gate,
 
 Model `options` are validated strictly against the options the bound APIs declare:
 
-| Option       | Values                                | Behavior                                                                                                   |
-| ------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `tokenParam` | `max_completion_tokens`, `max_tokens` | Defaults to `max_completion_tokens`; applies only to Chat Completions. Responses uses `max_output_tokens`. |
+| Option       | Values                                | Behavior                                                                                                                                                                                                                                                                                      |
+| ------------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tokenParam` | `max_completion_tokens`, `max_tokens` | Defaults to `max_completion_tokens`; applies only to Chat Completions. Responses uses `max_output_tokens`. A deployment that refuses the configured one by name (HTTP 400 or 422) is retried once with the other, which is remembered for that deployment for the lifetime of its connection. |
 
 For a known Responses deployment, bind the API:
 

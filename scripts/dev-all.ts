@@ -117,6 +117,16 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
   ];
 };
 
+// Same rule as the mock login in packages/identity/src/mock-ansattporten.ts.
+const withoutLoopbackPort = (uri: string) =>
+  URL.canParse(uri)
+    ? uri.replace(/^(http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]))(?::\d+)?(?=[/?#]|$)/, '$1')
+    : uri;
+
+export const mockAcceptsRedirect = (registered: readonly string[], uri: string): boolean =>
+  registered.includes(uri) ||
+  registered.map(withoutLoopbackPort).includes(withoutLoopbackPort(uri));
+
 export const missingCallbacks = (identityYaml: string, processes: DevProcess[]): string[] => {
   const clients =
     (parseYaml(identityYaml) as { clients?: { clientId: string; redirectUris?: string[] }[] })
@@ -124,7 +134,7 @@ export const missingCallbacks = (identityYaml: string, processes: DevProcess[]):
   return processes.flatMap((p) => {
     const client = clients.find((c) => c.clientId === `local-${p.name}`);
     const callback = `http://localhost:${p.port}/callback`;
-    return client && !client.redirectUris?.includes(callback)
+    return client && !mockAcceptsRedirect(client.redirectUris ?? [], callback)
       ? [`${client.clientId} ${callback}`]
       : [];
   });

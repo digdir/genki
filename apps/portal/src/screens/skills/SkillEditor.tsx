@@ -141,7 +141,12 @@ const Editor = ({
   const nothing = detail.status === 'published' && changes.length === 0;
   const cases = definition.spec.testset.cases;
   const fresh =
-    !!run && !pending && run.revision === revision && run.total === cases.length && !running;
+    !!run &&
+    !run.stale &&
+    !pending &&
+    run.revision === revision &&
+    run.total === cases.length &&
+    !running;
   const threshold = definition.spec.testset.passThreshold ?? detail.passThreshold;
   const failures = fresh && run ? run.total - run.passed : 0;
   const publisher = publisherName(detail.publisher, tenantName);

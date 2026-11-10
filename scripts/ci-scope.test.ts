@@ -88,22 +88,47 @@ describe('the CI scope of a pull request', () => {
   });
 });
 
-describe('the CI workflow in the merge queue', () => {
-  const workflow = parse(
-    readFileSync(join(import.meta.dirname, '../.github/workflows/ci.yml'), 'utf8'),
-  ) as {
-    on: Record<string, unknown>;
-    jobs: Record<string, { steps: { env?: Record<string, string> }[] }>;
-  };
-  const env = (job: string, name: string) =>
-    workflow.jobs[job]?.steps.map((s) => s.env?.[name]).find(Boolean) ?? '';
+interface Step {
+  uses?: string;
+  with?: Record<string, string | number>;
+  env?: Record<string, string>;
+  run?: string;
+}
 
+const workflow = parse(
+  readFileSync(join(import.meta.dirname, '../.github/workflows/ci.yml'), 'utf8'),
+) as { on: Record<string, unknown>; jobs: Record<string, { steps: Step[] }> };
+const steps = (job: string) => workflow.jobs[job]?.steps ?? [];
+const env = (job: string, name: string) =>
+  steps(job)
+    .map((s) => s.env?.[name])
+    .find(Boolean) ?? '';
+
+describe('the CI workflow in the merge queue', () => {
   it('runs for a merge group, so two pull requests that pass alone are checked together', () => {
     expect(workflow.on).toHaveProperty('merge_group');
   });
 
   it('scopes a merge group from the commit it lands on, as it scopes a pull request from its base', () => {
     expect(env('scope', 'BASE')).toContain('github.event.merge_group.base_sha');
-    expect(env('test', 'CHANGED')).toContain('github.event.merge_group.base_sha');
+    expect(env('test', 'BASE')).toContain('github.event.merge_group.base_sha');
+  });
+});
+
+describe('the test job when only the affected tests run', () => {
+  const checkout = steps('test').find((s) => s.uses?.startsWith('actions/checkout@'));
+  const fetchDepth = String(checkout?.with?.['fetch-depth']);
+
+  it('fetches the whole history, because vitest diffs the base against HEAD and 0 is falsy in a workflow expression', () => {
+    expect(fetchDepth).toContain('needs.scope.outputs.tests');
+    expect(fetchDepth).not.toMatch(/&&\s*0\s*\|\|/);
+  });
+
+  it('runs every test when the base is not an ancestor of HEAD, instead of failing', () => {
+    const guard = steps('test').find((s) => s.env?.BASE);
+    expect(guard?.run).toContain('git merge-base --is-ancestor "$BASE" HEAD');
+    const vitest = steps('test').find((s) => s.run?.includes('vitest'));
+    expect(vitest?.run).toContain('${CHANGED:+--changed "$CHANGED"}');
+    expect(vitest?.env?.CHANGED).toBe('${{ steps.changed.outputs.since }}');
   });
 });
