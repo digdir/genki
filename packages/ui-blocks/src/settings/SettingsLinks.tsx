@@ -26,12 +26,7 @@ export interface SettingsLinksProps {
   className?: string | undefined;
 }
 
-/**
- * «Innstillinger» first, then the host's own pages, for the foot of the navigation panel. The
- * colour scheme lives on the settings page, not here (decided 2026-11-06). A named list, not a
- * `nav`: the panel around it is already the navigation landmark, and a second one would announce
- * two places to navigate from.
- */
+/** «Innstillinger» first, then the host's pages: a named list, as the panel is already the nav. */
 export const SettingsLinks = ({
   settingsHref,
   links = [],
@@ -45,8 +40,7 @@ export const SettingsLinks = ({
     { href: settingsHref, title: t('settings.title'), icon: <CogIcon aria-hidden /> },
     ...links,
   ];
-  // The name says both halves, since «Innstillinger» comes first and a screen reader reads the
-  // name before it.
+  // The name says both halves, as a screen reader reads it before «Innstillinger».
   const label =
     links.length === 0
       ? t('settings.title')

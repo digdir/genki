@@ -59,11 +59,7 @@ const colored = (color: string | undefined) => (color ? { 'data-color': color } 
 /** The level of a section's heading, one below the block's. */
 const SectionLevel = createContext<HeadingLevel | 6>(3);
 
-/**
- * Light, dark, or follow the operating system. A `ToggleGroup`: three answers and one chosen, read
- * as a radio group. Words beside the icons, since Designsystemet asks for a tooltip on icon-only
- * items. It shows the host's value, not the click: the host decides when the choice is taken.
- */
+/** Light, dark or the system's, as a `ToggleGroup` with words; it shows the host's value. */
 export const ColorSchemeToggle = ({ value, onChange, className }: ColorSchemeToggleProps) => {
   const t = useT();
   return (
@@ -101,11 +97,7 @@ export const SettingsSection = ({ title, children, className }: SettingsSectionP
   );
 };
 
-/**
- * «Innstillinger»: the reader's choices, starting with the colour scheme, then how much an answer
- * shows and the trials, when the host has them. Each takes effect at once, so there is no
- * «Lagre». The block draws the choice and reports it; the host stores it and applies it.
- */
+/** «Innstillinger»: the reader's choices, each taking effect at once, stored by the host. */
 export const Settings = ({
   colorScheme,
   onColorSchemeChange,
@@ -126,8 +118,7 @@ export const Settings = ({
         <Heading className="uib-settings-title" data-size="lg" level={headingLevel}>
           {t('settings.title')}
         </Heading>
-        {/* First, as the page's main choice: light and dark mode live here (decided 2026-11-06).
-            The toggle names itself «Fargemodus» to a screen reader; the heading says it to the eye. */}
+        {/* First, the page's main choice; the toggle names itself «Fargemodus». */}
         <SettingsSection title={t('settings.colorScheme')}>
           <ColorSchemeToggle onChange={onColorSchemeChange} value={colorScheme} />
         </SettingsSection>

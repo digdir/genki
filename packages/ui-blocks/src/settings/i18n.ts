@@ -6,8 +6,7 @@ export const nbSettings = defineNamespace({
   colorScheme: 'Fargemodus',
   light: 'Lys',
   dark: 'Mørk',
-  // «Auto», not «Automatisk»: three items share the width, and the longest word decides how narrow
-  // the other two get.
+  // «Auto», not «Automatisk»: the longest of three words decides how narrow the others get.
   auto: 'Auto',
   answers: 'Svar',
   displayLevelQuestion: 'Hvor mye skal svaret vise om hvordan det ble til?',
@@ -47,11 +46,7 @@ export const enSettings = {
   linksLabelUnnamed: 'Settings and about the service',
 } satisfies Translation<typeof nbSettings>;
 
-/**
- * The settings' own catalogue. It stays out of the package's shared one, so a host that imports
- * another block, such as Approach, does not load these words. A block that borrows them puts this
- * namespace in its own catalogue.
- */
+/** The settings' own catalogue, apart from the shared one, so a host loads only its words. */
 export const nb = defineCatalogue({ settings: nbSettings });
 export const en = { settings: enSettings } satisfies Translation<typeof nb>;
 

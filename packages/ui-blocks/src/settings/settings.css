@@ -1,12 +1,8 @@
-/* ADR V2-0009: after Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-settings-* variable at the point of use, listed on
-   docs/components/settings.html. The colour scheme toggle is Designsystemet's own; a host restyles
-   it with its --dsc-togglegroup-* variables. */
+/* After Designsystemet's layers, every token read through a --genai-settings-* variable. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
-  /* A column of sections, as kunnskapsassistenten's settings page. The end padding keeps the last
-     section clear of what a host pins to the bottom of its column. */
+  /* A column of sections; the end padding clears what a host pins to its column's bottom. */
   .uib-settings {
     display: flex;
     flex-direction: column;
@@ -29,8 +25,7 @@
   .uib-settings-experiments .ds-link {
     white-space: nowrap;
   }
-  /* Quiet: where the choices are kept is worth knowing, not a choice. Pinned to neutral, as
-     kunnskapsassistenten draws it: in the accent family a sentence reads as a link. */
+  /* Quiet, and pinned to neutral: in the accent family a sentence reads as a link. */
   .uib-settings-note {
     color: var(--genai-settings-note-color, var(--ds-color-neutral-text-subtle));
   }
@@ -50,8 +45,7 @@
     align-items: center;
     gap: var(--genai-settings-link-gap, var(--ds-size-2));
   }
-  /* Weight, not colour, marks the page on screen: a link in another colour reads as another kind
-     of thing. */
+  /* Weight, not colour, marks the page on screen. */
   .uib-settings-links a[aria-current='page'] {
     font-weight: var(--genai-settings-link-current-font-weight, var(--ds-font-weight-semibold));
   }

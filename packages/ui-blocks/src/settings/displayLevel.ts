@@ -1,7 +1,4 @@
-/**
- * How much an answer shows of how it was made. `standard` shows the approach over the answer, its
- * steps and search words; `detailed` adds the search strings for each step, hit counts and times.
- */
+/** How much an answer shows of how it was made; `detailed` adds strings, counts and times. */
 export const displayLevels = ['standard', 'detailed'] as const;
 
 export type DisplayLevel = (typeof displayLevels)[number];
