@@ -208,6 +208,18 @@ describe('answer text in Prøveområde', () => {
     );
     expect(performance.now() - started).toBeLessThan(1000);
   });
+
+  it('renders a long run of unclosed link URLs in an excerpt in linear time', () => {
+    const started = performance.now();
+    card(
+      result({
+        text: 'Svar [1].',
+        sources: [{ chunkId: 'c1', title: 'Rapport', text: '[a](http://x'.repeat(50_000) }],
+        citations: [{ index: 1, chunkId: 'c1' }],
+      }),
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
 
 describe('source excerpts in Prøveområde', () => {
