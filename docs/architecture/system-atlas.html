@@ -7262,6 +7262,19 @@
                             required: ['use', 'emits', 'headers'],
                             additionalProperties: false,
                           },
+                          parts: {
+                            type: 'object',
+                            properties: {
+                              of: {
+                                type: 'string',
+                                pattern: '^\\$input(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+$',
+                              },
+                              bytes: { type: 'integer', minimum: 1, maximum: 33554432 },
+                              most: { type: 'integer', minimum: 1, maximum: 100 },
+                            },
+                            required: ['of', 'bytes', 'most'],
+                            additionalProperties: false,
+                          },
                           request: {
                             type: 'object',
                             properties: {
@@ -7429,6 +7442,7 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              after: {},
                               fail: {
                                 type: 'object',
                                 properties: {
@@ -7491,6 +7505,7 @@
                                   ],
                                 },
                                 message: {},
+                                retry: { type: 'boolean' },
                               },
                               required: ['status', 'kind'],
                               additionalProperties: false,
@@ -7817,6 +7832,19 @@
                             required: ['use', 'emits', 'headers'],
                             additionalProperties: false,
                           },
+                          parts: {
+                            type: 'object',
+                            properties: {
+                              of: {
+                                type: 'string',
+                                pattern: '^\\$input(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+$',
+                              },
+                              bytes: { type: 'integer', minimum: 1, maximum: 33554432 },
+                              most: { type: 'integer', minimum: 1, maximum: 100 },
+                            },
+                            required: ['of', 'bytes', 'most'],
+                            additionalProperties: false,
+                          },
                           request: {
                             type: 'object',
                             properties: {
@@ -7984,6 +8012,7 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              after: {},
                               fail: {
                                 type: 'object',
                                 properties: {
@@ -8046,6 +8075,7 @@
                                   ],
                                 },
                                 message: {},
+                                retry: { type: 'boolean' },
                               },
                               required: ['status', 'kind'],
                               additionalProperties: false,
@@ -8258,6 +8288,7 @@
                         equals: {},
                         intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                         longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                        after: {},
                         fail: {
                           type: 'object',
                           properties: {
@@ -8320,6 +8351,7 @@
                             ],
                           },
                           message: {},
+                          retry: { type: 'boolean' },
                         },
                         required: ['status', 'kind'],
                         additionalProperties: false,
