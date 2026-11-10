@@ -98,6 +98,7 @@ export interface Script {
   read?: ((prompt: string) => string)[];
   sufficiency?: ((prompt: string) => string)[];
   smallTalk?: (message: string) => string;
+  final?: string;
   deltas?: string[];
   failFirst?: Error;
 }
@@ -150,7 +151,7 @@ export const models = (scripts: Record<string, Script>, stream = false) => {
         }
         if (request.messages.at(-1)?.content === exhaustionNudge) {
           seen.push({ model: ref.id, kind: 'final', request });
-          return result('Beste svar ut fra det jeg fant.');
+          return result(script.final ?? 'Beste svar ut fra det jeg fant.');
         }
         seen.push({ model: ref.id, kind: 'synth', request });
         const synth = pick(script.synth, 'synth');

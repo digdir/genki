@@ -458,7 +458,26 @@ describe('agent-loop strategy', () => {
     });
 
     expect(out.text).toBe(explained);
-    expect(exhaustionDefault).not.toBe(config.strategy.noAnswerText);
+  });
+
+  it('keeps the answer for running out of rounds, instead of the words for found nothing', async () => {
+    const out = await run({
+      config: {
+        ...baseConfig,
+        strategy: {
+          ...baseConfig.strategy,
+          maxIterations: 2,
+          noAnswerText: 'Kildene i Kudos dekker ikke dette.',
+        },
+      },
+      retrieval: retrieval({ read: async () => [] }).impl,
+      scripts: {
+        primary: { loop: [() => result('', [call('search', { queries: ['igjen'] })])], final: '' },
+      },
+    });
+
+    expect(out.notices).toContainEqual(expect.objectContaining({ stage: 'exhausted' }));
+    expect(out.text).toBe(exhaustionDefault);
   });
 
   it('answers small talk without a search, also when a search is required', async () => {
