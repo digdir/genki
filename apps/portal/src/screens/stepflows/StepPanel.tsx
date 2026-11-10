@@ -9,7 +9,7 @@ import {
   Textfield,
   ToggleGroup,
 } from '@digdir/designsystemet-react';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { SidePanel } from '../../components/SidePanel';
 import { useT, type PlainKey } from '../../i18n';
 import { blocks, type Flow, type OnError, type Step } from '../../data/stepflows';
@@ -23,6 +23,8 @@ import {
   refVisible,
   type Analysis,
 } from './model';
+import { callOperation, type OperationContext } from '../../data/step-operations';
+import { OperationFields } from './OperationFields';
 import { ParamFields } from './ParamFields';
 import { TemplateText } from './TemplateText';
 
@@ -32,6 +34,7 @@ interface Props {
   base: Analysis;
   errors: string[];
   flows: Record<string, Flow>;
+  ops?: OperationContext & { failed?: boolean };
   onApply: () => void;
   onClose: () => void;
   onAddAfter: () => void;
@@ -62,12 +65,17 @@ export const StepPanel = ({
   base,
   errors,
   flows,
+  ops = { operations: undefined },
   onApply,
   onClose,
   onAddAfter,
   onRemove,
 }: Props) => {
   const t = useT();
+  const [touched, setTouched] = useState(false);
+  const operationStep = d.kind === 'block' && d.block === callOperation;
+  const shownErrors =
+    operationStep && !touched ? errors.filter((e) => e !== t('stepflows.chooseOperation')) : errors;
   const visible = base.visibleAt[d.id] ?? [];
   const refOptions = (list: string[]): Option[] =>
     list.map((r) => {
@@ -191,10 +199,10 @@ export const StepPanel = ({
         </>
       }
     >
-      {errors.length ? (
+      {shownErrors.length ? (
         <Alert data-color="danger" data-size="sm">
           <ul className="bullets">
-            {errors.map((e) => (
+            {shownErrors.map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>
@@ -247,7 +255,17 @@ export const StepPanel = ({
                     })
                   }
                 />
-                {b ? (
+                {b && d.block === callOperation ? (
+                  <OperationFields
+                    draft={d}
+                    setDraft={setDraft}
+                    ops={ops}
+                    touched={touched}
+                    onTouch={() => setTouched(true)}
+                    inputFields={inputFields}
+                  />
+                ) : null}
+                {b && d.block !== callOperation ? (
                   <Fieldset>
                     <Fieldset.Legend>{t('stepflows.inputLegend')}</Fieldset.Legend>
                     <Fieldset.Description>
@@ -260,7 +278,7 @@ export const StepPanel = ({
                     </div>
                   </Fieldset>
                 ) : null}
-                {b && (b.params.length || extra.length) ? (
+                {b && d.block !== callOperation && (b.params.length || extra.length) ? (
                   <Fieldset>
                     <Fieldset.Legend>{t('stepflows.paramsLegend')}</Fieldset.Legend>
                     <div className="stack-sm">

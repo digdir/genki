@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../mock';
-import { expectAccessible, failingFetch, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
 import type { UsageReport } from '../types';
 
 beforeAll(() => {
@@ -46,11 +46,13 @@ const table = async (name = 'Fordelt på tjeneste') => {
 
 describe('Forbruk', () => {
   it('shows quota, KPIs, chart and the service table from the usage API', async () => {
-    const { calls, fetch } = recording();
-    await renderAt('#/usage', fetch);
+    const held = heldFetch(/\/usage\?days=190$/);
+    const { calls, fetch } = recording(held.fetch);
+    await renderAt('#/statistics', fetch);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Forbruk' })).toBeTruthy();
-    expect(screen.getByText('Henter forbruk')).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
+    expect(await screen.findByText('Henter forbruk')).toBeTruthy();
+    await held.release();
     const region = await table();
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
 
@@ -77,7 +79,7 @@ describe('Forbruk', () => {
   });
 
   it('warns when a service is near its limit and changes the limit with validation', async () => {
-    await renderAt('#/usage');
+    await renderAt('#/statistics');
     await table();
 
     const alert = screen.getByRole('heading', {
@@ -117,7 +119,7 @@ describe('Forbruk', () => {
   });
 
   it('removes a limit and offers to set one again', async () => {
-    await renderAt('#/usage');
+    await renderAt('#/statistics');
     await table();
     fireEvent.click(screen.getByRole('button', { name: 'Endre grense for Vedtaksutkast' }));
     fireEvent.click(await screen.findByLabelText('Ingen egen grense (bare virksomhetens kvote)'));
@@ -128,7 +130,7 @@ describe('Forbruk', () => {
   });
 
   it('switches period and grouping, and sorts the table', async () => {
-    await renderAt('#/usage');
+    await renderAt('#/statistics');
     await table();
 
     fireEvent.change(screen.getByLabelText('Periode'), { target: { value: 'six' } });
@@ -156,7 +158,7 @@ describe('Forbruk', () => {
 
   it('exports the report as a file', async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    await renderAt('#/usage');
+    await renderAt('#/statistics');
     await table();
     fireEvent.click(screen.getByRole('button', { name: 'Eksporter' }));
     expect(await screen.findByRole('heading', { name: 'Eksporter forbruk' })).toBeTruthy();
@@ -170,7 +172,7 @@ describe('Forbruk', () => {
 
   it('shows the empty state when nothing has run yet', async () => {
     await renderAt(
-      '#/usage',
+      '#/statistics',
       mockFetch(undefined, undefined, undefined, undefined, { usage: emptyReport }),
     );
     expect(
@@ -184,25 +186,23 @@ describe('Forbruk', () => {
     expectAccessible();
   });
 
-  it('points to the same Kontakt Digdir page as the sidebar for a higher quota', async () => {
-    await renderAt('#/usage');
+  it('points to the Kontakt Digdir page for a higher quota', async () => {
+    await renderAt('#/statistics');
     await screen.findByText(/Digdir kan øke kvoten/);
     const links = screen.getAllByRole('link', { name: 'Kontakt Digdir' });
-    expect(links.length).toBeGreaterThan(1);
+    expect(links.length).toBeGreaterThan(0);
     for (const link of links) expect(link.getAttribute('href')).toBe('#/contact');
     expect(screen.queryByText('kundeservice')).toBeNull();
   });
 
   it('says what is counted: tests are not shown but count toward the quota', async () => {
     await renderAt(
-      '#/usage',
+      '#/statistics',
       mockFetch(undefined, undefined, undefined, undefined, { usage: emptyReport }),
     );
     const empty = await screen.findByRole('heading', { level: 2, name: 'Ingen forbruk ennå' });
     const text = empty.parentElement?.textContent ?? '';
-    expect(text).toContain(
-      'Kjøringer i prøveområdet, byggeren og assistenten vises ikke her, men teller med i kvoten.',
-    );
+    expect(text).toContain('Assistenten har sitt eget daglige budsjett og er ikke med.');
     expect(text).not.toContain('også når dere tester i byggeren');
   });
 
@@ -246,7 +246,7 @@ describe('Forbruk', () => {
       { id: 'tenant/norsk-7b', residency: 'norway' as const, capabilities: [] },
     ];
     const base = mockFetch(undefined, undefined, models, undefined, { usage: report });
-    await renderAt('#/usage', async (input, init) =>
+    await renderAt('#/statistics', async (input, init) =>
       String(input).endsWith('/settings/effective')
         ? Response.json({ 'usage.monthlyTokens': { key: 'usage.monthlyTokens', value: 4_000_000 } })
         : base(input, init),
@@ -274,7 +274,7 @@ describe('Forbruk', () => {
 
   it('shows usage per project and filters the page to one project', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/usage', fetch);
+    await renderAt('#/statistics', fetch);
 
     const region = await table('Fordelt på prosjekt');
     expect(within(region).getByRole('rowheader', { name: 'Høringsrunde 2026' })).toBeTruthy();
@@ -302,12 +302,62 @@ describe('Forbruk', () => {
     await expectAccessible();
   });
 
+  it('shows the source of each model row and the share of the total from genki and the AI gateway', async () => {
+    const usage = (tokens: number, cost: number) => ({
+      inputTokens: tokens * 0.8,
+      outputTokens: tokens * 0.2,
+      requests: tokens / 1000,
+      costMicroNok: cost,
+    });
+    const report: UsageReport = {
+      ...emptyReport,
+      totals: {
+        ...usage(1_000_000, 4_000_000),
+        bySource: [
+          { source: 'genki', usage: usage(750_000, 3_000_000) },
+          { source: 'gateway', usage: usage(250_000, 1_000_000) },
+        ],
+      },
+      daily: [{ date: '2026-10-05', usage: usage(1_000_000, 4_000_000) }],
+      byModel: [
+        { model: 'foundry-openai/gpt-4.1-mini', source: 'genki', usage: usage(750_000, 3_000_000) },
+        { model: 'gpt-6.1-sol', source: 'gateway', usage: usage(250_000, 1_000_000) },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+    );
+
+    const sources = await table('Fordelt på kilde');
+    expect(
+      within(sources)
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Genki.*75 %$/),
+      expect.stringMatching(/^AI-gateway.*25 %$/),
+    ]);
+    const models = await table('Modeller etter kilde');
+    expect(
+      within(models).getByRole('rowheader', { name: 'gpt-6.1-sol' }).closest('tr')?.textContent,
+    ).toContain('AI-gateway');
+    await expectAccessible();
+  });
+
+  it('shows no source section when no AI gateway is configured', async () => {
+    await renderAt('#/statistics', recording().fetch);
+    await table();
+    expect(screen.queryByRole('region', { name: 'Fordelt på kilde' })).toBeNull();
+  });
+
   it('shows an error with retry when the usage API fails', async () => {
     let fail = true;
     const ok = mockFetch();
     const broken = failingFetch(/\/usage/);
     let usageCalls = 0;
-    await renderAt('#/usage', async (input, init) => {
+    await renderAt('#/statistics', async (input, init) => {
       if (String(input).includes('/usage')) usageCalls += 1;
       return fail ? broken(input, init) : ok(input, init);
     });

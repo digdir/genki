@@ -59,7 +59,7 @@ describe('settings in English', () => {
 describe('access in English', () => {
   it('shows rights and people in English', async () => {
     await renderEnglish('#/access');
-    expect(screen.getByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
     expect(await screen.findByText('Showing 10 of 10 people')).toBeTruthy();
     expect(screen.getAllByText('Use services').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: /Change in Altinn/ }).textContent).toContain(

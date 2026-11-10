@@ -63,7 +63,7 @@ const boot = async () => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: 'http://127.0.0.1:9/v1',
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },

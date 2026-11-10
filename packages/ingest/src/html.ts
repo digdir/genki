@@ -52,7 +52,7 @@ const boilerplateMarker =
 
 const skipLinkText = /^\s*(hopp til|gå til|skip to)\b/i;
 
-const tagPattern = /<(\/?)([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+const tagPattern = /<(\/?)([a-zA-Z][\w:-]*)(?![\w:-])((?:[^<>"']|"[^"<]*"|'[^'<]*')*)>/g;
 
 const parseHtml = (html: string): HtmlElement => {
   const root: HtmlElement = { tag: '#root', attrs: '', children: [] };
@@ -68,9 +68,15 @@ const parseHtml = (html: string): HtmlElement => {
       if (open > 0) stack.length = open;
       continue;
     }
-    const element: HtmlElement = { tag, attrs: m[3] ?? '', children: [] };
+    const attrs = m[3] ?? '';
+    const selfClosing = attrs.endsWith('/');
+    const element: HtmlElement = {
+      tag,
+      attrs: selfClosing ? attrs.slice(0, -1) : attrs,
+      children: [],
+    };
     top.children.push(element);
-    if (!m[4] && !voidTags.has(tag)) stack.push(element);
+    if (!selfClosing && !voidTags.has(tag)) stack.push(element);
   }
   if (at < html.length) (stack[stack.length - 1] as HtmlElement).children.push(html.slice(at));
   return root;

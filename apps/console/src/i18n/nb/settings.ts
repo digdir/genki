@@ -49,6 +49,8 @@ export const settings = defineNamespace({
   labelSynthesisInstructions: 'Systemledetekst for svaret',
   labelSynthesisTemperature: 'Temperatur for svaret',
   descSynthesisTemperature: 'Tomt bruker standarden til arbeidsmåten.',
+  labelKnowledgeNightWindow: 'Nattvindu for tungt arbeid',
+  labelKnowledgeHeavyThreshold: 'Grense for tungt arbeid (tekstbiter)',
   labelKnowledgeSwitchRetentionDays: 'Dager forrige søkemotor beholdes',
   labelAssistantEnabled: 'Byggeassistenten er på',
   labelAssistantDailyTokens: 'Tokens per dag for assistenten',
@@ -249,6 +251,10 @@ export const settings = defineNamespace({
   descRetrievalRerankCandidateK: 'Antall kandidater som sendes til omrangeringen.',
   descSynthesisGenerationPrompt: 'Eget oppdrag for å skrive svaret. Tomt bruker det innebygde.',
   descSynthesisInstructions: 'Egen systeminstruks til svarmodellen. Tomt bruker den innebygde.',
+  descKnowledgeNightWindow:
+    'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+  descKnowledgeHeavyThreshold:
+    'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   descKnowledgeSwitchRetentionDays:
     'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter motor.',
   descAssistantEnabled: 'Tilby byggeassistenten i tjenestebyggeren.',

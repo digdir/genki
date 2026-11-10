@@ -212,9 +212,22 @@ const Integration = z
   })
   .openapi('Integration');
 
+const AllowedHosts = z
+  .array(z.string().openapi({ example: 'https://api.example.no' }))
+  .min(1)
+  .max(20)
+  .describe(
+    'The origins (scheme, host and port) the secret may be sent to. A host without a scheme means https.',
+  );
 const SecretValue = z
-  .object({ value: z.string().min(1).describe('The secret. It is stored and never shown again.') })
+  .object({
+    value: z.string().min(1).describe('The secret. It is stored and never shown again.'),
+    allowedHosts: AllowedHosts.optional().describe(
+      'The origins the secret may be sent to. Required for a new secret; left out, an existing secret keeps its hosts. Other hosts than the stored ones need manage-services.',
+    ),
+  })
   .openapi('SecretValue');
+const SecretHosts = z.object({ allowedHosts: AllowedHosts }).openapi('SecretHosts');
 const SecretRef = z.object({
   ref: z.string().openapi({ example: 'secret://tenant/991825827/lovdata' }),
 });
@@ -1176,7 +1189,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'put',
     path: '/tenants/{tenant}/secrets/{name}',
     summary:
-      'Store a tenant secret; the value is never returned (manage-services, audited without the value)',
+      'Store a tenant secret and the hosts it is for; the value is never returned (manage-services or register-building-blocks, audited without the value)',
     request: {
       params: z.object({ tenant, name: pathParam('name', 'lovdata') }),
       headers: reason,
@@ -1184,10 +1197,27 @@ export const accessRoutes: RouteConfig[] = [
     },
     responses: {
       200: json(SecretRef, 'The reference to use in connections'),
-      400: problem('Missing value or reason, or an invalid name'),
+      400: problem('Missing value, hosts or reason, or an invalid name or host'),
       401: unauthorized,
-      403: problem('Missing right, or not a member of this tenant'),
+      403: problem('Missing right, or other hosts without manage-services'),
       404: notMember,
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/tenants/{tenant}/secrets/{name}/hosts',
+    summary: 'Change the hosts a tenant secret may be sent to (manage-services, audited)',
+    request: {
+      params: z.object({ tenant, name: pathParam('name', 'lovdata') }),
+      headers: reason,
+      body: body(SecretHosts),
+    },
+    responses: {
+      200: json(SecretRef.extend({ allowedHosts: z.array(z.string()) }), 'The stored hosts'),
+      400: problem('Missing or invalid hosts, or missing reason'),
+      401: unauthorized,
+      403: problem('Missing right'),
+      404: problem('No such secret, or the tenant is not reachable for the caller'),
     },
   }),
   createRoute({
@@ -1389,8 +1419,12 @@ export const accessRoutes: RouteConfig[] = [
     request: { params: z.object({ tenant }) },
     responses: {
       200: json(
-        z.object({ data: z.array(z.object({ name: z.string(), ref: z.string() })) }),
-        'Secret names; never values',
+        z.object({
+          data: z.array(
+            z.object({ name: z.string(), ref: z.string(), allowedHosts: z.array(z.string()) }),
+          ),
+        }),
+        'Secret names and the hosts each is for; never values',
       ),
       401: unauthorized,
       404: problem('The tenant is not reachable for the caller'),

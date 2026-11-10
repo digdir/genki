@@ -13,11 +13,13 @@ import {
   type IdentityTestDataInput,
 } from '@genai/identity';
 import { tenantAccess } from './access.js';
+import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
+import { connectorMappingKind, connectorSecretOf } from './connectors.js';
 import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
 import { platformCaller } from './composition.js';
 import { operatorDirectory, splitOperators } from './operators.js';
-import { requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
+import { refusedAction, requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
 
 const issuer = 'http://localhost:8080/mock/ansattporten';
 const resource = 'urn:altinn:resource:digdir-genai-platform';
@@ -36,7 +38,7 @@ const localPeople = async () => {
     key,
     testData: testData as IdentityTestDataInput,
   });
-  const operators = operatorDirectory(operatorPids);
+  const operators = operatorDirectory({ pids: operatorPids, mockIssuer: issuer });
   const verifier = operators.watch(
     withPdpActions(
       createTokenVerifier({
@@ -151,5 +153,78 @@ describe('platform rights in the API', () => {
     const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
     expect(requireRight(kari, digdir, 'register-building-blocks')).toEqual({ ok: true });
     expect(requireRight(kari, '889640782', 'use-services').ok).toBe(false);
+  });
+});
+
+describe('database pipelines that name a tenant secret', () => {
+  const datasetAdmin: Principal = {
+    kind: 'employee',
+    issuer,
+    subject: 'ingrid',
+    scopes: [],
+    authorizedFor: [{ org: digdir, resource, actions: ['manage-datasets'] }],
+  };
+  const own = `secret://tenant/${digdir}/connector-arkiv`;
+  const pipeline = (password: string, connectorSecret: string | undefined = own) => ({
+    dataset: `${digdir}/arkiv`,
+    id: 'kobling',
+    ...(connectorSecret ? { connectorSecret } : {}),
+    spec: {
+      source: {
+        kind: 'database',
+        connection: { engine: 'postgres', host: 'db.example.no', password },
+      },
+    },
+  });
+
+  it("need manage-services unless the secret is the connector's own", () => {
+    expect(
+      refusedAction(
+        datasetAdmin,
+        'platform.pipeline.save',
+        digdir,
+        pipeline(`secret://tenant/${digdir}/arkiv-token`),
+      ),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(own)),
+    ).toBeUndefined();
+  });
+
+  it("a pipeline cannot name another connector's secret", () => {
+    const another = `secret://tenant/${digdir}/connector-personal`;
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(another)),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(another, undefined)),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+  });
+
+  it("knows a pipeline's own connector secret only from the connector that created it", async () => {
+    const store = new InMemoryConfigEntryStore();
+    await appendVersion(store, {
+      kind: connectorMappingKind,
+      scope: digdir,
+      id: 'saksinnsyn.forslag',
+      spec: {
+        service: 'saksinnsyn',
+        proposal: 'forslag',
+        name: 'Saker',
+        connector: {
+          dataset: `${digdir}/arkiv`,
+          pipeline: 'kobling',
+          connection: { engine: 'postgres', host: 'db.example.no', password: own },
+        },
+      },
+      deleted: false,
+      by: 'employee:test:kari',
+      reason: 'Koblingen er godkjent',
+    });
+    const secretOf = connectorSecretOf(store);
+
+    expect(await secretOf(digdir, `${digdir}/arkiv`, 'kobling')).toBe(own);
+    expect(await secretOf(digdir, `${digdir}/annet`, 'kobling')).toBeUndefined();
+    expect(await secretOf('889640782', `${digdir}/arkiv`, 'kobling')).toBeUndefined();
   });
 });

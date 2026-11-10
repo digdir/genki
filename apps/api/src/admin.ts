@@ -22,8 +22,10 @@ import {
   type Strategy,
   type TaskStore,
 } from '@genai/kernel';
+import { ModelError } from '@genai/port-model';
 import type { Context } from 'hono';
 import { refusedAction, type RightProblem } from './rights.js';
+import { confirmedAs, riskConfirmationProblems } from './risk-confirmation.js';
 import { serviceHealth, type ServiceModels } from './service-health.js';
 
 export const platformActions = [
@@ -96,10 +98,13 @@ export interface ModelSummary {
   id: string;
   residency: string;
   capabilities: string[];
+  apis?: Record<string, string>;
+  operations?: string[];
   enabled: boolean;
   price?: { inputPerThousand: number; outputPerThousand: number } | null;
   parameters?: Record<string, unknown>;
   rejectedParameters?: Record<string, string>;
+  transport?: { api: string; source: 'configured' | 'learned' | 'default' };
   services?: Record<string, unknown>[];
 }
 
@@ -111,6 +116,7 @@ export interface ModelAdmin {
     classification: {
       residency?: string;
       capabilities?: string[];
+      apis?: Record<string, string>;
       enabled?: boolean;
       parameters?: Record<string, unknown>;
     },
@@ -144,6 +150,7 @@ export interface AdminOptions {
   extensions?: Record<string, AdminHandler>;
   records?: AdminRecordStore;
   tenants?: () => Promise<{ orgNumber: string; name: string }[]>;
+  names?: { remember(principal: Principal, name: string): Promise<void> };
 }
 
 export type AdminOutcome = Outcome;
@@ -178,6 +185,23 @@ export const platformActor = (subject: string, tenant: string): Principal => ({
   subject,
   tenant,
 });
+
+const engineSwitchSubject = 'engine-switch';
+
+/**
+ * Who publishes an engine switch's activation once its refresh has run (ADR 0025): the platform,
+ * with the reason of the person who activated it. A platform dataset is an operator's to change.
+ */
+export const engineSwitchPublisher = (scope: string, tenant: string): Principal =>
+  scope === 'platform'
+    ? { kind: 'operator', issuer: 'platform', subject: engineSwitchSubject }
+    : platformActor(engineSwitchSubject, tenant);
+
+/** Only the engine switch itself, never a caller of the API, carries this principal. */
+export const isEngineSwitchPublisher = (principal: Principal) =>
+  principal.issuer === 'platform' &&
+  principal.subject === engineSwitchSubject &&
+  (principal.kind === 'workload' || principal.kind === 'operator');
 
 export type AdminWork<T> = () => Promise<{
   value: T;
@@ -245,6 +269,23 @@ export const createAdmin = (options: AdminOptions) => {
   const check = (definition: unknown, files: PromptFiles): ValidationError[] => {
     const validated = validateDefinition(definition, plugins);
     return validated.ok ? checkPromptFiles(validated.definition, files) : validated.errors;
+  };
+
+  const checkImport = (definition: unknown, files: PromptFiles): ValidationError[] => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? [
+          ...checkPromptFiles(validated.definition, files),
+          ...riskConfirmationProblems(validated.definition),
+        ]
+      : validated.errors;
+  };
+
+  const confirmedOnImport = (principal: Principal) => (definition: unknown) => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? confirmedAs(validated.definition, actorOf(principal.actor ?? principal), now())
+      : definition;
   };
 
   const platformWide = {
@@ -328,7 +369,8 @@ export const createAdmin = (options: AdminOptions) => {
         onConflict: input.onConflict === 'overwrite' ? 'overwrite' : 'skip',
         actor: actorOf(principal),
         reason: input.reason,
-        check,
+        check: checkImport,
+        prepare: confirmedOnImport(principal),
       });
       const conflict = await flushTenant(`tenant:${input.tenant}`);
       if (conflict) return conflict;
@@ -392,15 +434,29 @@ export const createAdmin = (options: AdminOptions) => {
           target,
           audit: platformWide,
         };
-      const after = await models.classify(
-        id,
-        input.classification as Parameters<ModelAdmin['classify']>[1],
-      );
+      const after = await models
+        .classify(id, input.classification as Parameters<ModelAdmin['classify']>[1])
+        .catch((error: unknown) => {
+          if (error instanceof ModelError && error.code === 'bad_request') return error;
+          throw error;
+        });
+      if (after instanceof ModelError)
+        return {
+          ok: false,
+          errors: [{ path: 'apis', message: after.message }],
+          target,
+          audit: platformWide,
+        };
       const states = models.describe();
       const services = new Map<string, Record<string, unknown>>();
       for (const c of await store.capabilities()) {
         const model = (c.capability.config as { model?: ServiceModels } | undefined)?.model;
-        const uses = [model?.primary, model?.fallback, ...Object.values(model?.roles ?? {})];
+        const uses = [
+          model?.primary,
+          model?.fallback,
+          ...Object.values(model?.roles ?? {}),
+          ...Object.values(model?.operations ?? {}),
+        ];
         if (!uses.includes(id)) continue;
         const health = serviceHealth(model, states);
         services.set(`${c.service.tenant}/${c.service.id}`, {
@@ -606,6 +662,7 @@ export const createAdmin = (options: AdminOptions) => {
       target: result.target || action,
       reason: data.reason,
     });
+    if (actor.name) await options.names?.remember(actor, actor.name).catch(() => undefined);
     return { ...result, task: started.task };
   };
 
@@ -768,6 +825,7 @@ export const createAdmin = (options: AdminOptions) => {
       return extended;
     },
     check,
+    checkImport,
     audit: (tenant?: string) => records.audit(tenant),
     events: async (task: string): Promise<Event[]> => {
       const events: Event[] = [];

@@ -16,7 +16,14 @@ export const endpointConfig = (
 ): LocalEndpointConfig => ({
   ...(endpoint.baseURL ? { baseURL: endpoint.baseURL } : {}),
   ...(endpoint.auth
-    ? { credential: credentialFor(endpoint.auth, credentials.secrets, credentials.tokenProviders) }
+    ? {
+        credential: credentialFor(
+          endpoint.auth,
+          credentials.secrets,
+          credentials.tokenProviders,
+          endpoint.baseURL,
+        ),
+      }
     : {}),
   options,
   timeoutMs,
@@ -27,6 +34,8 @@ export const datasetConfig = (dataset: CatalogDataset, options: unknown): Datase
   filters: dataset.filters,
   options,
   ...(dataset.embedding ? { embedding: dataset.embedding } : {}),
+  ...(dataset.valueTypes ? { valueTypes: dataset.valueTypes } : {}),
+  ...(dataset.generation ? { generation: dataset.generation } : {}),
 });
 
 export const aliasesOf = (catalog: KnowledgeCatalog) => {
@@ -40,6 +49,8 @@ export interface DatasetOverrides {
   endpointOptions?: Record<string, unknown>;
   datasetOptions?: Record<string, unknown>;
   embedding?: DatasetEmbedding;
+  /** A generation on the knowledge server to read by name, such as an engine switch's (ADR 0025). */
+  generation?: string;
 }
 
 export interface Relocated {
@@ -87,7 +98,13 @@ export const relocate = (
   const endpointOptions = adapter.endpointOptions.safeParse(endpoint.options);
   if (!endpointOptions.success) throw issues('endpoint options', endpointOptions.error);
   return {
-    dataset: { ...dataset, endpoint: endpointId, options, ...(embedding ? { embedding } : {}) },
+    dataset: {
+      ...dataset,
+      endpoint: endpointId,
+      options,
+      ...(embedding ? { embedding } : {}),
+      ...(overrides.generation ? { generation: overrides.generation } : {}),
+    },
     endpoint,
     adapter,
     endpointOptions: endpointOptions.data,

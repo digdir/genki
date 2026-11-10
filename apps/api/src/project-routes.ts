@@ -4,7 +4,7 @@ import type { Principal } from '@genai/contracts';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant } from './access.js';
 import { actorOf, AdminRefused, refusedBy, routeOnly } from './admin.js';
-import { filtersOf } from './batch-run-routes.js';
+import { costVisible, filtersOf, withoutCost } from './batch-run-routes.js';
 import type { BatchEstimate, BatchRun, BatchTotals } from './batch-runs.js';
 import { BatchProblem } from './batch-runs.js';
 import { appendVersion, type ConfigEntry } from './config-store.js';
@@ -28,7 +28,7 @@ import {
   type ProjectsOptions,
   type SubscriptionMode,
 } from './projects.js';
-import type { Right } from './rights.js';
+import { seesUsage, type Right } from './rights.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422 | 503;
 
@@ -175,6 +175,17 @@ export const createProjectsModule =
           return { principal: entered.principal, tenant };
         };
 
+        const shownSubscription = async (
+          guard: { principal: Principal; tenant: string },
+          entry: Parameters<typeof projects.subscriptionView>[1],
+        ) => {
+          const view = await projects.subscriptionView(guard.tenant, entry);
+          if (seesUsage(guard.principal, guard.tenant)) return view;
+          const shown: Partial<typeof view> = { ...view };
+          delete shown.spentThisMonth;
+          return shown;
+        };
+
         const changing = async (c: Context, right: Right) => {
           const guard = await member(c, right);
           if (guard.response) return guard;
@@ -316,7 +327,7 @@ export const createProjectsModule =
           if (!entry) return problem(c, 404, 'Fant ikke prosjektet');
           const subscriptions = await Promise.all(
             (await projects.subscriptionsOf(guard.tenant, entry.id)).map((s) =>
-              projects.subscriptionView(guard.tenant, s),
+              shownSubscription(guard, s),
             ),
           );
           return c.json({ ...projectView(entry), subscriptions });
@@ -671,8 +682,9 @@ export const createProjectsModule =
           const data = (await projects.runDetails(guard.tenant, id))
             .map(({ link, run, totals }) => {
               const approval = approvals.get(run.id);
+              const view = runView(run, totals);
               return {
-                ...runView(run, totals),
+                ...(costVisible(guard.principal, guard.tenant, run) ? view : withoutCost(view)),
                 trigger: link.trigger,
                 ...(link.selection ? { selection: link.selection } : {}),
                 newSince: fresh.filter(
@@ -741,7 +753,7 @@ export const createProjectsModule =
             return problem(c, 404, 'Fant ikke prosjektet');
           const data = await Promise.all(
             (await projects.subscriptionsOf(guard.tenant, id)).map((s) =>
-              projects.subscriptionView(guard.tenant, s),
+              shownSubscription(guard, s),
             ),
           );
           return c.json({ data });
@@ -790,7 +802,7 @@ export const createProjectsModule =
                   guard.name,
                 ),
             );
-            return c.json(await projects.subscriptionView(guard.tenant, saved));
+            return c.json(await shownSubscription(guard, saved));
           } catch (error) {
             return failed(c, error);
           }
@@ -857,7 +869,7 @@ export const createProjectsModule =
               );
               if (!paused)
                 projects.checkInBackground(guard.tenant, saved.id, 'Abonnementet fortsetter');
-              return c.json(await projects.subscriptionView(guard.tenant, saved));
+              return c.json(await shownSubscription(guard, saved));
             } catch (error) {
               return failed(c, error);
             }

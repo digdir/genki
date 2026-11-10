@@ -7,7 +7,13 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { InMemoryConfigEntryStore, type ConfigEntryStore } from './config-store.js';
-import { InMemoryIngestionBackend, type IngestionBackend } from './ingestion.js';
+import {
+  InMemoryIngestionBackend,
+  type Execution,
+  type IngestionBackend,
+  type JobRunStore,
+  type JobRuns,
+} from './ingestion.js';
 
 const digdir = '991825827';
 const other = '999888777';
@@ -16,6 +22,20 @@ const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  erik: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'erik',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-datasets'] }],
+  },
+  siri: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'siri',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
 };
 
 const servers: FakeServer[] = [];
@@ -67,6 +87,7 @@ export const boot = async (
   options: {
     store?: ConfigEntryStore;
     ingestion?: IngestionBackend;
+    jobRuns?: JobRuns;
     answer?: string;
     searchOnlyClusters?: string[];
   } = {},
@@ -80,7 +101,7 @@ export const boot = async (
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -117,6 +138,7 @@ export const boot = async (
     configurables: {
       ...(options.store ? { store: options.store } : {}),
       ...(options.ingestion ? { ingestion: options.ingestion } : {}),
+      ...(options.jobRuns ? { jobRuns: options.jobRuns } : {}),
     },
     authenticate: async (request) => {
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -191,7 +213,7 @@ describe('model, price and endpoint catalog over the API', () => {
   it('lets an operator add a model endpoint and model, versions and audits it, and refuses others', async () => {
     const { call, platform, admin } = await boot();
     const endpoint = {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modeller.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/other-key' },
     };
@@ -314,7 +336,7 @@ describe('model, price and endpoint catalog over the API', () => {
     await first.call('/operator/catalog/model-endpoint/norsk', 'drift', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
         auth: { kind: 'api-key', secret: 'secret://env/other-key' },
       },
@@ -482,7 +504,7 @@ describe('tenant catalog entries', () => {
     await call(`/tenants/${digdir}/catalog/model-endpoint/egen`, 'kari', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://llm.testetaten.example.no/v1',
         auth: { kind: 'api-key', secret: `secret://tenant/${digdir}/llm-key` },
       },
@@ -672,6 +694,119 @@ describe('ingestion pipelines', () => {
     ).toBe(400);
   });
 
+  it('shows the token usage of a pipeline execution only with view-usage', async () => {
+    const memory = new InMemoryIngestionBackend(() => [
+      { key: 'a', text: 'Digdir har ansvar for felles løsninger.' },
+    ]);
+    const backend: IngestionBackend = {
+      name: memory.name,
+      available: memory.available,
+      run: async (job, signal) => ({
+        ...(await memory.run(job, signal)),
+        usage: { embedding: { inputTokens: 40, costMicroNok: 2 } },
+      }),
+    };
+    const { call } = await boot({ ingestion: backend });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    await call(`${base}/nettsider/execute`, 'kari', { body: {} });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const reportFor = async (who: string) =>
+      (
+        await json<{ data: { report?: Record<string, unknown> }[] }>(
+          await call(`${base}/nettsider/executions`, who),
+        )
+      ).data[0]?.report;
+
+    expect(await reportFor('erik')).toMatchObject({ stored: 1 });
+    expect(await reportFor('erik')).not.toHaveProperty('usage');
+    expect(await reportFor('kari')).toHaveProperty('usage');
+  });
+
+  it('sending back is audited and needs the dataset right', async () => {
+    const runs = new Map<string, Execution>();
+    const sentBack: { execution: string; by: string; reason: string }[] = [];
+    const store: JobRunStore = {
+      start: async (input) => {
+        const run: Execution = { ...input, status: 'running', runsAsJobs: true };
+        runs.set(run.id, run);
+        return { ok: true, value: run };
+      },
+      cancel: async () => undefined,
+      redrive: async (input) => {
+        const run = runs.get(input.execution);
+        if (!run || run.status !== 'failed')
+          return { ok: false, message: 'only an ended run that runs as jobs can be sent back' };
+        sentBack.push({ execution: input.execution, by: input.by, reason: input.reason });
+        const reopened: Execution = { ...run, status: 'running', admittedAt: input.at };
+        runs.set(run.id, reopened);
+        return { ok: true, value: reopened };
+      },
+    };
+    const { call, admin } = await boot({
+      ingestion: new InMemoryIngestionBackend(),
+      jobRuns: { runsAsJobs: (dataset) => dataset === `${digdir}/sider`, runs: store },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    const started = await json<{ id: string }>(
+      await call(`${base}/nettsider/execute`, 'erik', { body: {} }),
+    );
+    const run = runs.get(started.id);
+    if (!run) throw new Error('the run was not started as jobs');
+    runs.set(run.id, { ...run, status: 'failed', error: 'listing failed' });
+    const redrive = `${base}/nettsider/executions/${run.id}/redrive`;
+
+    expect((await call(redrive, 'siri', { body: {}, reason: 'Kudos svarer igjen' })).status).toBe(
+      403,
+    );
+    expect((await call(redrive, 'erik', { body: {}, reason: null })).status).toBe(400);
+    expect(sentBack).toEqual([]);
+
+    const sent = await call(redrive, 'erik', { body: {}, reason: 'Kudos svarer igjen' });
+    expect(sent.status).toBe(202);
+    expect(await json(sent)).toMatchObject({ id: run.id, status: 'running' });
+    expect(sentBack).toEqual([
+      { execution: run.id, by: expect.stringContaining('erik'), reason: 'Kudos svarer igjen' },
+    ]);
+    expect(
+      (await admin.audit(digdir)).filter((entry) => entry.action === 'platform.jobs.redrive'),
+    ).toEqual([expect.objectContaining({ reason: 'Kudos svarer igjen' })]);
+
+    expect((await call(redrive, 'erik', { body: {}, reason: 'Igjen' })).status).toBe(400);
+  });
+
   it('runs a pipeline on the pluggable backend and records the execution', async () => {
     const backend = new InMemoryIngestionBackend(() => [
       { key: 'a', text: 'Digdir har ansvar for felles løsninger.' },
@@ -715,6 +850,47 @@ describe('ingestion pipelines', () => {
     });
     expect(platform.ingestion.backend.available).toBe(true);
     expect((await call(`/tenants/${other}/datasets/sider/pipelines`, 'ola')).status).toBe(404);
+  });
+
+  it('refuses a tenant pipeline whose phrase models are unreleased', async () => {
+    const { call, platform } = await boot();
+    await platform.catalog.publish({
+      kind: 'model',
+      scope: 'platform',
+      id: 'fake/ny',
+      spec: { endpoint: 'fake', deployment: 'ny', residency: 'norway', release: 'candidate' },
+      by: 'operator:test:drift',
+      reason: 'ny modell',
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+
+    const refused = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt', fallbackModel: 'fake/ny' } },
+    });
+    const saved = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt' } },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({
+      errors: [{ path: 'spec.phrases.fallbackModel' }],
+    });
+    expect(saved.status).toBe(201);
   });
 });
 

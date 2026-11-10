@@ -47,7 +47,7 @@ const boot = async () => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: 'https://modell.example.no/v1',
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -166,7 +166,10 @@ describe('platform rights on the tenant routes', () => {
       [`/tenants/${digdir}/test-sets`, { body: { id: 'grunnsett' } }],
       [`/tenants/${digdir}/eval-runs`, { body: {} }],
       [`/tenants/${digdir}/tool-connections`, { body: { id: 'arkiv' } }],
-      [`/tenants/${digdir}/secrets/arkiv-token`, { method: 'PUT', body: { value: 'hemmelig' } }],
+      [
+        `/tenants/${digdir}/secrets/arkiv-token`,
+        { method: 'PUT', body: { value: 'hemmelig', allowedHosts: ['https://arkiv.example.no'] } },
+      ],
       [`/tenants/${digdir}/clients/intranett`, { method: 'PUT', body: {} }],
       [`/tenants/${digdir}/definitions/test-run`, { body: { definition: {}, query: 'hei' } }],
       [`/tenants/${digdir}/definitions/input-fields`, { body: { definition: {} } }],
@@ -182,8 +185,14 @@ describe('platform rights on the tenant routes', () => {
     const call = await boot();
     const path = `/tenants/${digdir}/secrets/arkiv-token`;
 
-    const saved = await call(path, 'bygger', { method: 'PUT', body: { value: 'hemmelig' } });
-    const refused = await call(path, 'erik', { method: 'PUT', body: { value: 'hemmelig' } });
+    const saved = await call(path, 'bygger', {
+      method: 'PUT',
+      body: { value: 'hemmelig', allowedHosts: ['https://arkiv.example.no'] },
+    });
+    const refused = await call(path, 'erik', {
+      method: 'PUT',
+      body: { value: 'hemmelig', allowedHosts: ['https://arkiv.example.no'] },
+    });
 
     expect(saved.status).toBe(200);
     expect(refused.status).toBe(403);

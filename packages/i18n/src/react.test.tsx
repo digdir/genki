@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineCatalogue, type Translation } from './index.js';
 import {
@@ -37,6 +38,21 @@ const Page = () => {
 afterEach(cleanup);
 
 describe('React i18n', () => {
+  it('lets a page set its own document title over the default title', () => {
+    const Titled = () => {
+      useEffect(() => {
+        document.title = 'Pris | Genki';
+      }, []);
+      return null;
+    };
+    render(
+      <LocaleProvider title={{ nb: 'Standard' }}>
+        <Titled />
+      </LocaleProvider>,
+    );
+    expect(document.title).toBe('Pris | Genki');
+  });
+
   it('renders bokmål by default', () => {
     render(<Page />);
     expect(screen.getByRole('heading', { name: 'Velkommen, Kari' })).toBeTruthy();

@@ -24,6 +24,7 @@ export {
   ConnectionToolSources,
   PinnedToolSource,
   pinTools,
+  toolSyncDeadlineMs,
   type ConnectionToolSource,
   type SyncResult,
 } from './pinned.js';
@@ -42,7 +43,10 @@ export {
 } from './registry.js';
 export {
   assertTenantSecret,
+  originOf,
+  SecretBindingError,
   SecretNamespaceError,
+  secretTargets,
   secretTenant,
   tenantSecretPattern,
   TenantSecrets,

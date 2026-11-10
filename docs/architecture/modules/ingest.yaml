@@ -9,16 +9,22 @@ packages:
   - '@genai/ingest'
 summary: Loads Kudos, websites and folders, converts and chunks them, and builds phrases.
 description: Source loaders and the ingest pipeline. Document ids are derived with valuehash so they
-  match the ids headless-rag gave the same documents.
+  match the ids headless-rag gave the same documents, except folder documents on the knowledge
+  database, whose ids name the owner and a hash of the path from the folder root (ADR 0042).
 responsibilities:
   - Kudos, website and folder loaders
   - Conversion and chunking
   - Phrase extraction with a model
+  - The pipeline spec and its sources, shared by the API and the worker
+  - Knowledge listings: list a source without fetching what its listing can compare, and load one document from its record
+  - Document records on the knowledge database: plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)
 files:
   - packages/ingest/src/pipeline.ts
   - packages/ingest/src/kudos.ts
   - packages/ingest/src/website.ts
   - packages/ingest/src/chunking.ts
+  - packages/ingest/src/pipeline-sources.ts
+  - packages/ingest/src/document-records.ts
 input: Source config
 output: Documents, chunks and phrases
 replaces:

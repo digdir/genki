@@ -6,6 +6,7 @@ import { enterTenant } from './access.js';
 import type { AdminHandler, AdminOutcome } from './admin.js';
 import { changeReasonOf, isReasonLongEnough, minimumReasonLength } from './http.js';
 import { t } from './i18n/index.js';
+import { carriesAltinnActions, type Right, rights, rightsOf } from './rights.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import type { KeyPolicyStore, TenantApiKeys, TenantKeyPolicy } from './routes/portal-routes.js';
 
@@ -96,6 +97,15 @@ const failed = (target: string, path: string, message: string): AdminOutcome => 
 const tenantOnly = (principal: Principal, tenant: string) =>
   principal.kind !== 'operator' && !principal.actor && principal.tenant === tenant;
 
+const impliedRights = (scopes: readonly string[]): readonly Right[] =>
+  scopes.includes('admin') ? rights : scopes.includes('ingest') ? ['manage-datasets'] : [];
+
+const rightBeyondHolder = (principal: Principal, tenant: string, scopes: readonly string[]) => {
+  if (!carriesAltinnActions(principal)) return undefined;
+  const held = rightsOf(principal, tenant);
+  return impliedRights(scopes).find((r) => !held.has(r));
+};
+
 const problem = (
   c: Context,
   status: 400 | 401 | 403 | 404 | 409,
@@ -123,6 +133,13 @@ export const createKeyPoliciesModule =
           return failed(target, 'principal', t('problems.keyPolicyOnlyTenant'));
         const read = readPolicy(data);
         if (!read.ok) return failed(target, read.field, fieldProblem(read.field));
+        const beyond = rightBeyondHolder(principal, tenant, read.value.scopes ?? []);
+        if (beyond)
+          return failed(
+            target,
+            'principal',
+            t('problems.keyPolicyBeyondRights', { right: beyond }),
+          );
         const before = (await policies.listPolicies(tenant)).find((p) => p.id === id);
         if (data.create === true && before)
           return { ...failed(target, 'id', t('problems.keyPolicyExists')), conflict: true };
@@ -177,11 +194,19 @@ export const createKeyPoliciesModule =
         const key = (await keys.list(tenant)).find((k) => k.id === keyId);
         if (!key) return failed(target, 'keyId', t('problems.keyPolicyNoKey'));
         if (boundService(key)) return failed(target, 'key', t('problems.keyPolicyBoundKey'));
-        if (
-          policyId !== undefined &&
-          !(await policies.listPolicies(tenant)).some((p) => p.id === policyId)
-        )
+        const chosen =
+          policyId === undefined
+            ? undefined
+            : (await policies.listPolicies(tenant)).find((p) => p.id === policyId);
+        if (policyId !== undefined && !chosen)
           return failed(target, 'policyId', t('problems.keyPolicyNoSuch'));
+        const beyond = chosen && rightBeyondHolder(principal, tenant, chosen.scopes ?? []);
+        if (beyond)
+          return failed(
+            target,
+            'principal',
+            t('problems.keyPolicyBeyondRights', { right: beyond }),
+          );
         await policies.setKeyPolicy(tenant, keyId, policyId);
         return {
           ok: true,

@@ -96,6 +96,7 @@ const boot = async (fieldOutput: Record<string, unknown> = { dato: '2026-10-07' 
         json: {
           data: [
             { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
             { id: 'gpt-41-dommer', model: 'gpt-4.1', status: 'succeeded' },
           ],
         },
@@ -134,7 +135,7 @@ const boot = async (fieldOutput: Record<string, unknown> = { dato: '2026-10-07' 
   const models = resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog;
   const privateModel = {
     id: `${other}/norsk-7b`,
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'norsk-7b',
     residency: 'norway' as const,
     capabilities: ['stream' as const, 'json-schema' as const],

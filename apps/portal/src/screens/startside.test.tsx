@@ -91,10 +91,12 @@ describe('Startside', () => {
     ).toEqual([
       'Be om tilgang',
       'Digdir godkjenner',
-      'Første administrator logger inn',
+      'Gi rettighet i Altinn',
       'Lag den første tjenesten',
     ]);
-    expect(within(start).getByText(/Vilkårene er ikke bestemt ennå/)).toBeTruthy();
+    expect(
+      within(start).getByText(/Vi har ikke fastsatt hvor lang tid godkjenningen tar/),
+    ).toBeTruthy();
   });
 
   it('logs in from the header and from Send forespørsel', () => {

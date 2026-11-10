@@ -14,6 +14,7 @@ import {
   Heading,
   Input,
   Label,
+  Paragraph,
   Select,
   SelectOption,
   Spinner,
@@ -32,6 +33,7 @@ import type {
   KnowledgeEngine,
   StoredSecret,
 } from '../../types';
+import { useTenantNames } from '../../tenant-names';
 import { formatDay } from '../../ui';
 import { ApiCallPanel, type ApiCall } from './ApiCallPanel';
 import { capabilityCount, capabilityTotal } from './capabilities';
@@ -58,6 +60,42 @@ interface Props {
 }
 
 const back = 'M15 6l-6 6 6 6';
+
+/** The datasets on a stored endpoint, so an operator sees what a move must still take (#151). */
+const EndpointDatasets = ({
+  api,
+  datasets,
+}: {
+  api: ApiClient;
+  datasets: NonNullable<KnowledgeEndpoint['datasets']>;
+}) => {
+  const t = useT();
+  const tenantName = useTenantNames(api);
+  return (
+    <section className="stack-xs" aria-label={t('searchEngines.datasetsOnEndpoint')}>
+      <Heading level={2} data-size="2xs">
+        {t('searchEngines.datasetsOnEndpoint')}
+      </Heading>
+      {datasets.length === 0 ? (
+        <Paragraph data-size="sm">{t('searchEngines.noDatasetsOnEndpoint')}</Paragraph>
+      ) : (
+        <ul className="service-list">
+          {datasets.map((d) => (
+            <li key={d.id}>
+              <span>
+                <strong>{d.name}</strong>
+                {` · ${d.scope === 'platform' ? t('config.platform') : tenantName(d.scope)} · ${t(
+                  'searchEngines.pipelineCount',
+                  { count: d.pipelines },
+                )}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};
 
 const slug = (name: string) =>
   name
@@ -322,6 +360,7 @@ export const EndpointEditor = ({
           {isNew ? t('searchEngines.newEndpoint') : endpoint.name}
         </Heading>
       </div>
+      {endpoint?.datasets ? <EndpointDatasets api={api} datasets={endpoint.datasets} /> : null}
 
       {tried && errorLinks.length ? (
         <ErrorSummary ref={summary} tabIndex={-1}>

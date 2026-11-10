@@ -2,12 +2,12 @@ import type { Credential } from '@genai/kernel';
 import type { z } from 'zod';
 import { EmbeddingError, type EmbedResult } from './port.js';
 
-export interface EmbeddingEndpointConfig<O = unknown> {
+export interface EmbeddingEndpointConfig {
   baseURL: string;
   credential: Credential;
-  options: O;
   maxRetries: number;
   timeoutMs: number;
+  fetch?: typeof fetch;
 }
 
 export interface EmbeddingModelConfig<O = unknown> {
@@ -20,11 +20,16 @@ export interface EmbeddingConnection<M = unknown> {
   embed(model: EmbeddingModelConfig<M>, texts: string[], signal: AbortSignal): Promise<EmbedResult>;
 }
 
-export interface EmbeddingAdapter<E = unknown, M = unknown> {
-  protocol: string;
-  endpointOptions: z.ZodType<E>;
+/** The API an adapter implements in code, registered under its API id (ADR 0048). */
+export interface EmbeddingApi {
+  id: string;
+  family: string;
+}
+
+export interface EmbeddingAdapter<M = unknown> {
+  api: EmbeddingApi;
   modelOptions: z.ZodType<M>;
-  connect(endpoint: EmbeddingEndpointConfig<E>): EmbeddingConnection<M>;
+  connect(endpoint: EmbeddingEndpointConfig): EmbeddingConnection<M>;
 }
 
 export const embeddingErrorFromStatus = (

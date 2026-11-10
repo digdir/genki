@@ -4,7 +4,12 @@ import type { z } from 'zod';
 import type { FlowServices } from './services.js';
 
 export interface FlowRuntimeConfig {
-  model?: { primary?: string; fallback?: string; tenant?: string };
+  model?: {
+    primary?: string;
+    fallback?: string;
+    operations?: Record<string, string>;
+    tenant?: string;
+  };
   knowledge?: {
     datasets?: { dataset: string }[];
     reranker?: string;
@@ -40,6 +45,7 @@ export interface Block<I = unknown, P = unknown> {
   input: z.ZodType<I>;
   params: z.ZodType<P>;
   output: z.ZodType;
+  framesStepText?: boolean;
   run: BlockRun<I, P>;
 }
 

@@ -1210,7 +1210,7 @@ export const endpoints: Endpoint[] = [
     desc: 'apirefData.int-secret.desc',
     right: 'adm',
     params: [tenant, ['name', 'path', 'text', 'apirefData.int-secret.p.name'], reason],
-    body: { value: '…' },
+    body: { value: '…', allowedHosts: ['https://journal.example.no'] },
     response: { ref: 'secret://tenant/999888777/journal-token' },
     errors: [reasonError],
   },

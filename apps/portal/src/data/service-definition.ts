@@ -111,6 +111,7 @@ export interface ServiceSpec {
     primary: string;
     fallback?: string;
     roles?: Record<string, string>;
+    operations?: Record<string, string>;
     residency?: string;
   };
   guardrails?: Record<string, unknown>;

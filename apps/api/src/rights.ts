@@ -44,6 +44,9 @@ export const requireRight = (principal: Principal, tenant: string, right: Right)
     ? { ok: true }
     : { ok: false, problem: rightProblem(right) };
 
+export const seesUsage = (principal: Principal, tenant: string) =>
+  rightsOf(principal, tenant).has('view-usage');
+
 export const rightRefused = (c: Context, problem: RightProblem) =>
   c.json(problem, 403, { 'content-type': 'application/problem+json' });
 
@@ -64,6 +67,16 @@ const datasetWrite = (input: ActionInput): ActionRequirement =>
 const subscriptionRight = (input: ActionInput): Right =>
   input.mode === 'run' ? 'manage-services' : 'use-services';
 const toolRegistration = { anyOf: ['register-building-blocks', 'manage-services'] } as const;
+const objectOf = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+const borrowsTenantSecret = (input: ActionInput) => {
+  const source = objectOf(objectOf(input.spec).source);
+  if (source.kind !== 'database') return false;
+  const password = objectOf(source.connection).password;
+  return typeof password !== 'string' || password !== input.connectorSecret;
+};
+const pipelineSave = (input: ActionInput): ActionRequirement =>
+  borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';
 
 export const adminActionRights: Readonly<
   Record<string, ActionRequirement | ((input: ActionInput) => ActionRequirement)>
@@ -76,7 +89,11 @@ export const adminActionRights: Readonly<
   'platform.tools.register': toolRegistration,
   'platform.tools.sync': toolRegistration,
   'platform.tools.approve': 'manage-services',
-  'platform.secrets.set': { anyOf: ['manage-services', 'register-building-blocks'] },
+  'platform.secrets.set': (input) =>
+    input.hostsChange === true
+      ? 'manage-services'
+      : { anyOf: ['manage-services', 'register-building-blocks'] },
+  'platform.secrets.hosts': 'manage-services',
   'platform.secrets.delete': { anyOf: ['manage-services', 'register-building-blocks'] },
   'platform.apikeys.create': 'manage-services',
   'platform.apikeys.rotate': 'manage-services',
@@ -98,10 +115,12 @@ export const adminActionRights: Readonly<
   'platform.improvement.decide': 'manage-services',
   'platform.catalog.publish': catalogWrite,
   'platform.catalog.delete': catalogWrite,
-  'platform.pipeline.save': 'manage-datasets',
+  'platform.pipeline.save': pipelineSave,
   'platform.pipeline.delete': 'manage-datasets',
   'platform.pipeline.execute': 'manage-datasets',
   'platform.pipeline.cancel': 'manage-datasets',
+  // Knowledge jobs only: ADR 0042 widens ADR 0041, where only operators send jobs back.
+  'platform.jobs.redrive': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
   'platform.dataset.enrichment.apply': 'manage-datasets',
@@ -112,6 +131,7 @@ export const adminActionRights: Readonly<
   'platform.engine-switch.start': datasetWrite,
   'platform.engine-switch.retry': datasetWrite,
   'platform.engine-switch.cancel': datasetWrite,
+  'platform.engine-switch.activate': datasetWrite,
   'platform.testcase.propose': 'manage-services',
   'platform.testcase.review': 'manage-services',
   'platform.service.risk.confirm': 'manage-services',
@@ -178,6 +198,13 @@ export const adminActionRights: Readonly<
   'platform.task.review.approve': 'use-services',
   'platform.clients.webhook-test': 'manage-services',
   'platform.quality.matrix.run': 'operator',
+  'platform.operations.try': 'operator',
+  'platform.operations.maturity': 'operator',
+  'platform.operations.processor-record': 'operator',
+  'platform.operations.descriptor-upload': 'operator',
+  'platform.operations.descriptor-status': 'operator',
+  'platform.operations.descriptor-withdraw': 'operator',
+  'platform.operations.descriptor-fixture': 'operator',
   'platform.plugin.verify': 'operator',
   'platform.plugin.register': 'operator',
   'platform.plugin.remove': 'operator',
