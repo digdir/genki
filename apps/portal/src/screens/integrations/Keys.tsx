@@ -127,7 +127,12 @@ export const Keys = ({
           : known.origin === 'rotated'
             ? t('integKeys.rotatedToday')
             : k.createdAt
-              ? formatDate(k.createdAt, f)
+              ? k.createdByName
+                ? t('integKeys.createdBy', {
+                    date: formatDate(k.createdAt, f),
+                    who: k.createdByName,
+                  })
+                : formatDate(k.createdAt, f)
               : t('integKeys.unknownDate')),
     };
     return { key: k, mode, services, datasets, extra };
@@ -422,6 +427,15 @@ export const Keys = ({
                         created: v.extra.created,
                       })}
                     </span>
+                    {!active || k.modelsInLockdown === undefined ? null : (
+                      <span className="meta">
+                        {t(
+                          k.modelsInLockdown
+                            ? 'integKeys.modelsAllowed'
+                            : 'integKeys.modelsRefused',
+                        )}
+                      </span>
+                    )}
                   </span>
                   <span className="int-row-meta">
                     <span>

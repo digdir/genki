@@ -12,6 +12,7 @@ import { nextRun, parseCron } from '@genai/jobs';
 import { z } from 'zod';
 import {
   appendVersion,
+  platformScope,
   serialized,
   VersionConflict,
   type ConfigEntry,
@@ -301,6 +302,7 @@ export type PipelineResult =
 
 const kind = 'ingestion-pipeline';
 const scheduleKind = 'ingestion-schedule';
+const deleteHoldKind = 'dataset-delete';
 const scheduleActor = 'platform:ingestion-schedule';
 
 const toPipeline = (entry: ConfigEntry<unknown>): Pipeline => {
@@ -326,6 +328,9 @@ export const staleRunMessage = 'the platform restarted while the run was going';
 
 export const switchHoldMessage = (dataset: string, engineSwitch: string) =>
   `the dataset ${dataset} is being switched to another search engine (${engineSwitch}); its pipelines run again once the switch is ready, active or ended`;
+
+export const deleteHoldMessage = (dataset: string) =>
+  `the dataset ${dataset} is being deleted; its pipelines do not run`;
 
 const runHeartbeatMs = 30_000;
 
@@ -373,6 +378,45 @@ export class IngestionService {
     this.#held = held;
   }
 
+  /** Records a delete in progress where every replica sees it; new runs are refused until it is released or stale. */
+  async hold(
+    dataset: string,
+    by: string,
+    reason: string,
+  ): Promise<(() => Promise<void>) | undefined> {
+    if (await this.#deleting(dataset)) return undefined;
+    let chain: Promise<unknown> = Promise.resolve();
+    const write = (deleted: boolean) =>
+      (chain = chain.then(() =>
+        appendVersion(this.options.store, {
+          kind: deleteHoldKind,
+          scope: platformScope,
+          id: dataset,
+          spec: { dataset },
+          deleted,
+          by,
+          reason,
+          at: this.#now(),
+        }),
+      ));
+    await write(false);
+    const beat = setInterval(() => void write(false).catch(() => undefined), runHeartbeatMs);
+    beat.unref?.();
+    return async () => {
+      clearInterval(beat);
+      await write(true);
+    };
+  }
+
+  async #deleting(dataset: string) {
+    const entry = (await this.options.store.history(deleteHoldKind, platformScope, dataset)).at(-1);
+    return (
+      entry !== undefined &&
+      !entry.deleted &&
+      Date.parse(entry.at) > Date.parse(this.#now()) - staleRunAfterMs
+    );
+  }
+
   /**
    * Starts a run of an engine switch: as jobs, into the switch's generation, admitted here like any
    * run and never held by the switch itself (ADR 0025).
@@ -391,6 +435,8 @@ export class IngestionService {
       );
       return { ok: false, message: ingestionLockedMessage };
     }
+    if (await this.#deleting(input.pipeline.dataset))
+      return { ok: false, message: deleteHoldMessage(input.pipeline.dataset) };
     const jobs = this.options.jobs;
     if (!jobs) return { ok: false, message: 'runs on the knowledge database need the job queue' };
     const now = this.#now();
@@ -460,6 +506,12 @@ export class IngestionService {
       .filter((e) => !e.deleted && e.id.startsWith(`${dataset}#`))
       .map(toPipeline)
       .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  async pipelineIdsEver(scope: string, dataset: string): Promise<string[]> {
+    return (await this.options.store.latest({ kind, scope }))
+      .filter((e) => e.id.startsWith(`${dataset}#`))
+      .map((e) => e.id.slice(dataset.length + 1));
   }
 
   async get(scope: string, dataset: string, id: string): Promise<Pipeline | undefined> {
@@ -641,6 +693,12 @@ export class IngestionService {
       );
       return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
     }
+    if (await this.#deleting(input.pipeline.dataset))
+      return {
+        ok: false,
+        conflict: true,
+        errors: [{ path: 'dataset', message: deleteHoldMessage(input.pipeline.dataset) }],
+      };
     const holder = await this.#held(input.pipeline.dataset);
     if (holder)
       return {

@@ -355,6 +355,9 @@ export interface ApiKeyView {
   service?: string | null;
   policy?: string | null;
   createdAt: string | null;
+  createdBy?: string | null;
+  createdByName?: string;
+  modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
 }

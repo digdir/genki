@@ -46,6 +46,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.dataset.enrichment.revert': 'changes.datasetEnrichmentRevert',
   'platform.dataset.upload': 'changes.datasetUpload',
   'platform.dataset.upload.delete': 'changes.datasetUploadDelete',
+  'platform.dataset.delete': 'changes.datasetDelete',
   'platform.default.set': 'changes.defaultSet',
   'platform.engine-switch.cancel': 'changes.engineSwitchCancel',
   'platform.engine-switch.activate': 'changes.engineSwitchActivate',

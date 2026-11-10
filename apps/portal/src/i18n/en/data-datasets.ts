@@ -222,6 +222,24 @@ const datasets = {
   sharedIngestions:
     'The dataset is shared with you. The ingestions are controlled by the organisation that owns it.',
   sharedWithYou: 'The dataset is shared with you. You can search it, but not change the source.',
+  deleteTitle: 'Delete the dataset',
+  deleteIntro:
+    'Deleting removes the dataset from the catalogue with its sources, the uploaded files and the content in the search engine. The ingestion history and the audit log are kept.',
+  deleteBlocked:
+    'The dataset cannot be deleted while services use it. Remove it from the services first.',
+  deleteDataset: 'Delete dataset',
+  deleteConfirmText: 'Delete "{name}"? This cannot be undone.',
+  deleteConfirm: 'Delete',
+  deleteFailed: 'The dataset was not deleted. {problem}',
+  deletedTitle: '{name} is deleted',
+  deletedRemoved:
+    'The catalogue entry, {pipelines} sources, {uploads} uploaded files and {generations} generations in the search engine are removed.',
+  deletedKeptRecords:
+    'The documents and partitions on the knowledge server stay until the drop job is built (issue 250). The name cannot be used again before then.',
+  deletedKeptGenerations:
+    'The search engine refused to remove {count} generations: {list}. Tell the platform team.',
+  deletedNothingKept: 'Nothing was left in the search engine.',
+  readerAdoption: 'Building block at {tenant}',
   filesUploaded: 'The files are uploaded. Press "Ingest now" to make them searchable.',
   stepChooseSource: 'Choose source',
   stepSetUp: 'Set up {source}',

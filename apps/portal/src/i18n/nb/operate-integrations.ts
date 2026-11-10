@@ -362,6 +362,10 @@ export const integrationsArea = {
     createdToday: 'i dag av deg',
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
+    createdBy: '{date} av {who}',
+    modelsAllowed: 'Kan bruke modeller i det låste miljøet',
+    modelsRefused:
+      'Kan ikke bruke modeller i det låste miljøet: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
     nameProblem: 'Gi nøkkelen et navn.',
     selectionProblem: 'Velg minst én tjeneste eller ett datasett, eller velg «Alle».',
     rateProblem: 'Skriv et helt tall fra 1 til 6 000.',

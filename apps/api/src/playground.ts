@@ -568,11 +568,22 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     const withModel = (definition: Record<string, unknown>, model: string | undefined) => {
       if (!model) return definition;
       const spec = record(definition.spec);
+      const declared = { ...record(spec.model) };
+      delete declared.fallback;
+      const roles = Object.entries(record(declared.roles)).map(([role, id]) => [
+        role,
+        id === declared.primary ? model : id,
+      ]);
       return {
         ...definition,
         spec: {
           ...spec,
-          model: { primary: model, residency: modelResidency(model) ?? 'global' },
+          model: {
+            ...declared,
+            primary: model,
+            residency: declared.residency ?? modelResidency(model) ?? 'global',
+            ...(roles.length ? { roles: Object.fromEntries(roles) } : {}),
+          },
         },
       };
     };
