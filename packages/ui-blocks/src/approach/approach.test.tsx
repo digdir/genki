@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { en as hostEn, nb as hostNb } from '../i18n.js';
 import { Approach, type ApproachProps, type ApproachStep } from './Approach.js';
+import { en, nb } from './i18n.js';
+import { linesOf } from './runs.js';
 
 document.getAnimations ??= () => [];
 afterEach(() => {
@@ -170,5 +172,103 @@ describe('the approach card', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it('keeps its words in a catalogue of its own, with no other block’s', () => {
+    expect(Object.keys(nb)).toEqual(['approach']);
+  });
+
+  it('lends its words to a host through the package’s catalogue of every block', () => {
+    expect(hostNb.approach).toEqual(nb.approach);
+    expect(hostEn.approach).toEqual(en.approach);
+  });
+});
+
+describe('a run of the same step', () => {
+  const run = (titles: string[], extra: Partial<ApproachStep>[] = []): ApproachStep[] =>
+    titles.map((title, i) => ({ id: `s${i}`, title, status: 'done', ...extra[i] }));
+  const lines = () =>
+    [...document.querySelectorAll('.uib-approach-steps > li')].map(
+      (li) => li.querySelector('.uib-approach-step-title')?.textContent,
+    );
+
+  it('is drawn as one line with a count, when the steps follow one another', () => {
+    draw({ steps: run(['Søkte', 'Søkte', 'Søkte', 'Skrev svaret']), working: false });
+    expect(lines()).toEqual(['Søkte (3 ganger)', 'Skrev svaret']);
+  });
+
+  it('keeps the same step after another one as a line of its own', () => {
+    draw({ steps: run(['Søkte', 'Leste', 'Søkte']), working: false });
+    expect(lines()).toEqual(['Søkte', 'Leste', 'Søkte']);
+  });
+
+  it('is named by the excerpts it read, added up, when its steps say how many', () => {
+    const steps = run(
+      ['Leste de relevante delene nøye', 'Leste de relevante delene nøye', 'Skrev svaret'],
+      [{ excerptsRead: 3 }, { excerptsRead: 9 }],
+    );
+    draw({ steps, working: false });
+    expect(lines()).toEqual(['Leste 12 utdrag nøye', 'Skrev svaret']);
+  });
+
+  it('is in progress while its last step is, and counts as one line in what is announced', () => {
+    const steps: ApproachStep[] = [
+      { id: 'a', title: 'Søkte', status: 'done' },
+      { id: 'b', title: 'Søkte', status: 'active' },
+      { id: 'c', title: 'Skrev svaret', status: 'waiting' },
+    ];
+    draw({ steps });
+    expect(step('Søkte (2 ganger)').getAttribute('aria-current')).toBe('step');
+    const live = document.querySelector('[aria-live="polite"]') as HTMLElement;
+    expect(live.textContent).toBe('Steg 1 av 2: Søkte (2 ganger)');
+  });
+
+  it('keeps the first step’s key and shows the newest step’s account', () => {
+    const steps: ApproachStep[] = [
+      { id: 'a', title: 'Søkte', status: 'done', description: 'Først' },
+      { id: 'b', title: 'Søkte', status: 'active', description: 'Så' },
+    ];
+    expect(linesOf(steps).map((line) => [line.key, line.step.id, line.count])).toEqual([
+      ['a', 'b', 2],
+    ]);
+    draw({ steps });
+    expect(screen.getByText('Så')).toBeTruthy();
+    expect(screen.queryByText('Først')).toBeNull();
+  });
+});
+
+describe('a host that keeps the card open or shut', () => {
+  it('keeps it open when the answer is done, which the card alone would shut', () => {
+    const { rerender } = draw({ open: true });
+    rerender(
+      <Approach steps={steps} working={false} startedAt={started} finishedAt={started} open />,
+    );
+    expect(card().open).toBe(true);
+  });
+
+  it('keeps it shut while the assistant works, and hears when the person opens it', async () => {
+    const asked: boolean[] = [];
+    draw({ open: false, onOpenChange: (open) => asked.push(open) });
+    expect(card().open).toBe(false);
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    await waitFor(() => expect(asked).toEqual([true]));
+    expect(card().open).toBe(false);
+  });
+
+  it('opens when the host says so', () => {
+    const { rerender } = draw({ working: false, finishedAt: started, open: false });
+    expect(card().open).toBe(false);
+    rerender(
+      <Approach steps={steps} working={false} startedAt={started} finishedAt={started} open />,
+    );
+    expect(card().open).toBe(true);
+  });
+
+  it('tells a host that does not keep it when the person shuts it', async () => {
+    const asked: boolean[] = [];
+    draw({ onOpenChange: (open) => asked.push(open) });
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    await waitFor(() => expect(asked).toEqual([false]));
+    expect(card().open).toBe(false);
   });
 });

@@ -6,7 +6,7 @@ const strip = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 const flatten = (css: string) =>
   css.replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/,? \)/g, ')');
 
-// Every block's own stylesheet; Approach's joins when it leaves ui-blocks.css.
+// Every block's own stylesheet, branded the Designsystemet way.
 const sheets = readdirSync(import.meta.dirname, { recursive: true, encoding: 'utf8' })
   .filter((path) => path.endsWith('.css') && path.includes('/'))
   .sort()
@@ -114,6 +114,19 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
 });
 
 describe('the lint', () => {
+  it('reads every block stylesheet, Approach’s among them', () => {
+    expect(sheets.map((sheet) => sheet.path)).toEqual(
+      expect.arrayContaining(['approach/approach.css']),
+    );
+  });
+
+  it('leaves ui-blocks.css, which it does not read, nothing but the imports and the hidden text', () => {
+    const rest = strip(read('ui-blocks.css'))
+      .replace(/@import '[^']+';/g, '')
+      .replace(/\.uib-visually-hidden \{[^}]*\}/, '');
+    expect(rest.trim()).toBe('');
+  });
+
   it.each([
     ['inline-size', '24rem'],
     ['max-block-size', '30dvh'],

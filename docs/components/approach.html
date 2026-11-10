@@ -84,6 +84,50 @@
             </ul>
           </div>
           <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>steps</code>: the steps in order. A run of steps with the same title one after
+                another is one line with a count, «Leste de relevante delene nøye (4 ganger)». The
+                same step again after another one is a line of its own.
+              </li>
+              <li>
+                <code>working</code>, <code>startedAt</code> and <code>finishedAt</code>: while it
+                works, and when it started and finished, in milliseconds since the epoch.
+              </li>
+              <li>
+                <code>read</code> and <code>used</code>: the documents read and the sources used,
+                for the line at the bottom once the answer is done.
+              </li>
+              <li>
+                <code>open</code> and <code>onOpenChange</code>: a host that keeps the card open or
+                shut passes <code>open</code>, and hears through <code>onOpenChange</code> when the
+                person opens or shuts it. Without <code>open</code> the card keeps its own state:
+                open while it works, shut when the answer is done, and as the person left it.
+              </li>
+              <li>
+                <code>onShowRead</code> and <code>onExplainMissing</code>: the links «Vis de 17 som
+                er lest» and «Utdyp hva som mangler», shown only when the app can open them.
+              </li>
+            </ul>
+            <h3>A step</h3>
+            <ul>
+              <li>
+                <code>id</code>, <code>title</code> and <code>status</code>: <code>done</code>,
+                <code>active</code> or <code>waiting</code>.
+              </li>
+              <li><code>description</code>: a line under the title.</li>
+              <li>
+                <code>documents</code> and <code>documentsRead</code>: the first documents the step
+                read, with where in them, and how many it read in all.
+              </li>
+              <li>
+                <code>excerptsRead</code>: the excerpts the step read closely. A run of such steps
+                adds them up, and its line says «Leste 12 utdrag nøye» in place of the title.
+              </li>
+              <li><code>sourcesUsed</code>: the source numbers the answer used.</li>
+              <li><code>missing</code>: the step says what the assistant did not find.</li>
+            </ul>
             <h2>Related</h2>
             <ul>
               <li>
@@ -92,6 +136,109 @@
               <li><a href="filter.html">Filter</a>: shows the filter used for each answer</li>
               <li><a href="sources.html">Sources</a>: the steps show which sources were used</li>
             </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. The grey lines are pinned to neutral,
+              as kunnskapsassistenten draws them. Its words are in its own catalogue,
+              <code>approach</code>, so a host that imports Approach alone loads no other block's.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-approach-card-padding</code></td>
+                  <td><code>0</code></td>
+                  <td>the card's padding; the summary and the content hold their own</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-summary-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the robot and «Fremgangsmåte»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-waiting-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>a waiting step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-waiting-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a waiting step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-status-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«· pågår» and «· venter»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-status-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«· pågår» and «· venter»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-status-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>«· pågår» and «· venter»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-spacing</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space over a step's description, documents and links</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-description-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>a step's description and «Brukt i svaret: …»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-description-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>a step's description and «Brukt i svaret: …»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-documents-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the documents a step read</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-link-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«Vis de 17 som er lest» and «Utdyp hva som mangler»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-footer-spacing</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>space over the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-footer-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-footer-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the line at the bottom</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <div class="wide">
             <h2>What we have learned</h2>
@@ -125,7 +272,13 @@
               </li>
               <li>
                 Open while the assistant works, closed when the answer is done. If the person closes
-                it while the assistant works, it stays closed. It can be opened again.
+                it while the assistant works, it stays closed. It can be opened again. A host that
+                passes <code>open</code> keeps it open or shut instead.
+              </li>
+              <li>
+                A run of the same step one after another is one line with a count, «Lette etter
+                steder som handler om spørsmålet (2 ganger)», or, for a reading run that knows its
+                excerpts, «Leste 12 utdrag nøye».
               </li>
               <li>
                 Each step is done, in progress or waiting. The status is always text: «· pågår» and

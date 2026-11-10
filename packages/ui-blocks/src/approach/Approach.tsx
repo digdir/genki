@@ -2,7 +2,8 @@ import { Card, Details, Link, List } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { RobotIcon } from '@navikt/aksel-icons';
 import { useEffect, useRef, useState } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
+import { linesOf, type ApproachLine } from './runs.js';
 
 export type ApproachStatus = 'done' | 'active' | 'waiting';
 
@@ -21,6 +22,8 @@ export interface ApproachStep {
   documents?: readonly ApproachDocument[];
   /** How many documents the step read in all, when more than are listed. */
   documentsRead?: number;
+  /** How many excerpts the step read closely; the line then says so in place of the title. */
+  excerptsRead?: number;
   /** The source numbers the answer used, as in its footnotes. */
   sourcesUsed?: readonly number[];
   /** The step says what the assistant did not find, and can link to more about it. */
@@ -28,6 +31,7 @@ export interface ApproachStep {
 }
 
 export interface ApproachProps {
+  /** In order. A run of steps with the same title one after another is drawn as one line. */
   steps: readonly ApproachStep[];
   /** True while the assistant works on the answer. */
   working: boolean;
@@ -38,6 +42,10 @@ export interface ApproachProps {
   read?: number;
   /** Sources used in the answer. */
   used?: number;
+  /** Open or shut, when the host keeps it. Without it the card is open while it works. */
+  open?: boolean;
+  /** The person opened or shut the card. */
+  onOpenChange?: (open: boolean) => void;
   /** Shows the link to everything a step read. Where it leads is up to the app. */
   onShowRead?: (stepId: string) => void;
   /** Shows the link to more about what the assistant did not find. */
@@ -54,6 +62,27 @@ const useSeconds = (startedAt: number, finishedAt: number | undefined, working: 
   }, [working]);
   return Math.max(0, Math.floor(((finishedAt ?? now) - startedAt) / 1000));
 };
+
+/** The card's own open state: open while it works, shut when the answer is done. */
+const useOwnOpen = (working: boolean) => {
+  const [open, setOpen] = useState(working);
+  const wasWorking = useRef(working);
+  useEffect(() => {
+    if (wasWorking.current && !working) setOpen(false);
+    wasWorking.current = working;
+  }, [working]);
+  return [open, setOpen] as const;
+};
+
+type T = ReturnType<typeof useT>;
+
+/** A line's words: the excerpts a reading run read, or the title with how many times it ran. */
+const titleOf = (line: ApproachLine, t: T) =>
+  line.excerpts > 0
+    ? t('approach.excerptsRead', { count: line.excerpts })
+    : line.count > 1
+      ? t('approach.repeated', { title: line.step.title, count: line.count })
+      : line.step.title;
 
 const StepBody = ({
   step,
@@ -118,7 +147,7 @@ const StepBody = ({
   );
 };
 
-/** How the assistant worked on an answer, as a card above it. Open while it works, closed when it is done. */
+/** How the assistant worked on an answer, as a card above it, open while it works unless the host keeps it. */
 export const Approach = ({
   steps,
   working,
@@ -126,31 +155,35 @@ export const Approach = ({
   finishedAt,
   read,
   used,
+  open,
+  onOpenChange,
   onShowRead,
   onExplainMissing,
 }: ApproachProps) => {
   const t = useT();
-  const [open, setOpen] = useState(working);
-  const wasWorking = useRef(working);
-  useEffect(() => {
-    if (wasWorking.current && !working) setOpen(false);
-    wasWorking.current = working;
-  }, [working]);
+  const [ownOpen, setOwnOpen] = useOwnOpen(working);
+  const isOpen = open ?? ownOpen;
+  const toggle = (next: boolean) => {
+    if (open === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
 
   const seconds = useSeconds(startedAt, finishedAt, working);
-  const activeIndex = steps.findIndex((s) => s.status === 'active');
-  const active = steps[activeIndex];
-  const knowsTotal = steps.some((s) => s.status === 'waiting');
+  const lines = linesOf(steps);
+  const activeIndex = lines.findIndex((line) => line.step.status === 'active');
+  const active = lines[activeIndex];
+  const activeTitle = active ? titleOf(active, t) : undefined;
+  const knowsTotal = lines.some((line) => line.step.status === 'waiting');
   const [announced, setAnnounced] = useState('');
   useEffect(() => {
-    if (!active) return;
+    if (!activeTitle) return;
     const n = activeIndex + 1;
     setAnnounced(
       knowsTotal
-        ? t('approach.stepOf', { n, total: steps.length, title: active.title })
-        : t('approach.step', { n, title: active.title }),
+        ? t('approach.stepOf', { n, total: lines.length, title: activeTitle })
+        : t('approach.step', { n, title: activeTitle }),
     );
-  }, [active?.id, active?.title]);
+  }, [active?.key, activeTitle]);
 
   const readText = read === undefined ? undefined : t('approach.read', { count: read });
   const summary =
@@ -175,8 +208,8 @@ export const Approach = ({
       <Card data-color="neutral" variant="default" className="uib-approach-card">
         <Details
           aria-label={t('approach.title')}
-          open={open}
-          onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
+          open={isOpen}
+          onToggle={(event) => toggle((event.target as HTMLDetailsElement).open)}
         >
           <Details.Summary>
             <span className="uib-approach-summary">
@@ -186,33 +219,36 @@ export const Approach = ({
           </Details.Summary>
           <Details.Content>
             <List.Ordered className="uib-approach-steps">
-              {steps.map((step) => (
-                <List.Item
-                  key={step.id}
-                  data-status={step.status}
-                  aria-current={step.status === 'active' ? 'step' : undefined}
-                >
-                  <span className="uib-approach-step-title">{step.title}</span>
-                  {step.status === 'done' ? (
-                    <span className="uib-visually-hidden">
-                      {' '}
-                      {t('approach.hiddenStatus', { status: t('approach.done') })}
-                    </span>
-                  ) : (
-                    <span className="uib-approach-step-status">
-                      {' '}
-                      {t('approach.shownStatus', { status: t(`approach.${step.status}`) })}
-                    </span>
-                  )}
-                  {step.status === 'waiting' ? null : (
-                    <StepBody
-                      step={step}
-                      onShowRead={onShowRead}
-                      onExplainMissing={onExplainMissing}
-                    />
-                  )}
-                </List.Item>
-              ))}
+              {lines.map((line) => {
+                const { step } = line;
+                return (
+                  <List.Item
+                    key={line.key}
+                    data-status={step.status}
+                    aria-current={step.status === 'active' ? 'step' : undefined}
+                  >
+                    <span className="uib-approach-step-title">{titleOf(line, t)}</span>
+                    {step.status === 'done' ? (
+                      <span className="uib-visually-hidden">
+                        {' '}
+                        {t('approach.hiddenStatus', { status: t('approach.done') })}
+                      </span>
+                    ) : (
+                      <span className="uib-approach-step-status">
+                        {' '}
+                        {t('approach.shownStatus', { status: t(`approach.${step.status}`) })}
+                      </span>
+                    )}
+                    {step.status === 'waiting' ? null : (
+                      <StepBody
+                        step={step}
+                        onShowRead={onShowRead}
+                        onExplainMissing={onExplainMissing}
+                      />
+                    )}
+                  </List.Item>
+                );
+              })}
             </List.Ordered>
             <p className="uib-approach-footer">{footer}</p>
           </Details.Content>

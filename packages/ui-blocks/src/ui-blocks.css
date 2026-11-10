@@ -1,3 +1,5 @@
+@import './approach/approach.css';
+
 .uib-visually-hidden {
   position: absolute;
   width: 1px;
@@ -5,58 +7,4 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.uib-approach-card {
-  padding: 0;
-  overflow: hidden;
-}
-
-.uib-approach-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ds-size-2);
-}
-
-.uib-approach-steps {
-  margin: 0;
-}
-
-.uib-approach-steps > li[data-status='waiting'] .uib-approach-step-title {
-  color: var(--ds-color-neutral-text-subtle);
-}
-
-.uib-approach-step-title {
-  font-weight: 500;
-}
-
-.uib-approach-steps > li[data-status='waiting'] .uib-approach-step-title,
-.uib-approach-step-status {
-  font-weight: 400;
-}
-
-.uib-approach-step-status,
-.uib-approach-step-description,
-.uib-approach-footer {
-  color: var(--ds-color-neutral-text-subtle);
-  font-size: var(--ds-font-size-2);
-}
-
-.uib-approach-step-description {
-  margin: var(--ds-size-1) 0 0;
-}
-
-.uib-approach-step-documents {
-  margin-top: var(--ds-size-1);
-  font-size: var(--ds-font-size-2);
-}
-
-.uib-approach-step-link {
-  display: inline-block;
-  margin-top: var(--ds-size-1);
-  font-size: var(--ds-font-size-2);
-}
-
-.uib-approach-footer {
-  margin: var(--ds-size-3) 0 0;
 }
