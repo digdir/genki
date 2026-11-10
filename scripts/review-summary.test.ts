@@ -32,6 +32,22 @@ describe('reading a review thread', () => {
     });
   });
 
+  it('shows the rule a finding rests on under its title, so a severity that does not match it is visible', () => {
+    const f = parseFinding(
+      thread({
+        body: '**Nit**: ADR says the check runs before the first request\n\nThe live path skips it.\n\n**Rule:** make an ADR, the API docs or `docs/development.md` say something the code does not do\n\n<details>\n<summary>Evidence and fix</summary>\n\n**Evidence:** line 42\n\n**Fix:** Mark the ADR partly built.\n\n</details>',
+      }),
+    );
+    expect(f).toMatchObject({
+      rule: 'make an ADR, the API docs or `docs/development.md` say something the code does not do',
+      fix: 'Mark the ADR partly built.',
+    });
+    expect(renderSummary('digdir/genki', 1, [f as Finding], null, null)).toContain(
+      '| Nit | [`apps/api/src/routes.ts:42`](https://github.com/digdir/genki/pull/1#discussion_r1) | ADR says the check runs before the first request<br><sub>make an ADR, the API docs or `docs/development.md` say something the code does not do</sub> | **Open** |',
+    );
+    expect(parseFinding(thread())?.rule).toBe('');
+  });
+
   it('shortens an older comment without a title to its first sentence', () => {
     expect(
       parseFinding(

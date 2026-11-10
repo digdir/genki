@@ -23,6 +23,7 @@ export interface Finding {
   threadId: string;
   severity: Severity;
   title: string;
+  rule: string;
   fix: string;
   path: string;
   line: number | null;
@@ -49,6 +50,7 @@ export function parseFinding(thread: Thread): Finding | null {
   const title = thread.body.startsWith(`**${head[1]}**:`)
     ? line
     : (/^(.+?\.)(\s|$)/.exec(line)?.[1] ?? line);
+  const rule = /\*\*Rule:\*\*\s*(.*)/.exec(thread.body)?.[1]?.trim() ?? '';
   const fix =
     /\*\*Fix:\*\*\s*([\s\S]*?)(?:\n\n|<\/details>|$)/.exec(thread.body)?.[1]?.trim() ?? '';
   const botFix = thread.replies.findLast(
@@ -70,6 +72,7 @@ export function parseFinding(thread: Thread): Finding | null {
     threadId: thread.id,
     severity: head[1] as Severity,
     title,
+    rule,
     fix,
     path: thread.path,
     line: thread.line,
@@ -122,7 +125,8 @@ export function renderSummary(
           : f.status === 'dismissed'
             ? 'Dismissed'
             : '**Open**';
-      out.push(`| ${f.severity} | ${where} | ${cell(f.title)} | ${status} |`);
+      const finding = f.rule ? `${cell(f.title)}<br><sub>${cell(f.rule)}</sub>` : cell(f.title);
+      out.push(`| ${f.severity} | ${where} | ${finding} | ${status} |`);
     }
     out.push('');
   }

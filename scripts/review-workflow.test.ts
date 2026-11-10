@@ -62,6 +62,7 @@ describe('the model review workflow', () => {
   it('can read code and write on pull requests, with no right to push or change the repository', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(review.permissions).toEqual({
+      actions: 'read',
       contents: 'read',
       'pull-requests': 'write',
       'id-token': 'write',
@@ -90,6 +91,9 @@ describe('the model review workflow', () => {
       'Glob',
       'Bash(gh pr diff:*)',
       'Bash(gh pr view:*)',
+      'Bash(gh pr checks:*)',
+      'Bash(gh run view:*)',
+      'Bash(gh run list:*)',
       'Bash(git diff:*)',
       'Bash(git log:*)',
       'Bash(git show:*)',
@@ -172,6 +176,15 @@ describe('the findings the review returns', () => {
     expect(text).toContain(
       '"category":{"enum":["correctness","security","other-paths","tests","docs"]}',
     );
+  });
+
+  it('name the REVIEW.md rule each rests on, and the posted comment shows it next to the severity', () => {
+    expect(text).toContain('"required":["severity","category","rule","title"');
+    expect(text).toContain('"rule":{"type":"string"}');
+    const post = review.steps.find((s) => s.name === 'Post all findings as one review')?.run ?? '';
+    expect(post).toContain('**Rule:** \\(.rule)');
+    expect(rules).toContain('its severity follows that bullet');
+    expect(procedure).toContain('Severity follows the rule.');
   });
 });
 
