@@ -1,3 +1,4 @@
+import { untrustedData } from '@genai/port-model';
 import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
 import type { Score, TestCase } from './schema.js';
@@ -210,14 +211,14 @@ const judgeSources = (observation: Observation): string => {
         if (value !== undefined) bounded[field] = value.slice(0, field === 'text' ? 2000 : 512);
       }
       sources[kind].push(bounded);
-      if (heading.length + JSON.stringify(sources).length > 16_000) {
+      if (heading.length + untrustedData('sources', JSON.stringify(sources)).length > 16_000) {
         sources[kind].pop();
         break;
       }
     }
   }
   return sources.citations.length || sources.retrieved.length
-    ? heading + JSON.stringify(sources)
+    ? heading + untrustedData('sources', JSON.stringify(sources))
     : '';
 };
 
