@@ -8,7 +8,6 @@ import {
   offerOf,
   turnOff,
   type BuilderState,
-  type Channel,
   type ServiceFacts,
   type TemplateId,
 } from '@genai/ui-blocks/builder';
@@ -27,6 +26,7 @@ import { BlocksPanel } from './BlocksPanel';
 import type { BlocksStart } from './handoff';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
 import { TemplatesPanel } from './TemplatesPanel';
+import type { TryRun } from './TryView';
 import './blocks.css';
 
 type LeftTab = 'chat' | 'blocks' | 'templates';
@@ -35,9 +35,6 @@ const leftMin = 320;
 const leftMax = 640;
 const fullHeightMin = 480;
 const fullHeightMax = 1400;
-
-/** A draft's frontend keeps this visit's threads and reads facets; it has nowhere to send feedback. */
-export const draftChannels: readonly Channel[] = ['conversations', 'facets'];
 
 /** The builder's blocks, and the facts of the draft they are for when it has any. */
 export const useBlocksState = (
@@ -148,7 +145,7 @@ export const BlocksStep = ({
   state,
   narrow,
   assistant,
-  chat,
+  run,
   address,
   onFullscreen,
 }: {
@@ -156,7 +153,7 @@ export const BlocksStep = ({
   narrow: boolean;
   /** The builder assistant. Without it there is no Chat tab. */
   assistant?: ReactNode;
-  chat: ReactNode;
+  run: TryRun | undefined;
   address: string;
   onFullscreen: () => void;
 }) => {
@@ -200,7 +197,8 @@ export const BlocksStep = ({
       layout={state.layout}
       mode={state.mode}
       address={address}
-      chat={chat}
+      run={run}
+      conversation={state.conversation}
       onMode={state.setMode}
       onRemove={(id) => state.change(turnOff(state.state, id))}
       onReload={state.restart}
@@ -236,13 +234,13 @@ export const BlocksStep = ({
 
 export const BlocksFullscreen = ({
   state,
-  chat,
+  run,
   address,
   backHref,
   onExit,
 }: {
   state: BlocksState;
-  chat: ReactNode;
+  run: TryRun | undefined;
   address: string;
   backHref: string;
   onExit: () => void;
@@ -258,7 +256,8 @@ export const BlocksFullscreen = ({
         layout={state.layout}
         mode={state.mode}
         address={address}
-        chat={chat}
+        run={run}
+        conversation={state.conversation}
         onMode={state.setMode}
         onRemove={(id) => state.change(turnOff(state.state, id))}
         onReload={state.restart}

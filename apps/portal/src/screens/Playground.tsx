@@ -32,16 +32,7 @@ export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const blocks = useBlocksState();
   const view: View = route.segments[1] === 'backend' ? 'backend' : 'frontend';
   const fullscreen = route.segments[1] === 'preview';
-  const chat = (
-    <PlaygroundPanel
-      key={blocks.conversation}
-      layout="full"
-      bare
-      api={api}
-      tenant={tenant}
-      tenantName={tenantName}
-    />
-  );
+  const run = api && tenant ? { api, tenant } : undefined;
   const address = t('playground.frontendAddress');
   const makeService = () => {
     handOver({
@@ -55,7 +46,7 @@ export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
     return (
       <BlocksFullscreen
         state={blocks}
-        chat={chat}
+        run={run}
         address={address}
         backHref="#/playground"
         onExit={() => navigate('/playground')}
@@ -86,7 +77,7 @@ export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
           <BlocksStep
             state={blocks}
             narrow={narrow}
-            chat={chat}
+            run={run}
             address={address}
             onFullscreen={() => navigate('/playground/preview')}
           />

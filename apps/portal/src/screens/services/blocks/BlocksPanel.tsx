@@ -30,35 +30,11 @@ import {
   type ServiceFacts,
   type Zone,
 } from '@genai/ui-blocks/builder';
-import {
-  BookIcon,
-  BulletListIcon,
-  ChatIcon,
-  CogIcon,
-  FileTextIcon,
-  FolderIcon,
-  FunnelIcon,
-  NotePencilIcon,
-  RobotIcon,
-} from '@navikt/aksel-icons';
 import { Fragment } from 'react';
-import type { IconComponent } from '../../../components/Icon';
 import { useT, type PlainKey, type T } from '../../../i18n';
 
 /** The catalogue key of a block's name. */
 export const blockLabel = (id: BlockId) => nameKey(id);
-
-export const blockIcon: Record<BlockId, IconComponent> = {
-  projects: FolderIcon,
-  threads: BulletListIcon,
-  settings: CogIcon,
-  chat: ChatIcon,
-  sources: BookIcon,
-  notes: NotePencilIcon,
-  filter: FunnelIcon,
-  approach: RobotIcon,
-  'document-view': FileTextIcon,
-};
 
 const helpKey = (id: BlockId) => `${nameKey(id)}Help` as BuilderKey;
 

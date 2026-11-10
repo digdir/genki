@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { factsFromDefinition, type ServiceFacts } from '@genai/ui-blocks/builder';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BlocksPanel } from './BlocksPanel';
-import { draftChannels, useBlocksState } from './BlocksStep';
+import { useBlocksState } from './BlocksStep';
+import { draftChannels } from './channels';
 
 afterEach(cleanup);
 

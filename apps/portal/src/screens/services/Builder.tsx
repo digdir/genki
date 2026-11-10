@@ -104,7 +104,8 @@ import { DeveloperSection, isDeveloperTool } from '../service/DeveloperSection';
 import { IntegrationService, IntegrationTab } from '../developer-routes';
 import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
-import { BlocksFullscreen, BlocksStep, draftChannels, useBlocksState } from './blocks/BlocksStep';
+import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
+import { draftChannels } from './blocks/channels';
 import { takeOver } from './blocks/handoff';
 import '../service/service.css';
 
@@ -1609,19 +1610,7 @@ export const Builder = ({
     />
   );
 
-  const previewChat = (
-    <PlaygroundPanel
-      key={blocks.conversation}
-      layout="full"
-      bare
-      context="service"
-      name={serviceId}
-      api={api}
-      tenant={tenant}
-      tenantName={tenantName}
-      serviceDraft={{ definition, files }}
-    />
-  );
+  const previewRun = { api, tenant, source: { definition, files } };
   const previewAddress = `${serviceId}.genki.no`;
 
   const content = <div className={`service-body service-${section}`}>{body}</div>;
@@ -1629,7 +1618,7 @@ export const Builder = ({
     detail === 'preview' ? (
       <BlocksFullscreen
         state={blocks}
-        chat={previewChat}
+        run={previewRun}
         address={previewAddress}
         backHref={`#${servicePath(isNew ? 'new' : id, 'blocks')}`}
         onExit={() => go('blocks')}
@@ -1639,7 +1628,7 @@ export const Builder = ({
         state={blocks}
         narrow={!split}
         assistant={assistantPanel}
-        chat={previewChat}
+        run={previewRun}
         address={previewAddress}
         onFullscreen={() => go('blocks', '/preview')}
       />

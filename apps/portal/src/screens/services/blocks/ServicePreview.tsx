@@ -1,41 +1,30 @@
 import {
   Button,
   Card,
-  Details,
-  Dropdown,
   Heading,
   Paragraph,
+  Spinner,
   ToggleGroup,
 } from '@digdir/designsystemet-react';
-import {
-  ArrowCirclepathIcon,
-  ChevronDownIcon,
-  CogIcon,
-  ExpandIcon,
-  ShrinkIcon,
-  XMarkIcon,
-} from '@navikt/aksel-icons';
-import {
-  cloneElement,
-  isValidElement,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { ArrowCirclepathIcon, ExpandIcon, ShrinkIcon, XMarkIcon } from '@navikt/aksel-icons';
 import {
   blocksIn,
   blockSpec,
-  toolMode,
   zones,
   type AssistantLayout,
   type BlockId,
   type Zone,
 } from '@genai/ui-blocks/builder';
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
-import { blockIcon, blockLabel } from './BlocksPanel';
+import { blockLabel } from './BlocksPanel';
+import { draftServiceOf } from './draftService';
 import { previewScale, previewWidth } from './preview-size';
+import type { TryRun } from './TryView';
+
+// The assistant and its blocks load when the try view is first shown, not with the builder.
+const TryView = lazy(() => import('./TryView'));
 
 export type PreviewMode = 'setup' | 'try';
 
@@ -71,7 +60,8 @@ export const ServicePreview = ({
   layout,
   mode,
   address,
-  chat,
+  run,
+  conversation,
   onMode,
   onRemove,
   onReload,
@@ -82,7 +72,10 @@ export const ServicePreview = ({
   layout: AssistantLayout;
   mode: PreviewMode;
   address: string;
-  chat: ReactNode;
+  /** What the try view runs on; without it the try view has nothing to ask. */
+  run: TryRun | undefined;
+  /** A new number starts the conversation in the try view again. */
+  conversation: number;
   onMode: (mode: PreviewMode) => void;
   onRemove: (id: BlockId) => void;
   onReload: () => void;
@@ -169,9 +162,22 @@ export const ServicePreview = ({
             used.map((zone) => (
               <SetupPanel key={zone} zone={zone} layout={layout} onRemove={onRemove} />
             ))
-          ) : (
-            <TryView layout={layout} chat={chat} />
-          )}
+          ) : run ? (
+            <Suspense
+              fallback={
+                <Spinner
+                  aria-label={t('builderBlocks.tryLoading')}
+                  className="service-preview-empty"
+                />
+              }
+            >
+              <TryView
+                key={`${draftServiceOf(run.source)}:${conversation}`}
+                layout={layout}
+                run={run}
+              />
+            </Suspense>
+          ) : null}
         </div>
       </div>
     </section>
@@ -220,217 +226,4 @@ const SetupPanel = ({
       </ul>
     </div>
   );
-};
-
-const TryView = ({ layout, chat: bare }: { layout: AssistantLayout; chat: ReactNode }) => {
-  const t = useT();
-  const left = blocksIn(layout, 'primary');
-  const main = blocksIn(layout, 'main');
-  const right = blocksIn(layout, 'secondary');
-  const hasChat = main.includes('chat') || right.includes('chat');
-  const chat =
-    right.includes('sources') && isValidElement<{ note?: ReactNode }>(bare)
-      ? cloneElement(bare, {
-          note: <p className="meta try-footnotes">{t('builderBlocks.footnotesExample')}</p>,
-        })
-      : bare;
-  return (
-    <>
-      {left.length ? (
-        <aside className="preview-panel try-left" aria-label={t('builderBlocks.frameLeft')}>
-          {left.map((id) => (
-            <div key={id} data-bottom={id === 'settings'}>
-              <TryBlock id={id} chat={chat} where="primary" />
-            </div>
-          ))}
-        </aside>
-      ) : null}
-      <div className="preview-panel try-main">
-        <Paragraph data-size="xs" className="meta">
-          {t('builderBlocks.exampleNote')}
-        </Paragraph>
-        {main.map((id) => (
-          <TryBlock key={id} id={id} chat={chat} where="main" />
-        ))}
-        {hasChat ? null : <p className="meta">{t('builderBlocks.noChat')}</p>}
-      </div>
-      {right.length ? <TryRight ids={right} chat={chat} /> : null}
-    </>
-  );
-};
-
-const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
-  const t = useT();
-  const [picked, setPicked] = useState<BlockId | undefined>();
-  const menu = useRef<HTMLDivElement>(null);
-  const active = picked && ids.includes(picked) ? picked : (ids[0] ?? 'sources');
-  const mode = toolMode(ids.length);
-  return (
-    <aside className="preview-panel try-right" aria-label={t('builderBlocks.frameRight')}>
-      {mode === 'heading' ? (
-        <>
-          <Heading level={3} data-size="2xs" className="try-tool-heading">
-            <Icon icon={blockIcon[active]} />
-            {t(blockLabel(active))}
-          </Heading>
-          <TryBlock id={active} chat={chat} where="secondary" />
-        </>
-      ) : mode === 'tabs' ? (
-        <>
-          <ToggleGroup
-            data-size="sm"
-            data-color="neutral"
-            variant="secondary"
-            className="try-tool-switcher"
-            aria-label={t('builderBlocks.toolPicker')}
-            value={active}
-            onChange={(v) => setPicked(v as BlockId)}
-          >
-            {ids.map((id) => (
-              <ToggleGroup.Item key={id} value={id}>
-                <Icon icon={blockIcon[id]} />
-                {t(blockLabel(id))}
-              </ToggleGroup.Item>
-            ))}
-          </ToggleGroup>
-          <TryBlock id={active} chat={chat} where="secondary" />
-        </>
-      ) : (
-        <>
-          <Dropdown.TriggerContext>
-            <Dropdown.Trigger
-              variant="secondary"
-              data-color="neutral"
-              data-size="sm"
-              className="try-tool-trigger"
-              aria-label={`${t(blockLabel(active))}, ${t('builderBlocks.toolPicker')}`}
-            >
-              <span className="try-tool-heading">
-                <Icon icon={blockIcon[active]} />
-                {t(blockLabel(active))}
-              </span>
-              <Icon icon={ChevronDownIcon} size={18} />
-            </Dropdown.Trigger>
-            <Dropdown data-size="sm" placement="bottom-start" ref={menu}>
-              <Dropdown.List>
-                {ids.map((id) => (
-                  <Dropdown.Item key={id}>
-                    <Dropdown.Button
-                      aria-current={id === active ? 'true' : undefined}
-                      onClick={() => {
-                        setPicked(id);
-                        menu.current?.hidePopover();
-                      }}
-                    >
-                      <Icon icon={blockIcon[id]} />
-                      {t(blockLabel(id))}
-                    </Dropdown.Button>
-                  </Dropdown.Item>
-                ))}
-              </Dropdown.List>
-            </Dropdown>
-          </Dropdown.TriggerContext>
-          <TryBlock id={active} chat={chat} where="secondary" />
-        </>
-      )}
-    </aside>
-  );
-};
-
-const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Zone }) => {
-  const t = useT();
-  switch (id) {
-    case 'chat':
-      return <div className="try-chat">{chat}</div>;
-    case 'projects':
-      return (
-        <div className="stack-xs">
-          <span className="try-label">{t('builderBlocks.projects')}</span>
-          <span className="try-item">{t('builderBlocks.exampleProject')}</span>
-        </div>
-      );
-    case 'threads':
-      return (
-        <div className="stack-xs">
-          <Button data-size="sm" variant="primary" className="align-start" tabIndex={-1}>
-            {t('builderBlocks.newThread')}
-          </Button>
-          <span className="meta">{t('builderBlocks.today')}</span>
-          <span className="try-item" data-selected="true">
-            {t('builderBlocks.exampleThread1')}
-          </span>
-          <span className="try-item">{t('builderBlocks.exampleThread2')}</span>
-        </div>
-      );
-    case 'filter':
-      return (
-        <div className="stack-xs">
-          {where === 'primary' ? (
-            <>
-              <span className="try-label">{t('builderBlocks.filterTitle')}</span>
-              <span className="meta">{t('builderBlocks.filterApplies')}</span>
-            </>
-          ) : null}
-          <p className="try-filter-summary">
-            {t('builderBlocks.filterSummary')}{' '}
-            {where === 'main' ? (
-              <span className="try-link">{t('builderBlocks.filterChange')}</span>
-            ) : null}
-          </p>
-        </div>
-      );
-    case 'settings':
-      return (
-        <Button
-          data-size="sm"
-          data-color="neutral"
-          variant="tertiary"
-          className="try-settings"
-          tabIndex={-1}
-        >
-          <CogIcon aria-hidden fontSize="1.25em" />
-          {t('builderBlocks.settings')}
-        </Button>
-      );
-    case 'approach':
-      return (
-        <Details data-color="neutral" className="try-procedure">
-          <Details.Summary>
-            {t('builderBlocks.procedure')} · {t('builderBlocks.procedureSummary')}
-          </Details.Summary>
-          <Details.Content>
-            <ol className="try-steps">
-              <li>{t('builderBlocks.procedureStep1')}</li>
-              <li>{t('builderBlocks.procedureStep2')}</li>
-              <li>{t('builderBlocks.procedureStep3')}</li>
-              <li>{t('builderBlocks.procedureStep4')}</li>
-            </ol>
-          </Details.Content>
-        </Details>
-      );
-    case 'sources':
-      return (
-        <ol className="try-sources">
-          {(
-            [
-              ['builderBlocks.source1', 'builderBlocks.source1Meta'],
-              ['builderBlocks.source2', 'builderBlocks.source2Meta'],
-              ['builderBlocks.source3', 'builderBlocks.source3Meta'],
-            ] as const
-          ).map(([title, meta], i) => (
-            <li key={title} className="try-source">
-              <span className="try-footnote">{i + 1}</span>
-              <span className="stack-xs">
-                <span className="try-source-title">{t(title)}</span>
-                <span className="meta">{t(meta)}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      );
-    case 'document-view':
-      return <p className="try-document meta">{t('builderBlocks.documentExample')}</p>;
-    case 'notes':
-      return <p className="meta">{t('builderBlocks.notesEmpty')}</p>;
-  }
 };

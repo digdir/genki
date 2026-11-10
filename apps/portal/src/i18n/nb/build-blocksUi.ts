@@ -1,5 +1,6 @@
 import { defineNamespace } from '@genai/i18n';
 
+// The blocks', options', templates' and reasons' words are the UI blocks catalogue's `builder`.
 export const blocksUi = {
   builderBlocks: defineNamespace({
     sectionLabel: 'Grensesnitt',
@@ -23,9 +24,6 @@ export const blocksUi = {
     panelRightShort: 'Høyre',
     planned: '{block} (kommer)',
     optionsFor: 'Valg for {block}',
-    projects: 'Prosjekter',
-    settings: 'Innstillinger',
-    procedure: 'Fremgangsmåte',
     templatesIntro:
       'Malene er vanlige sammensetninger av byggeklossene. Malen fyller panelene i forhåndsvisningen, og du kan bygge videre med byggeklossene. Å bytte mal erstatter oppsettet du har nå.',
     templateUse: 'Bruk {name}',
@@ -37,6 +35,7 @@ export const blocksUi = {
     setupHelp: 'Oppsett: hvilke byggeklosser som ligger i hvert panel.',
     tryHelp:
       'Prøv assistenten med kildene du valgte i skjemaet. Bare du ser utkastet til du publiserer.',
+    tryLoading: 'Henter assistenten',
     reload: 'Start samtalen på nytt',
     fullscreen: 'Vis større',
     exitFullscreen: 'Vis mindre',
@@ -44,37 +43,9 @@ export const blocksUi = {
     resize: 'Endre bredden på klossene ved siden av forhåndsvisningen',
     resizeHeight: 'Endre høyden på forhåndsvisningen',
     removeBlock: 'Fjern {block}',
-    emptyPanel: 'Ingen klosser',
     nothingPlaced: 'Slå på byggeklosser for å se tjenesten her.',
-    exampleNote: 'Eksempelinnhold. Bare Chat bruker utkastet ditt.',
-    noChat: 'Legg Chat i innholdet for å prøve assistenten.',
-    newThread: 'Ny tråd',
-    today: 'I dag',
-    exampleThread1: 'Frister for årsrapporten',
-    exampleThread2: 'Hva skal lastes opp?',
-    exampleProject: 'Årsrapport 2026',
-    filterTitle: 'Filter',
-    filterApplies: 'Gjelder neste spørsmål',
-    filterSummary: 'Assistenten leser fra 8 781 av 45 778 dokumenter i Kudos.',
-    filterChange: 'Endre',
-    procedureSummary: 'Leste 24 dokumenter, brukte 3',
-    procedureStep1: 'Forsto spørsmålet',
-    procedureStep2: 'Brukte filteret',
-    procedureStep3: 'Leste de relevante delene',
-    procedureStep4: 'Skrev svaret med kilder',
-    footnotesExample: 'Fotnotene i svaret peker til kildene: 1, 2 og 3.',
-    sourcesEmpty: 'Kildene svaret bygger på, vises her.',
-    source1: 'Bestemmelser om økonomistyring i staten',
-    source1Meta: 'Finansdepartementet · punkt 1.5.1',
-    source2: 'Veiledning: Årsrapport for statlige virksomheter',
-    source2Meta: 'DFØ · publisering',
-    source3: 'Om Kudos',
-    source3Meta: 'DFØ · kudos.dfo.no',
-    documentExample: 'Kilden åpnes på riktig side, med utdraget markert.',
-    notesEmpty: 'Ingen notater ennå. Hent inn utdrag fra Kilder.',
     frameLeft: 'Venstre panel',
     frameMain: 'Innhold',
     frameRight: 'Høyre panel',
-    toolPicker: 'Verktøy i høyre panel',
   }),
 };

@@ -12,7 +12,7 @@ const onExit = vi.fn();
 const Harness = () => (
   <BlocksFullscreen
     state={useBlocksState()}
-    chat={null}
+    run={undefined}
     address="ny-tjeneste.genki.no"
     backHref="#/services/new/blocks"
     onExit={onExit}

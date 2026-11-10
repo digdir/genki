@@ -1,105 +1,11 @@
 import { HttpError } from '@genai/ui-assembly';
 import { describe, expect, it } from 'vitest';
-import type { ApiClient } from '../../../api';
-import type {
-  PlaygroundOptions,
-  PlaygroundRunRequest,
-  PlaygroundStreamEvent,
-} from '../../../api/playground';
-import { createDraftApi, narrowedDefinition, type DraftSource } from './draftApi';
-
-// An invented draft that searches one dataset with two filter fields.
-const definition = {
-  kind: 'Service',
-  metadata: { id: 'byggesak', name: 'Byggesaksveileder', tenant: 'eksempel' },
-  spec: {
-    output: { kind: 'answer' },
-    model: { primary: 'modell-b' },
-    variants: ['default'],
-    knowledge: {
-      datasets: [
-        { dataset: 'felles/byggeregler', filters: { kommune: 'multiselect', aar: 'multiselect' } },
-      ],
-    },
-  },
-};
-
-const options: PlaygroundOptions = {
-  services: [],
-  models: [
-    { id: 'modell-a', name: 'Modell A', dataLocation: 'eu', status: 'allowed' },
-    { id: 'modell-b', name: 'Modell B', dataLocation: 'eu', status: 'allowed' },
-  ],
-  datasets: [{ id: 'felles/byggeregler', name: 'Byggeregler' }],
-  skills: [],
-  blocks: [],
-  testSets: [],
-  quota: { usedPercent: 0, monthlyTokens: 0 },
-};
+import { answered, definition, fakeClient as fake, result } from './draft.test-utils';
+import { createDraftApi, narrowedDefinition } from './draftApi';
+import type { DraftSource } from './draftService';
 
 const at = '2026-10-07T10:00:00Z';
 const now = () => new Date(at).getTime();
-
-const result = (text: string): PlaygroundStreamEvent => ({
-  event: 'result',
-  setup: 'setup',
-  result: {
-    runId: 'run-1',
-    text,
-    sources: [
-      {
-        chunkId: 'c1',
-        title: 'Plan- og bygningsloven',
-        document: 'pbl',
-        text: 'Første utdrag',
-        position: 0,
-      },
-      {
-        chunkId: 'c2',
-        title: 'Plan- og bygningsloven',
-        document: 'pbl',
-        text: 'Andre utdrag',
-        position: 3,
-      },
-    ],
-    searchNotes: [],
-    timeMs: 10,
-    tokensIn: 1,
-    tokensOut: 1,
-    costNok: null,
-    dataLocation: null,
-  },
-});
-
-const fake = (events: (request: PlaygroundRunRequest) => PlaygroundStreamEvent[]) => {
-  const requests: PlaygroundRunRequest[] = [];
-  const paths: string[] = [];
-  const api = {
-    playground: {
-      options: async () => options,
-      runStream: async (
-        _tenant: string,
-        body: PlaygroundRunRequest,
-        onEvent: (event: PlaygroundStreamEvent) => void,
-      ) => {
-        requests.push(structuredClone(body));
-        for (const event of events(body)) onEvent(event);
-      },
-    },
-    listDatasets: async () => [{ id: 'felles/byggeregler', name: 'Byggeregler', description: '' }],
-    getJson: async (path: string) => {
-      paths.push(path);
-      return { fields: [{ field: 'kommune', options: [{ value: 'Oslo', count: 3 }] }] };
-    },
-  } as unknown as ApiClient;
-  return { api, requests, paths };
-};
-
-const answered = (text: string) => (): PlaygroundStreamEvent[] => [
-  { event: 'delta', setup: 'setup', text, channel: 'answer' },
-  result(text),
-  { event: 'done', quota: { usedPercent: 0, monthlyTokens: 0 } },
-];
 
 const drain = async <E>(events: AsyncGenerator<E, void>) => {
   const all: E[] = [];
