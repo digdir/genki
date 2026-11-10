@@ -272,6 +272,24 @@ const filterTags = (value: unknown): string[] =>
     return field ? [`${field}: ${values.join(', ')}`] : [];
   });
 
+const detectionUses: Record<
+  string,
+  'steps.detectedHint' | 'steps.detectedBoost' | 'steps.detectedFilter'
+> = {
+  hint: 'steps.detectedHint',
+  boost: 'steps.detectedBoost',
+  filter: 'steps.detectedFilter',
+};
+
+const detectionTags = (value: unknown): string[] =>
+  (Array.isArray(value) ? value : []).flatMap((d) => {
+    const r = record(d);
+    const field = str(r.field);
+    const key = detectionUses[str(r.use) ?? ''];
+    const values = strings(r.values).join(', ');
+    return field && key && values ? [t(key, { field, values })] : [];
+  });
+
 const hitLabel = (h: HitView) => h.title ?? h.document ?? h.id;
 
 const hitMeta = (h: HitView) =>
@@ -745,6 +763,9 @@ export class RunMapper {
         blocks: [],
       });
     this.searchBlocks(step, hits, queries, filters);
+    const detected = detectionTags(data.detections);
+    if (detected.length)
+      step.blocks.push({ kind: 'tags', label: t('steps.detectedLabel'), items: detected });
     if (data.fellBack === true) {
       step.state = 'partial';
       step.warning = true;

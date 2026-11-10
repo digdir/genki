@@ -88,6 +88,40 @@ const ragRun = () => {
 };
 
 describe('the run mapper', () => {
+  it('shows what a search detected in the query and how it was used', () => {
+    seq = 0;
+    const steps = mapRun([
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(700, {
+        kind: 'retrieval',
+        queries: ['Hva sier DFØ om Datatilsynet?'],
+        hits: [{ id: 'c1', document: 'd1' }],
+        detections: [
+          {
+            kind: 'organisation',
+            field: 'orgs_long',
+            values: ['Datatilsynet'],
+            queries: ['Hva sier DFØ om Datatilsynet?'],
+            use: 'hint',
+          },
+          { kind: 'year', field: 'title', values: ['2023'], queries: ['x'], use: 'boost' },
+          { kind: 'rule', field: 'type', values: ['Evaluering'], queries: ['x'], use: 'filter' },
+        ],
+      }),
+    ]).steps;
+
+    const search = steps.find((s) => s.type === 'search');
+    expect(search?.blocks).toContainEqual({
+      kind: 'tags',
+      label: 'Gjenkjent i søket',
+      items: [
+        'orgs_long: Datatilsynet, foreslått for agenten',
+        'title: 2023, løftet i rangeringen',
+        'type: Evaluering, brukt som filter',
+      ],
+    });
+  });
+
   it('shows steps whose content was erased as one card that says so, not as unknown steps', () => {
     seq = 0;
     const steps = mapRun([
