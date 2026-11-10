@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en as hostEn, nb as hostNb } from '../i18n.js';
+import { uiBlocksEn, uiBlocksNb } from '../index.js';
 import { Approach, type ApproachProps, type ApproachStep } from './Approach.js';
 import { en, nb } from './i18n.js';
 import { linesOf } from './runs.js';
@@ -198,8 +198,8 @@ describe('the approach card', () => {
   });
 
   it('lends its words to a host through the package’s catalogue of every block', () => {
-    expect(hostNb.approach).toEqual(nb.approach);
-    expect(hostEn.approach).toEqual(en.approach);
+    expect(uiBlocksNb.approach).toEqual(nb.approach);
+    expect(uiBlocksEn.approach).toEqual(en.approach);
   });
 });
 
@@ -230,16 +230,32 @@ describe('a run of the same step', () => {
     expect(lines()).toEqual(['Leste 12 utdrag nøye', 'Skrev svaret']);
   });
 
-  it('is in progress while its last step is, and counts as one line in what is announced', () => {
-    const steps: ApproachStep[] = [
-      { id: 'a', title: 'Søkte', status: 'done' },
-      { id: 'b', title: 'Søkte', status: 'active' },
-      { id: 'c', title: 'Skrev svaret', status: 'waiting' },
-    ];
-    draw({ steps });
+  const runInProgress: ApproachStep[] = [
+    { id: 'a', title: 'Søkte', status: 'done' },
+    { id: 'b', title: 'Søkte', status: 'active' },
+    { id: 'c', title: 'Skrev svaret', status: 'waiting' },
+  ];
+
+  it('is in progress while its last step is', () => {
+    draw({ steps: runInProgress });
     expect(step('Søkte (2 ganger)').getAttribute('aria-current')).toBe('step');
+  });
+
+  it('counts as one line in what is announced', () => {
+    draw({ steps: runInProgress });
     const live = document.querySelector('[aria-live="polite"]') as HTMLElement;
     expect(live.textContent).toBe('Steg 1 av 2: Søkte (2 ganger)');
+  });
+
+  it('leaves out a step that waits, which has not run yet', () => {
+    draw({
+      steps: [
+        { id: 'a', title: 'Søkte', status: 'active', description: 'Nå' },
+        { id: 'b', title: 'Søkte', status: 'waiting' },
+      ],
+    });
+    expect(lines()).toEqual(['Søkte', 'Søkte']);
+    expect(screen.getByText('Nå')).toBeTruthy();
   });
 
   it('keeps the first step’s key and shows the newest step’s account', () => {

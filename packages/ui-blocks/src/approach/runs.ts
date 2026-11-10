@@ -12,13 +12,14 @@ export interface ApproachLine {
   excerpts: number;
 }
 
-/** The card's lines: a run of steps with the same title one after another is one line with a count. */
+/** The card's lines: steps that ran one after another with the same title make one line. */
 export const linesOf = (steps: readonly ApproachStep[]): ApproachLine[] => {
   const lines: ApproachLine[] = [];
   for (const step of steps) {
     const line = lines.at(-1);
     const excerpts = step.excerptsRead ?? 0;
-    if (line && line.step.title === step.title) {
+    const ran = step.status !== 'waiting' && line?.step.status !== 'waiting';
+    if (line && ran && line.step.title === step.title) {
       const active = line.step.status === 'active' || step.status === 'active';
       line.step = active ? { ...step, status: 'active' } : step;
       line.count += 1;

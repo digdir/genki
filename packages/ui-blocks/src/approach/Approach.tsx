@@ -158,7 +158,7 @@ const StepBody = ({
   );
 };
 
-/** How the assistant worked on an answer, as a card above it, open while it works unless the host keeps it. */
+/** How the assistant worked on an answer, as a card above it, open while it works. */
 export const Approach = ({
   steps,
   working,
