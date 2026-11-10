@@ -35,9 +35,9 @@ import {
   recordedBody,
   streamTypeFits,
 } from './encoding.js';
-import { evaluate, holds } from './mapping.js';
+import { evaluate, holds, pathsOf } from './mapping.js';
 import type { ConnectProvider } from './websocket.js';
-import { ModuleError, runModule, sha256Of } from './module.js';
+import { moduleLimits, ModuleError, runModule, sha256Of } from './module.js';
 import { unwrapped } from './shape.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -63,6 +63,10 @@ export interface DescribedEndpoint {
   allowedHosts?: readonly string[];
   /** The connection's name, as the ledger records it. */
   connection?: string;
+  /** The connection's non-secret settings, read as `$connection.<name>`. */
+  settings?: Readonly<Record<string, string>>;
+  /** The connection's extra named keys, which only a module reaches. */
+  keys?: Readonly<Record<string, () => Promise<string>>>;
   tenant?: string;
   run?: string;
   ledger?: ObjectLedger;
@@ -109,6 +113,7 @@ export interface StepExchange {
 /** One call as a fixture records it: the masked typed input, every wire request and answer, and the result. */
 export interface WireExchange {
   deployment: string;
+  settings?: Record<string, string>;
   input: unknown;
   request?: RecordedRequest;
   response?: RecordedResponse;
@@ -419,6 +424,7 @@ const prepare = (
   options: SendOptions,
 ): Prepared => {
   const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
+  const outward = { ...scope, connection: endpoint.settings ?? {} };
   const built = evaluate(step.request.body, scope);
   const body =
     step.wire.request === undefined
@@ -440,7 +446,7 @@ const prepare = (
           'a query',
           step.wire.query,
           withDeployment(
-            evaluate(step.request.query, scope),
+            evaluate(step.request.query, outward),
             modelFieldsOf(step.wire.query),
             state.deployment,
           ),
@@ -456,7 +462,7 @@ const prepare = (
           step,
           'headers',
           step.wire.headers,
-          evaluate(step.request.headers, scope),
+          evaluate(step.request.headers, outward),
           state,
           options,
         ),
@@ -493,7 +499,55 @@ const bytesOf = async (body: RequestInit['body']): Promise<Uint8Array> => {
   if (typeof body === 'string') return new TextEncoder().encode(body);
   if (body instanceof URLSearchParams) return new TextEncoder().encode(body.toString());
   if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
-  throw new ShapeError('a module signs a text body');
+  if (body instanceof Uint8Array) return body;
+  throw new ShapeError('a module signs a body the gate has serialised');
+};
+
+/** A form or multipart body serialised once, so the module signs the exact bytes that are sent. */
+const serialised = async (encoded: {
+  body?: RequestInit['body'];
+  contentType?: string;
+}): Promise<{ body?: RequestInit['body']; contentType?: string }> => {
+  if (encoded.body instanceof URLSearchParams)
+    return {
+      body: encoded.body.toString(),
+      contentType: 'application/x-www-form-urlencoded;charset=UTF-8',
+    };
+  if (!(encoded.body instanceof FormData)) return encoded;
+  const framed = new Response(encoded.body);
+  const contentType = framed.headers.get('content-type') ?? undefined;
+  return {
+    body: new Uint8Array(await framed.arrayBuffer()),
+    ...(contentType ? { contentType } : {}),
+  };
+};
+
+/** What the connection must hold for a descriptor to run: every `$connection.<name>` and every module key. */
+const missingConnectionInputs = (descriptor: Descriptor, endpoint: DescribedEndpoint) => {
+  const settings = endpoint.settings ?? {};
+  const keys = endpoint.keys ?? {};
+  const missing: string[] = [];
+  for (const step of [...descriptor.steps, ...descriptor.finally]) {
+    for (const path of pathsOf([step.request.query, step.request.headers]))
+      if (path.startsWith('$connection.') && !Object.hasOwn(settings, path.slice(12)))
+        missing.push(`setting ${path.slice(12)}`);
+    for (const key of descriptor.modules[step.module?.use ?? '']?.keys ?? [])
+      if (key.startsWith('connection.') && !Object.hasOwn(keys, key.slice(11)))
+        missing.push(`key ${key}`);
+  }
+  return [...new Set(missing)];
+};
+
+/** The outgoing headers as fetch sends them: lower-case names, combined values, sorted. */
+const canonicalHeaders = (headers: Record<string, string>) => {
+  const lower = [...new Headers(headers)]
+    .map(([name, value]) => [name, value.trim()] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return {
+    lines: lower.map(([name, value]) => `${name}:${value}\n`).join(''),
+    names: lower.map(([name]) => name).join(';'),
+    each: Object.fromEntries(lower.map(([name, value]) => [`header.${name}`, value])),
+  };
 };
 
 /** The headers a step's module returns for the request about to go out, walked against what the step declares. */
@@ -503,7 +557,13 @@ const moduleHeaders = async (
   endpoint: DescribedEndpoint,
   state: RunState,
   options: SendOptions,
-  sent: { body: RequestInit['body']; path: string; key: string },
+  sent: {
+    body: RequestInit['body'];
+    path: string;
+    host: string;
+    headers: Record<string, string>;
+    key: string;
+  },
 ): Promise<Record<string, string>> => {
   const spec = step.module;
   if (!spec) return {};
@@ -515,18 +575,38 @@ const moduleHeaders = async (
     throw new ShapeError(`${at}: the module ${spec.use} does not match its pinned SHA-256`);
   const text = (value: string) => new TextEncoder().encode(value);
   const now = (endpoint.now ?? (() => new Date()))();
+  const keys: Record<string, string> = {};
+  for (const name of declared.keys) {
+    if (name === 'connection') {
+      keys[name] = sent.key;
+      continue;
+    }
+    const short = name.slice('connection.'.length);
+    const resolve =
+      endpoint.keys && Object.hasOwn(endpoint.keys, short) ? endpoint.keys[short] : undefined;
+    if (!resolve) throw new ShapeError(`${at}: the connection has no key ${name}`);
+    keys[name] = await resolve();
+  }
+  const body = await bytesOf(sent.body);
+  const headers = canonicalHeaders({ host: sent.host, ...sent.headers });
+  const inputs: Record<string, Uint8Array> = {
+    method: text(step.request.method),
+    path: text(sent.path),
+    host: text(sent.host),
+    timestamp: text(String(Math.floor(now.getTime() / 1000))),
+    body_sha256: text(sha256Of(body)),
+    headers: text(headers.lines),
+    header_names: text(headers.names),
+    ...Object.fromEntries(Object.entries(headers.each).map(([n, v]) => [n, text(v)])),
+    ...Object.fromEntries(
+      Object.entries(endpoint.settings ?? {}).map(([n, v]) => [`connection.${n}`, text(v)]),
+    ),
+  };
+  const used = Object.values(inputs).reduce((n, v) => n + v.byteLength, 0);
+  if (used + body.byteLength <= moduleLimits.maxInputBytes) inputs.body = body;
   let emitted: [string, string][];
   try {
-    emitted = await runModule({
-      bytes,
-      inputs: {
-        body: await bytesOf(sent.body),
-        method: text(step.request.method),
-        path: text(sent.path),
-        timestamp: text(String(Math.floor(now.getTime() / 1000))),
-      },
-      keys: declared.keys.includes('connection') ? { connection: sent.key } : {},
-    });
+    emitted = await runModule({ bytes, inputs, keys });
   } catch (error) {
     if (error instanceof ModuleError) throw new ShapeError(`${at}: ${error.message}`);
     throw error;
@@ -580,13 +660,26 @@ const dispatch = async (
       for (const [name, value] of Object.entries(credential.query))
         url.searchParams.set(name, value);
     const filenames = prepared.filenames ? { filenames: prepared.filenames } : {};
-    const encoded = encodeBody(step.request.encoding, prepared.body, {
+    const built = encodeBody(step.request.encoding, prepared.body, {
       ...filenames,
       ...(credential.fields ? { fields: credential.fields } : {}),
     });
+    const encoded = step.module ? await serialised(built) : built;
+    const outgoing: Record<string, string> = {
+      ...(encoded.contentType ? { 'content-type': encoded.contentType } : {}),
+      accept: step.response.stream
+        ? step.response.stream.framing === 'sse'
+          ? 'text/event-stream'
+          : 'application/x-ndjson, text/plain'
+        : acceptOf(step.response.encoding, prepared.media),
+      ...(prepared.follow ? {} : descriptor.api.headers),
+      ...prepared.headers,
+    };
     const signed = await moduleHeaders(descriptor, step, endpoint, state, options, {
       body: encoded.body,
       path: signedPath,
+      host: url.host,
+      headers: outgoing,
       key: credential.value,
     });
     const signals = [
@@ -596,18 +689,7 @@ const dispatch = async (
     const response = await (endpoint.fetch ?? globalThis.fetch)(url, {
       method: step.request.method,
       redirect: 'manual',
-      headers: {
-        ...(encoded.contentType ? { 'content-type': encoded.contentType } : {}),
-        accept: step.response.stream
-          ? step.response.stream.framing === 'sse'
-            ? 'text/event-stream'
-            : 'application/x-ndjson, text/plain'
-          : acceptOf(step.response.encoding, prepared.media),
-        ...(prepared.follow ? {} : descriptor.api.headers),
-        ...prepared.headers,
-        ...signed,
-        ...credential.headers,
-      },
+      headers: { ...outgoing, ...signed, ...credential.headers },
       ...(encoded.body === undefined ? {} : { body: encoded.body }),
       ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
     }).catch((error: unknown) => {
@@ -617,7 +699,7 @@ const dispatch = async (
     });
     const recorded = credential.fields
       ? encodeBody(step.request.encoding, prepared.body, filenames)
-      : encoded;
+      : built;
     const request: RecordedRequest = {
       method: step.request.method,
       path: prepared.follow ? `${prepared.follow.host}${prepared.follow.pathname}` : prepared.path,
@@ -1023,6 +1105,9 @@ async function* runDescriptor<Res>(
       `${descriptor.id} keeps objects at the provider and the call has no ledger`,
       'processor',
     );
+  const missing = missingConnectionInputs(descriptor, endpoint);
+  if (missing.length > 0)
+    throw fail(undefined, `${descriptor.id}: the connection has no ${missing.join(', ')}`);
   const state = newState(input, deployment);
   let failure: unknown;
   try {
@@ -1061,6 +1146,9 @@ async function* runDescriptor<Res>(
       withoutSecrets(
         {
           deployment,
+          ...(endpoint.settings && Object.keys(endpoint.settings).length > 0
+            ? { settings: { ...endpoint.settings } }
+            : {}),
           input: inlineMedia(input),
           ...(one ? { request: one.request, response: one.response } : { steps: state.exchanges }),
           result,
@@ -1227,5 +1315,6 @@ export const executorInternals = {
   lookupPath,
   addUsage,
   isRecord,
+  missingConnectionInputs,
 };
 export type { RunState };

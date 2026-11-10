@@ -4,7 +4,7 @@ Strategies use `ModelPort.chat` and `chatStream`; the router handles credentials
 
 ## Connections, families and APIs
 
-A connection (`model-endpoint`) is one address and one credential. It offers one or more API families, each at a base: a path under `baseURL`, or a full URL of its own. One Azure AI Foundry resource is therefore one connection, even when it serves OpenAI models under `/openai/v1` and Claude under `/anthropic`:
+A connection (`model-endpoint`) is one address and one credential, plus, for descriptors that sign requests, named keys and non-secret settings (see [operations.md](api/operations.md)). It offers one or more API families, each at a base: a path under `baseURL`, or a full URL of its own. One Azure AI Foundry resource is therefore one connection, even when it serves OpenAI models under `/openai/v1` and Claude under `/anthropic`:
 
 ```yaml
 endpoints:

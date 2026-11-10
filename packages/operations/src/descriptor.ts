@@ -292,13 +292,18 @@ const resourceFile = z.strictObject({
   longestSeconds: z.number().int().min(60).max(maxResourceLifeSeconds),
 });
 
-export const moduleKeyNames = ['connection'] as const;
+export const settingNamePattern = /^[a-z][a-zA-Z0-9_]{0,31}$/;
+const moduleKeyName = /^connection(?:\.[a-z][a-zA-Z0-9_]{0,31})?$/;
+const connectionPath = /^\$connection\.[a-z][a-zA-Z0-9_]{0,31}$/;
 
 const moduleName = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/);
 
 const moduleFile = z.strictObject({
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  keys: z.array(z.enum(moduleKeyNames)).max(1).default([]),
+  keys: z
+    .array(z.string().regex(moduleKeyName, 'connection, or connection.<key name>'))
+    .max(4)
+    .default([]),
 });
 
 const stepModuleFile = z.strictObject({
@@ -865,16 +870,14 @@ const toStepModule = (
   at: string,
   raw: z.infer<typeof stepFile>,
   modules: Record<string, DescriptorModule>,
+  signs: boolean,
 ): StepModule => {
   const spec = raw.module as z.infer<typeof stepModuleFile>;
   if (!(spec.use in modules))
     throw new DescriptorError(`${at}: module.use ${spec.use} is not declared under modules`);
-  if (raw.websocket || raw.response.stream)
-    throw new DescriptorError(`${at}: a module signs a plain request, not a stream or a session`);
+  if (raw.websocket) throw new DescriptorError(`${at}: a module signs a request, not a session`);
   if (raw.request.follow !== undefined)
     throw new DescriptorError(`${at}: a module signs a request to the connection, not a link`);
-  if (!['json', 'ndjson', 'text', 'form'].includes(raw.request.encoding))
-    throw new DescriptorError(`${at}: a module signs a json, ndjson, text or form body`);
   const emits = Object.fromEntries(
     Object.entries(spec.emits).map(([name, value]) => {
       const emitted = shapeOf(value, `${at}: module.emits.${name}`);
@@ -890,7 +893,11 @@ const toStepModule = (
   );
   const mapped = Object.entries(spec.headers);
   for (const [header, emit] of mapped) {
-    if (reservedHeaderNames.has(header.toLowerCase()))
+    if (header.toLowerCase() === 'authorization' && (!signs || raw.auth))
+      throw new DescriptorError(
+        `${at}: module.headers.${header}: a module sets authorization only for a key that only signs (auth: { signedBy: module }) on a step that places no other secret`,
+      );
+    if (header.toLowerCase() !== 'authorization' && reservedHeaderNames.has(header.toLowerCase()))
       throw new DescriptorError(
         `${at}: module.headers.${header}: credentials come from the endpoint`,
       );
@@ -931,7 +938,9 @@ const toStep = (
 ): Step => {
   const { request } = raw;
   const sessionSpec = raw.websocket ? toSession(at, raw.websocket) : undefined;
-  const moduleSpec = raw.module ? toStepModule(at, raw, defaults.modules) : undefined;
+  const moduleSpec = raw.module
+    ? toStepModule(at, raw, defaults.modules, defaults.placement.place === 'module')
+    : undefined;
   if ((request.path === undefined) === (request.follow === undefined))
     throw new DescriptorError(
       `${at}: a request has a path, or follows a link an earlier step bound`,
@@ -1054,6 +1063,10 @@ const toStep = (
   checkCredential(at, placement, request, wireRequest, defaults.apiQuery);
   if (defaults.placement.place === 'module' && placement.place !== 'module')
     throw new DescriptorError(`${at}: a key that only signs is placed on no request`);
+  if (moduleSpec && placement.place === 'form')
+    throw new DescriptorError(
+      `${at}: a module reads the body, so it cannot sign a step whose credential is a form field`,
+    );
   if (
     placement.place === 'module' &&
     !raw.request.follow &&
@@ -1084,9 +1097,16 @@ const toStep = (
     throw new DescriptorError(`${at}: wire.filenames without filenames`);
   const requestRoots = ['input', 'deployment', 'steps', 'item'];
   checkRoots(template, requestRoots, `${at}: request.body`);
-  checkRoots(request.query, requestRoots, `${at}: request.query`);
-  checkRoots(request.headers, requestRoots, `${at}: request.headers`);
+  checkRoots(request.query, [...requestRoots, 'connection'], `${at}: request.query`);
+  checkRoots(request.headers, [...requestRoots, 'connection'], `${at}: request.headers`);
   checkRoots(request.filenames, requestRoots, `${at}: request.filenames`);
+  for (const path of pathsOf([request.query, request.headers]).filter((p) =>
+    p.startsWith('$connection'),
+  ))
+    if (!connectionPath.test(path))
+      throw new DescriptorError(
+        `${at}: ${path} is not a connection setting; write $connection.<name>`,
+      );
   for (const path of pathsOf([template, request.query, request.headers, request.filenames]).filter(
     (p) => p.startsWith('$steps.'),
   )) {

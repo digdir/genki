@@ -108,6 +108,8 @@ export const catalogErrors = defineNamespace({
   discoveryRules: 'en liste med regler for å finne modeller',
   apiKeyOrBearer: 'api-key eller bearer',
   usePlatformSecret: 'bruk en hemmelighet for plattformen: secret://platform/<name>',
+  namedKeyList: 'høyst 4 navngitte nøkler, hver med et nøkkelnavn',
+  settingOrKey: 'et navn er enten en innstilling eller en nøkkel',
   endpointExists: 'Endepunktet finnes allerede',
   endpointModelsInUse: 'Modellene fra endepunktet er i bruk',
   usesModelFrom: '{tenant}/{service} bruker en modell fra {id}',

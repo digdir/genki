@@ -1,3 +1,4 @@
+import { createHash, createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -1089,6 +1090,131 @@ describe('operations on the catalogue', () => {
     });
     await expect(decide(router).decide(question)).resolves.toMatchObject({ calibrated: true });
     expect(urls).toEqual(['https://a.example/v1/decisions']);
+  });
+
+  it("a descriptor call reads the connection's settings, which the operator set on the catalogue", async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8')
+      .replace('family: openai', 'family: proto-a')
+      .replace(
+        '  path: /decisions\n',
+        '  path: /decisions\n  headers:\n    x-key-id: $connection.keyId\n',
+      )
+      .replace(
+        'wire:\n  request:',
+        'wire:\n  headers:\n    object:\n      x-key-id: plain\n  request:',
+      );
+    const descriptor = parseDescriptor(yaml);
+    const keyIds: (string | null)[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      keyIds.push(new Headers(init?.headers).get('x-key-id'));
+      return Response.json({
+        answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+        usage: { input_tokens: 5, output_tokens: 0 },
+      });
+    };
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: { ...catalog.endpoints.one, settings: { keyId: 'AKID-7' } } },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            apis: { decide: descriptor.id },
+          },
+        ],
+      },
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    await expect(decide(router).decide(question)).resolves.toMatchObject({ calibrated: true });
+    expect(keyIds).toEqual(['AKID-7']);
+  });
+
+  it('a descriptor module signs with a named key the operator set on the connection, which no request carries', async () => {
+    const module = new Uint8Array(
+      readFileSync(
+        join(
+          import.meta.dirname,
+          '..',
+          '..',
+          'operations',
+          'src',
+          'testdata',
+          'modules',
+          'named-key-signer.wasm',
+        ),
+      ),
+    );
+    const descriptor = parseDescriptor(`
+id: proto-a/signed-order@1
+operation: signed-order
+status: described
+summary: A made-up API whose requests a module signs with a named key of the connection.
+api: { family: proto-a, version: '1' }
+auth: { signedBy: module }
+modules:
+  signer: { sha256: ${createHash('sha256').update(module).digest('hex')}, keys: [connection, connection.signing] }
+input: { object: { item: text } }
+output: { object: { status: plain } }
+result: { status: $response.status }
+steps:
+  - name: place
+    request: { method: POST, path: /orders, body: { item: $input.item } }
+    module:
+      use: signer
+      emits: { sig: { ref: '^[0-9a-f]{64}$' } }
+      headers: { x-signature: sig }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { status: plain } }
+    usage: { request: 1 }
+`);
+    const seen: { headers: string; url: string; body: string }[] = [];
+    const egress: typeof fetch = async (url, init) => {
+      seen.push({
+        headers: JSON.stringify(init?.headers),
+        url: String(url),
+        body: String(init?.body),
+      });
+      return Response.json({ status: 'placed' });
+    };
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: {
+          one: { ...catalog.endpoints.one, keys: { signing: 'secret://env/signing-key' } },
+        },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            apis: { 'signed-order': descriptor.id },
+          },
+        ],
+      },
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env', SIGNING_KEY: 'named-signing-key' }),
+      descriptors: { ...descriptorRegistry([descriptor]), module: () => module },
+      governance: { maturity: async () => 'production', processorRecorded: async () => true },
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    await expect(
+      router
+        .described()
+        .open({ kind: 'model', id: 'a/luna' }, testContext().ctx)
+        .call(descriptor.id, { item: 'pen' }),
+    ).resolves.toEqual({ status: 'placed' });
+    const sent = seen[0] as (typeof seen)[number];
+    expect(JSON.parse(sent.headers)).toMatchObject({
+      'x-signature': createHmac('sha256', 'named-signing-key').update(sent.body).digest('hex'),
+    });
+    for (const secret of ['named-signing-key', 'key-from-env'])
+      expect(`${sent.headers}${sent.url}${sent.body}`).not.toContain(secret);
   });
 
   it('a descriptor call names the API the model binds for its kind', async () => {

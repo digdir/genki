@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { secretRefPattern, withoutTrailingSlashes } from '@genai/kernel';
-import { apiFamilyPattern } from '@genai/operations';
+import { apiFamilyPattern, settingNamePattern } from '@genai/operations';
 import type { ModelAdapter } from './adapter.js';
 import { apiIdPattern, apiRegistry, type ApiRegistry } from './apis.js';
 import { parameterRules } from './parameters.js';
@@ -33,18 +33,41 @@ const discoveryRule = z.strictObject({
   apis: bindings.optional(),
 });
 
+export const connectionSettingValue = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
+
+export const connectionSettings = z
+  .record(
+    z.string().regex(settingNamePattern),
+    z
+      .string()
+      .regex(connectionSettingValue, 'printable text of at most 256 characters')
+      .refine((v) => !v.startsWith('secret://'), 'a setting is not a secret; name it under keys'),
+  )
+  .refine((s) => Object.keys(s).length <= 20, 'at most 20 settings');
+
+export const connectionKeys = z
+  .record(z.string().regex(settingNamePattern), secret)
+  .refine((k) => Object.keys(k).length <= 4, 'at most 4 named keys');
+
 export const allowedHostPattern =
   /^(?![\d.]+(?::\d+)?$)(?=.{1,253}(?::\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\d{1,5})?$/;
 
-const endpoint = z.strictObject({
-  baseURL: z.url({ protocol: /^https?$/ }),
-  auth,
-  families: z
-    .record(z.string().regex(apiFamilyPattern), familyBase)
-    .refine((f) => Object.keys(f).length > 0, 'a connection offers at least one API family'),
-  discovery: z.array(discoveryRule).default([]),
-  allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
-});
+const endpoint = z
+  .strictObject({
+    baseURL: z.url({ protocol: /^https?$/ }),
+    auth,
+    families: z
+      .record(z.string().regex(apiFamilyPattern), familyBase)
+      .refine((f) => Object.keys(f).length > 0, 'a connection offers at least one API family'),
+    discovery: z.array(discoveryRule).default([]),
+    allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
+    settings: connectionSettings.optional(),
+    keys: connectionKeys.optional(),
+  })
+  .refine((e) => !Object.keys(e.settings ?? {}).some((name) => name in (e.keys ?? {})), {
+    message: 'a name is a setting or a key, not both',
+    path: ['keys'],
+  });
 
 export const rerankFailureModes = ['degrade', 'fail'] as const;
 

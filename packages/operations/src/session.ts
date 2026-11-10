@@ -19,8 +19,16 @@ import {
 import { evaluate } from './mapping.js';
 import { connectWebSocket, type ProviderSocket, type WsMessage } from './websocket.js';
 
-const { newState, prepare, credentialFor, runStep, readsOnly, lookupPath, addUsage } =
-  executorInternals;
+const {
+  newState,
+  prepare,
+  credentialFor,
+  runStep,
+  readsOnly,
+  lookupPath,
+  addUsage,
+  missingConnectionInputs,
+} = executorInternals;
 
 export interface SessionIO {
   /** What the caller sends, until the caller closes. */
@@ -81,6 +89,9 @@ export const describedSession = async (
   const at = `${descriptor.id} step ${step.name}`;
   const fail = call.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
   const options: SendOptions = { signal: ctx.signal, fail };
+  const missing = missingConnectionInputs(descriptor, endpoint);
+  if (missing.length > 0)
+    throw fail(undefined, `${descriptor.id}: the connection has no ${missing.join(', ')}`);
   const session: GateSession = await call.gate.session(
     ctx,
     { ...call.target, descriptor: descriptor.id },

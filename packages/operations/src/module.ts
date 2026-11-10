@@ -10,12 +10,15 @@ export const moduleLimits = {
   maxInputBytes: 1024 * 1024,
   maxEmits: 8,
   maxEmitBytes: 512,
+  maxDerivedKeys: 8,
+  maxKeyPrefixBytes: 64,
 } as const;
 
 export const hostFunctions = [
   'input_read',
   'sha256',
   'hmac_sha256',
+  'hmac_sha256_derive',
   'hex_encode',
   'hex_decode',
   'base64_encode',
@@ -94,7 +97,9 @@ export const moduleProblems = (bytes: Uint8Array): string[] => {
 const workerSource = `
 const { parentPort, workerData } = require('node:worker_threads');
 const crypto = require('node:crypto');
-const { bytes, inputs, keys, startPages, memoryPages, maxEmits, maxEmitBytes } = workerData;
+const { bytes, inputs, keys, startPages, memoryPages, maxEmits, maxEmitBytes, maxDerivedKeys, maxKeyPrefixBytes } = workerData;
+const store = new Map(Object.entries(keys).map(([name, key]) => [name, Buffer.from(key, 'utf8')]));
+let derived = 0;
 const memory = new WebAssembly.Memory({ initial: startPages, maximum: memoryPages });
 const emits = [];
 const view = () => new Uint8Array(memory.buffer);
@@ -119,9 +124,19 @@ const host = {
     put(dst, 32, crypto.createHash('sha256').update(slice(src, len)).digest());
   },
   hmac_sha256: (keyPtr, keyLen, src, len, dst) => {
-    const key = keys[text(keyPtr, keyLen)];
+    const key = store.get(text(keyPtr, keyLen));
     if (key === undefined) return -1;
     return put(dst, 32, crypto.createHmac('sha256', key).update(slice(src, len)).digest());
+  },
+  hmac_sha256_derive: (keyPtr, keyLen, prefixPtr, prefixLen, src, len, namePtr, nameLen) => {
+    const key = store.get(text(keyPtr, keyLen));
+    const name = text(namePtr, nameLen);
+    if (key === undefined || store.has(name) || prefixLen > maxKeyPrefixBytes) return -1;
+    if (derived >= maxDerivedKeys) throw new Error('the module derived too many keys');
+    derived += 1;
+    const prefixed = Buffer.concat([Buffer.from(slice(prefixPtr, prefixLen)), key]);
+    store.set(name, crypto.createHmac('sha256', prefixed).update(slice(src, len)).digest());
+    return 0;
   },
   hex_encode: (src, len, dst, cap) => put(dst, cap, Buffer.from(Buffer.from(slice(src, len)).toString('hex'))),
   hex_decode: (src, len, dst, cap) => {
@@ -171,6 +186,8 @@ export const runModule = async (run: ModuleRun): Promise<[string, string][]> => 
       memoryPages: moduleLimits.memoryPages,
       maxEmits: moduleLimits.maxEmits,
       maxEmitBytes: moduleLimits.maxEmitBytes,
+      maxDerivedKeys: moduleLimits.maxDerivedKeys,
+      maxKeyPrefixBytes: moduleLimits.maxKeyPrefixBytes,
     },
   });
   try {

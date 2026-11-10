@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-10: connection settings and signing modules
+
+- `POST` and `PUT /operator/model-endpoints` take `settings` (non-secret values a descriptor reads as `$connection.<name>`) and `keys` (named platform secrets only a module reaches). Only an operator sets them, and a change is audited with its reason. `GET /tenants/{tenant}/catalog` lists a shared connection without `settings` and `keys`.
+- A descriptor module may set `Authorization` when the descriptor's `auth` is `{ signedBy: module }`, reads `host`, `headers`, `header_names`, `header.<name>`, `body_sha256` and `connection.<setting>`, may sign binary, multipart and streamed requests, takes `connection.<key name>` keys and can derive keys with `hmac_sha256_derive`. A fixture may carry `settings`.
+
 ### 2026-11-06: a streamed descriptor step answers with its text
 
 - A `call-operation@1` step with `stream: true` now outputs `{ result, text }`, and a flow that ends on it answers with `text` instead of the JSON of `result`. Deltas reach `/v1/chat/completions` only with `genai_stream: "live"`; without it the text comes as one piece.

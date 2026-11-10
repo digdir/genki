@@ -109,6 +109,8 @@ export const catalogErrors = {
   discoveryRules: 'a list of discovery rules',
   apiKeyOrBearer: 'api-key or bearer',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',
+  namedKeyList: 'at most 4 named keys, each a key name',
+  settingOrKey: 'a name is a setting or a key, not both',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',
