@@ -133,6 +133,7 @@ const Answer = ({
     !message.table &&
     (!!message.noAnswer || !message.text.trim());
   const procedure = message.procedure?.steps.length ? message.procedure : undefined;
+  const cited = message.sources.filter((s) => s.index !== undefined).length;
   return (
     <div className="answer" aria-busy={message.pending || undefined}>
       {procedure ? (
@@ -142,7 +143,7 @@ const Answer = ({
           startedAt={procedure.startedAt}
           {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
           {...(!message.pending && procedure.read !== undefined ? { read: procedure.read } : {})}
-          {...(!message.pending && message.sources.length ? { used: message.sources.length } : {})}
+          {...(!message.pending && cited ? { used: cited } : {})}
         />
       ) : null}
       {empty ? (

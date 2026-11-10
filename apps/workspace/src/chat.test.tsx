@@ -331,7 +331,10 @@ describe('chat', () => {
           finish = resolve;
         });
         onDelta('Ventetida gjekk ned [1].');
-        return { text: 'Ventetida gjekk ned [1].', sources: [{ title: 'Årsrapport 2025' }] };
+        return {
+          text: 'Ventetida gjekk ned [1].',
+          sources: [{ title: 'Årsrapport 2025', index: 1 }],
+        };
       },
     };
     const { container } = await renderApp('#/chat', { api });
@@ -369,6 +372,27 @@ describe('chat', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Ja.');
     expect(screen.queryByText('Fremgangsmåte')).toBeNull();
+  });
+
+  it('counts as used only the sources the answer cites, not the ones it was given', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'search' });
+        return {
+          text: 'Ingen av kildene svarer på det.',
+          sources: [{ title: 'Årsrapport 2025' }, { title: 'Tildelingsbrev 2025' }],
+        };
+      },
+    };
+    await renderApp('#/chat', { api });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ingen av kildene svarer på det.');
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    expect(screen.getByText(/^Tok \d+ sekund/)).toBeTruthy();
+    expect(screen.queryByText(/Brukte/)).toBeNull();
   });
 
   it('offers no link to what a step read or missed while the workspace has nowhere to show it', async () => {
