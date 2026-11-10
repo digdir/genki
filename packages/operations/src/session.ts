@@ -19,7 +19,7 @@ import {
 import { evaluate } from './mapping.js';
 import { connectWebSocket, type ProviderSocket, type WsMessage } from './websocket.js';
 
-const { newState, prepare, credentialFor, runStep, readsOnly, lookupPath, addUsage } =
+const { newState, prepare, credentialFor, runStep, checkParts, readsOnly, lookupPath, addUsage } =
   executorInternals;
 
 export interface SessionIO {
@@ -117,6 +117,7 @@ export const describedSession = async (
   };
   try {
     state.input = await session.outbound(descriptor.input, input);
+    checkParts(descriptor, state.input, fail);
     for (const earlier of descriptor.steps.slice(0, -1))
       await runStep(descriptor, earlier, endpoint, state, options, fail);
     const prepared = prepare(descriptor, step, endpoint, state, options);

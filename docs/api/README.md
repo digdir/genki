@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-10: polls, retries and uploads in parts from descriptors
+
+- A descriptor's `until` takes `after`, the wait an answer asks for, from a field or a declared header; an error rule takes `retry: true`, which retries its status within the step's `retry`; a step takes `parts: { of, bytes, most }`, which sends a media input in byte ranges and binds the answers as lists (ADR 0049, [operations.md](operations.md)). Descriptors without them load and run as before.
+
 ### 2026-11-06: a streamed descriptor step answers with its text
 
 - A `call-operation@1` step with `stream: true` now outputs `{ result, text }`, and a flow that ends on it answers with `text` instead of the JSON of `result`. Deltas reach `/v1/chat/completions` only with `genai_stream: "live"`; without it the text comes as one piece.

@@ -1,6 +1,6 @@
 # 0049 Any provider API through descriptors
 
-Status: built except the blind-provider proof and the genki-test runs, 2026-11-06. Built: classes (`issued`, multipart filenames, `$dataUrl`), credential placements `header`, `query`, `form`, `basic` and `signedBy: module`, arithmetic `$add $sub $mul $coalesce`, multi-type media output, `until.fail`, open units in usage totals, streaming (sse, ndjson, lines) through the gate and on `/v1/chat/completions`, `resources` with the ledger, `finally` deletion, the nightly sweep and incidents in Revisjon, the processor record's provider state, operator `allowedHosts`, WebAssembly modules, live sessions (`websocket`, `GET /v1/sessions`, `live-session@1`) and the hostile descriptors of each. A caller's audio, image or file reaches a `call-operation@1` step as `{{input.files.N}}`, so transcription, image editing and audio chat can take what a caller sends. Described and fixtured, never run live: `openai/chat-stream@1`, `openai/batch@1`, `openai/realtime-transcription@1`. See "What building changed" below.
+Status: built except the blind-provider proof and the genki-test runs, 2026-11-06. Built: classes (`issued`, multipart filenames, `$dataUrl`), credential placements `header`, `query`, `form`, `basic` and `signedBy: module`, arithmetic `$add $sub $mul $coalesce`, multi-type media output, `until.fail`, `until.after`, retryable error rules (`retry: true`), steps sent in `parts` (2026-11-10, proven with hand-made fixtures only), open units in usage totals, streaming (sse, ndjson, lines) through the gate and on `/v1/chat/completions`, `resources` with the ledger, `finally` deletion, the nightly sweep and incidents in Revisjon, the processor record's provider state, operator `allowedHosts`, WebAssembly modules, live sessions (`websocket`, `GET /v1/sessions`, `live-session@1`) and the hostile descriptors of each. A caller's audio, image or file reaches a `call-operation@1` step as `{{input.files.N}}`, so transcription, image editing and audio chat can take what a caller sends. Described and fixtured, never run live: `openai/chat-stream@1`, `openai/batch@1`, `openai/realtime-transcription@1`. See "What building changed" below.
 
 Replaces the "Kept out" section of ADR 0047. Builds on ADR 0048.
 
@@ -33,7 +33,8 @@ A step uses one transport:
 A descriptor is a list of `steps`. A step is one request on one transport. A one-call descriptor is one step, and today's descriptors are read as exactly that, unchanged.
 
 - `bind` captures values from an answer under a name, each with its class (section 4). Later steps use them as `$steps.<name>.<field>`.
-- `until` repeats a step until a condition on its answer holds, with an interval, the provider's `Retry-After` honoured up to a cap, and a longest duration.
+- `until` repeats a step until a condition on its answer holds, with an interval, a longest duration and the wait the answer asks for: `until.after` maps it from a field or a declared header, or else the provider's `Retry-After` is honoured, never shorter than the interval nor longer than 60 seconds.
+- `parts: { of, bytes, most }` repeats a step once per byte range of a media input, for uploads in parts. It reads `$part.index`, `$part.offset` and `$part.body`, which is media under the same consent as the whole input, and binds each field as a list in part order. `most` caps the parts; a file that needs more is refused before anything leaves, and a descriptor whose steps could need more than the 100 requests a call may make is refused at load.
 - `finally` lists steps that run whether the steps before them succeeded or failed, such as deleting what a job created.
 - `result` maps what the operation returns from any step's answer.
 
@@ -86,7 +87,7 @@ A descriptor maps usage from wherever the provider reports it: a field in the an
 
 ### 10. Errors
 
-A descriptor maps the provider's error envelope to Genki's error kinds (`invalid`, `unavailable`, `rate-limited`, `refused`, `processor`). `429` with `Retry-After` is honoured up to the step's cap. An answer whose content type differs from the one declared fails the call.
+A descriptor maps the provider's error envelope to Genki's error kinds (`invalid`, `unavailable`, `rate-limited`, `refused`, `processor`). `429` with `Retry-After` is honoured up to the step's cap. An error rule with `retry: true` makes any status retryable, such as a `503`: it waits the `Retry-After` or backs off 1, 2, 4 seconds, within the step's attempts and cap, and every retry counts toward the 100 requests of a call. An answer whose content type differs from the one declared fails the call.
 
 ### 11. Sessions
 
@@ -105,6 +106,7 @@ A descriptor may declare `checks` on an answer: `same-names` (every question has
 - A signature cannot be proven by a fixture, because the contract uses its own probe key; module headers are left out of the recorded request, and the signing is proven by tests with a hand-built module (`packages/operations/src/module.test.ts`). A fixture may carry `at`, the signing time.
 - A session fixture records `session: { request, messages: [{ from, message, binary? }] }` and `operation@1` replays it against a scripted provider.
 - A descriptor polls for 600 seconds at most, so `openai/batch@1` serves batches that end within ten minutes; longer batches need work that outlives a call, which this record does not build.
+- The blind test and an audit found three things the step language could not say, each built since and proven with `packages/operations/src/waits-and-parts.test.ts`: a poll wait from a body field or another header (`until.after`), a retryable status other than `429` (`retry: true` on an error rule) and an upload in parts (`parts`, with the S3-style fixture `example/chunked-upload@1`). A part's size is fixed per step; a provider that names part sizes in its own answer still needs a new version of the descriptor.
 - The kernel's usage totals add open units (`units`), and the API shows them wherever usage is returned; the portal does not show them yet.
 - Bundled descriptors cannot ship modules yet; a module comes in an upload.
 
