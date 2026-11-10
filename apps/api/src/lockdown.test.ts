@@ -368,6 +368,40 @@ describe('lockdown', () => {
     expect(ingestion.jobs).toHaveLength(0);
   });
 
+  it('shows on each key in lockdown whether it may use models there', async () => {
+    const { createKey, keys, send } = await boot(true);
+    const { apiKey } = await createKey('entra');
+    await keys.add({
+      id: 'eldre',
+      name: 'Eldre nøkkel',
+      digest: apiKeyDigest('gp_from-before'),
+      tenant: digdir,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'klarsprak',
+    });
+
+    const listed = await json<{ keys: { id: string; modelsInLockdown?: boolean }[] }>(
+      await send(`/tenants/${digdir}/services/klarsprak/api-keys`, 'entra'),
+    );
+    const admitted = Object.fromEntries(listed.keys.map((k) => [k.id, k.modelsInLockdown]));
+
+    expect(admitted).toEqual({ [apiKey.id]: true, eldre: false, 'ka-backend': true });
+  });
+
+  it('says nothing about models on keys when the environment is not locked', async () => {
+    const { createKey, send } = await boot(false);
+    await createKey('kari');
+
+    const listed = await json<{ keys: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/access`, 'kari'),
+    );
+
+    expect(listed.keys.length).toBeGreaterThan(0);
+    for (const key of listed.keys) expect(key).not.toHaveProperty('modelsInLockdown');
+  });
+
   it('cannot set the admission through the request body', async () => {
     const { chat, keys } = await boot(true);
     const plaintext = 'gp_asked-for-admission';

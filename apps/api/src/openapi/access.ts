@@ -82,6 +82,23 @@ const ApiKey = z
     callsPerMinute: z.number().int(),
     allowedOverrides: z.array(z.string()),
     createdAt: z.string().nullable(),
+    createdBy: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        'Who created or last rotated the key, as in the audit log. Listed only for callers with manage-services; null for keys from before it was recorded.',
+      ),
+    createdByName: z
+      .string()
+      .optional()
+      .describe('The name of that person, when the platform knows it.'),
+    modelsInLockdown: z
+      .boolean()
+      .optional()
+      .describe(
+        'Present only in a locked environment: whether the key may use models there (ADR 0033).',
+      ),
     expiresAt: z.string().nullable(),
     revokedAt: z.string().nullable(),
   })

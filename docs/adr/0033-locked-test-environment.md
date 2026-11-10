@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03; admission shown on keys, 2026-11-10)
 
 ## Context
 
@@ -63,6 +63,7 @@ An API key created or rotated by a trusted Entra login, and a Maskinporten clien
 - The mark gives model use and ingestion and nothing else. The key keeps its own scopes and bindings: a key bound to a service reaches only that service, it is never an operator, and it gets no platform rights.
 - Rotating a key or saving a client again sets the mark anew from the principal doing it, so a rotation or save by anyone else drops it. Revoking works as before.
 - Keys and clients made before this change, by an API key, or by anyone outside lockdown have no mark.
+- In lockdown the key lists give each key `modelsInLockdown`, true when it has the mark or is a configured key, so the portal can say on the key whether it may use models. Outside lockdown the field is left out.
 
 This is safe because in lockdown only a trusted Entra login can create a key or register a client at all: TestID logins are read-only, and the mark comes from the creating principal's internal scope, which only the verifier sets. An API key that creates keys passes no mark on.
 

@@ -365,6 +365,10 @@ export const integrationsArea = {
     createdToday: 'today by you',
     rotatedToday: 'rotated today by you',
     unknownDate: 'unknown date',
+    createdBy: '{date} by {who}',
+    modelsAllowed: 'Can use models in the locked environment',
+    modelsRefused:
+      'Cannot use models in the locked environment: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     nameProblem: 'Give the key a name.',
     selectionProblem: 'Choose at least one service or dataset, or choose "All".',
     rateProblem: 'Enter a whole number from 1 to 6,000.',

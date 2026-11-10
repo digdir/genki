@@ -1877,6 +1877,7 @@ export const createPlatform = async (input: PlatformInput) => {
         traces: { enabled: Boolean(input.traces?.()), content: Boolean(input.traces?.()?.content) },
         drafts,
         names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
@@ -1888,6 +1889,8 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         apiKeys,
         webhooks,
+        names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         ...(input.endpoints ? { endpoints: input.endpoints } : {}),
       });
       const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };
