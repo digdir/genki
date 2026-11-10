@@ -106,6 +106,10 @@ export const problems = defineNamespace({
   taskExportNotFound: 'Fant ikke kjøringen',
   taskExportNotRecorded: 'Eksporten ble ikke registrert i revisjonssporet, så den ble stoppet',
   uploadTooManyFiles: 'Send med høyst {count} filer i hver forespørsel.',
+  datasetReadBy: '{kind} {tenant}/{id} bruker datasettet',
+  datasetReadByOthers:
+    '{count} tjenester eller byggeklosser hos andre virksomheter bruker datasettet',
+  datasetRunOpen: 'Innlesingen {run} pågår. Vent til den er ferdig, eller avbryt den.',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',

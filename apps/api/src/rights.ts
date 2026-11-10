@@ -123,6 +123,7 @@ export const adminActionRights: Readonly<
   'platform.jobs.redrive': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
+  'platform.dataset.delete': datasetWrite,
   'platform.dataset.enrichment.apply': 'manage-datasets',
   'platform.dataset.enrichment.revert': 'manage-datasets',
   'platform.batch-run.start': 'manage-services',

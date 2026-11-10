@@ -169,9 +169,41 @@ const DatasetWithStatus = Dataset.extend({
   nextRunAt: z.string().nullable(),
 }).openapi('DatasetWithStatus');
 
+const DatasetReader = z
+  .object({
+    kind: z.enum(['service', 'adoption']),
+    tenant: z.string(),
+    id: z.string(),
+    name: z.string(),
+  })
+  .openapi('DatasetReader');
+
 const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
+  usedBy: z
+    .array(DatasetReader)
+    .describe('The published services and adopted building blocks of the tenant that read it'),
 }).openapi('DatasetDetail');
+
+const DatasetDeleteResult = z
+  .object({
+    deleted: z.string(),
+    removed: z.object({
+      catalogEntry: z.literal(true),
+      pipelines: z.array(z.string()),
+      uploads: z.array(z.string()),
+      generations: z.array(z.string()),
+    }),
+    kept: z.object({
+      knowledgeRecords: z
+        .boolean()
+        .describe(
+          'True for a dataset on the knowledge database: its records and partitions stay until the drop job exists (issue 250), and its id is held',
+        ),
+      generations: z.array(z.string()).describe('Generations the engine refused to drop'),
+    }),
+  })
+  .openapi('DatasetDeleteResult');
 
 const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
   description:
@@ -1595,6 +1627,26 @@ const operatorCatalogRoutes: RouteConfig[] = [
   }),
 ];
 
+const deleteRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
+  createRoute({
+    method: 'delete',
+    path: `${base.path}/datasets/{id}`,
+    summary: `Delete a dataset: its catalog entry, pipelines, uploads and generations; on the knowledge database the records and partitions stay until the drop job exists (${who(base, 'manage-datasets')}, audited)`,
+    request: {
+      params: z.object({ ...base.params, id: param('sider') }),
+      headers: reasonHeader,
+    },
+    responses: {
+      200: audited(DatasetDeleteResult, 'What was removed and what stays'),
+      400: either('A missing reason'),
+      ...guarded(base, 'manage-datasets'),
+      409: either(
+        'A published service or an adopted building block reads the dataset, or the entry cannot be removed',
+      ),
+    },
+  }),
+);
+
 export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
@@ -1608,6 +1660,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'knowledge-endpoints': knowledgeEndpointRoutes,
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
+  'dataset-delete': deleteRoutes,
   'dataset-enrichment': enrichmentRoutes,
   'operator-models': operatorModelRoutes,
   'operator-catalog': operatorCatalogRoutes,

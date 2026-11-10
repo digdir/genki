@@ -462,6 +462,12 @@ export class IngestionService {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
+  async pipelineIdsEver(scope: string, dataset: string): Promise<string[]> {
+    return (await this.options.store.latest({ kind, scope }))
+      .filter((e) => e.id.startsWith(`${dataset}#`))
+      .map((e) => e.id.slice(dataset.length + 1));
+  }
+
   async get(scope: string, dataset: string, id: string): Promise<Pipeline | undefined> {
     const latest = (await this.options.store.history(kind, scope, `${dataset}#${id}`)).at(-1);
     return latest && !latest.deleted ? toPipeline(latest) : undefined;
