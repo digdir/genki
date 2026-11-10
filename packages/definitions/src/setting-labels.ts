@@ -32,11 +32,11 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'retrieval.autoFilter.enabled': {
       label: 'Automatisk filter',
-      help: 'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+      help: 'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
     },
     'retrieval.autoFilter.rules': {
       label: 'Regler for automatisk filter',
-      help: 'Reglene for automatisk filtrering, i rekkefølge.',
+      help: 'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Tekstbiter per titteltreff',
@@ -226,11 +226,11 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'retrieval.autoFilter.enabled': {
       label: 'Automatic filter',
-      help: 'Add filters based on organisation names and years in the question.',
+      help: 'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
     },
     'retrieval.autoFilter.rules': {
       label: 'Rules for the automatic filter',
-      help: 'The rules for automatic filtering, in order.',
+      help: 'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Text chunks per title match',
