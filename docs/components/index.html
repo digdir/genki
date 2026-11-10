@@ -39,6 +39,11 @@
             host can keep it open or shut.
           </li>
           <li>
+            <strong>6 November 2026:</strong> Two blocks that sit inside others are in the Building
+            phase, in <code>@genai/ui-blocks</code>: the variant picker for the question field, and
+            the empty, error and not-found states. No app draws them yet.
+          </li>
+          <li>
             <strong>2 November 2026:</strong> Approach is in the Building phase: the card above the
             answer is built in <code>@genai/ui-blocks</code> (ADR 0053) and shown in the workspace.
           </li>
@@ -367,6 +372,56 @@
             </a>
           </li>
         </ul>
+
+        <h3 class="group-title">
+          Inside other blocks <span>· the question field and every panel</span>
+        </h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="variant-picker.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-soft" x="62" y="16" width="74" height="52" rx="8" />
+                <rect class="s-bar" x="70" y="23" width="34" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="66" y="33" width="66" height="14" rx="5" />
+                <rect class="s-bar" x="71" y="37.5" width="40" height="5" rx="2.5" />
+                <rect class="s-accent" x="117" y="34.5" width="11" height="11" rx="3" />
+                <path class="s-check" d="M120 40l2.2 2.2 3.8-4.4" />
+                <rect class="s-bar" x="71" y="54" width="46" height="5" rx="2.5" />
+                <rect class="s-soft" x="24" y="74" width="112" height="28" rx="10" />
+                <rect class="s-bar" x="32" y="80" width="56" height="5" rx="2.5" />
+                <rect class="s-accent" x="86" y="91" width="24" height="5" rx="2.5" />
+                <path class="s-accent" d="M113 91.5l3 3 3-3z" />
+                <circle class="s-accent" cx="128" cy="93" r="5" />
+              </svg>
+              <span class="stamp-name">Variant picker</span>
+              <span class="stamp-desc">Which variant of the service answers.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="states.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="24" width="58" height="7" rx="3.5" />
+                <rect class="s-bar" x="28" y="37" width="96" height="5" rx="2.5" />
+                <rect class="s-bar" x="28" y="46" width="70" height="5" rx="2.5" />
+                <rect class="s-accent" x="28" y="56" width="40" height="5" rx="2.5" />
+                <rect class="s-soft" x="24" y="70" width="112" height="32" rx="8" />
+                <circle class="s-bar" cx="34" cy="80" r="4" />
+                <rect class="s-bar" x="44" y="77.5" width="60" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="44" y="88" width="34" height="9" rx="4.5" />
+              </svg>
+              <span class="stamp-name">States</span>
+              <span class="stamp-desc">Empty, error and not found.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Shared</span></span
+              >
+            </a>
+          </li>
+        </ul>
       </section>
 
       <section class="section" aria-labelledby="about">
@@ -398,7 +453,7 @@
               <li><strong>Ready:</strong> can be chosen when an assistant is set up.</li>
             </ul>
             <p>
-              All components but Approach are drafts for now. The list of components follows
+              Each component's badge shows its phase. The list of components follows
               <a href="https://github.com/digdir/kunnskapsassistenten/issues/167"
                 >kunnskapsassistenten#167</a
               >. What we have learned comes from the design canvas «Fellesløsningen», which is not

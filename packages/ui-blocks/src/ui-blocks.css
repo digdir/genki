@@ -1,4 +1,6 @@
 @import './approach/approach.css';
+@import './states/states.css';
+@import './variant-picker/variant-picker.css';
 
 .uib-visually-hidden {
   position: absolute;
