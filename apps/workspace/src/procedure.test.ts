@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translator } from './i18n';
-import { allDone, withStep, type ProcedureState, type StreamStep } from './procedure';
+import { allDone, inLanguage, withStep, type ProcedureState, type StreamStep } from './procedure';
 
 const t = translator('nb');
 const empty: ProcedureState = { steps: [] };
@@ -103,6 +103,17 @@ describe('the approach from the stream', () => {
     const state = withStep(empty, { tool: 'search', plan: ['search', 'report_gaps'] }, t);
     expect(allDone(state.steps).map((s) => [s.title, s.status])).toEqual([
       ['Lette etter steder som handler om spørsmålet', 'done'],
+    ]);
+  });
+
+  it('shows a tool step in the language the person switched to, and a label as sent', () => {
+    const state = [
+      { tool: 'search' },
+      { tool: 'read_chunks', label: 'Leste årsrapportene' },
+    ].reduce((s, frame) => withStep(s, frame, t), empty);
+    expect(inLanguage(state.steps, translator('en')).map((s) => s.title)).toEqual([
+      'Looked for passages about the question',
+      'Leste årsrapportene',
     ]);
   });
 

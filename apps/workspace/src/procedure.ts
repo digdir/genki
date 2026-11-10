@@ -22,6 +22,8 @@ export interface StreamStep {
 /** A step as the workspace keeps it; `key` names the tool or label it came from. */
 export interface StreamedStep extends ProcedureStep {
   key: string;
+  /** The tool whose title the step shows, or none when it shows the platform's label. */
+  titleTool: string | undefined;
 }
 
 export interface ProcedureState {
@@ -44,8 +46,12 @@ const toolTitle = (tool: string | undefined, t: T) => {
   return key ? t(key) : undefined;
 };
 
-const titleOf = (frame: StreamStep, t: T) =>
-  (typeof frame.label === 'string' && frame.label.trim()) || toolTitle(frame.tool, t);
+const labelOf = (frame: StreamStep) =>
+  (typeof frame.label === 'string' && frame.label.trim()) || undefined;
+
+const titleOf = (frame: StreamStep, t: T) => labelOf(frame) ?? toolTitle(frame.tool, t);
+
+const titleToolOf = (frame: StreamStep) => (labelOf(frame) ? undefined : frame.tool);
 
 const keyOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
 
@@ -70,7 +76,7 @@ const planned = (steps: readonly StreamedStep[], plan: string[] | undefined, t: 
     const title = toolTitle(tool, t);
     const key = `tool:${tool}`;
     return title && !steps.some((s) => s.key === key)
-      ? [{ id: key, key, title, status: 'waiting' as const }]
+      ? [{ id: key, key, title, titleTool: tool, status: 'waiting' as const }]
       : [];
   });
   return waiting.length ? [...steps, ...waiting] : steps;
@@ -93,6 +99,7 @@ export const withStep = (state: ProcedureState, frame: StreamStep, t: T): Proced
     id: steps.some((s) => s.key === key) ? `${key}:${steps.length}` : key,
     key,
     title,
+    titleTool: titleToolOf(frame),
     status: 'active',
     ...details,
   };
@@ -107,13 +114,20 @@ export const withStep = (state: ProcedureState, frame: StreamStep, t: T): Proced
         ]
       : steps.map((s, i): StreamedStep =>
           i === at
-            ? { ...s, title, ...details, status: 'active' }
+            ? { ...s, title, titleTool: titleToolOf(frame), ...details, status: 'active' }
             : i < at
               ? { ...s, status: 'done' }
               : s,
         );
   return { ...withRead, steps: next };
 };
+
+/** The steps with each tool's title in the language the person reads now. */
+export const inLanguage = (steps: readonly StreamedStep[], t: T): readonly StreamedStep[] =>
+  steps.map((s) => {
+    const title = toolTitle(s.titleTool, t);
+    return title && title !== s.title ? { ...s, title } : s;
+  });
 
 /** The steps when the answer is done: all done, without planned steps the run never reached. */
 export const allDone = <S extends ProcedureStep>(steps: readonly S[]): readonly S[] =>

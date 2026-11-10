@@ -6,6 +6,7 @@ import { AnswerText, sourceAnchor } from './AnswerText';
 import { failureCopy } from './failures';
 import { Feedback } from './Feedback';
 import { useT } from './i18n';
+import { inLanguage } from './procedure';
 import type {
   AssistantMessage,
   ChatMessage,
@@ -136,7 +137,7 @@ const Answer = ({
     <div className="answer" aria-busy={message.pending || undefined}>
       {procedure ? (
         <Procedure
-          steps={procedure.steps}
+          steps={inLanguage(procedure.steps, t)}
           working={!!message.pending}
           startedAt={procedure.startedAt}
           {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
