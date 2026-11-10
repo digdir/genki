@@ -27,6 +27,8 @@ const declared = {
   plankart: [],
 };
 
+type PlaygroundServices = PlaygroundOptions['services'];
+
 const options: PlaygroundOptions = {
   services: [],
   models: [
@@ -81,7 +83,7 @@ export const answered = (text: string) => (): PlaygroundStreamEvent[] => [
 /** The portal client's parts the try view calls; a run sends nothing once its signal is aborted. */
 export const fakeClient = (
   events: (request: PlaygroundRunRequest) => PlaygroundStreamEvent[],
-  { optionsFail = 0 }: { optionsFail?: number } = {},
+  { optionsFail = 0, services = [] }: { optionsFail?: number; services?: PlaygroundServices } = {},
 ) => {
   const requests: PlaygroundRunRequest[] = [];
   const paths: string[] = [];
@@ -93,7 +95,7 @@ export const fakeClient = (
           failing -= 1;
           throw new Error('options failed');
         }
-        return options;
+        return { ...options, services };
       },
       runStream: async (
         _tenant: string,

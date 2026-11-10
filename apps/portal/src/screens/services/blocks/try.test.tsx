@@ -100,3 +100,65 @@ describe('the try view', () => {
     expect(screen.queryByText(/Eksempelinnhold/)).toBeNull();
   });
 });
+
+describe('a draft the playground cannot run yet', () => {
+  it('says what the draft lacks, in the portal’s words, above the try view', async () => {
+    const client = fakeClient(() => [
+      {
+        event: 'failed',
+        setup: 'setup',
+        problem: {
+          status: 422,
+          title: 'Invalid setup',
+          errors: [
+            {
+              path: 'setup.spec.purpose',
+              message: 'Too small: expected string to have >=1 characters',
+            },
+          ],
+        },
+      },
+    ]);
+    render(preview(client, defaultLayout));
+    await ask('Trenger jeg søknad for en garasje?');
+    const notice = await screen.findByText(/Oppsettet er ikke klart til å prøves ennå\./);
+    expect(notice.closest('.service-preview-frame')).toBeNull();
+  });
+});
+
+describe('this visit’s threads', () => {
+  it('are kept when the try view is drawn again, as when the window turns narrow', async () => {
+    const client = fakeClient(answered('Ja.'));
+    const threadsOnly = fromTemplate('approach-only').layout;
+    const first = render(preview(client, threadsOnly));
+    await ask('Trenger jeg søknad for en garasje?');
+    await screen.findByRole('link', { name: /Trenger jeg søknad for en garasje/ });
+    first.unmount();
+    render(preview(client, threadsOnly));
+    expect(
+      await screen.findByRole('link', { name: /Trenger jeg søknad for en garasje/ }),
+    ).toBeTruthy();
+  });
+});
+
+describe('a run of the draft that fails', () => {
+  it('says why in the platform’s words above the try view', async () => {
+    const client = fakeClient(() => [
+      {
+        event: 'failed',
+        setup: 'setup',
+        problem: {
+          status: 502,
+          title: 'Tjenesten feilet underveis.',
+          detail: 'the service has no dataset to search',
+        },
+      },
+    ]);
+    render(preview(client, fromTemplate('chat-only').layout));
+    await ask('Trenger jeg søknad for en garasje?');
+    const notice = await screen.findByText(
+      'Tjenesten feilet underveis. the service has no dataset to search',
+    );
+    expect(notice.closest('.service-preview-frame')).toBeNull();
+  });
+});

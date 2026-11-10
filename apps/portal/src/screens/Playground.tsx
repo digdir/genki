@@ -13,6 +13,7 @@ import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './services/blocks/BlocksStep';
 import { handOver } from './services/blocks/handoff';
+import { usePlaygroundFacts } from './services/blocks/playgroundFacts';
 import './playground.css';
 
 type View = 'backend' | 'frontend';
@@ -29,7 +30,10 @@ const hrefs: Record<View, string> = {
 export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const t = useT();
   const narrow = useNarrow();
-  const blocks = useBlocksState();
+  const blocks = useBlocksState(
+    undefined,
+    usePlaygroundFacts(api, tenant, t('playground.pageTitle')),
+  );
   const view: View = route.segments[1] === 'backend' ? 'backend' : 'frontend';
   const fullscreen = route.segments[1] === 'preview';
   const run = api && tenant ? { api, tenant } : undefined;

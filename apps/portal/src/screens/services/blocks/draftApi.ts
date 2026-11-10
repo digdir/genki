@@ -27,7 +27,12 @@ import type {
 import { withDraftService } from '../../../components/playground/PlaygroundPanel';
 import { initialSetup } from '../../../data/playground';
 import { loadDatasetFilters } from './datasetFilters';
-import { draftServiceOf, type DraftSource } from './draftService';
+import {
+  draftServiceOf,
+  playgroundDefinition,
+  type DraftSource,
+  type RunProblem,
+} from './draftService';
 
 type AskParams = Parameters<AssistantApi['ask']>[0];
 type AskEvent = AssistantApi['ask'] extends (...args: never[]) => AsyncGenerator<infer E>
@@ -156,6 +161,8 @@ export interface DraftApiOptions {
   source: () => DraftSource | undefined;
   /** The playground's name in the reader's language, for a run with no draft. */
   name?: string | undefined;
+  /** Why the playground did not run the draft, or nothing once a run answers. */
+  onProblem?: ((problem: RunProblem | undefined) => void) | undefined;
   now?: () => number;
 }
 
@@ -165,6 +172,7 @@ export const createDraftApi = ({
   tenant,
   source,
   name,
+  onProblem,
   now = () => Date.now(),
 }: DraftApiOptions): AssistantApi => {
   const service = draftServiceOf(source());
@@ -197,15 +205,7 @@ export const createDraftApi = ({
     const draft = source();
     if (draft?.definition) return draft.definition;
     const [setup, loaded] = await Promise.all([setupFor(draft), optionsOnce()]);
-    const named = loaded.services.find((s) => s.id === setup.service?.id)?.name;
-    return {
-      metadata: { id: service, name: named ?? name ?? service, tenant },
-      spec: {
-        output: { kind: setup.output === 'fields' ? 'fields' : 'answer' },
-        exposure: { chat: setup.output !== 'fields' },
-        knowledge: { datasets: setup.datasets.map((dataset) => ({ dataset })) },
-      },
-    };
+    return playgroundDefinition(loaded, setup, tenant, name);
   };
 
   const rowsOf = async (): Promise<ModelRow[]> => {
@@ -358,9 +358,13 @@ export const createDraftApi = ({
               ...(iteration === undefined ? {} : { iteration }),
             },
           } satisfies AskEvent;
-        } else if (event.event === 'failed')
-          throw new HttpError(event.problem.status, event.problem.title);
-        else if (event.event === 'result') {
+        } else if (event.event === 'failed') {
+          // The host says why in its own words, which the assistant's failure cannot carry.
+          const { title, detail, errors = [] } = event.problem;
+          onProblem?.({ title, ...(detail ? { detail } : {}), errors });
+          throw new HttpError(event.problem.status, title);
+        } else if (event.event === 'result') {
+          onProblem?.(undefined);
           const sources = sourcesOf(event.result.sources);
           const text = answerTextOf(event.result);
           const noAnswer = event.result.noAnswer === true;

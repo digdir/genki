@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Card,
   Heading,
@@ -19,8 +20,9 @@ import { lazy, Suspense, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
-import { draftServiceOf } from './draftService';
+import { draftServiceOf, type RunProblem } from './draftService';
 import { previewScale, previewWidth } from './preview-size';
+import { describeProblem } from '../../service/publish';
 import type { TryRun } from './TryView';
 
 // The assistant and its blocks load when the try view is first shown, not with the builder.
@@ -85,6 +87,7 @@ export const ServicePreview = ({
 }) => {
   const t = useT();
   const titleId = useId();
+  const [problem, setProblem] = useState<RunProblem>();
   const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
@@ -142,6 +145,21 @@ export const ServicePreview = ({
           </Button>
         ) : null}
       </div>
+      {mode === 'try' && problem ? (
+        <Alert data-color="warning" data-size="sm">
+          <Paragraph data-size="sm">
+            {problem.errors.length > 0
+              ? t('playground.setupNotReady', {
+                  problems: problem.errors
+                    .map((e) => describeProblem({ ...e, path: e.path.replace(/^setup\./, '') }, t))
+                    .map((p) => `${p.section}: ${p.message}`)
+                    .join(' '),
+                  notStored: t('playground.notStored'),
+                })
+              : [problem.title, problem.detail].filter(Boolean).join(' ')}
+          </Paragraph>
+        </Alert>
+      ) : null}
       <div
         className="service-preview-viewport"
         ref={viewport}
@@ -176,6 +194,7 @@ export const ServicePreview = ({
                 key={`${draftServiceOf(run.source)}:${conversation}`}
                 layout={layout}
                 run={run}
+                onProblem={setProblem}
               />
             </Suspense>
           ) : null}

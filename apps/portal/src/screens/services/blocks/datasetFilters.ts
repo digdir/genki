@@ -16,11 +16,11 @@ export const loadDatasetFilters = async (
 };
 
 /** The filter fields of each dataset a draft searches, by the id the draft names it with. */
-export const useDatasetFilters = (api: ApiClient, datasets: readonly string[]) => {
+export const useDatasetFilters = (api: ApiClient | undefined, datasets: readonly string[]) => {
   const [found, setFound] = useState<Readonly<Record<string, readonly DatasetFilter[]>>>({});
   const wanted = datasets.join('\n');
   useEffect(() => {
-    if (!wanted) return;
+    if (!wanted || !api) return;
     const controller = new AbortController();
     for (const dataset of wanted.split('\n'))
       loadDatasetFilters(api, dataset, controller.signal).then(
