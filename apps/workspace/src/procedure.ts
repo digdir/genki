@@ -35,7 +35,7 @@ const toolTitles: Readonly<Record<string, PlainKey>> = {
 };
 
 const toolTitle = (tool: string | undefined, t: T) => {
-  const key = tool ? toolTitles[tool] : undefined;
+  const key = tool && Object.hasOwn(toolTitles, tool) ? toolTitles[tool] : undefined;
   return key ? t(key) : undefined;
 };
 

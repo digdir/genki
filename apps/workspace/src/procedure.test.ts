@@ -26,6 +26,12 @@ describe('the approach from the stream', () => {
     expect(withStep(start, { event: 'agent/iteration-started', iteration: 2 }, t)).toBe(start);
   });
 
+  it('leaves out a tool named like a property every object has, such as toString', () => {
+    const start = withStep(empty, { tool: 'search' }, t);
+    for (const tool of ['toString', 'constructor', '__proto__', 'hasOwnProperty'])
+      expect(withStep(start, { tool }, t)).toBe(start);
+  });
+
   it('keeps one step when the same tool is called again in a row', () => {
     const start = withStep(empty, { tool: 'search' }, t);
     expect(withStep(start, { tool: 'search', iteration: 2 }, t)).toBe(start);
