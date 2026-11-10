@@ -490,7 +490,11 @@ export const ModelForm = ({
 
   const save = async () => {
     const found = {
-      ...(deployment.trim() ? {} : { deployment: t('endpoints.deploymentRequired') }),
+      ...(deployment.trim()
+        ? modelSlug(deployment)
+          ? {}
+          : { deployment: t('endpoints.deploymentNeedsLetterOrDigit') }
+        : { deployment: t('endpoints.deploymentRequired') }),
       ...(target ? {} : { target: t('endpoints.chooseEndpoint') }),
       ...(reasonError(reason, t) ? { reason: reasonError(reason, t) as string } : {}),
     };

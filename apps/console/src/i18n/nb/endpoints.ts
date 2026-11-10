@@ -49,6 +49,8 @@ export const endpoints = defineNamespace({
   secretSaved: 'Hemmeligheten {name} er lagret. Verdien vises ikke igjen.',
   addEndpoint: 'Legg til tilkobling',
   deploymentRequired: 'Skriv navnet på utrullingen hos leverandøren.',
+  deploymentNeedsLetterOrDigit:
+    'Navnet på utrullingen må inneholde minst én bokstav eller ett siffer.',
   chooseEndpoint: 'Velg en tilkobling.',
   saveModelFailed: 'Kunne ikke lagre modellen. Prøv igjen om litt.',
   addModel: 'Legg til modell',

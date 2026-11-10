@@ -339,6 +339,21 @@ describe('Modeller: the model list', () => {
       body: { deployment: 'Azure:GPT-6.1-Sol' },
     });
   });
+
+  it('refuses a deployment with no letters or digits instead of saving an id that ends in a slash', async () => {
+    const { calls, fetch } = recorded();
+    await signedIn('#/models?tab=models', fetch);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Legg til modell' }));
+    const panel = await dialog('Legg til modell');
+    typeInto(within(panel).getByLabelText('Tilkobling'), 'local-model');
+    typeInto(within(panel).getByLabelText('Utrulling (deployment)'), ':::');
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre modell' }));
+
+    expect(await within(panel).findByText(/minst én bokstav eller ett siffer/)).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([]);
+  });
 });
 
 describe('Modeller: one model', () => {
