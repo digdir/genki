@@ -4,21 +4,21 @@ import { RobotIcon } from '@navikt/aksel-icons';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n.js';
 
-export type ProcedureStatus = 'done' | 'active' | 'waiting';
+export type ApproachStatus = 'done' | 'active' | 'waiting';
 
-export interface ProcedureDocument {
+export interface ApproachDocument {
   title: string;
   /** Where in the document, for example the pages. */
   detail?: string;
 }
 
-export interface ProcedureStep {
+export interface ApproachStep {
   id: string;
   /** As the platform sent it, or translated by the app. */
   title: string;
   description?: string;
-  status: ProcedureStatus;
-  documents?: readonly ProcedureDocument[];
+  status: ApproachStatus;
+  documents?: readonly ApproachDocument[];
   /** How many documents the step read in all, when more than are listed. */
   documentsRead?: number;
   /** The source numbers the answer used, as in its footnotes. */
@@ -27,8 +27,8 @@ export interface ProcedureStep {
   missing?: boolean;
 }
 
-export interface ProcedureProps {
-  steps: readonly ProcedureStep[];
+export interface ApproachProps {
+  steps: readonly ApproachStep[];
   /** True while the assistant works on the answer. */
   working: boolean;
   /** When the assistant started, in milliseconds since the epoch. */
@@ -60,21 +60,23 @@ const StepBody = ({
   onShowRead: show,
   onExplainMissing: explain,
 }: {
-  step: ProcedureStep;
-  onShowRead: ProcedureProps['onShowRead'];
-  onExplainMissing: ProcedureProps['onExplainMissing'];
+  step: ApproachStep;
+  onShowRead: ApproachProps['onShowRead'];
+  onExplainMissing: ApproachProps['onExplainMissing'];
 }) => {
   const t = useT();
   const f = useFormat();
   const more = step.documentsRead ?? step.documents?.length ?? 0;
   return (
     <>
-      {step.description ? <p className="uib-step-description">{step.description}</p> : null}
+      {step.description ? (
+        <p className="uib-approach-step-description">{step.description}</p>
+      ) : null}
       {step.documents?.length ? (
-        <List.Unordered className="uib-step-documents">
+        <List.Unordered className="uib-approach-step-documents">
           {step.documents.map((d, i) => (
             <List.Item key={`${d.title}-${i}`}>
-              {d.detail ? t('procedure.document', { title: d.title, detail: d.detail }) : d.title}
+              {d.detail ? t('approach.document', { title: d.title, detail: d.detail }) : d.title}
             </List.Item>
           ))}
         </List.Unordered>
@@ -82,32 +84,32 @@ const StepBody = ({
       {show && more ? (
         <Link
           href="#"
-          className="uib-step-link"
+          className="uib-approach-step-link"
           onClick={(event) => {
             event.preventDefault();
             show(step.id);
           }}
         >
           {step.status === 'active'
-            ? t('procedure.showReadSoFar', { count: more })
-            : t('procedure.showRead', { count: more })}
+            ? t('approach.showReadSoFar', { count: more })
+            : t('approach.showRead', { count: more })}
         </Link>
       ) : null}
       {step.missing && explain ? (
         <Link
           href="#"
-          className="uib-step-link"
+          className="uib-approach-step-link"
           onClick={(event) => {
             event.preventDefault();
             explain(step.id);
           }}
         >
-          {t('procedure.explainMissing')}
+          {t('approach.explainMissing')}
         </Link>
       ) : null}
       {step.sourcesUsed?.length ? (
-        <p className="uib-step-description">
-          {t('procedure.usedInAnswer', {
+        <p className="uib-approach-step-description">
+          {t('approach.usedInAnswer', {
             sources: f.list(step.sourcesUsed.map(String)),
           })}
         </p>
@@ -117,7 +119,7 @@ const StepBody = ({
 };
 
 /** How the assistant worked on an answer, as a card above it. Open while it works, closed when it is done. */
-export const Procedure = ({
+export const Approach = ({
   steps,
   working,
   startedAt,
@@ -126,7 +128,7 @@ export const Procedure = ({
   used,
   onShowRead,
   onExplainMissing,
-}: ProcedureProps) => {
+}: ApproachProps) => {
   const t = useT();
   const [open, setOpen] = useState(working);
   const wasWorking = useRef(working);
@@ -145,61 +147,61 @@ export const Procedure = ({
     const n = activeIndex + 1;
     setAnnounced(
       knowsTotal
-        ? t('procedure.stepOf', { n, total: steps.length, title: active.title })
-        : t('procedure.step', { n, title: active.title }),
+        ? t('approach.stepOf', { n, total: steps.length, title: active.title })
+        : t('approach.step', { n, title: active.title }),
     );
   }, [active?.id, active?.title]);
 
-  const readText = read === undefined ? undefined : t('procedure.read', { count: read });
+  const readText = read === undefined ? undefined : t('approach.read', { count: read });
   const summary =
     readText === undefined
       ? used === undefined
         ? undefined
-        : t('procedure.usedOnly', { count: used })
+        : t('approach.usedOnly', { count: used })
       : used === undefined
         ? readText
-        : t('procedure.readAndUsed', {
+        : t('approach.readAndUsed', {
             read: readText,
-            used: t('procedure.used', { count: used }),
+            used: t('approach.used', { count: used }),
           });
   const footer = working
-    ? t('procedure.workingFor', { count: seconds })
+    ? t('approach.workingFor', { count: seconds })
     : summary === undefined
-      ? t('procedure.tookOnly', { count: seconds })
-      : t('procedure.footer', { summary, took: t('procedure.took', { count: seconds }) });
+      ? t('approach.tookOnly', { count: seconds })
+      : t('approach.footer', { summary, took: t('approach.took', { count: seconds }) });
 
   return (
-    <div className="uib-procedure">
-      <Card data-color="neutral" variant="default" className="uib-procedure-card">
+    <div className="uib-approach">
+      <Card data-color="neutral" variant="default" className="uib-approach-card">
         <Details
-          aria-label={t('procedure.title')}
+          aria-label={t('approach.title')}
           open={open}
           onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
         >
           <Details.Summary>
-            <span className="uib-procedure-summary">
+            <span className="uib-approach-summary">
               <RobotIcon aria-hidden fontSize="18px" />
-              {t('procedure.title')}
+              {t('approach.title')}
             </span>
           </Details.Summary>
           <Details.Content>
-            <List.Ordered className="uib-procedure-steps">
+            <List.Ordered className="uib-approach-steps">
               {steps.map((step) => (
                 <List.Item
                   key={step.id}
                   data-status={step.status}
                   aria-current={step.status === 'active' ? 'step' : undefined}
                 >
-                  <span className="uib-step-title">{step.title}</span>
+                  <span className="uib-approach-step-title">{step.title}</span>
                   {step.status === 'done' ? (
                     <span className="uib-visually-hidden">
                       {' '}
-                      {t('procedure.hiddenStatus', { status: t('procedure.done') })}
+                      {t('approach.hiddenStatus', { status: t('approach.done') })}
                     </span>
                   ) : (
-                    <span className="uib-step-status">
+                    <span className="uib-approach-step-status">
                       {' '}
-                      {t('procedure.shownStatus', { status: t(`procedure.${step.status}`) })}
+                      {t('approach.shownStatus', { status: t(`approach.${step.status}`) })}
                     </span>
                   )}
                   {step.status === 'waiting' ? null : (
@@ -212,7 +214,7 @@ export const Procedure = ({
                 </List.Item>
               ))}
             </List.Ordered>
-            <p className="uib-procedure-footer">{footer}</p>
+            <p className="uib-approach-footer">{footer}</p>
           </Details.Content>
         </Details>
       </Card>

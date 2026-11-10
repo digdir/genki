@@ -1,4 +1,4 @@
-import type { ProcedureStep } from '@genai/ui-blocks';
+import type { ApproachStep } from '@genai/ui-blocks';
 import type { PlainKey, T } from './i18n';
 
 /** A `genai_step` frame. Members not in docs/frontend-contract.md come only from the example data. */
@@ -20,7 +20,7 @@ export interface StreamStep {
 }
 
 /** A step as the workspace keeps it; `key` names the tool or label it came from. */
-export interface StreamedStep extends ProcedureStep {
+export interface StreamedStep extends ApproachStep {
   key: string;
   /** The tool whose title the step shows, or none when it shows the platform's label. */
   titleTool: string | undefined;
@@ -55,7 +55,7 @@ const titleToolOf = (frame: StreamStep) => (labelOf(frame) ? undefined : frame.t
 
 const keyOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
 
-const detailsOf = (frame: StreamStep): Partial<ProcedureStep> => ({
+const detailsOf = (frame: StreamStep): Partial<ApproachStep> => ({
   ...(frame.description ? { description: frame.description } : {}),
   ...(frame.documents?.length
     ? {
@@ -130,7 +130,7 @@ export const inLanguage = (steps: readonly StreamedStep[], t: T): readonly Strea
   });
 
 /** The steps when the answer is done: all done, without planned steps the run never reached. */
-export const allDone = <S extends ProcedureStep>(steps: readonly S[]): readonly S[] =>
+export const allDone = <S extends ApproachStep>(steps: readonly S[]): readonly S[] =>
   steps.flatMap((s) =>
     s.status === 'waiting' ? [] : s.status === 'done' ? [s] : [{ ...s, status: 'done' as const }],
   );

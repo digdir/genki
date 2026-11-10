@@ -1,6 +1,6 @@
 import { Alert, Button, Details, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { Procedure } from '@genai/ui-blocks';
+import { Approach } from '@genai/ui-blocks';
 import { useEffect, useId, useState } from 'react';
 import { AnswerText, sourceAnchor } from './AnswerText';
 import { failureCopy } from './failures';
@@ -137,7 +137,7 @@ const Answer = ({
   return (
     <div className="answer" aria-busy={message.pending || undefined}>
       {procedure ? (
-        <Procedure
+        <Approach
           steps={inLanguage(procedure.steps, t)}
           working={!!message.pending}
           startedAt={procedure.startedAt}

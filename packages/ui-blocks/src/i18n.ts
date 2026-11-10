@@ -1,7 +1,7 @@
 import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
 
-const nbProcedure = defineNamespace({
+const nbApproach = defineNamespace({
   title: 'Fremgangsmåte',
   done: 'ferdig',
   active: 'pågår',
@@ -25,7 +25,7 @@ const nbProcedure = defineNamespace({
   shownStatus: '· {status}',
 });
 
-const enProcedure = {
+const enApproach = {
   title: 'Approach',
   done: 'done',
   active: 'in progress',
@@ -47,9 +47,9 @@ const enProcedure = {
   footer: '{summary} · {took}',
   hiddenStatus: '({status})',
   shownStatus: '· {status}',
-} satisfies Translation<typeof nbProcedure>;
+} satisfies Translation<typeof nbApproach>;
 
-export const nb = defineCatalogue({ procedure: nbProcedure });
-export const en = { procedure: enProcedure } satisfies Translation<typeof nb>;
+export const nb = defineCatalogue({ approach: nbApproach });
+export const en = { approach: enApproach } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });

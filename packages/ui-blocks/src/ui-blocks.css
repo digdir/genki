@@ -7,56 +7,56 @@
   white-space: nowrap;
 }
 
-.uib-procedure-card {
+.uib-approach-card {
   padding: 0;
   overflow: hidden;
 }
 
-.uib-procedure-summary {
+.uib-approach-summary {
   display: inline-flex;
   align-items: center;
   gap: var(--ds-size-2);
 }
 
-.uib-procedure-steps {
+.uib-approach-steps {
   margin: 0;
 }
 
-.uib-procedure-steps > li[data-status='waiting'] .uib-step-title {
+.uib-approach-steps > li[data-status='waiting'] .uib-approach-step-title {
   color: var(--ds-color-neutral-text-subtle);
 }
 
-.uib-step-title {
+.uib-approach-step-title {
   font-weight: 500;
 }
 
-.uib-procedure-steps > li[data-status='waiting'] .uib-step-title,
-.uib-step-status {
+.uib-approach-steps > li[data-status='waiting'] .uib-approach-step-title,
+.uib-approach-step-status {
   font-weight: 400;
 }
 
-.uib-step-status,
-.uib-step-description,
-.uib-procedure-footer {
+.uib-approach-step-status,
+.uib-approach-step-description,
+.uib-approach-footer {
   color: var(--ds-color-neutral-text-subtle);
   font-size: var(--ds-font-size-2);
 }
 
-.uib-step-description {
+.uib-approach-step-description {
   margin: var(--ds-size-1) 0 0;
 }
 
-.uib-step-documents {
+.uib-approach-step-documents {
   margin-top: var(--ds-size-1);
   font-size: var(--ds-font-size-2);
 }
 
-.uib-step-link {
+.uib-approach-step-link {
   display: inline-block;
   margin-top: var(--ds-size-1);
   font-size: var(--ds-font-size-2);
 }
 
-.uib-procedure-footer {
+.uib-approach-footer {
   margin: var(--ds-size-3) 0 0;
 }

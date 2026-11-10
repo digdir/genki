@@ -4,7 +4,7 @@ import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { en, nb } from '../i18n.js';
-import { Procedure, type ProcedureProps, type ProcedureStep } from './Procedure.js';
+import { Approach, type ApproachProps, type ApproachStep } from './Approach.js';
 
 document.getAnimations ??= () => [];
 afterEach(() => {
@@ -14,7 +14,7 @@ afterEach(() => {
 
 const started = Date.parse('2026-11-02T10:00:00Z');
 
-const steps: ProcedureStep[] = [
+const steps: ApproachStep[] = [
   { id: 'understand', title: 'Forsto spørsmålet', status: 'done' },
   {
     id: 'read',
@@ -27,8 +27,8 @@ const steps: ProcedureStep[] = [
   { id: 'write', title: 'Skrev svaret', description: 'Skal ikke vises ennå.', status: 'waiting' },
 ];
 
-const draw = (props: Partial<ProcedureProps> = {}) =>
-  render(<Procedure steps={steps} working startedAt={started} {...props} />);
+const draw = (props: Partial<ApproachProps> = {}) =>
+  render(<Approach steps={steps} working startedAt={started} {...props} />);
 
 const card = () => screen.getByText('Fremgangsmåte').closest('details') as HTMLDetailsElement;
 const step = (title: string) => screen.getByText(title).closest('li') as HTMLElement;
@@ -59,7 +59,7 @@ describe('the approach card', () => {
 
     const shown: string[] = [];
     rerender(
-      <Procedure steps={steps} working startedAt={started} onShowRead={(id) => shown.push(id)} />,
+      <Approach steps={steps} working startedAt={started} onShowRead={(id) => shown.push(id)} />,
     );
     fireEvent.click(screen.getByRole('link', { name: 'Vis de 17 som er lest' }));
     expect(shown).toEqual(['read']);
@@ -68,7 +68,7 @@ describe('the approach card', () => {
   it('closes when the answer is done, and says what it read and used and how long it took', () => {
     const { rerender } = draw();
     rerender(
-      <Procedure
+      <Approach
         steps={steps.map((s) => ({ ...s, status: 'done' }))}
         working={false}
         startedAt={started}
@@ -86,10 +86,10 @@ describe('the approach card', () => {
     const summary = screen.getByText('Fremgangsmåte');
     fireEvent.click(summary);
     expect(card().open).toBe(false);
-    rerender(<Procedure steps={steps} working startedAt={started} />);
+    rerender(<Approach steps={steps} working startedAt={started} />);
     expect(card().open).toBe(false);
     rerender(
-      <Procedure steps={steps} working={false} startedAt={started} finishedAt={started + 1000} />,
+      <Approach steps={steps} working={false} startedAt={started} finishedAt={started + 1000} />,
     );
     expect(card().open).toBe(false);
   });
@@ -118,7 +118,7 @@ describe('the approach card', () => {
   });
 
   it('links to more about what the assistant did not find, when the app can show it', () => {
-    const missing: ProcedureStep = {
+    const missing: ApproachStep = {
       id: 'gaps',
       title: 'Det jeg ikke fant',
       description: 'Ingen dokumenter sier hvor mange.',
@@ -129,7 +129,7 @@ describe('the approach card', () => {
     expect(screen.queryByRole('link', { name: 'Utdyp hva som mangler' })).toBeNull();
     const asked: string[] = [];
     rerender(
-      <Procedure
+      <Approach
         steps={[missing]}
         working={false}
         startedAt={started}
@@ -161,7 +161,7 @@ describe('the approach card', () => {
   it('speaks English when the person does', () => {
     render(
       <InLocale locale="en">
-        <Procedure steps={steps} working startedAt={started} />
+        <Approach steps={steps} working startedAt={started} />
       </InLocale>,
     );
     expect(screen.getByText('Approach')).toBeTruthy();
