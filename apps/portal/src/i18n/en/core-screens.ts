@@ -139,6 +139,7 @@ export const changes = {
   datasetEnrichmentRevert: 'reverted the enrichment of',
   datasetUpload: 'uploaded files to',
   datasetUploadDelete: 'deleted an uploaded file from',
+  datasetDelete: 'deleted the dataset',
   defaultSet: 'changed the platform default',
   engineSwitchCancel: 'cancelled the search engine switch for',
   engineSwitchActivate: 'adopted the new search engine for',

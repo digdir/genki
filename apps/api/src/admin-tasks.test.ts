@@ -18,6 +18,7 @@ const notAdminChanges = reasonFreeWrites;
 const throughAdminTasks = [
   'DELETE /operator/catalog/:kind/:id',
   'DELETE /operator/datasets/:dataset/pipelines/:id',
+  'DELETE /operator/datasets/:id',
   'DELETE /operator/gates/:id',
   'DELETE /operator/guardrail-rules/:id',
   'DELETE /operator/hooks/:id',
@@ -30,6 +31,7 @@ const throughAdminTasks = [
   'DELETE /tenants/:tenant/catalog/:kind/:id',
   'DELETE /tenants/:tenant/clients/:id',
   'DELETE /tenants/:tenant/datasets/:dataset/pipelines/:id',
+  'DELETE /tenants/:tenant/datasets/:id',
   'DELETE /tenants/:tenant/datasets/:id/uploads/:name',
   'DELETE /tenants/:tenant/gates/:id',
   'DELETE /tenants/:tenant/guardrail-rules/:id',

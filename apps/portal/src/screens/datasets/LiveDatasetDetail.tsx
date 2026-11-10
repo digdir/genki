@@ -21,6 +21,7 @@ import { ApiError, type ApiClient } from '../../api';
 import {
   skippedCount,
   skippedOf,
+  type DatasetDeleteResult,
   type DatasetDetailView,
   type ExecutionView,
   type ExecutionsView,
@@ -389,6 +390,139 @@ const SourceSettings = ({
   );
 };
 
+const DeleteDataset = ({
+  api,
+  tenant,
+  view,
+  onDeleted,
+}: {
+  api: ApiClient;
+  tenant: string;
+  view: DatasetDetailView;
+  onDeleted: (result: DatasetDeleteResult) => void;
+}) => {
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
+  const readers = view.usedBy ?? [];
+  const blocked = readers.length > 0;
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState('');
+
+  const confirm = async () => {
+    setTried(true);
+    if (blocked || busy || reasonProblem(reason, t)) return;
+    setBusy(true);
+    setFailure('');
+    try {
+      onDeleted(await api.datasets.remove(tenant, view.id, reason.trim()));
+    } catch (error) {
+      setFailure(failureText(tRef.current, error));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section aria-labelledby="slett-h" className="source-card">
+      <h2 id="slett-h" className="card-title">
+        {t('datasets.deleteTitle')}
+      </h2>
+      <p className="meta">{t('datasets.deleteIntro')}</p>
+      <div className="tag-row used-by">
+        <span className="meta">{t('datasets.usedBy')}</span>
+        {readers.map((r) => (
+          <span key={`${r.kind}:${r.tenant}/${r.id}`} className="ds-tag" data-color="accent">
+            {r.kind === 'service' ? r.name : t('datasets.readerAdoption', { tenant: r.tenant })}
+          </span>
+        ))}
+        {readers.length === 0 ? <span>{t('datasets.noServicesYet')}</span> : null}
+      </div>
+      {blocked ? (
+        <Alert data-color="info" data-size="sm">
+          {t('datasets.deleteBlocked')}
+        </Alert>
+      ) : null}
+      {confirming ? (
+        <>
+          <p>{t('datasets.deleteConfirmText', { name: view.name })}</p>
+          <ReasonField value={reason} onChange={setReason} showError={tried} />
+          <div aria-live="polite">
+            {failure ? (
+              <Alert data-color="danger" data-size="sm" role="alert">
+                {t('datasets.deleteFailed', { problem: failure })}
+              </Alert>
+            ) : null}
+          </div>
+          <div className="row-wrap">
+            <Button
+              variant="primary"
+              data-color="danger"
+              data-size="sm"
+              aria-disabled={blocked || busy ? true : undefined}
+              onClick={() => void confirm()}
+            >
+              {busy ? t('datasets.deleting') : t('datasets.deleteConfirm')}
+            </Button>
+            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(false)}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Button
+          variant="secondary"
+          data-color="danger"
+          data-size="sm"
+          className="align-start"
+          onClick={() => setConfirming(true)}
+        >
+          {t('datasets.deleteDataset')}
+        </Button>
+      )}
+    </section>
+  );
+};
+
+const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }) => {
+  const t = useT();
+  const f = useFormat();
+  const kept = result.kept.knowledgeRecords
+    ? t('datasets.deletedKeptRecords')
+    : result.kept.generations.length
+      ? t('datasets.deletedKeptGenerations', {
+          count: result.kept.generations.length,
+          list: result.kept.generations.join(', '),
+        })
+      : t('datasets.deletedNothingKept');
+  return (
+    <div className="stack dataset-page">
+      <a href="#/datasets" className="back-link">
+        <Icon icon={ChevronLeftIcon} size={18} />
+        {t('datasets.title')}
+      </a>
+      <Heading level={1} data-size="md">
+        {t('datasets.deletedTitle', { name })}
+      </Heading>
+      <Alert data-color={result.kept.generations.length ? 'warning' : 'success'}>
+        <p className="alert-text">
+          {t('datasets.deletedRemoved', {
+            pipelines: f.number(result.removed.pipelines.length),
+            uploads: f.number(result.removed.uploads.length),
+            generations: f.number(result.removed.generations.length),
+          })}
+        </p>
+        <p className="alert-text">{kept}</p>
+      </Alert>
+      <Paragraph>
+        <a href="#/datasets">{t('datasets.goToDatasets')}</a>
+      </Paragraph>
+    </div>
+  );
+};
+
 const Facets = ({
   api,
   tenant,
@@ -511,6 +645,7 @@ const Loaded = ({
   const [flash, setFlash] = useState('');
   const [failure, setFailure] = useState('');
   const [finished, setFinished] = useState<ExecutionView>();
+  const [deleted, setDeleted] = useState<DatasetDeleteResult>();
   const watching = useRef(initial.lastExecution?.status === 'running');
   const rights = useRights();
   const editable = view.editable !== false;
@@ -608,6 +743,7 @@ const Loaded = ({
       : (view.skipped ?? [])
     : [];
 
+  if (deleted) return <Deleted name={view.name} result={deleted} />;
   return (
     <div className="stack dataset-page">
       <a href="#/datasets" className="back-link">
@@ -821,6 +957,9 @@ const Loaded = ({
                 canEdit={canEdit}
                 onUploaded={() => setFlash(t('datasets.filesUploaded'))}
               />
+            ) : null}
+            {canEdit ? (
+              <DeleteDataset api={api} tenant={tenant} view={view} onDeleted={setDeleted} />
             ) : null}
           </div>
           <SearchEngine

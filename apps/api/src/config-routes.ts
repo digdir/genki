@@ -37,6 +37,7 @@ import type { EngineDescription } from './knowledge-engines.js';
 import { rightRefused, seesUsage, type Right } from './rights.js';
 import type { GateRegistry, GuardrailRuleRegistry, ScopedResult } from './scoped-registry.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import type { DatasetReader } from './dataset-readers.js';
 import { datasetStatus } from './dataset-status.js';
 import { candidateRelease, tenantModelRefusal } from './model-access.js';
 import { effectiveResidency, locationOf } from './residency.js';
@@ -61,6 +62,7 @@ export interface ConfigDeps {
     dataset: string,
     pipeline: string,
   ) => Promise<string | undefined>;
+  usedBy?: (dataset: string) => Promise<DatasetReader[]>;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -221,7 +223,13 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
         ? { movedBySwitch: true }
         : {}),
     });
-    if (!result.ok) return { ok: false, errors: result.errors, target };
+    if (!result.ok)
+      return {
+        ok: false,
+        errors: result.errors,
+        target,
+        ...(result.conflict ? { conflict: true } : {}),
+      };
     return {
       ok: true,
       value: result.item,
@@ -900,7 +908,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       ...(location.embedding ? { embeddingResidency: location.embedding.residency ?? null } : {}),
       editable: item.scope === tenant,
       ...status,
-      ...(detail ? { skipped } : {}),
+      ...(detail
+        ? {
+            skipped,
+            usedBy: ((await deps.usedBy?.(item.id)) ?? []).filter((r) => r.tenant === tenant),
+          }
+        : {}),
     };
   };
 
