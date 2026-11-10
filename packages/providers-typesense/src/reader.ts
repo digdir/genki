@@ -1,4 +1,9 @@
-import { KnowledgeError, type DatasetConfig, type IndexDocument } from '@genai/port-knowledge';
+import {
+  KnowledgeError,
+  type DatasetConfig,
+  type ExportedDocument,
+  type IndexDocument,
+} from '@genai/port-knowledge';
 import type { ReadOnlyClient } from './client.js';
 import type { TypesenseDatasetOptions } from './index.js';
 
@@ -20,6 +25,54 @@ const literal = (value: string) => {
   return `\`${value}\``;
 };
 
+const idOf = (dataset: DatasetConfig<TypesenseDatasetOptions>, record: Record<string, unknown>) =>
+  str(record[dataset.options.fields.document]) ?? str(record.id) ?? '';
+
+/** A documents-collection row as an export lists it, without its chunks. */
+const listed = (
+  dataset: DatasetConfig<TypesenseDatasetOptions>,
+  record: Record<string, unknown>,
+): ExportedDocument => {
+  const { fields } = dataset.options;
+  const title = str(record[fields.title]);
+  const url = str(record[fields.url]);
+  return {
+    id: idOf(dataset, record),
+    ...(title === undefined ? {} : { title }),
+    ...(url === undefined ? {} : { url }),
+    fields: without(record, ['id', fields.document, fields.title, fields.url, 'total_chunks']),
+  };
+};
+
+/** Streams the documents collection alone, so a copy lists every document before it reads any chunk. */
+export async function* listTypesenseDocuments(
+  client: ReadOnlyClient,
+  dataset: DatasetConfig<TypesenseDatasetOptions>,
+  docs: string,
+  signal: AbortSignal,
+): AsyncIterable<ExportedDocument> {
+  for await (const record of client.exportDocuments(docs, {}, signal))
+    yield listed(dataset, record);
+}
+
+/** Reads one document and its chunks and phrases with filtered exports; undefined when it is gone. */
+export const readTypesenseDocument = async (
+  client: ReadOnlyClient,
+  dataset: DatasetConfig<TypesenseDatasetOptions>,
+  collections: ReadCollections,
+  id: string,
+  signal: AbortSignal,
+): Promise<IndexDocument | undefined> => {
+  const filter = { filter_by: `${dataset.options.fields.document}:=[${literal(id)}]` };
+  const records: Record<string, unknown>[] = [];
+  for await (const record of client.exportDocuments(collections.docs, filter, signal))
+    if (idOf(dataset, record) === id) records.push(record);
+  if (records.length === 0) return undefined;
+  for await (const doc of readTypesenseDocuments(client, dataset, collections, signal, 1, records))
+    return doc;
+  return undefined;
+};
+
 /** Streams documents through GET export requests only, so it is safe with a search-only key. */
 export async function* readTypesenseDocuments(
   client: ReadOnlyClient,
@@ -27,6 +80,7 @@ export async function* readTypesenseDocuments(
   collections: ReadCollections,
   signal: AbortSignal,
   batchSize = 100,
+  only?: Record<string, unknown>[],
 ): AsyncIterable<IndexDocument> {
   const { fields } = dataset.options;
   const byDocument = async (collection: string | undefined, ids: string[], exclude: string[]) => {
@@ -44,18 +98,13 @@ export async function* readTypesenseDocuments(
   };
 
   const assemble = async function* (records: Record<string, unknown>[]) {
-    const ids = records.map((r) => str(r[fields.document]) ?? str(r.id) ?? '');
+    const ids = records.map((r) => idOf(dataset, r));
     const chunks = await byDocument(collections.chunks, ids, []);
     const phrases = await byDocument(collections.phrases, ids, ['phrase_vec']);
     for (const [i, record] of records.entries()) {
       const id = ids[i] as string;
-      const title = str(record[fields.title]);
-      const url = str(record[fields.url]);
       yield {
-        id,
-        ...(title === undefined ? {} : { title }),
-        ...(url === undefined ? {} : { url }),
-        fields: without(record, ['id', fields.document, fields.title, fields.url, 'total_chunks']),
+        ...listed(dataset, record),
         chunks: (chunks.get(id) ?? [])
           .map((c) => ({
             id: str(c[fields.id]) ?? str(c.id) ?? '',
@@ -80,6 +129,10 @@ export async function* readTypesenseDocuments(
     }
   };
 
+  if (only) {
+    yield* assemble(only);
+    return;
+  }
   let batch: Record<string, unknown>[] = [];
   for await (const record of client.exportDocuments(collections.docs, {}, signal)) {
     batch.push(record);

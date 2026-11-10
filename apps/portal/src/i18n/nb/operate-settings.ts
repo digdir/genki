@@ -427,7 +427,7 @@ const settingDefs = defineNamespace({
   retrieval_queryAwareBoost_label: 'Løft treff som ligner spørsmålet',
   retrieval_autoFilter_enabled_label: 'Automatisk filter',
   retrieval_autoFilter_enabled_desc:
-    'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+    'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   retrieval_autoFilter_rules_label: 'Regler for automatisk filter',
   retrieval_docTitle_fanout_label: 'Tekstbiter per titteltreff',
   retrieval_merge_mode_label: 'Måte å flette søkene på',
@@ -487,7 +487,8 @@ const settingDefs = defineNamespace({
   planner_prompt_desc:
     'Ledetekst som erstatter den innebygde for planleggeren. Tomt bruker den innebygde.',
   retrieval_queryAwareBoost_desc: 'Gi treff som deler ord med spørsmålet høyere plass.',
-  retrieval_autoFilter_rules_desc: 'Reglene for automatisk filter, i den rekkefølgen de prøves.',
+  retrieval_autoFilter_rules_desc:
+    'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
   retrieval_docTitle_fanout_desc: 'Tekstbiter som leses fra hvert dokument som treffer på tittel.',
   retrieval_merge_mode_desc: 'Hvordan treffene fra de ulike søkemåtene flettes sammen.',
   retrieval_merge_rrfK_desc: 'Konstant som jevner ut rangeringen ved fletting (RRF).',

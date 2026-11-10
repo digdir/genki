@@ -118,6 +118,7 @@ export interface DescriptorUpload {
 
 export interface WireExchange {
   deployment: string;
+  settings?: Record<string, string>;
   input: unknown;
   request: { method: string; path: string; query?: Record<string, string>; body: unknown };
   response: { status: number; body: unknown };
@@ -879,6 +880,11 @@ export interface EngineSwitch {
   error?: { message: string; percent: number };
   generation?: string;
   failedDocuments?: number;
+  /** A copy into the knowledge database: copied, skipped by reason and failed documents (#366). */
+  copy?: { copied: number; skipped: Record<string, number>; failed: number };
+  /** A copy of named documents: how many; it can be compared but never activated. */
+  subset?: number;
+  method?: 'copy' | 'reingest';
   minimumReasonLength: number;
   canRollback: boolean;
   comparison?: {
@@ -890,15 +896,20 @@ export interface EngineSwitch {
   comparisonNote?: string;
 }
 
-/** What a re-ingest into an endpoint would cost, or why it cannot run (ADR 0025). */
+export interface MethodEstimate {
+  available: boolean;
+  reason?: string;
+  costNok: { min: number; max: number };
+  durationMinutes: { min: number; max: number };
+}
+
+/** What a copy or a re-ingest into an endpoint would cost, or why it cannot run (ADR 0025). */
 export interface SwitchEstimate {
-  basis: { documents: number; counted: boolean };
-  reingest: {
-    available: boolean;
-    reason?: string;
-    costNok: { min: number; max: number };
-    durationMinutes: { min: number; max: number };
-  };
+  basis: { documents: number; counted: boolean; chunks?: number; tokens?: number };
+  copy?: MethodEstimate;
+  reingest: MethodEstimate;
+  /** The embedding models the platform serves, for a dataset that has none of its own. */
+  embeddings?: { model: string; dimensions: number }[];
 }
 
 /** The engine a platform dataset searches now, and the switch it is in, if any. */
@@ -1051,10 +1062,23 @@ export interface ModelApi {
   models: string[];
 }
 
+export interface DiscoveryRule {
+  source?: string;
+  from?: string;
+  idPrefix?: string;
+  include?: string[];
+  exclude?: string[];
+  capabilities?: Capability[];
+  apis?: ApiBindings;
+}
+
 export interface ModelEndpointInput {
   baseURL: string;
   auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
   families: Record<string, string>;
+  discovery?: DiscoveryRule[];
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
 }
 
 export interface ModelSettings {
@@ -1063,6 +1087,7 @@ export interface ModelSettings {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  apis?: ApiBindings;
   enabled: boolean;
 }
 

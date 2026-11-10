@@ -86,8 +86,16 @@ const Usage = z
     outputTokens: z.number().int(),
     requests: z.number().int(),
     costMicroNok: z.number().nullable().describe('Null when no token in the period has a price'),
-    priced: z.boolean(),
+    priced: z.boolean().describe('False when any token or open unit in the period has no price'),
     unpricedTokens: z.number().int(),
+    units: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('Units besides tokens and requests, built in or open, by name'),
+    unpricedUnits: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('The part of units that has no price and is shown as not priced'),
   })
   .openapi('UsageTotals');
 const BySource = z
@@ -158,6 +166,11 @@ const OperationFixture = z
     name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
     source: z.string().optional().describe('Where the recording comes from'),
     deployment: z.string(),
+    at: z.string().optional().describe('The time a module signs with, when the descriptor has one'),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe("The descriptor's typed input"),
     request: z.object({
       method: z.string(),
@@ -180,6 +193,10 @@ const OperationFixture = z
 const WireExchange = z
   .object({
     deployment: z.string(),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe('The typed input as it was sent, masked'),
     request: z.object({
       method: z.string(),
@@ -1441,7 +1458,8 @@ const evalRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/feedback',
-    summary: 'Feedback on runs; a rating given fewer than five times shows only rating and date',
+    summary:
+      'Feedback on runs, the latest per run and credential; a rating given fewer than five times shows only rating and date',
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),

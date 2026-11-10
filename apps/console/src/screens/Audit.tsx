@@ -116,9 +116,18 @@ const catalogActionKey: Record<string, PlainKey> = {
 
 type Period = 'day' | 'week' | 'month';
 
+const catalogChangeKey: Record<string, PlainKey> = {
+  'model-endpoint': 'audit.actionModelEndpointChange',
+  model: 'audit.actionCatalogModelChange',
+};
+
 const keyOf = (e: AuditEntry) => {
-  const kind = /^catalog:([a-z-]+)\//.exec(e.target)?.[1];
-  return (kind && catalogActionKey[`${e.action}:${kind}`]) ?? actionKey[e.action];
+  const [, kind, version] = /^catalog:([a-z-]+)\/[^@]*(?:@(\d+))?$/.exec(e.target) ?? [];
+  const changed =
+    e.action === 'platform.catalog.publish' && version && version !== '1' && kind
+      ? catalogChangeKey[kind]
+      : undefined;
+  return changed ?? (kind && catalogActionKey[`${e.action}:${kind}`]) ?? actionKey[e.action];
 };
 
 export const labelOf = (e: AuditEntry, t: T) => {
@@ -127,6 +136,12 @@ export const labelOf = (e: AuditEntry, t: T) => {
 };
 const targetOf = (e: AuditEntry) => {
   if (!e.target || e.target === e.action) return '–';
+  const governed = /^(?:operation-descriptor|operation-kind|operation):(.+)$/.exec(e.target)?.[1];
+  if (governed) return governed;
+  const catalogued = /^catalog:(?:model-endpoint|model|price)\/(.+?)(?:@\d+)?$/.exec(e.target)?.[1];
+  if (catalogued) return catalogued;
+  const connection = /^model-endpoint:(.+)\/processor-record$/.exec(e.target)?.[1];
+  if (connection) return connection;
   const found = /^(service|model|setting|pin|default|tenant|support):(.+)$/.exec(e.target);
   if (!found?.[1] || !found[2]) return e.target;
   if (found[1] === 'support') return '–';

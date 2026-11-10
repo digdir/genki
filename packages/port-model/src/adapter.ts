@@ -1,7 +1,14 @@
+import { providerBodyLength, type PriceUnit } from '@genai/contracts';
 import type { Credential, Shape } from '@genai/kernel';
 import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
-import { ModelError, type ChatChunk, type ChatRequest, type ChatResult } from './port.js';
+import {
+  ModelError,
+  type ChatChunk,
+  type ChatRequest,
+  type ChatResult,
+  type ModelErrorCode,
+} from './port.js';
 
 export interface EndpointConfig {
   baseURL: string;
@@ -43,6 +50,7 @@ export interface BuiltInApi {
   kind: string;
   family: string;
   modelOptions: z.ZodObject;
+  units?: PriceUnit[];
   /** The API a model binds for this kind when it names none and its connection offers only this family. */
   default?: boolean;
 }
@@ -54,19 +62,47 @@ export interface ModelAdapter<M = unknown> {
   connect(endpoint: EndpointConfig): ModelConnection<M>;
 }
 
+const providerFailure = (status: number | undefined, body: string | undefined) =>
+  status === undefined
+    ? undefined
+    : { status, ...(body ? { body: body.slice(0, providerBodyLength) } : {}) };
+
 export const errorFromStatus = (
   status: number | undefined,
   message: string,
   providerCode?: string,
+  body?: string,
 ): ModelError => {
-  if (status === 429) return new ModelError('rate_limited', 'the model is rate limited');
+  const provider = providerFailure(status, body);
+  if (status === 429) return new ModelError('rate_limited', 'the model is rate limited', provider);
   if (status === 401 || status === 403)
-    return new ModelError('unauthorized', 'the model refused the credentials');
+    return new ModelError('unauthorized', 'the model refused the credentials', provider);
   if (providerCode === 'content_filter')
-    return new ModelError('content_filtered', 'the model provider filtered the content');
+    return new ModelError('content_filtered', 'the model provider filtered the content', provider);
   if (status !== undefined && status >= 400 && status < 500)
-    return new ModelError('bad_request', message);
-  return new ModelError('unavailable', 'the model is unavailable');
+    return new ModelError('bad_request', message, provider);
+  return new ModelError('unavailable', 'the model is unavailable', provider);
+};
+
+const errorCodeOfKind: Record<string, ModelErrorCode> = {
+  invalid: 'bad_request',
+  unavailable: 'unavailable',
+  'rate-limited': 'rate_limited',
+  refused: 'refused',
+  processor: 'refused',
+};
+
+/** The model error for a descriptor call: the error kind the descriptor maps, else the status. */
+export const describedError = (
+  status: number | undefined,
+  message: string,
+  kind?: string,
+  body?: string,
+): ModelError => {
+  const code = kind ? errorCodeOfKind[kind] : undefined;
+  return code
+    ? new ModelError(code, message, providerFailure(status, body))
+    : errorFromStatus(status, message, undefined, body);
 };
 
 export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/kernel';

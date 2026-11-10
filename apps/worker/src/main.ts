@@ -34,6 +34,7 @@ import {
   InMemoryTriggerRuns,
   monthlyQuotaGate,
   recordTriggerRuns,
+  scheduleProviderObjectSweep,
   scheduleRetention,
   triggerId,
   lifecycleBlock,
@@ -51,7 +52,7 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
-import { knowledgeListingOf } from '@genai/ingest';
+import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
@@ -88,10 +89,11 @@ import {
 } from './knowledge-binding.js';
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
-import { knowledgeWork } from './knowledge-handlers.js';
+import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
 import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
+import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
@@ -136,7 +138,11 @@ const db = databaseSource
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
 const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
-const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'worker') : undefined;
+// Read at start, so a bad value stops the worker before it takes a job.
+const indexConcurrency = indexConcurrencyOf(process.env);
+const knowledgeServer = knowledgeSource
+  ? openKnowledgePools({ ...knowledgeSource, max: knowledgePoolSizeOf(indexConcurrency) }, 'worker')
+  : undefined;
 const knowledgeWriter = knowledgeServer?.pools.writer;
 // Set once the runtime exists: filter indexes skipped while unbound are followed when the binding is fixed.
 let followKnowledge = () => {};
@@ -268,6 +274,8 @@ interface SwitchSpec {
   generation: string;
   embedding?: DatasetConfig['embedding'];
   options?: Record<string, unknown>;
+  /** A copy's naming and named documents, decided at its start (#366). */
+  copy?: { ids?: CopyIds; documents?: string[] };
 }
 const openSwitchStates = ['running', 'failed', 'comparing', 'ready', 'activating'];
 /** The dataset at a switch's endpoint, filling the switch's generation (ADR 0025). */
@@ -309,7 +317,7 @@ const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
       server: knowledgeHeavyWork(knowledgeServer.pools.owner),
       queue: {
         send: (queue, data, options) => openedKnowledge().send(queue, data, options),
-        work: (queue, handler) => openedKnowledge().work(queue, handler),
+        work: (queue, handler, options) => openedKnowledge().work(queue, handler, options),
         retime: (queues, startAfter) => openedKnowledge().retime(queues, startAfter),
         schedule: (queue, cron, data, options) =>
           openedKnowledge().schedule(queue, cron, data, options),
@@ -333,9 +341,12 @@ const knowledgeRunRecords = db
       }),
     )
   : undefined;
+const knowledgeProgress = runProgress(log);
 const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
+        indexConcurrency,
+        progress: knowledgeProgress,
         records: knowledgeRecordsOf(knowledgeWriter),
         knowledge: {
           send: (queue, data, options) => openedKnowledge().send(queue, data, options),
@@ -393,6 +404,39 @@ const knowledgeHandlers =
             scope,
             signal,
           ),
+        copyListingOf: async (run, signal) => {
+          const spec = await switchOfRun(run);
+          if (!spec || spec.dataset !== run.dataset)
+            throw new Error(
+              `the engine switch ${run.engineSwitch} of dataset ${run.dataset} is gone`,
+            );
+          const scope = executionScope(run.dataset);
+          const tenant = scope === 'platform' ? platformTenant : scope;
+          // The catalog still names the engine the dataset is copied from, until the switch publishes.
+          const exported = runtimeFor('read the catalog').knowledge.open(
+            { kind: 'dataset', id: run.dataset, tenant },
+            {
+              tenant,
+              principal: {
+                kind: 'agency-system',
+                issuer: 'platform',
+                subject: 'engine-switch',
+                tenant,
+              },
+              task: `ingestion:${run.id}`,
+              signal,
+              meter: async () => undefined,
+            },
+          ).export;
+          const { list, document } = exported ?? {};
+          if (!list || !document)
+            throw new Error(`the engine of dataset ${run.dataset} cannot hand over its documents`);
+          return copyListing({
+            source: { list, document },
+            ...(spec.copy?.ids ? { ids: spec.copy.ids } : {}),
+            ...(spec.copy?.documents ? { documents: spec.copy.documents } : {}),
+          });
+        },
         embedder: (dataset, ctx) => {
           const runtime = runtimeFor('embed');
           const residency = runtime.residencyOf(dataset.id);
@@ -683,7 +727,13 @@ const worker = createWorker({
   ...(lease ? { active: () => lease.tryAcquire() } : {}),
   locked: lockdown,
 });
-log('worker started', { blobDir, ...(await worker.sync()) });
+log('worker started', {
+  version: process.env.APP_VERSION ?? 'dev',
+  blobDir,
+  knowledgeIndexConcurrency: indexConcurrency,
+  ...(knowledgeServer ? { knowledgePoolSize: knowledgePoolSizeOf(indexConcurrency) } : {}),
+  ...(await worker.sync()),
+});
 const following = followPublished({
   sync: async () => {
     const synced = await worker.sync();
@@ -735,6 +785,30 @@ const retention = db
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
+const sweepLease = db
+  ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
+  : undefined;
+const providerObjectSweep = db
+  ? scheduleProviderObjectSweep({
+      store: db.providerObjects,
+      remove: (record) => runtime.models.removeProviderObject(record),
+      report: (record, reason) =>
+        db.adminRecords.appendAudit({
+          task: record.run,
+          tenant: record.tenant,
+          action: 'platform.provider-object.incident',
+          actor: 'platform',
+          at: new Date().toISOString(),
+          outcome: 'rejected',
+          target: `${record.connection}/${record.objectId}`,
+          reason: `${record.descriptor} left ${record.objectId} at ${record.connection} and it could not be deleted: ${reason}`,
+        }),
+      ...(sweepLease ? { active: () => sweepLease.tryAcquire() } : {}),
+      onRun: (run) => log('provider objects swept', { ...run }),
+      onError: (error) => log('provider object sweep failed', { error: String(error) }),
+    })
+  : undefined;
+
 // Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
 const knowledgeRunsLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
@@ -771,6 +845,8 @@ const reconcilePass = async (
         )
       )?.find((entry) => entry.version === run.pipelineVersion)?.spec as
         { maxDocumentFailures?: number } | undefined;
+      // A copy has no pipeline: it stops after 1 % of Kudos's documents have failed.
+      if (run.pipeline === copyOwner) return 100;
       return spec?.maxDocumentFailures ?? 10;
     },
   });
@@ -793,7 +869,9 @@ const knowledgeReconciler = knowledgeRunRecords
   : undefined;
 
 const stop = () => {
+  knowledgeProgress.stop();
   retention?.stop();
+  providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);
   stopFollowingChanges?.();
@@ -809,6 +887,7 @@ const stop = () => {
     await db?.close();
     await lease?.release();
     await retentionLease?.release();
+    await sweepLease?.release();
     await knowledgeRunsLease?.release();
     await db?.runtimePool.end();
     await db?.pool.end();

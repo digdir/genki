@@ -22,7 +22,7 @@ describe('skills in English', () => {
   it('explains why a publishing requirement is not met', () => {
     const gate = { kind: 'test_run_on_draft', passed: false, reason: 'stale' } as SkillGate;
     expect(gateLabel(t, gate, 0.8)).toBe('The test set has been run on the draft');
-    expect(gateWhy(t, gate)).toBe('The draft has changed since the last run.');
+    expect(gateWhy(t, gate)).toBe('The draft or the judge has changed since the last run.');
   });
 
   it('renders the version list', () => {

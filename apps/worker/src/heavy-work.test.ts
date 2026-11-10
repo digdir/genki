@@ -60,6 +60,7 @@ interface Sent {
 const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
   const sent: Sent[] = [];
   const worked: string[] = [];
+  const concurrency: Record<string, number | undefined> = {};
   const stopped: string[] = [];
   const retimed: { queues: string[]; startAfter: Date }[] = [];
   const scheduled: { queue: string; cron: string; tz: string }[] = [];
@@ -74,8 +75,9 @@ const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
         });
         return 'job';
       },
-      work: async (queue: QueueDefinition) => {
+      work: async (queue: QueueDefinition, _handler, options) => {
         worked.push(queue.name);
+        concurrency[queue.name] = options?.concurrency;
         return async () => {
           stopped.push(queue.name);
         };
@@ -95,7 +97,7 @@ const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
     log: () => undefined,
     ...overrides,
   };
-  return { deps: d, sent, worked, stopped, retimed, scheduled };
+  return { deps: d, sent, worked, concurrency, stopped, retimed, scheduled };
 };
 
 const job = <T extends JobData>(queue: QueueDefinition<T>, data: T): Job<T> => ({
@@ -169,6 +171,16 @@ describe('heavy work waits for the night window', () => {
     });
     await window.tick();
     expect(t.worked).toEqual(['knowledge.build', 'knowledge.fill']);
+  });
+
+  it('fill jobs are worked in the window as many at a time as their work asks', async () => {
+    const t = deps({ window: () => 'always' });
+    const window = heavyWindow(t.deps, {
+      build: noop(knowledgeBuildQueue),
+      fill: queueWork(knowledgeFillQueue, async () => undefined, { concurrency: 8 }),
+    });
+    await window.tick();
+    expect(t.concurrency).toEqual({ 'knowledge.build': undefined, 'knowledge.fill': 8 });
   });
 
   it('a change of the night window moves waiting heavy jobs to its next start', async () => {

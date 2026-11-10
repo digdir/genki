@@ -391,13 +391,12 @@ describe('Prøveområde', () => {
       input: { text: 'Hva sier evalueringene om digital veiledning?' },
     });
     const [first] = screen.getAllByRole('article');
-    expect(
-      within(first as HTMLElement)
-        .getByText(/^Evaluering av digital veiledning i Testetaten \(2023\)/)
-        .closest('li')?.textContent,
-    ).toBe(
-      'Evaluering av digital veiledning i Testetaten (2023) · Kudos-rapporter, side 12 [1] [2] [3]',
-    );
+    const sources = within(first as HTMLElement).getByRole('list', { name: 'Kilder' });
+    const sourceItem = within(sources)
+      .getByText('Evaluering av digital veiledning i Testetaten (2023)')
+      .closest('li');
+    expect(sourceItem?.textContent).toBe('Evaluering av digital veiledning i Testetaten (2023)');
+    expect(sourceItem?.value).toBe(1);
     expect(within(first as HTMLElement).getByText('Norge')).toBeTruthy();
 
     const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle' });
@@ -461,24 +460,81 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
   });
 
-  it('says what is missing when the API refuses the setup, not that the model was silent', async () => {
+  it('The portal shows a 422 setup refusal as a refusal naming the part of the setup, not as a model that did not answer', async () => {
     await openPage({
-      invalidSetup: [
-        {
-          path: 'setup.spec.purpose',
-          message: 'Too small: expected string to have >=1 characters',
-        },
-      ],
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          {
+            path: 'setup.spec.knowledge.datasets[0].dataset',
+            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+          },
+        ],
+      },
     });
     askSample('Hva sier evalueringene om digital veiledning?');
 
     expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
     expect(
       screen.getByText(
-        /^Oppsettet er ikke klart til å prøves ennå\. Formål og målgruppe: Må fylles ut\. Fyll ut/,
+        /^Kjøringen ble avvist: noe i delen «Kunnskap» passer ikke med dette oppsettet\./,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
+  it('words a model residency refusal in the language of the screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          { path: 'setup.spec.model.primary', message: 'model x runs in global, outside eu' },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/^Kjøringen ble avvist: /)).toBeTruthy();
+    expect(screen.queryByText(/runs in global/)).toBeNull();
+  });
+
+  it('never shows an English validation message on a bokmål screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [{ path: 'setup.spec.model.primary', message: 'model x cannot call tools' }],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: noe i delen «Modell» passer ikke med dette oppsettet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cannot call tools/)).toBeNull();
+  });
+
+  it("compares against a model within the first model's data location", async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'openai/gpt-5', name: 'GPT-5', dataLocation: 'global', status: 'allowed' },
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options, runs });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+      target: { value: 'Hei' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
   });
 
   it('starts on the first service exposed for chat, not the first in the list', async () => {

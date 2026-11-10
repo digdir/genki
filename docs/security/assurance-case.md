@@ -35,7 +35,7 @@ genki aims to keep each organisation's services, data and secrets apart from eve
 | A Digdir operator                              | Reach a tenant's content without a reason                                                                         |
 | A compromised dependency or CI step            | Ship malicious code in the image                                                                                  |
 
-Out of scope, as in [SECURITY.md](../../SECURITY.md): development mode, which is insecure by design; denial of service by volume; and the services genki calls, such as Azure AI Foundry, Altinn and Ansattporten.
+Out of scope, as in [Reporting a vulnerability](README.md#reporting-a-vulnerability): development mode, which is insecure by design; denial of service by volume; and the services genki calls, such as Azure AI Foundry, Altinn and Ansattporten.
 
 ## Trust boundaries
 

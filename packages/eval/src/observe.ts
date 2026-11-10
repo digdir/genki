@@ -3,6 +3,8 @@ import type { SourceRef } from './schema.js';
 
 export interface ObservedSource extends SourceRef {
   url?: string;
+  title?: string;
+  text?: string;
 }
 
 export interface ObservedDecision {
@@ -40,6 +42,8 @@ const asSources = (value: unknown): ObservedSource[] => {
         ...(typeof s.position === 'number' ? { position: s.position } : {}),
         ...(typeof s.page === 'number' ? { page: s.page } : {}),
         ...(typeof s.url === 'string' ? { url: s.url } : {}),
+        ...(typeof s.title === 'string' ? { title: s.title } : {}),
+        ...(typeof s.text === 'string' ? { text: s.text } : {}),
       },
     ];
   });
@@ -60,6 +64,11 @@ export const defaultObserve: Observe = (parts, events) => {
       return e.type === 'kernel.notice' && d?.kind === 'retrieval' ? asSources(d.hits) : [];
     }),
     ...parts.flatMap((p) => asSources(p.meta?.retrieved)),
+    ...parts.flatMap((p) =>
+      p.mime === 'application/vnd.genai.sources+json' && p.body.kind === 'json'
+        ? asSources((p.body.json as { sources?: unknown } | null)?.sources)
+        : [],
+    ),
   ];
   const citations = parts.flatMap((p) => asSources(p.meta?.citations));
   const decisions = events.flatMap((e): ObservedDecision[] => {
@@ -86,8 +95,12 @@ export const defaultObserve: Observe = (parts, events) => {
 };
 
 export const sameSource = (expected: SourceRef, actual: SourceRef) => {
-  if (expected.chunkId !== undefined && actual.chunkId !== undefined)
-    return expected.chunkId === actual.chunkId;
+  if (expected.chunkId !== undefined && actual.chunkId !== undefined) {
+    if (expected.chunkId === actual.chunkId) return true;
+    // A copy into another engine gives chunks new ids and keeps their document and position, so a
+    // chunk id that differs is matched by those, never by the document alone.
+    if (expected.position === undefined) return false;
+  }
   if (expected.document === undefined || actual.document === undefined) return false;
   // An index from before the source renumbered names the document by its earlier id.
   if (expected.document !== actual.document && expected.earlierDocument !== actual.document)

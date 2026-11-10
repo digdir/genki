@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { Event, Principal, Task, Usage } from '@genai/contracts';
+import { usageUnits, type Event, type Principal, type Task, type Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
 import { isAdmittedEntraLogin } from '@genai/composition';
 import type { CompiledCapability, DefinitionStore } from '@genai/definitions';
@@ -29,7 +29,7 @@ import {
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, tenantAccess } from '../access.js';
 import { defaultKeyCallsPerMinute } from '../rate-limit.js';
-import type { Admin, AdminHandler, AdminOutcome } from '../admin.js';
+import { actorOf, type Admin, type AdminHandler, type AdminOutcome } from '../admin.js';
 import {
   originOf,
   priced,
@@ -40,6 +40,7 @@ import {
 import { requireRight, rightRefused, type Right } from '../rights.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import { failureOf, failureReason } from '../failures.js';
+import type { Lockdown } from '../lockdown.js';
 import { erasureOf } from '../timeline.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
@@ -55,6 +56,7 @@ export type TenantApiKey = StoredApiKey & {
   prefix?: string;
   lastFour?: string;
   createdAt?: string;
+  createdBy?: string;
   rotatedFrom?: string;
 };
 
@@ -186,6 +188,7 @@ export interface PortalRouteDeps {
   serviceHealth?(tenant: string, service: string): Promise<ServiceHealth | undefined>;
   lifecycle?(tenant: string, service: string): Promise<LifecycleView>;
   names?: { namesOf(actors: string[]): Promise<Map<string, string>> };
+  lockdown?: Lockdown;
   traces?: { enabled: boolean; content: boolean };
   qualityWarnings?(tenant: string): Promise<{ service: string; message: string }[]>;
   drafts?: DraftRunner;
@@ -224,6 +227,40 @@ export const keyView = (key: TenantApiKey) => ({
   expiresAt: key.expiresAt ?? null,
   revokedAt: key.revokedAt ?? null,
 });
+
+export interface KeyViewContext {
+  principal: Principal;
+  tenant: string;
+  names?: { namesOf(actors: string[]): Promise<Map<string, string>> };
+  lockdown?: Lockdown;
+}
+
+export const keyViews = async (keys: TenantApiKey[], context: KeyViewContext) => {
+  const showsCreator = requireRight(context.principal, context.tenant, 'manage-services').ok;
+  const employees = keys.flatMap((k) =>
+    k.createdBy?.startsWith('employee:') ? [k.createdBy] : [],
+  );
+  const names =
+    showsCreator && employees.length > 0 ? await context.names?.namesOf(employees) : undefined;
+  const lockdown = context.lockdown;
+  return keys
+    .map((key) => {
+      const name = key.createdBy && names?.get(key.createdBy);
+      return {
+        ...keyView(key),
+        ...(showsCreator
+          ? { createdBy: key.createdBy ?? null, ...(name ? { createdByName: name } : {}) }
+          : {}),
+        ...(lockdown
+          ? {
+              modelsInLockdown:
+                key.admittedInLockdown === true || lockdown.configuredKeys.has(key.digest),
+            }
+          : {}),
+      };
+    })
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+};
 
 const optional = <K extends string>(key: K, value: string | undefined) =>
   (value === undefined ? {} : { [key]: value }) as Partial<Record<K, string>>;
@@ -270,6 +307,7 @@ export const portalAdminHandlers = (deps: {
       ...(typeof input.lastFour === 'string' ? { lastFour: input.lastFour } : {}),
       ...(typeof input.createdAt === 'string' ? { createdAt: input.createdAt } : {}),
       ...(typeof input.expiresAt === 'string' ? { expiresAt: input.expiresAt } : {}),
+      createdBy: actorOf(principal.actor ?? principal),
       ...(isAdmittedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
     };
     await deps.apiKeys.add(key);
@@ -316,6 +354,7 @@ export const portalAdminHandlers = (deps: {
       id: String(input.newId),
       digest: input.digest,
       rotatedFrom: old.id,
+      createdBy: actorOf(principal.actor ?? principal),
       ...(typeof input.prefix === 'string' ? { prefix: input.prefix } : {}),
       ...(typeof input.lastFour === 'string' ? { lastFour: input.lastFour } : {}),
       ...(typeof input.createdAt === 'string' ? { createdAt: input.createdAt } : {}),
@@ -351,6 +390,8 @@ interface Tally {
   requests: number;
   pricedMicroNok: number;
   unpricedTokens: number;
+  units: Record<string, number>;
+  unpricedUnits: Record<string, number>;
 }
 
 const empty = (): Tally => ({
@@ -359,7 +400,20 @@ const empty = (): Tally => ({
   requests: 0,
   pricedMicroNok: 0,
   unpricedTokens: 0,
+  units: {},
+  unpricedUnits: {},
 });
+
+const countedUnits = new Set(['input-token', 'output-token', 'cached-input-token', 'request']);
+
+const unitsOf = (usage: Usage) =>
+  Object.fromEntries(Object.entries(usageUnits(usage)).filter(([unit]) => !countedUnits.has(unit)));
+
+const sumUnits = (a: Record<string, number>, b: Record<string, number>) => {
+  const sum = { ...a };
+  for (const [unit, count] of Object.entries(b)) sum[unit] = (sum[unit] ?? 0) + count;
+  return sum;
+};
 
 const tokensOf = (u: Usage) => (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
 
@@ -371,6 +425,8 @@ export const tallyOf = (usage: Usage, price?: ModelPrice): Tally => {
     requests: usage.requests ?? 0,
     pricedMicroNok: known ? priced(usage, price) : 0,
     unpricedTokens: known ? 0 : tokensOf(usage),
+    units: unitsOf(usage),
+    unpricedUnits: usage.costMicroNok === undefined ? unitsOf(usage) : {},
   };
 };
 
@@ -380,6 +436,8 @@ const minus = (t: Tally): Tally => ({
   requests: 0,
   pricedMicroNok: -t.pricedMicroNok,
   unpricedTokens: -t.unpricedTokens,
+  units: {},
+  unpricedUnits: {},
 });
 
 export const gatewaySource = 'gateway';
@@ -395,6 +453,8 @@ const gatewayTally = (row: AssignedUsageRow, rates: readonly CurrencyRate[]) => 
       requests: row.requests,
       pricedMicroNok: converted?.micros ?? 0,
       unpricedTokens: converted && !nothingPriced ? 0 : tokens,
+      units: {},
+      unpricedUnits: {},
     },
     rate: converted?.rate,
   };
@@ -414,6 +474,8 @@ const add = (a: Tally, b: Tally): Tally => ({
   requests: a.requests + b.requests,
   pricedMicroNok: a.pricedMicroNok + b.pricedMicroNok,
   unpricedTokens: a.unpricedTokens + b.unpricedTokens,
+  units: sumUnits(a.units, b.units),
+  unpricedUnits: sumUnits(a.unpricedUnits, b.unpricedUnits),
 });
 
 export const usageView = (t: Tally) => {
@@ -423,8 +485,10 @@ export const usageView = (t: Tally) => {
     outputTokens: t.outputTokens,
     requests: t.requests,
     costMicroNok: tokens > 0 && t.unpricedTokens >= tokens ? null : t.pricedMicroNok,
-    priced: t.unpricedTokens === 0,
+    priced: t.unpricedTokens === 0 && Object.keys(t.unpricedUnits).length === 0,
     unpricedTokens: t.unpricedTokens,
+    units: t.units,
+    unpricedUnits: t.unpricedUnits,
   };
 };
 
@@ -1103,9 +1167,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         },
       ];
     });
-    const keys = (await deps.apiKeys.list(g.tenant))
-      .map(keyView)
-      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    const keys = await keyViews(await deps.apiKeys.list(g.tenant), {
+      principal: g.principal,
+      tenant: g.tenant,
+      ...(deps.names ? { names: deps.names } : {}),
+      ...(deps.lockdown ? { lockdown: deps.lockdown } : {}),
+    });
     return c.json({ services, keys });
   });
 

@@ -67,9 +67,9 @@ export const playgroundUi = {
     modelSilentWithin:
       '{model} svarte ikke innen 60 sekunder. Det er ikke noe galt med oppsettet. Prøv igjen om litt. {notStored}',
     refused: '{model} kan ikke brukes i dette oppsettet.',
+    invalidSetup: 'Kjøringen ble avvist: {reason} {notStored}',
+    setupNotRunnable: 'noe i delen «{section}» passer ikke med dette oppsettet.',
     quotaUsedUp: 'Kvoten for måneden er brukt opp. {notStored}',
-    setupNotReady:
-      'Oppsettet er ikke klart til å prøves ennå. {problems} Fyll ut det som mangler i Oppsett, og prøv igjen. {notStored}',
     setupLabel: 'Oppsett {key}',
     setupSessionNote: 'Endringer her påvirker ikke noe som er publisert.',
     endCompare: 'Avslutt sammenligning',
@@ -110,6 +110,7 @@ export const playgroundUi = {
     timelineEmpty: 'Her ser du søk, kilder, modellkall og tokens når du sender et spørsmål.',
     sourceCite: 'Kilde {n}: {title}',
     detailChunk: 'Tekstbit',
+    detailVersion: 'Versjon',
     detailHeaders: 'Overskrifter',
     detailDocument: 'Dokument',
     detailPosition: 'Plassering',
@@ -127,7 +128,10 @@ export const playgroundUi = {
     sources: 'Kilder',
     sourceDetails: 'Detaljer om {title}',
     excerpt: 'Utdrag',
-    sourceVersion: 'versjon {version}',
+    sourceExcerpt: 'Utdrag fra {title}',
+    sourceText: 'Tekst fra {title}',
+    sourcePublished: 'Publisert {date}',
+    untitledSource: 'Kilde uten tittel',
     searchNote: 'Søkemerknad:',
     searchNoteText: {
       one: '{count} dokument ble hoppet over i søket. Se kjøringen for hvilke og hvorfor.',

@@ -11,6 +11,7 @@ import {
   type ChatResult,
   type ModelPort,
   type ToolSpec,
+  normaliseCitationMarkers,
   untrustedData,
   untrustedDataNote,
 } from '@genai/port-model';
@@ -824,6 +825,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
       }
     }
+
+    if (!clarification && answer !== undefined) answer = normaliseCitationMarkers(answer);
 
     if (
       !clarification &&

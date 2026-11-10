@@ -42,7 +42,6 @@ const router = (
   url: string,
   options: {
     auth?: Record<string, unknown>;
-    endpointOptions?: Record<string, unknown>;
     modelOptions?: Record<string, unknown>;
     secrets?: SecretResolver;
   } = {},
@@ -51,10 +50,9 @@ const router = (
     catalog: {
       endpoints: {
         foundry: {
-          protocol: 'openai-embeddings',
-          baseURL: `${url}/openai`,
+          baseURL: url,
           auth: options.auth ?? { kind: 'api-key', header: 'api-key', secret: 'secret://env/key' },
-          options: options.endpointOptions ?? { apiVersion: '2024-10-21' },
+          families: { openai: '/openai' },
         },
       },
       models: [
@@ -63,7 +61,8 @@ const router = (
           endpoint: 'foundry',
           deployment: 'text-embedding-3-small-prod',
           residency: 'eu',
-          dimensions: 3,
+          apis: { embed: 'openai/embeddings@1' },
+          embed: { dimensions: 3 },
           options: options.modelOptions ?? {},
         },
       ],
@@ -76,13 +75,13 @@ const router = (
 
 const ref = { kind: 'embedder', id: 'foundry/embed-small' };
 
-describe('openai-embeddings adapter', () => {
-  it('the openai adapter sends deployment, input and api-version and parses vectors and usage', async () => {
+describe('the openai/embeddings@1 adapter', () => {
+  it('the openai adapter sends deployment and input to the family base and parses vectors and usage', async () => {
     const { url, seen } = await fake((body) => ({ status: 200, json: embeddings(body) }));
 
     const result = await router(url).open(ref, testContext().ctx).embed(['skatt', 'barnehage']);
 
-    expect(seen[0]?.path).toBe('/openai/embeddings?api-version=2024-10-21');
+    expect(seen[0]?.path).toBe('/openai/embeddings');
     expect(seen[0]?.headers['api-key']).toBe('test-key');
     expect(seen[0]?.headers.authorization).toBeUndefined();
     expect(seen[0]?.body).toEqual({
@@ -99,14 +98,13 @@ describe('openai-embeddings adapter', () => {
     });
   });
 
-  it('leaves out api-version unless configured, and sends dimensions only when asked', async () => {
+  it('sends dimensions only when the model asks for it', async () => {
     const { url, seen } = await fake((body) => ({ status: 200, json: embeddings(body) }));
 
-    await router(url, { endpointOptions: {}, modelOptions: { sendDimensions: true } })
+    await router(url, { modelOptions: { sendDimensions: true } })
       .open(ref, testContext().ctx)
       .embed(['a']);
 
-    expect(seen[0]?.path).toBe('/openai/embeddings');
     expect(seen[0]?.body).toMatchObject({ dimensions: 3 });
   });
 

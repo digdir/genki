@@ -70,7 +70,10 @@ const setup = (
       headers: Object.fromEntries(new Headers(init?.headers)),
       body: JSON.parse(String(init?.body)),
     });
-    return new Response(JSON.stringify(reply), { status });
+    return new Response(JSON.stringify(reply), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
   };
   const ctx: PortContext = {
     tenant: '999888777',

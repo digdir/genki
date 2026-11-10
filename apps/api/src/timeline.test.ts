@@ -149,6 +149,31 @@ describe('a failed run in the timeline', () => {
     ]);
   });
 
+  it("shows the provider's status as a note when its error body was empty", () => {
+    const provided = [
+      ...events.slice(0, 2),
+      at(
+        3,
+        'kernel.error',
+        {
+          code: 'strategy_error',
+          message: 'step les failed: the model is unavailable',
+          provider: { status: 502 },
+        },
+        'audit',
+      ),
+      at(3, 'kernel.error', { code: 'strategy_error', message: 'the service failed' }),
+    ];
+    const timeline = toTimeline(failed, provided, new Date('2026-10-07T12:32:04.000Z'), undefined, {
+      details: true,
+    });
+
+    expect(timeline.steps.at(-1)?.blocks).toEqual([
+      { kind: 'quote', text: 'step les failed: the model is unavailable' },
+      { kind: 'note', text: 'Leverandøren svarte 502' },
+    ]);
+  });
+
   it('gives others the reason without the error text', () => {
     const timeline = toTimeline(failed, events, new Date('2026-10-07T12:32:04.000Z'));
 
@@ -215,7 +240,8 @@ const usageEvent = (seq: number, model: string, usage: Record<string, number>) =
 
 describe('run timeline cost', () => {
   const at = new Date('2026-10-07T12:32:04.000Z');
-  const used = (usage: Record<string, number>) => ({ ...task, usage }) as Task;
+  const used = (usage: Record<string, number | Record<string, number>>) =>
+    ({ ...task, usage }) as Task;
 
   it('adds up what each call cost, below one øre too', () => {
     const timeline = toTimeline(
@@ -254,6 +280,32 @@ describe('run timeline cost', () => {
 
     expect(timeline).toMatchObject({ costMicroNok: null, priced: false });
     expect(timeline.stats).toMatchObject({ unpricedTokens: 39_104 });
+  });
+
+  it('shows open units of a run, and marks a unit without a price as not priced', () => {
+    const timeline = toTimeline(
+      used({ units: { page: 4 }, audioSeconds: 12 }),
+      [usageEvent(1, 'lab/ocr', { units: { page: 4 }, audioSeconds: 12 } as never)],
+      at,
+    );
+
+    expect(timeline).toMatchObject({
+      priced: false,
+      units: { page: 4, 'audio-second': 12 },
+      unpricedUnits: { page: 4, 'audio-second': 12 },
+    });
+    expect(timeline.stats).toMatchObject({ units: { page: 4 }, unpricedUnits: { page: 4 } });
+  });
+
+  it('shows open units that all have a price as priced', () => {
+    const timeline = toTimeline(
+      used({ units: { page: 4 }, costMicroNok: 40_000 }),
+      [usageEvent(1, 'lab/ocr', { units: { page: 4 }, costMicroNok: 40_000 } as never)],
+      at,
+    );
+
+    expect(timeline).toMatchObject({ priced: true, units: { page: 4 } });
+    expect(timeline).not.toHaveProperty('unpricedUnits');
   });
 
   it('keeps the priced part of a run that also used an unpriced model', () => {

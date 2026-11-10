@@ -11,23 +11,36 @@ summary: A new kind of model API as a reviewed descriptor file and recorded fixt
 description: Descriptors are versioned YAML files, data and never code, that name the endpoint path,
   the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's
   closed vocabulary, a declarative mapping between them, the usage mapping and the stream events
-  (ADR 0047). One executor turns a descriptor into a gated call. The contract suite operation@1
+  (ADR 0047). A descriptor may be a list of steps with bound values, polling, finally steps, several
+  body encodings, classified query parameters and headers, open usage units, error mapping and
+  answer checks, streaming, provider-side objects in a ledger, pinned WebAssembly modules and
+  live WebSocket sessions (ADR 0049). One executor turns a descriptor into a gated call. The contract suite operation@1
   proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide
   through a typed descriptor instead of the hand-written adapter; operators try descriptors in review
   through the raw tier, in test only.
 responsibilities:
   - Load and validate descriptors, refusing URLs, credential headers and kept-out APIs
   - Map typed input to the wire request and the wire answer back, without code
+  - Run steps in order, bind classified values between them, poll, clean up and map errors and units
+  - Encode json, multipart, form, binary, text and ndjson bodies and refuse an answer of another content type
   - Run a descriptor call through the gate with the endpoint's credential and egress guard
+  - Stream answers and relay live sessions through the gate, masking and restoring in both directions
+  - Record objects kept at the provider and delete them, and run pinned WebAssembly modules with fixed limits
   - Prove each descriptor against recorded fixtures (operation@1)
   - Show an observer the masked wire exchange of a call, so a raw-tier try can become a fixture
 files:
   - packages/operations/src/descriptor.ts
   - packages/operations/src/shape.ts
   - packages/operations/src/mapping.ts
+  - packages/operations/src/encoding.ts
   - packages/operations/src/executor.ts
   - packages/operations/src/registry.ts
   - packages/operations/src/contract.ts
+  - packages/operations/src/module.ts
+  - packages/operations/src/session.ts
+  - packages/operations/src/websocket.ts
+  - packages/operations/src/live-session.ts
+  - packages/operations/src/session-contract.ts
 input: A descriptor, a catalogue endpoint and typed input
 output: The typed result, usage and the count of dropped fields
 replaces: []

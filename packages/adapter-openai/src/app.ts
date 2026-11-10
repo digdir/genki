@@ -36,7 +36,9 @@ import {
 import {
   documentLimits,
   documentsField,
+  mediaLimits,
   readDocuments,
+  readMedia,
   type RuntimeDocumentStore,
 } from './documents.js';
 import { tableMarker } from './table.js';
@@ -84,7 +86,9 @@ export interface ModelEntry {
   labels?: { nb: string; en: string };
   chat?: boolean;
   batch?: boolean;
+  live?: boolean;
   documents?: string[];
+  media?: string[];
 }
 
 export type ResolveErrorCode =
@@ -531,6 +535,15 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
                 },
               }
             : {}),
+          ...(e.media?.length && options.documents
+            ? {
+                _media: {
+                  accepts: e.media,
+                  max_bytes: mediaLimits.maxBytes,
+                  max_count: mediaLimits.maxCount,
+                },
+              }
+            : {}),
           ...(e.status
             ? { status: e.status, ...(e.statusReason ? { status_reason: e.statusReason } : {}) }
             : {}),
@@ -588,6 +601,37 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     });
   });
 
+  app.get('/v1/sessions', async (c) => {
+    if (c.req.header('upgrade')?.toLowerCase() !== 'websocket')
+      return fail(c, 'upgrade_required', 'A live session is opened as a WebSocket upgrade.', 426);
+    const principal = c.get('principal');
+    const url = new URL(c.req.url);
+    const model = url.searchParams.get('model') ?? '';
+    if (model.trim() === '') return fail(c, 'missing_model', '`model` is required.', 400);
+    const pinned = readPin(c.req.header(versionHeader), {});
+    if ('error' in pinned) return fail(c, 'invalid_version', pinned.error, 400);
+    const resolved = await resolver.resolve(principal, model, pinned);
+    if (!resolved.ok)
+      return fail(c, resolved.code, resolved.message, statusFor[resolved.code] ?? 500);
+    if (!resolved.entry.live)
+      return fail(c, 'not_a_live_service', 'This service is not a live session.', 400);
+    const data: Record<string, string> = {};
+    for (const [key, value] of url.searchParams) if (key !== 'model') data[key] = value;
+    try {
+      const run = await kernel.invoke(
+        principal,
+        resolved.entry.capability,
+        { data, parts: [] },
+        { entryPoint: 'openai' },
+      );
+      run.result.catch(() => undefined);
+      return c.json({ task: run.task }, 200, { 'genai-session': run.task });
+    } catch (error) {
+      const e = invokeError(error);
+      return fail(c, e.code, e.message, e.status);
+    }
+  });
+
   app.post('/v1/chat/completions', async (c) => {
     const principal = c.get('principal');
     let body: Record<string, unknown>;
@@ -606,6 +650,8 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     const resolved = await resolver.resolve(principal, model, pinned);
     if (!resolved.ok)
       return fail(c, resolved.code, resolved.message, statusFor[resolved.code] ?? 500);
+    if (resolved.entry.live)
+      return fail(c, 'live_only', 'This service is a live session: open GET /v1/sessions.', 400);
     const formOnly = Boolean(resolved.entry.inputFields?.length);
     if (messages.length === 0 && !formOnly)
       return fail(c, 'missing_messages', '`messages` must be non-empty.', 400);
@@ -688,14 +734,22 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       query = checked.query;
       values = checked.values;
     }
-    const read =
+    const sentDocuments =
       body[documentsField] === undefined
         ? []
         : readDocuments(
             body[documentsField],
             options.documents ? resolved.entry.documents : undefined,
           );
-    if (!Array.isArray(read)) return fail(c, read.code, read.message, read.status);
+    if (!Array.isArray(sentDocuments))
+      return fail(c, sentDocuments.code, sentDocuments.message, sentDocuments.status);
+    const sentMedia = readMedia(
+      messages.findLast((m) => m.role === 'user')?.content,
+      options.documents ? resolved.entry.media : undefined,
+    );
+    if (!Array.isArray(sentMedia))
+      return fail(c, sentMedia.code, sentMedia.message, sentMedia.status);
+    const read = [...sentDocuments, ...sentMedia];
     if (read.length && options.documents && !principal.tenant)
       return fail(c, 'documents_not_accepted', 'Documents need an organisation.', 400);
     const attachments = read.map((d) => d.name);

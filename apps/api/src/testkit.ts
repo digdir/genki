@@ -21,6 +21,8 @@ import {
   type createTokenVerifier,
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
+import type { BlobStore } from '@genai/port-blob';
+import type { ProcessorRecordCheck } from '@genai/port-model';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
@@ -34,6 +36,7 @@ import {
   maskinportenClientsModule,
 } from './maskinporten-clients.js';
 import { onboardingModule } from './onboarding.js';
+import { kernelTaskReader } from './timeline.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 
 export const digdir = '991825827';
@@ -241,6 +244,9 @@ export interface BootOptions {
   egress?: EgressOptions;
   log?: EventLog;
   mediaOutput?: MediaOutputConfig;
+  processorRecords?: ProcessorRecordCheck;
+  blobStore?: BlobStore;
+  fakeKey?: string;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -261,7 +267,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     },
     settings,
     prices: {},
-    secrets: envSecrets({ FAKE_KEY: 'k' }),
+    secrets: envSecrets({ FAKE_KEY: options.fakeKey ?? 'k' }),
     definitions: (p, skill, flow) => new InMemoryDefinitionStore(p, undefined, skill, flow),
     configurables: { store: configEntries, scheduleIntervalMs: 0 },
     ...(options.triggerRuns ? { triggerRuns: options.triggerRuns } : {}),
@@ -271,6 +277,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.egress ? { egress: options.egress } : {}),
     ...(options.log ? { log: options.log } : {}),
     ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
+    ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
+    ...(options.blobStore ? { blobStore: options.blobStore } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,
@@ -303,6 +311,11 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      tasks: kernelTaskReader(platform.kernel, {
+        kind: 'operator',
+        issuer: 'platform',
+        subject: 'task-reader',
+      }),
     },
   });
   platform.mount(app, admin);

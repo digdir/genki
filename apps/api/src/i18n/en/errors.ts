@@ -105,9 +105,19 @@ export const catalogErrors = {
   familyAndBase: 'name at least one API family and its base',
   noApiFamily: 'no API in the {family} family; one of {knownFamilies}',
   familyBase: 'a path under baseURL, or an HTTPS address without credentials',
+  allowedHostList: 'a list of at most 20 host names, each with an optional port',
   discoveryRules: 'a list of discovery rules',
   apiKeyOrBearer: 'api-key or bearer',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',
+  namedKeyList: 'at most 4 named keys, each a key name',
+  settingOrKey: 'a name is a setting or a key, not both',
+  settingName: 'a lowercase letter, then letters, digits or _, at most 32 characters',
+  settingValue: 'printable text of at most 256 characters',
+  settingNotSecret: 'a setting is not a secret; name it under keys',
+  settingsCount: 'at most 20 settings',
+  keysCount: 'at most 4 named keys',
+  secretReference: 'must be a secret:// reference',
+  onlyOperatorSets: 'only the operator sets {field}, and only on a model connection',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',
@@ -434,6 +444,8 @@ export const operationErrors = {
   fixedOperation:
     'the operation and the model are fixed values, not filled in while the service runs',
   noOperationDescriptor: 'there is no operation descriptor {id}',
+  mediaInputWithoutConsent:
+    "{id} takes {mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of {mediaType} with a reason",
   descriptorInReview:
     '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
   kindInTest:

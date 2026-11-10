@@ -112,6 +112,8 @@ export const changes = defineNamespace({
   blockSettings: 'endret innstillingene for byggeklossen',
   catalogDelete: 'slettet fra katalogen',
   catalogPublish: 'publiserte i katalogen',
+  providerObjectIncident:
+    'kunne ikke slette et objekt hos leverandøren, og det må slettes for hånd',
   batchRunStart: 'startet en satsvis kjøring',
   batchRunCancel: 'stoppet en satsvis kjøring',
   batchRunRetry: 'kjørte en satsvis kjøring på nytt',
@@ -132,6 +134,7 @@ export const changes = defineNamespace({
   datasetEnrichmentRevert: 'rullet tilbake berikelsen av',
   datasetUpload: 'lastet opp filer til',
   datasetUploadDelete: 'slettet en opplastet fil fra',
+  datasetDelete: 'slettet datasettet',
   defaultSet: 'endret plattformstandarden',
   engineSwitchCancel: 'avbrøt bytte av søkemotor for',
   engineSwitchActivate: 'tok i bruk ny søkemotor for',

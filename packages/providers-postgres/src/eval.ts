@@ -1,4 +1,5 @@
 import {
+  currentFeedback,
   labelFile,
   type CandidateStatus,
   type CandidateStore,
@@ -153,15 +154,14 @@ export class PostgresFeedbackStore implements FeedbackStore {
       const found = await client.query<{ task: string; body: Buffer }>(
         `select task, body from eval_feedback where tenant = $1
            and ($2::text is null or task = $2)
-           and ($3::text is null or rating = $3)
-         order by at desc, seq`,
-        [tenant, filter.task ?? null, filter.rating ?? null],
+         order by at desc, seq desc`,
+        [tenant, filter.task ?? null],
       );
       return found.rows;
     });
     const key = await this.keys.get(tenant, FEEDBACK_SCOPE, false);
     if (!key) return [];
-    return rows.flatMap((row) => {
+    const records = rows.flatMap((row) => {
       try {
         return [
           JSON.parse(open(key, row.body, `feedback:${row.task}`).toString()) as FeedbackRecord,
@@ -170,6 +170,10 @@ export class PostgresFeedbackStore implements FeedbackStore {
         return [];
       }
     });
+    // The latest per task and credential counts, so filter by rating only after that.
+    return currentFeedback(records).filter(
+      (r) => filter.rating === undefined || r.rating === filter.rating,
+    );
   }
 }
 

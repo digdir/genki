@@ -117,6 +117,8 @@ export const changes = {
   blockSettings: 'changed the settings of the building block',
   catalogDelete: 'deleted from the catalogue',
   catalogPublish: 'published to the catalogue',
+  providerObjectIncident:
+    'could not delete an object at the provider; it has to be deleted by hand',
   batchRunStart: 'started a batch run',
   batchRunCancel: 'stopped a batch run',
   batchRunRetry: 'ran a batch run again',
@@ -137,6 +139,7 @@ export const changes = {
   datasetEnrichmentRevert: 'reverted the enrichment of',
   datasetUpload: 'uploaded files to',
   datasetUploadDelete: 'deleted an uploaded file from',
+  datasetDelete: 'deleted the dataset',
   defaultSet: 'changed the platform default',
   engineSwitchCancel: 'cancelled the search engine switch for',
   engineSwitchActivate: 'adopted the new search engine for',

@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { secretRefPattern, withoutTrailingSlashes } from '@genai/kernel';
-import { apiFamilyPattern } from '@genai/operations';
+import { apiFamilyPattern, settingNamePattern } from '@genai/operations';
 import type { ModelAdapter } from './adapter.js';
 import { apiIdPattern, apiRegistry, type ApiRegistry } from './apis.js';
 import { parameterRules } from './parameters.js';
@@ -33,14 +33,59 @@ const discoveryRule = z.strictObject({
   apis: bindings.optional(),
 });
 
-const endpoint = z.strictObject({
-  baseURL: z.url({ protocol: /^https?$/ }),
-  auth,
-  families: z
-    .record(z.string().regex(apiFamilyPattern), familyBase)
-    .refine((f) => Object.keys(f).length > 0, 'a connection offers at least one API family'),
-  discovery: z.array(discoveryRule).default([]),
-});
+export const connectionSettingValue = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
+
+const settingName = z
+  .string()
+  .regex(
+    settingNamePattern,
+    'a lowercase letter, then letters, digits or _, at most 32 characters',
+  );
+
+export const connectionSettings = z
+  .record(
+    settingName,
+    z
+      .string()
+      .regex(connectionSettingValue, 'printable text of at most 256 characters')
+      .refine((v) => !v.startsWith('secret://'), 'a setting is not a secret; name it under keys'),
+  )
+  .refine((s) => Object.keys(s).length <= 20, 'at most 20 settings');
+
+export const connectionKeys = z
+  .record(settingName, secret)
+  .refine((k) => Object.keys(k).length <= 4, 'at most 4 named keys');
+
+export const allowedHostPattern =
+  /^(?![\d.]+(?::\d+)?$)(?=.{1,253}(?::\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\d{1,5})?$/;
+
+const endpoint = z
+  .strictObject({
+    baseURL: z.url({ protocol: /^https?$/ }),
+    auth,
+    families: z
+      .record(z.string().regex(apiFamilyPattern), familyBase)
+      .refine((f) => Object.keys(f).length > 0, 'a connection offers at least one API family'),
+    discovery: z.array(discoveryRule).default([]),
+    allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
+    settings: connectionSettings.optional(),
+    keys: connectionKeys.optional(),
+  })
+  .refine((e) => !Object.keys(e.settings ?? {}).some((name) => Object.hasOwn(e.keys ?? {}, name)), {
+    message: 'a name is a setting or a key, not both',
+    path: ['keys'],
+  });
+
+export const rerankFailureModes = ['degrade', 'fail'] as const;
+
+/** Settings that belong to one operation kind, kept under the kind's name on the model. */
+export const kindSettings = {
+  embed: z.strictObject({
+    dimensions: z.number().int().positive(),
+    maxBatch: z.number().int().positive().optional(),
+  }),
+  rerank: z.strictObject({ onFailure: z.enum(rerankFailureModes).default('degrade') }),
+};
 
 const model = z.strictObject({
   id,
@@ -54,6 +99,8 @@ const model = z.strictObject({
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
+  embed: kindSettings.embed.optional(),
+  rerank: kindSettings.rerank.optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -73,6 +120,17 @@ export type CatalogResult =
 
 const pathOf = (base: (string | number)[], issue: { path: PropertyKey[] }) =>
   [...base, ...issue.path].map(String).join('.');
+
+const messageOf = (issue: z.core.$ZodIssue) =>
+  issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message;
+
+/** The first thing wrong with a value, as a path under `base` and a message that names the rule. */
+export const firstIssue = (error: z.ZodError, base: (string | number)[] = []) => {
+  const issue = error.issues[0];
+  return issue
+    ? { path: pathOf(base, issue), message: messageOf(issue) }
+    : { path: base.map(String).join('.'), message: 'invalid' };
+};
 
 /** The URL a connection serves one family at: its base under `baseURL`, or the base itself when it is a full URL. */
 export const familyURL = (endpoint: Pick<CatalogEndpoint, 'baseURL'>, base: string) =>
@@ -139,7 +197,7 @@ export const parseCatalog = (
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => ({ path: pathOf([], i), message: i.message })),
+      errors: parsed.error.issues.map((i) => ({ path: pathOf([], i), message: messageOf(i) })),
     };
   }
   const apis = registryOf(registry);
@@ -186,6 +244,11 @@ export const parseCatalog = (
       return;
     }
     bindingErrors(`models.${index}.apis`, bound, Object.keys(e.families));
+    if (bound.embed && !m.embed)
+      errors.push({
+        path: `models.${index}.embed`,
+        message: 'an embedding model names its dimensions under embed',
+      });
     const options = modelOptionsSchema(bound, apis).safeParse(m.options);
     if (!options.success) {
       for (const i of options.error.issues)

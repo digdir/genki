@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping. The platform is under development and not in production, so expect things to move. Read the [README](README.md) first, and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Thank you for helping. The platform is under development and not in production, so expect things to move. Read the [README](README.md) first, and follow the [Code of Conduct](https://github.com/digdir/.github/blob/main/CODE_OF_CONDUCT.md). If you work with a coding agent, point it at [AGENTS.md](AGENTS.md).
 
 ## Run it locally
 
@@ -50,6 +50,28 @@ Docker must be running: the Postgres, pgvector and Typesense-writer suites start
 - Fill in the pull request template: what changes, why, how you tested it, and which ADRs, docs or i18n catalogues you touched.
 - `npm run check` must pass before review.
 
+### Risk and undo
+
+The pull request says how risky it is and how to undo it.
+
+- **Low:** everything that does not touch the parts below. Merge when the checks pass and every review thread is answered.
+- **Sensitive:** auth, identity, tenancy, the model gate, personal data handling, migrations, `infra/`, `.github/` or the `Dockerfile`. These also get the security review in [.github/review-security.md](.github/review-security.md), and the maintainers are told in the lab's Slack channel for sensitive changes before the merge. No approval is required.
+- **Undo** says whether a revert is enough, or which data or infra step it needs.
+
+### Automated review
+
+Every pull request from this repository gets one review by a model when it opens, following [REVIEW.md](REVIEW.md) and the procedure in [.claude/skills/review-change/SKILL.md](.claude/skills/review-change/SKILL.md). It never approves, blocks or merges.
+
+- **One summary comment** at the top of the pull request: what it changes, every finding with its status, and a prompt you can give your coding agent to fix the open ones.
+- **One review** with all findings at once, as Important, Nit or Pre-existing, each naming the rule in REVIEW.md it rests on. Most have a suggestion you can commit from the pull request. When the change alters what CI runs, the review reads whatever checks have finished and treats pending ones as unknown, not as missing or failed. It reports a CI wiring problem only when it can show it from the workflow file or a finished run.
+- **After each push**, a cheaper model checks the open findings against the new code. Fixed ones are answered with the commit and resolved, and the summary is updated. A push never brings new findings.
+
+Run the same review before you open the pull request, so the one in CI finds nothing: `/review-change` in Claude Code, or ask another agent to follow that procedure.
+
+Answer every open thread before you merge: fix it, or say why not ("not fixing, because ..."), which marks it dismissed. A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To have new commits reviewed, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
+
+Each review run also uploads `review-run.json` as a workflow artifact: cost, duration, model, the kind of author and the findings, with no names. The review dashboard reads these. A daily workflow also uploads `review-snapshot.json` with the CodeQL alerts and the shadow percent, which the dashboard cannot read with its own token. The repository variable `REVIEW_SHADOW_PERCENT` puts that share of pull requests, chosen by number, in a silent group: the review runs and is recorded but posts nothing, so the dashboard can compare. It is 0 unless set.
+
 ## Who maintains genki
 
 genki is maintained by [Digdir R&D Lab](https://baksia.digdir.no/teams/lab/), the team exploring generative AI in Digdir's products, services and shared solutions. Write access is given through the GitHub team [@digdir/team-ai-lab](https://github.com/orgs/digdir/teams/team-ai-lab), whose members can merge pull requests. Who is in the team is managed there, not in this file.
@@ -60,4 +82,4 @@ genki is maintained by [Digdir R&D Lab](https://baksia.digdir.no/teams/lab/), th
 
 ## Questions
 
-Open an issue for questions, bugs and ideas. For a vulnerability, follow [SECURITY.md](SECURITY.md) and never use a public issue.
+Open an issue for questions, bugs and ideas. For a vulnerability, follow [docs/security](docs/security/README.md#reporting-a-vulnerability) and never use a public issue.

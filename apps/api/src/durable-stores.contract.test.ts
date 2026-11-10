@@ -40,7 +40,12 @@ import {
   type ExecutionStore,
 } from './ingestion.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
-import { InMemoryTenantApiKeys, registerPortalRoutes } from './routes/portal-routes.js';
+import {
+  InMemoryTenantApiKeys,
+  registerPortalRoutes,
+  type TenantApiKeys,
+} from './routes/portal-routes.js';
+import { postgresTenantKeys } from './tenant-keys.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 
 interface Stores {
@@ -50,6 +55,7 @@ interface Stores {
   taskIndex: TaskIndex;
   log: EventLog;
   configEntries: ConfigEntryStore;
+  apiKeys: TenantApiKeys;
 }
 
 interface Backend {
@@ -70,6 +76,7 @@ const memory = (): Backend => {
     taskIndex: tracker,
     log: tracker.log,
     configEntries: new InMemoryConfigEntryStore(),
+    apiKeys: new InMemoryTenantApiKeys(),
   };
   return { name: 'memory', stores: () => stores, reopen: async () => stores };
 };
@@ -93,6 +100,7 @@ const openPostgres = async (): Promise<Stores> => {
     taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
     log: db.log,
     configEntries: db.configEntries,
+    apiKeys: postgresTenantKeys(db.apiKeys),
   };
 };
 
@@ -186,7 +194,7 @@ const portal = (stores: Stores, tenant = ORG_A) => {
     events: (id) => stores.log.read(id, 0, () => false),
     ...(stores.taskIndex.envelopes ? { taskEnvelopes: stores.taskIndex.envelopes } : {}),
     ...(stores.taskIndex.usageEvents ? { usageEvents: stores.taskIndex.usageEvents } : {}),
-    apiKeys: new InMemoryTenantApiKeys(),
+    apiKeys: stores.apiKeys,
     connections: new InMemoryConnections(),
     requirementFor: () => ({ resource: 'urn:altinn:resource:test', action: 'read' }),
   });
@@ -411,10 +419,53 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     expect(body.data.map((t) => [t.id, t.status])).toEqual([[`${name}-a1`, 'completed']]);
   });
 
+  const storeKey = async (id: string, digest: string, createdBy?: string) =>
+    backend()
+      .stores()
+      .apiKeys.add({
+        id: `${name}-${id}`,
+        name: id,
+        digest: digest.repeat(64),
+        tenant: ORG_A,
+        scopes: ['query'],
+        datasets: [],
+        agents: [],
+        service: 'klarsprak',
+        prefix: 'gp_abcd',
+        lastFour: 'wxyz',
+        createdAt: '2026-11-03T10:00:00.000Z',
+        ...(createdBy ? { createdBy } : {}),
+      });
+  const listedKey = async (id: string) => {
+    const response = await portal(backend().stores()).request(`/tenants/${ORG_A}/access`);
+    const body = (await response.json()) as { keys: Record<string, unknown>[] };
+    return body.keys.find((k) => k.id === `${name}-${id}`);
+  };
+
+  it("a key's list entry says when it was created", async () => {
+    await storeKey('when', name === 'memory' ? '1' : '2');
+
+    expect(await listedKey('when')).toMatchObject({ createdAt: '2026-11-03T10:00:00.000Z' });
+  });
+
+  it("a key's list entry shows the start and end of the key", async () => {
+    await storeKey('ends', name === 'memory' ? '7' : '8');
+
+    expect(await listedKey('ends')).toMatchObject({ prefix: 'gp_abcd', lastFour: 'wxyz' });
+  });
+
+  it("a key's list entry says who created it, and nobody for a key stored without it", async () => {
+    await storeKey('who', name === 'memory' ? '3' : '4', 'employee:test:kari');
+    await storeKey('old', name === 'memory' ? '5' : '6');
+
+    expect(await listedKey('who')).toMatchObject({ createdBy: 'employee:test:kari' });
+    expect(await listedKey('old')).toMatchObject({ createdBy: null });
+  });
+
   it("adds up a tenant's usage per model the same way after a restart", async () => {
     const stores = backend().stores();
     const org = name === 'memory' ? '310000011' : '310000012';
-    const run = task(`${name}-u1`, org, '2026-10-20T08:00:00.000Z');
+    const run = task(`${name}-u1`, org, new Date(Date.now() - 86_400_000).toISOString());
     await record(stores, run);
     await stores.log.append(
       {

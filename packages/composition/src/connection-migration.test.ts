@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { apiRegistry, parseCatalog, type ModelClassification } from '@genai/port-model';
 import { anthropicMessages } from '@genai/providers-anthropic';
 import { azureDeployments, openAiChat } from '@genai/providers-openai';
@@ -9,6 +10,7 @@ import {
   migratedCatalog,
   migrateConnections,
   registryApiFor,
+  withLegacyCatalogs,
 } from './connection-migration.js';
 import { processorRecordKind } from './operation-governance.js';
 
@@ -297,5 +299,113 @@ describe('moving model connections to the shape of ADR 0048', () => {
       ],
     });
     expect(parseCatalog(migrated, apis).ok).toBe(true);
+  });
+});
+
+describe('folding the embedding and rerank catalogues into the model catalogue (ADR 0048)', () => {
+  const portApis = [
+    { id: 'openai/embeddings@1', kind: 'embed', family: 'openai', modelOptions: z.object({}) },
+    { id: 'colbert/rerank@1', kind: 'rerank', family: 'colbert', modelOptions: z.object({}) },
+  ];
+  const withPorts = apiRegistry([openAiChat], undefined, portApis);
+  const chatCatalog = {
+    endpoints: {
+      'foundry-openai': {
+        protocol: 'openai-chat',
+        baseURL: `${root}/openai/v1`,
+        auth: key,
+      },
+    },
+    models: [
+      {
+        id: 'foundry-openai/gpt-6-luna',
+        endpoint: 'foundry-openai',
+        deployment: 'luna',
+        residency: 'eu',
+      },
+    ],
+  };
+  const embeddings = {
+    endpoints: {
+      'foundry-embeddings': {
+        protocol: 'openai-embeddings',
+        baseURL: `${root}/openai/v1`,
+        auth: key,
+      },
+    },
+    models: [
+      {
+        id: 'foundry/text-embedding-3-small',
+        endpoint: 'foundry-embeddings',
+        deployment: 'text-embedding-3-small',
+        residency: 'eu',
+        dimensions: 1536,
+        maxBatch: 64,
+      },
+    ],
+  };
+  const rerank = {
+    endpoints: {
+      colbert: {
+        engine: 'colbert',
+        baseURL: 'https://colbert.example',
+        auth: { kind: 'api-key', header: 'x-api-key', secret: 'secret://env/colbert-key' },
+      },
+    },
+    rerankers: [{ id: 'colbert', endpoint: 'colbert', residency: 'norway' }],
+  };
+  const fold = () => {
+    const folded = withLegacyCatalogs(chatCatalog, embeddings, rerank, {
+      colbert: { id: 'colbert/rerank@1', family: 'colbert' },
+    });
+    return { ...folded, models: migratedCatalog(folded.models, registryApiFor(withPorts)) };
+  };
+  const modelsOf = (catalog: unknown) => (catalog as { models: Record<string, unknown>[] }).models;
+
+  it('an embedding endpoint on the same resource merges into its connection and the embedder keeps its id', () => {
+    const { models } = fold();
+    const embedder = modelsOf(models).find((m) => m.id === 'foundry/text-embedding-3-small');
+
+    expect(Object.keys((models as { endpoints: object }).endpoints)).toEqual([
+      'colbert',
+      'foundry',
+    ]);
+    expect(embedder).toMatchObject({
+      endpoint: 'foundry',
+      apis: { embed: 'openai/embeddings@1' },
+      embed: { dimensions: 1536, maxBatch: 64 },
+    });
+    expect(parseCatalog(models, withPorts).ok).toBe(true);
+  });
+
+  it('a reranker whose engine has an API becomes a model with the same id and leaves the rerank catalogue', () => {
+    const folded = fold();
+
+    expect(modelsOf(folded.models).find((m) => m.id === 'colbert')).toMatchObject({
+      apis: { rerank: 'colbert/rerank@1' },
+      rerank: { onFailure: 'degrade' },
+    });
+    expect(folded.rerank).toMatchObject({ endpoints: {}, rerankers: [] });
+  });
+
+  it('a model bound to the old id openai/embed@1 is moved to openai/embeddings@1', () => {
+    const migrated = migratedCatalog(
+      {
+        endpoints: chatCatalog.endpoints,
+        models: [
+          {
+            id: 'foundry/text-embedding-3-large',
+            endpoint: 'foundry-openai',
+            deployment: 'text-embedding-3-large',
+            residency: 'eu',
+            apis: { embed: 'openai/embed@1' },
+            embed: { dimensions: 3072 },
+          },
+        ],
+      },
+      registryApiFor(withPorts),
+    );
+
+    expect(modelsOf(migrated)[0]?.apis).toEqual({ embed: 'openai/embeddings@1' });
   });
 });

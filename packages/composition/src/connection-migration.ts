@@ -1,5 +1,5 @@
 import { withoutTrailingSlashes } from '@genai/kernel';
-import { familyOfProtocol } from '@genai/operations';
+import { currentApiId, familyOfProtocol, renamedApiIds } from '@genai/operations';
 import type { ApiRegistry, ModelClassification, ModelClassificationStore } from '@genai/port-model';
 import {
   appendVersion,
@@ -53,6 +53,16 @@ const sortedJson = (value: unknown): string =>
   );
 
 export const isLegacyEndpoint = (spec: Spec) => 'protocol' in spec;
+
+/** One credential is one secret or token provider; the header it is sent in is a detail of each API. */
+const credentialOf = (auth: unknown) =>
+  Object.fromEntries(Object.entries(record(auth)).filter(([k]) => k !== 'header'));
+
+const boundRenamed = (apis: unknown) =>
+  Object.values(record(apis)).some((id) => typeof id === 'string' && id in renamedApiIds);
+
+const currentBindings = (apis: Record<string, string>) =>
+  Object.fromEntries(Object.entries(apis).map(([kind, id]) => [kind, currentApiId(id)]));
 
 export const isLegacyModel = (spec: Spec) =>
   'operations' in spec || 'descriptors' in spec || 'api' in record(spec.options);
@@ -150,7 +160,7 @@ export const planConnections = (view: CatalogView, apiFor: ApiForKind): Connecti
     .filter(([, e]) => isLegacyEndpoint(e.spec))
     .sort(([a], [b]) => a.localeCompare(b));
   const keyOf = (scope: string, baseURL: unknown, auth: unknown) =>
-    `${scope}\u0000${resourceRoot(String(baseURL)).root}\u0000${sortedJson(auth)}`;
+    `${scope}\u0000${resourceRoot(String(baseURL)).root}\u0000${sortedJson(credentialOf(auth))}`;
   const groups = new Map<string, string[]>();
   for (const [id, e] of legacy) {
     const key = keyOf(e.scope, e.spec.baseURL, e.spec.auth);
@@ -209,6 +219,8 @@ export const planConnections = (view: CatalogView, apiFor: ApiForKind): Connecti
         continue;
       }
       families[family] = at;
+      if (record(e.spec.auth).header !== record(spec.auth).header)
+        spec.auth = without(record(spec.auth), ['header']);
       if (e.spec.discovery) {
         const discovery = record(e.spec.discovery);
         const prefix = id === to ? undefined : id;
@@ -239,17 +251,19 @@ export const planConnections = (view: CatalogView, apiFor: ApiForKind): Connecti
   for (const [id, placed] of view.models) {
     const was = String(placed.spec.endpoint);
     const now = moved.get(was) ?? was;
-    if (!isLegacyModel(placed.spec) && now === was) continue;
+    const renamed = boundRenamed(placed.spec.apis);
+    if (!isLegacyModel(placed.spec) && now === was && !renamed) continue;
     const old = view.endpoints.get(was)?.spec;
     const families = familiesOf(now);
     const chatApi =
       old && isLegacyEndpoint(old)
         ? legacyChatApis[String(old.protocol)]
         : families.map((f) => familyChatApis[f]).find(Boolean);
-    const apis =
+    const apis = currentBindings(
       isLegacyModel(placed.spec) || !placed.spec.apis
         ? legacyBindings(placed.spec, chatApi, families, apiFor)
-        : (placed.spec.apis as Record<string, string>);
+        : (placed.spec.apis as Record<string, string>),
+    );
     const spec = { ...withoutLegacy(placed.spec, apis), endpoint: now };
     if (sortedJson(spec) !== sortedJson(placed.spec)) models.set(id, { scope: placed.scope, spec });
   }
@@ -497,5 +511,106 @@ export const migratedCatalog = (catalog: unknown, apiFor: ApiForKind): unknown =
     ...record(catalog),
     endpoints: Object.fromEntries([...endpoints].map(([id, e]) => [id, e.spec])),
     models: [...models].map(([id, m]) => ({ id, ...m.spec })),
+  };
+};
+
+const listOf = (value: unknown): Spec[] => (Array.isArray(value) ? value.map(record) : []);
+
+const freeName = (name: string, taken: Record<string, unknown>, suffix: string) =>
+  name in taken ? `${name}-${suffix}` : name;
+
+/** An embedding catalogue from before ADR 0048 as model connections and models of the old shape, for the migration to merge. */
+export const legacyEmbeddingModels = (embeddings: unknown, models: unknown) => {
+  const catalog = record(embeddings);
+  const taken = record(record(models).endpoints);
+  const names = new Map(
+    Object.keys(record(catalog.endpoints)).map((n) => [n, freeName(n, taken, 'embeddings')]),
+  );
+  return {
+    endpoints: Object.fromEntries(
+      Object.entries(record(catalog.endpoints)).map(([name, e]) => [
+        names.get(name) as string,
+        { protocol: record(e).protocol, baseURL: record(e).baseURL, auth: record(e).auth },
+      ]),
+    ),
+    models: listOf(catalog.models).map((m) => {
+      const { dimensions, maxBatch, descriptors, endpoint, ...rest } = m;
+      const embed = record(descriptors).embed;
+      return {
+        ...rest,
+        endpoint: names.get(String(endpoint)) ?? endpoint,
+        operations: ['embed'],
+        ...(typeof embed === 'string' ? { descriptors: { embed } } : {}),
+        embed: { dimensions, ...(maxBatch === undefined ? {} : { maxBatch }) },
+      };
+    }),
+  };
+};
+
+/** A rerank catalogue from before ADR 0048 split in rerankers that become models and those whose engine has no API yet. */
+export const legacyRerankModels = (
+  rerank: unknown,
+  models: unknown,
+  engineApis: Readonly<Record<string, { id: string; family: string }>>,
+) => {
+  const catalog = record(rerank);
+  const endpoints = record(catalog.endpoints);
+  const taken = record(record(models).endpoints);
+  const moving = new Set(
+    Object.entries(endpoints)
+      .filter(([, e]) => engineApis[String(record(e).engine)])
+      .map(([name]) => name),
+  );
+  const names = new Map([...moving].map((n) => [n, freeName(n, taken, 'rerank')]));
+  const rerankers = listOf(catalog.rerankers);
+  return {
+    endpoints: Object.fromEntries(
+      [...moving].map((name) => {
+        const e = record(endpoints[name]);
+        const api = engineApis[String(e.engine)] as { family: string };
+        return [
+          names.get(name) as string,
+          { baseURL: e.baseURL, auth: e.auth, families: { [api.family]: '' } },
+        ];
+      }),
+    ),
+    models: rerankers
+      .filter((r) => moving.has(String(r.endpoint)))
+      .map((r) => {
+        const e = record(endpoints[String(r.endpoint)]);
+        const { onFailure, endpoint, ...rest } = r;
+        return {
+          ...rest,
+          endpoint: names.get(String(endpoint)),
+          deployment: String(r.id),
+          apis: { rerank: (engineApis[String(e.engine)] as { id: string }).id },
+          rerank: { onFailure: onFailure ?? 'degrade' },
+        };
+      }),
+    remaining: {
+      ...catalog,
+      endpoints: Object.fromEntries(Object.entries(endpoints).filter(([n]) => !moving.has(n))),
+      rerankers: rerankers.filter((r) => !moving.has(String(r.endpoint))),
+    },
+  };
+};
+
+/** The model catalogue with the embedding and rerank catalogues of before ADR 0048 folded in; ids stay. */
+export const withLegacyCatalogs = (
+  models: unknown,
+  embeddings: unknown,
+  rerank: unknown,
+  engineApis: Readonly<Record<string, { id: string; family: string }>>,
+) => {
+  const base = record(models);
+  const embedding = legacyEmbeddingModels(embeddings, models);
+  const reranking = legacyRerankModels(rerank, models, engineApis);
+  return {
+    models: {
+      ...base,
+      endpoints: { ...record(base.endpoints), ...embedding.endpoints, ...reranking.endpoints },
+      models: [...listOf(base.models), ...embedding.models, ...reranking.models],
+    },
+    rerank: rerank === undefined ? rerank : reranking.remaining,
   };
 };

@@ -18,7 +18,7 @@ import {
   exampleTracing,
 } from './example-data';
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
-import { operationsMock } from './screens/models/operations-mock';
+import { exampleDescriptors, operationsMock } from './screens/models/operations-mock';
 import { queueMock } from './screens/queue/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -28,6 +28,7 @@ import type {
   AuditEntry,
   BuildingBlocks,
   Capability,
+  DescriptorDetail,
   ModelApi,
   ModelPrice,
   DefaultVersion,
@@ -53,7 +54,7 @@ export { exampleTenants } from './example-data';
 const baseModels: OperatorModel[] = [
   {
     id: 'foundry-openai/gpt-4o-2m-tps',
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'gpt-4o-2M-tps',
     family: 'gpt-4o',
     residency: 'global',
@@ -66,13 +67,17 @@ const baseModels: OperatorModel[] = [
   },
   {
     id: 'foundry-openai/gpt-4.1',
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'gpt-4.1',
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
-    apis: { chat: 'openai/chat-completions@1', decide: 'openai/decide@1' },
-    operations: ['chat', 'decide'],
+    apis: {
+      chat: 'openai/chat-completions@1',
+      decide: 'openai/decide@1',
+      'plain-language': 'openai/plain-language@1',
+    },
+    operations: ['chat', 'decide', 'plain-language'],
     enabled: true,
     origin: 'discovered',
     classified: true,
@@ -81,7 +86,7 @@ const baseModels: OperatorModel[] = [
   },
   {
     id: 'foundry-claude/claude-sonnet-5-5',
-    endpoint: 'foundry-claude',
+    endpoint: 'foundry',
     deployment: 'claude-sonnet-5-5',
     family: 'claude-sonnet-5-5',
     residency: 'global',
@@ -94,7 +99,7 @@ const baseModels: OperatorModel[] = [
   },
   {
     id: 'foundry-openai/gpt-image-1.5',
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'gpt-image-1.5',
     family: 'gpt-image-1.5',
     residency: 'global',
@@ -127,20 +132,33 @@ const builtInApi = (id: string, kind: string, family: string): ModelApi => ({
   models: [],
 });
 
-export const exampleApis: ModelApi[] = [
+const builtInApis: ModelApi[] = [
   builtInApi('anthropic/messages@1', 'chat', 'anthropic'),
   builtInApi('openai/chat-completions@1', 'chat', 'openai'),
   builtInApi('openai/decide@1', 'decide', 'openai'),
   builtInApi('openai/responses@1', 'chat', 'openai'),
-  {
-    id: 'openai/generate-image@1',
-    kind: 'generate-image',
-    family: 'openai',
-    source: 'uploaded',
-    status: 'review',
-    models: [],
-  },
 ];
+
+const registryOf = (descriptors: DescriptorDetail[]): ModelApi[] =>
+  [
+    ...builtInApis.map((a) => {
+      const described = descriptors.find((d) => d.id === a.id);
+      return described ? { ...a, summary: described.summary } : a;
+    }),
+    ...descriptors
+      .filter((d) => !builtInApis.some((a) => a.id === d.id))
+      .map((d): ModelApi => ({
+        id: d.id,
+        kind: d.operation,
+        family: d.family ?? 'openai',
+        source: d.source,
+        status: d.status,
+        summary: d.summary,
+        models: [],
+      })),
+  ].sort((a, b) => a.id.localeCompare(b.id));
+
+export const exampleApis: ModelApi[] = registryOf(exampleDescriptors());
 
 export const exampleModels: OperatorModel[] = baseModels.map((m) => {
   const usage = exampleModelUsage[m.id];
@@ -345,7 +363,7 @@ export const mockFetch = (
   const history = structuredClone(exampleSettingHistory);
   const searchEngines = searchEnginesMock();
   const schemaFixtures = fixtureSchemaFetch();
-  const secrets = new Set<string>(['foundry-openai-key', 'foundry-claude-key']);
+  const secrets = new Set<string>(['foundry-key', 'local-model-key']);
 
   const tenantName = (org: string) => tenantList.find((t) => t.orgNumber === org)?.name ?? org;
   const record = (
@@ -363,6 +381,25 @@ export const mockFetch = (
         tenantName: tenant === 'alle' ? 'Alle' : tenantName(tenant),
         action: actionLabel,
         actionLabel,
+        actor: `operator:${operatorName}`,
+        actorName: operatorName,
+        actorOrg: 'Digdir',
+        at: new Date().toISOString(),
+        outcome: 'applied',
+        target,
+        reason,
+      },
+      ...log,
+    ];
+  };
+
+  const recordAction = (action: string, target: string, reason = '') => {
+    log = [
+      {
+        task: `a-${log.length + 100}`,
+        tenant: 'alle',
+        tenantName: 'Alle',
+        action,
         actor: `operator:${operatorName}`,
         actorName: operatorName,
         actorOrg: 'Digdir',
@@ -395,25 +432,43 @@ export const mockFetch = (
       '/operator/catalog/entries?kind=model-endpoint',
       [
         {
-          id: 'foundry-openai',
+          id: 'foundry',
           scope: 'platform',
           origin: 'seed',
-          version: 1,
+          version: 2,
           spec: {
             baseURL: 'https://foundry.example',
-            families: { openai: '' },
-            auth: { kind: 'api-key', secret: 'secret://platform/foundry-openai-key' },
+            families: { openai: '/openai/v1', anthropic: '/anthropic' },
+            auth: { kind: 'api-key', secret: 'secret://platform/foundry-key' },
+            settings: { keyId: 'AKID-7' },
+            keys: { signing: 'secret://platform/foundry-signing-key' },
+            discovery: [
+              {
+                source: 'azure-deployments',
+                idPrefix: 'foundry-openai',
+                exclude: ['claude-*', 'text-embedding-*'],
+                capabilities: ['stream', 'tools', 'json-schema'],
+                apis: { chat: 'openai/chat-completions@1' },
+              },
+              {
+                source: 'azure-deployments',
+                idPrefix: 'foundry-claude',
+                include: ['claude-*'],
+                capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
+                apis: { chat: 'anthropic/messages@1' },
+              },
+            ],
           },
         },
         {
-          id: 'foundry-claude',
+          id: 'local-model',
           scope: 'platform',
           origin: 'seed',
           version: 1,
           spec: {
-            baseURL: 'https://foundry.example/anthropic',
-            families: { anthropic: '' },
-            auth: { kind: 'api-key', secret: 'secret://platform/foundry-claude-key' },
+            baseURL: 'https://local-model.example',
+            families: { openai: '' },
+            auth: { kind: 'bearer', secret: 'secret://platform/local-model-key' },
           },
         },
       ],
@@ -667,8 +722,13 @@ export const mockFetch = (
   };
 
   const decisions = queueMock(record);
-  const operations = operationsMock(() => current);
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
+  const operations = operationsMock(
+    () => current,
+    'test',
+    () => (configs.get(endpointKey) ?? []).map((e) => String(e.id)),
+    recordAction,
+  );
   const modelRoute = (
     path: string,
     method: string,
@@ -697,10 +757,13 @@ export const mockFetch = (
         families?: Record<string, string>;
         baseURL?: string;
         auth?: { kind?: string; secret?: string };
+        discovery?: unknown[];
+        settings?: Record<string, string>;
+        keys?: Record<string, string>;
       };
       const id = editing ?? b.id;
       const list = configs.get(endpointKey) ?? [];
-      const known = new Set(exampleApis.map((a) => a.family));
+      const known = new Set(registryOf(operations.descriptors()).map((a) => a.family));
       const families = Object.keys(b.families ?? {});
       const errors = [
         ...(id && /^[a-z0-9-]+$/.test(id) ? [] : [{ path: 'id', message: 'Ugyldig navn' }]),
@@ -725,7 +788,18 @@ export const mockFetch = (
         scope: 'platform',
         origin: 'api',
         version: Number(existing?.version ?? 0) + 1,
-        spec: { baseURL: b.baseURL, auth: b.auth, families: b.families },
+        spec: {
+          baseURL: b.baseURL,
+          auth: b.auth,
+          families: b.families,
+          ...(b.discovery
+            ? { discovery: b.discovery }
+            : existing && (existing.spec as Record<string, unknown>).discovery
+              ? { discovery: (existing.spec as Record<string, unknown>).discovery }
+              : {}),
+          ...(b.settings ? { settings: b.settings } : {}),
+          ...(b.keys ? { keys: b.keys } : {}),
+        },
         by: 'operator:entra:lise',
         at: new Date().toISOString(),
       };
@@ -733,10 +807,9 @@ export const mockFetch = (
         endpointKey,
         existing ? list.map((e) => (e.id === id ? entry : e)) : [...list, entry],
       );
-      record(
-        'alle',
-        existing ? 'Endret modellendepunkt' : 'La til modellendepunkt',
-        id ?? '',
+      recordAction(
+        'platform.catalog.publish',
+        `catalog:model-endpoint/${id}@${entry.version}`,
         reason,
       );
       return json(entry, existing ? 200 : 201);
@@ -756,7 +829,7 @@ export const mockFetch = (
         list.filter((e) => e.id !== id),
       );
       current = current.filter((m) => m.endpoint !== id);
-      record('alle', 'Fjernet modellendepunkt', id, reason);
+      recordAction('platform.catalog.delete', `catalog:model-endpoint/${id}`, reason);
       return new Response(null, { status: 204 });
     }
     if (price && method === 'PUT') {
@@ -775,7 +848,7 @@ export const mockFetch = (
         },
       };
       current = current.map((m) => (m.id === id ? next : m));
-      record('alle', 'Satte pris', found.deployment, reason);
+      recordAction('platform.catalog.publish', `catalog:price/${id}@1`, reason);
       return json(next.price);
     }
     if (model && method === 'PUT') {
@@ -785,6 +858,7 @@ export const mockFetch = (
         deployment: string;
         residency: Residency;
         capabilities: Capability[];
+        apis?: Record<string, string>;
         enabled: boolean;
       };
       if (!(configs.get(endpointKey) ?? []).some((e) => e.id === b.endpoint))
@@ -797,12 +871,13 @@ export const mockFetch = (
         deployment: b.deployment,
         residency: b.residency,
         capabilities: b.capabilities,
+        ...(b.apis ? { apis: b.apis, operations: Object.keys(b.apis) } : {}),
         enabled: b.enabled,
         origin: found?.origin ?? 'catalog',
         classified: true,
       };
       current = found ? current.map((m) => (m.id === id ? next : m)) : [...current, next];
-      record('alle', found ? 'Endret modell' : 'La til modell', b.deployment, reason);
+      recordAction('platform.catalog.publish', `catalog:model/${id}@1`, reason);
       return json(next);
     }
     return undefined;
@@ -1099,7 +1174,7 @@ export const mockFetch = (
     }
     if (path === '/operator/apis' && method === 'GET')
       return json({
-        data: exampleApis.map((a) => ({
+        data: registryOf(operations.descriptors()).map((a) => ({
           ...a,
           models: current
             .filter((m) => Object.values(m.apis ?? {}).includes(a.id))
@@ -1107,8 +1182,11 @@ export const mockFetch = (
         })),
       });
     if (path === '/operator/models' && method === 'GET') return json({ data: current });
-    if (path === '/operator/models/refresh' && method === 'POST')
-      return reason ? json(refresh) : json({ error: 'a change reason is required' }, 400);
+    if (path === '/operator/models/refresh' && method === 'POST') {
+      if (!reason) return json({ error: 'a change reason is required' }, 400);
+      recordAction('platform.models.refresh', 'models', reason);
+      return json(refresh);
+    }
     if (path.startsWith('/operator/models/') && method === 'PATCH') {
       if (!reason) return json({ error: 'a change reason is required' }, 400);
       const id = path.slice('/operator/models/'.length);
@@ -1122,7 +1200,7 @@ export const mockFetch = (
         classified: true,
       };
       current = current.map((m) => (m.id === id ? updated : m));
-      record('alle', 'Endret modell', found.deployment, reason);
+      recordAction('platform.models.classify', `model:${id}`, reason);
       return json(updated);
     }
     if (path === '/support-sessions' && method === 'POST') {

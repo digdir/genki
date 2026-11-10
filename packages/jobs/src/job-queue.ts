@@ -85,6 +85,7 @@ export interface JobQueue extends JobReads {
   work<T extends JobData>(
     queue: QueueDefinition<T>,
     handler: JobHandler<T>,
+    options?: WorkOptions,
   ): Promise<() => Promise<void>>;
   schedule<T extends JobData>(
     queue: QueueDefinition<T>,
@@ -152,19 +153,28 @@ export const jobTenant = (data: JobData) =>
   typeof data.tenant === 'string' ? data.tenant : undefined;
 
 /** A queue with the handler that works it. */
+/** How a process works a queue. */
+export interface WorkOptions {
+  /** How many of the queue's jobs this process works at once; 1 when left out. */
+  concurrency?: number;
+}
+
 export interface QueueWork<T extends JobData = JobData> {
   queue: QueueDefinition<T>;
   handler(job: Job<T>): Promise<void>;
+  options?: WorkOptions;
 }
 
 /** Pairs a queue with its handler, so the handler gets the queue's payload type. */
 export const queueWork = <T extends JobData>(
   queue: QueueDefinition<T>,
   handler: JobHandler<T>,
-): QueueWork<T> => ({ queue, handler });
+  options?: WorkOptions,
+): QueueWork<T> => ({ queue, handler, ...(options ? { options } : {}) });
 
 export const workQueues = async (jobs: JobQueue, work: QueueWork[]) => {
-  for (const entry of work) await jobs.work(entry.queue, (job) => entry.handler(job));
+  for (const entry of work)
+    await jobs.work(entry.queue, (job) => entry.handler(job), entry.options);
 };
 
 const keyLike = /^[^\s]{1,128}$/;
@@ -210,7 +220,9 @@ interface StoredJob {
 interface Worker {
   queue: QueueDefinition;
   handler: JobHandler;
-  busy: boolean;
+  /** Jobs it works now, at most `concurrency`. */
+  running: number;
+  concurrency: number;
 }
 
 interface StoredSchedule {
@@ -301,10 +313,19 @@ export class InMemoryJobQueue implements JobQueue {
     return job.id;
   }
 
-  async work<T extends JobData>(queue: QueueDefinition<T>, handler: JobHandler<T>) {
+  async work<T extends JobData>(
+    queue: QueueDefinition<T>,
+    handler: JobHandler<T>,
+    options: WorkOptions = {},
+  ) {
     if (this.#workers.has(queue.name))
       throw new JobQueueError(`queue ${queue.name} already has a worker`);
-    this.#workers.set(queue.name, { queue, handler: handler as JobHandler, busy: false });
+    this.#workers.set(queue.name, {
+      queue,
+      handler: handler as JobHandler,
+      running: 0,
+      concurrency: options.concurrency ?? 1,
+    });
     void this.#tick();
     return async () => {
       this.#workers.delete(queue.name);
@@ -467,11 +488,11 @@ export class InMemoryJobQueue implements JobQueue {
   }
 
   // Like pg-boss, an attempt that outlives its expiry is failed and its signal aborted, and the
-  // worker takes nothing more until the handler returns.
+  // worker's slot stays taken until the handler returns.
   async #run(worker: Worker, job: StoredJob) {
     const { queue } = worker;
     const abort = new AbortController();
-    worker.busy = true;
+    worker.running += 1;
     job.state = 'active';
     job.abort = abort;
     const current = () => job.abort === abort && job.state === 'active';
@@ -497,7 +518,7 @@ export class InMemoryJobQueue implements JobQueue {
     } finally {
       clearTimeout(expiry);
       if (job.abort === abort) delete job.abort;
-      worker.busy = false;
+      worker.running -= 1;
       void this.#tick();
     }
   }
@@ -534,9 +555,11 @@ export class InMemoryJobQueue implements JobQueue {
     try {
       await this.#fireSchedules();
       for (const worker of this.#workers.values()) {
-        if (worker.busy) continue;
-        const job = this.#next(worker.queue);
-        if (job) void this.#run(worker, job);
+        while (worker.running < worker.concurrency) {
+          const job = this.#next(worker.queue);
+          if (!job) break;
+          void this.#run(worker, job);
+        }
       }
     } finally {
       this.#ticking = false;

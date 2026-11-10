@@ -162,7 +162,8 @@ const toModelError = (error: unknown): ModelError => {
   if (error instanceof ModelError) return error;
   if (error instanceof APIUserAbortError)
     return new ModelError('cancelled', 'the request was cancelled');
-  if (error instanceof APIError) return errorFromStatus(error.status, error.message);
+  if (error instanceof APIError)
+    return errorFromStatus(error.status, error.message, undefined, error.message);
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
 
@@ -184,6 +185,7 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
       kind: 'chat',
       family: 'anthropic',
       modelOptions,
+      units: ['input-token', 'output-token', 'cached-input-token', 'request'],
       default: true,
     },
   ],
@@ -219,7 +221,8 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
         };
       } catch (error) {
         const rejected =
-          error instanceof APIError && rejectedParameter(error.status, error.message);
+          error instanceof APIError &&
+          rejectedParameter(error.status, error.message) === 'temperature';
         if (request.temperature === undefined || !rejected) throw error;
         noTemperature.add(model.deployment);
         return { response: await send(params(model, request, true)), dropped: ['temperature'] };
