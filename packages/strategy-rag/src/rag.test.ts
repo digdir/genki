@@ -301,6 +301,25 @@ describe('rag-single-shot strategy', () => {
     );
   });
 
+  it('rewrites OpenAI-style markers such as 【1†L1-L4】 as [N], so their sources are cited', async () => {
+    const m = model('Svar 【3†L1-L4】 og 【1:0†source】.\nKilder: 【3†source】, 【1†source】', {
+      stream: true,
+    });
+    const out = await run(
+      { strategy: { generate: true }, model: { primary: 'primary', tenant: '991825827' } },
+      undefined,
+      m,
+    );
+
+    expect(out.text?.body).toEqual({ kind: 'text', text: 'Svar [3] og [1].' });
+    expect(out.text?.meta).toEqual({
+      citations: [
+        { index: 1, chunkId: 'c4' },
+        { index: 3, chunkId: 'c2' },
+      ],
+    });
+  });
+
   it('caps the answer at the platform default when no limit is configured', async () => {
     const m = model('Svar [1].');
     await run(

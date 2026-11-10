@@ -1,5 +1,5 @@
 import type { Part } from '@genai/contracts';
-import { defaultMaxOutputTokens, untrustedData } from '@genai/port-model';
+import { defaultMaxOutputTokens, normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import type { Block, BlockContext } from '../blocks.js';
 import {
@@ -278,11 +278,8 @@ export const synthesizeBlock: Block<
       temperature: params.temperature,
       maxTokens: params.maxTokens ?? defaultMaxOutputTokens,
     });
-    const renumbered = renumberCitations(
-      result.content,
-      parseCitations(result.content, index),
-      index,
-    );
+    const answer = normaliseCitationMarkers(result.content);
+    const renumbered = renumberCitations(answer, parseCitations(answer, index), index);
     const insufficiency = detectInsufficientContext(renumbered.text);
     return {
       response: renumbered.text,
