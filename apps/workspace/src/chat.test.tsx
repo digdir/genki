@@ -371,6 +371,26 @@ describe('chat', () => {
     expect(screen.queryByText('Fremgangsmåte')).toBeNull();
   });
 
+  it('offers no link to what a step read or missed while the workspace has nowhere to show it', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'read_chunks', 'documents-read': 17 });
+        onStep?.({ tool: 'report_gaps', description: 'Ingen sier hvor mange.', missing: true });
+        return { text: 'Ja.', sources: [] };
+      },
+    };
+    await renderApp('#/chat', { api });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ja.');
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    expect(screen.getByText('Ingen sier hvor mange.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /som ble lest/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Utdyp hva som mangler' })).toBeNull();
+  });
+
   it('shows a table answer as a summary that opens the table with its sources', async () => {
     const api: WorkspaceApi = {
       ...mockWorkspaceApi(),

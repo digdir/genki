@@ -111,9 +111,6 @@ const SourceItem = ({ source, id }: { source: Source; id: string }) => {
   );
 };
 
-/** Where «Vis de 38 som ble lest» and «Utdyp hva som mangler» lead is not designed yet. */
-const placeholder = () => undefined;
-
 const Answer = ({
   message,
   organisation,
@@ -144,8 +141,6 @@ const Answer = ({
           startedAt={procedure.startedAt}
           {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
           {...(!message.pending && procedure.read !== undefined ? { read: procedure.read } : {})}
-          onShowRead={placeholder}
-          onExplainMissing={placeholder}
           {...(!message.pending && message.sources.length ? { used: message.sources.length } : {})}
         />
       ) : null}
