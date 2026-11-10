@@ -16,7 +16,7 @@ export function authorKind(userType: string, login: string, trailers: string): A
 
 export function shadowArm(pr: number, percent: number, action: string): 'treated' | 'shadow' {
   if (action === 'labeled') return 'treated';
-  return pr % 100 < percent ? 'shadow' : 'treated';
+  return (pr * 37) % 100 < percent ? 'shadow' : 'treated';
 }
 
 interface ExecutionMessage {

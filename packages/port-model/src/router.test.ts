@@ -1091,6 +1091,39 @@ describe('operations on the catalogue', () => {
     expect(urls).toEqual(['https://a.example/v1/decisions']);
   });
 
+  it('a descriptor decide error keeps the provider status and body for the audit', async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8');
+    const descriptor = parseDescriptor(yaml.replace('family: openai', 'family: proto-a'));
+    const egress: typeof fetch = async () =>
+      Response.json({ error: { message: 'the deployment is overloaded' } }, { status: 503 });
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            apis: { decide: descriptor.id },
+          },
+        ],
+      },
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    const error = await decide(router)
+      .decide(question)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      code: 'unavailable',
+      message: 'the model is unavailable',
+      provider: { status: 503, body: expect.stringContaining('the deployment is overloaded') },
+    });
+  });
+
   it('a descriptor call names the API the model binds for its kind', async () => {
     const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8');
     const descriptor = parseDescriptor(yaml.replace('family: openai', 'family: proto-a'));

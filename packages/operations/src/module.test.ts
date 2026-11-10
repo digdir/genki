@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { contractFailures, operationContract, type OperationFixture } from './contract.js';
 import { parseDescriptor } from './descriptor.js';
 import { call, json, refused } from './kit.test-utils.js';
 import { moduleProblems, sha256Of } from './module.js';
@@ -72,6 +73,249 @@ describe('a module that signs a request (D)', () => {
     const descriptor = parseDescriptor(yamlFor(hmacSigner()));
     const { outcome } = await call(descriptor, { item: 'pen' }, [json({})], {});
     expect(errorOf(outcome).message).toMatch(/the module signer is not stored/);
+  });
+});
+
+const pathEcho = () =>
+  wasmModule({
+    imports: ['input_read', 'emit'],
+    locals: 1,
+    data: [{ at: 0, text: 'path' }],
+    body: [
+      ...op.i32(0),
+      ...op.i32(4),
+      ...op.i32(1024),
+      ...op.i32(512),
+      ...op.call(0),
+      ...op.set(0),
+      ...op.i32(0),
+      ...op.i32(4),
+      ...op.i32(1024),
+      ...op.get(0),
+      ...op.call(1),
+      ...op.drop,
+    ],
+  });
+
+const signedOnly = (bytes: Uint8Array, emits?: string) =>
+  yamlFor(bytes, emits).replace(
+    "api: { family: example, version: '1' }",
+    "api: { family: example, version: '1' }\nauth: { signedBy: module }",
+  );
+
+describe('a key that only signs (D)', () => {
+  it('is handed to the module and never sent in a header or the query', async () => {
+    const bytes = hmacSigner();
+    const { outcome, sent } = await place(bytes, bytes, signedOnly(bytes));
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    const headers = Object.values(sent[0]?.init?.headers as Record<string, string>);
+    expect(headers.some((v) => v.includes('connection-key'))).toBe(false);
+    expect(String(sent[0]?.url)).not.toContain('connection-key');
+    const expected = createHmac('sha256', 'connection-key')
+      .update(String(sent[0]?.init?.body) + stamp)
+      .digest('hex');
+    expect(sent[0]?.init?.headers).toMatchObject({ 'x-signature': expected });
+  });
+
+  it('needs a module that takes the connection key on every step', () => {
+    const yaml = signedOnly(hmacSigner()).replace('    keys: [connection]\n', '');
+    expect(() => parseDescriptor(yaml)).toThrow(/a key that only signs needs a module/);
+  });
+
+  it('a module signs the path as sent, with the base path and the query', async () => {
+    const bytes = pathEcho();
+    const yaml = signedOnly(bytes, "path: { ref: '^/[a-z/]+[?]since=5$' }")
+      .replace('{ x-signature: sig, x-timestamp: ts }', '{ x-signed-path: path }')
+      .replace('path: /orders,', 'path: /orders, query: { since: "5" },')
+      .replace(
+        '      request: { object: { item: text } }',
+        '      query: { object: { since: { enum: ["5"] } } }\n      request: { object: { item: text } }',
+      );
+    const { outcome, sent } = await place(bytes, bytes, yaml);
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(sent[0]?.init?.headers).toMatchObject({ 'x-signed-path': '/base/orders?since=5' });
+  });
+
+  it('a step may not place a key that only signs', () => {
+    const yaml = signedOnly(hmacSigner()).replace(
+      '  - name: place\n',
+      '  - name: place\n    credential: { header: x-key }\n',
+    );
+    expect(() => parseDescriptor(yaml)).toThrow(/a key that only signs is placed on no request/);
+  });
+
+  it('stays off an exchanged token step and a followed link, which need no module', async () => {
+    const bytes = hmacSigner();
+    const yaml = `
+id: example/signed-export@1
+operation: signed-export
+status: described
+summary: A made-up API that signs a token request and an export, then serves the file at a link.
+api: { family: example, version: '1' }
+auth: { signedBy: module }
+modules:
+  signer:
+    sha256: ${sha256Of(bytes)}
+    keys: [connection]
+input: { object: { item: text } }
+output: { object: { data: { media: [text/csv] } } }
+steps:
+  - name: token
+    request: { method: POST, path: /token, body: { item: $input.item } }
+    module:
+      use: signer
+      emits: { sig: { ref: '^[0-9a-f]{64}$' }, ts: { ref: '^[0-9]{10}$' } }
+      headers: { x-signature: sig, x-timestamp: ts }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { token: opaque } }
+    bind:
+      access: { from: $response.token, class: secret }
+  - name: start
+    auth: { header: authorization, scheme: Bearer, secret: $steps.token.access }
+    request: { method: POST, path: /exports, body: { item: $input.item } }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { location: plain } }
+    bind:
+      link: { from: $response.location, class: url }
+  - name: fetch
+    request: { method: GET, follow: $steps.start.link }
+    response: { encoding: binary }
+    wire:
+      response: { media: [text/csv] }
+result:
+  data: $response
+`;
+    const { outcome, sent, exchanges } = await call(
+      parseDescriptor(yaml),
+      { item: 'pen' },
+      [
+        json({ token: 'tok-very-secret' }),
+        json({ location: 'https://provider.example.test/files/e1.csv' }),
+        { type: 'text/csv', body: 'a,b\n' },
+      ],
+      { endpoint: { modules: () => bytes, now: () => at } },
+    );
+    expect('result' in outcome).toBe(true);
+    expect(sent).toHaveLength(3);
+    for (const request of sent) {
+      expect(JSON.stringify(request.init?.headers)).not.toContain('connection-key');
+      expect(request.url.href).not.toContain('connection-key');
+      expect(String(request.init?.body ?? '')).not.toContain('connection-key');
+    }
+    expect(new Headers(sent[1]?.init?.headers).get('authorization')).toBe('Bearer tok-very-secret');
+    expect(new Headers(sent[2]?.init?.headers).get('authorization')).toBeNull();
+    expect(JSON.stringify(exchanges)).not.toContain('connection-key');
+  });
+
+  it('passes operation@1 only when the key reaches no request', async () => {
+    const bytes = hmacSigner();
+    const fixture: OperationFixture = {
+      name: 'one-order',
+      deployment: 'model-1',
+      at: at.toISOString(),
+      input: { item: 'pen' },
+      request: { method: 'POST', path: '/orders', body: { item: 'pen' } },
+      response: { body: { status: 'placed' } },
+      result: { status: 'placed' },
+      usage: { requests: 1 },
+    };
+    const results = await operationContract(parseDescriptor(signedOnly(bytes)), [fixture], {
+      modules: () => bytes,
+    });
+    expect(contractFailures(results)).toEqual([]);
+  });
+
+  it('fails operation@1 when the key reaches a request', async () => {
+    const bytes = hmacSigner();
+    const yaml = signedOnly(bytes)
+      .replace('path: /orders,', 'path: /orders, headers: { x-item: $input.item },')
+      .replace(
+        '      request: { object: { item: text } }',
+        '      headers: { object: { x-item: text } }\n      request: { object: { item: text } }',
+      );
+    const fixture: OperationFixture = {
+      name: 'leaked-key',
+      deployment: 'model-1',
+      at: at.toISOString(),
+      input: { item: 'contract-key' },
+      request: {
+        method: 'POST',
+        path: '/orders',
+        headers: { 'x-item': 'contract-key' },
+        body: { item: 'contract-key' },
+      },
+      response: { body: { status: 'placed' } },
+      result: { status: 'placed' },
+      usage: { requests: 1 },
+    };
+    const results = await operationContract(parseDescriptor(yaml), [fixture], {
+      modules: () => bytes,
+    });
+    expect(contractFailures(results).flatMap((r) => r.problems)).toEqual([
+      'the key that only signs was sent',
+    ]);
+  });
+});
+
+describe('what a module reads (D)', () => {
+  it('a module never reads a key placed in the query through its path', async () => {
+    const bytes = pathEcho();
+    const yaml = yamlFor(bytes, "path: { ref: '^[a-z0-9/?=_-]+$' }")
+      .replace(
+        "api: { family: example, version: '1' }",
+        "api: { family: example, version: '1' }\nauth: { query: api_key }",
+      )
+      .replace('{ x-signature: sig, x-timestamp: ts }', '{ x-signed-path: path }');
+    const { outcome, sent } = await place(bytes, bytes, yaml);
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(sent[0]?.url.searchParams.get('api_key')).toBe('connection-key');
+    expect(sent[0]?.init?.headers).toMatchObject({ 'x-signed-path': '/base/orders' });
+  });
+
+  it('a module never reads a secret placed in the query through its path', async () => {
+    const bytes = pathEcho();
+    const yaml = `
+id: example/signed-token@1
+operation: signed-token
+status: described
+summary: A made-up API that takes an exchanged token in the query and a signed path.
+api: { family: example, version: '1' }
+modules:
+  echo:
+    sha256: ${sha256Of(bytes)}
+input: { object: { item: text } }
+output: { object: { status: plain } }
+result: { status: $response.status }
+steps:
+  - name: token
+    request: { method: POST, path: /token, body: { item: $input.item } }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { token: opaque } }
+    bind:
+      access: { from: $response.token, class: secret }
+  - name: place
+    auth: { query: access_token, secret: $steps.token.access }
+    request: { method: POST, path: /orders, body: { item: $input.item } }
+    module:
+      use: echo
+      emits: { path: { ref: '^[a-z0-9/?=_-]+$' } }
+      headers: { x-signed-path: path }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { status: plain } }
+`;
+    const { outcome, sent } = await call(
+      parseDescriptor(yaml),
+      { item: 'pen' },
+      [json({ token: 'tok-very-secret' }), json({ status: 'placed' })],
+      { endpoint: { modules: () => bytes, now: () => at } },
+    );
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(sent[1]?.url.searchParams.get('access_token')).toBe('tok-very-secret');
+    expect(sent[1]?.init?.headers).toMatchObject({ 'x-signed-path': '/base/orders' });
   });
 });
 

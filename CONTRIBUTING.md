@@ -70,7 +70,7 @@ Run the same review before you open the pull request, so the one in CI finds not
 
 Answer every open thread before you merge: fix it, or say why not ("not fixing, because ..."), which marks it dismissed. A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To have new commits reviewed, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
 
-Each review run also uploads `review-run.json` as a workflow artifact: cost, duration, model, the kind of author and the findings, with no names. The review dashboard reads these. The repository variable `REVIEW_SHADOW_PERCENT` puts that share of pull requests, chosen by number, in a silent group: the review runs and is recorded but posts nothing, so the dashboard can compare. It is 0 unless set.
+Each review run also uploads `review-run.json` as a workflow artifact: cost, duration, model, the kind of author and the findings, with no names. The review dashboard reads these. A daily workflow also uploads `review-snapshot.json` with the CodeQL alerts and the shadow percent, which the dashboard cannot read with its own token. The repository variable `REVIEW_SHADOW_PERCENT` puts that share of pull requests, chosen by number, in a silent group: the review runs and is recorded but posts nothing, so the dashboard can compare. It is 0 unless set.
 
 ## Who maintains genki
 

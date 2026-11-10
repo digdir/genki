@@ -72,6 +72,23 @@ describe('ported headless-rag flows', () => {
     expect(notices(out.events)).toContainEqual(expect.objectContaining({ kind: 'retrieval' }));
   });
 
+  it('records what the search detected in the retrieval notice', async () => {
+    const detections = [
+      { kind: 'year', field: 'title', values: ['2025'], queries: ['q'], use: 'boost' },
+    ];
+    const retrieval = stubRetrieval([chunk('c1')], undefined, { detections });
+    const models = fakeModels({ primary: ['Påstanden stemmer [1].'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    expect(notices(out.events)).toContainEqual(
+      expect.objectContaining({ kind: 'retrieval', detections }),
+    );
+  });
+
   it('ai-overview: plans, reranks, passes the evidence gate and keeps a cited overview', async () => {
     const strong = [
       chunk('c1', { rerankScore: 0.9, document: 'd1' }),

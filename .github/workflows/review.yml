@@ -37,6 +37,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - name: Take the review scripts from the base branch
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$BASE"
+          mkdir -p "$RUNNER_TEMP/review"
+          for f in review-run review-summary; do git show "$BASE:scripts/$f.ts" > "$RUNNER_TEMP/review/$f.mts"; done
       - id: last
         run: |
           sha=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | test("^[0-9]+ findings"))) | .commit_id' | tail -n 1)
@@ -46,7 +53,7 @@ jobs:
         env:
           PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}
           ACTION: ${{ github.event.action }}
-        run: node scripts/review-run.ts arm >> "$GITHUB_OUTPUT"
+        run: node "$RUNNER_TEMP/review/review-run.mts" arm >> "$GITHUB_OUTPUT"
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_REVIEW_CLIENT_ID }}
@@ -102,7 +109,7 @@ jobs:
           EXECUTION: ${{ steps.claude.outputs.execution_file }}
         run: |
           MINUTES=$(jq -r '[.[] | select(.type == "result")][0].duration_ms // empty | . / 60000' "$EXECUTION" 2>/dev/null || true)
-          MINUTES="$MINUTES" node scripts/review-summary.ts post
+          MINUTES="$MINUTES" node "$RUNNER_TEMP/review/review-summary.mts" post
       - name: Record the run for the dashboard
         if: always() && steps.arm.outcome == 'success'
         env:
@@ -117,7 +124,7 @@ jobs:
           FILES_CHANGED: ${{ github.event.pull_request.changed_files }}
           ADDITIONS: ${{ github.event.pull_request.additions }}
           DELETIONS: ${{ github.event.pull_request.deletions }}
-        run: node scripts/review-run.ts
+        run: node "$RUNNER_TEMP/review/review-run.mts"
       - if: always() && steps.arm.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -157,9 +164,16 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - name: Take the review scripts from the base branch
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$BASE"
+          mkdir -p "$RUNNER_TEMP/review"
+          for f in review-run review-summary; do git show "$BASE:scripts/$f.ts" > "$RUNNER_TEMP/review/$f.mts"; done
       - id: open
         run: |
-          node scripts/review-summary.ts open >> "$GITHUB_OUTPUT"
+          node "$RUNNER_TEMP/review/review-summary.mts" open >> "$GITHUB_OUTPUT"
           echo "open=$(jq -c . open-findings.json)" >> "$GITHUB_OUTPUT"
       - if: steps.open.outputs.count != '0'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
@@ -206,10 +220,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - name: Take the review scripts from the base branch
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$BASE"
+          mkdir -p "$RUNNER_TEMP/review"
+          for f in review-run review-summary; do git show "$BASE:scripts/$f.ts" > "$RUNNER_TEMP/review/$f.mts"; done
       - name: Resolve fixed findings and update the summary
         env:
           OPEN: ${{ needs.follow-up.outputs.open }}
           OUT: ${{ needs.follow-up.outputs.fixed }}
         run: |
           printf '%s' "$OPEN" > open-findings.json
-          node scripts/review-summary.ts resolve
+          node "$RUNNER_TEMP/review/review-summary.mts" resolve

@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-10: provider errors are kept for the audit, and a non-streamed descriptor step answers with its text
+
+- When a provider answers a model's descriptor call (chat, decide or an operation step, not embeddings) with an error, the run's audit `kernel.error` event carries `provider: { status, body }`: the HTTP status and the first 500 characters of the error body, JSON or plain text, with the connection's key and bound secrets replaced by `[redacted]`. For a built-in provider (OpenAI, Anthropic) `body` is the SDK's error message. The run timeline shows it to those who manage the service. The caller's `kernel.error` and answer are unchanged.
+- A `call-operation@1` step without `stream` outputs `{ result, text }` when `result` is text or has a text field `text`, so a flow that ends on it answers with that text instead of the JSON of `result`.
+
 ### 2026-11-06: a streamed descriptor step answers with its text
 
 - A `call-operation@1` step with `stream: true` now outputs `{ result, text }`, and a flow that ends on it answers with `text` instead of the JSON of `result`. Deltas reach `/v1/chat/completions` only with `genai_stream: "live"`; without it the text comes as one piece.
