@@ -638,6 +638,10 @@ const SkillTestRun = z
     by: z.string(),
     model: z.string(),
     judge: z.string().nullable(),
+    judgePrompt: z.string().optional().openapi({
+      description:
+        'The criteria judge prompt and its version, such as skill-criteria@2. A run judged with an earlier prompt no longer counts for the draft.',
+    }),
     passed: z.number().int(),
     total: z.number().int(),
     passRate: z.number(),
