@@ -1,6 +1,4 @@
-// What a service can back, read from its published row in `/v1/models`, so the builder offers
-// only the blocks whose needs are met (kits D10). A block whose needs are not met is shown off and
-// disabled, with the reason.
+// What a service can back, from its `/v1/models` row or its draft definition.
 import { blockSpec, type BlockId, type Need } from './catalogue.js';
 
 /** The fields of a `/v1/models` row the facts are read from. */
@@ -118,6 +116,79 @@ export const factsFromModels = (
     ...(given.steps === undefined ? {} : { steps: given.steps }),
     channels: given.channels,
   };
+};
+
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+
+/** A filter field's kinds as a definition declares them: one kind, a list, or `{ kinds }`. */
+const kindsOf = (declared: unknown): string[] => {
+  if (typeof declared === 'string') return [declared];
+  if (Array.isArray(declared)) return declared.filter((kind) => typeof kind === 'string');
+  return kindsOf(record(declared).kinds ?? record(declared).kind);
+};
+
+/** A draft's `/v1/models` rows, as genki would list them once it is published. */
+export const modelRowsFromDefinition = (definition: unknown): ModelRow[] => {
+  const metadata = record(record(definition).metadata);
+  const spec = record(record(definition).spec);
+  const service = text(metadata.id) ?? text(metadata.name);
+  if (!service) return [];
+  const tenant = text(metadata.tenant) ?? '';
+  const chat = (text(record(spec.output).kind) ?? 'answer') === 'answer';
+  const knowledge = record(spec.knowledge);
+  const datasets = (Array.isArray(knowledge.datasets) ? knowledge.datasets : []).flatMap(
+    (entry) => {
+      const id = text(record(entry).dataset);
+      if (!id) return [];
+      const slash = id.lastIndexOf('/');
+      const key = id.slice(slash + 1);
+      const filters = Object.entries(record(record(entry).filters)).map(([field, kind]) => ({
+        field,
+        kinds: kindsOf(kind),
+      }));
+      return [
+        {
+          id: key,
+          tenant: slash > 0 ? id.slice(0, slash) : tenant,
+          'dataset-config-key': key,
+          filters,
+        },
+      ];
+    },
+  );
+  const variants =
+    Array.isArray(spec.variants) && spec.variants.length > 0 ? spec.variants : ['default'];
+  return variants.flatMap((variant, at) => {
+    const id = typeof variant === 'string' ? variant : text(record(variant).id);
+    if (!id) return [];
+    return [
+      {
+        id: `${service}__${id}`,
+        title: text(metadata.name) ?? service,
+        _service: service,
+        _service_title: text(metadata.name) ?? service,
+        _pickable: chat && record(variant).chat !== false,
+        ...(at === 0 && chat ? { _chat: true } : {}),
+        ...(knowledge.runtimeDocuments === true ? { _documents: {} } : {}),
+        ...(datasets.length > 0 ? { _datasets: datasets } : {}),
+      },
+    ];
+  });
+};
+
+/** What a draft can back, read from its definition as `factsFromModels` reads a published row. */
+export const factsFromDefinition = (
+  definition: unknown,
+  given: { channels: readonly Channel[]; steps?: boolean | undefined },
+): ServiceFacts | undefined => {
+  const rows = modelRowsFromDefinition(definition);
+  const first = rows[0];
+  return first ? factsFromModels(rows, serviceOf(first), given) : undefined;
 };
 
 /** Whether the facts meet one need. `component:*` is about the layout, not the service: met here. */

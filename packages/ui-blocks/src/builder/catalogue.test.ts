@@ -134,7 +134,7 @@ describe('the block catalogue', () => {
     ]);
   });
 
-  it('describes each block’s options as a JSON Schema with labels and defaults', () => {
+  it('describes each block’s options as a JSON Schema with ADR 0030’s widgets, in both languages', () => {
     const schema = settingsSchema('approach');
     expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     expect(schema.properties).toEqual({
@@ -142,11 +142,27 @@ describe('the block catalogue', () => {
         type: 'string',
         enum: ['standard', 'detailed'],
         default: 'standard',
-        'x-label': 'builder.approachLevel',
-        'x-widget': 'radio',
+        'x-label': { nb: 'Detaljnivå', en: 'Level of detail' },
+        'x-help': {
+          nb: 'Hvor mye Fremgangsmåte viser når leseren ikke har valgt',
+          en: 'How much Approach shows when the reader has not chosen',
+        },
+        'x-widget': 'select',
+        'x-enumLabels': {
+          standard: { nb: 'Standard', en: 'Standard' },
+          detailed: { nb: 'Detaljert', en: 'Detailed' },
+        },
       },
     });
     expect(settingsSchema('chat').properties).toHaveProperty('footnotes.type', 'boolean');
+    expect(settingsSchema('chat').properties).toHaveProperty('footnotes.x-widget', 'toggle');
+  });
+
+  it('uses only widget hints from ADR 0030’s list in the options’ schemas', () => {
+    const listed = ['text', 'textarea', 'prompt', 'number', 'toggle', 'select'];
+    for (const spec of blockCatalogue)
+      for (const property of Object.values(settingsSchema(spec.id).properties))
+        expect(listed, spec.id).toContain(property['x-widget']);
   });
 });
 

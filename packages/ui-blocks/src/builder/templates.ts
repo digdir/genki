@@ -1,9 +1,4 @@
-// The design's eight templates, from board «3 · byggeklosser og forhåndsvisning» («Maler»), in
-// its order. genki #210 holds nine of its own; these are the canvas's, as V2-0007 settles.
-//
-// A template lists the blocks the design puts in each zone, also those not built yet: the
-// builder shows them marked «kommer», and `fromTemplate` leaves them out. Fotnoter is Chat's
-// option, on by default, so it is not listed.
+// The canvas's eight templates, then the portal builder's two it lacks; unbuilt blocks are left out.
 import { blockSpec, type BlockId, type Zone } from './catalogue.js';
 import { normalised, type AssistantLayout, type BuilderState } from './layout.js';
 import type { BuilderKey } from './i18n.js';
@@ -17,6 +12,8 @@ export const templateIds = [
   'without-secondary',
   'without-primary',
   'chat-only',
+  'document-focus',
+  'notes-focus',
 ] as const;
 export type TemplateId = (typeof templateIds)[number];
 
@@ -52,6 +49,8 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
     secondary: ['sources', 'document-view'],
   },
   'chat-only': { primary: [], main: ['approach', 'chat'], secondary: [] },
+  'document-focus': { primary: [], main: ['document-view'], secondary: ['chat', 'sources'] },
+  'notes-focus': { primary: ['projects', 'threads'], main: ['chat'], secondary: ['notes'] },
 };
 
 /** The catalogue key of a template's name. */

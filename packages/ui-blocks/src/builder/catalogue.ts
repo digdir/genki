@@ -6,7 +6,7 @@
 //
 // Fotnoter is not a block here but an option on Chat that needs Kilder or Dokumentvisning: V2-0010
 // pairs every footnote with an excerpt, so a footnote never stands where neither shows it.
-import type { BuilderKey } from './i18n.js';
+import { enBuilder, nbBuilder, type BuilderKey } from './i18n.js';
 
 /** The shell's three places: the panel before the main column, the main column, the panel after. */
 export const zones = ['primary', 'main', 'secondary'] as const;
@@ -246,10 +246,15 @@ export const blocksAllowedIn = (zone: Zone): BlockId[] =>
 export const nameKey = (id: BlockId) =>
   `builder.${id.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}` as BuilderKey;
 
-/**
- * The block's options as a JSON Schema (2020-12), with ADR 0030's `x-label` and `x-widget`, so
- * `@genai/schema-forms` can draw them and a stored layout can be checked against them.
- */
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** A catalogue entry in both languages, as ADR 0030's `x-label` takes it. */
+const both = (key: string) => {
+  const name = key.slice('builder.'.length) as keyof typeof nbBuilder;
+  return { nb: nbBuilder[name], en: enBuilder[name] };
+};
+
+/** The block's options as a JSON Schema (2020-12) with ADR 0030's hints, for `@genai/schema-forms`. */
 export const settingsSchema = (id: BlockId) => {
   const spec = blockSpec(id);
   return {
@@ -257,28 +262,28 @@ export const settingsSchema = (id: BlockId) => {
     type: 'object',
     additionalProperties: false,
     properties: Object.fromEntries(
-      spec.options.map((option) => [
-        option.id,
-        option.kind === 'switch'
-          ? {
-              type: 'boolean',
-              default: option.default,
-              'x-label': `${nameKey(id)}${capital(option.id)}`,
-              'x-widget': 'switch',
-            }
-          : {
-              type: 'string',
-              enum: [...option.choices],
-              default: option.default,
-              'x-label': `${nameKey(id)}${capital(option.id)}`,
-              'x-widget': 'radio',
-            },
-      ]),
+      spec.options.map((option) => {
+        const key = optionKey(id, option.id);
+        const words = { 'x-label': both(key), 'x-help': both(`${key}Help`) };
+        return [
+          option.id,
+          option.kind === 'switch'
+            ? { type: 'boolean', default: option.default, ...words, 'x-widget': 'toggle' }
+            : {
+                type: 'string',
+                enum: [...option.choices],
+                default: option.default,
+                ...words,
+                'x-widget': 'select',
+                'x-enumLabels': Object.fromEntries(
+                  option.choices.map((choice) => [choice, both(`${key}${capital(choice)}`)]),
+                ),
+              },
+        ];
+      }),
     ),
   } as const;
 };
-
-const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** The catalogue key of an option's label. */
 export const optionKey = (id: BlockId, option: string) =>

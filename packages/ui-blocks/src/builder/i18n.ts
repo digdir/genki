@@ -66,6 +66,8 @@ export const nbBuilder = defineNamespace({
   templateWithoutSecondary: 'Uten høyre sidepanel',
   templateWithoutPrimary: 'Uten venstre sidepanel',
   templateChatOnly: 'Bare chat',
+  templateDocumentFocus: 'Dokumentvisning i fokus',
+  templateNotesFocus: 'Notater i fokus',
 
   // Why a block or an option is not offered, one per need the service does not meet.
   needServiceChat: 'Tjenesten svarer ikke i en chat.',
@@ -145,6 +147,8 @@ export const enBuilder = {
   templateWithoutSecondary: 'Without right panel',
   templateWithoutPrimary: 'Without left panel',
   templateChatOnly: 'Chat only',
+  templateDocumentFocus: 'Document view in focus',
+  templateNotesFocus: 'Notes in focus',
 
   needServiceChat: 'The service does not answer in a chat.',
   needServiceSources: 'The service does not search documents.',

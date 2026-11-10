@@ -4,7 +4,7 @@ import { blocksIn, layoutProblems } from './layout.js';
 import { fromTemplate, templateIds, templates } from './templates.js';
 
 describe('the templates', () => {
-  it('are the design’s eight, in its order', () => {
+  it('are the design’s eight in its order, then the portal builder’s two the design lacks', () => {
     expect(templateIds).toEqual([
       'knowledge-assistant',
       'sources-only',
@@ -14,7 +14,24 @@ describe('the templates', () => {
       'without-secondary',
       'without-primary',
       'chat-only',
+      'document-focus',
+      'notes-focus',
     ]);
+  });
+
+  it('put Document view in the content with Chat and Sources in the right panel in «Dokumentvisning i fokus»', () => {
+    const { layout } = fromTemplate('document-focus');
+    expect(blocksIn(layout, 'primary')).toEqual([]);
+    expect(blocksIn(layout, 'main')).toEqual(['document-view']);
+    expect(blocksIn(layout, 'secondary')).toEqual(['chat', 'sources']);
+  });
+
+  it('leave Projects and Notes out of «Notater i fokus» until they are built, and keep Threads and Chat', () => {
+    expect(templates['notes-focus'].secondary).toEqual(['notes']);
+    const { layout } = fromTemplate('notes-focus');
+    expect(blocksIn(layout, 'primary')).toEqual(['threads']);
+    expect(blocksIn(layout, 'main')).toEqual(['chat']);
+    expect(blocksIn(layout, 'secondary')).toEqual([]);
   });
 
   it('put every block only in a zone it may stand in', () => {

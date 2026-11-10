@@ -383,35 +383,23 @@
               </li>
               <li>
                 <code>settingsSchema</code> gives a block's options as a JSON Schema (2020-12), with
-                ADR 0030's <code>x-label</code> and <code>x-widget</code>.
+                ADR 0030's <code>x-label</code> and <code>x-help</code> in both languages and the
+                widgets <code>toggle</code> and <code>select</code>, for
+                <code>@genai/schema-forms</code>.
               </li>
             </ul>
           </div>
           <div class="wide">
-            <h2>In the portal builder's words</h2>
+            <h2>In the portal's builder</h2>
             <ul>
               <li>
-                <code>@genai/ui-blocks/panels</code> speaks the words of the portal's builder
-                (digdir/genki#210) over the same rules: the panels <code>left</code>,
-                <code>main</code> and <code>right</code> are the zones <code>primary</code>,
-                <code>main</code> and <code>secondary</code>, and <code>procedure</code> and
-                <code>documentView</code> are <code>approach</code> and <code>document-view</code>.
+                The portal's builder for new services imports <code>@genai/ui-blocks/builder</code>,
+                which holds the catalogue, the layout, the templates and the facts and no React, and
+                keeps a <code>BuilderState</code>.
               </li>
               <li>
-                <code>placeOf</code>, <code>isOn</code>, <code>turnOn</code>, <code>turnOff</code>,
-                <code>moveTo</code>, <code>placeIn</code>, <code>blocksAllowedIn</code>,
-                <code>blocksIn</code>, <code>blockPanels</code> and <code>panelOrder</code> take and
-                give its layout, <code>{ placed, chosen }</code>, and run the rules above.
-              </li>
-              <li>
-                <code>toBuilderState</code> and <code>fromBuilderState</code> convert between the
-                two shapes. Its shape has no room for a block's options, the template or the held
-                blocks; given the state it came from, <code>toBuilderState</code> keeps them.
-              </li>
-              <li>
-                Its templates are held there in the catalogue's words until one list is chosen, and
-                are built as <code>fromTemplate</code> builds the canvas's: without the blocks that
-                are not built. Four are the same as the canvas's (<code>canvasTemplateOf</code>).
+                Its words come from the same <code>builder</code> namespace, which the portal adds
+                to its own catalogue.
               </li>
             </ul>
           </div>
@@ -424,6 +412,12 @@
                 multiselect fields, <code>_documents</code>, and the
                 <code>_pickable</code> variants, of the service or of a family the host names.
                 <code>servicesIn</code> lists each service once.
+              </li>
+              <li>
+                <code>factsFromDefinition(definition, given)</code> reads a draft the same way:
+                <code>modelRowsFromDefinition</code> lists it as the rows genki would give once it
+                is published, from its output, its variants and its datasets with their multiselect
+                fields.
               </li>
               <li>
                 The channels come from the host. Whether a service reports steps is not in the row:
