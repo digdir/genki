@@ -47,7 +47,6 @@ export interface PluginSchemas {
   rerankers?: Set<string>;
   rerankerResidency?: (id: string) => Residency | undefined;
   datasets?: Set<string>;
-  /** The filter fields a dataset declares, for checking a variant's fixed filter. */
   datasetFilters?: (dataset: string) => Record<string, unknown> | undefined;
   datasetLocation?: (dataset: string) => DatasetLocation | undefined;
   traceSink?: () => TraceSink | undefined;
@@ -688,7 +687,13 @@ export const validateYaml = (text: string, plugins: PluginSchemas): Validated =>
   }
 };
 
-/** A variant's fixed filter may only name fields that one of the service's datasets declares. */
+const kindsOf = (declared: unknown): string[] =>
+  Array.isArray(declared) ? declared.map(String) : typeof declared === 'string' ? [declared] : [];
+
+// Mirrors clauseFits in port-knowledge: contains needs a text field, the others a multiselect one.
+const filterKindFor = (type: string | undefined) => (type === 'contains' ? 'text' : 'multiselect');
+
+/** A variant's fixed filter may only name fields a dataset of the service declares with a fitting kind. */
 const variantFilterProblems = (
   spec: ServiceDefinition['spec'],
   plugins: PluginSchemas,
@@ -701,14 +706,27 @@ const variantFilterProblems = (
       ];
     const lookup = plugins.datasetFilters;
     if (!lookup) return [];
-    return variant.filters.fields.flatMap((f, j) =>
-      spec.knowledge.datasets.some((d) => f.field in (lookup(d.dataset) ?? {}))
+    return variant.filters.fields.flatMap((f, j) => {
+      const path = `spec.variants[${i}].filters.fields[${j}]`;
+      const declared = spec.knowledge.datasets.flatMap((d) => {
+        const fields = lookup(d.dataset) ?? {};
+        return Object.hasOwn(fields, f.field) ? [kindsOf(fields[f.field])] : [];
+      });
+      if (declared.length === 0)
+        return [
+          {
+            path: `${path}.field`,
+            message: `no dataset of this service declares the filter field ${f.field}`,
+          },
+        ];
+      const kind = filterKindFor(f.type);
+      return declared.some((kinds) => kinds.includes(kind))
         ? []
         : [
             {
-              path: `spec.variants[${i}].filters.fields[${j}].field`,
-              message: `no dataset of this service declares the filter field ${f.field}`,
+              path: `${path}.type`,
+              message: `the filter field ${f.field} is not a ${kind} field, so it cannot be filtered as ${f.type ?? 'multiselect'}`,
             },
-          ],
-    );
+          ];
+    });
   });

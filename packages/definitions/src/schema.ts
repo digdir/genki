@@ -69,7 +69,6 @@ const variant = z.union([
     chat: z.boolean().optional(),
     aliases: z.array(alias).default([]),
     overrides: z.record(z.string(), z.unknown()).default({}),
-    /** Always applied to this variant's searches, together with any filters the caller sends. */
     filters: retrievalFilter.optional(),
   }),
 ]);

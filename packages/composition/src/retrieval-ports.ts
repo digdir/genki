@@ -7,7 +7,6 @@ import { fromFilterMap } from '@genai/retrieval';
 
 interface KnowledgeConfig {
   datasets?: { dataset: string }[];
-  /** A variant's fixed filter, `{ fields: [...] }`, applied to every search. */
   filters?: { fields?: unknown[] };
   reranker?: string;
   retrieval?: unknown;
@@ -51,7 +50,9 @@ export const openRetrievalPorts = async (
     ...(model ? { model } : {}),
     config: config.knowledge?.retrieval ?? {},
     ...(config.knowledge?.planner ? { planner: config.knowledge.planner } : {}),
-    ...optionalFilters(fromFilterMap(request.overrides?.['retrieve-filter-by'])),
+    ...optionalFilters(
+      fromFilterMap(withFixedFields(request.overrides?.['retrieve-filter-by'], config)),
+    ),
   };
 };
 
@@ -62,14 +63,17 @@ const fieldsOf = (map: unknown): unknown[] => {
   return Array.isArray(fields) ? fields : [];
 };
 
-/**
- * Adds a variant's fixed filter to the caller's `retrieve-filter-by`, so the strategy, its prompt
- * and every search see it. Clauses on the same field are combined, so a caller can narrow a fixed
- * filter but never widen it.
- */
-export const withFixedFilters = (input: Input, config: unknown): Input => {
+const withFixedFields = (map: unknown, config: unknown): unknown => {
   const fixed = fieldsOf((config as RuntimeConfig | undefined)?.knowledge?.filters);
-  if (fixed.length === 0) return input;
+  const caller = fieldsOf(map);
+  // A nested strategy (a step flow's agent) is wrapped too; add each fixed field once.
+  const present = new Set(caller.map((f) => JSON.stringify(f)));
+  const added = fixed.filter((f) => !present.has(JSON.stringify(f)));
+  return added.length === 0 ? map : { fields: [...added, ...caller] };
+};
+
+/** Adds a variant's fixed filter to the caller's, so a caller can narrow it but never widen it. */
+export const withFixedFilters = (input: Input, config: unknown): Input => {
   const data = (input.data && typeof input.data === 'object' ? input.data : {}) as Record<
     string,
     unknown
@@ -77,34 +81,20 @@ export const withFixedFilters = (input: Input, config: unknown): Input => {
   const overrides = (
     data.overrides && typeof data.overrides === 'object' ? data.overrides : {}
   ) as Record<string, unknown>;
-  const caller = fieldsOf(overrides['retrieve-filter-by']);
-  // A nested strategy (a step flow's agent) is wrapped too; add each fixed field once.
-  const present = new Set(caller.map((f) => JSON.stringify(f)));
-  const added = fixed.filter((f) => !present.has(JSON.stringify(f)));
-  if (added.length === 0) return input;
+  const map = overrides['retrieve-filter-by'];
+  const merged = withFixedFields(map, config);
+  if (merged === map) return input;
   return {
     ...input,
-    data: {
-      ...data,
-      overrides: { ...overrides, 'retrieve-filter-by': { fields: [...added, ...caller] } },
-    },
+    data: { ...data, overrides: { ...overrides, 'retrieve-filter-by': merged } },
   };
 };
 
-export const usingRetrievalPorts = <C>(strategy: Strategy<C>): Strategy<C> => {
-  const resume = strategy.resume;
-  return {
-    ...strategy,
-    requires: {
-      ...strategy.requires,
-      ports: [...new Set([...strategy.requires.ports, 'model', 'knowledge', 'rerank'])],
-    },
-    run: (ctx, input, config) => strategy.run(ctx, withFixedFilters(input, config), config),
-    ...(resume
-      ? {
-          resume: (ctx: InvocationContext, checkpoint: unknown, response: Input, config: C) =>
-            resume.call(strategy, ctx, checkpoint, withFixedFilters(response, config), config),
-        }
-      : {}),
-  };
-};
+export const usingRetrievalPorts = <C>(strategy: Strategy<C>): Strategy<C> => ({
+  ...strategy,
+  requires: {
+    ...strategy.requires,
+    ports: [...new Set([...strategy.requires.ports, 'model', 'knowledge', 'rerank'])],
+  },
+  run: (ctx, input, config) => strategy.run(ctx, withFixedFilters(input, config), config),
+});

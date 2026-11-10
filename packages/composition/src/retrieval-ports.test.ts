@@ -1,7 +1,7 @@
 import type { Input } from '@genai/contracts';
 import type { Emitted, Strategy } from '@genai/kernel';
 import { describe, expect, it } from 'vitest';
-import { usingRetrievalPorts, withFixedFilters } from './retrieval-ports.js';
+import { openRetrievalPorts, usingRetrievalPorts, withFixedFilters } from './retrieval-ports.js';
 
 const fixed = { field: 'product', 'selected-options': ['Maskinporten'] };
 const config = { knowledge: { datasets: [{ dataset: 'd' }], filters: { fields: [fixed] } } };
@@ -48,5 +48,19 @@ describe('a variant fixed filter', () => {
 
     expect(filterBy(seen[0] as Input)).toEqual([fixed]);
     expect(wrapped.requires.ports).toEqual(['model', 'knowledge', 'rerank']);
+  });
+
+  it('reaches the searches of a step flow block, which pass no caller filters', async () => {
+    const ctx = { use: async () => ({}) } as never;
+
+    const ports = await openRetrievalPorts(ctx, config);
+    const narrowed = await openRetrievalPorts(ctx, config, {
+      overrides: {
+        'retrieve-filter-by': { fields: [{ field: 'product', 'selected-options': ['ID-porten'] }] },
+      },
+    });
+
+    expect(ports.filters).toEqual({ product: ['Maskinporten'] });
+    expect(narrowed.filters).toEqual({ product: { all: [['Maskinporten'], ['ID-porten']] } });
   });
 });

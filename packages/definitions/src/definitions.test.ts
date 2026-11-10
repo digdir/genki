@@ -604,6 +604,18 @@ describe('service definitions', () => {
     }
   });
 
+  it('refuses a variant filter on a service without datasets', () => {
+    const filters = { fields: [{ field: 'orgs_short', 'selected-options': ['DIGDIR'] }] };
+    const result = validateService(
+      withSpec({ knowledge: { datasets: [] }, variants: [{ id: 'default', filters }] }),
+      plugins,
+    );
+    expect(!result.ok && result.errors).toContainEqual({
+      path: 'spec.variants[0].filters',
+      message: 'a filter needs a dataset to search',
+    });
+  });
+
   it('refuses a variant filter on a field none of the datasets declares, when the catalog is known', () => {
     const filters = (field: string) => ({ fields: [{ field, 'selected-options': ['x'] }] });
     const declared = {
@@ -623,6 +635,39 @@ describe('service definitions', () => {
       path: 'spec.variants[0].filters.fields[0].field',
       message: 'no dataset of this service declares the filter field produkt',
     });
+  });
+
+  it('refuses a variant filter whose type the declared field cannot run, and ignores inherited keys', () => {
+    const declared = {
+      ...plugins,
+      datasetFilters: (dataset: string) =>
+        dataset === 'digdir/kudos' ? { orgs_short: 'multiselect', title: 'text' } : undefined,
+    };
+    const check = (field: string, type?: string) =>
+      validateService(
+        withSpec({
+          variants: [
+            {
+              id: 'default',
+              filters: {
+                fields: [{ field, ...(type ? { type } : {}), 'selected-options': ['x'] }],
+              },
+            },
+          ],
+        }),
+        declared,
+      );
+
+    expect(check('orgs_short', 'not-in-set').ok).toBe(true);
+    expect(check('title', 'contains').ok).toBe(true);
+    const refused = check('orgs_short', 'contains');
+    expect(!refused.ok && refused.errors).toContainEqual({
+      path: 'spec.variants[0].filters.fields[0].type',
+      message:
+        'the filter field orgs_short is not a text field, so it cannot be filtered as contains',
+    });
+    expect(check('title').ok).toBe(false);
+    expect(check('constructor').ok).toBe(false);
   });
 
   it("a variant without its own way of working uses the service's", () => {
