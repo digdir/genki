@@ -260,9 +260,85 @@ describe('Markdown', () => {
     expect(container.innerHTML).toBe(plain);
   });
 
+  it('draws headings as headings from the level it is given, deeper ones below, and as bold lines without one', () => {
+    const text = '# Mål\n\nTekst\n\n### Delmål';
+    render(<Markdown text={text} headingLevel={3} />);
+    expect(
+      screen.getAllByRole('heading').map((h) => [h.tagName, h.textContent, h.dataset.size]),
+    ).toEqual([
+      ['H3', 'Mål', 'md'],
+      ['H5', 'Delmål', 'xs'],
+    ]);
+    cleanup();
+    const { container } = render(<Markdown text={text} />);
+    expect(screen.queryByRole('heading')).toBeNull();
+    expect(screen.getByText('Mål').tagName).toBe('STRONG');
+    expect(container.textContent).toBe('MålTekstDelmål');
+  });
+
+  it('puts a table in a named scroll box a keyboard can reach, only when asked to name it', () => {
+    const text = '| År | Beløp |\n|---|---:|\n| 2023 | **5** |\n\n| a |\n|---|\n| b |';
+    render(
+      <Markdown
+        text={text}
+        tableName={({ number, count, columns }) => `Tabell ${number} av ${count}: ${columns}`}
+      />,
+    );
+    const boxes = screen.getAllByRole('group');
+    expect(boxes.map((box) => box.getAttribute('aria-label'))).toEqual([
+      'Tabell 1 av 2: År,Beløp',
+      'Tabell 2 av 2: a',
+    ]);
+    expect(boxes.map((box) => box.tabIndex)).toEqual([0, 0]);
+    expect(within(boxes[0] as HTMLElement).getByRole('table')).toBeTruthy();
+    cleanup();
+    render(<Markdown text={text} />);
+    expect(screen.queryByRole('group')).toBeNull();
+    expect(screen.getAllByRole('table')).toHaveLength(2);
+  });
+
+  it('holds a footnote it draws on the line of the word before it, with the punctuation after it', () => {
+    const { container } = render(
+      <Markdown
+        text="Bevilgningen var 594 mill. kroner. [1] Neste setning [2][3], og slutt"
+        cite={(n, key) => (
+          <a key={key} href={`#${n}`}>
+            {n}
+          </a>
+        )}
+      />,
+    );
+    const runs = [...container.querySelectorAll('.uib-markdown-cite-run')];
+    expect(runs.map((run) => run.textContent)).toEqual(['. 1', 'g 23,']);
+    // The whitespace the answer wrote is still there for copying, but kept out of sight.
+    expect(container.textContent).toBe(
+      'Bevilgningen var 594 mill. kroner. 1 Neste setning 23, og slutt',
+    );
+    expect(
+      [...container.querySelectorAll('.uib-markdown-cite-space')].map((s) => s.textContent),
+    ).toEqual([' ', ' ']);
+    expect(runs[1]?.querySelector('.uib-markdown-cite-marks')?.textContent).toBe('23,');
+  });
+
+  it('draws a footnote drawn as nothing without the whitespace before it', () => {
+    const { container } = render(
+      <Markdown text="Rapportert kvartalsvis [1]. Og [2] her." cite={() => false} />,
+    );
+    expect(container.textContent).toBe('Rapportert kvartalsvis. Og her.');
+    expect(container.querySelector('.uib-markdown-cite-run')).toBeNull();
+  });
+
+  it('holds nothing for a footnote it leaves as text, so a quotation reads as it did', () => {
+    const text = 'Se tabell [1] og [2].';
+    const { container } = render(<Markdown text={text} links={false} />);
+    expect(container.querySelector('.uib-markdown-cite-run')).toBeNull();
+    expect(container.textContent).toBe('Se tabell [1] og [2].');
+    expect(visibleText(text, false).text).toBe(container.textContent);
+  });
+
   it('splits text into paragraphs, headings, lists and code blocks', () => {
     expect(blocksOf('## Mål\nLinje en\nlinje to\n\n- a\n  fortsatt\n- b\n```\nkode\n```')).toEqual([
-      { kind: 'heading', text: 'Mål' },
+      { kind: 'heading', text: 'Mål', depth: 2 },
       { kind: 'paragraph', lines: ['Linje en', 'linje to'] },
       { kind: 'list', ordered: false, start: 1, items: ['a fortsatt', 'b'] },
       { kind: 'code', text: 'kode' },

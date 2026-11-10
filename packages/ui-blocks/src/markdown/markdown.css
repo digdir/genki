@@ -31,4 +31,32 @@
   .uib-markdown-table [data-align='right'] {
     text-align: right;
   }
+  /* A wide table scrolls in its own box, since a table does not shrink. Words in its cells break
+     only where they can: columns size from their longest word, so `anywhere` would break them all. */
+  .uib-markdown-table-scroll {
+    max-inline-size: 100%;
+    overflow-x: auto;
+    overflow-wrap: normal;
+  }
+  .uib-markdown-table-scroll .uib-markdown-table :is(th, td) {
+    overflow-wrap: normal;
+  }
+  /* A footnote and the end of the word before it on one line, with the punctuation after it. */
+  .uib-markdown-cite-run,
+  .uib-markdown-cite-marks {
+    white-space: nowrap;
+  }
+  /* Kept for whoever copies the text, not drawn: the mark sets its own distance from the word.
+     Inline, not visually hidden, so copying still reads «ord [1]». */
+  .uib-markdown-cite-space {
+    font-size: 0;
+  }
+  /* Where the column is narrower than a long word and its marks, WebKit lets the held run hang
+     past the text instead of breaking the word. There the marks may start a line, still held
+     together with the punctuation after them. */
+  @container (inline-size < 20rem) {
+    .uib-markdown-cite-run {
+      white-space: normal;
+    }
+  }
 }
