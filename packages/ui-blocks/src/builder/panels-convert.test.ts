@@ -16,6 +16,7 @@ import {
   fromBuilderState,
   moveTo,
   panels,
+  specOf,
   templateIds,
   templates,
   toBuilderState,
@@ -60,6 +61,14 @@ describe('the names on either side of the border', () => {
     for (const id of allBlocks.filter((b) => b !== 'procedure' && b !== 'documentView'))
       expect(toCatalogueId(id)).toBe(id);
     for (const id of blockIds) expect(toCatalogueId(toPanelId(id))).toBe(id);
+  });
+
+  it('reads a block’s catalogue entry by #210’s name, where Prosjekter and Notater are «kommer»', () => {
+    expect(specOf('procedure').id).toBe('approach');
+    expect(allBlocks.filter((id) => specOf(id).status === 'planned')).toEqual([
+      'projects',
+      'notes',
+    ]);
   });
 });
 

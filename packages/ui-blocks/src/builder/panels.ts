@@ -5,6 +5,7 @@ import {
   blockSpec,
   zones,
   type BlockId as CatalogueId,
+  type BlockSpec,
   type Zone,
 } from './catalogue.js';
 import * as rules from './layout.js';
@@ -59,6 +60,9 @@ export const toZone = (panel: Panel): Zone => zoneOfPanel[panel];
 export const toPanel = (zone: Zone): Panel => panelOfZone[zone];
 export const toCatalogueId = (id: BlockId): CatalogueId => catalogueIdOf[id];
 export const toPanelId = (id: CatalogueId): BlockId => panelIdOf[id];
+
+/** The catalogue's entry for a block: whether it is built, its needs and its options. */
+export const specOf = (id: BlockId): BlockSpec => blockSpec(toCatalogueId(id));
 
 export const panels: Panel[] = zones.map(toPanel);
 export const allBlocks: BlockId[] = catalogueIds.map(toPanelId);
