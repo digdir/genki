@@ -26,28 +26,12 @@ import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
-// Only language models write answers. Embedders and rerankers such as ColBERT are metered too, but
-// they have no model family, so a judge cannot be checked against them.
-const languageModels = (byModel: DraftModelUsage[]) => byModel.filter((m) => m.kind === 'model');
+// Embedders and rerankers such as ColBERT are metered like models, but they write no answer and
+// have no model family, so a judge cannot be checked against them. Usage without a kind stays.
+const notAnswering = new Set(['embedder', 'reranker']);
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
-  languageModels(byModel).map((m) => m.model);
-
-// The model that wrote an answer: the one that used the most tokens. A check on the side, such
-// as for small talk, uses far fewer. A fallback model shows up here when the primary failed.
-export const writerOf = (byModel: DraftModelUsage[]) =>
-  languageModels(byModel).reduce<DraftModelUsage | undefined>(
-    (top, m) =>
-      !top || m.inputTokens + m.outputTokens > top.inputTokens + top.outputTokens ? m : top,
-    undefined,
-  )?.model;
-
-// The models that wrote the answers in a run, the one that wrote the most first.
-export const writersOf = (writers: (string | undefined)[]) => {
-  const counts = new Map<string, number>();
-  for (const w of writers) if (w) counts.set(w, (counts.get(w) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1]).map(([model]) => model);
-};
+  byModel.filter((m) => !notAnswering.has(m.kind ?? '')).map((m) => m.model);
 
 export const serviceRunKind = 'service-eval-run';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
@@ -75,11 +59,11 @@ export interface ServiceRun extends Leased {
   version: RunVersion;
   subject?: string;
   variant?: string;
-  // Set when the run is queued to the model it is meant to use, then to the model that wrote the
-  // most answers. models lists every model that wrote one, when there was more than one.
+  // The model the run is set to answer with: the variant's own model, else the primary model.
   model?: string;
-  models?: string[];
   split?: CaseSplit;
+  // The cases a run was limited to. Such a run does not stand for the whole test set.
+  selected?: string[];
   startedAt: string;
   endedAt: string | null;
   score: number | null;
@@ -103,7 +87,6 @@ export interface Outcome {
   passed: number;
   total: number;
   score: number | null;
-  models?: string[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -231,7 +214,6 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ? choice.judgeModel(principal, judgeTenant, judgeId, 'builder', meter)
       : undefined;
     const results: CaseResult[] = [];
-    const writers: (string | undefined)[] = [];
     for (const c of cases) {
       const view = caseView(c);
       const base = {
@@ -261,7 +243,6 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         });
         continue;
       }
-      writers.push(writerOf(outcome.usage.byModel));
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
@@ -281,7 +262,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(grade.reason ? { reason: grade.reason } : {}),
       });
     }
-    return { ...summarize(results), models: writersOf(writers) };
+    return summarize(results);
   };
 
   const saveRun = (actor: string, tenant: string, run: ServiceRun, reason: string) =>
@@ -360,6 +341,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ...(subject.variant ? { variant: subject.variant } : {}),
       ...(model ? { model } : {}),
       ...(split ? { split } : {}),
+      ...(only ? { selected: only } : {}),
       startedAt: new Date().toISOString(),
       endedAt: null,
       score: null,
@@ -398,8 +380,6 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             score: outcome.score,
             passed: outcome.passed,
             total: outcome.total,
-            ...(outcome.models?.[0] ? { model: outcome.models[0] } : {}),
-            ...(outcome.models && outcome.models.length > 1 ? { models: outcome.models } : {}),
             cost: meter.costMicroNok(),
             tokens: { input: meter.inputTokens, output: meter.outputTokens },
             cases: outcome.results,

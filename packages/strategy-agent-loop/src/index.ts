@@ -21,6 +21,7 @@ import { inferQueryIntent } from './intent.js';
 import {
   activeFiltersInstruction,
   agentTools,
+  cutOffToolCallNudge,
   answerInstructionsLead,
   defaultSystemPrompt,
   type ActiveFilter,
@@ -344,6 +345,15 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;
 
+// One short sentence says no more than that nothing was found. A second sentence explains, points
+// further or answers in part, and is worth more to the user than the service's own wording.
+const onlySaysNothingFound = (text: string) =>
+  text.trim().length <= 200 &&
+  text
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.length > 0).length <= 1;
+
 interface ExtraTool {
   spec: ToolSpec;
   port: ToolPort;
@@ -460,7 +470,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
 
     let smallTalk: Promise<boolean> | undefined;
     const isSmallTalk = (text: string) =>
-      (smallTalk ??= evaluator(smallTalkCheck, text).then(
+      // The question is the user's text: marked as data, it cannot tell the check what to answer.
+      (smallTalk ??= evaluator(smallTalkCheck, untrustedData('user-message', text)).then(
         (verdict) => /^\s*SMALL_TALK\b/i.test(verdict),
         () => false,
       ));
@@ -539,7 +550,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         // An answer from a run that has not searched comes from the model's own knowledge. With
         // the guard on, only small talk passes on a first question; a follow-up may rest on
         // earlier answers, so it passes after the re-prompts. A turn cut off while calling tools
-        // was trying to search, so it is asked again as it was, without the nudge.
+        // was trying to search, so it is asked to call the tool again with shorter arguments.
         const cutOff = turn.toolCalls.length > 0;
         const guard =
           Boolean(settings.noToolCallRetry) &&
@@ -547,8 +558,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           (cutOff || !(await isSmallTalk(query)));
         if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
-          if (!cutOff)
-            messages = [...messages, assistant, { role: 'system', content: noToolCallNudge }];
+          messages = cutOff
+            ? [...messages, { role: 'system', content: cutOffToolCallNudge }]
+            : [...messages, assistant, { role: 'system', content: noToolCallNudge }];
           continue;
         }
         answer =
@@ -908,11 +920,15 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       (soundsLikeRefusal(answer ?? '') ||
         (settings.noAnswerText !== undefined && answer === settings.noAnswerText));
     // A service can say in its own words that its sources do not cover a question, instead of
-    // however the model put it. Only after a search: small talk is not a miss in the sources.
+    // however the model put it. Only after a search, since small talk is not a miss in the sources,
+    // and only a short answer that says no more than that: a longer one explains or answers in
+    // part, and running out of rounds is not a miss either.
     if (
       foundNothing &&
       settings.noAnswerText &&
       answer !== settings.noAnswerText &&
+      answer !== exhaustionDefault &&
+      onlySaysNothingFound(answer ?? '') &&
       workspace.searches.length > 0
     ) {
       yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'no-answer' } };

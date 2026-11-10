@@ -1140,11 +1140,16 @@ const ServiceEvalRun = z
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
     split: z.enum(caseSplits).optional(),
-    model: z.string().optional().describe('The model that wrote the most answers'),
-    models: z
+    model: z
+      .string()
+      .optional()
+      .describe("The model the run answers with: the variant's own model, else the primary model"),
+    selected: z
       .array(z.string())
       .optional()
-      .describe('Every model that wrote an answer, when a fallback wrote some of them'),
+      .describe(
+        'The cases the run was limited to; such a run does not stand for the whole test set',
+      ),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     score: z.number().nullable(),

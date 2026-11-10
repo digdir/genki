@@ -3,7 +3,7 @@ import type { Event, Part } from '@genai/contracts';
 import { gradeAnswer, parseTestSet } from '@genai/eval';
 import { usageByModel } from './draft-runner.js';
 import { markedNotFound, notFoundOf } from './not-found.js';
-import { answeringModel, judgedModels, writerOf, writersOf } from './service-eval.js';
+import { answeringModel, judgedModels } from './service-eval.js';
 
 const usage = (model: { id: string; kind: string }, inputTokens: number): Event =>
   ({
@@ -43,6 +43,12 @@ describe('the models a judge is checked against', () => {
     );
 
     expect(judgedModels(byModel)).toEqual(['foundry-openai/gpt-4o']);
+  });
+
+  it('keeps usage that names no kind, as a strategy that charges without a model reports it', () => {
+    expect(
+      judgedModels([{ model: 'ukjent', inputTokens: 5, outputTokens: 1, costMicroNok: 0 }]),
+    ).toEqual(['ukjent']);
   });
 });
 
@@ -122,40 +128,6 @@ describe('the model a test run records', () => {
     expect(run()).toBe('foundry-openai/gpt-4o-2m-tps');
     expect(run('default')).toBe('foundry-openai/gpt-4o-2m-tps');
     expect(run('sonnet')).toBe('foundry-claude/claude-sonnet-5-5');
-  });
-});
-
-describe('the model that wrote the answers', () => {
-  const used = (model: string, inputTokens: number, kind = 'model') => ({
-    model,
-    kind,
-    inputTokens,
-    outputTokens: 0,
-    costMicroNok: 0,
-  });
-
-  it('is the model that used the most tokens in a case, not a check on the side or the embedder', () => {
-    expect(
-      writerOf([
-        used('foundry/text-embedding-3-small', 900, 'embedder'),
-        used('colbert', 2000, 'reranker'),
-        used('foundry-openai/gpt-4.1-mini', 40),
-        used('foundry-openai/gpt-4o-2m-tps', 500),
-      ]),
-    ).toBe('foundry-openai/gpt-4o-2m-tps');
-    expect(writerOf([])).toBeUndefined();
-  });
-
-  it('names a fallback that wrote some answers, after the model that wrote the most', () => {
-    expect(
-      writersOf([
-        'foundry-openai/gpt-4o-2m-tps',
-        'foundry-openai/gpt-4.1-mini',
-        undefined,
-        'foundry-openai/gpt-4.1-mini',
-      ]),
-    ).toEqual(['foundry-openai/gpt-4.1-mini', 'foundry-openai/gpt-4o-2m-tps']);
-    expect(writersOf(['foundry-openai/gpt-4o-2m-tps'])).toEqual(['foundry-openai/gpt-4o-2m-tps']);
   });
 });
 

@@ -17,6 +17,9 @@ interface Call {
 
 const base = '#/services/rapportassistenten/quality';
 
+// A test can make the case list answer slowly, so the screen shows it loading as a slow API would.
+let slowCases = false;
+
 const openLive = async (
   tab = '',
   quality: QualityMockOptions = {},
@@ -36,6 +39,8 @@ const openLive = async (
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
       reason: reason === null ? null : decodeURIComponent(reason),
     });
+    if (slowCases && (init?.method ?? 'GET') === 'GET' && /\/cases(\?|$)/.test(url))
+      await new Promise((done) => setTimeout(done, 30));
     return inner(input, init);
   };
   const auth = mockAnsattporten(kari);
@@ -48,6 +53,7 @@ const openLive = async (
 };
 
 beforeEach(() => {
+  slowCases = false;
   window.location.hash = '';
 });
 afterEach(cleanup);
@@ -153,6 +159,27 @@ describe('live Testsett', () => {
     expect(screen.queryByRole('heading', { name: /merkede testtilfellet/ })).toBeNull();
     expect(writes()).toHaveLength(before);
     expectAccessible();
+  });
+
+  it('keeps the question about marked test cases open while the cases reload', async () => {
+    await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    slowCases = true;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    await screen.findByRole('heading', { name: 'Kjøre bare det merkede testtilfellet?' });
+    fireEvent.click(screen.getByRole('button', { name: 'Nytt testtilfelle' }));
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: 'Hva koster tilsyn?' } });
+    fireEvent.change(screen.getByLabelText('Et godt svar'), {
+      target: { value: 'Oppgir gebyret.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre testtilfelle' }));
+    await screen.findByRole('button', { name: 'Slett testtilfellet «Hva koster tilsyn?»' });
+
+    expect(
+      screen.getByRole('heading', { name: 'Kjøre bare det merkede testtilfellet?' }),
+    ).toBeTruthy();
+    slowCases = false;
   });
 
   it('runs only the test cases marked in the list, and clears the marks', async () => {

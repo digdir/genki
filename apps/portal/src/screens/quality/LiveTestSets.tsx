@@ -278,7 +278,9 @@ export const LiveTestSets = ({
   const all = cases.status === 'ready' ? cases.data : [];
   const count = (s: CaseSplit) => all.filter((c) => c.split === s).length;
   const marked = marks?.set === current.id ? marks.ids : [];
-  const markedIds = all.filter((c) => marked.includes(c.id)).map((c) => c.id);
+  // While the cases reload, the marks stand as they were, so an open question about them stays.
+  const markedIds =
+    cases.status === 'ready' ? all.filter((c) => marked.includes(c.id)).map((c) => c.id) : marked;
   const mark = (id: string, on: boolean) => {
     const rest = marked.filter((x) => x !== id);
     setMarks({ set: current.id, ids: on ? [...rest, id] : rest });

@@ -29,7 +29,7 @@ export interface EvalRun {
   testSet: string;
   version: RunVersion;
   model?: string;
-  models?: string[];
+  selected?: string[];
   startedAt: string;
   endedAt?: string | null;
   score?: number | null;

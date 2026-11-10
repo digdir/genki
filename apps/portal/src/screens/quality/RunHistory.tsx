@@ -368,11 +368,7 @@ export const RunHistory = ({
                   <Table.Row key={r.id}>
                     <Table.Cell>{dateTime(r.startedAt)}</Table.Cell>
                     <Table.Cell>{versionText(t, r.version)}</Table.Cell>
-                    <Table.Cell>
-                      {(r.models ?? (r.model ? [r.model] : []))
-                        .map((m) => modelLabel(m, modelList))
-                        .join(', ') || '–'}
-                    </Table.Cell>
+                    <Table.Cell>{r.model ? modelLabel(r.model, modelList) : '–'}</Table.Cell>
                     <Table.Cell>
                       <Tag data-size="sm" data-color={color}>
                         {text}

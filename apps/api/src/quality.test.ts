@@ -370,6 +370,7 @@ describe('eval runs for a service', () => {
     const empty = await env.send('POST', path, 'kari', { testSet: 'svar-frister', cases: [] });
 
     expect(run.total).toBe(2);
+    expect(run.selected).toEqual(['o1', 'l1']);
     expect(run.cases.map((c) => c.caseId).sort()).toEqual(['l1', 'o1']);
     expect(unknown.status).toBe(400);
     expect(JSON.stringify(unknown.body)).toContain('no case x9 in svar-frister');
