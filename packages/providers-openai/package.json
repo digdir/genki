@@ -23,7 +23,7 @@
     "@genai/plugins": "0.0.0",
     "@genai/port-embedding": "0.0.0",
     "@genai/port-model": "0.0.0",
-    "openai": "^7.28.0",
+    "openai": "^7.53.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

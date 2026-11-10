@@ -17,9 +17,9 @@
   "dependencies": {
     "@genai/jobs": "0.0.0",
     "pg": "^8.23.1",
-    "pg-boss": "^12.38.0"
+    "pg-boss": "^12.38.1"
   },
   "devDependencies": {
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   }
 }

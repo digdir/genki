@@ -36,25 +36,25 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@testcontainers/postgresql": "^12.2.0",
+    "@testcontainers/postgresql": "^12.2.1",
     "@testing-library/dom": "^10.4.2",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
-    "dependency-cruiser": "^18.5.0",
-    "eslint": "^10.12.0",
+    "dependency-cruiser": "^18.7.2",
+    "eslint": "^10.14.0",
     "fast-check": "^4.10.2",
-    "globals": "^17.13.0",
-    "prettier": "^3.9.9",
-    "testcontainers": "^12.2.0",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
+    "testcontainers": "^12.2.1",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.71.1",
-    "vite": "^8.3.3",
-    "vitest": "^5.0.3"
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   },
   "overrides": {
-    "glob": "^14.0.2",
-    "minimatch": "^11.0.1"
+    "glob": "^14.0.4",
+    "minimatch": "^11.0.5"
   },
   "allowScripts": {
     "esbuild@0.28.2": true
