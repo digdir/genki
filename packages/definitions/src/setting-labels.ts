@@ -32,11 +32,11 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'retrieval.autoFilter.enabled': {
       label: 'Automatisk filter',
-      help: 'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+      help: 'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
     },
     'retrieval.autoFilter.rules': {
       label: 'Regler for automatisk filter',
-      help: 'Reglene for automatisk filtrering, i rekkefølge.',
+      help: 'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Tekstbiter per titteltreff',
@@ -113,6 +113,14 @@ export const settingSchemaLabels: SchemaLabels = {
     'synthesis.temperature': {
       label: 'Temperatur for svaret',
       help: 'Tomt bruker standarden til arbeidsmåten.',
+    },
+    'knowledge.nightWindow': {
+      label: 'Nattvindu for tungt arbeid',
+      help: 'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+    },
+    'knowledge.heavyThreshold': {
+      label: 'Grense for tungt arbeid (tekstbiter)',
+      help: 'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
     },
     'knowledge.switchRetentionDays': {
       label: 'Dager forrige søkemotor beholdes',
@@ -218,11 +226,11 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'retrieval.autoFilter.enabled': {
       label: 'Automatic filter',
-      help: 'Add filters based on organisation names and years in the question.',
+      help: 'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
     },
     'retrieval.autoFilter.rules': {
       label: 'Rules for the automatic filter',
-      help: 'The rules for automatic filtering, in order.',
+      help: 'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Text chunks per title match',
@@ -299,6 +307,14 @@ export const settingSchemaLabels: SchemaLabels = {
     'synthesis.temperature': {
       label: 'Temperature for the answer',
       help: 'Empty uses the default of the way of working.',
+    },
+    'knowledge.nightWindow': {
+      label: 'Night window for heavy work',
+      help: 'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
+    },
+    'knowledge.heavyThreshold': {
+      label: 'Heavy work threshold (chunks)',
+      help: 'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
     },
     'knowledge.switchRetentionDays': {
       label: 'Days the previous search engine is kept',
@@ -540,6 +556,18 @@ export const settingSchemaLabels: SchemaLabels = {
       'x-group': {
         nb: 'Svar',
         en: 'Answers',
+      },
+    },
+    'knowledge.nightWindow': {
+      'x-group': {
+        nb: 'Søk',
+        en: 'Search',
+      },
+    },
+    'knowledge.heavyThreshold': {
+      'x-group': {
+        nb: 'Søk',
+        en: 'Search',
       },
     },
     'knowledge.switchRetentionDays': {

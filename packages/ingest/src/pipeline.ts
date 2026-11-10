@@ -19,7 +19,12 @@ import {
 } from './phrases.js';
 
 export type SkipReason =
-  'no_text' | 'unsupported_type' | 'outside_access' | 'conversion_failed' | 'unreachable';
+  | 'no_text'
+  | 'unsupported_type'
+  | 'outside_access'
+  | 'conversion_failed'
+  | 'unreachable'
+  | 'too_large';
 
 export interface SkippedDocument {
   document: string;

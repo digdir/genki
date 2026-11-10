@@ -427,7 +427,7 @@ const settingDefs = defineNamespace({
   retrieval_queryAwareBoost_label: 'Løft treff som ligner spørsmålet',
   retrieval_autoFilter_enabled_label: 'Automatisk filter',
   retrieval_autoFilter_enabled_desc:
-    'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+    'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   retrieval_autoFilter_rules_label: 'Regler for automatisk filter',
   retrieval_docTitle_fanout_label: 'Tekstbiter per titteltreff',
   retrieval_merge_mode_label: 'Måte å flette søkene på',
@@ -455,6 +455,8 @@ const settingDefs = defineNamespace({
   synthesis_instructions_label: 'Systemledetekst for svaret',
   synthesis_temperature_label: 'Temperatur for svaret',
   synthesis_temperature_desc: 'Tomt bruker standarden til arbeidsmåten.',
+  knowledge_nightWindow_label: 'Nattvindu for tungt arbeid',
+  knowledge_heavyThreshold_label: 'Grense for tungt arbeid (tekstbiter)',
   knowledge_switchRetentionDays_label: 'Dager forrige søkemotor beholdes',
   assistant_enabled_label: 'Byggeassistenten er på',
   assistant_dailyTokens_label: 'Tokens per dag for assistenten',
@@ -485,7 +487,8 @@ const settingDefs = defineNamespace({
   planner_prompt_desc:
     'Ledetekst som erstatter den innebygde for planleggeren. Tomt bruker den innebygde.',
   retrieval_queryAwareBoost_desc: 'Gi treff som deler ord med spørsmålet høyere plass.',
-  retrieval_autoFilter_rules_desc: 'Reglene for automatisk filter, i den rekkefølgen de prøves.',
+  retrieval_autoFilter_rules_desc:
+    'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
   retrieval_docTitle_fanout_desc: 'Tekstbiter som leses fra hvert dokument som treffer på tittel.',
   retrieval_merge_mode_desc: 'Hvordan treffene fra de ulike søkemåtene flettes sammen.',
   retrieval_merge_rrfK_desc: 'Konstant som jevner ut rangeringen ved fletting (RRF).',
@@ -504,6 +507,10 @@ const settingDefs = defineNamespace({
     'Ledetekst som erstatter den innebygde for å lage svaret. Tomt bruker den innebygde.',
   synthesis_instructions_desc:
     'Systemledetekst som erstatter den innebygde for modellen som svarer. Tomt bruker den innebygde.',
+  knowledge_nightWindow_desc:
+    'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+  knowledge_heavyThreshold_desc:
+    'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   knowledge_switchRetentionDays_desc:
     'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter søkemotor.',
   assistant_enabled_desc: 'Tilby byggeassistenten i byggeren for tjenester.',

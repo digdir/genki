@@ -11,6 +11,9 @@ import {
   type ChatResult,
   type ModelPort,
   type ToolSpec,
+  normaliseCitationMarkers,
+  untrustedData,
+  untrustedDataNote,
 } from '@genai/port-model';
 import { textOf, toolRef, type ToolPort } from '@genai/port-tools';
 import { z } from 'zod';
@@ -27,8 +30,6 @@ import {
   noToolCallNudge,
   searchScaffold,
   systemPromptWithDate,
-  untrustedData,
-  untrustedDataNote,
 } from './prompts.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
 import { evaluateRead } from './read-signals.js';
@@ -436,7 +437,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
           attachedNote(workspace.attached) +
-          untrustedDataNote,
+          `\n\n${untrustedDataNote(config.languages)}`,
       },
       ...history.map((h) => ({ role: h.role, content: h.text })),
       { role: 'user', content: query },
@@ -460,7 +461,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       query,
       history,
       signal: ctx.signal,
-      systemPrompt: systemPromptWithDate((options.now ?? (() => new Date()))()),
+      systemPrompt: `${systemPromptWithDate((options.now ?? (() => new Date()))())}\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: (system, user) =>
         synthesisSession.text(
@@ -824,6 +825,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
       }
     }
+
+    if (!clarification && answer !== undefined) answer = normaliseCitationMarkers(answer);
 
     if (
       !clarification &&

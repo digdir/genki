@@ -3,6 +3,7 @@ import type { Principal } from '@genai/contracts';
 import {
   caseTypeOf,
   caseView,
+  defaultObserve,
   gradeAnswer,
   splitsFor,
   type CaseSplit,
@@ -10,6 +11,7 @@ import {
   type TestCase,
   type TestSet,
 } from '@genai/eval';
+import { publishedSubject } from './definition-subject.js';
 import { actorOf } from './admin.js';
 import {
   backgroundLeases,
@@ -50,6 +52,7 @@ export interface ServiceRun extends Leased {
   testSet: string;
   testSetVersion: number;
   version: RunVersion;
+  subject?: string;
   variant?: string;
   split?: CaseSplit;
   startedAt: string;
@@ -223,7 +226,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
-        { text: outcome.answer, noAnswer: outcome.noAnswer },
+        {
+          ...defaultObserve(outcome.parts, []),
+          text: outcome.answer,
+          noAnswer: outcome.noAnswer,
+        },
         {
           ...(judge ? { judge } : {}),
           context: {
@@ -312,6 +319,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       testSet: set.metadata.id,
       testSetVersion: set.metadata.version,
       version: subject.version,
+      subject: publishedSubject(subject.definition, deps.plugins),
       ...(subject.variant ? { variant: subject.variant } : {}),
       ...(split ? { split } : {}),
       startedAt: new Date().toISOString(),

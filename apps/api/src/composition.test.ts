@@ -444,6 +444,85 @@ describe('the composed platform', () => {
     ]);
   });
 
+  it('applies a variant fixed filter to every chunk search, and lets a caller narrow it but not widen it', async () => {
+    const { platform, app, search } = await boot();
+    const service = yaml('services/kunnskapsassistenten-retrieve-only.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const fixed = { fields: [{ field: 'type', 'selected-options': ['ZZZ_fast_type'] }] };
+    const published = await platform.definitions.publish(
+      {
+        ...service,
+        metadata: { ...service.metadata, id: 'kudos-fixed-filter' },
+        spec: { ...service.spec, variants: [{ id: 'default', filters: fixed }] },
+      },
+      'test',
+      'test',
+    );
+    expect(published.ok).toBe(true);
+    const chunkFilters = async (overrides: Record<string, unknown>) => {
+      search.seen.length = 0;
+      const res = await mcp(app, 'tools/call', {
+        name: 'kudos-fixed-filter__default',
+        arguments: { query: 'tiltak og resultater', overrides },
+      });
+      expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+      const searches = search.seen.flatMap(
+        (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
+      );
+      const chunks = searches.filter((s) => String(s.collection).includes('chunks') && s.q !== '*');
+      expect(chunks.length).toBeGreaterThan(0);
+      return chunks.map((s) => String(s.filter_by));
+    };
+
+    for (const f of await chunkFilters({})) expect(f).toContain('type:=[`ZZZ_fast_type`]');
+    const caller = (field: string, value: string) => ({
+      'retrieve-filter-by': { fields: [{ field, 'selected-options': [value] }] },
+    });
+    for (const f of await chunkFilters(caller('orgs_short', 'DIGDIR'))) {
+      expect(f).toContain('type:=[`ZZZ_fast_type`]');
+      expect(f).toContain('orgs_short:=[`DIGDIR`]');
+    }
+    for (const f of await chunkFilters(caller('type', 'Tildelingsbrev'))) {
+      expect(f).toContain('type:=[`ZZZ_fast_type`]');
+      expect(f).toContain('type:=[`Tildelingsbrev`]');
+    }
+  });
+
+  it('refuses at publish a variant filter on a field none of its datasets declares', async () => {
+    const { platform } = await boot();
+    const service = yaml('services/kunnskapsassistenten-retrieve-only.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const publish = (id: string, field: string) =>
+      platform.definitions.publish(
+        {
+          ...service,
+          metadata: { ...service.metadata, id },
+          spec: {
+            ...service.spec,
+            variants: [
+              { id: 'default', filters: { fields: [{ field, 'selected-options': ['x'] }] } },
+            ],
+          },
+        },
+        'test',
+        'test',
+      );
+
+    const refused = await publish('kudos-undeclared-filter', 'produkt');
+    expect(refused.ok).toBe(false);
+    expect(!refused.ok && refused.errors).toEqual([
+      {
+        path: 'spec.variants[0].filters.fields[0].field',
+        message: 'no dataset of this service declares the filter field produkt',
+      },
+    ]);
+    expect((await publish('kudos-declared-filter', 'orgs_short')).ok).toBe(true);
+  });
+
   it("streams the agent's steps and answer to KA as progress frames before the result", async () => {
     const { platform, app } = await boot();
     await platform.definitions.publish(yaml('services/kunnskapsassistenten.yaml'), 'test', 'test');
@@ -827,6 +906,7 @@ describe('the composed platform', () => {
       'foundry-openai/gpt-4o-2m-tps',
       'foundry-openai/gpt-5-mini',
       'foundry-openai/gpt-5.6-terra',
+      'foundry-openai/gpt-6-luna',
     ]);
     expect(await ids('?residency=norway')).toEqual([]);
 
@@ -867,11 +947,13 @@ describe('the composed platform', () => {
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
     ]);
     expect(await list({ 'foundry-openai/gpt-4o-2m-tps': price })).toEqual([
       expect.objectContaining({ id: 'foundry-openai/gpt-4o-2m-tps', price }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5-mini', price: null }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5.6-terra', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-6-luna', price: null }),
     ]);
   });
 

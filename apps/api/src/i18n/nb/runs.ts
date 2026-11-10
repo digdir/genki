@@ -53,6 +53,7 @@ export const runs = defineNamespace({
     other: 'Ferdig, {count} elementer hoppet over',
   },
   runFailed: 'Kjøringen feilet',
+  providerAnswered: 'Leverandøren svarte {status}',
   started: 'Startet',
   received: 'Oppgaven ble mottatt',
   message: 'Melding',

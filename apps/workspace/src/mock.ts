@@ -312,6 +312,13 @@ export const exampleDraft: DocumentDraft = {
   ],
 };
 
+const examplePng = Uint8Array.from(
+  atob(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  ),
+  (c) => c.charCodeAt(0),
+);
+
 const reply = (text: string, sources: ChatReply['sources']): ChatReply => ({
   text,
   sources,
@@ -451,6 +458,19 @@ export const mockWorkspaceApi = (delayMs = 0): WorkspaceApi => {
       const question = history[history.length - 1]?.content.toLowerCase() ?? '';
       if (/lønn|tjener/.test(question)) return { text: '', sources: [], failure: refusedExample };
       if (/kantine/.test(question)) return { text: '', sources: [], failure: noSourcesExample };
+      if (/figur|bilde/.test(question))
+        return {
+          ...reply('Her er figuren du ba om.', []),
+          media: [
+            {
+              id: 'm1',
+              mediaType: 'image/png',
+              bytes: examplePng.byteLength,
+              step: 'figur',
+              url: '/v1/tasks/task-figur/media/m1',
+            },
+          ],
+        };
       const answer =
         'Tilsynene i 2025 fant oftest mangler i rapporteringen og i dokumentasjonen av bruken av midler.';
       const words = answer.split(' ');
@@ -463,6 +483,7 @@ export const mockWorkspaceApi = (delayMs = 0): WorkspaceApi => {
     sendFeedback: async () => {
       await wait();
     },
+    media: async () => new Blob([examplePng], { type: 'image/png' }),
     failedRuns: async () => {
       await wait();
       return exampleFailedRuns;

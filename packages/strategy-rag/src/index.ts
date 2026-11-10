@@ -5,6 +5,8 @@ import {
   defaultMaxOutputTokens,
   instructionsConfig,
   languageInstructionsConfig,
+  normaliseCitationMarkers,
+  untrustedDataNote,
 } from '@genai/port-model';
 import {
   attachedChunks,
@@ -150,7 +152,14 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
     );
     yield {
       type: 'kernel.notice',
-      data: { kind: 'retrieval', hits: retrievalHits(found.chunks), queries: plan.queries },
+      data: {
+        kind: 'retrieval',
+        hits: retrievalHits(found.chunks),
+        queries: plan.queries,
+        ...(found.attribution?.detections?.length
+          ? { detections: found.attribution.detections }
+          : {}),
+      },
     };
 
     let ranked = found.chunks;
@@ -220,7 +229,8 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
                 (settings.instructions
                   ? baseInstructions(settings.instructions)
                   : systemPromptWithDate((options.now ?? (() => new Date()))())) +
-                skillsSection(config.skills),
+                skillsSection(config.skills) +
+                `\n\n${untrustedDataNote(config.languages)}`,
             },
             { role: 'user', content: prompt },
           ],
@@ -232,7 +242,7 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
       filter.end();
       return full;
     });
-    const text = stripSourceLists(generated);
+    const text = stripSourceLists(normaliseCitationMarkers(generated));
     const citations = parseCitations(text, numbered.index);
     yield {
       type: 'kernel.result',

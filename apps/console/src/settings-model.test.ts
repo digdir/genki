@@ -1,6 +1,7 @@
 import { createFormat } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
 import { translator } from './i18n';
+import { settingLabels } from './setting-labels';
 import { formatValue, parseDraft, settingErrorText } from './settings-model';
 import type { GridSetting } from './types';
 
@@ -32,5 +33,22 @@ describe('setting errors', () => {
     expect(formatValue({ ...s, type: 'bool' }, true, en, f)).toBe('On');
     expect(formatValue(s, 12345, en, f)).toBe('12,345');
     expect(parseDraft(s, '9', {}, en, f)).toEqual({ error: 'Must be between 1 and 5.' });
+  });
+});
+
+describe('knowledge settings', () => {
+  it('knowledge.heavyThreshold and knowledge.nightWindow are labelled in the console and the portal in bokmål and English', () => {
+    const names = {
+      nb: ['Grense for tungt arbeid (tekstbiter)', 'Nattvindu for tungt arbeid'],
+      en: ['Heavy work threshold (chunks)', 'Night window for heavy work'],
+    };
+    for (const locale of ['nb', 'en'] as const) {
+      const tr = translator(locale);
+      const labels = ['knowledge.heavyThreshold', 'knowledge.nightWindow'].map((key) => {
+        const named = settingLabels[key];
+        return named && tr(named.label);
+      });
+      expect(labels, locale).toEqual(names[locale]);
+    }
   });
 });

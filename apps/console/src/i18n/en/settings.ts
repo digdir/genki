@@ -22,7 +22,7 @@ export const settings = {
   labelRetrievalQueryAwareBoost: 'Boost results that resemble the question',
   labelRetrievalAutoFilterEnabled: 'Automatic filter',
   descRetrievalAutoFilterEnabled:
-    'Add filters based on organisation names and years in the question.',
+    'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
   labelRetrievalAutoFilterRules: 'Rules for the automatic filter',
   labelRetrievalDocTitleFanout: 'Text chunks per title match',
   labelRetrievalMergeMode: 'How the searches are merged',
@@ -50,6 +50,8 @@ export const settings = {
   labelSynthesisInstructions: 'System prompt for the answer',
   labelSynthesisTemperature: 'Temperature for the answer',
   descSynthesisTemperature: 'Empty uses the default of the way of working.',
+  labelKnowledgeNightWindow: 'Night window for heavy work',
+  labelKnowledgeHeavyThreshold: 'Heavy work threshold (chunks)',
   labelKnowledgeSwitchRetentionDays: 'Days the previous search engine is kept',
   labelAssistantEnabled: 'The build assistant is on',
   labelAssistantDailyTokens: 'Tokens per day for the assistant',
@@ -233,7 +235,8 @@ export const settings = {
   emptyText: 'The platform has no settings with a default value yet.',
   descPlannerPrompt: 'A custom prompt for the planner. Empty uses the built-in one.',
   descRetrievalQueryAwareBoost: 'Boosts hits that overlap with the question.',
-  descRetrievalAutoFilterRules: 'The rules for automatic filtering, in order.',
+  descRetrievalAutoFilterRules:
+    'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
   descRetrievalDocTitleFanout: 'Number of passages read per document that matches on title.',
   descRetrievalMergeMode: 'How the results from the search strategies are merged.',
   descRetrievalMergeRrfK: 'The smoothing constant when results are merged with rank fusion.',
@@ -251,6 +254,10 @@ export const settings = {
     'A custom prompt for writing the answer. Empty uses the built-in one.',
   descSynthesisInstructions:
     'A custom system instruction for the answering model. Empty uses the built-in one.',
+  descKnowledgeNightWindow:
+    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
+  descKnowledgeHeavyThreshold:
+    'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   descKnowledgeSwitchRetentionDays:
     'Days the previous search engine copy is kept after a dataset switches engine.',
   descAssistantEnabled: 'Offer the build assistant in the service builder.',

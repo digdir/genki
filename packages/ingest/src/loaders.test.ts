@@ -48,8 +48,8 @@ describe('kudos client', () => {
       fetch: async (input) => {
         const url = String(input);
         calls.push(url);
-        if (url.endsWith('page=2') && flaky++ < 2) return json({}, 503);
-        const n = Number(url.split('page=')[1]);
+        const n = Number(new URL(url).searchParams.get('page'));
+        if (n === 2 && flaky++ < 2) return json({}, 503);
         return json({ data: [{ id: n }], meta: { current_page: n, last_page: 3 } });
       },
     });
@@ -68,7 +68,7 @@ describe('kudos client', () => {
     const client = kudosClient({
       profile: { ...profile, retryDelaysMs: [] },
       fetch: async (input) => {
-        const n = Number(String(input).split('page=')[1]);
+        const n = Number(new URL(String(input)).searchParams.get('page'));
         return n === 1
           ? json({ data: [{ id: 1 }], meta: { current_page: 1, last_page: 9 } })
           : json({}, 500);
@@ -312,12 +312,50 @@ describe('website loader', () => {
   it('merges frontmatter titles and strips the diataxis prefix', () => {
     const markdown =
       '---\ntitle: Kom i gang\nlinktitle: Start\ndiataxis: diataxis_tutorial\n---\n# Hei\n';
-    expect(mergeFrontmatter({ id: 'x' }, markdown)).toEqual({
+    expect(mergeFrontmatter({ id: 'x', title: 'Getting started' }, markdown)).toEqual({
       id: 'x',
+      title: 'Kom i gang',
       linktitle: 'Start',
       frontmatter_title: 'Kom i gang',
       diataxis: 'tutorial',
     });
+  });
+
+  it('keeps the URL title when the frontmatter title is empty, missing or not text', () => {
+    const doc = { id: 'x', title: 'Getting started' };
+    for (const fm of ['title: ""', 'title: "  "', 'linktitle: Start', 'title: { nb: Hei }'])
+      expect(mergeFrontmatter(doc, `---\n${fm}\n---\nTekst\n`)).toMatchObject({
+        title: 'Getting started',
+      });
+    expect(mergeFrontmatter(doc, '# Hei\n')).toEqual(doc);
+  });
+
+  it('keeps a trimmed frontmatter product, and ignores an empty or non-text one', () => {
+    const doc = { id: 'x', title: 'X' };
+    expect(mergeFrontmatter(doc, '---\nproduct: "ID-porten "\n---\n')).toMatchObject({
+      product: 'ID-porten',
+    });
+    for (const fm of ['product: ""', 'product: [a, b]', 'title: X'])
+      expect(mergeFrontmatter(doc, `---\n${fm}\n---\n`)).not.toHaveProperty('product');
+  });
+
+  it('takes the language from frontmatter lang or language only when the URL gave none', () => {
+    const none: { id: string; language: string | null } = { id: 'x', language: null };
+    const cases: [string, string | null][] = [
+      ['lang: en-GB', 'en'],
+      ['lang: nb-NO', 'nb'],
+      ['language: no', 'nb'],
+      ['lang: nn', 'nn'],
+      ['lang: de', null],
+      ['lang: ""', null],
+      ['lang: constructor', null],
+      ['lang: de\nlanguage: nb', 'nb'],
+    ];
+    for (const [fm, language] of cases)
+      expect(mergeFrontmatter(none, `---\n${fm}\n---\n`).language).toBe(language);
+    expect(mergeFrontmatter({ id: 'x', language: 'nb' }, '---\nlang: en\n---\n').language).toBe(
+      'nb',
+    );
   });
 });
 

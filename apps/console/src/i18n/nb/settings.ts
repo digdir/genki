@@ -21,7 +21,7 @@ export const settings = defineNamespace({
   labelRetrievalQueryAwareBoost: 'Løft treff som ligner spørsmålet',
   labelRetrievalAutoFilterEnabled: 'Automatisk filter',
   descRetrievalAutoFilterEnabled:
-    'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+    'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   labelRetrievalAutoFilterRules: 'Regler for automatisk filter',
   labelRetrievalDocTitleFanout: 'Tekstbiter per titteltreff',
   labelRetrievalMergeMode: 'Måte å flette søkene på',
@@ -49,6 +49,8 @@ export const settings = defineNamespace({
   labelSynthesisInstructions: 'Systemledetekst for svaret',
   labelSynthesisTemperature: 'Temperatur for svaret',
   descSynthesisTemperature: 'Tomt bruker standarden til arbeidsmåten.',
+  labelKnowledgeNightWindow: 'Nattvindu for tungt arbeid',
+  labelKnowledgeHeavyThreshold: 'Grense for tungt arbeid (tekstbiter)',
   labelKnowledgeSwitchRetentionDays: 'Dager forrige søkemotor beholdes',
   labelAssistantEnabled: 'Byggeassistenten er på',
   labelAssistantDailyTokens: 'Tokens per dag for assistenten',
@@ -232,7 +234,8 @@ export const settings = defineNamespace({
   emptyText: 'Plattformen har ingen innstillinger med standardverdi ennå.',
   descPlannerPrompt: 'Eget oppdrag til planleggeren. Tomt bruker det innebygde.',
   descRetrievalQueryAwareBoost: 'Løfter treff som overlapper med spørsmålet.',
-  descRetrievalAutoFilterRules: 'Reglene for automatisk filtrering, i rekkefølge.',
+  descRetrievalAutoFilterRules:
+    'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
   descRetrievalDocTitleFanout: 'Antall utdrag som leses per dokument som treffer på tittel.',
   descRetrievalMergeMode: 'Hvordan resultatene fra søkestrategiene slås sammen.',
   descRetrievalMergeRrfK: 'Glattingskonstanten når resultatene slås sammen med rangfusjon.',
@@ -249,6 +252,10 @@ export const settings = defineNamespace({
   descRetrievalRerankCandidateK: 'Antall kandidater som sendes til omrangeringen.',
   descSynthesisGenerationPrompt: 'Eget oppdrag for å skrive svaret. Tomt bruker det innebygde.',
   descSynthesisInstructions: 'Egen systeminstruks til svarmodellen. Tomt bruker den innebygde.',
+  descKnowledgeNightWindow:
+    'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+  descKnowledgeHeavyThreshold:
+    'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   descKnowledgeSwitchRetentionDays:
     'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter motor.',
   descAssistantEnabled: 'Tilby byggeassistenten i tjenestebyggeren.',

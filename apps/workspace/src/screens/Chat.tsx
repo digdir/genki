@@ -263,6 +263,7 @@ export const Chat = ({
       sources: reply.failure ? [] : reply.sources,
       ...(reply.task ? { task: reply.task } : {}),
       ...(reply.noAnswer ? { noAnswer: true } : {}),
+      ...(reply.media?.length && !reply.failure ? { media: reply.media } : {}),
       ...(reply.table && !reply.failure
         ? { table: reply.table, ...(reply.csv ? { csv: reply.csv } : {}) }
         : {}),
@@ -585,6 +586,7 @@ export const Chat = ({
           now={now()}
           onRetry={retry}
           onFeedback={(input) => api.sendFeedback(input)}
+          {...(api.media ? { loadMedia: api.media } : {})}
           {...(onOpenTable
             ? { onOpenTable: (m: AssistantMessage) => onOpenTable(m, inputsBefore(messages, m)) }
             : {})}

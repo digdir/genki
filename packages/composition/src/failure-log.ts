@@ -1,5 +1,6 @@
 import type { Ref } from '@genai/contracts';
 import type { EventLog, PortContext } from '@genai/kernel';
+import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
 import { ModelError, type ChatRequest, type ModelPort } from '@genai/port-model';
 
 export type ApiLog = (msg: string, fields: Record<string, unknown>) => void;
@@ -66,6 +67,94 @@ export const loggedModels = <R extends { open(ref: Ref, ctx: PortContext): Model
   });
 };
 
+// The error's message is left out: a provider may quote the input in it.
+export const loggedEmbedders = <
+  R extends {
+    open(ref: Ref, ctx: PortContext, request?: EmbeddingOpenOptions): EmbeddingPort;
+  },
+>(
+  router: R,
+  log: ApiLog,
+  capabilityOf: CapabilityOf,
+): R => {
+  const open = (ref: Ref, ctx: PortContext, request?: EmbeddingOpenOptions): EmbeddingPort => {
+    const port = router.open(ref, ctx, request);
+    return Object.assign(Object.create(port) as EmbeddingPort, {
+      embed: async (texts: string[]) => {
+        try {
+          return await port.embed(texts);
+        } catch (error) {
+          const code = (error as { code?: unknown } | null)?.code;
+          void capabilityOf(ctx.task)
+            .catch(() => undefined)
+            .then((capability) =>
+              log('model call failed', {
+                task: ctx.task,
+                tenant: ctx.tenant,
+                ...(capability ? { capability } : {}),
+                model: ref.id,
+                error: error instanceof Error ? error.name : typeof error,
+                ...(typeof code === 'string' ? { code } : {}),
+              }),
+            );
+          throw error;
+        }
+      },
+    });
+  };
+  // A proxy, not a prototype: the router's other methods read its private fields.
+  return new Proxy(router, {
+    get: (target, property) => {
+      if (property === 'open') return open;
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === 'function'
+        ? (value as (...a: unknown[]) => unknown).bind(target)
+        : value;
+    },
+  });
+};
+
+const retryAfterMs = (headers: Headers): number | undefined => {
+  const ms = Number(headers.get('retry-after-ms') ?? Number.NaN);
+  if (Number.isFinite(ms) && ms >= 0) return ms;
+  const after = headers.get('retry-after');
+  if (after === null) return undefined;
+  const seconds = Number(after);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const at = Date.parse(after);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+};
+
+const requestedModel = (body: unknown): string | undefined => {
+  if (typeof body !== 'string') return undefined;
+  try {
+    const model = (JSON.parse(body) as { model?: unknown } | null)?.model;
+    return typeof model === 'string' ? model : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+// Logs each 429 before the SDK waits and retries; the body is read only for its `model` field.
+export const throttleLoggedFetch =
+  (endpoint: string, inner: typeof fetch, log: ApiLog): typeof fetch =>
+  async (input, init) => {
+    const response = await inner(input, init);
+    if (response.status !== 429) return response;
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : {}));
+    const retries = Number(headers.get('x-stainless-retry-count') ?? 0);
+    const model = requestedModel(init?.body);
+    const wait = retryAfterMs(response.headers);
+    log('model call throttled', {
+      endpoint,
+      ...(model ? { model } : {}),
+      status: response.status,
+      ...(wait === undefined ? {} : { retryAfterMs: wait }),
+      attempt: (Number.isInteger(retries) && retries >= 0 ? retries : 0) + 1,
+    });
+    return response;
+  };
+
 export const failureLoggingEventLog = (
   inner: EventLog,
   log: ApiLog,
@@ -82,6 +171,7 @@ export const failureLoggingEventLog = (
         code?: unknown;
         status?: string;
         message?: unknown;
+        provider?: { status?: unknown; body?: unknown };
       };
       if (event.type === 'kernel.resource.used' && data.port === 'model' && data.ref?.id)
         models.set(event.task, (models.get(event.task) ?? new Set()).add(data.ref.id));
@@ -96,6 +186,12 @@ export const failureLoggingEventLog = (
           ...(typeof data.code === 'string' ? { code: data.code } : {}),
           ...(options.messages && typeof data.message === 'string'
             ? { message: data.message }
+            : {}),
+          ...(typeof data.provider?.status === 'number'
+            ? { providerStatus: data.provider.status }
+            : {}),
+          ...(options.messages && typeof data.provider?.body === 'string'
+            ? { providerBody: data.provider.body }
             : {}),
         });
       }

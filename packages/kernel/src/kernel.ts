@@ -1,4 +1,6 @@
+import { addUsage, countedKeys, usageKeys } from './usage-sum.js';
 import {
+  providerFailureOf,
   strategyEventTypes,
   type CapabilityDescriptor,
   type Event,
@@ -25,6 +27,7 @@ import {
   type TaskStore,
 } from './memory.js';
 import { DeltaCoalescer } from './deltas.js';
+import type { UseOptions } from './gate.js';
 import {
   KERNEL_MAJOR,
   KernelError,
@@ -78,14 +81,6 @@ const defaultLimits: KernelLimits = {
   deltaFlushChars: 500,
 };
 
-const usageKeys = [
-  'inputTokens',
-  'outputTokens',
-  'cachedInputTokens',
-  'requests',
-  'costMicroNok',
-] as const;
-
 const strategyTypes = new Set<string>(strategyEventTypes);
 const extensionType = /^x\.[a-z0-9-]+\.[a-z0-9.-]+$/i;
 
@@ -116,15 +111,6 @@ const stableStringify = (value: unknown): string => {
 const sha256 = async (text: string) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-};
-
-const addUsage = (a: Usage, b: Usage): Usage => {
-  const sum: Usage = {};
-  for (const k of usageKeys) {
-    const total = (a[k] ?? 0) + (b[k] ?? 0);
-    if (total) sum[k] = total;
-  }
-  return sum;
 };
 
 const tighter = (a: Usage | undefined, b: Usage): Usage => {
@@ -176,12 +162,15 @@ class BudgetNode {
   }
 
   charge(usage: Usage): void {
-    for (const k of usageKeys) {
+    for (const k of countedKeys) {
       const v = usage[k];
       if (v !== undefined && (!Number.isFinite(v) || v < 0)) {
         throw new KernelError('invalid_state', `usage ${k} must be a non-negative number`);
       }
     }
+    for (const [name, v] of Object.entries(usage.units ?? {}))
+      if (!Number.isFinite(v) || v < 0)
+        throw new KernelError('invalid_state', `usage unit ${name} must be a non-negative number`);
     const chain = this.chain();
     for (const node of chain) node.used = addUsage(node.used, usage);
     for (const node of chain) {
@@ -452,9 +441,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     if (l.finished) return;
     l.finished = true;
     const code = error instanceof KernelError ? error.code : 'strategy_error';
+    const provider = providerFailureOf(error);
     await emit(
       l,
-      { type: 'kernel.error', data: { code, message: error.message }, audience: 'audit' },
+      {
+        type: 'kernel.error',
+        data: { code, message: error.message, ...(provider ? { provider } : {}) },
+        audience: 'audit',
+      },
       'kernel',
     );
     const clientMessage = error instanceof KernelError ? error.message : 'the service failed';
@@ -633,7 +627,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
           await persist(l);
         },
       },
-      use: async <P>(port: string, ref: Ref) => {
+      use: async <P>(port: string, ref: Ref, useOptions: UseOptions = {}) => {
         if (!l.strategy.requires.ports.includes(port)) {
           throw new KernelError(
             'forbidden',
@@ -663,6 +657,12 @@ export const createKernel = (options: KernelOptions): Kernel => {
           meter: (usage, model) => chargeLive(l, usage, { port, ref, ...(model ? { model } : {}) }),
           outputLimit: () => outputLimit(l),
           provenance: (resource) => recordResource(l, resource),
+          ...(useOptions.guards?.length ? { guards: useOptions.guards } : {}),
+          ...(useOptions.serviceResidency ? { serviceResidency: useOptions.serviceResidency } : {}),
+          ...(useOptions.unmaskedMedia?.length ? { unmaskedMedia: useOptions.unmaskedMedia } : {}),
+          audit: async (record) => {
+            await emit(l, { type: 'kernel.gate.call', data: record, audience: 'audit' }, 'kernel');
+          },
         };
         return provider.open(ref, portContext) as P;
       },

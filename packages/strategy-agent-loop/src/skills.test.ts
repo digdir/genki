@@ -16,7 +16,9 @@ import {
   skillText,
   systemPromptWithDate,
 } from './index.js';
-import { untrustedDataNote } from './prompts.js';
+import { untrustedDataNotes } from '@genai/port-model';
+
+const untrustedDataNote = `\n\n${untrustedDataNotes.nb}`;
 
 const klarsprak = (version: number, instructions: string) => ({
   ref: `klarsprak@${version}`,
@@ -27,7 +29,7 @@ const klarsprak = (version: number, instructions: string) => ({
 });
 
 const skill = klarsprak(2, 'Bruk korte setninger. Behold {context} og {question} bokstavelig.');
-const synthesisSystem = systemPromptWithDate(new Date('2026-10-06T10:00:00Z'));
+const synthesisSystem = `${systemPromptWithDate(new Date('2026-10-06T10:00:00Z'))}\n\n${untrustedDataNotes.nb}`;
 const ungated = { ...baseConfig.strategy, ablate: [...ablatableStages] };
 
 describe('agent-loop skills', () => {

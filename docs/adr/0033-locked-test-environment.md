@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03)
 
 ## Context
 
@@ -13,7 +13,7 @@ genki-test logs people in through Ansattporten TEST. With TestID anyone can log 
 In lockdown, only a credential from configuration, a trusted Entra login (below) or a credential such a login created may reach a model provider. A credential from configuration is an API key whose secret the API was given at startup (today `DEV_API_KEY` and `DEV_SERVICE_API_KEY`). The API marks such a caller when it authenticates the request, by the digest of the key it presented, so a key made or rotated through the API carries the mark only as described under Keys and clients from Entra logins.
 
 - People (Ansattporten), operators and every other caller get a 403 problem, `urn:genai:problem:locked-environment`, whose title says the environment is locked, on routes that run models: service calls (MCP, OpenAI, A2A, tool calls), playground and test runs, builder assistant turns, eval and batch runs, project runs, the quality matrix, enrichment proposals, diagnostics and skill fixes.
-- The same callers get the same problem, with a title that says ingestion is locked, on routes that fetch documents or write new embeddings: running a pipeline (tenant and operator), syncing a connector, starting or retrying an engine switch, and applying hypothetical questions.
+- The same callers get the same problem, with a title that says ingestion is locked, on routes that fetch documents or write new embeddings: running a pipeline (tenant and operator), syncing a connector, starting, retrying or activating an engine switch, and applying hypothetical questions.
 - The model port refuses the same callers, so a model call from a route not on that list, a background job or a trigger fails too.
 - The worker reads the same setting. It binds no triggers, so a document that lands in a folder or a scheduled trigger starts nothing, and each sync logs that it is locked. Its model port uses the same rule, and the worker runs as a system user without the mark, so any model call it makes is refused.
 - The ingestion service refuses to start a run that a credential from configuration did not start. Scheduled runs and the first sync of a new connector therefore do not run; a scheduled run is recorded as failed with the reason and logged.
@@ -21,7 +21,7 @@ In lockdown, only a credential from configuration, a trusted Entra login (below)
 - Checks that send a stored secret to an address the caller chooses (a building-block contract test, an operator knowledge endpoint test) are not reads: they get the same problem for people other than a trusted Entra login.
 - For the same people, opening a draft with `rebase=clean` shows that it is behind instead of rebasing it, and a batch estimate skips the sample runs and assumes a range.
 - One authenticator decides for the lockdown gate and the routes: the routes use the same caller as the gate (API keys excluded from the definition and platform routes, as before). When a locked route gets a credential that resolves to nobody, the gate answers 401 instead of passing the request on.
-- `/health` reports `lockdown`, and the portal, console and workspace show a banner. A TestID login is told that changes, models and ingestion need an Entra ID login; an Entra login sees the ordinary locked-environment banner.
+- `/health` reports `lockdown`, and `GET /me` reports `lockdownReadOnly: true` for a login that may only read. The portal, console and workspace then show a banner that tells such a login that changes, models and ingestion need an Entra ID login. Trusted Entra logins and members of `LOCKDOWN_USER_GROUPS` see no banner.
 
 The embedding port is not locked, so search keeps embedding queries and reading existing data. Writing embeddings is locked where it starts instead: ingestion runs in the background under a system user, so the embedding port cannot tell who started it, but the start can. Saving a pipeline, including one with a schedule, is configuration and stays allowed.
 
@@ -43,17 +43,18 @@ Why groups and not the email alone: the token carries no Entra tenant id, and an
 
 ## User groups in lockdown
 
-Proposed 2026-11-02, not built.
+Proposed 2026-11-02, built 2026-11-03.
 
-`LOCKDOWN_ENTRA_GROUPS` makes every member an operator with every right in `PLATFORM_TENANT`, so it cannot also be the way to let more people in. `LOCKDOWN_USER_GROUPS` (comma-separated Entra group object ids; the API refuses to start if one is not a GUID) admits a wider circle with one ordinary right:
+`LOCKDOWN_ENTRA_GROUPS` makes every member an operator, and the operator role reaches every tenant. `LOCKDOWN_USER_GROUPS` (comma-separated Entra group object ids; the API refuses to start if one is not a GUID, and in lockdown when it is set and `OPERATOR_CLIENT_IDS` is empty) admits more people to `PLATFORM_TENANT` without that role:
 
 - An Entra login whose `groups` claim holds one of `LOCKDOWN_USER_GROUPS` passes the same checks as a trusted Entra login: a client in `OPERATOR_CLIENT_IDS`, never a client a tenant registered, and an email at `LOCKDOWN_ENTRA_EMAIL_DOMAIN` when it is set.
-- It becomes an employee of `PLATFORM_TENANT` with the right `use-services` (ADR 0027) and nothing else. It is not a trusted Entra login, never gets the operator role, and gets the internal scope `grant:lockdown-user`, set only by the verifier.
-- With that scope it may use models where `use-services` reaches: invoking services in `PLATFORM_TENANT` and its own conversations in the workspace. Everything else stays as for TestID logins: read-only for configuration, no playground or test runs, no ingestion, no keys or clients. Without `manage-services` it cannot create a key, so nothing it makes carries the configured-credential mark.
-- A login in both settings is a trusted Entra login; `LOCKDOWN_ENTRA_GROUPS` wins.
+- It becomes an employee of `PLATFORM_TENANT` with every platform right (ADR 0027), as a trusted Entra login does, and gets the internal scope `grant:lockdown-user`, set only by the verifier. It is not a trusted Entra login and never gets the operator role, so operator routes, support sessions and the console stay closed to it.
+- In lockdown it is admitted like a trusted Entra login: it may use models and run ingestion, it is not read-only, and API keys and Maskinporten clients it creates or rotates are stored with `admittedInLockdown`. `isAdmittedEntraLogin` in `packages/composition/src/lockdown.ts` is the check at those points; the operator directory looks only at `grant:trusted-entra-login`.
+- A login in both settings is a trusted Entra login and operator; `LOCKDOWN_ENTRA_GROUPS` wins.
+- Users work in the portal and workspace. The console is for operators: a user who signs in to it is told that it is only for the operations team.
 - Removing someone from a user group takes effect at their next token, as for the trusted groups.
 
-The right is fixed, not configurable. Letting people build services in test would mean changes in the Digdir organisation's configuration by people who are not operators; building for one's own organisation belongs to the normal path, with rights from Altinn. Rejected: adding people to `LOCKDOWN_ENTRA_GROUPS` (they would become operators), a list of persons in configuration (a deploy per change), and opening TestID logins to models (anyone can log in with TestID).
+Membership is controlled by the lab, which monitors it, so the rights are those of the Digdir organisation's own people rather than a reduced set. Two groups remain because of the operator role. Rejected: adding these people to `LOCKDOWN_ENTRA_GROUPS` (they would become operators in every tenant), a list of persons in configuration (a deploy per change), and opening TestID logins to models (anyone can log in with TestID).
 
 ## Keys and clients from Entra logins
 
@@ -75,9 +76,8 @@ Test should stay open for the team to look at, and for configuration to be tried
 - An admitted key stays admitted until it is revoked or rotated by someone else. Removing a person from the Entra group does not revoke the keys they made; revoke them in the portal.
 - TestID logins, including test persons who are general manager of `PLATFORM_TENANT` and operators listed in `OPERATOR_SUBJECTS` (`issuer|subject` pairs for Ansattporten logins), can only read in genki-test.
 - Who may work in test is decided by Entra group membership in Digdir, not by the platform. Removing someone from the group takes effect at their next token.
-- Not built, from User groups in lockdown: the setting with its startup check, the verifier branch and `grant:lockdown-user`, and model admission for that scope limited to `use-services`. Tests: a user-group login can invoke a service in `PLATFORM_TENANT` and use its own conversations; it gets the locked problem for ingestion, playground and test runs and configuration changes, and is not an operator; a login in both settings is a trusted Entra login.
-- genki-test needs two security groups in Digdir's Entra tenant, owned by the lab: `genki-test-operators` for `LOCKDOWN_ENTRA_GROUPS` and `genki-test-users` for `LOCKDOWN_USER_GROUPS`. Asked of Digdir IT on 2026-11-02. The operators group replaces today's group as soon as it exists, which needs no code; the users group stays empty until the setting is built.
+- genki-test has two security groups in Digdir's Entra tenant, owned by the lab and created by Digdir IT on 2026-11-03: `genki-test-operators` (`76d10637-d517-413c-a10b-84675a3ed64b`) for `LOCKDOWN_ENTRA_GROUPS` and `genki-test-users` (`789b5488-39ec-47b3-9217-840e5cd957fd`) for `LOCKDOWN_USER_GROUPS`.
 - Production does not run in lockdown. It will have a real Kunnskapsassistenten service and a separate test service for KA's test backend.
 - A new check that sends a stored secret somewhere goes in `secretSendingChecks`.
 - A new route that runs a model goes in `modelRunRoutes` in `apps/api/src/lockdown.ts`, and a new route that ingests or writes embeddings goes in `ingestionRoutes`, so it gets the clear problem and not a failed task.
-- [ADR 0042](0042-the-knowledge-database.md), proposed, runs ingestion into the knowledge database as jobs in the worker (ADR 0041) and checks admission at the start of every job that fetches, converts or embeds, on the record that admitted it (a run, or a generation build, activation or rollback), instead of in the API process. Admission lasts 24 hours, so a run that stays open for nights stops when it runs out and is started again. The worker's model calls for admitted jobs (embeddings, search phrases) then need an exception to the rule above that refuses every model call the worker makes.
+- Knowledge jobs ([ADR 0042](0042-the-knowledge-database.md)) run ingestion in the worker (ADR 0041) and are admitted on the record that admitted them, not by a mark the job carries. When the API starts, sends back or (with issue 139) approves a run that runs as jobs, it sets the run's `admitted_at` after checking the caller and lockdown; a trigger refuses any change of it by `genai_worker`, and nothing in a job's data can admit it. Before a handler fetches, converts or calls a model, the worker reads the run through a definer function under platform access and refuses unless it is admitted and, in lockdown, admitted within 24 hours; only then does the handler get a system user with the configured-credential mark, so this is the one exception to the rule above that refuses every model call the worker makes. A run refused that way is failed with the reason and keeps what it wrote; a queued run whose admission ran out fails without starting. A scheduled run in lockdown sends no job and is recorded as failed, as before. Sending knowledge jobs back (`.../executions/{execution}/redrive`) joins `ingestionRoutes`. Generation builds, activation and rollback get the same check when they are built.

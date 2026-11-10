@@ -2,6 +2,7 @@ import { BlockRegistry } from './blocks.js';
 import { agentBlock, approvalBlock, routeBlock, templateBlock } from './blocks/control.js';
 import { documentsBlock, readDocumentBlock } from './blocks/documents.js';
 import { classifyBlock, extractBlock, modelBlock } from './blocks/model.js';
+import { callOperationBlock } from './blocks/operation.js';
 import {
   answerBlock,
   evidenceGateBlock,
@@ -31,4 +32,5 @@ export const builtinBlocks = () =>
     .register(documentsBlock)
     .register(readDocumentBlock)
     .register(tableBlock)
-    .register(toolBlock);
+    .register(toolBlock)
+    .register(callOperationBlock);

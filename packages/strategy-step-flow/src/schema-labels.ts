@@ -89,6 +89,14 @@ const nb = {
   'inOrder.field': { label: 'Feltet i datasettet' },
   'inOrder.values': { label: 'Verdier, i rekkefølge' },
   keepOrder: { label: 'Behold rekkefølgen fra søket' },
+  descriptor: {
+    label: 'Operasjon',
+    help: 'En gjennomgått operasjon som er tatt i bruk her, i formen leverandør/type@versjon.',
+  },
+  model: {
+    label: 'Modell',
+    help: 'En av modellene til tjenesten som kan utføre operasjonen. Tom betyr modellen tjenesten har valgt for denne typen operasjon, ellers hovedmodellen.',
+  },
   answerLength: {
     label: 'Lengde på svaret',
     values: { short: 'Kort', medium: 'Middels', long: 'Langt' },
@@ -151,6 +159,14 @@ const en: Record<keyof typeof nb, LabelText> = {
   'inOrder.field': { label: 'Field in the dataset' },
   'inOrder.values': { label: 'Values, in order' },
   keepOrder: { label: 'Keep the order from the search' },
+  descriptor: {
+    label: 'Operation',
+    help: 'A reviewed operation that is in use here, as provider/kind@version.',
+  },
+  model: {
+    label: 'Model',
+    help: "One of the service's models that can perform the operation. Empty means the model the service has chosen for this kind of operation, else the main model.",
+  },
   answerLength: {
     label: 'Length of the answer',
     values: { short: 'Short', medium: 'Medium', long: 'Long' },
@@ -181,6 +197,7 @@ export const blockSchemaLabels: SchemaLabels = {
     agent: title('La modellen søke selv', 'Let the model search by itself'),
     answer: title('Svar', 'Answer'),
     approval: title('Godkjenning', 'Approval'),
+    'call-operation': title('Kall en operasjon', 'Call an operation'),
     classify: title('Klassifiser', 'Classify'),
     documents: title('Hent dokumenter', 'Fetch documents'),
     'evidence-gate': title('Sjekk grunnlaget', 'Check the evidence'),

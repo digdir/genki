@@ -435,7 +435,7 @@ const settingDefs = {
   retrieval_queryAwareBoost_label: 'Boost hits that resemble the question',
   retrieval_autoFilter_enabled_label: 'Automatic filter',
   retrieval_autoFilter_enabled_desc:
-    'Add filters based on organisation and year names in the question.',
+    'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
   retrieval_autoFilter_rules_label: 'Rules for the automatic filter',
   retrieval_docTitle_fanout_label: 'Text chunks per title hit',
   retrieval_merge_mode_label: 'Way of merging the searches',
@@ -463,6 +463,8 @@ const settingDefs = {
   synthesis_instructions_label: 'System prompt for the answer',
   synthesis_temperature_label: 'Temperature for the answer',
   synthesis_temperature_desc: 'Empty uses the default of the workflow.',
+  knowledge_nightWindow_label: 'Night window for heavy work',
+  knowledge_heavyThreshold_label: 'Heavy work threshold (chunks)',
   knowledge_switchRetentionDays_label: 'Days the previous search engine is kept',
   assistant_enabled_label: 'The build assistant is on',
   assistant_dailyTokens_label: 'Tokens per day for the assistant',
@@ -492,7 +494,8 @@ const settingDefs = {
   batch_approvalLimitNok_label: 'Limit per batch job before approval (kr)',
   planner_prompt_desc: 'Replacement planner prompt. Empty uses the built-in prompt.',
   retrieval_queryAwareBoost_desc: 'Boost results that share words with the question.',
-  retrieval_autoFilter_rules_desc: 'The automatic filter rules, in the order they are tried.',
+  retrieval_autoFilter_rules_desc:
+    'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
   retrieval_docTitle_fanout_desc: 'Chunks read from each document that matches on title.',
   retrieval_merge_mode_desc: 'How results from the different search methods are merged.',
   retrieval_merge_rrfK_desc: 'Constant that smooths the ranking when results are fused (RRF).',
@@ -511,6 +514,10 @@ const settingDefs = {
     'Replacement prompt for writing the answer. Empty uses the built-in prompt.',
   synthesis_instructions_desc:
     'Replacement system prompt for the answering model. Empty uses the built-in prompt.',
+  knowledge_nightWindow_desc:
+    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
+  knowledge_heavyThreshold_desc:
+    'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   knowledge_switchRetentionDays_desc:
     'Days the previous search engine copy is kept after a dataset switches engine.',
   assistant_enabled_desc: 'Offer the builder assistant in the service builder.',

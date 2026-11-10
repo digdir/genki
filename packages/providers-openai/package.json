@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@genai/contracts": "0.0.0",
-    "@genai/kernel": "0.0.0"
+    "@genai/kernel": "0.0.0",
+    "@genai/operations": "0.0.0"
   }
 }

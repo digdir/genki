@@ -1,5 +1,5 @@
 import type { Part } from '@genai/contracts';
-import { defaultMaxOutputTokens } from '@genai/port-model';
+import { defaultMaxOutputTokens, normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import type { Block, BlockContext } from '../blocks.js';
 import {
@@ -10,7 +10,7 @@ import {
 } from '../prompts.js';
 import type { FlowChunk, FlowRetrieval } from '../services.js';
 import { contextFromChunks } from './context.js';
-import { callModel } from './model.js';
+import { callModel, withUntrustedNote } from './model.js';
 
 export { contextFromChunks, formatHeaders } from './context.js';
 
@@ -119,7 +119,16 @@ export const retrieveBlock: Block<z.infer<typeof retrieveInput>, z.infer<typeof 
     const found: { chunks: FlowChunk[]; attribution?: unknown } = params.inOrder?.values.length
       ? await searchInOrder(retrieval, queries, userIntent, params.inOrder, signal)
       : await retrieval.retrieve(queries, userIntent ? { userIntent } : {}, signal);
-    yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: hits(found.chunks), queries } };
+    const detections = (found.attribution as { detections?: unknown[] } | undefined)?.detections;
+    yield {
+      type: 'kernel.notice',
+      data: {
+        kind: 'retrieval',
+        hits: hits(found.chunks),
+        queries,
+        ...(detections?.length ? { detections } : {}),
+      },
+    };
     return {
       queries,
       ...(userIntent ? { userIntent } : {}),
@@ -246,13 +255,18 @@ export const synthesizeBlock: Block<
   run: async function* (ctx, input, params) {
     const docs = params.maxDocs ? input.contextDocs.slice(0, params.maxDocs) : input.contextDocs;
     const index: Record<number, string> = Object.fromEntries(docs.map((d, i) => [i + 1, d.source]));
-    const context = docs.map((d, i) => `[${i + 1}] ${d.content}`).join('\n\n');
+    const context = docs
+      .map((d, i) => `[${i + 1}] ${untrustedData('source', d.content, { id: d.source })}`)
+      .join('\n\n');
     const result = yield* callModel(ctx, {
       purpose: 'answer',
       messages: [
         {
           role: 'system',
-          content: params.systemPrompt ?? systemPromptWithDate(ctx.services.now()),
+          content: withUntrustedNote(
+            ctx,
+            params.systemPrompt ?? systemPromptWithDate(ctx.services.now()),
+          ),
         },
         {
           role: 'user',
@@ -264,11 +278,8 @@ export const synthesizeBlock: Block<
       temperature: params.temperature,
       maxTokens: params.maxTokens ?? defaultMaxOutputTokens,
     });
-    const renumbered = renumberCitations(
-      result.content,
-      parseCitations(result.content, index),
-      index,
-    );
+    const answer = normaliseCitationMarkers(result.content);
+    const renumbered = renumberCitations(answer, parseCitations(answer, index), index);
     const insufficiency = detectInsufficientContext(renumbered.text);
     return {
       response: renumbered.text,

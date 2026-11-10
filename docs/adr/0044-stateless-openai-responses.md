@@ -1,6 +1,6 @@
 # 0044 Stateless OpenAI Responses behind the model port
 
-Status: accepted, 2026-10-29 (built). Proposed 2026-10-23
+Status: accepted, 2026-10-29 (built; the API chosen by a binding per model instead of `options.api`, [ADR 0048](0048-connections-serve-many-apis.md), 2026-11-05; a refused token parameter switched once, 2026-11-10). Proposed 2026-10-23
 
 ## Decision
 
@@ -21,7 +21,7 @@ Some discovered Foundry reasoning deployments, such as `gpt-5.6-sol`, reject fun
 
 ## Consequences
 
-- Chat Completions models and explicit token-parameter choices keep their wire behaviour.
+- Chat Completions models keep their wire behaviour. The configured token parameter is sent first; a deployment that refuses it by name is switched to the other one once, learned like the API switch.
 - An explicit `options.api` is deterministic. A learned switch costs one failed upstream request per deployment on first use after each start.
 - Temperature refusals are learned separately for each API and deployment. Successful calls keep the existing parameter reporting and are metered once.
 - Only the provider package depends on the vendor SDK. The port gains the optional transport description, and strategies keep their history and continuation handling.

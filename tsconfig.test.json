@@ -12,8 +12,10 @@
     "apps/portal",
     "apps/console",
     "apps/workspace",
+    "apps/docs",
     "packages/i18n/src/**/*.tsx",
     "packages/schema-forms",
+    "packages/docs-site",
     "packages/ui-blocks"
   ]
 }
