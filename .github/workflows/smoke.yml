@@ -1,0 +1,74 @@
+name: smoke
+run-name: smoke ${{ github.event.workflow_run.head_sha || inputs.sha || 'deployed version' }}
+
+on:
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tiers:
+        description: Which checks to run
+        type: choice
+        options: [all, cheap, free]
+        default: all
+      sha:
+        description: The SHA genki-test should report; empty tests what /health reports
+        type: string
+        default: ''
+
+permissions: {}
+
+jobs:
+  smoke:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_branch == 'main')
+    concurrency:
+      group: smoke-genki-test
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: genki-test
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      report: ${{ steps.run.outputs.report }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - id: run
+        env:
+          SMOKE_API_KEY: ${{ secrets.SMOKE_API_KEY }}
+          SMOKE_EXPECT_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
+          SMOKE_TIERS: ${{ inputs.tiers || 'all' }}
+          SMOKE_MAX_RUNS_PER_DAY: ${{ vars.SMOKE_MAX_RUNS_PER_DAY }}
+          SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
+          SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
+          SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/smoke/run.ts
+
+  report:
+    needs: smoke
+    if: always() && needs.smoke.outputs.report != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - env:
+          REPORT: ${{ needs.smoke.outputs.report }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/smoke/report.ts
