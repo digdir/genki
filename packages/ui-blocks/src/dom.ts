@@ -1,11 +1,10 @@
-// Small DOM helpers the blocks share, one copy each. The same file in every block's branch, so
-// the branches merge without a conflict.
+// DOM helpers the blocks share, the same file in every block's branch so they merge cleanly.
 
 /** Class names joined, the empty ones left out. */
 export const classes = (...names: (string | false | null | undefined)[]) =>
   names.filter(Boolean).join(' ');
 
-/** A click with the main button and no modifier: the host's to handle. Any other is the browser's. */
+/** A main-button click with no modifier, the host's to handle; any other is the browser's. */
 export const plainClick = (event: {
   button: number;
   metaKey: boolean;
