@@ -81,6 +81,8 @@ export interface ErrorStateProps {
   kind?: ErrorKind | undefined;
   /** What the assistant is called, in the texts of some kinds. «Assistenten» without it. */
   assistantName?: string | undefined;
+  /** With a `kind`, the host's own advice in place of the kind's, naming its own controls. */
+  advice?: string | undefined;
   /** Offers «Prøv igjen». */
   onRetry?: (() => void) | undefined;
   /** Where focus goes when a retry clears the error. The alert region when not given. */
@@ -100,6 +102,7 @@ export const ErrorState = ({
   message,
   kind,
   assistantName,
+  advice,
   onRetry,
   focusAfterRetry,
   retryRef,
@@ -113,7 +116,7 @@ export const ErrorState = ({
   // kunnskapsassistenten's cases, one heading and two sentences each (`views/chat/errorText.ts`).
   const text = kind ? errorText(kind, assistantName) : undefined;
   const shownTitle = title ?? text?.title;
-  const shownMessage = text ? `${message ?? text.what} ${text.advice}` : message;
+  const shownMessage = text ? `${message ?? text.what} ${advice ?? text.advice}` : message;
   const canRetry = onRetry !== undefined && (kind === undefined || isRetryable(kind));
 
   useEffect(() => {

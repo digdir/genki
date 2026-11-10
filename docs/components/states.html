@@ -126,11 +126,12 @@
               <li>
                 <code>ErrorState</code> with a <code>kind</code>, for an answer that failed: one of
                 <code>errorKinds</code>, which gives the heading, what happened and the advice.
-                <code>message</code> then replaces only what happened, and «Prøv igjen» is offered
-                only where it can help (<code>isRetryable</code>). <code>assistantName</code> goes
-                in the sentences that need a subject. <code>errorKindFromStatus</code> reads an HTTP
-                status for only what it establishes; the platform's own error codes are the app's to
-                map.
+                <code>message</code> then replaces only what happened, and <code>advice</code> the
+                advice, which names no service's own controls, for a host that names its own. «Prøv
+                igjen» is offered only where it can help (<code>isRetryable</code>).
+                <code>assistantName</code> goes in the sentences that need a subject.
+                <code>errorKindFromStatus</code> reads an HTTP status for only what it establishes;
+                the platform's own error codes are the app's to map.
               </li>
               <li>
                 <code>useErrorText</code>: the one set of texts for the error kinds, for any block
