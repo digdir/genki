@@ -47,13 +47,13 @@ describe('the playground', () => {
     expectAccessible(container);
   });
 
-  it('starts the preview in «Prøv tjenesten», with «Endre layout» as the other choice', async () => {
+  it('starts the preview in «Prøv assistenten», with «Oppsett» as the other choice', async () => {
     await renderAt('#/playground');
     const modes = await screen.findByRole('group', { name: 'Visning' });
     const radios = within(modes).getAllByRole('radio') as HTMLInputElement[];
     expect(radios.map((r) => r.closest('label')?.textContent)).toEqual([
-      'Prøv tjenesten',
-      'Endre layout',
+      'Prøv assistenten',
+      'Oppsett',
     ]);
     expect(radios[0]?.checked).toBe(true);
   });

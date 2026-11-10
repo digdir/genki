@@ -18,10 +18,10 @@ const chatIn = (group: string) =>
 describe('the building blocks per panel', () => {
   it('moves Chat to the right panel when it is turned on there', () => {
     render(<Harness />);
-    expect((chatIn('Midten') as HTMLInputElement).checked).toBe(true);
-    expect((chatIn('Høyre sidepanel') as HTMLInputElement).disabled).toBe(false);
-    fireEvent.click(chatIn('Høyre sidepanel'));
-    expect((chatIn('Høyre sidepanel') as HTMLInputElement).checked).toBe(true);
-    expect((chatIn('Midten') as HTMLInputElement).checked).toBe(false);
+    expect((chatIn('Innhold') as HTMLInputElement).checked).toBe(true);
+    expect((chatIn('Høyre panel') as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(chatIn('Høyre panel'));
+    expect((chatIn('Høyre panel') as HTMLInputElement).checked).toBe(true);
+    expect((chatIn('Innhold') as HTMLInputElement).checked).toBe(false);
   });
 });
