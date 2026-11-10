@@ -1,13 +1,4 @@
-/* ADR V2-0009: after Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-filter-* variable at the point of use, listed on docs/components/filter.html.
-   Every `display` rule has a `[hidden]` pair: author CSS, layered or not, beats the browser's
-   `[hidden] { display: none }`.
-
-   Two values are no token: `--genai-filter-list-width`, which lets a field's list run wider than a
-   narrow panel's field, and `--genai-filter-gap`, a share of the window's height.
-
-   Pinned to neutral on purpose: the muted text (`*-color` below), so it stays grey whatever
-   family the links and chips beside it follow. */
+/* After Designsystemet's layers; tokens via --genai-filter-*; a [hidden] pair per `display`. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
@@ -15,9 +6,7 @@
     display: flex;
     flex-direction: column;
     align-items: start;
-    /* Larger than the gap inside a field, so the distances show what belongs together. It follows
-       the window's height between two tokens, as kunnskapsassistenten's: the panel's width barely
-       varies, and every pixel of air is one more to scroll. */
+    /* Wider than the gap in a field, following the window's height between two tokens. */
     gap: clamp(
       var(--genai-filter-gap-floor, var(--ds-size-6)),
       var(--genai-filter-gap, 3.6dvh),
@@ -67,9 +56,7 @@
     );
   }
 
-  /* Out of flow and sizeless when empty, so the gap is not reserved around nothing. Never
-     `display: none`: it drops the region from the accessibility tree, and a focus here would
-     fall to `<body>`. */
+  /* Out of flow and sizeless when empty; never `display: none`, so focus here is kept. */
   .uib-filter-error:empty,
   .uib-filter-unavailable:empty {
     position: absolute;
@@ -177,9 +164,7 @@
     display: none;
   }
 
-  /* Designsystemet's chip is a one-line pill with no maximum width, so a long name runs out of
-     the panel. Wrap, never cut: the name is the information (WCAG 1.4.4, 1.4.10). `anywhere`,
-     unlike `break-word`, lets min-content shrink. */
+  /* A chip wraps, never cuts, since the name is the information (WCAG 1.4.4, 1.4.10). */
   .uib-filter ds-suggestion > data {
     max-inline-size: 100%;
     white-space: normal;
@@ -188,25 +173,21 @@
     min-block-size: var(--dsc-suggestion-chip-height);
   }
 
-  /* A chip drawn for several values (drawnChips.tsx): Suggestion's chip per value stays for
-     u-combobox, which ticks and counts by it, and is hidden while the drawn one stands.
-     `display: none` takes it out of the accessibility tree and the focus order too. */
+  /* A chip drawn for several values hides Suggestion's chip per value (drawnChips.tsx). */
   .uib-filter
     ds-suggestion:has(> data > .uib-filter-drawn-chip)
     > data:not(:has(> .uib-filter-drawn-chip)) {
     display: none;
   }
 
-  /* `data-overscroll="contain"` leaves the list without the input's width. Only `width`, never
-     `display`: u-combobox opens and closes the list with `hidden`. */
+  /* Only `width`, never `display`: u-combobox opens and closes the list with `hidden`. */
   .uib-filter .ds-suggestion > u-datalist {
     /* A percentage reads against the window here, as the list is in the top layer. */
     width: var(--genai-filter-list-width, 26rem);
     max-width: calc(100% - var(--genai-filter-list-margin, var(--ds-size-8)));
   }
 
-  /* Over the years in the year field's list: as far in as an option's text, and muted, as it is
-     about the list and is not one of its choices. */
+  /* Over the years in the list: indented as an option's text, and muted. */
   .uib-filter-years-hint {
     padding: var(--dsc-suggestion-option-padding);
     padding-inline-start: calc(

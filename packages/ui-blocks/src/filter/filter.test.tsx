@@ -10,8 +10,7 @@ import { Filter, narrowing, type FilterProps } from './Filter.js';
 import { en, nb, translator } from './i18n.js';
 import type { FilterField, FilterSelection } from './types.js';
 
-// Ported from KA's FiltersView, FiltersView.unavailable, FiltersView.corpus and filterInThread
-// tests. The host's part (fetching, the thread, the lock) is a harness here: data in, events out.
+// Ported from KA's filter tests; the host's part is a harness here: data in, events out.
 
 document.getAnimations ??= () => [];
 afterEach(cleanup);

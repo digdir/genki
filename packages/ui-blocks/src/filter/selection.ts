@@ -30,8 +30,7 @@ export const chosenValues = (
     }));
   });
 
-/** The chosen values no field on screen can show: all of them without fields, else those of a
- * field the facets came without, which a stored filter may still hold. */
+/** The chosen values no field on screen can show, which a stored filter may still hold. */
 export const valuesWithoutField = (
   selection: FilterSelection,
   fields: readonly FilterField[] | undefined,
@@ -40,10 +39,7 @@ export const valuesWithoutField = (
     (chosen) => !fields?.some((field) => field.id === chosen.field),
   );
 
-/** What a question is asked with: a field where every listed value is ticked narrows nothing,
- * so it is left out, as the field says («Alle 12 valgt, altså ingen avgrensning»). Every value
- * of every organisation would also break the platform's limit. Compared value by value with
- * the fields the filter was given; the same object when nothing is left out. */
+/** What a question is asked with: a field with every listed value ticked is left out. */
 export const narrowing = (
   selection: FilterSelection,
   fields: readonly FilterField[] | undefined,

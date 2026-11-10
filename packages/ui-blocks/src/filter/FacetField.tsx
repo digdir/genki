@@ -21,8 +21,7 @@ export interface FieldProps {
   field: FilterField;
   /** Chosen option values. Empty is no narrowing. */
   selected: readonly string[];
-  /** `said` is for the filter's live region: the change, where u-combobox says nothing. With the
-   * values as they were, it is all there is to tell. */
+  /** `said` is for the filter's live region: the change, where u-combobox says nothing. */
   onChange: (values: string[], said?: string) => void;
   /** One chip for all, or for `compactFrom` or more, chosen values. */
   compact: boolean;
@@ -30,12 +29,10 @@ export interface FieldProps {
   max: number;
 }
 
-/** Chosen values from which `compact` draws one chip instead of one per value. All chosen
- * always does. */
+/** Chosen values from which `compact` draws one chip instead of one per value. */
 const COMPACT_FROM = 6;
 
-/** The texts u-combobox reads for the chosen values, which Designsystemet leaves in English. Keys
- * are u-combobox's observed attributes; an empty value falls back to English. */
+/** u-combobox's texts for chosen values, by attribute; an empty one falls back to English. */
 export const useComboboxTexts = () => {
   const t = useT();
   return {
@@ -55,9 +52,7 @@ export const useInSentence = () => {
   return (label: string) => label.toLocaleLowerCase(t.locale);
 };
 
-/** Designsystemet's Suggestion with `multiple`, whose chips show the selection.
- * `data-overscroll` lifts its inline width lock so the CSS can widen the list. Its Clear clears
- * only typed text, hence «Tøm». */
+/** Designsystemet's multiple Suggestion; its Clear clears only typed text, hence «Tøm». */
 export const FacetField = ({
   ref,
   field,
@@ -76,17 +71,14 @@ export const FacetField = ({
   useListFollowsField(selected, listRef, inputRef);
   const total = field.options.length;
   const chosen = selected.length;
-  // Every listed value ticked, the rule a question leaves the field out by (`narrowing`). Not
-  // `chosen === total`: a field with all ticked is not sent, so the facets are counted without
-  // it and may list fewer values than are ticked.
+  // Every listed value ticked, as `narrowing` reads it; a field with all ticked is not sent.
   const everyListed = (values: readonly string[]) =>
     total > 0 && field.options.every((option) => values.includes(option.value));
   const allChosen = everyListed(selected);
   const labelOf = (value: string) =>
     field.options.find((option) => option.value === value)?.label ?? value;
 
-  // With all or many chosen, one chip («Alle dokumenttyper», «12 virksomheter») instead of
-  // hundreds, drawn over the chip per value (drawnChips.tsx), so the list still ticks them.
+  // With many chosen, one drawn chip instead of hundreds, while the list still ticks them.
   const isCompact = (values: readonly string[]) =>
     compactChips && values.length > 0 && (everyListed(values) || values.length >= COMPACT_FROM);
   const compact = isCompact(selected);
@@ -102,17 +94,13 @@ export const FacetField = ({
       ]
     : [];
 
-  // `{ label, value }`, not bare strings: Suggestion's `sanitizeItems` makes a bare string both,
-  // and the chip would show the key, not the name.
+  // `{ label, value }`, or Suggestion makes a bare string both and the chip shows the key.
   const selectedItems = withDrawnChips(
     selected.map((value) => ({ value, label: labelOf(value) })),
     drawn,
   );
 
-  // u-combobox names a chip `label` + `data-sr-remove` («Årsrapport, Trykk for å fjerne»). With
-  // chips in several fields, the field has to be in it. Under the drawn chip, back from the field
-  // reaches only that chip, which takes all; and u-combobox would count it as one more chosen,
-  // so the count is ours.
+  // A chip's name holds the field, and the count is ours, since the drawn chip is not a value.
   const screenReaderTexts = {
     ...texts,
     ...(compact && { 'data-sr-found': t('filter.srFoundAll', { count: chosen }) }),
@@ -121,8 +109,7 @@ export const FacetField = ({
       : t('filter.srRemove', { field: name }),
   };
 
-  // The state goes in the description: a label that changes with the value fails screen
-  // readers. None and all must read differently; all chosen is no narrowing and is not sent.
+  // The state is in the description, since a label that changes fails screen readers.
   const state =
     chosen === 0
       ? t('filter.stateNone')
@@ -133,9 +120,7 @@ export const FacetField = ({
   // The question would be turned away. The way out is in the message: fewer, or all.
   const overLimit = chosen > max && !allChosen;
 
-  // Picking a value leaves its key in the input (u-combobox restores the typed text only on the
-  // native datalist path), so the next open would show «Ingen treff». Dispatched, because
-  // u-combobox and Suggestion's filtering both go stale on `value` alone.
+  // Cleared after a pick, or the next open shows «Ingen treff»; dispatched so both filters see it.
   const clearQuery = () => {
     const input = inputRef.current;
     if (!input || input.value === '') return;
@@ -148,25 +133,20 @@ export const FacetField = ({
     onChange(values, said);
   };
 
-  // u-combobox reads out a change itself only when exactly one chip comes or goes. The chips are
-  // a value's own, and the drawn one, which comes or goes across COMPACT_FROM. Otherwise `said`
-  // goes to the filter's live region; never both, or it is heard twice.
+  // u-combobox speaks only when one chip comes or goes; otherwise `said` does, never both.
   const toldByCombobox = (next: readonly string[]) => {
     const added = next.filter((value) => !selected.includes(value)).length;
     const removed = selected.filter((value) => !next.includes(value)).length;
     return added + removed + (isCompact(next) !== compact ? 1 : 0) === 1;
   };
 
-  // '' is «Ingen treff», which u-combobox chooses on Enter (its label is the typed text): not a
-  // choice, so nothing changes. A '' already selected (a stored filter from before) goes with the
-  // next change.
+  // '' is «Ingen treff», no choice; a stored '' goes with the next change.
   const choose = (items: { value: string }[]) => {
     const values = [...new Set(valuesAfter(items, drawn))];
     if (values.includes('') && !selected.includes('')) return;
     const next = values.filter((value) => value !== '');
 
-    // The drawn chip goes with focus on it, and every chip left is hidden: to the field, as from
-    // the buttons below. All chips go at once, so u-combobox says nothing.
+    // The drawn chip goes with focus on it, so focus goes to the field.
     if (removedDrawnChip(items, drawn)) {
       inputRef.current?.focus();
       change(next, t('filter.noneChosen', { field: name }));
@@ -185,9 +165,7 @@ export const FacetField = ({
     change(next, said);
   };
 
-  // «Velg alle» and «Tøm» vanish in the render they cause, so focus moves to the field first,
-  // not to `<body>` (WCAG 2.4.3). Only from the buttons: `onSelectedChange` must not pull focus
-  // out of the chips, where ArrowLeft and Enter walk and remove.
+  // «Velg alle» and «Tøm» vanish, so focus moves to the field first (WCAG 2.4.3).
   const changeFromButton = (values: string[], said: string) => {
     inputRef.current?.focus();
     change(values, toldByCombobox(values) ? undefined : said);
@@ -232,8 +210,7 @@ export const FacetField = ({
         </div>
       </div>
 
-      {/* Above the chips, not after: under a hundred chips it would be out of sight. `ds-field`
-          links it to the input wherever it stands. */}
+      {/* Above the chips, so a hundred chips cannot push it out of sight. */}
       {overLimit && (
         <ValidationMessage>{t('filter.overLimit', { max, count: chosen })}</ValidationMessage>
       )}
@@ -262,8 +239,7 @@ export const FacetField = ({
                 : `${option.label ?? option.value} (${option.count})`}
             </Suggestion.Option>
           ))}
-          {/* After the values: Enter takes the FIRST option labelled with the text, and «Ingen
-              treff» carries the text (see `choose`). CSS hides it whenever a value shows. */}
+          {/* After the values: Enter takes the first option with the text (see `choose`). */}
           <Suggestion.Empty>{t('filter.noMatches')}</Suggestion.Empty>
         </Suggestion.List>
       </Suggestion>

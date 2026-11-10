@@ -49,8 +49,7 @@ export const nbFilter = defineNamespace({
   yearNotPeriod:
     'Ikke et år eller en periode. Skriv et år eller en periode, som 2021 eller 2023–2028.',
   yearAlreadyChosen: '{period} er alt valgt.',
-  // u-combobox's texts for the chosen values, which Designsystemet leaves in English. `%d` is
-  // u-combobox's own placeholder for the count.
+  // u-combobox's texts for chosen values, which Designsystemet leaves in English; `%d` counts.
   srItems: 'Valgte verdier',
   srEmpty: 'Ingen verdier er valgt',
   srFound: '%d valgt, naviger bakover for å endre',
@@ -121,11 +120,7 @@ export const enFilter = {
   srRemoveAll: 'Press to remove all from {field}',
 } satisfies Translation<typeof nbFilter>;
 
-/**
- * The filter's own catalogue. It stays out of the package's shared one, so a host that imports
- * another block, such as Approach, does not load these words. A block that borrows them puts this
- * namespace in its own catalogue.
- */
+/** The filter's own catalogue, apart from the shared one, so a host loads only its words. */
 export const nb = defineCatalogue({ filter: nbFilter });
 export const en = { filter: enFilter } satisfies Translation<typeof nb>;
 

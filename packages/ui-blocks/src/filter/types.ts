@@ -4,8 +4,7 @@ export interface FilterOption {
   value: string;
   /** What the reader sees. The value when absent. */
   label?: string | undefined;
-  /** Documents with this value, given the other fields. Not shown when absent: no count beats a
-   * wrong one. */
+  /** Documents with this value, given the other fields; not shown when absent. */
   count?: number | undefined;
 }
 
@@ -20,6 +19,5 @@ export interface FilterField {
   options: readonly FilterOption[];
 }
 
-/** What the reader chose, per field id. An empty or absent list is no narrowing on that field,
- * never «nothing». */
+/** What the reader chose, per field id; an empty or absent list narrows nothing. */
 export type FilterSelection = Readonly<Record<string, readonly string[]>>;

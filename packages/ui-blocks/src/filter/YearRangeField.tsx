@@ -46,10 +46,7 @@ const optionValue = (range: YearRange) =>
 const rangeOf = (value: string): YearRange | undefined =>
   /^\d+$/u.test(value) ? { from: Number(value), to: Number(value) } : rangeFromKey(value);
 
-/** The field for a `year` field with `yearPeriods`. Before anything is typed, the list is the
- * years with documents; then what the text can become (`suggestPeriods`), hence
- * `filter={false}`, and a period with 0 documents can still be chosen. Suggestion holds the
- * chosen years, and the chips are drawn as periods, removed whole. */
+/** A `year` field with `yearPeriods`: the years with documents, then what the text can be. */
 export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldProps) => {
   const t = useT();
   const texts = useComboboxTexts();
@@ -108,13 +105,11 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
-  /* u-combobox tells a change when exactly one chip comes or goes, and with a chip per year and
-     one per period that is never so; then the filter's live region tells it. */
+  /* u-combobox never tells a change here, so the filter's live region does. */
   const told = (next: readonly string[]) =>
     changedChips(chipValues(selected, drawn), chipValues(next, periodsOf(next))) === 1;
 
-  // Years and periods back into years; an overlapping or adjacent one joins its chip.
-  // '' is the hint, chosen by Enter when nothing fits: not a choice, as in FacetField.
+  // Years and periods back into years; '' is the hint, not a choice, as in FacetField.
   const change = (items: { value: string; label: string }[]) => {
     if (items.some((item) => item.value === '')) return;
     const years = new Set<number>();
@@ -133,8 +128,7 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
     const added = items.find((item) => !was.has(item.value));
     const range = added && rangeOf(added.value);
 
-    // A period whose years are all chosen adds nothing, and is not ticked to be taken off; said,
-    // or the text would just go.
+    // A period whose years are all chosen adds nothing, which is said.
     if (next.length === chosen && next.every((year) => selected.includes(year))) {
       if (range)
         onChange([...selected], t('filter.yearAlreadyChosen', { period: formatRange(range) }));
@@ -151,8 +145,7 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
     onChange(next, said);
   };
 
-  /* As in FacetField: the button goes in the render it causes, so focus goes first, and the
-     change is told in the filter's live region unless u-combobox tells it. */
+  /* As in FacetField: focus goes first, and the change is told once. */
   const changeFromButton = (values: string[], said: string) => {
     inputRef.current?.focus();
     clearQuery();
@@ -217,16 +210,13 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
         <Suggestion.Toggle aria-label={t('filter.listToggle')} />
         <Suggestion.Clear />
         <Suggestion.List ref={listRef} data-overscroll="contain">
-          {/* Over the years, for the eye only: not an option to walk to or choose, and the
-              placeholder says the same to a screen reader. */}
+          {/* Over the years, for the eye only; the placeholder says it to a screen reader. */}
           {query.trim() === '' && (
             <div className="uib-filter-years-hint" aria-hidden="true">
               {t('filter.yearHint')}
             </div>
           )}
-          {/* Options or the hint, never both: u-datalist decides on the empty option before React
-              draws the options. The period the text reads as is labelled as typed, so Enter
-              chooses it («23-28» is 2023–2028). */}
+          {/* Options or the hint, never both; the text's period is labelled as typed. */}
           {options.length > 0 || query.trim() === '' ? (
             options.map((range) => {
               const count = documentsIn(range, field.options);

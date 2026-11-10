@@ -79,8 +79,7 @@ const Harness = ({
 
 const input = () => screen.getByRole('combobox') as HTMLInputElement;
 
-/** The chips as the reader sees them: a drawn chip hides the chip per value (filter.css, which
- * jsdom does not apply), so with one drawn, only the drawn ones. */
+/** The chips the reader sees: jsdom applies no filter.css, so a drawn chip hides none here. */
 const chips = (container: HTMLElement) => {
   const all = [...container.querySelectorAll('ds-suggestion > data')];
   const drawn = all.filter((chip) => chip.querySelector('.uib-filter-drawn-chip'));
@@ -97,10 +96,7 @@ const ticked = (container: HTMLElement) =>
 const offered = (container: HTMLElement) =>
   [...container.querySelectorAll('u-datalist u-option')].map((option) => option.textContent ?? '');
 
-/* Typing and choosing, the way the browser tells u-combobox about them. An `InputEvent` with no
-   `inputType` is taken for a click in the list, so typing says `insertText`; a choice in the list
-   is `insertReplacementText` with the option's value, as u-datalist sends it. The list is a
-   closed popover in jsdom, so its options are found with `hidden`. */
+/* Typing and choosing as the browser tells u-combobox: `insertText`, then a replacement. */
 const type = (text: string) =>
   act(() => {
     input().value = text;
@@ -298,8 +294,7 @@ describe('a field with chosen values first in its list', () => {
     [...document.querySelectorAll('u-datalist u-option:not([data-empty])')]
       .filter((option) => !option.hasAttribute('disabled'))
       .map((option) => option.getAttribute('label') ?? '');
-  /* u-datalist opens on a click in the field and shuts on Escape, with `hidden`; the field sees
-     it in a MutationObserver, hence the async act. */
+  /* u-datalist opens and shuts with `hidden`, which the field observes, hence the async act. */
   const open = async () => {
     fireEvent.click(input());
     await act(async () => {});

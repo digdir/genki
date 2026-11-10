@@ -31,21 +31,17 @@ export interface ActiveFilterProps {
   selection: FilterSelection;
   /** The values to show: those no field can. Never empty. */
   chosen: readonly ChosenValue[];
-  /** Whether fields are drawn below. Then these values belong to a field the facets came
-   * without, and waiting will not bring a field for them. */
+  /** Whether fields are drawn below, so waiting will not bring a field for these values. */
   hasFields: boolean;
   level: Level;
   onChange: (selection: FilterSelection) => void;
-  /** Called when the block goes with focus inside it (last value removed, «Tøm», or facets
-   * arriving); the filter moves focus to what replaced it. Must keep its identity between
-   * renders, or a new one is taken for an unmount. */
+  /** Called when the block goes with focus in it; must keep its identity between renders. */
   onFocusLost: () => void;
   /** Tells the reader, through the filter's live region, what was removed. */
   onAnnounce: (text: string) => void;
 }
 
-/** The filter in force where no field shows it: the facets failed or lack this field. It still
- * narrows every question, so it must show and be removable. */
+/** The filter in force where no field shows it, which must show and be removable. */
 export const ActiveFilter = ({
   selection,
   chosen,
@@ -59,12 +55,10 @@ export const ActiveFilter = ({
   const headingId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const chipRefs = useRef(new Map<string, HTMLButtonElement | null>());
-  // The chip to focus after a removal; read in an effect, once React has drawn the selection
-  // without the removed one.
+  // The chip to focus after a removal, read in an effect once React has drawn the rest.
   const focusAfterRemove = useRef<string | undefined>(undefined);
 
-  // A pressed chip removes itself; focus goes to the next, else the previous, not to `<body>`
-  // (WCAG 2.4.3). With none left, the cleanup below takes over.
+  // A pressed chip goes, so focus moves to the next, else the previous (WCAG 2.4.3).
   useEffect(() => {
     const target = focusAfterRemove.current;
     if (target === undefined) return;
@@ -72,9 +66,7 @@ export const ActiveFilter = ({
     chipRefs.current.get(target)?.focus();
   }, [selection]);
 
-  // A reader on a chip would land on `<body>` however the block goes. A layout effect: its
-  // cleanup runs while the chips are still in the document, the only moment `contains` can tell;
-  // the filter moves focus in the same commit.
+  // A layout effect, whose cleanup runs while the chips are still there to `contains`.
   useLayoutEffect(() => {
     const section = sectionRef.current;
     return () => {
@@ -105,8 +97,7 @@ export const ActiveFilter = ({
 
   return (
     <section ref={sectionRef} className="uib-filter-active" aria-labelledby={headingId}>
-      {/* «Tøm» as on every field: a filter saved with «Velg alle» can hold every value, too many
-          to remove chip by chip. */}
+      {/* «Tøm» as on every field: a filter saved with «Velg alle» can hold every value. */}
       <div className="uib-filter-active-head">
         <Heading level={level} data-size="2xs" id={headingId}>
           {t('filter.limitedTo')}
@@ -123,16 +114,14 @@ export const ActiveFilter = ({
         </Button>
       </div>
 
-      {/* Without facets the fields may come back; with fields on screen, this field is not among
-          them, and waiting will not change that. */}
+      {/* Without facets the fields may come back; with fields shown, this one will not. */}
       <Paragraph data-size="sm" variant="long">
         {hasFields ? t('filter.noField') : t('filter.noFields')}
       </Paragraph>
 
       <div className="uib-filter-active-chips">
         {chosen.map((item) => (
-          // `data-wrap`: the name is the information, so no ellipsis. The label says what
-          // pressing does: the cross has no text.
+          // `data-wrap`, since the name is the information; the label says what pressing does.
           <Chip.Removable
             key={keyOf(item)}
             ref={(chip) => {
@@ -164,8 +153,7 @@ export const NewThreadLink = ({ href, onNewThread }: NewThreadLinkProps) => {
       data-size="sm"
       href={href ?? '#'}
       onClick={(event) => {
-        // A click for a new tab or window is the browser's, as in the thread list. A plain click is
-        // the host's, which starts over in this tab.
+        // A click for a new tab is the browser's; a plain click is the host's.
         if (!plainClick(event)) return;
         event.preventDefault();
         onNewThread(event);
@@ -183,9 +171,7 @@ export interface LockedFilterProps {
   newThread?: NewThreadLinkProps | undefined;
 }
 
-/** The filter while the thread is locked. Every question is asked with the lock, so fields would
- * change nothing. `Tag`, not `Chip`: these cannot be removed; in a list, so a screen reader says
- * how many. */
+/** The filter while the thread is locked: tags, not chips, in a list a screen reader counts. */
 export const LockedFilter = ({ values, level, newThread }: LockedFilterProps) => {
   const t = useT();
   const headingId = useId();
@@ -215,9 +201,7 @@ export const LockedFilter = ({ values, level, newThread }: LockedFilterProps) =>
   );
 };
 
-/** A field while the facets load, as tall as the real one, so nothing below moves. Skeletons
- * around real elements, which Designsystemet sizes to their children, so no height drifts from
- * the tokens. `inert` and `aria-hidden`: kept only for their size. */
+/** A field while the facets load, as tall as the real one; `inert`, kept for its size. */
 export const FieldPlaceholder = () => {
   const t = useT();
   return (

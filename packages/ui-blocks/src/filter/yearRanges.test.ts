@@ -10,8 +10,7 @@ import {
   yearsIn,
 } from './yearRanges.js';
 
-// Ported from KA's yearRanges tests. The year the two-digit rule counts from is fixed, so the
-// tests do not age.
+// Ported from KA's yearRanges tests, with a fixed year so they do not age.
 const NOW = 2026;
 
 describe('the text a reader types, as a period', () => {

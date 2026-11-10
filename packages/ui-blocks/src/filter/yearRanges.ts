@@ -1,5 +1,4 @@
-// Years as periods for `yearPeriods`; pure, for unit tests. The filter stays a list of years,
-// which is what the platform takes; periods are only how the field reads and draws it.
+// Years as periods for `yearPeriods`; the filter itself stays a list of years.
 
 /** From and to, both included. A single year has `from === to`. */
 export interface YearRange {
@@ -20,17 +19,14 @@ const fullYear = (digits: string, thisYear: number): number => {
   return value > thisYear % 100 ? 1900 + value : 2000 + value;
 };
 
-/** A two-digit end («2023–28», «92-00»): the first year from the start that ends in those
- * digits, whatever this year is. */
+/** A two-digit end, «92-00»: the first year from the start that ends in those digits. */
 const endAfter = (start: number, digits: string): number => {
   const century = start - (start % 100);
   const candidate = century + Number(digits);
   return candidate >= start ? candidate : candidate + 100;
 };
 
-/** What a reader typed, as a period, or undefined. Reads «2021», «2023-2028», «2023–2028»,
- * «2023 til 2028», «23-28» and «2023–28». Full years written backwards are turned round; a
- * two-digit end always follows its start. */
+/** What a reader typed as a period, «2023-2028» or «23-28», or undefined. */
 export const parseYearInput = (text: string, thisYear = currentYear()): YearRange | undefined => {
   const input = text.trim().toLocaleLowerCase('nb-NO');
 
@@ -49,8 +45,7 @@ export const parseYearInput = (text: string, thisYear = currentYear()): YearRang
   return from <= to ? { from, to } : { from: to, to: from };
 };
 
-// A full start and the beginning of an end: «2019-», «2019 til 20», «2019 t». «to» is the English
-// «til».
+// A full start and the beginning of an end: «2019-», «2019 til 20»; «to» is «til».
 const OPEN_RANGE = /^(\d{2}|\d{4})\s*(?:(?:-|–|—|til|to)\s*(\d{0,4})|ti?)$/u;
 const DIGITS = /^\d{1,4}$/u;
 
@@ -77,10 +72,7 @@ const yearsWithDocuments = (values: Counted): number[] => {
 /** A stable key for a period, for a chip or a list option: «2022-2024». */
 export const rangeKey = ({ from, to }: YearRange) => `${from}-${to}`;
 
-/** What the list offers for the text so far: the text as a period (`parseYearInput`), with
- * documents or not; years with documents that begin with the digits typed; and periods from a
- * typed start to later years with documents whose end, in full or two digits, begins as typed.
- * Sorted by start, newest first, then shortest first. Empty when nothing fits. */
+/** What the list offers for the text so far, newest first, then shortest first. */
 export const suggestPeriods = (
   text: string,
   values: Counted,
@@ -119,8 +111,7 @@ export const suggestPeriods = (
 export const yearsIn = ({ from, to }: YearRange): number[] =>
   Array.from({ length: to - from + 1 }, (_, index) => from + index);
 
-/** Years as periods, years in a row as one. Any order, duplicates allowed, and anything not a
- * whole year is left out. */
+/** Years as periods, years in a row as one; anything not a whole year is left out. */
 export const toRanges = (years: Iterable<number | string>): YearRange[] => {
   const sorted = [...new Set([...years].map(asYear))]
     .filter((year) => Number.isInteger(year))
@@ -147,8 +138,7 @@ export const rangeFromKey = (key: string): YearRange | undefined => {
   return from <= to ? { from, to } : undefined;
 };
 
-/** Documents in a period, from the facet's counts; an unlisted year holds none. Undefined when
- * the facet has no counts, so no false 0 is shown. */
+/** Documents in a period from the facet's counts; undefined without counts. */
 export const documentsIn = (range: YearRange, values: Counted): number | undefined => {
   if (values.length > 0 && values.every((value) => value.count === undefined)) return undefined;
   let total = 0;

@@ -9,15 +9,13 @@ import { useT } from './i18n.js';
 export interface CorpusOption {
   /** What the platform calls it: `dataset-config-key`. */
   key: string;
-  /** What the reader sees, «Kudos». A sentence uses the part before a comma, so a label may
-   * carry a count of its own: «Kudos, 938 dokumenter». */
+  /** What the reader sees, «Kudos»; a sentence uses the part before a comma. */
   label: string;
   /** What is in it, in the dataset's own words. */
   description?: string | undefined;
 }
 
-/** What a sentence calls a collection: its label up to the first comma. Undefined when there is
- * no label; the blocks then say «standardsamlingen». */
+/** A collection's name in a sentence: its label up to the first comma, if any. */
 export const corpusName = (corpus: CorpusOption | undefined) => {
   const name = corpus?.label.split(',')[0]?.trim();
   return name === '' ? undefined : name;
@@ -29,13 +27,11 @@ const MAX_TYPES = 5;
 export interface CorpusLineProps {
   /** The collection searched, when one is known. */
   corpus?: CorpusOption | undefined;
-  /** The fields with their facets, unnarrowed, so ticking a box cannot shrink the collection.
-   * Undefined while they load. */
+  /** The fields with their facets, unnarrowed, so a ticked box cannot shrink the collection. */
   fields?: readonly FilterField[] | undefined;
   /** The field holding the document type; its values are counted and named, biggest first. */
   typeField?: string | undefined;
-  /** What many of a type are called, by its label: «Årsrapport» is «årsrapporter». A type
-   * without one is its label in lower case. */
+  /** What many of a type are called: «Årsrapport» is «årsrapporter». */
   typePlurals?: Readonly<Record<string, string>> | undefined;
   className?: string | undefined;
 }
@@ -52,8 +48,7 @@ export const useCorpusText = ({
   const types = fields?.find((field) => field.id === typeField);
   const years = fields?.find((field) => field.kind === 'year');
 
-  // Summed over one field, as every document has one type and one year (the type is likelier
-  // complete). Undefined when any count is missing: a partial sum is wrong.
+  // Summed over one field, as each document has one; undefined when a count is missing.
   const total = [types, years]
     .filter((field) => field !== undefined && field.options.length > 0)
     .find((field) => field?.options.every((option) => option.count !== undefined))
@@ -89,14 +84,11 @@ export const useCorpusText = ({
 
   const source = t('corpus.source', { name: corpusName(corpus) ?? t('corpus.unnamed') });
   if (clauses.length > 0) return { source, detail: clauses.join(', ') };
-  // Nothing to count: the collection's own words. `source` stays, since a description may say
-  // what is inside but not where it comes from.
+  // Nothing to count: the collection's own words, and `source` still says where from.
   return { source, detail: corpus?.description };
 };
 
-/** The collection's name, with the rest behind «Vis mer»: the whole sentence wraps to two
- * lines. A button with `aria-expanded`, not `Details`, whose summary would take a line of its
- * own. The open state survives a switch: the reader is reading what just changed. */
+/** The collection's name, the rest behind «Vis mer», which stays open across a switch. */
 export const CorpusLine = ({ className, ...props }: CorpusLineProps) => {
   const t = useT();
   const { source, detail } = useCorpusText(props);
@@ -110,9 +102,7 @@ export const CorpusLine = ({ className, ...props }: CorpusLineProps) => {
 
         {detail && (
           <>
-            {/* `button` for `aria-expanded`; `Link` keeps it as tall as the text, where
-                Designsystemet's `Button` would set the row's height. The label says what of, for
-                a reader who lists the buttons out of context. */}
+            {/* A `button` for `aria-expanded`, drawn as `Link` to keep the text's height. */}
             <Link asChild className="uib-corpus-toggle">
               <button
                 type="button"
@@ -137,23 +127,18 @@ export const CorpusLine = ({ className, ...props }: CorpusLineProps) => {
 };
 
 export interface CorpusChoiceProps {
-  /** Every collection the service can search, in the order to offer them. Drawn only with
-   * more than one. */
+  /** Every collection the service can search, in order; drawn only with more than one. */
   options: readonly CorpusOption[];
   /** The key of the collection searched now. */
   value: string | undefined;
-  /** The reader chose another. Starting a new thread for it is the host's: one thread would mix
-   * citations from two collections with nothing saying which is which. */
+  /** The reader chose another; a new thread for it is the host's to start. */
   onChange: (key: string) => void;
-  /** A filter is in force, and the host empties it on a switch, since its values belong to the
-   * other collection. The announcement then says so. */
+  /** A filter is in force, which the host empties on a switch; the announcement says so. */
   resetsFilter?: boolean | undefined;
   className?: string | undefined;
 }
 
-/** Which collection the assistant searches. `Select`, not `Suggestion`: one value from a
- * handful. No description: the options say it. In a filter's head it speaks through the
- * filter's live region, which a switch otherwise leaves silent; alone, through its own. */
+/** Which collection the assistant searches: a `Select`, heard through the filter's region. */
 export const CorpusChoice = ({
   options,
   value,
@@ -177,8 +162,7 @@ export const CorpusChoice = ({
     onChange(key);
   };
 
-  // The live region stands beside the field, not in it: `<output>` counts as an input, and
-  // Designsystemet's field warns that it holds two.
+  // The live region beside the field: an `<output>` inside counts as a second input.
   return (
     <>
       <Field className={['uib-corpus-choice', className].filter(Boolean).join(' ')}>
