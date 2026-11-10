@@ -201,17 +201,17 @@
   min-width: 0;
 }
 
-.preview-panel[data-panel='left'],
+.preview-panel[data-zone='primary'],
 .try-left {
   flex: 0 0 26%;
 }
 
-.preview-panel[data-panel='main'],
+.preview-panel[data-zone='main'],
 .try-main {
   flex: 1 1 48%;
 }
 
-.preview-panel[data-panel='right'],
+.preview-panel[data-zone='secondary'],
 .try-right {
   flex: 0 0 30%;
 }

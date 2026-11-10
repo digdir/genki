@@ -28,6 +28,9 @@
     },
     {
       "path": "../../packages/schema-forms"
+    },
+    {
+      "path": "../../packages/ui-blocks"
     }
   ]
 }

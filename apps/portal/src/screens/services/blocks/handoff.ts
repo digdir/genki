@@ -1,32 +1,21 @@
 import {
-  allBlocks,
-  panels,
+  isAssistantLayout,
+  layoutProblems,
+  normalised,
   templateIds,
-  type BlockId,
-  type BlockLayout,
-  type Panel,
+  type AssistantLayout,
   type TemplateId,
-} from './rules';
+} from '@genai/ui-blocks/builder';
 
 /** The building blocks a new service starts with, when it is made from the playground. */
 export interface BlocksStart {
-  layout: BlockLayout;
+  layout: AssistantLayout;
   template?: TemplateId;
 }
 
 const key = 'genki.blocks.start';
 
-const placements = (value: unknown): Partial<Record<BlockId, Panel>> | undefined => {
-  if (!value || typeof value !== 'object') return undefined;
-  const out: Partial<Record<BlockId, Panel>> = {};
-  for (const [id, panel] of Object.entries(value)) {
-    if (!allBlocks.includes(id as BlockId) || !panels.includes(panel as Panel)) return undefined;
-    out[id as BlockId] = panel as Panel;
-  }
-  return out;
-};
-
-/** Reads a stored start, and gives nothing for anything it does not recognise. */
+/** Reads a stored start, and gives nothing for a layout that is not one or breaks a rule. */
 export const readStart = (raw: string | null): BlocksStart | undefined => {
   if (!raw) return undefined;
   let value: unknown;
@@ -36,15 +25,10 @@ export const readStart = (raw: string | null): BlocksStart | undefined => {
     return undefined;
   }
   if (!value || typeof value !== 'object') return undefined;
-  const { layout, template } = value as {
-    layout?: { placed?: unknown; chosen?: unknown };
-    template?: unknown;
-  };
-  const placed = placements(layout?.placed);
-  const chosen = placements(layout?.chosen ?? {});
-  if (!placed || !chosen) return undefined;
+  const { layout, template } = value as { layout?: unknown; template?: unknown };
+  if (!isAssistantLayout(layout) || layoutProblems(layout).length > 0) return undefined;
   return {
-    layout: { placed, chosen },
+    layout: normalised(layout),
     ...(templateIds.includes(template as TemplateId) ? { template: template as TemplateId } : {}),
   };
 };

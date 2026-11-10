@@ -23,18 +23,19 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  blocksIn,
+  blockSpec,
+  toolMode,
+  zones,
+  type AssistantLayout,
+  type BlockId,
+  type Zone,
+} from '@genai/ui-blocks/builder';
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockIcon, blockLabel } from './BlocksPanel';
-import {
-  blocksIn,
-  previewScale,
-  previewWidth,
-  rightPanelMode,
-  type BlockId,
-  type BlockLayout,
-  type Panel,
-} from './rules';
+import { previewScale, previewWidth } from './preview-size';
 
 export type PreviewMode = 'setup' | 'try';
 
@@ -60,10 +61,10 @@ const useAvailableWidth = () => {
   return [ref, width] as const;
 };
 
-const frameLabel: Record<Panel, PlainKey> = {
-  left: 'builderBlocks.frameLeft',
+const frameLabel: Record<Zone, PlainKey> = {
+  primary: 'builderBlocks.frameLeft',
   main: 'builderBlocks.frameMain',
-  right: 'builderBlocks.frameRight',
+  secondary: 'builderBlocks.frameRight',
 };
 
 export const ServicePreview = ({
@@ -78,7 +79,7 @@ export const ServicePreview = ({
   onExitFullscreen,
   height,
 }: {
-  layout: BlockLayout;
+  layout: AssistantLayout;
   mode: PreviewMode;
   address: string;
   chat: ReactNode;
@@ -90,7 +91,7 @@ export const ServicePreview = ({
   height?: number;
 }) => {
   const t = useT();
-  const used = (['left', 'main', 'right'] as Panel[]).filter((p) => blocksIn(layout, p).length);
+  const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
   return (
@@ -165,7 +166,9 @@ export const ServicePreview = ({
           {used.length === 0 ? (
             <p className="meta service-preview-empty">{t('builderBlocks.nothingPlaced')}</p>
           ) : mode === 'setup' ? (
-            used.map((p) => <SetupPanel key={p} panel={p} layout={layout} onRemove={onRemove} />)
+            used.map((zone) => (
+              <SetupPanel key={zone} zone={zone} layout={layout} onRemove={onRemove} />
+            ))
           ) : (
             <TryView layout={layout} chat={chat} />
           )}
@@ -176,19 +179,19 @@ export const ServicePreview = ({
 };
 
 const SetupPanel = ({
-  panel,
+  zone,
   layout,
   onRemove,
 }: {
-  panel: Panel;
-  layout: BlockLayout;
+  zone: Zone;
+  layout: AssistantLayout;
   onRemove: (id: BlockId) => void;
 }) => {
   const t = useT();
-  const ids = blocksIn(layout, panel);
+  const ids = blocksIn(layout, zone);
   return (
-    <div className="preview-panel" data-panel={panel}>
-      <span className="preview-panel-name">{t(frameLabel[panel])}</span>
+    <div className="preview-panel" data-zone={zone}>
+      <span className="preview-panel-name">{t(frameLabel[zone])}</span>
       <ul className="preview-cards">
         {ids.map((id) => (
           <Card
@@ -198,15 +201,15 @@ const SetupPanel = ({
             data-size="sm"
             className="preview-card"
             data-block={id}
-            data-bottom={id === 'settings'}
+            data-bottom={blockSpec(id).slot === 'foot'}
           >
             <li>
-              <span className="preview-card-name">{t(blockLabel[id])}</span>
+              <span className="preview-card-name">{t(blockLabel(id))}</span>
               <Button
                 variant="tertiary"
                 data-size="sm"
                 icon
-                aria-label={t('builderBlocks.removeBlock', { block: t(blockLabel[id]) })}
+                aria-label={t('builderBlocks.removeBlock', { block: t(blockLabel(id)) })}
                 onClick={() => onRemove(id)}
               >
                 <Icon icon={XMarkIcon} size={16} />
@@ -219,11 +222,11 @@ const SetupPanel = ({
   );
 };
 
-const TryView = ({ layout, chat: bare }: { layout: BlockLayout; chat: ReactNode }) => {
+const TryView = ({ layout, chat: bare }: { layout: AssistantLayout; chat: ReactNode }) => {
   const t = useT();
-  const left = blocksIn(layout, 'left');
+  const left = blocksIn(layout, 'primary');
   const main = blocksIn(layout, 'main');
-  const right = blocksIn(layout, 'right');
+  const right = blocksIn(layout, 'secondary');
   const hasChat = main.includes('chat') || right.includes('chat');
   const chat =
     right.includes('sources') && isValidElement<{ note?: ReactNode }>(bare)
@@ -237,7 +240,7 @@ const TryView = ({ layout, chat: bare }: { layout: BlockLayout; chat: ReactNode 
         <aside className="preview-panel try-left" aria-label={t('builderBlocks.frameLeft')}>
           {left.map((id) => (
             <div key={id} data-bottom={id === 'settings'}>
-              <TryBlock id={id} chat={chat} where="left" />
+              <TryBlock id={id} chat={chat} where="primary" />
             </div>
           ))}
         </aside>
@@ -261,16 +264,16 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
   const [picked, setPicked] = useState<BlockId | undefined>();
   const menu = useRef<HTMLDivElement>(null);
   const active = picked && ids.includes(picked) ? picked : (ids[0] ?? 'sources');
-  const mode = rightPanelMode(ids.length);
+  const mode = toolMode(ids.length);
   return (
     <aside className="preview-panel try-right" aria-label={t('builderBlocks.frameRight')}>
       {mode === 'heading' ? (
         <>
           <Heading level={3} data-size="2xs" className="try-tool-heading">
             <Icon icon={blockIcon[active]} />
-            {t(blockLabel[active])}
+            {t(blockLabel(active))}
           </Heading>
-          <TryBlock id={active} chat={chat} where="right" />
+          <TryBlock id={active} chat={chat} where="secondary" />
         </>
       ) : mode === 'tabs' ? (
         <>
@@ -286,11 +289,11 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
             {ids.map((id) => (
               <ToggleGroup.Item key={id} value={id}>
                 <Icon icon={blockIcon[id]} />
-                {t(blockLabel[id])}
+                {t(blockLabel(id))}
               </ToggleGroup.Item>
             ))}
           </ToggleGroup>
-          <TryBlock id={active} chat={chat} where="right" />
+          <TryBlock id={active} chat={chat} where="secondary" />
         </>
       ) : (
         <>
@@ -300,11 +303,11 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
               data-color="neutral"
               data-size="sm"
               className="try-tool-trigger"
-              aria-label={`${t(blockLabel[active])}, ${t('builderBlocks.toolPicker')}`}
+              aria-label={`${t(blockLabel(active))}, ${t('builderBlocks.toolPicker')}`}
             >
               <span className="try-tool-heading">
                 <Icon icon={blockIcon[active]} />
-                {t(blockLabel[active])}
+                {t(blockLabel(active))}
               </span>
               <Icon icon={ChevronDownIcon} size={18} />
             </Dropdown.Trigger>
@@ -320,21 +323,21 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
                       }}
                     >
                       <Icon icon={blockIcon[id]} />
-                      {t(blockLabel[id])}
+                      {t(blockLabel(id))}
                     </Dropdown.Button>
                   </Dropdown.Item>
                 ))}
               </Dropdown.List>
             </Dropdown>
           </Dropdown.TriggerContext>
-          <TryBlock id={active} chat={chat} where="right" />
+          <TryBlock id={active} chat={chat} where="secondary" />
         </>
       )}
     </aside>
   );
 };
 
-const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Panel }) => {
+const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Zone }) => {
   const t = useT();
   switch (id) {
     case 'chat':
@@ -362,7 +365,7 @@ const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Pa
     case 'filter':
       return (
         <div className="stack-xs">
-          {where === 'left' ? (
+          {where === 'primary' ? (
             <>
               <span className="try-label">{t('builderBlocks.filterTitle')}</span>
               <span className="meta">{t('builderBlocks.filterApplies')}</span>
@@ -389,7 +392,7 @@ const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Pa
           {t('builderBlocks.settings')}
         </Button>
       );
-    case 'procedure':
+    case 'approach':
       return (
         <Details data-color="neutral" className="try-procedure">
           <Details.Summary>
@@ -425,7 +428,7 @@ const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Pa
           ))}
         </ol>
       );
-    case 'documentView':
+    case 'document-view':
       return <p className="try-document meta">{t('builderBlocks.documentExample')}</p>;
     case 'notes':
       return <p className="meta">{t('builderBlocks.notesEmpty')}</p>;

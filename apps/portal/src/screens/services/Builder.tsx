@@ -59,6 +59,7 @@ import {
 } from '../../data/service-form';
 import { sharedInstructionsOf, withSharedInstructions } from '../../data/service-languages';
 import { useFormat } from '@genai/i18n/react';
+import { factsFromDefinition } from '@genai/ui-blocks/builder';
 import { actorLabel, formatDateTime, notPricedLabel } from '../../format';
 import { useT, type PlainKey } from '../../i18n';
 import { needsRight, rightLabel, useRights, useUserName } from '../../Shell';
@@ -103,7 +104,7 @@ import { DeveloperSection, isDeveloperTool } from '../service/DeveloperSection';
 import { IntegrationService, IntegrationTab } from '../developer-routes';
 import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
-import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
+import { BlocksFullscreen, BlocksStep, draftChannels, useBlocksState } from './blocks/BlocksStep';
 import { takeOver } from './blocks/handoff';
 import '../service/service.css';
 
@@ -443,7 +444,6 @@ export const Builder = ({
   const pushMsg = (m: ChatMessage) => setMessages((ms) => [...ms, m]);
   const addCard = (cid: string, card: ChangeCard) => setExtra((x) => ({ ...x, [cid]: card }));
   const split = !narrow;
-  const blocks = useBlocksState(isNew ? takeOver : undefined);
   const [resultWish, setResultWish] = useState('');
   const showPane = (p: 'assistent' | 'tjeneste') => !split && setPane(p);
 
@@ -676,6 +676,11 @@ export const Builder = ({
       }) as unknown as Record<string, unknown>,
     [service, tenant, serviceId, current],
   );
+  const draftFacts = useMemo(
+    () => factsFromDefinition(definition, { channels: draftChannels }),
+    [definition],
+  );
+  const blocks = useBlocksState(isNew ? takeOver : undefined, draftFacts);
   const rename = (name: string) => change((d) => renameService(d, name, current > 0));
   const confirmRisk = (risk: RiskClass | undefined) =>
     setService((d) =>

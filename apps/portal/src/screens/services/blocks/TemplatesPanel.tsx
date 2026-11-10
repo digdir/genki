@@ -1,31 +1,20 @@
 import { Paragraph } from '@digdir/designsystemet-react';
+import {
+  blockSpec,
+  templateIds,
+  templateKey,
+  templates,
+  zones,
+  type TemplateId,
+  type Zone,
+} from '@genai/ui-blocks/builder';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
-import {
-  blocksIn,
-  panels,
-  templateIds,
-  templates,
-  type BlockLayout,
-  type TemplateId,
-} from './rules';
 
-export const templateLabel: Record<TemplateId, PlainKey> = {
-  all: 'builderBlocks.templateAll',
-  sourcesFocus: 'builderBlocks.templateSourcesFocus',
-  procedureFocus: 'builderBlocks.templateProcedureFocus',
-  notesFocus: 'builderBlocks.templateNotesFocus',
-  documentFocus: 'builderBlocks.templateDocumentFocus',
-  classic: 'builderBlocks.templateClassic',
-  noRight: 'builderBlocks.templateNoRight',
-  noLeft: 'builderBlocks.templateNoLeft',
-  chatOnly: 'builderBlocks.templateChatOnly',
-};
-
-const shortPanel: Record<(typeof panels)[number], PlainKey> = {
-  left: 'builderBlocks.panelLeftShort',
+const shortZone: Record<Zone, PlainKey> = {
+  primary: 'builderBlocks.panelLeftShort',
   main: 'builderBlocks.panelMainShort',
-  right: 'builderBlocks.panelRightShort',
+  secondary: 'builderBlocks.panelRightShort',
 };
 
 export const TemplatesPanel = ({
@@ -33,16 +22,20 @@ export const TemplatesPanel = ({
   onPick,
 }: {
   current: TemplateId | undefined;
-  onPick: (id: TemplateId, layout: BlockLayout) => void;
+  onPick: (id: TemplateId) => void;
 }) => {
   const t = useT();
+  const nameOf = (id: Parameters<typeof blockLabel>[0]) =>
+    blockSpec(id).status === 'planned'
+      ? t('builderBlocks.planned', { block: t(blockLabel(id)) })
+      : t(blockLabel(id));
   return (
     <div className="blocks-panel">
       <Paragraph data-size="sm">{t('builderBlocks.templatesIntro')}</Paragraph>
       <ul className="blocks-templates">
         {templateIds.map((id) => {
-          const layout = templates[id];
-          const name = t(templateLabel[id]);
+          const template = templates[id];
+          const name = t(templateKey(id));
           return (
             <li key={id}>
               <button
@@ -50,27 +43,24 @@ export const TemplatesPanel = ({
                 className="blocks-template"
                 aria-pressed={current === id}
                 aria-label={t('builderBlocks.templateUse', { name })}
-                onClick={() => onPick(id, layout)}
+                onClick={() => onPick(id)}
               >
                 <span className="blocks-stamp" aria-hidden="true">
-                  {panels.map((p) => (
-                    <span key={p} data-panel={p} data-empty={blocksIn(layout, p).length === 0} />
+                  {zones.map((zone) => (
+                    <span key={zone} data-zone={zone} data-empty={template[zone].length === 0} />
                   ))}
                 </span>
                 <span className="stack-xs">
                   <span className="blocks-template-name">{name}</span>
                   <span className="blocks-template-panels">
-                    {panels.map((p) => {
-                      const ids = blocksIn(layout, p);
-                      return (
-                        <span key={p} className="meta">
-                          <strong>{t(shortPanel[p])}:</strong>{' '}
-                          {ids.length
-                            ? ids.map((b) => t(blockLabel[b])).join(', ')
-                            : t('builderBlocks.templateNone')}
-                        </span>
-                      );
-                    })}
+                    {zones.map((zone) => (
+                      <span key={zone} className="meta">
+                        <strong>{t(shortZone[zone])}:</strong>{' '}
+                        {template[zone].length
+                          ? template[zone].map(nameOf).join(', ')
+                          : t('builderBlocks.templateNone')}
+                      </span>
+                    ))}
                   </span>
                 </span>
               </button>

@@ -60,28 +60,69 @@ describe('the playground', () => {
 
   it('makes a new service that starts with the building blocks tried in the playground', async () => {
     await renderAt('#/playground');
-    const projects = await screen.findByRole('switch', { name: /^Prosjekter/ });
-    fireEvent.click(projects);
-    expect((projects as HTMLInputElement).checked).toBe(false);
+    const threads = await screen.findByRole('switch', { name: /^Tråder/ });
+    fireEvent.click(threads);
+    expect((threads as HTMLInputElement).checked).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Lag en tjeneste av dette' }));
     expect(window.location.hash).toBe('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
 
     go('#/services/new/blocks');
-    const inBuilder = await screen.findByRole('switch', { name: /^Prosjekter/ });
+    const inBuilder = await screen.findByRole('switch', { name: /^Tråder/ });
     expect((inBuilder as HTMLInputElement).checked).toBe(false);
   });
 });
 
+const layoutOf = (zones: Record<string, unknown>) =>
+  JSON.stringify({
+    layout: { version: 1, zones: { primary: [], main: [], secondary: [], ...zones } },
+  });
+
 describe('the building blocks handed to a new service', () => {
-  it('reads only blocks, panels and starting points it knows', () => {
-    expect(
-      readStart('{"layout":{"placed":{"chat":"main"},"chosen":{}},"template":"chatOnly"}'),
-    ).toEqual({ layout: { placed: { chat: 'main' }, chosen: {} }, template: 'chatOnly' });
-    expect(readStart('{"layout":{"placed":{"chat":"top"},"chosen":{}}}')).toBeUndefined();
-    expect(readStart('{"layout":{"placed":{"robot":"main"},"chosen":{}}}')).toBeUndefined();
+  it('reads a layout of the catalogue, version 1, with its template, and its options', () => {
+    const raw = JSON.stringify({
+      layout: {
+        version: 1,
+        template: 'chat-only',
+        zones: {
+          primary: [],
+          main: [{ block: 'chat', settings: { suggestions: false } }, { block: 'approach' }],
+          secondary: [],
+        },
+      },
+      template: 'chat-only',
+    });
+    expect(readStart(raw)).toEqual({
+      layout: {
+        version: 1,
+        template: 'chat-only',
+        zones: {
+          primary: [],
+          main: [{ block: 'approach' }, { block: 'chat', settings: { suggestions: false } }],
+          secondary: [],
+        },
+      },
+      template: 'chat-only',
+    });
+  });
+
+  it('gives nothing for a layout that breaks a rule, is not a layout, or is not JSON', () => {
+    expect(readStart(layoutOf({ main: [{ block: 'sources' }] }))).toBeUndefined();
+    expect(readStart(layoutOf({ main: [{ block: 'robot' }] }))).toBeUndefined();
+    expect(readStart(layoutOf({ secondary: [{ block: 'notes' }] }))).toBeUndefined();
+    expect(readStart('{"layout":{"placed":{"chat":"main"},"chosen":{}}}')).toBeUndefined();
     expect(readStart('not json')).toBeUndefined();
     expect(readStart(null)).toBeUndefined();
+  });
+
+  it('leaves out a template it does not know, and keeps the layout', () => {
+    const raw = JSON.stringify({
+      ...JSON.parse(layoutOf({ main: [{ block: 'chat' }] })),
+      template: 'chatOnly',
+    });
+    expect(readStart(raw)).toEqual({
+      layout: { version: 1, zones: { primary: [], main: [{ block: 'chat' }], secondary: [] } },
+    });
   });
 });

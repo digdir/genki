@@ -1,39 +1,35 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { templates, type BlockLayout } from './rules';
-import { ServicePreview } from './ServicePreview';
-
-document.getAnimations ??= () => [];
+import { BlocksPanel } from './BlocksPanel';
+import { useBlocksState } from './BlocksStep';
 
 afterEach(cleanup);
 
-const note = 'Fotnotene i svaret peker til kildene: 1, 2 og 3.';
-const noop = () => undefined;
-const Chat = ({ note }: { note?: ReactNode }) => <section aria-label="Chat">{note}</section>;
+const Harness = () => {
+  const blocks = useBlocksState();
+  return <BlocksPanel state={blocks.state} onChange={blocks.change} />;
+};
 
-const tryOut = (layout: BlockLayout) =>
-  render(
-    <ServicePreview
-      layout={layout}
-      mode="try"
-      address="ny-tjeneste.genki.no"
-      chat={<Chat />}
-      onMode={noop}
-      onRemove={noop}
-      onReload={noop}
-    />,
+const notInForce = 'Fotnoter: Trenger Kilder eller Dokumentvisning.';
+const turnOffInRight = (name: string) =>
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Høyre panel' })).getByRole('switch', { name }),
   );
 
-describe('the footnotes in the preview', () => {
-  it('tells that the answer has footnotes when Sources is in the layout', () => {
-    tryOut(templates.classic);
-    expect(within(screen.getByRole('region', { name: 'Chat' })).getByText(note)).toBeTruthy();
+describe('the footnotes on Chat', () => {
+  it('says Fotnoter is not in force with neither Kilder nor Dokumentvisning in the layout', () => {
+    render(<Harness />);
+    turnOffInRight('Kilder');
+    turnOffInRight('Dokumentvisning');
+    fireEvent.click(screen.getByText('Valg for Chat'));
+    expect(screen.getByText(notInForce)).toBeTruthy();
   });
 
-  it('says nothing about footnotes without Sources', () => {
-    tryOut(templates.chatOnly);
-    expect(screen.queryByText(note)).toBeNull();
+  it('keeps Fotnoter in force with Dokumentvisning and no Kilder, since a footnote opens the document', () => {
+    render(<Harness />);
+    turnOffInRight('Kilder');
+    fireEvent.click(screen.getByText('Valg for Chat'));
+    expect(screen.queryByText(notInForce)).toBeNull();
   });
 });

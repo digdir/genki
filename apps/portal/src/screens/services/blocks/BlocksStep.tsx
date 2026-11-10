@@ -1,6 +1,19 @@
 import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Tabs, TabsList, TabsPanel, TabsTab, ToggleGroup } from '@digdir/designsystemet-react';
 import {
+  blockIds,
+  defaultLayout,
+  fitService,
+  fromTemplate,
+  offerOf,
+  turnOff,
+  type BuilderState,
+  type Channel,
+  type ServiceFacts,
+  type TemplateId,
+} from '@genai/ui-blocks/builder';
+import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -12,7 +25,6 @@ import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
 import { BlocksPanel } from './BlocksPanel';
 import type { BlocksStart } from './handoff';
-import { defaultLayout, turnOff, type BlockLayout, type TemplateId } from './rules';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
 import { TemplatesPanel } from './TemplatesPanel';
 import './blocks.css';
@@ -24,17 +36,37 @@ const leftMax = 640;
 const fullHeightMin = 480;
 const fullHeightMax = 1400;
 
-export const useBlocksState = (start?: () => BlocksStart | undefined) => {
+/** A draft's frontend keeps this visit's threads and reads facets; it has nowhere to send feedback. */
+export const draftChannels: readonly Channel[] = ['conversations', 'facets'];
+
+/** The builder's blocks, and the facts of the draft they are for when it has any. */
+export const useBlocksState = (
+  start?: () => BlocksStart | undefined,
+  facts?: ServiceFacts | undefined,
+) => {
   const [first] = useState(() => start?.());
-  const [layout, setLayout] = useState<BlockLayout>(first?.layout ?? defaultLayout);
-  const [template, setTemplate] = useState<TemplateId | undefined>(first ? first.template : 'all');
+  const [state, setState] = useState<BuilderState>({
+    layout: first?.layout ?? defaultLayout,
+    chosen: {},
+  });
+  const [template, setTemplate] = useState<TemplateId | undefined>(first?.template);
   const [mode, setMode] = useState<PreviewMode>('try');
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
   const [conversation, setConversation] = useState(0);
+  const offered = (id: (typeof blockIds)[number]) => offerOf(id, facts).offered;
+  // A block the draft can no longer back is held, and comes back where it stood once it can.
+  const offeredKey = facts ? blockIds.filter(offered).join(',') : undefined;
+  useEffect(() => {
+    if (offeredKey === undefined) return;
+    const backed = new Set(offeredKey.split(','));
+    setState((s) => fitService(s, (id) => backed.has(id)).state);
+  }, [offeredKey]);
   return {
-    layout,
+    state,
+    layout: state.layout,
+    facts,
     template,
     mode,
     tab,
@@ -45,12 +77,12 @@ export const useBlocksState = (start?: () => BlocksStart | undefined) => {
     setTab,
     setWidth,
     setHeight,
-    change: (next: BlockLayout) => {
-      setLayout(next);
+    change: (next: BuilderState) => {
+      setState(next);
       setTemplate(undefined);
     },
-    pick: (id: TemplateId, next: BlockLayout) => {
-      setLayout(next);
+    pick: (id: TemplateId) => {
+      setState(fromTemplate(id, offered));
       setTemplate(id);
     },
     restart: () => setConversation((n) => n + 1),
@@ -156,7 +188,7 @@ export const BlocksStep = ({
       </ToggleGroup>
       {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
-        <BlocksPanel layout={state.layout} onChange={state.change} />
+        <BlocksPanel state={state.state} facts={state.facts} onChange={state.change} />
       ) : null}
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />
@@ -170,7 +202,7 @@ export const BlocksStep = ({
       address={address}
       chat={chat}
       onMode={state.setMode}
-      onRemove={(id) => state.change(turnOff(state.layout, id))}
+      onRemove={(id) => state.change(turnOff(state.state, id))}
       onReload={state.restart}
       onFullscreen={onFullscreen}
     />
@@ -228,7 +260,7 @@ export const BlocksFullscreen = ({
         address={address}
         chat={chat}
         onMode={state.setMode}
-        onRemove={(id) => state.change(turnOff(state.layout, id))}
+        onRemove={(id) => state.change(turnOff(state.state, id))}
         onReload={state.restart}
         onExitFullscreen={onExit}
         height={state.height}
