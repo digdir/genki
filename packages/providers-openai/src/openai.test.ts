@@ -113,8 +113,7 @@ describe('openai-chat adapter', () => {
           }
         : { status: 200, json: completion('Hei') },
     );
-    const r = router(url);
-    const port = open(r);
+    const port = open(router(url));
 
     const first = await port.chat({ ...user('hei'), maxTokens: 4000 });
     const second = await port.chat({ ...user('hei igjen'), maxTokens: 4000 });
@@ -125,6 +124,21 @@ describe('openai-chat adapter', () => {
       [undefined, 4000],
       [undefined, 4000],
     ]);
+  });
+
+  it('does not report a token parameter switch as a rejected parameter', async () => {
+    const { url } = await fake((body) =>
+      'max_completion_tokens' in body
+        ? {
+            status: 400,
+            json: { error: { message: "Unsupported parameter: 'max_completion_tokens'." } },
+          }
+        : { status: 200, json: completion('Hei') },
+    );
+    const r = router(url);
+
+    await open(r).chat({ ...user('hei'), maxTokens: 50 });
+
     expect(r.describe().find((m) => m.id === 'foundry/gpt-4o')?.rejectedParameters).toEqual({});
   });
 
@@ -197,7 +211,7 @@ describe('openai-chat adapter', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('switches a configured max_tokens deployment, and remembers it', async () => {
+  it('switches a configured max_tokens deployment only for the deployment that refused', async () => {
     const { url, seen } = await fake((body) =>
       body.model === 'borealis' && 'max_tokens' in body
         ? {
@@ -274,7 +288,7 @@ describe('openai-chat adapter', () => {
     },
   );
 
-  it('caps retries when a deployment refuses both token parameters', async () => {
+  it('switches the token parameter once and gives up when the deployment refuses both', async () => {
     const { url, seen } = await fake((body) => ({
       status: 400,
       json: {
@@ -287,7 +301,23 @@ describe('openai-chat adapter', () => {
     await expect(
       open(router(url, undefined, 0)).chat({ ...user('hei'), maxTokens: 50 }),
     ).rejects.toMatchObject({ code: 'bad_request' });
-    expect(seen).toHaveLength(4);
+    expect(seen.map((s) => [s.body.max_completion_tokens, s.body.max_tokens])).toEqual([
+      [50, undefined],
+      [undefined, 50],
+    ]);
+  });
+
+  it('never retries a deployment that accepts max_completion_tokens', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: completion('Hei') }));
+    const port = open(router(url));
+
+    await port.chat({ ...user('hei'), maxTokens: 100 });
+    await port.chat({ ...user('hei igjen'), maxTokens: 200 });
+
+    expect(seen.map((s) => [s.body.max_completion_tokens, s.body.max_tokens])).toEqual([
+      [100, undefined],
+      [200, undefined],
+    ]);
   });
 
   it('reports the dropped temperature so the platform can suggest a rule', async () => {

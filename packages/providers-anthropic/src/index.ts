@@ -220,7 +220,8 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
         };
       } catch (error) {
         const rejected =
-          error instanceof APIError && rejectedParameter(error.status, error.message);
+          error instanceof APIError &&
+          rejectedParameter(error.status, error.message) === 'temperature';
         if (request.temperature === undefined || !rejected) throw error;
         noTemperature.add(model.deployment);
         return { response: await send(params(model, request, true)), dropped: ['temperature'] };

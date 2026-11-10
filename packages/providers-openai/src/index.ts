@@ -114,29 +114,10 @@ const rejectsTemperature = (error: unknown) =>
 
 type TokenParam = ModelOptions['tokenParam'];
 
-const rejectsTokenParam = (error: unknown, param: TokenParam) => {
-  if (
-    !(error instanceof APIError) ||
-    (error.status !== 400 && error.status !== 422) ||
-    (error.param && error.param !== param)
-  )
-    return false;
-
-  const refusal = /extra_forbidden|extra inputs|unsupported|not supported|unrecognized|unknown/i;
-  const details = (error.error as { detail?: unknown } | undefined)?.detail;
-  if (Array.isArray(details))
-    return details.some((item: unknown) => {
-      if (!item || typeof item !== 'object') return false;
-      const { loc, type, msg } = item as { loc?: unknown; type?: unknown; msg?: unknown };
-      return (
-        Array.isArray(loc) &&
-        loc.length === 2 &&
-        loc[0] === 'body' &&
-        loc[1] === param &&
-        (type === 'extra_forbidden' || (typeof msg === 'string' && refusal.test(msg)))
-      );
-    });
-  return error.message.includes(param) && refusal.test(error.message);
+const refusedTokenParam = (error: unknown) => {
+  if (!(error instanceof APIError)) return undefined;
+  const rejected = rejectedParameter(error.status, error.message, error.param);
+  return rejected === 'temperature' ? undefined : rejected;
 };
 
 interface Adjustments {
@@ -212,7 +193,6 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
       timeout: endpoint.timeoutMs,
     });
 
-    // What each deployment has refused, learned from its errors and applied to later requests.
     const fixedTemperature = new Set<string>();
     const tokenParams = new Map<string, TokenParam>();
     const learnedResponses = new Set<string>();
@@ -230,7 +210,7 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
         tokenParam: TokenParam | undefined,
       ) => Promise<T>,
     ): Promise<{ response: T; dropped: TunableParameter[] }> => {
-      for (let attempt = 0; ; attempt += 1) {
+      for (;;) {
         const api = apiFor(model);
         const key = `${api}/${model.deployment}`;
         const omit = fixedTemperature.has(key);
@@ -241,14 +221,14 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
             dropped: request.temperature !== undefined && omit ? ['temperature'] : [],
           };
         } catch (error) {
-          if (attempt >= 3) throw error;
-          const current = tokenParam ?? model.options.tokenParam ?? 'max_completion_tokens';
+          const current = model.options.tokenParam ?? 'max_completion_tokens';
           if (request.temperature !== undefined && !omit && rejectsTemperature(error)) {
             fixedTemperature.add(key);
           } else if (
             api === 'chat-completions' &&
+            !tokenParam &&
             request.maxTokens !== undefined &&
-            rejectsTokenParam(error, current)
+            refusedTokenParam(error) === current
           ) {
             tokenParams.set(key, current === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens');
           } else if (
