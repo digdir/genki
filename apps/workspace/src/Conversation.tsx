@@ -21,6 +21,8 @@ interface Props {
   messages: ChatMessage[];
   organisation: string;
   now: Date;
+  /** The workspace's clock, for the seconds an answer in progress has taken. */
+  clock?: () => Date;
   onRetry: (message: AssistantMessage) => void;
   onFeedback: (input: FeedbackInput) => Promise<void>;
   onOpenTable?: (message: AssistantMessage) => void;
@@ -116,6 +118,7 @@ const Answer = ({
   message,
   organisation,
   now,
+  clock,
   onRetry,
   onFeedback,
   onOpenTable,
@@ -141,6 +144,7 @@ const Answer = ({
           steps={inLanguage(procedure.steps, t)}
           working={!!message.pending}
           startedAt={procedure.startedAt}
+          {...(clock ? { now: () => clock().getTime() } : {})}
           {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
           {...(!message.pending && procedure.read !== undefined ? { read: procedure.read } : {})}
           {...(!message.pending && cited ? { used: cited } : {})}

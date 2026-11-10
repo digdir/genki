@@ -119,6 +119,16 @@ describe('the approach card', () => {
     expect(screen.getByText('Har jobbet i 20 sekunder')).toBeTruthy();
   });
 
+  it('counts the seconds by the host’s clock when the host passes one', () => {
+    vi.useFakeTimers({ now: started });
+    let clock = started + 18_000;
+    draw({ now: () => clock });
+    expect(screen.getByText('Har jobbet i 18 sekunder')).toBeTruthy();
+    clock += 5000;
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByText('Har jobbet i 23 sekunder')).toBeTruthy();
+  });
+
   it('links to more about what the assistant did not find, when the app can show it', () => {
     const missing: ApproachStep = {
       id: 'gaps',

@@ -379,6 +379,29 @@ describe('chat', () => {
     expect(screen.getByText('Brukte 1 kilde · tok 41 sekunder')).toBeTruthy();
   });
 
+  it('counts the seconds of an answer in progress by the workspace clock', async () => {
+    let clock = Date.parse('2026-10-07T10:00:00Z');
+    let finish: () => void = () => undefined;
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        clock += 12_000;
+        onStep?.({ tool: 'search' });
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return { text: 'Ja.', sources: [] };
+      },
+    };
+    await renderApp('#/chat', { api, now: () => new Date(clock) });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Har jobbet i 12 sekunder')).toBeTruthy();
+    finish();
+    await screen.findByText('Ja.');
+  });
+
   it('shows no approach when the service sends no steps a person can read', async () => {
     const api: WorkspaceApi = {
       ...mockWorkspaceApi(),

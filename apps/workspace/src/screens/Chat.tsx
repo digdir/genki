@@ -584,6 +584,7 @@ export const Chat = ({
           messages={shown}
           organisation={organisation}
           now={now()}
+          clock={now}
           onRetry={retry}
           onFeedback={(input) => api.sendFeedback(input)}
           {...(api.media ? { loadMedia: api.media } : {})}

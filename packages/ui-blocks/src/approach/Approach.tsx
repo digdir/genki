@@ -38,6 +38,8 @@ export interface ApproachProps {
   /** When the assistant started, in milliseconds since the epoch. */
   startedAt: number;
   finishedAt?: number;
+  /** The host's clock, in milliseconds since the epoch, for the seconds while it works. */
+  now?: () => number;
   /** Documents read in all, for the line at the bottom once the answer is done. */
   read?: number;
   /** Sources used in the answer. */
@@ -52,12 +54,21 @@ export interface ApproachProps {
   onExplainMissing?: (stepId: string) => void;
 }
 
-const useSeconds = (startedAt: number, finishedAt: number | undefined, working: boolean) => {
-  const [now, setNow] = useState(() => Date.now());
+const useSeconds = (
+  startedAt: number,
+  finishedAt: number | undefined,
+  working: boolean,
+  clock: () => number,
+) => {
+  const latest = useRef(clock);
+  useEffect(() => {
+    latest.current = clock;
+  });
+  const [now, setNow] = useState(clock);
   useEffect(() => {
     if (!working) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    setNow(latest.current());
+    const timer = setInterval(() => setNow(latest.current()), 1000);
     return () => clearInterval(timer);
   }, [working]);
   return Math.max(0, Math.floor(((finishedAt ?? now) - startedAt) / 1000));
@@ -153,6 +164,7 @@ export const Approach = ({
   working,
   startedAt,
   finishedAt,
+  now = Date.now,
   read,
   used,
   open,
@@ -168,7 +180,7 @@ export const Approach = ({
     onOpenChange?.(next);
   };
 
-  const seconds = useSeconds(startedAt, finishedAt, working);
+  const seconds = useSeconds(startedAt, finishedAt, working, now);
   const lines = linesOf(steps);
   const activeIndex = lines.findIndex((line) => line.step.status === 'active');
   const active = lines[activeIndex];
