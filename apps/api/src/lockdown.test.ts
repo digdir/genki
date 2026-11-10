@@ -13,6 +13,7 @@ import { InMemoryExecutionStore, InMemoryIngestionBackend, IngestionService } fr
 import {
   configuredCredentialScope,
   entraNotTrustedType,
+  lockdownUserScope,
   lockedEnvironmentType,
   mayUseModels,
   trustedEntraScope,
@@ -39,8 +40,17 @@ const principals: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
     scopes: [trustedEntraScope],
   },
+  user: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'user-subject',
+    assurance: 'entraid',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [lockdownUserScope],
+  },
 };
-const operators = operatorDirectory([], [testPrincipals.operator?.subject ?? '']);
+const operators = operatorDirectory({});
 
 const configuredKey = 'gp_from-configuration';
 const configuredIngestKey = 'gp_ingest-from-configuration';
@@ -104,7 +114,7 @@ const boot = async (lockdown: boolean) => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -267,6 +277,19 @@ describe('lockdown', () => {
     expect(JSON.stringify(await res.json())).toContain('Hei.');
   });
 
+  it('lets a trusted Entra login create an organisation-wide key in its own organisation, though it is an operator', async () => {
+    const { chat, send } = await boot(true);
+
+    const created = await send(`/tenants/${digdir}/api-keys`, 'entra', {
+      body: { name: 'KA test', agents: ['klarsprak'] },
+      reason,
+    });
+    const { key } = await json<{ key: string }>(created);
+
+    expect(created.status).toBe(201);
+    expect((await chat(key)).status).toBe(200);
+  });
+
   it('keeps a key admitted after an Entra user rotates it', async () => {
     const { chat, createKey, send } = await boot(true);
     const { apiKey } = await createKey('entra');
@@ -425,7 +448,7 @@ describe('lockdown', () => {
     },
   );
 
-  it('refuses a person at the model port even where no route is listed', async () => {
+  it('refuses a person at the model gate even where no route is listed', async () => {
     const { platform } = await boot(true);
     const context = (principal: Principal) => ({
       tenant: digdir,
@@ -442,12 +465,13 @@ describe('lockdown', () => {
       scopes: [configuredCredentialScope],
     };
 
-    expect(() => platform.models.open({ kind: 'model', id: 'fake/gpt' }, context(person))).toThrow(
-      /may not use models/,
-    );
-    expect(() =>
-      platform.models.open({ kind: 'model', id: 'fake/gpt' }, context(configured)),
-    ).not.toThrow();
+    const ask = (principal: Principal) =>
+      platform.models
+        .open({ kind: 'model', id: 'fake/gpt' }, context(principal))
+        .chat({ messages: [{ role: 'user', content: 'hei' }] });
+
+    await expect(ask(person)).rejects.toThrow(/may not use models/);
+    await expect(ask(configured)).resolves.toBeDefined();
   });
 
   it('refuses a person who runs a pipeline in lockdown', async () => {
@@ -508,12 +532,26 @@ describe('lockdown', () => {
 
     expect(started).toMatchObject({ ok: false, errors: [{ path: 'principal' }] });
     expect(ingestion.jobs).toHaveLength(0);
+
+    // An engine switch's runs into the knowledge database start from activation as well.
+    const person: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
+    expect(
+      await platform.ingestion.startSwitchRun({
+        pipeline,
+        generation: 'g-20261104-aa11bb',
+        engineSwitch: 'sider:1',
+        by: 'kari',
+        principal: person,
+      }),
+    ).toMatchObject({ ok: false, message: expect.stringContaining('the environment is locked') });
   });
 
   it.each([
     `/tenants/${digdir}/datasets/sider/engine-switches`,
     `/tenants/${digdir}/datasets/sider/engine-switches/1/retry`,
+    `/tenants/${digdir}/datasets/sider/engine-switches/1/activate`,
     `/operator/datasets/sider/engine-switches`,
+    `/operator/datasets/sider/engine-switches/1/activate`,
     `/tenants/${digdir}/datasets/sider/enrichment/hypothetical-questions/apply`,
     `/tenants/${digdir}/connectors/kobling/sync`,
   ])('refuses new embeddings for a person in lockdown (%s)', async (path) => {
@@ -525,7 +563,11 @@ describe('lockdown', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(await json(res)).toMatchObject({ type: lockedEnvironmentType });
+    // Refused as ingestion, not only as a change to configuration.
+    expect(await json(res)).toMatchObject({
+      type: lockedEnvironmentType,
+      title: expect.stringMatching(/innlesing|ingestion/),
+    });
     expect(model.seen).toHaveLength(0);
   });
 
@@ -745,6 +787,58 @@ describe('lockdown', () => {
     expect(await json(res)).toMatchObject({
       type: entraNotTrustedType,
       title: expect.stringContaining('Entra ID'),
+    });
+  });
+
+  it('tells /me in lockdown that a login is read-only, and only then', async () => {
+    const locked = await boot(true);
+    const open = await boot(false);
+    const readOnly = async (send: typeof locked.send, who: string) =>
+      (await json<{ lockdownReadOnly?: boolean }>(await send('/me', who))).lockdownReadOnly;
+
+    expect(
+      await Promise.all(['entra', 'user', 'kari'].map((who) => readOnly(locked.send, who))),
+    ).toEqual([undefined, undefined, true]);
+    expect(await readOnly(open.send, 'kari')).toBeUndefined();
+  });
+
+  it('lets a user-group login change configuration, run models and ingestion, and create an admitted key in lockdown', async () => {
+    const { chat, createKey, dataset, execute, ingestion, model, send } = await boot(true);
+    await dataset();
+    const runs = [
+      `/tenants/${digdir}/playground/runs`,
+      `/tenants/${digdir}/definitions/test-run`,
+      `/tenants/${digdir}/services/klarsprak/eval-runs`,
+    ];
+
+    const ran = await chat('user');
+    const ingested = await execute('user');
+    const { key } = await createKey('user');
+    const viaKey = await chat(key);
+    const others = await Promise.all(runs.map((path) => send(path, 'user', { body: {}, reason })));
+
+    expect(ran.status).toBe(200);
+    expect(model.seen.length).toBeGreaterThan(0);
+    expect(ingested.status).toBe(202);
+    expect(ingestion.jobs).toMatchObject([{ admitted: true }]);
+    expect(viaKey.status).toBe(200);
+    for (const res of others)
+      expect((await res.clone().json()) as unknown).not.toMatchObject({
+        type: lockedEnvironmentType,
+      });
+  });
+
+  it('never makes a user-group login an operator', async () => {
+    const { send } = await boot(true);
+
+    const tenants = await send('/operator/tenants', 'user');
+    const me = await json(await send('/me', 'user'));
+
+    expect(tenants.status).toBe(403);
+    expect(me).toEqual({
+      organisations: [
+        { orgNumber: digdir, name: expect.any(String), rights: [...PLATFORM_RIGHTS] },
+      ],
     });
   });
 

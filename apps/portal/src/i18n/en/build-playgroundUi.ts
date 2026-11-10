@@ -157,6 +157,8 @@ export const playgroundUi = {
     kindOwn: 'A setup of your own',
     service: 'Service',
     versionLabel: 'Version',
+    variantLabel: 'Variant',
+    variantDefault: 'Default',
     versionHelp:
       'Uses the model, datasets, skills and building blocks in {version}. You can change the model here without changing the service.',
     model: 'Model',

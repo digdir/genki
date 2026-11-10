@@ -489,6 +489,59 @@ describe('kernel: budgets, deadlines and limits', () => {
     expect((await kernel.task(kari, run.task)).usage.outputTokens).toBe(16_444);
   });
 
+  it('adds open units and every built-in count to the usage of the task', async () => {
+    const spender = strategy('spender', async function* (ctx) {
+      await ctx.budget.charge({ audioSeconds: 4, units: { page: 2 } });
+      await ctx.budget.charge({ audioSeconds: 1, images: 3, units: { page: 1, frame: 9 } });
+      yield { type: 'kernel.result', data: [] };
+    });
+    const kernel = kernelWith({
+      strategies: [spender],
+      capabilities: [capability('ka', 'spender')],
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    await run.result;
+
+    expect((await kernel.task(kari, run.task)).usage).toEqual({
+      audioSeconds: 5,
+      images: 3,
+      units: { page: 3, frame: 9 },
+    });
+  });
+
+  it('refuses a negative open unit as usage', async () => {
+    const spender = strategy('spender', async function* (ctx) {
+      await ctx.budget.charge({ units: { page: -1 } });
+      yield { type: 'kernel.result', data: [] };
+    });
+    const kernel = kernelWith({
+      strategies: [spender],
+      capabilities: [capability('ka', 'spender')],
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    await expect(run.result).rejects.toMatchObject({ code: 'invalid_state' });
+  });
+
+  it('names the model in the usage event when a strategy charges usage for a model', async () => {
+    const spender = strategy('spender', async function* (ctx) {
+      await ctx.budget.charge({ inputTokens: 5 }, { kind: 'model', id: 'gpt' });
+      yield { type: 'kernel.result', data: [] };
+    });
+    const kernel = kernelWith({
+      strategies: [spender],
+      capabilities: [capability('ka', 'spender')],
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    await run.result;
+
+    const audit = await collect(await kernel.events(kari, run.task, { audience: 'audit' }));
+    const usage = audit.find((e) => e.type === 'kernel.usage');
+    expect(usage?.data).toEqual({ usage: { inputTokens: 5 }, model: { kind: 'model', id: 'gpt' } });
+  });
+
   it('fails the task even when the strategy catches the budget error, and refuses refunds', async () => {
     let refund: unknown;
     const cheat = strategy('cheat', async function* (ctx) {

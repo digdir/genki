@@ -3,8 +3,10 @@ import { textPart, type Event, type RiskClass, type Task } from '@genai/contract
 import { platformSettings, SettingsRegistry, type CompiledCapability } from '@genai/definitions';
 import {
   InMemoryEventLog,
+  InMemoryOutsideRunRetention,
   InMemoryRetentionStore,
   InMemoryTaskStore,
+  outsideRunTask,
   retentionPolicy,
 } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
@@ -203,6 +205,68 @@ describe('purging expired conversations', () => {
       vedtak: daysAgo(183),
       borte: daysAgo(183),
     });
+  });
+});
+
+describe('purging the outside-run audit log', () => {
+  const other = '889640782';
+  const logDay = (owner: string, days: number) =>
+    outsideRunTask(owner, new Date(now.getTime() - days * 86_400_000));
+
+  const seedLog = async (log: InMemoryEventLog, owner: string, days: number[]) => {
+    for (const d of days)
+      await log.append({
+        ...event(logDay(owner, d), 'kernel.gate.call', { operation: 'embed' }),
+        audience: 'audit',
+      });
+  };
+
+  const purgeLog = async (days: number[], auditDays?: number) => {
+    const { log, settings, deps } = await setup([], [capability('svar', 'minimal')]);
+    if (auditDays !== undefined) settings.setTenant(tenant, 'retention.auditDays', auditDays);
+    await seedLog(log, tenant, days);
+    await seedLog(log, other, [1000]);
+    const outsideRun = new InMemoryOutsideRunRetention(log);
+    const run = await purgeExpired({ ...deps, outsideRun });
+    return { log, run, outsideRun, deps };
+  };
+
+  it("removes outside-run audit events after the tenant's audit retention", async () => {
+    const { log, run } = await purgeLog([201, 400], 200);
+
+    expect(run.outsideRunDays).toBe(2);
+    expect(await collect(log, logDay(tenant, 201))).toEqual([]);
+    expect(await collect(log, logDay(tenant, 400))).toEqual([]);
+  });
+
+  it("keeps outside-run audit events within the tenant's audit retention", async () => {
+    const { log, run } = await purgeLog([0, 199, 200], 200);
+
+    expect(run.outsideRunDays).toBe(0);
+    for (const d of [0, 199, 200]) expect(await collect(log, logDay(tenant, d))).toHaveLength(1);
+  });
+
+  it("never removes another tenant's outside-run events", async () => {
+    const { log } = await purgeLog([201], 200);
+
+    expect(await collect(log, logDay(other, 1000))).toHaveLength(1);
+  });
+
+  it('uses the platform audit retention when a tenant sets none', async () => {
+    const { log, run } = await purgeLog([729, 731]);
+
+    expect(run.outsideRunDays).toBe(1);
+    expect(await collect(log, logDay(tenant, 729))).toHaveLength(1);
+    expect(await collect(log, logDay(tenant, 731))).toEqual([]);
+  });
+
+  it('purging the outside-run log twice changes nothing the second time', async () => {
+    const { log, outsideRun, deps } = await purgeLog([0, 201], 200);
+
+    const again = await purgeExpired({ ...deps, outsideRun });
+
+    expect(again.outsideRunDays).toBe(0);
+    expect(await collect(log, logDay(tenant, 0))).toHaveLength(1);
   });
 });
 

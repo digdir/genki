@@ -12,6 +12,7 @@ import {
   errorFromStatus,
   ModelError,
   rejectedParameter,
+  shape,
   type ChatChunk,
   type ChatMessage,
   type ChatRequest,
@@ -25,7 +26,6 @@ import {
 } from '@genai/port-model';
 import { z } from 'zod';
 
-const endpointOptions = z.strictObject({});
 const modelOptions = z.strictObject({
   defaultMaxTokens: z.number().int().positive().default(4096),
 });
@@ -132,13 +132,31 @@ const cached = (u: { cache_read_input_tokens?: number | null }) =>
 const hasThinking = (blocks: { type: string }[]) =>
   blocks.some((b) => b.type === 'thinking' || b.type === 'redacted_thinking');
 
+const replayBlock = (b: ContentBlock): ContentBlockParam[] => {
+  if (b.type === 'text') return [{ type: 'text', text: b.text }];
+  if (b.type === 'tool_use') return [{ type: 'tool_use', id: b.id, name: b.name, input: b.input }];
+  if (b.type === 'thinking')
+    return [{ type: 'thinking', thinking: b.thinking, signature: b.signature }];
+  if (b.type === 'redacted_thinking') return [{ type: 'redacted_thinking', data: b.data }];
+  return [];
+};
+
 const fromContent = (blocks: ContentBlock[]) => ({
   content: blocks.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join(''),
   toolCalls: blocks.flatMap((b) =>
     b.type === 'tool_use' ? [{ id: b.id, name: b.name, arguments: JSON.stringify(b.input) }] : [],
   ),
-  ...(hasThinking(blocks) ? { continuation: blocks } : {}),
+  ...(hasThinking(blocks) ? { continuation: blocks.flatMap(replayBlock) } : {}),
 });
+
+const messagesContinuation = shape.array(
+  shape.variant('type', {
+    text: { text: shape.opaque },
+    tool_use: { id: shape.ref(), name: shape.plain(), input: shape.json },
+    thinking: { thinking: shape.opaque, signature: shape.opaque },
+    redacted_thinking: { data: shape.opaque },
+  }),
+);
 
 const toModelError = (error: unknown): ModelError => {
   if (error instanceof ModelError) return error;
@@ -159,10 +177,18 @@ const toBlock = (b: StreamBlock): ContentBlockParam =>
     ? { type: 'tool_use', id: b.id, name: b.name, input: parseArguments(b.json) }
     : b;
 
-export const anthropicMessages: ModelAdapter<z.infer<typeof endpointOptions>, ModelOptions> = {
-  protocol: 'anthropic-messages',
-  endpointOptions,
-  modelOptions,
+export const anthropicMessages: ModelAdapter<ModelOptions> = {
+  apis: [
+    {
+      id: 'anthropic/messages@1',
+      kind: 'chat',
+      family: 'anthropic',
+      modelOptions,
+      units: ['input-token', 'output-token', 'cached-input-token', 'request'],
+      default: true,
+    },
+  ],
+  continuation: messagesContinuation,
 
   connect(endpoint: EndpointConfig) {
     const client = new Anthropic({

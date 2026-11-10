@@ -1,6 +1,7 @@
+import { ChevronDownIcon } from '@navikt/aksel-icons';
 import { Alert, Button, Tag } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { statusColor, statusKey, type ItemStatus } from '../../data/integrations';
 import { useT } from '../../i18n';
 
@@ -116,7 +117,7 @@ export const ItemList = ({
                 <span className="int-wrap">{it.meta}</span>
               </span>
               <span className={isOpen ? 'int-chevron open' : 'int-chevron'}>
-                <Icon d={icons.chevronDown} size={18} />
+                <Icon icon={ChevronDownIcon} size={18} />
               </span>
             </button>
             {isOpen ? (

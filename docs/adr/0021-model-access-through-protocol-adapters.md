@@ -1,13 +1,13 @@
 # 0021 Model access through protocol adapters
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; Responses API behind `openai-chat`, ADR 0044, 2026-11-03; adapters per protocol and the endpoint protocol superseded by [ADR 0048](0048-connections-serve-many-apis.md), 2026-11-05). Proposed 2026-10-06
 
 ## Decision
 
 Strategies call models through one port (`chat`, `chatStream`). Behind it, three things are kept apart because they change at different rates:
 
 - **The port** changes rarely and is versioned. A breaking change becomes a new port version that runs beside the old one.
-- **Adapters, one per wire protocol, not per vendor.** Today: `openai-chat` and `anthropic-messages`. An adapter only translates between the port and one API, and declares schemas for its own endpoint and model options.
+- **Adapters, one per wire protocol, not per vendor.** Today: `openai-chat` and `anthropic-messages`. An adapter only translates between the port and one protocol family (`openai-chat` speaks Chat Completions and Responses, chosen by `api`, ADR 0044), and declares schemas for its own endpoint and model options.
 - **The model catalog is configuration.** Each endpoint names a protocol, a base URL and how to authenticate (`api-key`, `bearer` or a named `token-provider` such as Entra ID). Each model names an endpoint, a deployment, a residency and its capabilities (`stream`, `tools`, `json-schema`, `reasoning`).
 
 Models are discovered, not configured. The environment holds only endpoints and keys. An endpoint declares where its models are listed (for Azure AI Foundry, the resource's deployment list) and which deployments to include, and the router finds them at startup and on refresh. A discovered model starts with residency `global`, because the listing does not say where a deployment runs, and an operator reclassifies it, sets its capabilities or turns it off in the console. A service picks its model from a dropdown filtered by its residency and by what its strategy needs, and the choice is stored in the versioned service definition.

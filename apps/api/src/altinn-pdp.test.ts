@@ -52,6 +52,23 @@ describe('Altinn PDP by configuration', () => {
     expect(await choice.authorization.decide(request)).toBe('Permit');
   });
 
+  it('GENAI_MOCK_RIGHTS gives the mock persons their mock rights in dev mode even with ALTINN_PDP_URL set', async () => {
+    const noNetwork = async () => {
+      throw new Error('no network in tests');
+    };
+    const env = { ...(await realEnv()), GENAI_DEV_MODE: 'true', GENAI_MOCK_RIGHTS: 'true' };
+
+    const choice = altinnPdpFrom(env, testData, noNetwork);
+
+    expect(choice.kind).toBe('mock');
+    expect(await choice.authorization.decide(request)).toBe('Permit');
+  });
+
+  it('GENAI_MOCK_RIGHTS never replaces the real Altinn PDP outside dev mode', async () => {
+    const choice = altinnPdpFrom({ ...(await realEnv()), GENAI_MOCK_RIGHTS: 'true' }, testData);
+    expect(choice.kind).toBe('altinn');
+  });
+
   it('exchanges the Maskinporten token for an Altinn token and asks the PDP with it and the subscription key', async () => {
     const calls: { url: string; headers: Headers }[] = [];
     const choice = altinnPdpFrom(await realEnv(), testData, async (url, init) => {

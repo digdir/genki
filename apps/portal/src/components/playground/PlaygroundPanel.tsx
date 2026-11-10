@@ -1,3 +1,4 @@
+import { XMarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -52,7 +53,7 @@ import {
 import { useEscape, useNarrow } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { ApiCallPanel } from '../ApiCall';
-import { Icon, icons } from '../Icon';
+import { Icon } from '../Icon';
 import { isModelFailure, ModelNoAnswer, RunFailure, type RunFailureInfo } from '../RunFailure';
 import { AnswerCard } from './AnswerCard';
 import { formErrors, formInput, InputForm, type FormValues } from './InputForm';
@@ -664,7 +665,7 @@ export const PlaygroundPanel = ({
             aria-label={t('common.close')}
             onClick={close}
           >
-            <Icon d={icons.close} />
+            <Icon icon={XMarkIcon} />
           </Button>
         ) : null}
       </div>
@@ -847,7 +848,7 @@ export const PlaygroundPanel = ({
               percent: quotaWarning,
               tokens: quotaTokensText(options.quota.monthlyTokens, f, t),
               strong: (c) => <strong>{c}</strong>,
-              link: (c) => <Link href="#/usage">{c}</Link>,
+              link: (c) => <Link href="#/statistics">{c}</Link>,
             })}
           </Paragraph>
         </Alert>

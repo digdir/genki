@@ -128,6 +128,11 @@ const ctx = (): PortContext => ({
   meter: async () => undefined,
 });
 
+const boundTo = (value: string, port: number) => ({
+  resolve: async () => value,
+  hostsFor: async () => [`http://127.0.0.1:${port}`],
+});
+
 const connection = (port: number, extra: Partial<Connection> = {}): Connection => ({
   id: 'arkiv',
   tenant: TENANT,
@@ -148,7 +153,7 @@ const setup = async (extra: Partial<Connection> = {}) => {
   await registry.save({ connection: connection(api.port, extra), tools: [], pending: [] });
   const source = new OpenApiToolSource({
     registry,
-    secrets: { resolve: async () => 'nokkel' },
+    secrets: boundTo('nokkel', api.port),
     guard: new EgressGuard({ testOverride: { allowLoopback: true, allowHttp: true } }),
   });
   return { api, registry, source, tools: new ToolRegistry().addSource(source) };
@@ -312,7 +317,7 @@ describe('OpenAPI tools', () => {
     });
     const source = new OpenApiToolSource({
       registry,
-      secrets: { resolve: async () => 'klienthemmelighet' },
+      secrets: boundTo('klienthemmelighet', api.port),
       guard: new EgressGuard({ testOverride: { allowLoopback: true, allowHttp: true } }),
     });
     await source.sync(TENANT, 'arkiv');
@@ -336,7 +341,7 @@ describe('OpenAPI tools', () => {
     await registry.save({ connection: connection(api.port), tools: [], pending: [] });
     const source = new OpenApiToolSource({
       registry,
-      secrets: { resolve: async () => 'x' },
+      secrets: boundTo('x', api.port),
       guard: new EgressGuard({ testOverride: { allowHttp: true } }),
     });
     await source.sync(TENANT, 'arkiv');

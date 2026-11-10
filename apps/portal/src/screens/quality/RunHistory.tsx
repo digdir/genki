@@ -198,6 +198,7 @@ export const RunHistory = ({
   const seen = useRef<EvalRun[] | undefined>(undefined);
   if (state.status === 'ready') seen.current = state.data;
   const runs = (seen.current ?? []).filter((r) => r.testSet === testSet.id);
+  const costShown = runs.some((r) => r.cost !== undefined);
   const running = runs.some(active);
 
   const startedDone = runs.some((r) => r.id === startedId && !active(r));
@@ -314,7 +315,9 @@ export const RunHistory = ({
                   {t('quality.score')}
                 </Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('quality.passed')}</Table.HeaderCell>
-                <Table.HeaderCell scope="col">{t('quality.cost')}</Table.HeaderCell>
+                {costShown ? (
+                  <Table.HeaderCell scope="col">{t('quality.cost')}</Table.HeaderCell>
+                ) : null}
                 <Table.HeaderCell scope="col">
                   <span className="visually-hidden">{t('quality.details')}</span>
                 </Table.HeaderCell>
@@ -334,7 +337,7 @@ export const RunHistory = ({
                     </Table.Cell>
                     <Table.Cell className="right numeric">{percent(f, r.score)}</Table.Cell>
                     <Table.Cell>{passedText(t, r)}</Table.Cell>
-                    <Table.Cell>{costText(t, f, r.cost)}</Table.Cell>
+                    {costShown ? <Table.Cell>{costText(t, f, r.cost)}</Table.Cell> : null}
                     <Table.Cell>
                       {active(r) ? null : (
                         <Button

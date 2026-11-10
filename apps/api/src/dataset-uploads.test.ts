@@ -66,7 +66,7 @@ const boot = async () => {
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
       return principal ? { principal } : undefined;
     },
-    modules: [createDatasetUploadsModule({ maxBytes: 100 })],
+    modules: [createDatasetUploadsModule({ maxBytes: 100, maxFiles: 3, maxRequestBytes: 4096 })],
   });
   const admin = createAdmin({
     store: platform.definitions,
@@ -112,7 +112,7 @@ const boot = async () => {
     },
   });
   expect(created.status).toBe(201);
-  return { platform, admin, call, upload, blobs };
+  return { platform, admin, app, call, upload, blobs };
 };
 
 const json = async <T>(response: Response) => (await response.json()) as T;
@@ -237,6 +237,61 @@ describe('uploading files to a dataset', () => {
     expect((await blobs.list(digdir)).map((b) => b.path)).toEqual([
       'datasets/opplastet/uploads/liten.txt',
     ]);
+  });
+
+  it('refuses a request with more files than the limit and stores none of them', async () => {
+    const { upload, blobs } = await boot();
+
+    const sent = await upload(
+      'kari',
+      ['a', 'b', 'c', 'd'].map((n) => new File(['tekst'], `${n}.txt`)),
+    );
+
+    expect(sent.status).toBe(413);
+    expect(await json(sent)).toMatchObject({ status: 413, detail: expect.stringContaining('3') });
+    expect(await blobs.list(digdir)).toEqual([]);
+  });
+
+  it('refuses a request body over the limit before reading the files', async () => {
+    const { upload, blobs } = await boot();
+
+    const sent = await upload('kari', [new File(['x'.repeat(5000)], 'stor.txt')]);
+
+    expect(sent.status).toBe(413);
+    expect(sent.headers.get('content-type')).toContain('application/problem+json');
+    expect(await blobs.list(digdir)).toEqual([]);
+  });
+
+  it('checks the caller before reading an upload body, and refuses a declared oversize body at once', async () => {
+    const { app } = await boot();
+    let read = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          read = true;
+          controller.enqueue(new Uint8Array(5000));
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const path = `/tenants/${digdir}/datasets/opplastet/uploads`;
+
+    const anonymous = await app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=x' },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    const declared = await app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-length': '5000' },
+      body: 'x'.repeat(5000),
+    });
+
+    expect(anonymous.status).toBe(401);
+    expect(read).toBe(false);
+    expect(declared.status).toBe(413);
   });
 
   it('keeps another tenant and people without the dataset right out', async () => {

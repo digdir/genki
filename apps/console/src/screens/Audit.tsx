@@ -84,6 +84,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.onboarding.decide': 'audit.actionOnboardingDecide',
   'platform.onboarding.request': 'audit.actionOnboardingRequest',
   'platform.pipeline.cancel': 'audit.actionPipelineCancel',
+  'platform.jobs.redrive': 'audit.actionJobsRedrive',
   'platform.platform-secret.set': 'audit.actionPlatformSecretSet',
   'platform.plugin.register': 'audit.actionPluginRegister',
   'platform.plugin.remove': 'audit.actionPluginRemove',
@@ -96,16 +97,51 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.recipe.share': 'audit.actionRecipeShare',
   'platform.recipe.unshare': 'audit.actionRecipeUnshare',
   'platform.trigger.pause': 'audit.actionTriggerPause',
+  'platform.operations.descriptor-upload': 'audit.actionDescriptorUpload',
+  'platform.operations.descriptor-status': 'audit.actionDescriptorStatus',
+  'platform.operations.descriptor-withdraw': 'audit.actionDescriptorWithdraw',
+  'platform.operations.descriptor-fixture': 'audit.actionDescriptorFixture',
+  'platform.operations.try': 'audit.actionOperationTry',
+  'platform.operations.maturity': 'audit.actionOperationMaturity',
+  'platform.operations.processor-record': 'audit.actionProcessorRecord',
+};
+
+const catalogActionKey: Record<string, PlainKey> = {
+  'platform.catalog.publish:model-endpoint': 'audit.actionModelEndpointSave',
+  'platform.catalog.delete:model-endpoint': 'audit.actionModelEndpointRemove',
+  'platform.catalog.publish:model': 'audit.actionCatalogModelSave',
+  'platform.catalog.delete:model': 'audit.actionCatalogModelRemove',
+  'platform.catalog.publish:price': 'audit.actionModelPriceSave',
 };
 
 type Period = 'day' | 'week' | 'month';
 
-const labelOf = (e: AuditEntry, t: T) => {
-  const key = actionKey[e.action];
+const catalogChangeKey: Record<string, PlainKey> = {
+  'model-endpoint': 'audit.actionModelEndpointChange',
+  model: 'audit.actionCatalogModelChange',
+};
+
+const keyOf = (e: AuditEntry) => {
+  const [, kind, version] = /^catalog:([a-z-]+)\/[^@]*(?:@(\d+))?$/.exec(e.target) ?? [];
+  const changed =
+    e.action === 'platform.catalog.publish' && version && version !== '1' && kind
+      ? catalogChangeKey[kind]
+      : undefined;
+  return changed ?? (kind && catalogActionKey[`${e.action}:${kind}`]) ?? actionKey[e.action];
+};
+
+export const labelOf = (e: AuditEntry, t: T) => {
+  const key = keyOf(e);
   return e.actionLabel ?? (key ? t(key) : t('audit.otherAction'));
 };
 const targetOf = (e: AuditEntry) => {
   if (!e.target || e.target === e.action) return '–';
+  const governed = /^(?:operation-descriptor|operation-kind|operation):(.+)$/.exec(e.target)?.[1];
+  if (governed) return governed;
+  const catalogued = /^catalog:(?:model-endpoint|model|price)\/(.+?)(?:@\d+)?$/.exec(e.target)?.[1];
+  if (catalogued) return catalogued;
+  const connection = /^model-endpoint:(.+)\/processor-record$/.exec(e.target)?.[1];
+  if (connection) return connection;
   const found = /^(service|model|setting|pin|default|tenant|support):(.+)$/.exec(e.target);
   if (!found?.[1] || !found[2]) return e.target;
   if (found[1] === 'support') return '–';
@@ -157,7 +193,11 @@ const describe = (name: (orgNumber: string) => string, t: T) => {
       : tenantLabel(e.tenant, e.tenantName ?? name(e.tenant), t);
   const orgOf = (e: AuditEntry) =>
     e.actorOrg ?? (e.actor.startsWith('operator:') ? 'Digdir' : tenantOf(e));
-  const personOf = (e: AuditEntry) => e.actorName ?? t('audit.personIn', { org: orgOf(e) });
+  const personOf = (e: AuditEntry) =>
+    e.actorName ??
+    (/^(platform|worker):/.test(e.actor)
+      ? t('audit.platformActor')
+      : t('audit.personIn', { org: orgOf(e) }));
   return { tenantOf, orgOf, personOf };
 };
 

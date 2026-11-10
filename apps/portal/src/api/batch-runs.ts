@@ -92,15 +92,15 @@ export interface BatchRun {
   total: number;
   concurrency: number;
   pass: number;
-  cap: { costMicroNok?: number; tokens?: number };
-  perItem: BatchEstimate['perItem'];
+  cap?: { costMicroNok?: number; tokens?: number };
+  perItem?: BatchEstimate['perItem'];
   startedAt: string;
   endedAt: string | null;
   error?: string;
   errorCode?: string;
   counts: Record<BatchItemStatus, number>;
-  tokens: { input: number; output: number };
-  costMicroNok: number | null;
+  tokens?: { input: number; output: number };
+  costMicroNok?: number | null;
 }
 
 export interface BatchItem {
@@ -114,8 +114,8 @@ export interface BatchItem {
   error?: string;
   errorCode?: string;
   sources: { title?: string; url?: string }[];
-  tokens: { input: number; output: number };
-  costMicroNok: number;
+  tokens?: { input: number; output: number };
+  costMicroNok?: number;
   startedAt?: string;
   endedAt?: string;
 }

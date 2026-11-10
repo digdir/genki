@@ -50,7 +50,7 @@ export const loadDocument = async (
       method: 'GET',
       headers: {
         accept: 'application/json, application/yaml, text/yaml',
-        ...(await authHeaders(connection, guard, secrets, signal)),
+        ...(await authHeaders(connection, connection.documentUrl, guard, secrets, signal)),
       },
       maxResponseBytes: 2 * 1024 * 1024,
       ...(connection.timeoutMs ? { timeoutMs: connection.timeoutMs } : {}),
@@ -227,7 +227,13 @@ export class OpenApiToolSource extends PinnedToolSource {
                 accept: 'application/json',
                 ...request.headers,
                 ...(request.body === undefined ? {} : { 'content-type': 'application/json' }),
-                ...(await authHeaders(connection, this.#guard, this.#secrets, ctx.signal)),
+                ...(await authHeaders(
+                  connection,
+                  request.url,
+                  this.#guard,
+                  this.#secrets,
+                  ctx.signal,
+                )),
               },
               ...(request.body === undefined ? {} : { body: request.body }),
               ...(connection.timeoutMs ? { timeoutMs: connection.timeoutMs } : {}),

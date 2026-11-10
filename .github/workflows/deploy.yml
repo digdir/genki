@@ -34,8 +34,8 @@ jobs:
       worker: ${{ steps.image.outputs.worker }}
       apps: ${{ steps.image.outputs.apps }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -49,47 +49,65 @@ jobs:
             echo "id=$id"
           } >> "$GITHUB_OUTPUT"
           az acr login --name "${{ vars.ACR_NAME }}"
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+      - run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
       - id: api
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: api
-          push: true
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-api:${{ github.sha }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
       - id: worker
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: worker
-          push: true
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-worker:${{ github.sha }}
-          cache-from: type=gha,scope=worker
-          cache-to: type=gha,mode=max,scope=worker
       - id: apps
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: apps
-          push: true
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
-          cache-from: type=gha,scope=apps
-          cache-to: type=gha,mode=max,scope=apps
       - id: image
+        env:
+          SERVER: ${{ steps.registry.outputs.server }}
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
+          APPS_DIGEST: ${{ steps.apps.outputs.digest }}
         run: |
           {
-            echo "api=${{ steps.registry.outputs.server }}/genai-api@${{ steps.api.outputs.digest }}"
-            echo "worker=${{ steps.registry.outputs.server }}/genai-worker@${{ steps.worker.outputs.digest }}"
-            echo "apps=${{ steps.registry.outputs.server }}/genai-apps@${{ steps.apps.outputs.digest }}"
+            echo "api=$SERVER/genai-api@$API_DIGEST"
+            echo "worker=$SERVER/genai-worker@$WORKER_DIGEST"
+            echo "apps=$SERVER/genai-apps@$APPS_DIGEST"
           } >> "$GITHUB_OUTPUT"
+          row() {
+            platform=$(docker buildx imagetools inspect --raw "$SERVER/genai-$1@$2" |
+              jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')
+            echo "| genai-$1 | \`$2\` | \`$platform\` |"
+          }
+          {
+            echo "### Images"
+            echo
+            echo "Built from ${{ github.sha }} with \`SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH\`. To check them against the source, see docs/security/README.md."
+            echo
+            echo "| Image | Deployed digest | linux/amd64 image digest |"
+            echo "| --- | --- | --- |"
+            row api "$API_DIGEST"
+            row worker "$WORKER_DIGEST"
+            row apps "$APPS_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-test:
     needs: build
@@ -100,8 +118,8 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -154,7 +172,11 @@ jobs:
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
           LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
+          LOCKDOWN_USER_GROUPS: ${{ vars.LOCKDOWN_USER_GROUPS }}
           LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
+          OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
+          KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
+          ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -191,7 +213,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: required settings
         env:
           ACR_NAME: ${{ vars.ACR_NAME }}
@@ -203,7 +225,7 @@ jobs:
             [ -n "${!name}" ] || missing="$missing $name"
           done
           if [ -n "$missing" ]; then echo "Not set in the prod environment:$missing"; exit 1; fi
-      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -245,6 +267,8 @@ jobs:
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
+          KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
+          ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \

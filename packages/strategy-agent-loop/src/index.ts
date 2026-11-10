@@ -11,6 +11,8 @@ import {
   type ChatResult,
   type ModelPort,
   type ToolSpec,
+  untrustedData,
+  untrustedDataNote,
 } from '@genai/port-model';
 import { textOf, toolRef, type ToolPort } from '@genai/port-tools';
 import { z } from 'zod';
@@ -38,7 +40,7 @@ import {
 } from './citation-backfill.js';
 import { attachedChunks, attachedNote } from './attached.js';
 import { chunkIdsToMarkers, parseCitations, sourcesFirst, stripPageMarkers } from './citations.js';
-import { skillCatalog, useSkill, useSkillTool } from './skills.js';
+import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';
 import {
@@ -433,7 +435,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           (settings.instructions ? baseInstructions(settings.instructions) : defaultSystemPrompt) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
-          attachedNote(workspace.attached),
+          attachedNote(workspace.attached) +
+          `\n\n${untrustedDataNote(config.languages)}`,
       },
       ...history.map((h) => ({ role: h.role, content: h.text })),
       { role: 'user', content: query },
@@ -457,7 +460,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       query,
       history,
       signal: ctx.signal,
-      systemPrompt: systemPromptWithDate((options.now ?? (() => new Date()))()),
+      systemPrompt: `${systemPromptWithDate((options.now ?? (() => new Date()))())}\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: (system, user) =>
         synthesisSession.text(
@@ -581,14 +584,16 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
           if (call.name === 'generate_response') generated = true;
         } else if (skills.length && call.name === useSkillTool.name) {
-          content = useSkill(skills, args.value);
+          content = useSkill(skills, args.value, workspace.loadedSkills);
         } else {
           const tool = extra.find((t) => t.spec.name === call.name);
           if (!tool)
             content = `Unknown tool: ${call.name}. Available tools: ${toolSpecs.map((t) => t.name).join(', ')}`;
           else {
             const result = await tool.port.call(args.value);
-            content = textOf(result);
+            content = result.parts.some((part) => part.meta?.untrusted === true)
+              ? untrustedData(`tool:${call.name}`, textOf(result))
+              : textOf(result);
             for (const s of result.sources ?? [])
               extraSources.push({
                 chunkId: s.id,
@@ -803,7 +808,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             session.text(
               {
                 purpose: 'answer',
-                messages: [...fallbackMessages, { role: 'user', content: exhaustionNudge }],
+                messages: [
+                  ...withLoadedSkills(fallbackMessages, workspace.loadedSkills),
+                  { role: 'user', content: exhaustionNudge },
+                ],
                 temperature,
               },
               push,

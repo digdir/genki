@@ -59,7 +59,12 @@ const boot = async () => {
     service: string,
     at: Date,
     outcome: 'completed' | 'failed',
-    extra: { task?: string; error?: string } = {},
+    extra: {
+      task?: string;
+      error?: string;
+      usage?: { inputTokens: number; outputTokens: number };
+      costMicroNok?: number;
+    } = {},
   ) =>
     runs.record({
       id,
@@ -140,6 +145,27 @@ describe('triggers per tenant', () => {
     expect(page.trigger.id).toBe(queueId);
     expect(page.data.map((r) => r.id)).toEqual(['r2']);
     expect(unknown.status).toBe(404);
+  });
+
+  it('shows tokens and cost of trigger runs only with view-usage', async () => {
+    const { record, send, list } = await boot();
+    await record('r1', queueId, 'post', daysAgo(1), 'completed', {
+      task: 'opg_1',
+      usage: { inputTokens: 100, outputTokens: 20 },
+      costMicroNok: 5000,
+    });
+
+    const page = await json<{ trigger: TriggerView; data: TriggerRunView[] }>(
+      await send(`/tenants/${digdir}/triggers/${queueId}/runs`, 'bruker'),
+    );
+    const listed = (await list('bruker')).find((t) => t.id === queueId);
+    const seen = (await list('kari')).find((t) => t.id === queueId);
+
+    expect(page.data[0]).not.toHaveProperty('usage');
+    expect(page.data[0]).not.toHaveProperty('costMicroNok');
+    expect(page.trigger.lastRun).not.toHaveProperty('costMicroNok');
+    expect(listed?.lastRun).not.toHaveProperty('usage');
+    expect(seen?.lastRun).toMatchObject({ costMicroNok: 5000 });
   });
 
   it('pauses and resumes a trigger with a reason, audits it, and needs the manage right', async () => {

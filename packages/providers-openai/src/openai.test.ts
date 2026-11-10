@@ -40,7 +40,7 @@ const router = (
 ) =>
   new ModelRouter({
     catalog: {
-      endpoints: { foundry: { protocol: 'openai-chat', baseURL: `${url}/v1`, auth } },
+      endpoints: { foundry: { families: { openai: '' }, baseURL: `${url}/v1`, auth } },
       models: [
         {
           id: 'foundry/gpt-4o',
@@ -481,9 +481,13 @@ describe('openai-chat adapter', () => {
     await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
   });
 
-  it('refuses model options the adapter does not know', () => {
-    const result = openAiChat.modelOptions.safeParse({ tokenParam: 'max_tokens', temperature: 2 });
-    expect(result.success).toBe(false);
+  it('refuses model options the bound API does not know', () => {
+    const chatCompletions = openAiChat.apis.find((a) => a.id === 'openai/chat-completions@1');
+    const result = chatCompletions?.modelOptions.safeParse({
+      tokenParam: 'max_tokens',
+      temperature: 2,
+    });
+    expect(result?.success).toBe(false);
   });
 });
 
@@ -497,7 +501,7 @@ describe.skipIf(!live)('live openai-chat on Azure AI Foundry', () => {
       catalog: {
         endpoints: {
           foundry: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: process.env.FOUNDRY_OPENAI_BASE_URL,
             auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/foundry-openai-key' },
             discovery: {
