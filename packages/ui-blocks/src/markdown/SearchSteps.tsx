@@ -11,11 +11,7 @@ export interface SearchTexts {
   count: (n: number, total: number) => string;
 }
 
-/**
- * The status under a search field: nothing before the reader types, then too few characters, no
- * match, or which match of how many. The block puts it in a live region, since a `<mark>` is not
- * announced and the count is the only sign anything happened.
- */
+/** The status under a search field, for a live region, since a `<mark>` is not announced. */
 export const searchStatus = (
   texts: SearchTexts,
   query: string,
@@ -41,11 +37,7 @@ export interface SearchStepsProps {
   className?: string | undefined;
 }
 
-/**
- * «Forrige» and «Neste» through the matches. None before there is a match: a control the reader
- * has never been able to use only adds a tab stop. `aria-disabled`, not `disabled`, at the ends,
- * so focus stays on the button the reader pressed.
- */
+/** «Forrige» and «Neste», once there is a match; `aria-disabled` at the ends keeps focus. */
 export const SearchSteps = ({
   hitCount,
   currentHitIndex,

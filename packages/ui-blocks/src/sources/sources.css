@@ -1,5 +1,4 @@
-/* After Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-sources-* variable at the point of use, listed on docs/components/sources.html. */
+/* After Designsystemet's layers, every token read through a --genai-sources-* variable. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
@@ -107,8 +106,7 @@
     --dsc-card-block-border-width: 0;
     background: transparent;
   }
-  /* The title has the card's whole width, and the app's controls stand under it: beside it, a
-     long title is squeezed into a narrow column at the panel's 336 px. */
+  /* The controls under the title, so a long title keeps the card's width in a 336 px panel. */
   .uib-sources-document-head {
     display: flex;
     flex-direction: column;
@@ -223,18 +221,14 @@
     margin: 0;
     min-inline-size: 0;
   }
-  /* «Utdrag 1» on a line of its own over the section: a title, at kunnskapsassistenten's heading
-     size (18 px, as its «Utdrag N» in heading-2xs) and a weight over it, two size steps and two
-     weight steps from the links back beside it (14 px, regular), so the two are told apart at a
-     glance. */
+  /* Two size and weight steps over the links back beside it, so the two are told apart. */
   .uib-sources-excerpt-number {
     display: block;
     font-size: var(--genai-sources-excerpt-number-font-size, var(--ds-body-md-font-size));
     font-weight: var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-semibold));
     color: var(--genai-sources-excerpt-number-color, var(--ds-color-text-subtle));
   }
-  /* The title and, right beside it, one link back per footnote that cites the excerpt, as
-     Wikipedia's back-references. */
+  /* The title, then one link back per footnote that cites the excerpt. */
   .uib-sources-excerpt-line {
     display: flex;
     flex-wrap: wrap;
@@ -252,9 +246,7 @@
     font-size: var(--genai-sources-uses-font-size, var(--ds-body-xs-font-size));
     font-weight: var(--genai-sources-uses-font-weight, var(--ds-font-weight-regular));
   }
-  /* A number alone is a small target: each link is at least 24 px both ways (WCAG 2.5.8). A
-     literal, since Designsystemet's size tokens shrink under a data-size: --ds-size-6 comes to
-     21 px under "sm". */
+  /* At least 24 px each way (WCAG 2.5.8); a literal, as size tokens shrink under data-size. */
   .uib-sources-use {
     display: inline-flex;
     align-items: center;

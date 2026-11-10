@@ -1,9 +1,6 @@
 import type { SourceDocument, SourceExcerpt } from './types.js';
 
-/**
- * What the answer's footnotes name, read from the data: `excerpt` when every footnote names its
- * excerpt, `document` when some name only a document.
- */
+/** What the footnotes name: `excerpt` when every one names its excerpt, else `document`. */
 export type CitationMode = 'excerpt' | 'document';
 
 /** One footnote in the answer, in the answer's order: what it cites. */
@@ -18,11 +15,7 @@ export interface SourceCitation {
 export interface Pairing {
   /** What the footnotes name. Only excerpt mode numbers anything. */
   mode: CitationMode;
-  /**
-   * Each cited excerpt's number, 1, 2, 3 in the order of first citation. Footnotes are numbered
-   * by excerpt and never by document, so this is empty in document mode: a footnote that names
-   * only a document gets no number, and no excerpt number is guessed for it.
-   */
+  /** Each cited excerpt's number, 1, 2, 3 by first citation; empty in document mode. */
   numbers: ReadonlyMap<string, number>;
   /** Per footnote, the key of the shown item it leads to: a chunk id, or a document key. */
   targets: readonly (string | undefined)[];
@@ -59,14 +52,7 @@ export interface ReadingOrder {
 
 const ascending = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
 
-/**
- * The order to show the documents and their excerpts in, from the pairing alone. When excerpts
- * are numbered, the documents run by their lowest number and, inside each, the cited excerpts by
- * number, so the panel reads «Utdrag 1», 2, 3 from the top as the footnotes do. What nothing cites
- * comes last, unnumbered: documents in the service's order, and excerpts last in their card, in
- * the document's order. When nothing is numbered, the order is the service's and the document's,
- * unchanged.
- */
+/** Documents by lowest excerpt number, excerpts by number, and what nothing cites last. */
 export const readingOrder = (
   sources: readonly SourceDocument[],
   pairing: Pairing | undefined,
@@ -104,12 +90,7 @@ const documentOf = (
   return at < 0 ? undefined : keys[at];
 };
 
-/**
- * Pairs the answer's footnotes with the items shown, from the data alone: every
- * footnote leads to one shown item, every numbered item has its uses, and a footnote that leads
- * nowhere is reported, never guessed. When the footnotes name only documents, each still leads to
- * its document, for what the answer used, but nothing is numbered.
- */
+/** Pairs each footnote with a shown item; one that leads nowhere is reported, never guessed. */
 export const pairCitations = (
   sources: readonly SourceDocument[],
   citations: readonly SourceCitation[],

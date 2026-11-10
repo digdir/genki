@@ -162,11 +162,7 @@ export const enSources = {
   nextHit: 'Next match',
 } satisfies Translation<typeof nbSources>;
 
-/**
- * Sources' own catalogue. It stays out of the package's shared one, so a host that imports another
- * block, such as Approach, does not load these words. A block that borrows them, as the answer
- * does, puts this namespace in its own catalogue.
- */
+/** Sources' own catalogue, apart from the shared one, so a host loads only its blocks' words. */
 export const nb = defineCatalogue({ sources: nbSources });
 export const en = { sources: enSources } satisfies Translation<typeof nb>;
 
