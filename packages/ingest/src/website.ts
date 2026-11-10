@@ -454,21 +454,23 @@ export const parseFrontmatter = (markdown: string): Record<string, unknown> | un
 const scalar = (value: unknown) =>
   typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 
-const frontmatterLanguages: Record<string, string> = { nb: 'nb', no: 'nb', nn: 'nn', en: 'en' };
+const frontmatterLanguages = new Map([
+  ['nb', 'nb'],
+  ['no', 'nb'],
+  ['nn', 'nn'],
+  ['en', 'en'],
+]);
 
 /** `nb`, `nb-NO`, `no`, `nn`, `en-GB` and the like; anything else is not a language we store. */
 const frontmatterLanguage = (value: unknown) =>
-  frontmatterLanguages[scalar(value).toLowerCase().split(/[-_]/)[0] ?? ''];
+  frontmatterLanguages.get(scalar(value).toLowerCase().split(/[-_]/)[0] ?? '');
 
-/**
- * A non-empty frontmatter `title` also replaces the title derived from the URL, and `lang` or
- * `language` fills in a language the URL did not give. `product` is kept as a field.
- */
+/** A frontmatter `title` replaces the URL title; `lang` or `language` fills a missing language. */
 export const mergeFrontmatter = <D extends object>(doc: D, markdown: string) => {
   const fm = parseFrontmatter(markdown) ?? {};
   const title = scalar(fm.title);
   const product = scalar(fm.product);
-  const language = frontmatterLanguage(fm.lang ?? fm.language);
+  const language = frontmatterLanguage(fm.lang) ?? frontmatterLanguage(fm.language);
   const urlLanguage = (doc as { language?: unknown }).language;
   return {
     ...doc,

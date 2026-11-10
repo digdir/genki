@@ -348,6 +348,8 @@ describe('website loader', () => {
       ['lang: nn', 'nn'],
       ['lang: de', null],
       ['lang: ""', null],
+      ['lang: constructor', null],
+      ['lang: de\nlanguage: nb', 'nb'],
     ];
     for (const [fm, language] of cases)
       expect(mergeFrontmatter(none, `---\n${fm}\n---\n`).language).toBe(language);
