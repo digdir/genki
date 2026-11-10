@@ -2,9 +2,7 @@ import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n'
 import { defineTranslations } from '@genai/i18n/react';
 import { enSources, nbSources } from '../sources/i18n.js';
 
-// The words the document view shares with Sources (the excerpt's title «Utdrag N», «Ikke vist til
-// i svaret», «side N», the link to the original and «Tilbake til svaret») are read from Sources'
-// namespace, so the two blocks always say the same.
+// The words shared with Sources are read from Sources' namespace, so the two always say the same.
 export const nbDocumentView = defineNamespace({
   title: 'Dokumentvisning',
   emptyTitle: 'Ingen dokument er åpnet',

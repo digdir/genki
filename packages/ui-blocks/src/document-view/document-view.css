@@ -1,13 +1,9 @@
-/* After Designsystemet's layers, so a host's own CSS wins, and every token read through a
-   --genai-document-view-* variable at the point of use, listed on docs/components/document-view.html.
-   The document reads as Sources' card opened in full: the same head, body and excerpt boxes, and
-   the same mark on the excerpt the reader came for, each with its own variable. */
+/* After Designsystemet's layers, every token read through a --genai-document-view-* variable. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
   .uib-document-view {
-    /* Room over an excerpt scrolled to. The block sets it inline from the height of «Utdrag i
-       svaret», which stays at the top; this is the room without that row. */
+    /* Room over an excerpt scrolled to; the block sets it from the «Utdrag i svaret» row. */
     --_scroll-room: var(--ds-size-3);
     display: flex;
     flex-direction: column;
@@ -87,10 +83,7 @@
     color: var(--genai-document-view-note-color, var(--ds-color-neutral-text-subtle));
   }
 
-  /* «Utdrag i svaret»: one chip per cited excerpt, as the canvas's KS-2d draws it. It stays in
-     reach while the reader scrolls the document, on the body's own surface so the text scrolls
-     under it. The label, the chips and the name of a document they go into flow as one line of
-     text that wraps, so a long name shares its line with its chips. */
+  /* «Utdrag i svaret»: sticky on the body's surface, its label and chips one wrapping line. */
   .uib-document-view-jumps {
     position: sticky;
     inset-block-start: var(--genai-document-view-jumps-inset, 0);
@@ -113,8 +106,7 @@
   .uib-document-view-jump-item {
     display: inline;
   }
-  /* Designsystemet's chip, its number round as the answer's footnote marks. The one the reader is
-     on is pinned to accent, as the excerpt's own mark, or the two would part in a neutral host. */
+  /* Designsystemet's chip; the current one pinned to accent, as the excerpt's own mark. */
   .uib-document-view-jump {
     --dsc-chip-padding-inline: var(--genai-document-view-jump-padding, var(--ds-size-1));
     display: inline-flex;
@@ -194,8 +186,7 @@
     padding: var(--genai-document-view-passage-padding, var(--_passage-padding));
     background: var(--genai-document-view-passage-background, var(--ds-color-surface-default));
     border-radius: var(--genai-document-view-passage-border-radius, var(--ds-border-radius-lg));
-    /* Clear of «Utdrag i svaret» above when it is scrolled to: the block sets the room from the
-       row's height. */
+    /* Clear of «Utdrag i svaret» above when it is scrolled to. */
     scroll-margin-block-start: var(
       --genai-document-view-passage-scroll-margin,
       var(--_scroll-room)
@@ -249,9 +240,7 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  /* The excerpt the reader came for, or stepped to. Pinned to accent, as in Sources, or the mark
-     would dissolve into the surface it marks. A band along the start edge, drawn as an inset
-     shadow so nothing shifts when it moves. */
+  /* The current excerpt: pinned to accent, as in Sources; an inset band, so nothing shifts. */
   .uib-document-view-passage[data-current='true'] {
     background: var(
       --genai-document-view-passage-current-background,

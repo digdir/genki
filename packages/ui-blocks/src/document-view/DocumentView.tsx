@@ -41,10 +41,7 @@ import type {
 /** Where «Tilbake til …» leads: the footnote the reader followed, or Sources. */
 export type DocumentViewReturn = 'answer' | 'sources';
 
-/**
- * Where the reader opens a document in the host: «Vis i dokumentet» under an excerpt in Sources,
- * or a footnote in the answer, when Sources is not there to take it.
- */
+/** Where the reader opens a document: «Vis i dokumentet» in Sources, or a footnote. */
 export type DocumentViewOpener = 'sources' | 'answer';
 
 /** A question the reader asked about the document, for the host to ask in the thread. */
@@ -56,25 +53,11 @@ export interface DocumentQuestion {
 }
 
 export interface DocumentViewProps {
-  /**
-   * The answer's sources, the contract's `sources[]`, as Sources takes them. The view shows the one
-   * `target` names, and its excerpts are what it can show of the document: genki has no route for
-   * a document's whole text. When it has, the text comes as one more prop beside these, and
-   * nothing here changes.
-   */
+  /** The answer's sources, as Sources takes them; the view shows the targeted one's excerpts. */
   sources?: readonly SourceDocument[] | undefined;
-  /**
-   * Which document, and where in it: a footnote's target, or the excerpt the reader chose in
-   * Sources. An excerpt it names is marked, scrolled to and focused; a target that names only the
-   * document lands on its title. Each new target, by identity, is followed once, and wins over an
-   * excerpt the reader has jumped to since.
-   */
+  /** Which document and excerpt to land on; each new target, by identity, is followed once. */
   target?: SourceTarget | undefined;
-  /**
-   * The answer's footnotes in order, as Sources takes them, so the excerpts are numbered «Utdrag N»
-   * and linked back the same way, and «Utdrag i svaret» jumps straight to each cited one. Without
-   * them, or when they name only documents, nothing is numbered and there is nothing to jump to.
-   */
+  /** The answer's footnotes in order, as Sources takes them, to number and jump to excerpts. */
   citations?: readonly SourceCitation[] | undefined;
   /** A link back to the answer was followed: that footnote's index in `citations`. */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
@@ -87,18 +70,11 @@ export interface DocumentViewProps {
   onReturn?: (() => void) | undefined;
   /** What the way back says: «Tilbake til svaret» (the default) or «Tilbake til kildene». */
   returnTo?: DocumentViewReturn | undefined;
-  /**
-   * A question about this document, which the host asks in the thread. Without it, no question
-   * field is drawn.
-   */
+  /** A question about this document, for the host to ask in the thread; no field without it. */
   onAsk?: ((ask: DocumentQuestion) => void) | undefined;
   /** The target names a document or excerpt the sources do not hold. */
   onTargetMissing?: ((target: SourceTarget) => void) | undefined;
-  /**
-   * Where the reader opens a document in this host, so the hint before one is open names that
-   * control: `sources` for «Vis i dokumentet» under an excerpt in Sources, `answer` for a footnote.
-   * Without it, the hint names both.
-   */
+  /** Which control the hint before a document names; without it, the hint names both. */
   opensFrom?: DocumentViewOpener | undefined;
   /** What the documents' collection is called, for «Les dokumentet på Kudos». */
   corpus?: string | undefined;
@@ -108,7 +84,7 @@ export interface DocumentViewProps {
   headingLevel?: 2 | 3 | 4 | 5 | undefined;
   /** Says the text is quoted, not generated. On by default. */
   disclaimer?: boolean | undefined;
-  /** Designsystemet's `data-color` for the block and for the document's head, set only when given. */
+  /** Designsystemet's `data-color` for the block and the document's head, set only when given. */
   color?: string | undefined;
   headerColor?: string | undefined;
   children?: ReactNode;
@@ -117,11 +93,7 @@ export interface DocumentViewProps {
 
 type Level = 2 | 3 | 4 | 5 | 6;
 
-/**
- * Whether text the view does not have lies before an excerpt: when the parts' positions say the
- * document goes on between them, or that the first is not the document's start. Without positions
- * nothing is claimed.
- */
+/** Whether the positions say text the view does not have lies before an excerpt. */
 const gapBefore = (passages: readonly SourceExcerpt[], i: number) => {
   const here = passages[i]?.position;
   if (here === undefined) return false;
@@ -137,10 +109,7 @@ interface Jump {
   excerpt: SourceExcerpt;
 }
 
-/**
- * The answer's cited excerpts, by their «Utdrag N» number, in whichever document each stands. Only
- * footnotes that name excerpts number anything, so in document mode there is nothing to jump to.
- */
+/** The answer's cited excerpts by «Utdrag N», in any document; none in document mode. */
 const jumpsOf = (sources: readonly SourceDocument[], pairing: Pairing | undefined): Jump[] => {
   if (pairing?.mode !== 'excerpt') return [];
   const held = new Map<string, Omit<Jump, 'n'>>();
@@ -170,12 +139,7 @@ const Empty = ({ level, title, text }: { level: number; title: string; text: str
   </div>
 );
 
-/**
- * «Dokumentvisning»: one source document, read in its own order, with the excerpt the reader came
- * for marked and focused, «Utdrag i svaret» to jump straight to each excerpt the answer cites, the
- * way back, and a question about the document for the host to ask in the thread. Data in, events
- * out: the host passes the answer's sources and a target, as it does to Sources.
- */
+/** «Dokumentvisning»: one source document in its own order, with the target excerpt marked. */
 export const DocumentView = ({
   sources,
   target,
@@ -208,8 +172,7 @@ export const DocumentView = ({
   const headRef = useRef<HTMLHeadingElement>(null);
   const passageRefs = useRef(new Map<string, HTMLElement>());
   const applied = useRef(new WeakSet<SourceTarget>());
-  // An excerpt the reader jumped to from «Utdrag i svaret», kept only while the host's target is
-  // the one it was chosen under: a new target from the host wins.
+  // A jump from «Utdrag i svaret», kept only while the host's target is unchanged.
   const [jumped, setJumped] = useState<{ under: SourceTarget | undefined; to: SourceTarget }>();
   const [landing, setLanding] = useState<{ chunkId: string | undefined }>();
   const [said, setSaid] = useState('');
@@ -237,8 +200,7 @@ export const DocumentView = ({
     source !== undefined &&
     shown?.chunkId !== undefined &&
     !passages.some((p) => p.chunkId === shown.chunkId);
-  // The excerpt marked, by its chunk and read from the target itself, so a new document never
-  // shows the last one's mark for a render.
+  // Read from the target itself, so a new document never shows the last one's mark for a render.
   const marked = source && !strayChunk ? shown?.chunkId : undefined;
   const shownKey = source ? documentKey(source) : '';
 
@@ -247,18 +209,14 @@ export const DocumentView = ({
   }, [target, missing, strayChunk]);
 
   useEffect(() => {
-    // Once per target, the host's or a jump's, and only once its document is here: new sources
-    // with the target still held move no focus.
+    // Once per target, once its document is here: new sources for the same target move no focus.
     if (!shown || !source || applied.current.has(shown)) return;
     applied.current.add(shown);
     if (!own) setSaid('');
     setLanding({ chunkId: marked });
   }, [shown, source]);
 
-  // «Utdrag i svaret» stays at the top while the document scrolls, so an excerpt scrolled to must
-  // stop under it, however many lines its chips take: the room is the row's height, set on the
-  // block where the stylesheet reads it. Measured before each landing, which can come before the
-  // first resize is reported, and on every resize after.
+  // The room under the sticky «Utdrag i svaret» row, measured before each landing and on resize.
   const fitRoom = (row: HTMLElement | null) => {
     const root = rootRef.current;
     if (!root) return;
@@ -349,8 +307,7 @@ export const DocumentView = ({
           onShow: undefined,
         }
       : undefined;
-  // Escape anywhere on the document goes back, but in the question field, where it belongs to
-  // what the reader is writing.
+  // Escape anywhere on the document goes back, but not in the question field.
   const leave = onReturn
     ? (event: KeyboardEvent) => {
         if (event.key !== 'Escape') return;
@@ -360,8 +317,7 @@ export const DocumentView = ({
       }
     : undefined;
 
-  // Straight to a cited excerpt, in this document or another of the answer's. Focus lands on it
-  // and says its name; a document of its own is said in the live region too.
+  // To a cited excerpt in any of the answer's documents; another document is said aloud too.
   const jump = ({ source: to, excerpt }: Jump) => {
     setJumped({ under: target, to: { chunkId: excerpt.chunkId, documentId: to.documentId } });
     setSaid(
@@ -387,9 +343,7 @@ export const DocumentView = ({
       <output className="ds-sr-only">{said}</output>
       {back}
       {heading}
-      {/* Designsystemet's card, but not its `Card`: that one makes a click anywhere on the card
-          click the first link in a heading, here an excerpt's first link back. Listens for
-          Escape only, the way back. */}
+      {/* Not `Card`, whose click anywhere follows a heading's first link, here a link back. */}
       <article
         className="ds-card uib-document-view-document"
         aria-labelledby={documentTitleId}
@@ -430,9 +384,7 @@ export const DocumentView = ({
               {t('documentView.disclaimer')}
             </Paragraph>
           ) : null}
-          {/* One chip per excerpt the answer cites, by its number, as the canvas's KS-2d draws
-              it: each jumps straight to its excerpt. No stepper and no bare count; what nothing
-              cites is reached by scrolling, in the document's order. */}
+          {/* One chip per cited excerpt, each a jump to it; the rest is reached by scrolling. */}
           {jumps.length > 0 ? (
             <div
               ref={setJumpsRow}
@@ -449,18 +401,14 @@ export const DocumentView = ({
                   const elsewhere = item.source !== source;
                   const page = excerpt.page;
                   const title = item.source.title.trim() || t('sources.untitled');
-                  // A run of chips into another document is led by its name, in sight, so a reader
-                  // sees where a chip goes before the document changes under it; so is a run back
-                  // into this one after such a run. The chips' names say it already, so it is not
-                  // read twice.
+                  // A run of chips into another document, or back, is led by that document's name.
                   const runStarts = i === 0 ? elsewhere : jumps[i - 1]?.source !== item.source;
                   const lead = runStarts
                     ? elsewhere
                       ? t('documentView.jumpsIn', { title })
                       : t('documentView.jumpsHere')
                     : undefined;
-                  // The name starts with what the chip shows, and says the page and, for another
-                  // document, which one, as the canvas's title on the chip does.
+                  // Starts with what the chip shows, then the page and any other document.
                   const name = [
                     t('sources.excerptNumber', { n }),
                     page === undefined ? undefined : t('sources.page', { page }),
