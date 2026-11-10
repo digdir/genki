@@ -51,19 +51,32 @@ const tokenParameters = ['max_completion_tokens', 'max_tokens'] as const;
 export type TokenParameter = (typeof tokenParameters)[number];
 
 const tokenRefusal = /extra_forbidden|extra inputs|unsupported|not supported|unrecognized|unknown/i;
+const forbiddenInput = /extra_forbidden|extra inputs|not permitted/i;
+
+const firstNamed = <T extends string>(diagnostic: string, names: readonly T[]): T | undefined =>
+  names
+    .map((name) => ({ name, at: diagnostic.indexOf(name) }))
+    .filter(({ at }) => at >= 0)
+    .sort((a, b) => a.at - b.at)[0]?.name;
 
 // Each diagnostic in a validation error ends at a closing brace, so a refusal is read per diagnostic.
 const refusedTokenParameter = (message: string): TokenParameter | undefined => {
   for (const diagnostic of message.split('}')) {
     if (!tokenRefusal.test(diagnostic)) continue;
-    const named = tokenParameters
-      .map((name) => ({ name, at: diagnostic.indexOf(name) }))
-      .filter(({ at }) => at >= 0)
-      .sort((a, b) => a.at - b.at)[0];
-    if (named) return named.name;
+    const named = firstNamed(diagnostic, tokenParameters);
+    if (named) return named;
   }
   return undefined;
 };
+
+const forbidsTemperature = (message: string): boolean =>
+  message
+    .split('}')
+    .some(
+      (diagnostic) =>
+        forbiddenInput.test(diagnostic) &&
+        firstNamed(diagnostic, ['temperature', ...tokenParameters]) === 'temperature',
+    );
 
 export const rejectedParameter = (
   status: number | undefined,
@@ -72,8 +85,9 @@ export const rejectedParameter = (
 ): 'temperature' | TokenParameter | undefined => {
   if (
     status === 400 &&
-    /temperature/i.test(message) &&
-    /unsupported|not support|deprecated|only the default/i.test(message)
+    ((/temperature/i.test(message) &&
+      /unsupported|not support|deprecated|only the default/i.test(message)) ||
+      forbidsTemperature(message))
   )
     return 'temperature';
   if (status !== 400 && status !== 422) return undefined;
