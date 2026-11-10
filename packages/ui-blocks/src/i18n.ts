@@ -18,6 +18,11 @@ const nbProcedure = defineNamespace({
   explainMissing: 'Utdyp hva som mangler',
   stepOf: 'Steg {n} av {total}: {title}',
   step: 'Steg {n}: {title}',
+  document: '{title}, {detail}',
+  readAndUsed: '{read}, {used}',
+  footer: '{summary} · {took}',
+  hiddenStatus: '({status})',
+  shownStatus: '· {status}',
 });
 
 const enProcedure = {
@@ -37,6 +42,11 @@ const enProcedure = {
   explainMissing: 'Say more about what is missing',
   stepOf: 'Step {n} of {total}: {title}',
   step: 'Step {n}: {title}',
+  document: '{title}, {detail}',
+  readAndUsed: '{read}, {used}',
+  footer: '{summary} · {took}',
+  hiddenStatus: '({status})',
+  shownStatus: '· {status}',
 } satisfies Translation<typeof nbProcedure>;
 
 export const nb = defineCatalogue({ procedure: nbProcedure });

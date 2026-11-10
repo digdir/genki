@@ -74,8 +74,7 @@ const StepBody = ({
         <List.Unordered className="uib-step-documents">
           {step.documents.map((d, i) => (
             <List.Item key={`${d.title}-${i}`}>
-              {d.title}
-              {d.detail ? `, ${d.detail}` : ''}
+              {d.detail ? t('procedure.document', { title: d.title, detail: d.detail }) : d.title}
             </List.Item>
           ))}
         </List.Unordered>
@@ -151,22 +150,23 @@ export const Procedure = ({
     );
   }, [active?.id, active?.title]);
 
+  const readText = read === undefined ? undefined : t('procedure.read', { count: read });
+  const summary =
+    readText === undefined
+      ? used === undefined
+        ? undefined
+        : t('procedure.usedOnly', { count: used })
+      : used === undefined
+        ? readText
+        : t('procedure.readAndUsed', {
+            read: readText,
+            used: t('procedure.used', { count: used }),
+          });
   const footer = working
     ? t('procedure.workingFor', { count: seconds })
-    : [
-        read !== undefined
-          ? `${t('procedure.read', { count: read })}${used !== undefined ? `, ${t('procedure.used', { count: used })}` : ''}`
-          : used !== undefined
-            ? t('procedure.usedOnly', { count: used })
-            : undefined,
-      ]
-        .filter(Boolean)
-        .concat(
-          read !== undefined || used !== undefined
-            ? t('procedure.took', { count: seconds })
-            : t('procedure.tookOnly', { count: seconds }),
-        )
-        .join(' · ');
+    : summary === undefined
+      ? t('procedure.tookOnly', { count: seconds })
+      : t('procedure.footer', { summary, took: t('procedure.took', { count: seconds }) });
 
   return (
     <div className="uib-procedure">
@@ -192,9 +192,15 @@ export const Procedure = ({
                 >
                   <span className="uib-step-title">{step.title}</span>
                   {step.status === 'done' ? (
-                    <span className="uib-visually-hidden"> ({t('procedure.done')})</span>
+                    <span className="uib-visually-hidden">
+                      {' '}
+                      {t('procedure.hiddenStatus', { status: t('procedure.done') })}
+                    </span>
                   ) : (
-                    <span className="uib-step-status"> · {t(`procedure.${step.status}`)}</span>
+                    <span className="uib-step-status">
+                      {' '}
+                      {t('procedure.shownStatus', { status: t(`procedure.${step.status}`) })}
+                    </span>
                   )}
                   {step.status === 'waiting' ? null : (
                     <StepBody
