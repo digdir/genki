@@ -18,6 +18,17 @@ export const components = {
   locationGlobal: 'Data outside the EU/EEA',
   todayAt: 'today at {time}',
   changeLogged: 'Changed by {by} {when}: "{reason}". Logged.',
+  attachmentsLabel: 'Attachments',
+  attachmentLoading: 'Fetching the attachment …',
+  attachmentFailed: 'The attachment cannot be shown here. You may not have access to the run.',
+  attachmentMeta: '{mediaType} · {size}',
+  attachmentFromStep: 'from the step {step}',
+  attachmentImage: 'Image from the step {step}',
+  attachmentImagePlain: 'Image from the answer',
+  attachmentOpen: 'Download',
+  bytes: '{n} bytes',
+  kilobytes: '{n} kB',
+  megabytes: '{n} MB',
 } satisfies Translation<typeof componentsSource>;
 
 export const apiCall = {

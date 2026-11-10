@@ -1,7 +1,8 @@
+import { untrustedData } from '@genai/port-model';
 import type { BuilderIntent, BuilderTarget } from './types.js';
 
 export const untrusted = (kind: string, value: unknown) =>
-  `<untrusted_data kind="${kind}">\n${JSON.stringify(value, null, 1).replace(/</g, '\\u003c')}\n</untrusted_data>`;
+  untrustedData(kind, JSON.stringify(value, null, 1).replace(/</g, '\\u003c'));
 
 const targetGuides: Record<BuilderTarget, string> = {
   service:

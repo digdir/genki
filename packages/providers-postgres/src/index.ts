@@ -5,7 +5,7 @@ import type { KeyWrapper } from './crypto.js';
 import { PostgresEventLog } from './event-log.js';
 import { PostgresIdentities } from './identities.js';
 import { ContentKeys } from './keys.js';
-import { migrate, runtimeRole } from './schema.js';
+import { migrate, runtimeRole, workerRole } from './schema.js';
 import { PostgresStateStore, PostgresTaskStore } from './stores.js';
 import { PostgresTenants } from './tenancy.js';
 import { PostgresApiKeys } from './api-keys.js';
@@ -13,6 +13,7 @@ import { PostgresModelClassifications } from './models.js';
 import { PostgresAdminRecords } from './admin-records.js';
 import { PostgresClients } from './clients.js';
 import { PostgresWebhookDeliveries } from './webhook-deliveries.js';
+import { PostgresProviderObjects } from './provider-objects.js';
 import { PostgresTriggerRuns } from './trigger-runs.js';
 import { PostgresConfigEntries } from './config-entries.js';
 import { PostgresConnections } from './connections.js';
@@ -27,8 +28,10 @@ import { PostgresTenantSecrets } from './secrets.js';
 import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
 import { PostgresIngestionExecutions } from './executions.js';
+import { PostgresUsageBuckets } from './usage.js';
 import { PostgresRateLimiter } from './rate-limits.js';
 import {
+  PostgresOutsideRunRetention,
   PostgresRetentionStore,
   PostgresThreadErasure,
   PostgresThreadRetention,
@@ -42,8 +45,13 @@ export {
 } from './pool.js';
 export {
   cachedEntraPassword,
+  knowledgeIdentityTokenSource,
+  knowledgeLocalLogins,
+  knowledgeReadSourceFromEnv,
+  knowledgeSourceFromEnv,
   managedIdentityTokenSource,
   postgresSourceFromEnv,
+  type KnowledgeLogin,
   usesEntraPostgres,
   type AccessToken,
   type TokenSource,
@@ -55,10 +63,13 @@ export {
 } from './admin-records.js';
 export { PostgresClients } from './clients.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
+export { PostgresProviderObjects } from './provider-objects.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
+export { PostgresUsageBuckets } from './usage.js';
 export { PostgresLeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
 export {
+  PostgresOutsideRunRetention,
   PostgresRetentionStore,
   PostgresThreadErasure,
   PostgresThreadRetention,
@@ -90,7 +101,7 @@ export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';
 export { PostgresModelClassifications } from './models.js';
 export { ContentKeys } from './keys.js';
-export { grantRuntimeRole, migrate, runtimeRole } from './schema.js';
+export { grantRuntimeRole, migrate, platformId, runtimeRole, workerRole } from './schema.js';
 export {
   PostgresStateStore,
   PostgresTaskStore,
@@ -116,14 +127,27 @@ export {
   type IngestionExecutionReport,
   type IngestionExecutionStatus,
 } from './executions.js';
+export {
+  ingestSender,
+  ingestStillEndingMessage,
+  PostgresJobRunRecords,
+  PostgresJobRuns,
+  queuedRunExistsMessage,
+  sentBackMessage,
+  type IngestSender,
+  type JobRunRequest,
+  type JobRunResult,
+  type QueuedRunRules,
+  type RunOutcome,
+} from './job-runs.js';
 
-const runtimePoolFor = (owner: Pool) =>
+const runtimePoolFor = (owner: Pool, role: string) =>
   withClientErrorListener(
     new pg.Pool({
       ...owner.options,
       password: owner.options.password,
       allowExitOnIdle: true,
-      options: [owner.options.options, `-c role=${runtimeRole}`].filter(Boolean).join(' '),
+      options: [owner.options.options, `-c role=${role}`].filter(Boolean).join(' '),
     }),
   );
 
@@ -135,6 +159,8 @@ export const createPostgresStores = async (
     changePollMs?: number;
     onError?: (error: unknown) => void;
     runtime?: Pool | PostgresPoolOptions;
+    /** The role the store pool switches to when no runtime login is given; the worker uses genai_worker. */
+    role?: typeof runtimeRole | typeof workerRole;
   } = {},
 ) => {
   const owner = 'query' in source ? withClientErrorListener(source) : createPool(source);
@@ -145,7 +171,7 @@ export const createPostgresStores = async (
   await migrate(owner);
   const pool =
     options.runtime === undefined
-      ? runtimePoolFor(owner)
+      ? runtimePoolFor(owner, options.role ?? runtimeRole)
       : 'query' in options.runtime
         ? withClientErrorListener(options.runtime)
         : createPool(options.runtime);
@@ -182,10 +208,13 @@ export const createPostgresStores = async (
     clients: new PostgresClients(pool),
     webhookDeliveries: new PostgresWebhookDeliveries(pool),
     triggerRuns: new PostgresTriggerRuns(pool),
+    providerObjects: new PostgresProviderObjects(pool),
     configEntries: new PostgresConfigEntries(pool),
     ingestionExecutions: new PostgresIngestionExecutions(pool),
     rateLimits: new PostgresRateLimiter(pool),
+    usageBuckets: new PostgresUsageBuckets(pool),
     retention: new PostgresRetentionStore(pool),
+    outsideRunRetention: new PostgresOutsideRunRetention(pool),
     threadRetention: new PostgresThreadRetention(pool, keys),
     threadErasure: new PostgresThreadErasure(pool, keys),
     erase: (tenant: string, scope: string) => keys.erase(tenant, scope),

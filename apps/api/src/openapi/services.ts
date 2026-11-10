@@ -1531,6 +1531,48 @@ export const serviceRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'get',
+    path: '/tenants/{tenant}/step-flows/operations',
+    summary:
+      'The reviewed operations a call-operation step may use here: described or typed descriptors whose kind is in production, with their typed input and the models that offer the kind. Any member',
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(
+        z.object({
+          environment: z.enum(['test', 'production']).optional(),
+          data: z.array(
+            z.object({
+              id: z.string().openapi({ example: 'example/generate-image@1' }),
+              operation: z.string().openapi({ example: 'generate-image' }),
+              summary: z.string(),
+              status: z.enum(['described', 'typed']),
+              input: z.array(
+                z.object({
+                  name: z.string(),
+                  type: z.enum(['text', 'number', 'boolean', 'choice', 'list', 'object']),
+                  required: z.boolean(),
+                  values: z.array(z.string()).optional(),
+                }),
+              ),
+              media: z.array(z.string()).openapi({ example: ['image/png'] }),
+              models: z.array(
+                z.object({
+                  id: z.string(),
+                  name: z.string(),
+                  residency: z.enum(['norway', 'eu', 'global']),
+                  processorRecord: z.boolean(),
+                }),
+              ),
+            }),
+          ),
+        }),
+        'Operations',
+      ),
+      ...signedIn,
+      404: problem('The tenant is not reachable for the caller'),
+    },
+  }),
+  createRoute({
+    method: 'get',
     path: '/tenants/{tenant}/step-flows/recipes',
     summary:
       "The tenant's own recipes, then the recipes Digdir shares, with plain settings as JSON Schema with x- metadata. Any member",

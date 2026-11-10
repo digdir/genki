@@ -1,3 +1,4 @@
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -53,8 +54,6 @@ export const codeFor = (lang: Lang, url: string, body: unknown) => {
   return `using System.Net.Http.Headers;\nusing System.Text;\n\nvar klient = new HttpClient();\nklient.DefaultRequestHeaders.Authorization =\n    new AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("TOKEN"));\n\nvar innhold = new StringContent("""\n${b}\n""", Encoding.UTF8, "application/json");\n\nvar svar = await klient.PostAsync("${url}", innhold);\nsvar.EnsureSuccessStatusCode();\nConsole.WriteLine(await svar.Content.ReadAsStringAsync());`;
 };
 
-const back = 'M15 6l-6 6 6 6';
-
 export interface CodeService {
   id: string;
   name: string;
@@ -82,9 +81,9 @@ export const liveCodeServices = (
 const BackLink = () => {
   const t = useT();
   return (
-    <Link href="#/integrations" className="int-back">
-      <Icon d={back} size={18} />
-      {t('integrations.heading')}
+    <Link href="#/developer/api" className="int-back">
+      <Icon icon={ChevronLeftIcon} size={18} />
+      {t('devTools.api')}
     </Link>
   );
 };

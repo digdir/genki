@@ -70,6 +70,7 @@ export interface TimelineBlock {
   title?: string;
   body?: string;
   sources?: string[];
+  media?: { id: string; mediaType: string; bytes: number }[];
 }
 
 export type TimelineStepState =
@@ -102,6 +103,11 @@ export interface TimelineStep {
   raw?: unknown;
 }
 
+export interface RunErasure {
+  reason: 'conversation-deleted' | 'retention' | 'erased';
+  at?: string;
+}
+
 export interface TaskTimeline {
   id: string;
   service: string;
@@ -115,6 +121,7 @@ export interface TaskTimeline {
   outputTokens?: number;
   costOre?: number | null;
   costMicroNok?: number | null;
+  erasure?: RunErasure;
   steps: TimelineStep[];
 }
 
@@ -131,6 +138,7 @@ export interface ModelOption {
   family?: string;
   residency: Residency;
   capabilities: string[];
+  operations?: string[];
   price?: ModelPrice | null;
   parameters?: {
     temperature?: { mode: 'unsupported' } | { mode: 'fixed'; value: number | string };
@@ -261,7 +269,10 @@ export interface UsageTotals {
   runs?: number;
   costMicroNok: number | null;
   priced?: boolean;
+  bySource?: { source: UsageSourceId; usage: UsageTotals }[];
 }
+
+export type UsageSourceId = 'genki' | 'gateway';
 
 export interface TaskActor {
   kind: 'person' | 'api-key' | 'system';
@@ -274,6 +285,7 @@ export interface TaskRow {
   service: string;
   serviceName?: string;
   excerpt?: string;
+  erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
   createdAt: string;
@@ -423,7 +435,14 @@ export interface UsageReport {
     byModel?: Record<string, UsageTotals>;
   }[];
   byService: { service: string; title?: string; usage: UsageTotals }[];
-  byModel: { model: string; usage: UsageTotals }[];
+  byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
+  bySubject?: {
+    subject: { kind: string; id: string; org?: string } | null;
+    usage: UsageTotals;
+    cost: { currency: string; micros: number };
+    rate: number | null;
+    rateDay: string | null;
+  }[];
   byProject?: { project: string; name: string; usage: UsageTotals }[];
   project?: string;
 }

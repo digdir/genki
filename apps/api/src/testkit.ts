@@ -20,8 +20,13 @@ import {
   InMemoryIdentities,
   type createTokenVerifier,
 } from '@genai/identity';
+import type { EnvironmentTier } from '@genai/composition';
+import type { BlobStore } from '@genai/port-blob';
+import type { ProcessorRecordCheck } from '@genai/port-model';
 import type { TriggerRunStore } from '@genai/jobs';
-import { envSecrets } from '@genai/kernel';
+import type { EgressOptions } from '@genai/providers-mcp-client';
+import type { DescriptorRegistry } from '@genai/operations';
+import { envSecrets, type EventLog, type MediaOutputConfig } from '@genai/kernel';
 import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
 import { actorNames } from './actor-names.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
@@ -199,7 +204,7 @@ export const setup = (
 export const fakeModels = {
   endpoints: {
     fake: {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modell.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
     },
@@ -231,6 +236,15 @@ export interface BootOptions {
   services?: string[];
   knowledge?: unknown;
   triggerRuns?: TriggerRunStore;
+  models?: unknown;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
+  lockdown?: boolean;
+  egress?: EgressOptions;
+  log?: EventLog;
+  mediaOutput?: MediaOutputConfig;
+  processorRecords?: ProcessorRecordCheck;
+  blobStore?: BlobStore;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -245,7 +259,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
   const resource = 'urn:altinn:resource:digdir-genai-platform';
   const platform = await createPlatform({
     catalogs: {
-      models: fakeModels,
+      models: options.models ?? fakeModels,
       knowledge: options.knowledge ?? { endpoints: {}, datasets: [] },
       rerank: { endpoints: {}, rerankers: [] },
     },
@@ -255,6 +269,14 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     definitions: (p, skill, flow) => new InMemoryDefinitionStore(p, undefined, skill, flow),
     configurables: { store: configEntries, scheduleIntervalMs: 0 },
     ...(options.triggerRuns ? { triggerRuns: options.triggerRuns } : {}),
+    ...(options.environmentTier ? { environmentTier: options.environmentTier } : {}),
+    ...(options.descriptors ? { descriptors: options.descriptors } : {}),
+    ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
+    ...(options.egress ? { egress: options.egress } : {}),
+    ...(options.log ? { log: options.log } : {}),
+    ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
+    ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
+    ...(options.blobStore ? { blobStore: options.blobStore } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,

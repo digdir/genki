@@ -1,0 +1,47 @@
+id: openai/transcriptions-text@1
+operation: transcribe
+status: described
+summary: Speech to text on an OpenAI-compatible endpoint (Create transcription, /audio/transcriptions) with response_format text, so the transcript comes back as plain text with no usage.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    audio: { media: audio/* }
+    language?: { enum: [nb, nn, no, en, sv, da] }
+    prompt?: text
+output:
+  object:
+    text: text
+request:
+  method: POST
+  path: /audio/transcriptions
+  encoding: multipart
+  parts:
+    model: $deployment
+    file: $input.audio
+    language: $input.language
+    prompt: $input.prompt
+    response_format: text
+response:
+  encoding: text
+wire:
+  request:
+    object:
+      model: plain
+      file: { media: audio/* }
+      language?: { enum: [nb, nn, no, en, sv, da] }
+      prompt?: text
+      response_format: { enum: [text] }
+  response: text
+errors:
+  - { status: 429, kind: rate-limited }
+  - { status: [400, 413, 415], kind: invalid }
+  - { status: 5xx, kind: unavailable }
+result:
+  text: $response
+usage:
+  request: 1
+stream: none

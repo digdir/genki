@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.10
-ARG NODE_IMAGE=node:24.21.0-bookworm-slim
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.28-alpine
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
+ARG NODE_IMAGE=node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
@@ -16,6 +16,7 @@ RUN mkdir -p /out && \
       mkdir -p "/out/$(dirname "$asset")" && cp -r "$asset" "/out/$asset" || exit 1; \
     done && \
     node scripts/docs-bundle.ts /out/genki-docs && \
+    mkdir -p /out/scripts && cp scripts/knowledge-server-setup.ts scripts/setup.ts /out/scripts/ && \
     cp package.json package-lock.json /out/
 
 FROM ${NODE_IMAGE} AS deps

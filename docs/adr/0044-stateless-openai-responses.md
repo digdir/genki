@@ -1,6 +1,6 @@
 # 0044 Stateless OpenAI Responses behind the model port
 
-Status: accepted, 2026-10-29 (built). Proposed 2026-10-23
+Status: accepted, 2026-10-29 (built; the API chosen by a binding per model instead of `options.api`, [ADR 0048](0048-connections-serve-many-apis.md), 2026-11-05). Proposed 2026-10-23
 
 ## Decision
 

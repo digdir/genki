@@ -185,6 +185,7 @@ const modelReply = (body: Record<string, unknown>) => {
       json: {
         data: [
           { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+          { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
           { id: 'gpt-5-mini', model: 'gpt-5-mini', status: 'succeeded' },
           { id: 'text-embedding-3-small', model: 'text-embedding-3-small', status: 'succeeded' },
         ],
@@ -822,7 +823,12 @@ describe('the composed platform', () => {
         }
       ).data.map((m) => m.id);
 
-    expect(await ids()).toEqual(['foundry-openai/gpt-4o-2m-tps', 'foundry-openai/gpt-5-mini']);
+    expect(await ids()).toEqual([
+      'foundry-openai/gpt-4o-2m-tps',
+      'foundry-openai/gpt-5-mini',
+      'foundry-openai/gpt-5.6-terra',
+      'foundry-openai/gpt-6-luna',
+    ]);
     expect(await ids('?residency=norway')).toEqual([]);
 
     const refused = await app.request('/operator/models/foundry-openai/gpt-4o-2m-tps', {
@@ -861,10 +867,14 @@ describe('the composed platform', () => {
     expect(await list()).toEqual([
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
     ]);
     expect(await list({ 'foundry-openai/gpt-4o-2m-tps': price })).toEqual([
       expect.objectContaining({ id: 'foundry-openai/gpt-4o-2m-tps', price }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5-mini', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-5.6-terra', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-6-luna', price: null }),
     ]);
   });
 

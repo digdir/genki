@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseEnv } from 'node:util';
 import { parse as parseYaml } from 'yaml';
+import { npmCommand } from './setup.ts';
 
 export const repoRoot = join(import.meta.dirname, '..');
 
@@ -19,8 +20,16 @@ export interface DevProcess {
 const vite = (name: string, port: number, env: Record<string, string> = {}): DevProcess => ({
   name,
   port,
-  command: 'npm',
-  args: ['run', 'dev', '--workspace', `apps/${name}`, '--', '--port', String(port), '--strictPort'],
+  ...npmCommand([
+    'run',
+    'dev',
+    '--workspace',
+    `apps/${name}`,
+    '--',
+    '--port',
+    String(port),
+    '--strictPort',
+  ]),
   env,
 });
 
@@ -58,6 +67,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
   const ports = devPorts(env);
   const api = `http://localhost:${ports.api}`;
   const custom = ports.api !== defaultPorts.api;
+  const devMode = !env.GENAI_DEV_MODE || env.GENAI_DEV_MODE === 'true';
   const apiEnv = custom
     ? {
         GENAI_API_PORT: String(ports.api),
@@ -76,17 +86,25 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
             port: modelPort,
             command: process.execPath,
             args: ['scripts/local-model.ts'],
-            env: { LOCAL_MODEL_PORT: String(modelPort) },
+            env: {
+              LOCAL_MODEL_PORT: String(modelPort),
+              ...(env.LOCAL_MODEL_RESPONSES
+                ? { LOCAL_MODEL_RESPONSES: env.LOCAL_MODEL_RESPONSES }
+                : {}),
+            },
           },
         ]
       : []),
     {
       name: 'api',
       port: ports.api,
-      command: 'npm',
-      args: ['run', 'dev', '--workspace', 'apps/api'],
+      ...npmCommand(['run', 'dev', '--workspace', 'apps/api']),
       env: {
-        ...unlessSet(env, { GENAI_DEV_MODE: 'true' }),
+        ...unlessSet(env, {
+          GENAI_DEV_MODE: 'true',
+          ...(devMode ? { GENAI_ENV: 'test' } : {}),
+          ...(devMode && !env.ANSATTPORTEN_ISSUER ? { GENAI_MOCK_RIGHTS: 'true' } : {}),
+        }),
         ...(custom ? { PORT: String(ports.api) } : {}),
       },
     },
@@ -171,7 +189,7 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       children.map(
         (child) =>
           new Promise((resolve) =>
-            child.exitCode !== null || child.signalCode !== null
+            child.pid === undefined || child.exitCode !== null || child.signalCode !== null
               ? resolve(undefined)
               : child.once('exit', resolve),
           ),
@@ -191,7 +209,9 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       cwd: options.cwd,
       env: { ...process.env, ...p.env, FORCE_COLOR: options.colour ? '1' : '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+      // A process group lets stop() signal grandchildren on POSIX. On Windows a detached child
+      // gets its own console window instead, and closing that window stops the service.
+      detached: process.platform !== 'win32',
     });
     children.push(child);
     for (const stream of [child.stdout, child.stderr]) {
@@ -200,6 +220,14 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       stream.on('data', out.push);
       stream.on('end', out.flush);
     }
+    // A command that cannot start emits error and never exit, so stop the rest here.
+    child.on('error', (error) => {
+      if (stopping) return;
+      // Plain npm is only used outside an npm script, where Windows cannot spawn it.
+      const hint = p.command === 'npm' ? '; start it with `npm run dev:all`' : '';
+      options.write(`${label} could not start (${error.message}${hint}), stopping the rest\n`);
+      stop(1);
+    });
     child.on('exit', (code, sig) => {
       if (stopping) return;
       options.write(`${label} stopped (${sig ?? `exit ${code}`}), stopping the rest\n`);
@@ -245,6 +273,14 @@ const main = async () => {
 
 const signal = (child: ChildProcess, sig: NodeJS.Signals) => {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  // Windows has no process groups: kill the tree, or the servers npm started keep their ports.
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).on(
+      'error',
+      () => child.kill(sig),
+    );
+    return;
+  }
   try {
     process.kill(-child.pid, sig);
   } catch {

@@ -1,6 +1,7 @@
 import {
   configuredCredentialScope,
   isLockdown,
+  lockdownUserScope,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -21,6 +22,7 @@ export const entraNotTrustedType = 'urn:genai:problem:entra-not-trusted';
 export {
   configuredCredentialScope,
   isLockdown,
+  lockdownUserScope,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -62,6 +64,7 @@ export const modelRunRoutes = new Set([
     .filter(([, kind]) => kind === 'run')
     .map(([route]) => route),
   'POST /operator/quality/matrix/runs',
+  'POST /operator/operations/:id{.+}/try',
   'POST /tenants/:tenant/projects/:project/runs',
   'POST /tenants/:tenant/projects/:project/runs/:run/retry',
   'POST /tenants/:tenant/services/:id/batch-runs',
@@ -72,11 +75,16 @@ export const modelRunRoutes = new Set([
 export const ingestionRoutes = new Set([
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/execute',
   'POST /operator/datasets/:dataset/pipelines/:id/execute',
+  'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
+  'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
   'POST /tenants/:tenant/connectors/:id/sync',
   'POST /tenants/:tenant/datasets/:id/engine-switches',
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/retry',
   'POST /operator/datasets/:id/engine-switches',
   'POST /operator/datasets/:id/engine-switches/:sid/retry',
+  // Activating a switch into the knowledge database runs its pipelines once more (ADR 0025).
+  'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/activate',
+  'POST /operator/datasets/:id/engine-switches/:sid/activate',
   'POST /tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/apply',
 ]);
 

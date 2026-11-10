@@ -249,6 +249,38 @@ describe('Datasett: detalj', () => {
     expect(screen.getByRole('progressbar', { name: 'Fremdrift' })).toBeTruthy();
   });
 
+  it('keeps a run opened the moment the detail page appears', async () => {
+    let toggle: HTMLElement | undefined;
+    const observer = new MutationObserver(() => {
+      const run = document.getElementById('run-w3');
+      if (toggle || !run) return;
+      toggle = within(run).getByRole('button', { expanded: false });
+      fireEvent.click(toggle);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await openDetail(web, 'Nettsidene til Testetaten');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    observer.disconnect();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('keeps a tab chosen the moment the detail page appears', async () => {
+    let clicked = false;
+    const observer = new MutationObserver(() => {
+      const filters = screen.queryByRole('tab', { name: 'Filtre i søket' });
+      if (clicked || !filters) return;
+      clicked = true;
+      fireEvent.click(filters);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await openDetail(web, 'Nettsidene til Testetaten');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    observer.disconnect();
+    expect(screen.getByRole('tab', { name: 'Filtre i søket' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
   it('stops a running ingestion after confirmation and keeps documents already read', async () => {
     await openDetail(tilsyn, 'Tilsynsrapporter 2025');
     vi.useFakeTimers();
@@ -425,9 +457,9 @@ describe('Datasett: nytt datasett', () => {
     const group = screen.getByRole('group', { name: 'Hvor kommer dokumentene fra?' });
     expect(within(group).getAllByRole('radio')).toHaveLength(3);
     expect((screen.getByRole('radio', { name: /Kudos/ }) as HTMLInputElement).checked).toBe(true);
-    expect(within(group).getByRole('link', { name: 'Integrasjoner' }).getAttribute('href')).toBe(
-      '#/integrations',
-    );
+    expect(
+      within(group).getByRole('link', { name: 'Systemer i Utviklerverktøy' }).getAttribute('href'),
+    ).toBe('#/developer/systems');
     expect(screen.queryByRole('button', { name: 'Forrige' })).toBeNull();
     expectAccessible();
   });

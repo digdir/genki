@@ -1,31 +1,57 @@
 id: port-model
 plane: ports
 name: Model port
-note: chat · chatStream · router
+note: chat · chatStream · decide · router
 icon: llm
 color: '#74a7ff'
 status: Port
 packages:
   - '@genai/port-model'
-summary: One port for model calls; a router owns catalog, residency, capabilities, credentials and metering.
-description: Adapters are per wire protocol, not per vendor (ADR 0021). Models are discovered from
-  endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.
+summary: One port for model calls; a router owns the catalog, capabilities, operations, credentials and routing, the kernel gate governs every call.
+description: Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a
+  model binds one API per kind, and the API registry lists built-in implementations and descriptors
+  under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry,
+  start with residency global and are classified by an operator.
 responsibilities:
   - Model catalog and discovery
-  - Residency and capability checks
-  - Refusing callers the environment does not admit (lockdown, ADR 0033)
-  - Credential resolution and metering
+  - Operations on the catalogue (chat, decide and every kind a registered descriptor defines) and
+    capability checks
+  - The kernel port decision, the decide operation on the same catalogue (ADR 0047, #248)
+  - The kernel port operation, a descriptor call on a catalogue model for the raw tier, and decide
+    through a typed descriptor when the catalogue opts in (ADR 0047, #291)
+  - The kernel port described, a reviewed descriptor call from a service's call-operation step,
+    with the kind's maturity and whether the endpoint has a processor record on the gate target
+    (ADR 0047, #292, #322)
+  - Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing
+    and residency, holds the request and the answer to their closed shapes, runs the payload guard
+    and meters (ADR 0047); the router itself only routes
+  - The API registry and the binding of each model kind to an API, with the units each API
+    reports; embedding and rerank models bind APIs other ports implement (ADR 0048)
+  - Prices per model, kind and unit; typed chat and decide calls carry the connection's processor
+    record and production maturity (ADR 0048, #325)
+  - Credential resolution
 files:
   - packages/port-model/src/port.ts
   - packages/port-model/src/router.ts
+  - packages/port-model/src/gate.ts
   - packages/port-model/src/catalog.ts
+  - packages/port-model/src/apis.ts
+  - packages/port-model/src/decision.ts
+  - packages/port-model/src/operation.ts
   - packages/port-model/src/instructions.ts
 input: Generic chat request
-output: Completion, deltas, usage
+output: Completion, deltas, decision answers, usage
 replaces:
   - module: llm
     how: Provider abstraction
 edges:
+  - to: operations
+    label: Descriptor executor and registry
+    kind: call
+    target: call
+    witness:
+      file: packages/port-model/src/router.ts
+      imports: '@genai/operations'
   - to: plugins
     label: Model contract suite
     kind: call

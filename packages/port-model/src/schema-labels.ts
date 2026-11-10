@@ -65,6 +65,10 @@ const nb = {
       reasoning: 'Resonnerer',
     },
   },
+  apis: {
+    label: 'API per operasjon',
+    help: 'Hvilket API utrullingen bruker for hver operasjon, for eksempel samtale. Uten verdi samtale med tilkoblingens standard-API.',
+  },
   contextWindow: { label: 'Kontekstvindu (tokens)' },
   maxOutputTokens: { label: 'Mest svar modellen kan gi (tokens)' },
   parameters: { label: 'Regler for parametere' },
@@ -74,8 +78,20 @@ const nb = {
   mode: { label: 'Regel', values: parameterModes },
   value: { label: 'Verdi' },
   tenants: { label: 'Virksomheter som kan bruke den', help: 'Tomt betyr alle.' },
+  embed: { label: 'Innbygging' },
+  dimensions: { label: 'Dimensjoner' },
+  maxBatch: { label: 'Flest tekster per kall' },
+  rerank: { label: 'Omrangering' },
+  onFailure: {
+    label: 'Når omrangeringen feiler',
+    values: { degrade: 'Behold rekkefølgen fra søket', fail: 'Avbryt' },
+  },
   options: { label: 'Andre valg' },
   protocol: { label: 'Protokoll' },
+  families: {
+    label: 'API-familier',
+    help: 'API-familiene tilkoblingen tilbyr, med stien under adressen eller en full adresse for hver.',
+  },
   baseURL: { label: 'Adresse (URL)' },
   auth: { label: 'Pålogging' },
   'auth.kind': {
@@ -90,9 +106,18 @@ const nb = {
   secret: { label: 'Hemmelighet', help: 'En secret://-referanse, aldri selve nøkkelen.' },
   header: { label: 'Header' },
   provider: { label: 'Tokenleverandør' },
+  allowedHosts: {
+    label: 'Tillatte verter for svarlenker',
+    help: 'Verter utenom endepunktets egen som en lenke i et svar kan føre til. Bare en operatør setter dem.',
+  },
   discovery: { label: 'Finn modeller automatisk' },
   'discovery.source': { label: 'Kilde' },
   'discovery.from': { label: 'Bruk oppslaget fra endepunktet' },
+  'discovery.idPrefix': {
+    label: 'Starten på ID-en',
+    help: 'Modellene som finnes får ID-en <start>/<utrulling>. Uten verdi tilkoblingens ID.',
+  },
+  'discovery.apis': { label: 'API per operasjon for modellene som finnes' },
   'discovery.include': { label: 'Ta med' },
   'discovery.exclude': { label: 'Utelat' },
   'discovery.capabilities': {
@@ -124,6 +149,10 @@ const en: Record<keyof typeof nb, LabelText> = {
       reasoning: 'Reasons',
     },
   },
+  apis: {
+    label: 'API per operation',
+    help: "Which API the deployment uses for each operation, such as chat. Without a value, chat with the connection's default API.",
+  },
   contextWindow: { label: 'Context window (tokens)' },
   maxOutputTokens: { label: 'Most output the model can give (tokens)' },
   parameters: { label: 'Parameter rules' },
@@ -133,8 +162,20 @@ const en: Record<keyof typeof nb, LabelText> = {
   mode: { label: 'Rule', values: parameterModesEn },
   value: { label: 'Value' },
   tenants: { label: 'Organisations that may use it', help: 'Empty means all.' },
+  embed: { label: 'Embedding' },
+  dimensions: { label: 'Dimensions' },
+  maxBatch: { label: 'Most texts per call' },
+  rerank: { label: 'Reranking' },
+  onFailure: {
+    label: 'When reranking fails',
+    values: { degrade: 'Keep the search order', fail: 'Stop' },
+  },
   options: { label: 'Other options' },
   protocol: { label: 'Protocol' },
+  families: {
+    label: 'API families',
+    help: 'The API families the connection offers, each with its path under the address or a full address.',
+  },
   baseURL: { label: 'Address (URL)' },
   auth: { label: 'Sign-in' },
   'auth.kind': {
@@ -149,9 +190,18 @@ const en: Record<keyof typeof nb, LabelText> = {
   secret: { label: 'Secret', help: 'A secret:// reference, never the key itself.' },
   header: { label: 'Header' },
   provider: { label: 'Token provider' },
+  allowedHosts: {
+    label: 'Allowed hosts for answer links',
+    help: "Hosts besides the endpoint's own that a link in an answer may lead to. Only an operator sets them.",
+  },
   discovery: { label: 'Find models automatically' },
   'discovery.source': { label: 'Source' },
   'discovery.from': { label: 'Use the lookup from the endpoint' },
+  'discovery.idPrefix': {
+    label: 'Start of the id',
+    help: "Models found get the id <start>/<deployment>. Without a value, the connection's id.",
+  },
+  'discovery.apis': { label: 'API per operation for the models found' },
   'discovery.include': { label: 'Include' },
   'discovery.exclude': { label: 'Leave out' },
   'discovery.capabilities': {

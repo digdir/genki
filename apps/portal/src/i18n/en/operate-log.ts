@@ -52,6 +52,7 @@ export const logArea = {
     actorApiKey: 'API key {name}',
     actorApiKeyUnnamed: 'API key',
     actorSystem: 'System user',
+    erased: 'Content erased',
   },
   logBatch: {
     waiting: 'Waiting',
@@ -150,5 +151,14 @@ export const logArea = {
     reasonOrder: 'Order from a supervisory authority or court',
     approvalNote:
       'Approvals are always shown with a name. It is accountability for decisions, not monitoring.',
+    erasedTitle: 'The content of this run was erased',
+    erasedConversation: 'The conversation was deleted on {when}.',
+    erasedConversationUndated: 'The conversation was deleted.',
+    erasedRetention: 'Erased after the retention period, on {when}.',
+    erasedRetentionUndated: 'Erased after the retention period.',
+    erasedOther: 'Erased on {when}.',
+    erasedOtherUndated: 'The content was erased.',
+    erasedKept:
+      'What was sent in, the steps and the answer are gone. Only status, time, tokens and cost are kept.',
   },
 } satisfies Translation<typeof source>;

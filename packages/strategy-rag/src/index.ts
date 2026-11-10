@@ -5,6 +5,7 @@ import {
   defaultMaxOutputTokens,
   instructionsConfig,
   languageInstructionsConfig,
+  untrustedDataNote,
 } from '@genai/port-model';
 import {
   attachedChunks,
@@ -221,7 +222,8 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
                 (settings.instructions
                   ? baseInstructions(settings.instructions)
                   : systemPromptWithDate((options.now ?? (() => new Date()))())) +
-                skillsSection(config.skills),
+                skillsSection(config.skills) +
+                `\n\n${untrustedDataNote(config.languages)}`,
             },
             { role: 'user', content: prompt },
           ],

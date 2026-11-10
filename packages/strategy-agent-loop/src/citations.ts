@@ -1,3 +1,5 @@
+import { untrustedData } from '@genai/port-model';
+
 export interface Citation {
   index: number;
   chunkId: string;
@@ -121,6 +123,7 @@ interface Numberable {
   chunkId: string;
   document?: string;
   url?: string;
+  title?: string | undefined;
   content: string;
 }
 
@@ -133,7 +136,11 @@ export const numberByDocument = <C extends Numberable>(docs: C[]) => {
   const ordered = [...groups.values()];
   return {
     context: ordered
-      .map((g, i) => `[${i + 1}] ${g.map((c) => stripPageMarkers(c.content)).join('\n\n')}`)
+      .map((g, i) => {
+        const first = g[0] as C;
+        const text = g.map((c) => stripPageMarkers(c.content)).join('\n\n');
+        return `[${i + 1}] ${untrustedData('source', text, { id: documentKey(first), title: first.title })}`;
+      })
       .join('\n\n'),
     index: new Map(ordered.map((g, i) => [i + 1, (g[0] as C).chunkId])) as CitationIndex,
     chunks: ordered.flat(),
