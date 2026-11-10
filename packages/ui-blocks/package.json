@@ -13,6 +13,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./panels": {
+      "source": "./src/builder/panels.ts",
+      "types": "./dist/builder/panels.d.ts",
+      "default": "./dist/builder/panels.js"
+    },
     "./styles.css": "./src/ui-blocks.css"
   },
   "scripts": {
