@@ -45,11 +45,7 @@ export type SourcesAnswerStatus =
 
 export interface SourcesProps {
   sources?: readonly SourceDocument[] | undefined;
-  /**
-   * What became of the answer, so a panel with no sources says why: nothing asked yet, stopped
-   * before the sources came, failed, or waiting on a question back. `streaming` is the loading
-   * state until sources arrive.
-   */
+  /** What became of the answer, so an empty panel says why; `streaming` until sources come. */
   answerStatus?: SourcesAnswerStatus | undefined;
   /** The app's store keeps no sources with a turn, so an empty list is not known to mean none. */
   sourcesNotStored?: boolean | undefined;
@@ -61,17 +57,9 @@ export interface SourcesProps {
   answerCount?: number | undefined;
   /** The reader stepped to another answer: its index. The app passes that answer's sources. */
   onAnswerChange?: ((index: number) => void) | undefined;
-  /**
-   * The answer's footnotes in order. Without them nothing is numbered and nothing links back.
-   * Excerpts are numbered only when every footnote names its excerpt; footnotes that name only
-   * documents number nothing.
-   */
+  /** The answer's footnotes in order; excerpts are numbered only when every footnote names one. */
   citations?: readonly SourceCitation[] | undefined;
-  /**
-   * A link back to the answer was followed: that footnote's index in `citations`. Beside a cited
-   * excerpt's title, «Utdrag N», stands one link per footnote that cites it, drawn when this or
-   * `citationHref` is given.
-   */
+  /** A link back to the answer was followed: that footnote's index in `citations`. */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
   /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
   citationHref?: ((citation: number) => string | undefined) | undefined;
@@ -214,15 +202,7 @@ export interface BackTo {
   onShow: ((citation: number) => void) | undefined;
 }
 
-/**
- * «Utdrag N» over a cited excerpt, a title and not a link, and right beside it the way back to
- * the answer: one small link per footnote that cites the excerpt, 1, 2, 3 in the order they
- * stand in the answer, as Wikipedia's back-references. Each is a real link, so a reader can tab
- * to, or open, any one of them. Its name starts with the number seen (WCAG 2.5.3) and says which
- * footnote and which place it leads to: «1: fotnote 2, første sted i svaret». Decided
- * 6 November 2026, in place of a control that cycled, a row on the card's head, a title that was
- * itself the first link, and round marks like the answer's. The document view draws the same.
- */
+/** «Utdrag N» and one link back to each footnote that cites the excerpt, in answer order. */
 export const ExcerptNumber = ({
   n,
   label,
@@ -255,8 +235,7 @@ export const ExcerptNumber = ({
       <span className="uib-sources-excerpt-number">{label}</span>
       <span className="uib-sources-uses">
         {uses.map((citation, place) => (
-          // Named by `aria-label`: hidden spans inside a link are boxes of their own to a
-          // browser, which then reads «1 , fotnote 2».
+          // Named by `aria-label`: hidden spans in a link make a browser read «1 , fotnote 2».
           <Link
             key={citation}
             href={href?.(citation) ?? '#'}
@@ -280,12 +259,7 @@ export const ExcerptNumber = ({
   );
 };
 
-/**
- * An excerpt's title: «Utdrag N» with its links back and its section when the answer cites it, or
- * else its section or a plain «Utdrag», with no number from its place. Named as a heading by what
- * it says: the number stands on a line of its own, which a browser reads without the colon, and
- * the links in it have names of their own. Sources and the document view draw the same.
- */
+/** An excerpt's title: «Utdrag N», links back and section when cited; else section or «Utdrag». */
 export const ExcerptTitle = ({
   id,
   level,
@@ -312,6 +286,7 @@ export const ExcerptTitle = ({
       level={level as Level}
       data-size="2xs"
       className={className}
+      // Named by what it says: a browser reads the number's line without its colon.
       aria-label={number && (section ? `${number}: ${section}` : number)}
     >
       {n === undefined || !number ? null : (
@@ -334,10 +309,7 @@ export const useExcerptName = () => {
         : t('sources.excerptNameUnnumbered');
 };
 
-/**
- * «Les side N på Kudos», to the excerpt's page, named in one piece with which excerpt and which
- * document: a hidden box after the words would make a browser read a space before the comma.
- */
+/** «Les side N på Kudos», named in one piece: a hidden box would add a space before a comma. */
 export const PageLink = ({
   href,
   page,
@@ -366,19 +338,14 @@ export const PageLink = ({
       className={className}
       aria-label={`${read}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets the
-          icon off from the words, as kunnskapsassistenten draws it. */}
+      {/* The words in a span, so Designsystemet sets the icon off from them. */}
       <span>{read}</span>
       <ExternalLinkIcon aria-hidden />
     </Link>
   );
 };
 
-/**
- * «Kilder til svar 2 av 3», which keeps «Utdrag 2» unambiguous: every answer numbers its excerpts
- * from 1. The count is for the eye; the block's live region says it. `aria-disabled` and not
- * `disabled` at the ends, so focus stays on the button the reader pressed.
- */
+/** «Kilder til svar 2 av 3»; `aria-disabled` at the ends keeps focus on the button pressed. */
 const AnswerSwitcher = ({
   label,
   index,
@@ -427,10 +394,7 @@ const AnswerSwitcher = ({
 type EmptyKind =
   'unasked' | 'none' | 'aborted' | 'failed' | 'clarification' | 'notStored' | 'notKept';
 
-/**
- * Why an answer has no sources. A finished answer whose footnotes cite something lost its sources
- * on the way to the store; one from a store that keeps none is unknown, not empty.
- */
+/** Why an answer has no sources; from a store that keeps none, they are unknown, not empty. */
 const emptyKind = (
   status: SourcesAnswerStatus | undefined,
   citationCount: number,
@@ -491,10 +455,7 @@ const EmptyState = ({
   );
 };
 
-/**
- * The line under a document's title: the host's own, or the reader's own document, or the
- * collection, the publication date and the version. Sources and the document view draw the same.
- */
+/** A document's subtitle: the host's, the own-document line, or collection, date and version. */
 export const useSourceSubtitle = (source: SourceDocument): string => {
   const t = useT();
   const f = useFormat();
@@ -513,10 +474,7 @@ export const useSourceSubtitle = (source: SourceDocument): string => {
     .join(' · ');
 };
 
-/**
- * «Les dokumentet på Kudos», named apart by the title and opening in a new tab; or why there is no
- * link: the reader's own document, or none the platform can share.
- */
+/** «Les dokumentet på Kudos» in a new tab, or why there is no link to the document. */
 export const DocumentLink = ({
   source,
   title,
@@ -541,8 +499,7 @@ export const DocumentLink = ({
     );
   const readDocument = corpus ? t('sources.readDocumentOn', { corpus }) : t('sources.readDocument');
   return (
-    // Named in one piece, its words and then which document: a hidden box after the words would
-    // make a browser read a space before the comma.
+    // Named in one piece: a hidden box after the words makes a browser read a space before a comma.
     <Link
       href={source.url}
       target="_blank"
@@ -552,8 +509,7 @@ export const DocumentLink = ({
       onClick={onFollow}
       aria-label={`${readDocument}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets the
-          icon off from the words, as kunnskapsassistenten draws it. */}
+      {/* The words in a span, so Designsystemet sets the icon off from them. */}
       <span>{readDocument}</span>
       <ExternalLinkIcon aria-hidden />
     </Link>
@@ -641,9 +597,7 @@ const SourceItem = ({
   const title = given || t('sources.untitled');
   const active = target?.chunkId && holds(source, target) ? target.chunkId : undefined;
   const byExcerpt = pairing?.mode === 'excerpt';
-  // While the footnotes name only documents, nothing is numbered: footnotes are numbered by
-  // excerpt, never by document. The passages, which nothing cites alone, wait behind «Vis utdrag
-  // fra dokumentet», and a document no footnote names says so.
+  // Footnotes that name only documents number nothing; the passages wait behind a button.
   const byDocument = pairing?.mode === 'document';
   const documentUncited = byDocument && !pairing.uses.has(documentKey);
   const passagesId = useId();
@@ -654,8 +608,7 @@ const SourceItem = ({
     };
 
   useEffect(() => {
-    // Once per target the app passes: new sources remount every card, and a target the app
-    // still holds must not move focus again.
+    // Once per target: new sources remount every card, and a held target must not move focus.
     if (!target || applied.has(target)) return;
     applied.add(target);
     if (target.chunkId && holds(source, target)) {
@@ -715,10 +668,7 @@ const SourceItem = ({
     : undefined;
 
   return (
-    // Designsystemet's card, but not its `Card`: that one makes a click anywhere on the card
-    // click the first link in a heading, here an excerpt's first link back, so a click on an
-    // excerpt nothing cites went to that footnote. Only a cited excerpt's links lead back.
-    // Listens for Escape only, when a footnote sent the reader here.
+    // Not `Card`, which sends any click to a heading's first link; Escape works after a footnote.
     <div
       ref={card}
       className="ds-card uib-sources-document ds-focus"
@@ -813,8 +763,7 @@ const SourceItem = ({
             const isOpen = openRows.has(key);
             const rowHits = hitsFor(hits, key);
             const here = excerpt !== undefined && excerpt.chunkId === active;
-            // Only a cited excerpt has a number and uses, and only its links lead back to the
-            // answer. One that nothing cites is unnumbered, last in its card, and says so.
+            // Only a cited excerpt is numbered and links back; an uncited one comes last, says so.
             const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
             const uses =
               n !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
@@ -1004,8 +953,7 @@ export const Sources = ({
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
-  // The cards, and the excerpts in each, in the order of their numbers, 1, 2, 3, as the footnotes
-  // run; the search steps through them in the same order.
+  // Cards and excerpts in the footnotes' order, 1, 2, 3, which the search steps through too.
   const order = useMemo(() => readingOrder(sources ?? [], pairing), [sources, pairing]);
   const prepared = useMemo(
     () =>
@@ -1126,8 +1074,7 @@ export const Sources = ({
   const listKey = (sources ?? [])
     .map((s, i) => `${prepared[i]?.key}:${s.excerpts.map((e) => e.chunkId).join(',')}`)
     .join('|');
-  // A heading one level over the documents', as kunnskapsassistenten's «Kilder» is the h2 over
-  // its h3 cards, so the cards sit under it in the outline.
+  // One level over the cards' headings, so they sit under it in the outline.
   const heading =
     title === false ? null : (
       <Heading
