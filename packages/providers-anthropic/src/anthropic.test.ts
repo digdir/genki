@@ -91,6 +91,30 @@ describe('anthropic-messages adapter', () => {
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false, false]);
   });
 
+  it('retries without temperature when Anthropic says temperature is an extra input', async () => {
+    const refusal = {
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message: 'temperature: Extra inputs are not permitted',
+      },
+    };
+    const { url, seen } = await fake((body) =>
+      'temperature' in body
+        ? { status: 400, json: refusal }
+        : { status: 200, json: message([{ type: 'text', text: 'Hei' }]) },
+    );
+    const port = router(url).open({ kind: 'model', id: 'foundry/claude-opus' }, testContext().ctx);
+
+    const answer = await port.chat({
+      messages: [{ role: 'user', content: 'hei' }],
+      temperature: 0,
+    });
+
+    expect(answer.content).toBe('Hei');
+    expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false]);
+  });
+
   it('keeps temperature when the model refuses a token parameter instead', async () => {
     const { url, seen } = await fake(() => ({
       status: 400,

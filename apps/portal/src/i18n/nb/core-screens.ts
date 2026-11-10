@@ -134,6 +134,7 @@ export const changes = defineNamespace({
   datasetEnrichmentRevert: 'rullet tilbake berikelsen av',
   datasetUpload: 'lastet opp filer til',
   datasetUploadDelete: 'slettet en opplastet fil fra',
+  datasetDelete: 'slettet datasettet',
   defaultSet: 'endret plattformstandarden',
   engineSwitchCancel: 'avbrøt bytte av søkemotor for',
   engineSwitchActivate: 'tok i bruk ny søkemotor for',

@@ -20,6 +20,8 @@ Who and what may call the platform, and what the platform may call: the caller's
 4. The system calls the [Frontend](frontend.md) routes with `X-API-Key`.
 5. `POST /tenants/{tenant}/api-keys/{id}/rotate` to replace the key, or `.../revoke` to stop it. An unknown key, or rotating a key that is already revoked, answers 404.
 
+The key lists (`GET /tenants/{tenant}/access` and `GET /tenants/{tenant}/services/{service}/api-keys`) give each key's `createdAt`. For a caller with `manage-services` they also give `createdBy`, the actor who created or last rotated the key as the audit log names it, with `createdByName` when the platform knows the person's name; keys from before this was recorded have `createdBy: null`. In a locked environment each key also has `modelsInLockdown`, which is `false` for a key that was created or rotated by a login that may not use models there (ADR 0033).
+
 A client's webhook test (`POST /tenants/{tenant}/clients/{id}/webhook/test`) sends a request out, so it needs `change-reason` and is audited. Removing an unknown client answers 404.
 
 For tools: `POST /tenants/{tenant}/tool-connections`, then `.../sync` and `.../approve` for each new tool before a service may name it.

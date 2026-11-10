@@ -557,3 +557,57 @@ describe('live dataset detail', () => {
     expect(await screen.findByText('Årsrapport')).toBeTruthy();
   });
 });
+
+describe('deleting a live dataset', () => {
+  it('deletes a dataset with a reason and says what stays', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`${veiledere}?tab=source`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
+    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
+    expect(within(card).getByText('Ingen tjenester ennå')).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett datasett' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett' }));
+    expect(within(card).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    fireEvent.change(within(card).getByLabelText('Begrunnelse'), {
+      target: { value: 'Feil modell, lager det på nytt' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett' }));
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv er slettet' }),
+    ).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'DELETE')).toEqual([
+      expect.objectContaining({
+        url: expect.stringMatching(/\/tenants\/999888777\/datasets\/veiledere$/),
+        reason: 'Feil modell, lager det på nytt',
+      }),
+    ]);
+    expect(
+      screen.getByText(
+        'Katalogoppføringen, 1 kilder, 2 opplastede filer og 1 generasjoner i søkemotoren er fjernet.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Ingenting ble igjen i søkemotoren.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Datasett' })).toBeTruthy();
+  });
+
+  it('the delete is disabled while a service reads the dataset', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`${nettsider}?tab=source`, fetch);
+    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
+    expect(within(card).getByText('Hjelperen')).toBeTruthy();
+    expect(within(card).getByText(/kan ikke slettes mens tjenester bruker det/)).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett datasett' }));
+    fireEvent.change(within(card).getByLabelText('Begrunnelse'), {
+      target: { value: 'Trenger det ikke lenger' },
+    });
+    const confirm = within(card).getByRole('button', { name: 'Slett' });
+    expect(confirm.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(confirm);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' }),
+    ).toBeTruthy();
+  });
+});

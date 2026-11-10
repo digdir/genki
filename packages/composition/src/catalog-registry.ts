@@ -587,6 +587,17 @@ export class CatalogRegistry {
           errors: [{ path: 'id', message: `${id} comes from a registered plug-in` }],
           conflict: true,
         };
+      if (input.kind === 'dataset' && !existing && (await this.#heldAfterDeletion(input.scope, id)))
+        return {
+          ok: false,
+          conflict: true,
+          errors: [
+            {
+              path: 'id',
+              message: `${id} was deleted and keeps its records on the knowledge database until they are dropped (issue 250)`,
+            },
+          ],
+        };
       const { spec, errors } = this.#normalize(
         input.kind,
         input.scope,
@@ -622,6 +633,11 @@ export class CatalogRegistry {
   #onKnowledgeServer(endpoint: unknown) {
     const slot = this.#slots.get(keyOf('knowledge-endpoint', String(endpoint ?? '')));
     return record(record(slot?.spec).options).connection === 'knowledge';
+  }
+
+  async #heldAfterDeletion(scope: string, id: string) {
+    const last = (await this.#options.store.history('dataset', scope, id)).at(-1);
+    return last?.deleted === true && this.#onKnowledgeServer(record(last.spec).endpoint);
   }
 
   /** A new generation id, `g-<yyyymmdd>-<6 hex>`, that no dataset's entry names. */

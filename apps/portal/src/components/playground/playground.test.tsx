@@ -460,6 +460,83 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
   });
 
+  it('The portal shows a 422 setup refusal as a refusal naming the part of the setup, not as a model that did not answer', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          {
+            path: 'setup.spec.knowledge.datasets[0].dataset',
+            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+          },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^Kjøringen ble avvist: noe i delen «Kunnskap» passer ikke med dette oppsettet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
+  it('words a model residency refusal in the language of the screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          { path: 'setup.spec.model.primary', message: 'model x runs in global, outside eu' },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/^Kjøringen ble avvist: /)).toBeTruthy();
+    expect(screen.queryByText(/runs in global/)).toBeNull();
+  });
+
+  it('never shows an English validation message on a bokmål screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [{ path: 'setup.spec.model.primary', message: 'model x cannot call tools' }],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: noe i delen «Modell» passer ikke med dette oppsettet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cannot call tools/)).toBeNull();
+  });
+
+  it("compares against a model within the first model's data location", async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'openai/gpt-5', name: 'GPT-5', dataLocation: 'global', status: 'allowed' },
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options, runs });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+      target: { value: 'Hei' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
+  });
+
   it('starts on the first service exposed for chat, not the first in the list', async () => {
     const options = structuredClone(examplePlaygroundOptions);
     options.services.sort((x) => (x.chat ? 1 : -1));
