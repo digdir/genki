@@ -1449,7 +1449,8 @@ const evalRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/feedback',
-    summary: 'Feedback on runs; a rating given fewer than five times shows only rating and date',
+    summary:
+      'Feedback on runs, the latest per run and credential; a rating given fewer than five times shows only rating and date',
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
