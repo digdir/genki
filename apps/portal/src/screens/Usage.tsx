@@ -1,3 +1,4 @@
+import { DownloadIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -53,9 +54,8 @@ import {
   type Period,
 } from './usage/model';
 import { UsageChart } from './usage/UsageChart';
+import { UsageSources } from './usage/UsageSources';
 import './usage.css';
-
-const DOWNLOAD = 'M12 4v11M7 10l5 5 5-5M5 20h14';
 
 type SortKey = 'name' | 'tok' | 'cost';
 type DialogState = { kind: 'export' } | { kind: 'limit'; id: string } | undefined;
@@ -620,6 +620,8 @@ const UsageView = ({
         <p className="meta">{t('usage.costNote')}</p>
       </section>
 
+      {project === undefined ? <UsageSources report={report} /> : null}
+
       {project === undefined && report.byProject?.length ? (
         <section aria-labelledby="prosjekt-h" className="stack-sm">
           <div className="row-between">
@@ -845,7 +847,7 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
         </div>
         {hasData ? (
           <Button variant="secondary" onClick={() => setDialog({ kind: 'export' })}>
-            <Icon d={DOWNLOAD} />
+            <Icon icon={DownloadIcon} />
             {t('usage.export')}
           </Button>
         ) : null}

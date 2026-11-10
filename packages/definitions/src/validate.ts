@@ -4,6 +4,7 @@ import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
 import type { z } from 'zod';
 import {
+  decisionModelOf,
   publicNamesOf,
   residencies,
   serviceDefinition,
@@ -37,7 +38,10 @@ export interface PluginSchemas {
   tools: Map<string, z.ZodType>;
   guardrails: Map<string, z.ZodType>;
   blocks: Set<string>;
-  models: Map<string, { residency: (typeof residencies)[number]; capabilities: string[] }>;
+  models: Map<
+    string,
+    { residency: (typeof residencies)[number]; capabilities: string[]; operations?: string[] }
+  >;
   settings?: SettingDefinition[];
   retrieval?: z.ZodType;
   rerankers?: Set<string>;
@@ -69,6 +73,37 @@ const joinPath = (base: (string | number)[], issue: { path: PropertyKey[] }) =>
     .join('')
     .replace(/^\./, '');
 
+type Issue = z.core.$ZodIssue;
+
+const depth = (issues: Issue[]) => Math.min(...issues.map((i) => i.path.length));
+
+const wrongType = (branch: Issue[]) =>
+  branch.every((i) => i.code === 'invalid_type' && i.path.length === 0);
+
+const closestBranch = (branches: Issue[][]) => {
+  const fitting = branches.filter((branch) => !wrongType(branch));
+  return (fitting.length > 0 ? fitting : branches).reduce((best, branch) =>
+    depth(branch) > depth(best) || (depth(branch) === depth(best) && branch.length < best.length)
+      ? branch
+      : best,
+  );
+};
+
+const leafIssues = (issue: Issue): Issue[] =>
+  issue.code === 'invalid_union' && issue.errors.length > 0
+    ? closestBranch(issue.errors).flatMap((inner) =>
+        leafIssues({ ...inner, path: [...issue.path, ...inner.path] }),
+      )
+    : [issue];
+
+const messageOf = (issue: Issue) =>
+  issue.code === 'invalid_type' && issue.expected === 'nonoptional' ? 'Required' : issue.message;
+
+const errorsFrom = (issues: Issue[], base: (string | number)[]) =>
+  issues
+    .flatMap(leafIssues)
+    .map((issue) => ({ path: joinPath(base, issue), message: messageOf(issue) }));
+
 const check = (
   schema: z.ZodType,
   value: unknown,
@@ -76,23 +111,14 @@ const check = (
   errors: ValidationError[],
 ) => {
   const result = schema.safeParse(value);
-  if (!result.success) {
-    for (const issue of result.error.issues)
-      errors.push({ path: joinPath(base, issue), message: issue.message });
-  }
+  if (!result.success) errors.push(...errorsFrom(result.error.issues, base));
 };
 
 const parse = <T>(schema: z.ZodType<T>, input: unknown): Validated<T> => {
   const parsed = schema.safeParse(input);
   return parsed.success
     ? { ok: true, definition: parsed.data }
-    : {
-        ok: false,
-        errors: parsed.error.issues.map((issue) => ({
-          path: joinPath([], issue),
-          message: issue.message,
-        })),
-      };
+    : { ok: false, errors: errorsFrom(parsed.error.issues, []) };
 };
 
 const placeWords: Record<Residency, string> = {
@@ -267,6 +293,43 @@ const missingLanguageInstructions = (spec: ServiceDefinition['spec']): Validatio
   });
 };
 
+const decisionProblems = (
+  spec: ServiceDefinition['spec'],
+  plugins: PluginSchemas,
+): ValidationError[] => {
+  const errors: ValidationError[] = [];
+  const id = decisionModelOf(spec);
+  const model = id ? plugins.models.get(id) : undefined;
+  const path = 'spec.guardrails.purpose-check.model';
+  if (id && !model) errors.push({ path, message: `unknown model ${id}` });
+  if (id && model && !(model.operations ?? ['chat']).includes('decide'))
+    errors.push({ path, message: `model ${id} does not offer the decide operation` });
+  if (id && model && wider(model.residency, spec.model.residency))
+    errors.push({
+      path,
+      message: `model ${id} runs in ${model.residency}, outside ${spec.model.residency}`,
+    });
+  if (!spec.decidesAboutPeople) return errors;
+  if (spec.riskClass !== 'high')
+    errors.push({
+      path: 'spec.riskClass',
+      message: 'a service that decides about people must have risk class high',
+    });
+  if (spec.guardrails['human-approval'] === undefined)
+    errors.push({
+      path: 'spec.guardrails.human-approval',
+      message:
+        'a service that decides about people needs a person to approve each result before it is final',
+    });
+  if (spec.guardrails['pii-out-of-log'] !== undefined)
+    errors.push({
+      path: 'spec.guardrails.pii-out-of-log',
+      message:
+        'a service that decides about people must keep the model input for review, so it cannot remove personal data from the run log',
+    });
+  return errors;
+};
+
 const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): ValidationError[] => {
   const { spec } = definition;
   const errors: ValidationError[] = [];
@@ -353,6 +416,19 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
     else if (residencies.indexOf(model.residency) > residencies.indexOf(spec.model.residency))
       errors.push({
         path: `spec.model.roles.${role}`,
+        message: `model ${id} runs in ${model.residency}, outside ${spec.model.residency}`,
+      });
+  }
+
+  for (const [kind, id] of Object.entries(spec.model.operations ?? {})) {
+    const path = `spec.model.operations.${kind}`;
+    const model = plugins.models.get(id);
+    if (!model) errors.push({ path, message: `unknown model ${id}` });
+    else if (!(model.operations ?? ['chat']).includes(kind))
+      errors.push({ path, message: `model ${id} does not offer the ${kind} operation` });
+    else if (residencies.indexOf(model.residency) > residencies.indexOf(spec.model.residency))
+      errors.push({
+        path,
         message: `model ${id} runs in ${model.residency}, outside ${spec.model.residency}`,
       });
   }
@@ -451,6 +527,7 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
   }
   errors.push(...variantFilterProblems(spec, plugins));
   errors.push(...residencyProblems(spec, plugins));
+  errors.push(...decisionProblems(spec, plugins));
   errors.push(...inputFieldProblems(spec));
   errors.push(...tableColumnProblems(spec.output));
   if (spec.knowledge.reranker !== undefined && !plugins.rerankers?.has(spec.knowledge.reranker)) {

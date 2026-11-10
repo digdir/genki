@@ -82,6 +82,8 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
     cat: 'Svar',
     desc: 'Tomt bruker standarden til arbeidsmåten.',
   },
+  'knowledge.nightWindow': { label: 'Nattvindu for tungt arbeid', cat: 'Søk' },
+  'knowledge.heavyThreshold': { label: 'Grense for tungt arbeid (tekstbiter)', cat: 'Søk' },
   'knowledge.switchRetentionDays': { label: 'Dager forrige søkemotor beholdes', cat: 'Søk' },
   'assistant.enabled': { label: 'Byggeassistenten er på', cat: 'Assistent' },
   'assistant.dailyTokens': {

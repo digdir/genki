@@ -29,7 +29,7 @@ describe('the API log', () => {
         models: {
           endpoints: {
             fake: {
-              protocol: 'openai-chat',
+              families: { openai: '' },
               baseURL: `${model.url}/v1`,
               auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
             },
@@ -82,7 +82,7 @@ describe('the API log', () => {
     await expect(run.result).rejects.toThrow();
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(lines).toEqual([
+    expect(lines.filter((l) => !l.msg.includes('processor record'))).toEqual([
       {
         msg: 'model call failed',
         fields: {

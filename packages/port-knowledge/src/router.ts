@@ -196,6 +196,14 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     );
   }
 
+  /** Each routed dataset's config with the endpoint it is on. */
+  datasetConfigs(): { endpoint: string; config: DatasetConfig }[] {
+    return [...this.#routes.values()].map(({ dataset, config }) => ({
+      endpoint: dataset.endpoint,
+      config,
+    }));
+  }
+
   resolve(idOrAlias: string): string | undefined {
     if (this.#routes.has(idOrAlias)) return idOrAlias;
     return this.#aliases.get(idOrAlias);
@@ -243,7 +251,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
   }
 
   #port(route: Route, ref: Ref, ctx: PortContext): KnowledgePort {
-    const { dataset, config, connection, engine, capabilities } = route;
+    const { dataset, connection, engine, capabilities } = route;
     const declared = new Set(capabilities);
     const need = (capability: KnowledgeCapability) => {
       if (!declared.has(capability))
@@ -258,6 +266,8 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     const max = this.options.maxResidency;
     if (max && order.indexOf(dataset.residency) > order.indexOf(max))
       throw new KnowledgeError('residency', `dataset ${dataset.id} is stored outside ${max}`);
+    // Only past the checks above does the connection learn which dataset it may read.
+    const config: DatasetConfig = { ...route.config, allowed: [dataset.id] };
 
     const checkFilters = (filters: Record<string, FilterValue> = {}) => {
       for (const [field, value] of Object.entries(filters)) {
@@ -308,6 +318,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
             engine,
             ...(served?.generation ? { generation: served.generation } : {}),
             ...(served?.collections?.length ? { collections: [...served.collections] } : {}),
+            ...(served?.dataVersion === undefined ? {} : { dataVersion: served.dataVersion }),
           },
         });
       })());
@@ -336,6 +347,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     const linkHits = (hits: Hit[]) => hits.map((hit) => linked(hit, hit.document));
     const maxBatch = this.options.maxBatch ?? 50;
     const listDocuments = connection.documents?.bind(connection);
+    const resolveCitations = connection.resolveCitations?.bind(connection);
     const exporter = connection.export;
 
     return {
@@ -402,12 +414,42 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
             },
           }
         : {}),
+      ...(resolveCitations
+        ? {
+            resolveCitations: async (ids: string[]) => {
+              if (ids.length === 0) return [];
+              if (ids.length > (this.options.maxLimit ?? 100) * 2)
+                throw new KnowledgeError('bad_request', 'too many ids in one citation lookup');
+              return (await guard(() => resolveCitations(config, ids, ctx.signal))).map((c) =>
+                linked(c, c.document),
+              );
+            },
+          }
+        : {}),
       ...(exporter
         ? {
             export: {
               vectors: exporter.vectors,
               documents: () => exporter.documents(config, ctx.signal),
               count: (cap: number) => guard(() => exporter.count(config, cap, ctx.signal)),
+              ...(exporter.list
+                ? {
+                    list: () =>
+                      (exporter.list as NonNullable<typeof exporter.list>)(config, ctx.signal),
+                  }
+                : {}),
+              ...(exporter.document
+                ? {
+                    document: (id: string) =>
+                      guard(() =>
+                        (exporter.document as NonNullable<typeof exporter.document>)(
+                          config,
+                          id,
+                          ctx.signal,
+                        ),
+                      ),
+                  }
+                : {}),
             },
           }
         : {}),

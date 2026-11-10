@@ -6,8 +6,8 @@ import {
   type RetrievalComparison,
   type RetrievalRun,
 } from '@genai/eval';
-import { embedIndexDocument } from '@genai/ingest';
-import type { PortContext } from '@genai/kernel';
+import { copyOwner, embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
+import { residencyAllows, type PortContext } from '@genai/kernel';
 import {
   KnowledgeError,
   type DatasetEmbedding,
@@ -19,10 +19,11 @@ import {
   type Residency,
 } from '@genai/port-knowledge';
 import type { Context } from 'hono';
-import { AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
+import { AdminRefused, engineSwitchPublisher, refusedBy, routeOnlyActions } from './admin.js';
 import type { CatalogItem } from './catalog-registry.js';
 import { appendVersion, platformScope, type ConfigEntry } from './config-store.js';
 import { indexIngestionBackend } from './index-ingestion.js';
+import type { Execution, Pipeline } from './ingestion.js';
 import {
   engineOf,
   problem,
@@ -35,7 +36,7 @@ import {
 import { writeKeyEngines } from './knowledge-engines.js';
 import type { MountDeps, ModuleDeps, PlatformModule } from './platform-modules.js';
 import { enterTenant } from './access.js';
-import { t } from './i18n/index.js';
+import { t, translateMessage } from './i18n/index.js';
 import { changeReasonOf, isReasonLongEnough, minimumReasonLength, reasonTooShort } from './http.js';
 
 export const switchStates = [
@@ -43,6 +44,7 @@ export const switchStates = [
   'failed',
   'comparing',
   'ready',
+  'activating',
   'active',
   'rolled_back',
   'cancelled',
@@ -50,7 +52,9 @@ export const switchStates = [
 export type SwitchState = (typeof switchStates)[number];
 export type SwitchMethod = 'copy' | 'reingest';
 
-const openStates: SwitchState[] = ['running', 'failed', 'comparing', 'ready'];
+const openStates: SwitchState[] = ['running', 'failed', 'comparing', 'ready', 'activating'];
+/** A switch into the knowledge database holds its dataset's other runs while its own are open. */
+const holdingStates: SwitchState[] = ['running', 'activating'];
 const jobStates: SwitchState[] = ['running', 'comparing'];
 
 export interface Range {
@@ -70,10 +74,13 @@ export interface SwitchEstimate {
   from: string;
   to: string;
   estimate: true;
-  basis: { documents: number; counted: boolean };
+  /** For a copy, also the chunks and tokens scaled from the first documents the export hands over. */
+  basis: { documents: number; counted: boolean; chunks?: number; tokens?: number };
   method?: SwitchMethod;
   copy: MethodEstimate;
   reingest: MethodEstimate;
+  /** The embedding models the platform serves, for a switch of a dataset that has none. */
+  embeddings?: { model: string; dimensions: number }[];
 }
 
 export interface SwitchProgress {
@@ -94,6 +101,8 @@ export interface GenerationCleanup {
   generation: string;
   dropped?: string;
   failed?: string;
+  /** When a `knowledge.drop` job was sent for it; the worker drops it (ADR 0025). */
+  sent?: string;
 }
 
 export interface EngineSwitchSpec {
@@ -128,6 +137,18 @@ export interface EngineSwitchSpec {
   decisions: SwitchDecision[];
   cleanup: GenerationCleanup[];
   modelsAdmitted?: boolean;
+  /** Into the knowledge database: the ingestion runs it follows now, for its fill or its refresh. */
+  runs?: string[];
+  /** Into the knowledge database: its fill has ended, so a retry compares again. */
+  filled?: boolean;
+  /** Documents of its fill whose jobs ended as dead letters; the refresh writes them again. */
+  failedDocuments?: number;
+  /** A copy into the knowledge database: how its documents are named, and the ones it copies (#366). */
+  copy?: { ids?: 'kudos'; documents?: string[] };
+  /** A copy's documents once its fill has ended: copied, skipped by reason and failed. */
+  copied?: CopyCounts;
+  /** Fill runs a retry left behind, so a copy's counts keep what they wrote. */
+  earlierRuns?: string[];
 }
 
 export interface EngineSwitchView {
@@ -150,10 +171,22 @@ export interface EngineSwitchView {
   error?: { message: string; percent: number };
   comparison?: RetrievalComparison;
   comparisonNote?: string;
+  generation: string;
+  failedDocuments?: number;
+  /** A copy's documents: copied, skipped by reason and failed (#366). */
+  copy?: CopyCounts;
+  /** A copy of named documents: how many it names; it compares but is never activated. */
+  subset?: number;
   minimumReasonLength: number;
   previousKeptUntil?: string;
   canRollback: boolean;
   decision?: SwitchDecision;
+}
+
+export interface CopyCounts {
+  copied: number;
+  skipped: Record<string, number>;
+  failed: number;
 }
 
 export interface ServiceUse {
@@ -183,6 +216,8 @@ export interface DatasetEngineView {
 
 export interface EngineSwitchesModule extends PlatformModule {
   sweep(): Promise<{ ran: boolean; stalled: number; dropped: number; expired: number }>;
+  /** Follows the runs of switches into the knowledge database; the minute timer calls it. */
+  follow(): Promise<void>;
 }
 
 export interface EngineSwitchOptions extends SearchModuleExtras {
@@ -200,6 +235,7 @@ export const engineSwitchActions = [
   'platform.engine-switch.start',
   'platform.engine-switch.retry',
   'platform.engine-switch.cancel',
+  'platform.engine-switch.activate',
 ] as const;
 
 class Refusal extends Error {
@@ -236,6 +272,12 @@ const range = (value: number, unit: number): Range => ({
 });
 
 const chunksPerDocument = 8;
+/** Characters per token for Norwegian text, for a copy's estimate. */
+const charactersPerToken = 3.5;
+/** The documents a copy's estimate reads to scale chunks and characters to the dataset. */
+const estimateSample = 100;
+const maxCopyDocuments = 1000;
+const copiedChunksPerMinute = 80;
 const tokensPerChunk = 300;
 const defaultEmbeddingNokPerThousand = 0.0013;
 const defaultModelPrice = { inputPerThousand: 0.025, outputPerThousand: 0.1 };
@@ -322,6 +364,35 @@ export const createEngineSwitchesModule =
 
     const sourceEngine = (item: CatalogItem) =>
       catalog.get('knowledge-endpoint', String(item.spec.endpoint))?.spec.engine;
+    // pgvector on the platform database and on the knowledge server is one engine with two stores.
+    const connectionOf = (spec: Record<string, unknown> | undefined) =>
+      (spec?.options as { connection?: unknown } | undefined)?.connection ?? 'platform';
+    const sharesStorage = (item: CatalogItem, target: CatalogItem) =>
+      connectionOf(catalog.get('knowledge-endpoint', String(item.spec.endpoint))?.spec) ===
+      connectionOf(target.spec);
+
+    /** A switch into the knowledge database fills its generation through ingestion runs (ADR 0025). */
+    const onKnowledge = (endpoint: string) =>
+      connectionOf(catalog.get('knowledge-endpoint', endpoint)?.spec) === 'knowledge';
+    const intoKnowledge = (spec: Pick<EngineSwitchSpec, 'to'>) => onKnowledge(spec.to);
+    const sameRun = (a: EngineSwitchSpec, b: EngineSwitchSpec) =>
+      a.generation === b.generation && a.attempt === b.attempt;
+
+    /** What a dataset on the knowledge database does not take yet (#139), as the switch's reason. */
+    const knowledgeProblem = async (tenant: string, item: CatalogItem) => {
+      const pipelines = await deps.ingestion.list(tenant, item.id);
+      if (pipelines.length > 1)
+        return t('operations.switchKnowledgeOnePipeline', {
+          pipelines: pipelines.map((p) => p.id).join(', '),
+        });
+      for (const pipeline of pipelines) {
+        const source = knowledgeSourceRefusal(pipeline.spec.source.kind);
+        if (source) return source;
+        if (pipeline.spec.phrases)
+          return t('operations.switchKnowledgePhrases', { pipeline: pipeline.id });
+      }
+      return undefined;
+    };
 
     const exporterOf = (item: CatalogItem, signal: AbortSignal) => {
       try {
@@ -355,6 +426,51 @@ export const createEngineSwitchesModule =
       } catch {
         return false;
       }
+    };
+
+    /** The embedding models a dataset may be embedded with: none wider than its residency. */
+    const modelsFor = (item: CatalogItem) => {
+      const residency = item.spec.residency as Residency | undefined;
+      return (extras.embedders?.models?.() ?? []).filter(
+        (m) => !residency || !m.residency || residencyAllows(residency, m.residency),
+      );
+    };
+    const modelAllowed = (item: CatalogItem, model: string) => {
+      const known = extras.embedders?.models?.().find((m) => m.model === model);
+      return !known || modelsFor(item).some((m) => m.model === model);
+    };
+
+    /** A copy into the knowledge database reads each document again in its index job (#366). */
+    const copyable = (item: CatalogItem) => {
+      const exporter = exporterOf(item, AbortSignal.timeout(1000));
+      return Boolean(exporter?.list && exporter.document);
+    };
+
+    /** The first documents the export hands over: their chunks and characters, per document. */
+    const sampleOf = async (item: CatalogItem) => {
+      const exporter = exporterOf(item, AbortSignal.timeout(60_000));
+      if (!exporter) return undefined;
+      let documents = 0;
+      let chunks = 0;
+      let characters = 0;
+      const iterator = exporter.documents()[Symbol.asyncIterator]();
+      try {
+        while (documents < estimateSample) {
+          const next = await iterator.next();
+          if (next.done) break;
+          documents++;
+          chunks += next.value.chunks.length;
+          characters += next.value.chunks.reduce((n, c) => n + c.text.length, 0);
+        }
+      } finally {
+        await iterator.return?.();
+      }
+      return documents === 0
+        ? undefined
+        : {
+            chunksPerDocument: chunks / documents,
+            charactersPerChunk: characters / Math.max(1, chunks),
+          };
     };
 
     const exportedWithoutVectors = (item: CatalogItem) =>
@@ -392,7 +508,11 @@ export const createEngineSwitchesModule =
         throw new Refusal(409, t('operations.switchWriteKeyRequired'));
       if (!deps.writers.engines().includes(engine))
         throw new Refusal(409, t('operations.switchCannotWrite'));
-      if (engine === sourceEngine(item) && engineOf(deps, engine)?.builtin)
+      if (
+        engine === sourceEngine(item) &&
+        engineOf(deps, engine)?.builtin &&
+        sharesStorage(item, target)
+      )
         throw new Refusal(409, t('operations.switchSharedStorage'));
       const description = engineOf(deps, engine);
       const needsVectors = description?.writer?.needsVectors ?? false;
@@ -402,19 +522,33 @@ export const createEngineSwitchesModule =
         needsVectors && embedding && !extras.embedders?.has(embedding.model)
           ? t('operations.switchMissingModel', { model: embedding.model })
           : undefined;
-      const copyProblem =
-        missingModel ??
-        (current && embedding && current.model !== embedding.model
-          ? t('operations.switchCopyNeedsSameModel', {
-              current: current.model,
-              wanted: embedding.model,
-            })
-          : !readable(item)
-            ? t('operations.switchCannotRead')
-            : undefined);
+      const knowledge = onKnowledge(target.id);
+      const copyProblem = knowledge
+        ? (missingModel ??
+          (embedding && !modelAllowed(item, embedding.model)
+            ? t('operations.switchModelResidency', { model: embedding.model })
+            : undefined) ??
+          (!embedding && extras.embedders?.models && modelsFor(item).length === 0
+            ? t('operations.switchNoModelForResidency')
+            : undefined) ??
+          (!copyable(item) ? t('operations.switchKnowledgeCopyExport') : undefined))
+        : (missingModel ??
+          (current && embedding && current.model !== embedding.model
+            ? t('operations.switchCopyNeedsSameModel', {
+                current: current.model,
+                wanted: embedding.model,
+              })
+            : !readable(item)
+              ? t('operations.switchCannotRead')
+              : undefined));
       const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
       const reingestProblem =
-        missingModel ?? (pipelines.length === 0 ? t('operations.switchNoPipeline') : undefined);
+        missingModel ??
+        (pipelines.length === 0
+          ? t('operations.switchNoPipeline')
+          : knowledge
+            ? await knowledgeProblem(tenant, item)
+            : undefined);
       return {
         target,
         engine,
@@ -429,21 +563,41 @@ export const createEngineSwitchesModule =
       tenant: string,
       item: CatalogItem,
       plan: Plan,
+      model?: string,
     ): Promise<Omit<SwitchEstimate, 'method'>> => {
       const { documents, counted } = await countDocuments(item, 20_000).then(
         (found) => ({ documents: found, counted: true }),
         () => ({ documents: 1000, counted: false }),
       );
       const chunks = documents * chunksPerDocument;
-      const embeddingPrice = plan.embedding
-        ? (deps.prices[plan.embedding.model]?.inputPerThousand ?? defaultEmbeddingNokPerThousand)
+      const priced = model ?? plan.embedding?.model;
+      const embeddingPrice = priced
+        ? (deps.prices[priced]?.inputPerThousand ?? defaultEmbeddingNokPerThousand)
         : 0;
       const sourceHasVectors = !exportedWithoutVectors(item) && Boolean(item.spec.embedding);
-      const reembeds = plan.needsVectors && Boolean(plan.embedding) && !sourceHasVectors;
+      const reembeds = plan.needsVectors && Boolean(priced) && !sourceHasVectors;
       const embedCost =
-        plan.needsVectors && plan.embedding ? (chunks * tokensPerChunk * embeddingPrice) / 1000 : 0;
-      const copyCost = reembeds ? embedCost : 0;
-      const copyMinutes = 2 + documents * (reembeds ? 0.01 : 0.002);
+        plan.needsVectors && priced ? (chunks * tokensPerChunk * embeddingPrice) / 1000 : 0;
+      // A copy into the knowledge database embeds the source's own chunks, scaled from a sample.
+      const sample =
+        onKnowledge(plan.target.id) && !plan.copyProblem
+          ? await sampleOf(item).catch(() => undefined)
+          : undefined;
+      const copied = sample
+        ? {
+            chunks: Math.round(documents * sample.chunksPerDocument),
+            tokens: Math.round(
+              (documents * sample.chunksPerDocument * sample.charactersPerChunk) /
+                charactersPerToken,
+            ),
+          }
+        : undefined;
+      const copyCost = copied ? (copied.tokens * embeddingPrice) / 1000 : reembeds ? embedCost : 0;
+      // A copy into the knowledge database runs at about 80 chunks a minute (a local copy of
+      // digdir/public-docs: 5,766 chunks in 73 minutes), bounded by its index jobs' embedding.
+      const copyMinutes = copied
+        ? 2 + copied.chunks / copiedChunksPerMinute
+        : 2 + documents * (reembeds ? 0.01 : 0.002);
       const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
       const phraseCost = pipelines.reduce((sum, p) => {
         if (!p.spec.phrases) return sum;
@@ -470,7 +624,7 @@ export const createEngineSwitchesModule =
         from: String(item.spec.endpoint),
         to: plan.target.id,
         estimate: true,
-        basis: { documents, counted },
+        basis: { documents, counted, ...(copied ?? {}) },
         copy: method(plan.copyProblem, copyCost, copyMinutes),
         reingest: method(plan.reingestProblem, embedCost + phraseCost, reingestMinutes),
       };
@@ -503,6 +657,10 @@ export const createEngineSwitchesModule =
         ...(spec.error ? { error: spec.error } : {}),
         ...(spec.comparison ? { comparison: spec.comparison } : {}),
         ...(spec.comparisonNote ? { comparisonNote: spec.comparisonNote } : {}),
+        generation: spec.generation,
+        ...(spec.failedDocuments ? { failedDocuments: spec.failedDocuments } : {}),
+        ...(spec.copied ? { copy: spec.copied } : {}),
+        ...(spec.copy?.documents ? { subset: spec.copy.documents.length } : {}),
         minimumReasonLength: minimumReason(spec),
         ...(keptUntil ? { previousKeptUntil: keptUntil } : {}),
         canRollback:
@@ -601,8 +759,13 @@ export const createEngineSwitchesModule =
       for (const c of cases) {
         if (signal.aborted) throw new Stopped();
         old[c.id] = await timedSearch(() => deps.knowledge.open(ref, ctx), c.question);
+        // Into the knowledge database, the switch's generation is read by name once it is attached.
         next[c.id] = await timedSearch(
-          () => deps.knowledge.openAt(ref, spec.to, ctx, overridesOf(spec)),
+          () =>
+            deps.knowledge.openAt(ref, spec.to, ctx, {
+              ...overridesOf(spec),
+              ...(intoKnowledge(spec) ? { generation: spec.generation } : {}),
+            }),
           c.question,
         );
       }
@@ -710,7 +873,7 @@ export const createEngineSwitchesModule =
           scope,
           id,
           (s) =>
-            s.state === 'running' && s.generation === spec.generation
+            s.state === 'running' && sameRun(s, spec)
               ? { ...s, progress: { percent: next, documents: done, total } }
               : undefined,
           systemActor,
@@ -721,36 +884,39 @@ export const createEngineSwitchesModule =
       try {
         const item = catalog.get('dataset', spec.dataset);
         if (!item) throw new Error(`the dataset ${spec.dataset} no longer exists`);
-        let replaced: string | undefined;
-        if (spec.method === 'copy') {
-          const route = deps.writers.openAt(spec.dataset, spec.to, { signal }, overridesOf(spec));
-          replaced = await copyInto(scope, item, route, spec, signal, report);
-        } else replaced = await reingestInto(scope, item, spec, signal, report);
-        const comparing = await update(
-          scope,
-          id,
-          (s) =>
-            s.state === 'running' && s.generation === spec.generation
-              ? {
-                  ...s,
-                  state: 'comparing',
-                  progress: { ...s.progress, percent: 100 },
-                  cleanup:
-                    replaced && replaced !== spec.generation
-                      ? [...s.cleanup, { endpoint: spec.to, generation: replaced }]
-                      : s.cleanup,
-                }
-              : undefined,
-          systemActor,
-          'Overføringen er ferdig',
-        );
-        if (!comparing) throw new Stopped();
+        // A switch into the knowledge database is filled by its runs; this instance only compares.
+        if (spec.state === 'running') {
+          let replaced: string | undefined;
+          if (spec.method === 'copy') {
+            const route = deps.writers.openAt(spec.dataset, spec.to, { signal }, overridesOf(spec));
+            replaced = await copyInto(scope, item, route, spec, signal, report);
+          } else replaced = await reingestInto(scope, item, spec, signal, report);
+          const comparing = await update(
+            scope,
+            id,
+            (s) =>
+              s.state === 'running' && sameRun(s, spec)
+                ? {
+                    ...s,
+                    state: 'comparing',
+                    progress: { ...s.progress, percent: 100 },
+                    cleanup:
+                      replaced && replaced !== spec.generation
+                        ? [...s.cleanup, { endpoint: spec.to, generation: replaced }]
+                        : s.cleanup,
+                  }
+                : undefined,
+            systemActor,
+            'Overføringen er ferdig',
+          );
+          if (!comparing) throw new Stopped();
+        }
         const result = await compare(scope, item, spec, signal);
         await update(
           scope,
           id,
           (s) =>
-            s.state === 'comparing' && s.generation === spec.generation
+            s.state === 'comparing' && sameRun(s, spec)
               ? {
                   ...s,
                   state: 'ready',
@@ -768,7 +934,7 @@ export const createEngineSwitchesModule =
           scope,
           id,
           (s) =>
-            (s.state === 'running' || s.state === 'comparing') && s.generation === spec.generation
+            (s.state === 'running' || s.state === 'comparing') && sameRun(s, spec)
               ? { ...s, state: 'failed', error: { message, percent: s.progress.percent } }
               : undefined,
           systemActor,
@@ -778,25 +944,25 @@ export const createEngineSwitchesModule =
     };
 
     const keyOf = (scope: string, id: string) => `${scope}\u0000${id}`;
-    const heartbeat = async (scope: string, id: string, generation: string) =>
+    const heartbeat = async (scope: string, id: string, generation: string, attempt: number) =>
       Boolean(
         await update(
           scope,
           id,
           (s) =>
-            jobStates.includes(s.state) && s.generation === generation
+            jobStates.includes(s.state) && s.generation === generation && s.attempt === attempt
               ? { ...s, heartbeatAt: now().toISOString() }
               : undefined,
           systemActor,
           'Overføringen pågår',
         ),
       );
-    const launch = (scope: string, id: string, generation: string) => {
+    const launch = (scope: string, id: string, generation: string, attempt: number) => {
       const controller = new AbortController();
       const key = keyOf(scope, id);
       jobs.set(key, controller);
       const beat = setInterval(() => {
-        void heartbeat(scope, id, generation).then(
+        void heartbeat(scope, id, generation, attempt).then(
           (alive) => {
             if (!alive) controller.abort();
           },
@@ -810,8 +976,10 @@ export const createEngineSwitchesModule =
       });
     };
 
+    // A switch into the knowledge database has no heartbeat while its runs fill it.
     const stale = (spec: EngineSwitchSpec) =>
       jobStates.includes(spec.state) &&
+      !(spec.state === 'running' && intoKnowledge(spec)) &&
       now().getTime() - new Date(spec.heartbeatAt ?? spec.updatedAt).getTime() > staleAfterMs;
 
     const markStalled = async () => {
@@ -839,6 +1007,303 @@ export const createEngineSwitchesModule =
     };
     const stop = (scope: string, id: string) => jobs.get(keyOf(scope, id))?.abort();
 
+    const failure = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+    /**
+     * Starts one ingestion run per enabled pipeline into the switch's generation, for its fill or its
+     * refresh, and records them on the switch; a run that cannot start fails the fill or the refresh.
+     */
+    const startRuns = async (scope: string, id: string, by: string, principal?: Principal) => {
+      const entry = (await store.history(kind, scope, id)).at(-1);
+      if (!entry) return;
+      const spec = entry.spec as EngineSwitchSpec;
+      // A copy fills and refreshes with one run of its own, which no pipeline config names (#366).
+      const pipelines: Pick<Pipeline, 'dataset' | 'id' | 'version'>[] =
+        spec.method === 'copy'
+          ? [{ dataset: spec.dataset, id: copyOwner, version: 0 }]
+          : (await deps.ingestion.list(scope, spec.dataset)).filter((p) => p.spec.enabled);
+      const runs: string[] = [];
+      let refused: string | undefined;
+      for (const pipeline of pipelines) {
+        const started = await deps.ingestion
+          .startSwitchRun({
+            pipeline: pipeline as Pipeline,
+            generation: spec.generation,
+            engineSwitch: id,
+            by,
+            ...(principal ? { principal } : {}),
+          })
+          .catch((error: unknown) => ({ ok: false as const, message: failure(error) }));
+        if (started.ok) runs.push(started.value.id);
+        else refused = started.message;
+      }
+      if (pipelines.length === 0) refused = t('operations.switchNoPipeline');
+      const saved = await update(
+        scope,
+        id,
+        (s) =>
+          sameRun(s, spec) && s.state === spec.state
+            ? {
+                ...s,
+                runs,
+                ...(refused ? ended(s, refused) : {}),
+              }
+            : undefined,
+        systemActor,
+        refused ? 'Kjøringen kunne ikke starte' : 'Kjøringene er startet',
+      );
+      // The switch was cancelled or changed while they started: nothing would follow them.
+      if (!saved)
+        for (const run of runs)
+          await deps.ingestion
+            .cancel({ dataset: spec.dataset, execution: run, by: systemActor })
+            .catch(() => undefined);
+    };
+
+    /** A fill that fails fails the switch; a refresh that fails puts it back to ready (ADR 0025). */
+    const ended = (s: EngineSwitchSpec, message: string): Partial<EngineSwitchSpec> =>
+      s.state === 'activating'
+        ? { state: 'ready', error: { message, percent: s.progress.percent } }
+        : { state: 'failed', error: { message, percent: s.progress.percent } };
+
+    type Count =
+      'new' | 'changed' | 'unchanged' | 'deleted' | 'stored' | 'skipped' | 'failedDocuments';
+    const countOfReports = (runs: Execution[], keys: Count[]) =>
+      runs.reduce((sum, r) => sum + keys.reduce((n, k) => n + (r.report?.[k] ?? 0), 0), 0);
+
+    /**
+     * A copy's documents from its runs' reports: stored ones are copied, the index jobs' skips have
+     * no text, and the listing's skips are reported as `skipped.<reason>` (#366).
+     */
+    const copyCountsOf = (runs: Execution[], earlier: Execution[] = []): CopyCounts => {
+      const skipped: Record<string, number> = {};
+      const add = (reason: string, n: number) => {
+        if (n > 0) skipped[reason] = (skipped[reason] ?? 0) + n;
+      };
+      // Documents are copied once, by whichever run wrote them; the last listing says what it
+      // skipped and the last runs which documents still failed.
+      for (const r of [...earlier, ...runs])
+        add('no_text', typeof r.report?.skipped === 'number' ? r.report.skipped : 0);
+      for (const r of runs) {
+        const report = (r.report ?? {}) as unknown as Record<string, unknown>;
+        for (const [key, value] of Object.entries(report))
+          if (key.startsWith('skipped.') && typeof value === 'number') add(key.slice(8), value);
+      }
+      return {
+        copied: countOfReports([...earlier, ...runs], ['stored']),
+        skipped,
+        failed: countOfReports(runs, ['failedDocuments']),
+      };
+    };
+
+    /**
+     * Publishes the catalog version that names the switch's generation, as the platform with the
+     * reason of the person who activated it, once the refresh has run (ADR 0025).
+     */
+    const publishSwitch = async (entry: ConfigEntry<unknown>) => {
+      const scope = entry.scope;
+      const spec = entry.spec as EngineSwitchSpec;
+      const decision = spec.decisions.findLast((d) => d.action === 'activate');
+      const item = catalog.get('dataset', spec.dataset);
+      if (!item || !decision) return;
+      const activated = (published: CatalogItem, before: Record<string, unknown>) =>
+        update(
+          scope,
+          entry.id,
+          (s) =>
+            s.state === 'activating' && sameRun(s, spec)
+              ? {
+                  ...s,
+                  state: 'active',
+                  previous: {
+                    endpoint: s.from,
+                    keptUntil: new Date(
+                      now().getTime() + retentionDays(scope) * 86_400_000,
+                    ).toISOString(),
+                    catalogVersion: s.datasetVersion,
+                    spec: before,
+                  },
+                  activatedVersion: published.version,
+                }
+              : undefined,
+          systemActor,
+          decision.reason,
+        );
+      // Another instance, or one that stopped after publishing, may have published already: the
+      // stored catalog, not this instance's copy, says whether it names the generation.
+      const publishedBefore = async () => {
+        const history = await catalog.history('dataset', item.id);
+        const latest = history.at(-1);
+        const named = latest?.spec as Record<string, unknown> | undefined;
+        if (!latest || named?.endpoint !== spec.to || named.generation !== spec.generation)
+          return false;
+        await activated(
+          { ...item, spec: named, version: latest.version },
+          (history.find((v) => v.version === spec.datasetVersion)?.spec as
+            Record<string, unknown> | undefined) ?? {},
+        );
+        return true;
+      };
+      if (await publishedBefore()) return;
+      const sameEngine =
+        sourceEngine(item) === catalog.get('knowledge-endpoint', spec.to)?.spec.engine;
+      const next: Record<string, unknown> = {
+        ...item.spec,
+        endpoint: spec.to,
+        options: spec.options ?? (sameEngine ? record(item.spec.options) : {}),
+        ...(spec.embedding ? { embedding: spec.embedding } : {}),
+        generation: spec.generation,
+      };
+      const result = await publish(
+        engineSwitchPublisher(scope, tenantOf(scope)),
+        scope,
+        item,
+        next,
+        decision.reason,
+        spec.datasetVersion,
+        async (published) => {
+          await activated(published, item.spec);
+        },
+        { engineSwitch: true },
+      );
+      if (!result.ok && !(await publishedBefore()))
+        await update(
+          scope,
+          entry.id,
+          (s) =>
+            s.state === 'activating' && sameRun(s, spec)
+              ? {
+                  ...s,
+                  state: 'ready',
+                  error: {
+                    message: result.errors.map((e) => e.message).join('; '),
+                    percent: s.progress.percent,
+                  },
+                }
+              : undefined,
+          systemActor,
+          'Søkemotoren kunne ikke tas i bruk',
+        );
+    };
+
+    /**
+     * The minute timer's part for switches into the knowledge database, on any instance: progress
+     * from the runs' counts, failure from a run that failed or was cancelled, the comparison once
+     * every fill run has succeeded, and the publish once every refresh run has.
+     */
+    const followRuns = async () => {
+      for (const entry of await store.latest({ kind })) {
+        if (entry.deleted) continue;
+        const spec = entry.spec as EngineSwitchSpec;
+        if (!holdingStates.includes(spec.state) || !intoKnowledge(spec)) continue;
+        const scope = entry.scope;
+        const ids = spec.runs ?? [];
+        if (ids.length === 0) {
+          // Runs that never started: the instance stopped between saving the switch and starting them.
+          if (now().getTime() - new Date(spec.updatedAt).getTime() > staleAfterMs)
+            await update(
+              scope,
+              entry.id,
+              (s) =>
+                sameRun(s, spec) && s.state === spec.state && !s.runs?.length
+                  ? { ...s, ...ended(s, stalledMessage) }
+                  : undefined,
+              systemActor,
+              stalledMessage,
+            ).catch(() => undefined);
+          continue;
+        }
+        const runs = (await Promise.all(ids.map((id) => deps.ingestion.execution(id)))).filter(
+          (r) => r !== undefined,
+        );
+        const stopped = runs.find((r) => r.status === 'failed' || r.status === 'cancelled');
+        if (stopped || runs.length < ids.length) {
+          const message = translateMessage(
+            stopped?.error ??
+              t('operations.switchRunCancelled', { run: stopped?.id ?? ids[0] ?? '' }),
+            'nb',
+          );
+          await update(
+            scope,
+            entry.id,
+            (s) =>
+              sameRun(s, spec) && s.state === spec.state
+                ? { ...s, ...ended(s, message) }
+                : undefined,
+            systemActor,
+            'Byttet stoppet',
+          ).catch(() => undefined);
+          continue;
+        }
+        if (runs.every((r) => r.status === 'succeeded')) {
+          if (spec.state === 'activating') {
+            await publishSwitch(entry).catch(() => undefined);
+            continue;
+          }
+          const failedDocuments = countOfReports(runs, ['failedDocuments']);
+          const written = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
+          const copied =
+            spec.method === 'copy'
+              ? copyCountsOf(
+                  runs,
+                  (
+                    await Promise.all(
+                      (spec.earlierRuns ?? []).map((id) => deps.ingestion.execution(id)),
+                    )
+                  ).filter((r) => r !== undefined),
+                )
+              : undefined;
+          const listed = countOfReports(runs, ['new', 'changed', 'unchanged', 'deleted']);
+          const comparing = await update(
+            scope,
+            entry.id,
+            (s) =>
+              s.state === 'running' && sameRun(s, spec)
+                ? {
+                    ...s,
+                    state: 'comparing',
+                    filled: true,
+                    heartbeatAt: now().toISOString(),
+                    progress: {
+                      percent: 100,
+                      documents: written,
+                      ...(listed > 0 ? { total: listed } : {}),
+                    },
+                    ...(failedDocuments > 0 ? { failedDocuments } : {}),
+                    ...(copied ? { copied } : {}),
+                  }
+                : undefined,
+            systemActor,
+            'Overføringen er ferdig',
+          ).catch(() => undefined);
+          if (comparing) launch(scope, entry.id, spec.generation, spec.attempt);
+          continue;
+        }
+        if (spec.state !== 'running') continue;
+        const reports = runs;
+        const total = countOfReports(reports, ['new', 'changed', 'unchanged', 'deleted']);
+        const documents = countOfReports(reports, ['stored', 'skipped', 'failedDocuments']);
+        const percent = total > 0 ? Math.min(99, Math.floor((documents / total) * 100)) : 0;
+        if (percent === spec.progress.percent && documents === spec.progress.documents) continue;
+        await update(
+          scope,
+          entry.id,
+          (s) =>
+            s.state === 'running' && sameRun(s, spec)
+              ? { ...s, progress: { percent, documents, ...(total > 0 ? { total } : {}) } }
+              : undefined,
+          systemActor,
+          `${percent} prosent overført`,
+        ).catch(() => undefined);
+      }
+    };
+
+    /** The minute timer: switches that stopped answering, then the runs of switches into the knowledge database. */
+    const follow = async () => {
+      await markStalled().catch(() => undefined);
+      await followRuns();
+    };
+
     const takeLease = async () => {
       const last = (await store.history(leaseKind, platformScope, 'sweep')).at(-1);
       const held = last?.spec as { holder?: string; until?: string } | undefined;
@@ -861,9 +1326,23 @@ export const createEngineSwitchesModule =
       }
     };
 
-    const failure = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-    const drop = async (spec: EngineSwitchSpec, cleanup: GenerationCleanup) => {
+    const drop = async (
+      scope: string,
+      spec: EngineSwitchSpec,
+      cleanup: GenerationCleanup,
+    ): Promise<GenerationCleanup> => {
+      // On the knowledge database only the worker drops a generation, by a `knowledge.drop` job.
+      if (onKnowledge(cleanup.endpoint))
+        try {
+          await deps.ingestion.dropGeneration({
+            tenant: scope === platformScope ? 'platform' : scope,
+            dataset: spec.dataset,
+            generation: cleanup.generation,
+          });
+          return { ...cleanup, sent: now().toISOString() };
+        } catch (error) {
+          return { ...cleanup, failed: failure(error) };
+        }
       try {
         const route = deps.writers.openAt(
           spec.dataset,
@@ -924,16 +1403,18 @@ export const createEngineSwitchesModule =
       for (const entry of await store.latest({ kind })) {
         if (entry.deleted) continue;
         const spec = entry.spec as EngineSwitchSpec;
-        const pending = spec.cleanup.filter((c) => !c.dropped && !c.failed);
+        const pending = spec.cleanup.filter((c) => !c.dropped && !c.failed && !c.sent);
         const lapsed =
           spec.state === 'active' &&
           spec.previous !== undefined &&
           !spec.previous.expired &&
           new Date(spec.previous.keptUntil).getTime() <= now().getTime();
         if (pending.length === 0 && !lapsed) continue;
-        const done = await Promise.all(pending.map((c) => drop(spec, c)));
+        const done = await Promise.all(pending.map((c) => drop(entry.scope, spec, c)));
         const released = lapsed ? await dropPrevious(spec) : undefined;
-        dropped += [...done, ...(released ? [released] : [])].filter((c) => c.dropped).length;
+        dropped += [...done, ...(released ? [released] : [])].filter(
+          (c) => c.dropped || c.sent,
+        ).length;
         if (lapsed) expired++;
         await update(
           entry.scope,
@@ -964,6 +1445,7 @@ export const createEngineSwitchesModule =
       reason: string,
       ifVersion: number,
       then?: (published: CatalogItem) => Promise<void>,
+      extra: Record<string, unknown> = {},
     ) => {
       if (!mounted) throw new Error('the module is not mounted');
       const acting =
@@ -976,6 +1458,7 @@ export const createEngineSwitchesModule =
         tenant: tenantOf(scope),
         reason,
         ifVersion,
+        ...extra,
       };
       return then
         ? mounted.admin.performThen<CatalogItem>(acting, 'platform.catalog.publish', input, then)
@@ -1112,10 +1595,25 @@ export const createEngineSwitchesModule =
         : undefined;
     };
 
+    deps.ingestion.holdWith(async (dataset) => {
+      for (const entry of await store.latest({ kind })) {
+        const spec = entry.spec as EngineSwitchSpec;
+        if (
+          !entry.deleted &&
+          spec.dataset === dataset &&
+          holdingStates.includes(spec.state) &&
+          intoKnowledge(spec)
+        )
+          return entry.id;
+      }
+      return undefined;
+    });
+
     return {
       id: 'engine-switches',
       handlers: routeOnlyActions(engineSwitchActions),
       sweep,
+      follow,
       mount: (app, mountDeps) => {
         mounted = mountDeps;
         const tenantGuard: Guard = async (c, right) => {
@@ -1162,10 +1660,13 @@ export const createEngineSwitchesModule =
               ]);
             try {
               const plan = await planFor(g.tenant, item, c.req.query('to') ?? '', {});
-              const estimate = await estimateFor(g.tenant, item, plan);
+              const model = c.req.query('model') || undefined;
+              const estimate = await estimateFor(g.tenant, item, plan, model);
               return c.json({
                 ...estimate,
                 ...(method ? { method } : {}),
+                // The models a switch may embed with, for a dataset that has none of its own.
+                embeddings: modelsFor(item).map(({ model, dimensions }) => ({ model, dimensions })),
               } satisfies SwitchEstimate);
             } catch (error) {
               return refusalResponse(c, error);
@@ -1185,6 +1686,18 @@ export const createEngineSwitchesModule =
               ]);
             const embedding = embeddingFrom(input.embedding);
             const datasetOptions = input.options === undefined ? undefined : record(input.options);
+            const named = input.documents;
+            const documents =
+              Array.isArray(named) &&
+              named.length > 0 &&
+              named.length <= maxCopyDocuments &&
+              named.every((d) => typeof d === 'string' && d.length > 0)
+                ? (named as string[])
+                : undefined;
+            if (named !== undefined && (!documents || method !== 'copy'))
+              return problem(c, 400, 'Invalid request', [
+                { path: 'documents', message: t('operations.switchCopyDocuments') },
+              ]);
             try {
               const plan = await planFor(g.tenant, item, String(input.to ?? ''), {
                 ...(embedding ? { embedding } : {}),
@@ -1197,16 +1710,45 @@ export const createEngineSwitchesModule =
               );
               if (busy)
                 throw new Refusal(409, t('operations.switchBusy', { id: busy.id }), 'dataset');
-              try {
-                deps.writers.openAt(
-                  item.id,
-                  plan.target.id,
-                  { signal: AbortSignal.timeout(1000) },
-                  {
-                    ...(plan.embedding ? { embedding: plan.embedding } : {}),
-                    ...(datasetOptions ? { datasetOptions } : {}),
-                  },
+              const knowledge = onKnowledge(plan.target.id);
+              if (documents && !knowledge)
+                throw new Refusal(400, t('operations.switchCopyDocuments'), 'documents');
+              if (knowledge && method === 'copy' && !plan.embedding)
+                throw new Refusal(409, t('operations.switchKnowledgeNeedsModel'), 'embedding');
+              // A dataset a Kudos pipeline fills is named as that pipeline names it, on or off (#366).
+              const kudos =
+                knowledge &&
+                method === 'copy' &&
+                (await deps.ingestion.list(g.tenant, item.id)).some(
+                  (p) => p.spec.source.kind === 'kudos',
                 );
+              const copy =
+                knowledge && method === 'copy'
+                  ? {
+                      ...(kudos ? { ids: 'kudos' as const } : {}),
+                      ...(documents ? { documents } : {}),
+                    }
+                  : undefined;
+              const overrides = {
+                ...(plan.embedding ? { embedding: plan.embedding } : {}),
+                ...(datasetOptions ? { datasetOptions } : {}),
+              };
+              try {
+                // Only the worker writes the knowledge database: its target is checked from its configuration.
+                if (knowledge)
+                  deps.knowledge.openAt(
+                    { kind: 'dataset', id: item.id, tenant: tenantOf(g.tenant) },
+                    plan.target.id,
+                    contextFor(g.tenant, `engine-switch:${item.id}`, AbortSignal.timeout(1000)),
+                    overrides,
+                  );
+                else
+                  deps.writers.openAt(
+                    item.id,
+                    plan.target.id,
+                    { signal: AbortSignal.timeout(1000) },
+                    overrides,
+                  );
               } catch (error) {
                 throw new Refusal(409, error instanceof Error ? error.message : String(error));
               }
@@ -1226,17 +1768,19 @@ export const createEngineSwitchesModule =
                 reason,
                 ...(plan.embedding ? { embedding: plan.embedding } : {}),
                 ...(datasetOptions ? { options: datasetOptions } : {}),
+                ...(copy ? { copy } : {}),
                 estimate: {
                   costNok: estimate[method].costNok,
                   durationMinutes: estimate[method].durationMinutes,
                 },
                 progress: { percent: 0, documents: 0 },
                 attempt: 1,
-                generation: `switch-${n}-1`,
+                // Generations on the knowledge server are its partitions, unique across datasets.
+                generation: knowledge ? catalog.newGeneration() : `switch-${n}-1`,
                 startedAt: at,
                 startedBy: actor(g.principal.actor ?? g.principal),
                 updatedAt: at,
-                heartbeatAt: at,
+                ...(knowledge ? { runs: [] } : { heartbeatAt: at }),
                 datasetVersion: item.version,
                 decisions: [],
                 cleanup: [],
@@ -1262,8 +1806,13 @@ export const createEngineSwitchesModule =
                     ifVersion: 0,
                   }),
               );
-              launch(g.tenant, id, spec.generation);
-              return c.json(viewOf(saved), 202);
+              if (!knowledge) {
+                launch(g.tenant, id, spec.generation, spec.attempt);
+                return c.json(viewOf(saved), 202);
+              }
+              await startRuns(g.tenant, id, actor(g.principal.actor ?? g.principal), g.principal);
+              const latest = (await store.history(kind, g.tenant, id)).at(-1) ?? saved;
+              return c.json(viewOf(latest), 202);
             } catch (error) {
               return refusalResponse(c, error);
             }
@@ -1317,6 +1866,20 @@ export const createEngineSwitchesModule =
                     const rest = { ...s };
                     delete rest.error;
                     delete rest.modelsAdmitted;
+                    // Into the knowledge database the generation is kept: a failed fill writes on
+                    // into it, and a failed comparison compares again (ADR 0025).
+                    if (intoKnowledge(s))
+                      return {
+                        ...rest,
+                        attempt,
+                        ...(s.filled
+                          ? { state: 'comparing', heartbeatAt: now().toISOString() }
+                          : {
+                              state: 'running',
+                              runs: [],
+                              earlierRuns: [...(s.earlierRuns ?? []), ...(s.runs ?? [])],
+                            }),
+                      };
                     return {
                       ...rest,
                       ...(deps.modelAdmission?.(g.principal) ? { modelsAdmitted: true } : {}),
@@ -1342,7 +1905,18 @@ export const createEngineSwitchesModule =
               },
             ).catch((error: unknown) => refusalResponse(c, error));
             if (saved instanceof Response) return saved;
-            launch(g.tenant, g.entry.id, (saved.spec as EngineSwitchSpec).generation);
+            const retriedSpec = saved.spec as EngineSwitchSpec;
+            if (intoKnowledge(retriedSpec) && retriedSpec.state === 'running') {
+              await startRuns(
+                g.tenant,
+                g.entry.id,
+                actor(g.principal.actor ?? g.principal),
+                g.principal,
+              );
+              const latest = (await store.history(kind, g.tenant, g.entry.id)).at(-1) ?? saved;
+              return c.json(viewOf(latest), 202);
+            }
+            launch(g.tenant, g.entry.id, retriedSpec.generation, retriedSpec.attempt);
             return c.json(viewOf(saved), 202);
           });
 
@@ -1384,6 +1958,10 @@ export const createEngineSwitchesModule =
             ).catch((error: unknown) => refusalResponse(c, error));
             if (saved instanceof Response) return saved;
             stop(g.tenant, g.entry.id);
+            for (const run of (g.entry.spec as EngineSwitchSpec).runs ?? [])
+              await deps.ingestion
+                .cancel({ dataset: g.item.id, execution: run, by })
+                .catch(() => undefined);
             return c.json(viewOf(saved));
           });
 
@@ -1405,6 +1983,61 @@ export const createEngineSwitchesModule =
               return problem(c, 409, 'Datasettet er endret siden byttet startet.', [
                 { path: 'dataset', message: `version ${g.item.version}` },
               ]);
+            if (intoKnowledge(spec)) {
+              if (spec.copy?.documents)
+                return problem(c, 409, t('operations.switchCopySubset'), [
+                  { path: 'documents', message: t('operations.switchCopySubset') },
+                ]);
+              // What the start refused, such as a second pipeline, is refused again before the
+              // refresh; a copy's refresh is a copy again, so the dataset's pipelines do not run.
+              const refused =
+                spec.method === 'copy' ? undefined : await knowledgeProblem(g.tenant, g.item);
+              if (refused) return problem(c, 409, refused, [{ path: 'method', message: refused }]);
+              const by = actor(g.principal.actor ?? g.principal);
+              const saved = await inTask(
+                c,
+                g.principal,
+                g.tenant,
+                'platform.engine-switch.activate',
+                `engine-switch:${g.entry.id}`,
+                reason,
+                async () => {
+                  const done = await update(
+                    g.tenant,
+                    g.entry.id,
+                    (s) => {
+                      if (s.state !== 'ready') return undefined;
+                      const rest = { ...s };
+                      delete rest.error;
+                      return {
+                        ...rest,
+                        state: 'activating',
+                        runs: [],
+                        decisions: [
+                          ...s.decisions,
+                          { action: 'activate', by, at: now().toISOString(), reason },
+                        ],
+                      };
+                    },
+                    by,
+                    reason,
+                  );
+                  if (!done)
+                    throw new Refusal(
+                      409,
+                      'Byttet er ikke klart til å tas i bruk.',
+                      'state',
+                      spec.state,
+                    );
+                  return done;
+                },
+              ).catch((error: unknown) => refusalResponse(c, error));
+              if (saved instanceof Response) return saved;
+              // The refresh writes what changed in the source since the fill; the minute timer publishes after it.
+              await startRuns(g.tenant, g.entry.id, by, g.principal);
+              const latest = (await store.history(kind, g.tenant, g.entry.id)).at(-1) ?? saved;
+              return c.json(viewOf(latest), 202);
+            }
             let route: IndexWriterRoute;
             try {
               route = deps.writers.openAt(
@@ -1546,7 +2179,7 @@ export const createEngineSwitchesModule =
           const timer = setInterval(() => void sweep().catch(() => undefined), interval);
           timer.unref?.();
           const watch = setInterval(
-            () => void markStalled().catch(() => undefined),
+            () => void follow().catch(() => undefined),
             Math.max(heartbeatMs, staleAfterMs / 2),
           );
           watch.unref?.();

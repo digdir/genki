@@ -39,7 +39,9 @@ describe('Fellestjenester: liste', () => {
     await renderAt('#/shared-services', fetch);
     expect(await screen.findByRole('heading', { level: 1, name: 'Fellestjenester' })).toBeTruthy();
     expect(urls.some((u) => u.endsWith('/shared-services'))).toBe(true);
-    const cards = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    const cards = within(screen.getByRole('main'))
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent);
     expect(cards).toEqual([
       'Klarspråk',
       'Bokmål til nynorsk',
@@ -48,19 +50,38 @@ describe('Fellestjenester: liste', () => {
       'Transkribering',
       'Hent ut opplysninger',
     ]);
-    const klar = screen.getByRole('link', { name: 'Klarspråk' }).closest('li') as HTMLElement;
-    expect(within(klar).getByText('81 av 100')).toBeTruthy();
-    expect(within(klar).getByText('Var 89 for to uker siden')).toBeTruthy();
-    expect(within(klar).getByText('7,50 kr')).toBeTruthy();
-    expect(within(klar).getByText('Norge')).toBeTruthy();
     const nyn = screen
       .getByRole('link', { name: 'Bokmål til nynorsk' })
       .closest('li') as HTMLElement;
     expect(within(nyn).getByText('Brukes i 1 av tjenestene deres')).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('shows only the name, short description and residency on a shared service card, and leaves the facts to the detail page', async () => {
+    await renderAt('#/shared-services');
+    const klar = (await screen.findByRole('link', { name: 'Klarspråk' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(klar).getByText(/Skriver om tekst så den blir lettere å forstå/)).toBeTruthy();
+    for (const fact of ['Inn', 'Ut', 'Modell', 'Kvalitet', 'Per 1 000 kjøringer', '81 av 100'])
+      expect(within(klar).queryByText(fact)).toBeNull();
+    expect(screen.queryByText(/Kvaliteten er målt på testsettene til Digdir/)).toBeNull();
+  });
+
+  it('shows where data is processed as a tag on each shared service card', async () => {
+    await renderAt('#/shared-services');
+    const felt = (await screen.findByRole('link', { name: 'Hent ut opplysninger' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(felt).getByText('Brukes i 1 av tjenestene deres')).toBeTruthy();
+    expect(within(felt).getByText('Norge')).toBeTruthy();
+  });
+
+  it('explains how quality and price are measured on the detail page', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
     expect(
       screen.getByText(/Kvaliteten er målt på testsettene til Digdir og oppdateres hver uke/),
     ).toBeTruthy();
-    expectAccessible();
   });
 
   it('opens a detail page from the card button', async () => {
@@ -85,7 +106,7 @@ describe('Fellestjenester: liste', () => {
     expect(await screen.findByText('Ingen fellestjenester ennå')).toBeTruthy();
   });
 
-  it('falls back to API fields for a capability without design data', async () => {
+  it("shows the API's purpose and residency on the card for a capability without design data", async () => {
     await renderAt(
       '#/shared-services',
       mockFetch(undefined, undefined, undefined, undefined, {
@@ -105,6 +126,7 @@ describe('Fellestjenester: liste', () => {
       }),
     );
     expect(await screen.findByRole('link', { name: 'Tolk' })).toBeTruthy();
+    expect(screen.getByText('Tolker tekst.')).toBeTruthy();
     expect(screen.getByText('EU/EØS')).toBeTruthy();
     expectAccessible();
   });
@@ -134,6 +156,34 @@ describe('Fellestjenester: detalj', () => {
     expect(screen.queryByText('Per 1 000 kjøringer')).toBeNull();
     expect(screen.queryByRole('group', { name: 'Valg' })).toBeNull();
     expect(screen.queryByText(/Ikke oppgitt, behandles i/)).toBeNull();
+  });
+
+  it('hides the quality and price footnote for a service with no score and no price', async () => {
+    const tolk = {
+      tenant: '991825827',
+      id: 'tolk',
+      name: 'Tolk',
+      purpose: 'Tolker tekst.',
+      version: null,
+      riskClass: null,
+      residency: 'eu',
+      exposure: [],
+      variants: [],
+    };
+    await openDetail(
+      'tolk',
+      'Tolk',
+      mockFetch(undefined, undefined, undefined, undefined, { shared: [tolk] }),
+    );
+    expect(screen.getByText('Ikke målt')).toBeTruthy();
+    expect(screen.queryByText(/Kvaliteten er målt på testsettene til Digdir/)).toBeNull();
+  });
+
+  it('shows the score note next to the score on the detail page', async () => {
+    await openDetail('felt', 'Hent ut opplysninger');
+    const fact = screen.getByText('Kvalitet på testsett', { selector: 'dt' }).nextElementSibling;
+    expect(fact?.textContent).toBe('83 av 100Var 86 for to uker siden');
+    expect(within(fact as HTMLElement).getByText('Var 86 for to uker siden')).toBeTruthy();
   });
 
   it('names the model the API gives for a shared service instead of saying it is not given', async () => {
@@ -371,9 +421,9 @@ describe('Fellestjenester: detalj', () => {
     expect(response.textContent).toContain('"total_tokens": 1240');
     expect(screen.getByText('200 OK')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Kopier' })).toHaveLength(2);
-    expect(screen.getByRole('link', { name: 'Mer om integrasjoner' }).getAttribute('href')).toBe(
-      '#/integrations',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Mer om Maskinporten-klienter' }).getAttribute('href'),
+    ).toBe('#/developer/systems');
     expectAccessible();
   });
 

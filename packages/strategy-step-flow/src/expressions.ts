@@ -141,15 +141,21 @@ const asText = (value: unknown) =>
         ? String(value)
         : JSON.stringify(value);
 
-export const render = (value: unknown, scope: Scope): unknown => {
+export type StepFrame = (step: string, text: string) => string;
+
+export const render = (value: unknown, scope: Scope, frame?: StepFrame): unknown => {
   if (typeof value === 'string') {
     const single = whole.exec(value);
     if (single?.[1]) return resolvePath(single[1].trim(), scope);
-    return value.replace(template, (_m, path: string) => asText(resolvePath(path.trim(), scope)));
+    return value.replace(template, (_m, path: string) => {
+      const text = asText(resolvePath(path.trim(), scope));
+      const step = stepsIn(path.trim()).find((id) => id in scope.steps);
+      return frame && step !== undefined && text ? frame(step, text) : text;
+    });
   }
-  if (Array.isArray(value)) return value.map((v) => render(v, scope));
+  if (Array.isArray(value)) return value.map((v) => render(v, scope, frame));
   if (isRecord(value))
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, render(v, scope)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, render(v, scope, frame)]));
   return value;
 };
 

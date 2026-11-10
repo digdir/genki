@@ -29,6 +29,7 @@ import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
+import { kernelTaskReader, toTimeline } from './timeline.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -184,6 +185,7 @@ const modelReply = (body: Record<string, unknown>) => {
       json: {
         data: [
           { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+          { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
           { id: 'gpt-5-mini', model: 'gpt-5-mini', status: 'succeeded' },
           { id: 'text-embedding-3-small', model: 'text-embedding-3-small', status: 'succeeded' },
         ],
@@ -900,7 +902,12 @@ describe('the composed platform', () => {
         }
       ).data.map((m) => m.id);
 
-    expect(await ids()).toEqual(['foundry-openai/gpt-4o-2m-tps', 'foundry-openai/gpt-5-mini']);
+    expect(await ids()).toEqual([
+      'foundry-openai/gpt-4o-2m-tps',
+      'foundry-openai/gpt-5-mini',
+      'foundry-openai/gpt-5.6-terra',
+      'foundry-openai/gpt-6-luna',
+    ]);
     expect(await ids('?residency=norway')).toEqual([]);
 
     const refused = await app.request('/operator/models/foundry-openai/gpt-4o-2m-tps', {
@@ -939,10 +946,14 @@ describe('the composed platform', () => {
     expect(await list()).toEqual([
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
     ]);
     expect(await list({ 'foundry-openai/gpt-4o-2m-tps': price })).toEqual([
       expect.objectContaining({ id: 'foundry-openai/gpt-4o-2m-tps', price }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5-mini', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-5.6-terra', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-6-luna', price: null }),
     ]);
   });
 
@@ -1160,8 +1171,10 @@ describe('a draft test run', () => {
       model: { primary: 'foundry-openai/gpt-4o-2m-tps', residency: 'global' },
     },
   };
-  const withAdmin = async () => {
-    const { platform } = await boot();
+  const withAdmin = async (
+    prices?: Record<string, { inputPerThousand: number; outputPerThousand: number }>,
+  ) => {
+    const { platform } = await boot(undefined, prices ? { prices } : {});
     const app = new Hono();
     platform.mount(
       app,
@@ -1194,6 +1207,29 @@ describe('a draft test run', () => {
     expect(platform.registry.all().some((c) => c.descriptor.id.startsWith('platform/draft/'))).toBe(
       false,
     );
+  });
+
+  it('shows what the run cost on its timeline, priced from the price list', async () => {
+    const { platform, app } = await withAdmin({
+      'foundry-openai/gpt-4o-2m-tps': { inputPerThousand: 0.0238, outputPerThousand: 0.0952 },
+    });
+
+    const res = await run(app, { definition: draft, query: 'Hva koster det?' });
+    const { task } = (await res.json()) as { task: string };
+    const reader = kernelTaskReader(platform.kernel, {
+      kind: 'operator',
+      issuer: 'platform',
+      subject: 'task-reader',
+    });
+    const found = await reader.task(task);
+    if (!found) throw new Error(`no task ${task}`);
+
+    expect(toTimeline(found, await reader.events(task), new Date())).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      costMicroNok: 714,
+      priced: true,
+    });
   });
 
   it('answers 422 with schema errors for an invalid draft', async () => {

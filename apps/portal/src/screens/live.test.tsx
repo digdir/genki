@@ -299,11 +299,11 @@ describe('live mode shows only platform data', () => {
   });
 
   it('shows no example systems or frontends', async () => {
-    await renderLive('#/integrations');
+    await renderLive('#/developer/systems');
 
-    await screen.findByRole('heading', { level: 1, name: 'Integrasjoner' });
+    await screen.findByRole('heading', { level: 1, name: 'Utviklerverktøy' });
     expect(screen.queryByText('Saksbehandlingssystemet')).toBeNull();
-    go('#/integrations?tab=frontends');
+    go('#/developer/frontends');
     expect(await screen.findByText('Ingen brukerflater er registrert')).toBeTruthy();
   });
 
@@ -452,7 +452,7 @@ describe('live service page', () => {
       { id: 'step-flow', version: 1, config: { flow: 'fact-checker@1' } },
       'Fast stegflyt',
       'Stegflyt',
-      'fact-checker@1',
+      'fact-checker@1 (ikke publisert hos virksomheten)',
     ],
     [
       {

@@ -1,5 +1,6 @@
 import { buildExampleUsage, exampleProjects, quotaTokensPerMonth } from './data/usage';
 import { platformStepBlocks } from './mock/step-blocks';
+import { examplePng, exampleStepOperations } from './mock/step-operations';
 import { platformRecipes } from './mock/recipes';
 import { strategyRoutes } from './mock/strategies';
 import { assistantMock } from './mock/assistant';
@@ -551,6 +552,7 @@ export const exampleModels: ModelOption[] = [
     family: 'borealis',
     residency: 'norway',
     capabilities: ['stream', 'tools', 'json-schema'],
+    operations: ['chat', 'generate-image'],
   },
   {
     id: 'aivar/nora-70b',
@@ -564,6 +566,7 @@ export const exampleModels: ModelOption[] = [
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
+    operations: ['chat', 'generate-image'],
   },
   {
     id: 'foundry-openai/gpt-4o-2m-tps',
@@ -872,8 +875,36 @@ export const mockFetch = (
       });
     }
     if (path === '/v1/models') return json({ object: 'list', data: capabilities });
-    if (path === '/v1/chat/completions' && init?.method === 'POST')
-      return json({ choices: [{ index: 0, message: { role: 'assistant', content: chatReply } }] });
+    if (path === '/v1/chat/completions' && init?.method === 'POST') {
+      const asked = JSON.stringify(
+        (JSON.parse(String(init.body ?? '{}')) as { messages?: unknown }).messages ?? [],
+      );
+      const image = /figur|bilde|image/i.test(asked);
+      return new Response(
+        JSON.stringify({
+          choices: [{ index: 0, message: { role: 'assistant', content: chatReply } }],
+          ...(image
+            ? {
+                attachments: [
+                  {
+                    type: 'image',
+                    id: 'm1',
+                    mediaType: 'image/png',
+                    bytes: examplePng.byteLength,
+                    step: 'figur',
+                    url: '/v1/tasks/prove-1/media/m1',
+                  },
+                ],
+              }
+            : {}),
+        }),
+        { status: 200, headers: { 'content-type': 'application/json', 'genai-task': 'prove-1' } },
+      );
+    }
+    if (/^\/v1\/tasks\/[^/]+\/media\/[^/]+$/.test(path))
+      return new Response(examplePng, { status: 200, headers: { 'content-type': 'image/png' } });
+    if (/^\/tenants\/[^/]+\/step-flows\/operations$/.test(path))
+      return json({ environment: 'test', data: exampleStepOperations });
     if (/^\/tenants\/[^/]+\/step-flows\/blocks$/.test(path))
       return json({ blocks: platformStepBlocks });
     if (/^\/tenants\/[^/]+\/step-flows\/recipes$/.test(path))

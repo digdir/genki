@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronLeftIcon, PlayIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -63,9 +64,6 @@ import { SearchEngine } from './SearchEngine';
 import { Uploads } from './Uploads';
 import './search-engine.css';
 
-const back = 'M15 6l-6 6 6 6';
-const chevron = 'M6 9l6 6 6-6';
-const play = 'M7 5l12 7-12 7z';
 const years = ['2010', '2015', '2018', '2020', '2022', '2024'];
 
 export const pollMs = 1500;
@@ -118,7 +116,7 @@ const Run = ({
           <span>{t('datasets.skippedCount', { amount: f.number(skippedCount(run)) })}</span>
         </span>
         <span className={open ? 'chevron up' : 'chevron'}>
-          <Icon d={chevron} size={18} />
+          <Icon icon={ChevronDownIcon} size={18} />
         </span>
       </button>
       {open ? (
@@ -174,10 +172,25 @@ const formOf = (view: DatasetDetailView, pipeline: PipelineView | undefined): So
     include: source?.kind === 'website' ? fromGlobs(source.include) : '',
     exclude: source?.kind === 'website' ? fromGlobs(source.exclude) : '',
     types: source?.kind === 'kudos' ? source.types : [],
-    fromYear: source?.kind === 'kudos' && source.since ? source.since.slice(0, 4) : '2020',
+    fromYear: source?.kind === 'kudos' && source.since ? source.since.slice(0, 4) : defaultFromYear,
     schedule: pipeline?.spec.schedule ?? 'none',
     reason: '',
   };
+};
+
+const defaultFromYear = '2020';
+
+/**
+ * A source with no start date lists every year, so the year the form shows by default is not
+ * written unless the person picks another; a later one would be refused as a narrowing.
+ */
+const kudosSourceFrom = (
+  form: SourceForm,
+  current: Extract<PipelineSource, { kind: 'kudos' }>,
+): PipelineSource => {
+  const next: Extract<PipelineSource, { kind: 'kudos' }> = { ...current, types: form.types };
+  if (current.since || form.fromYear !== defaultFromYear) next.since = `${form.fromYear}-01-01`;
+  return next;
 };
 
 const sourceFrom = (form: SourceForm, current: PipelineSource): PipelineSource =>
@@ -189,7 +202,7 @@ const sourceFrom = (form: SourceForm, current: PipelineSource): PipelineSource =
         exclude: toGlobs(form.exclude),
       }
     : current.kind === 'kudos'
-      ? { ...current, types: form.types, since: `${form.fromYear}-01-01` }
+      ? kudosSourceFrom(form, current)
       : current;
 
 const SourceSettings = ({
@@ -598,7 +611,7 @@ const Loaded = ({
   return (
     <div className="stack dataset-page">
       <a href="#/datasets" className="back-link">
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('datasets.title')}
       </a>
       <div className="page-head">
@@ -614,7 +627,7 @@ const Loaded = ({
         </div>
         <div className="actions">
           <Button variant="secondary" aria-pressed={trying} onClick={() => setTrying((x) => !x)}>
-            <Icon d={play} />
+            <Icon icon={PlayIcon} />
             {t('datasets.try')}
           </Button>
           {canEdit && pipeline ? (
