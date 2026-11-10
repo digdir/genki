@@ -7,6 +7,7 @@ import type { ApiClient } from '../../../api';
 import { draftChannels } from './channels';
 import { createDraftApi } from './draftApi';
 import { draftServiceOf, type DraftSource } from './draftService';
+import { previewWidth } from './preview-size';
 
 /** What the try view needs to run the assistant: the person's own login, and the draft. */
 export interface TryRun {
@@ -31,6 +32,7 @@ export const TryView = ({ layout, run }: { layout: AssistantLayout; run: TryRun 
       service={service}
       tenant={run.tenant}
       channels={draftChannels}
+      frameWidth={previewWidth}
     />
   );
 };

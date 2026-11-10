@@ -115,6 +115,8 @@ export interface ShellProps {
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
+  /** Drawn in a host's preview this wide: laid out for it, with no `<main>` and no skip links. */
+  frameWidth?: number | undefined;
   /** The gap beside an open panel in CSS pixels. Must match `--genai-shell-gap`. */
   gap?: number | undefined;
   /** A folded panel's width in CSS pixels. Must match the rail's button and padding. */
@@ -151,6 +153,7 @@ export const Shell = ({
   request,
   compactBar = true,
   skipLinks,
+  frameWidth,
   gap = defaultGap,
   rail = defaultRail,
   color,
@@ -184,10 +187,17 @@ export const Shell = ({
   );
   const points = breakpoints(geometry);
 
-  const viewport = useViewportWidth();
-  const narrow = useMedia(narrowerThan(points.both));
-  const drawer = useMedia(narrowerThan(points.drawer));
-  const compact = useMedia(narrowerThan(points.compact)) && compactBar;
+  const windowWidth = useViewportWidth();
+  const inWindow = {
+    narrow: useMedia(narrowerThan(points.both)),
+    drawer: useMedia(narrowerThan(points.drawer)),
+    compact: useMedia(narrowerThan(points.compact)),
+  };
+  const viewport = frameWidth ?? windowWidth;
+  const below = (point: number) => (frameWidth === undefined ? undefined : frameWidth < point);
+  const narrow = below(points.both) ?? inWindow.narrow;
+  const drawer = below(points.drawer) ?? inWindow.drawer;
+  const compact = (below(points.compact) ?? inWindow.compact) && compactBar;
 
   const [state, setState] = useState<ShellState>(() =>
     initialState(
@@ -305,10 +315,16 @@ export const Shell = ({
       setState((current) => withWidth(geometry, current, side, width)),
   };
 
+  // In a host's preview the page and its `<main>` are the host's.
+  const Main = frameWidth === undefined ? 'main' : 'div';
   return (
     <>
-      <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
-      {skipLinks}
+      {frameWidth === undefined ? (
+        <>
+          <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
+          {skipLinks}
+        </>
+      ) : null}
       <div
         className={classes('uib-shell', className)}
         data-compact={compact || undefined}
@@ -318,7 +334,7 @@ export const Shell = ({
       >
         {primary ? <Side side="primary" panel={primary} {...sideProps} /> : null}
 
-        <main
+        <Main
           className={classes('uib-shell-main', mainFocusable && 'ds-focus--inset')}
           id={mainId}
           // Observes only whether the focus is on the region itself.
@@ -338,7 +354,7 @@ export const Shell = ({
             </div>
             {children}
           </div>
-        </main>
+        </Main>
 
         {secondary ? <Side side="secondary" panel={secondary} {...sideProps} /> : null}
       </div>

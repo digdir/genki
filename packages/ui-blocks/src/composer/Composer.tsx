@@ -347,7 +347,7 @@ export const Composer = ({
               aria-label={t('composer.send')}
               className="uib-composer-send"
               data-color={actionColor}
-              disabled={value.trim().length === 0 || working}
+              aria-disabled={value.trim().length === 0 || working || undefined}
               icon
               onClick={() => trySubmit(value)}
               ref={sendRef}

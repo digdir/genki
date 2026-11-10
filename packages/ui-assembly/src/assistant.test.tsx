@@ -1528,3 +1528,28 @@ describe('the assistant in English', () => {
     expect(document.title).toMatch(/^Thread not found – /);
   });
 });
+
+describe('in a host’s preview', () => {
+  it('draws no `h1` and no main landmark of its own, since the page is the host’s', async () => {
+    const { api } = fakeApi();
+    render(
+      <Assistant
+        api={api}
+        layout={fromTemplate('knowledge-assistant').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA', suggestions: ['Hva er fast?'] }}
+        frameWidth={1280}
+      />,
+    );
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(screen.queryAllByRole('heading', { level: 1 })).toEqual([]);
+    expect(screen.queryByRole('main')).toBeNull();
+  });
+
+  it('draws its name as the page’s `h1` on a page of its own', async () => {
+    draw(fromTemplate('knowledge-assistant').layout, fakeApi().api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['KA']);
+  });
+});
