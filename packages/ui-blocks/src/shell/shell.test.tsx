@@ -8,9 +8,7 @@ import { en, nb } from './i18n.js';
 import type { ShellLayout } from './layout.js';
 import { Shell, type ShellProps, type ShellRequest } from './Shell.js';
 
-// Ported from kunnskapsassistenten's layout tests: PanelSeparator, foldingDrag, drawers,
-// LayoutProvider, PanelHead, sidebarFooterMode, compactMode and SidebarFooter. jsdom does no
-// layout, so the window's width is the tests' own: the media queries and `clientWidth` answer it.
+// Ported from kunnskapsassistenten's layout tests; jsdom does no layout, so tests set the width.
 
 // ── A window of a given width ──
 let viewport = 1440;
@@ -738,6 +736,66 @@ describe('the focus', () => {
     fireEvent.focus(link);
     fireEvent.click(button('Skjul tråder og filter'));
     expect(document.activeElement).toBe(button('Vis tråder og filter'));
+  });
+
+  it('goes back to the panel’s button when a dialog that took it closes after the panel folded', () => {
+    draw();
+    const dialog = document.createElement('dialog');
+    const inside = document.createElement('button');
+    dialog.append(inside);
+    document.body.append(dialog);
+    dialog.showModal();
+    const link = within(primary()).getByRole('link', { name: 'En tråd' });
+    act(() => link.focus());
+    fireEvent.focus(link);
+    act(() => inside.focus());
+    fireEvent.blur(link, { relatedTarget: inside });
+    fireEvent.click(button('Skjul tråder og filter'));
+    act(() => {
+      dialog.close();
+      dialog.dispatchEvent(new Event('close'));
+    });
+    expect(document.activeElement).toBe(button('Vis tråder og filter'));
+    dialog.remove();
+  });
+});
+
+describe('a region that scrolls', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 900,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 100,
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+    Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+  });
+
+  it('is a tab stop while nothing in it can take the keyboard, and stops being one once a link is in it', async () => {
+    const { redraw } = draw({
+      primary: { label: 'Tråder og filter', children: <p>Ingen tråder</p> },
+    });
+    await act(async () => {});
+    const region = screen.getByRole('group', { name: 'Tråder og filter' });
+    expect(region.tabIndex).toBe(0);
+    expect(screen.getByRole('main').tabIndex).toBe(0);
+    redraw({ primary: { label: 'Tråder og filter', children: <a href="/t/1">En tråd</a> } });
+    await act(async () => {});
+    expect(region.hasAttribute('tabindex')).toBe(false);
+    expect(screen.queryByRole('group', { name: 'Tråder og filter' })).toBeNull();
+  });
+});
+
+describe('the landmarks', () => {
+  it('are the ones the host names, so the primary panel can be an aside', () => {
+    draw({ primary: { label: 'Tråder og filter', landmark: 'aside', children: <p>Ingen</p> } });
+    expect(screen.getByRole('complementary', { name: 'Tråder og filter' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Tråder og filter' })).toBeNull();
   });
 });
 
