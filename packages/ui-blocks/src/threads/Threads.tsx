@@ -37,17 +37,9 @@ export interface ThreadsProps {
   newThreadHref?: string | undefined;
   /** A plain click on «Ny tråd». */
   onNewThread?: (() => void) | undefined;
-  /**
-   * The person renamed a thread. Return a promise to have the new name shown at once and the old
-   * one put back, with a message, if it rejects. Resolve it with `'gone'` when the thread no longer
-   * exists: its row goes, and the person is told. Without this and `onDelete`, the rows have no menu.
-   */
+  /** A rename, which gives the rows a menu; a rejection puts the name back, `'gone'` drops the row. */
   onRename?: ((thread: ThreadItem, title: string) => unknown) | undefined;
-  /**
-   * The person confirmed a delete. Return a promise to have the row taken away at once and put
-   * back, with a message, if it rejects. A thread that is already gone is deleted: resolve with
-   * `'gone'`, or anything. If it is the thread on screen, the host opens a new one.
-   */
+  /** A confirmed delete; a rejected promise puts the row back, and `'gone'` counts as deleted. */
   onDelete?: ((thread: ThreadItem) => unknown) | undefined;
   /** Shows «Filtrer dokumenter», for a filter that shares the panel. */
   onShowFilters?: (() => void) | undefined;
@@ -122,8 +114,7 @@ export const Threads = ({
   const filterRef = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<string | undefined>(undefined);
 
-  // A settled change is dropped once the host's list moves past it: the row gone, or a new title.
-  // Until then it stands, so a read that was already out cannot bring back the old one.
+  // A settled change stands until the host's list moves past it, so a stale read cannot undo it.
   for (const [id, change] of pending.current) {
     if (!change.settled) continue;
     const given = threads?.find((thread) => thread.id === id);
@@ -454,11 +445,7 @@ export const Threads = ({
   );
 };
 
-/**
- * Always rendered, with the message coming and going: role="alert" announces only content added to
- * a region that exists. It also takes focus when a successful retry takes the button away.
- * TODO: use the shared error state from the states block when it lands.
- */
+/** Always rendered: role="alert" announces only content added to an existing region. */
 const ErrorRegion = ({
   message,
   onRetry,

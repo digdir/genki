@@ -81,11 +81,7 @@ export const enThreads = {
   signOut: 'Sign out',
 } satisfies Translation<typeof nbThreads>;
 
-/**
- * The thread list's own catalogue. It stays out of the package's shared one, so a host that imports
- * another block, such as Approach, does not load these words. A block that borrows them puts this
- * namespace in its own catalogue.
- */
+/** The thread list's own catalogue, apart from the shared one, so a host loads only its words. */
 export const nb = defineCatalogue({ threads: nbThreads });
 export const en = { threads: enThreads } satisfies Translation<typeof nb>;
 

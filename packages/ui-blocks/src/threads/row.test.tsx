@@ -13,10 +13,7 @@ const thread: ThreadItem = {
   updatedAt: Date.now(),
 };
 
-/**
- * jsdom lays nothing out, so nothing is ever cut off. The tests about the cut say what a browser
- * would have measured, on the prototype, and put it back afterwards.
- */
+/** jsdom lays nothing out, so these tests set what a browser would have measured. */
 const withWidths = (scrollWidth: number, clientWidth: number) => {
   for (const [name, value] of [
     ['scrollWidth', scrollWidth],

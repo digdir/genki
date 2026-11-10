@@ -41,8 +41,7 @@ describe('the Threads styles', () => {
   });
 });
 
-// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
-// each is named here and justified by the comment on the line above it.
+// A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.
 const markupPins: Record<string, string[]> = {
   'Threads.tsx': ['uib-threads-show-filters'],
   'ThreadMenu.tsx': ['Dropdown.Trigger'],
