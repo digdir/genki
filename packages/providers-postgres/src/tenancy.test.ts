@@ -301,6 +301,7 @@ describe('API keys', () => {
       agents: [AGENT],
       prefix: 'hr_',
       lastFour: 'abcd',
+      createdAt: '2026-10-06T11:00:00.000Z',
     });
 
     const found = await keys.findByDigest(digest(1));
@@ -315,6 +316,9 @@ describe('API keys', () => {
       scopes: ['query'],
       datasets: [],
       agents: [AGENT],
+      prefix: 'hr_',
+      lastFour: 'abcd',
+      createdAt: '2026-10-06T11:00:00.000Z',
     });
     expect(await keys.usage(ORG_A, 'key-ka')).toEqual({
       count: 2,

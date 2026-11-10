@@ -284,6 +284,10 @@ export const serviceUi = {
     active: 'Aktiv',
     revokedTag: 'Trukket tilbake',
     created: ' · laget {when}',
+    createdBy: ' · laget {when} av {who}',
+    modelsAllowed: 'Kan bruke modeller i det låste miljøet',
+    modelsRefused:
+      'Kan ikke bruke modeller i det låste miljøet: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
     unknownDate: 'ukjent dato',
     rotated: ' · rotert',
     clientLine: 'Brukerflate: {client}',
