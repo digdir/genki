@@ -1,7 +1,7 @@
 import { usageUnits, type Event, type Part, type Usage } from '@genai/contracts';
 import { mediaAttachments } from '@genai/kernel';
 import { intlLocale } from '@genai/i18n';
-import { failureOf, failureReason } from './failures.js';
+import { failureOf, failureReason, type RunFailure } from './failures.js';
 import { requestLocale, t, type ApiKey } from './i18n/index.js';
 
 export interface TimelineBlock {
@@ -1423,7 +1423,7 @@ export class RunMapper {
       summary: failureReason(failure),
       at: this.errorStep?.at ?? this.offset(ts),
       state: 'failed',
-      blocks: this.details && failure.message ? [{ kind: 'quote', text: failure.message }] : [],
+      blocks: this.details ? failureBlocks(failure) : [],
     };
     if (this.errorStep) {
       Object.assign(this.errorStep, step);
@@ -1434,6 +1434,17 @@ export class RunMapper {
     this.errorStep = this.add(step);
   }
 }
+
+const failureBlocks = (failure: RunFailure): TimelineBlock[] => {
+  const blocks: TimelineBlock[] = failure.message ? [{ kind: 'quote', text: failure.message }] : [];
+  const { provider } = failure;
+  if (!provider) return blocks;
+  const label = t('runs.providerAnswered', { status: provider.status });
+  return [
+    ...blocks,
+    provider.body ? { kind: 'quote', label, text: provider.body } : { kind: 'note', text: label },
+  ];
+};
 
 export const mapRun = (events: Event[], options: RunMapperOptions = {}) => {
   const mapper = new RunMapper(options);

@@ -245,6 +245,7 @@ export interface BootOptions {
   mediaOutput?: MediaOutputConfig;
   processorRecords?: ProcessorRecordCheck;
   blobStore?: BlobStore;
+  fakeKey?: string;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -265,7 +266,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     },
     settings,
     prices: {},
-    secrets: envSecrets({ FAKE_KEY: 'k' }),
+    secrets: envSecrets({ FAKE_KEY: options.fakeKey ?? 'k' }),
     definitions: (p, skill, flow) => new InMemoryDefinitionStore(p, undefined, skill, flow),
     configurables: { store: configEntries, scheduleIntervalMs: 0 },
     ...(options.triggerRuns ? { triggerRuns: options.triggerRuns } : {}),

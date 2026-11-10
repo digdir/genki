@@ -1,4 +1,4 @@
-import type { Usage } from '@genai/contracts';
+import type { ProviderFailure, Usage } from '@genai/contracts';
 import type { ParameterRules, TunableParameter } from './parameters.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -89,6 +89,7 @@ export class ModelError extends Error {
   constructor(
     readonly code: ModelErrorCode,
     message: string,
+    readonly provider?: ProviderFailure,
   ) {
     super(message);
     this.name = 'ModelError';
