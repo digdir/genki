@@ -1,0 +1,34 @@
+@layer ds.theme, ds.base, ds.components, genai.components;
+
+@layer genai.components {
+  .uib-markdown {
+    overflow-wrap: anywhere;
+  }
+  .uib-markdown > * {
+    margin: 0 0 var(--genai-markdown-block-spacing, var(--ds-size-2));
+  }
+  .uib-markdown > :last-child {
+    margin-bottom: 0;
+  }
+  .uib-markdown ul,
+  .uib-markdown ol {
+    padding-left: var(--genai-markdown-list-indent, var(--ds-size-5));
+  }
+  .uib-markdown pre {
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .uib-markdown-table {
+    max-width: 100%;
+  }
+  .uib-markdown-table :is(th, td) {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+  .uib-markdown-table [data-align='center'] {
+    text-align: center;
+  }
+  .uib-markdown-table [data-align='right'] {
+    text-align: right;
+  }
+}
