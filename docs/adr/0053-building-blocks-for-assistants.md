@@ -2,9 +2,9 @@
 
 Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10)
 
-Not built yet: the other components from the list (chat, threads, sources, filter, footnotes, projects, notes, document view), the builder's preview drawing the real components, a playground, and a way for a service definition to say which components it has and where. All but projects and notes are proposed in open pull requests #403 to #413.
+Not built yet: the other components from the list (chat, threads, sources, filter, footnotes, projects, notes, document view), the builder's preview drawing the real components, and a playground. All but projects and notes are proposed in open pull requests #403 to #413.
 
-Left: how an answer's footnotes and the excerpts they cite are numbered and linked, which depends on how the platform cites (ADR 0052); a layout format, which says which components a service has and where they sit; and a package that fetches, which would turn the stream into props for a host and be the first UI package to depend on `@genai/client`. Each needs its own decision.
+Left: how an answer's footnotes and the excerpts they cite are numbered and linked, which depends on how the platform cites (proposed in #283); a layout format, which says which components a service has and where they sit; and a package that fetches, which would turn the stream into props for a host and be the first UI package to depend on `@genai/client`. Each needs its own decision.
 
 ## Decision
 
@@ -21,10 +21,10 @@ The components an assistant is made from (chat, threads, approach, sources, filt
 - **One folder per block,** `packages/ui-blocks/src/<block>/`, with the component, its stylesheet `<block>.css`, its catalogue `i18n.ts` and its tests. Its own classes are `uib-<block>` and `uib-<block>-*`; the few that blocks share, such as `uib-visually-hidden`, are in `ui-blocks.css`.
 - **Ids in English.** Block ids, folders, classes, variables and catalogue namespaces are English (`approach`, `document-view`). What a person reads comes from the catalogue («Fremgangsmåte»).
 - **Styles in one layer.** A block's sheet starts with `@layer ds.theme, ds.base, ds.components, genai.components;` and holds one `@layer genai.components` block, so a host's own CSS wins. `ui-blocks.css` imports every block's sheet and holds only what blocks share.
-- **Every value through a variable.** Each Designsystemet token is read where it is used as `var(--genai-<block>-<element>-<property>, <token>)`, with that one fallback. A size no token has, such as a width, is a literal fallback the same way, and never bare. A block sets no `--genai-` variable and no literal colour.
-- **Checked by the lint.** `packages/ui-blocks/src/styles.test.ts` reads every block's sheet and fails on a literal colour, a size or weight outside a fallback, a bare `var(--ds-…)`, a second layer, a sheet `ui-blocks.css` does not import, or a variable no component page names.
-- **Each block's words in its own catalogue,** bokmål as the source and English held to it with `satisfies`, so a host that imports one block loads only its words. `uiBlocksNb` and `uiBlocksEn` combine them for a host's own text.
-- **One page per block** in `docs/components/`, listing every prop and every variable with its default. A test reads the props interface against the page, and the lint reads the variables. A PR that changes a block updates its page in the same PR.
+- **Every value through a variable.** Each Designsystemet token in a block's sheet is read where it is used as `var(--genai-<block>-<element>-<property>, <token>)`, with that one fallback, or through a private `--_` holder that is read only as such a fallback, for a default a container query changes. A length no token has, such as a width in `rem`, is a literal fallback the same way. Neither a length nor a font weight is ever bare. A block sets no `--genai-` variable and no literal colour.
+- **Checked by the lint.** `packages/ui-blocks/src/styles.test.ts` reads every block's sheet and fails on a hex, functional or common named colour, a length with a unit or a font weight outside a fallback, a bare `var(--ds-…)`, a second layer, a variable not named after the block's folder or not named on a component page, and a sheet `ui-blocks.css` does not import.
+- **Each block's words in its own catalogue,** bokmål as the source and English held to it with `satisfies`. The package declares only its stylesheets as side effects, so a host that imports one block bundles only that block's words. `uiBlocksNb` and `uiBlocksEn` combine them for a host's own text.
+- **One page per block** in `docs/components/`, listing every prop and every variable with its default. A PR that changes a block updates its page in the same PR.
 
 ## Why
 
@@ -37,7 +37,7 @@ The styling rules are Designsystemet's own: its components sit in cascade layers
 ## Consequences
 
 - The workspace depends on `@genai/ui-blocks`, and the portal will once the builder's preview draws the components. Of this repository's packages it depends on `@genai/i18n` only, so it stays usable outside this repository; its icons come from `@navikt/aksel-icons`.
-- A new block passes the lint and its page's test before it lands, since both run in `npm test`.
+- The lint reads a new block's sheet as soon as it is in a folder, and runs in `npm test`. A new block brings its own test that reads its props against its page, as `approach/docs.test.ts` does.
 - The variables and props are public once the package is published: renaming one then breaks a host. Until then they may still change.
 - What a component needs from the platform shows up as gaps. Approach is the first: the stream sends tool calls and agent iterations, but not what the assistant understood, how many documents it read or what it did not find. Those need the step frames in `docs/frontend-contract.md` to carry more, which is a separate change.
 - The layout templates proposed for the builder in #210 and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition, the layout format left above.
