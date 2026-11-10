@@ -17,9 +17,15 @@ The change is `git diff origin/main...HEAD` plus anything uncommitted, unless yo
 
 List every changed file and what behaviour each hunk changes. Every later step covers this whole list.
 
+Then sweep the diff three times. Each sweep turns the diff into a list of places to check, and the list goes to the finders as candidates.
+
+- **Promises.** From the ADR, docs and pull request body in the diff, list every sentence that states a guarantee: never, only, before, redacted, refused, fails, always. For each, find every code path that must honour it (the main route, the live or streaming path, the batch path, the job, the builder assistant) and the test whose name proves it. A promise without a path that honours it, or a path that skips it, is a candidate.
+- **New fields.** For each field added to a stored or shared object (a row, a record, a definition, a response type), list every route and serialiser that returns it and who may read each one. A field that reaches a reader it is not for (a tenant route returning an operator-only field, a public route returning an internal one) is a candidate.
+- **New secrets and sinks.** For each new secret-bearing value (a key, a token, a signed header, a named key, a password in a connection setting), list every sink it can reach: a log line, an audit event, a timeline, an error body, a recorded exchange, a fixture, a trace. For each new sink, list every secret kind that can reach it. Any pair where the secret is not redacted is a candidate.
+
 ## 2. Find, in parallel
 
-Start these five subagents (the Agent tool) in one message, so they run at the same time. Give each the range, the file list and the rules. Each must look at every changed file and return candidates with file and line, or say it found nothing in that file.
+Start these five subagents (the Agent tool) in one message, so they run at the same time. Give each the range, the file list, the rules and the candidates from the sweeps. Each must look at every changed file and every candidate, and return candidates with file and line, or say it found nothing in that file.
 
 - **Correctness**: logic, edge cases, error paths, the second call, the failed call, concurrency, data loss.
 - **Security**: the checklist in `.github/review-security.md` and the promises in `docs/security/README.md`.
@@ -39,7 +45,9 @@ If any part of a finding fails, drop it or keep only the part that held.
 
 ## 4. Report everything at once
 
-Each finding has a severity (Important, Nit or Pre-existing), the finder it came from as its category (correctness, security, other-paths, tests or docs), what is wrong in one or two sentences, the evidence, and the smallest fix. When the fix replaces the lines the finding points at, give the exact replacement lines too.
+Each finding has a severity (Important, Nit or Pre-existing), the finder it came from as its category (correctness, security, other-paths, tests or docs), the rule in REVIEW.md it rests on, what is wrong in one or two sentences, the evidence, and the smallest fix. When the fix replaces the lines the finding points at, give the exact replacement lines too.
+
+Severity follows the rule. A finding that rests on a bullet under "What Important means here" is Important; one that rests on any other rule is Nit; Pre-existing stays for lines the pull request did not touch. Name the bullet by its first words, so the author can read the two together.
 
 Locally, list them with Important first. In CI, return them as the output the prompt asks for.
 

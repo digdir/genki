@@ -3510,6 +3510,43 @@
                                     propertyNames: { type: 'string' },
                                     additionalProperties: {},
                                   },
+                                  filters: {
+                                    type: 'object',
+                                    properties: {
+                                      fields: {
+                                        minItems: 1,
+                                        type: 'array',
+                                        items: {
+                                          type: 'object',
+                                          properties: {
+                                            field: { type: 'string', minLength: 1 },
+                                            type: {
+                                              type: 'string',
+                                              enum: ['multiselect', 'contains', 'not-in-set'],
+                                            },
+                                            'value-type': {
+                                              type: 'string',
+                                              enum: ['string', 'integer'],
+                                            },
+                                            'selected-options': {
+                                              minItems: 1,
+                                              type: 'array',
+                                              items: {
+                                                anyOf: [
+                                                  { type: 'string', minLength: 1 },
+                                                  { type: 'number' },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          required: ['field', 'selected-options'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                    },
+                                    required: ['fields'],
+                                    additionalProperties: false,
+                                  },
                                 },
                                 required: ['id'],
                                 additionalProperties: false,
@@ -5648,6 +5685,13 @@
                 witness: { file: 'packages/eval/src/feedback.ts', imports: '@genai/contracts' },
               },
               {
+                to: 'port-model',
+                label: 'Marks run sources as untrusted data for the criteria judge',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/eval/src/evaluators.ts', imports: '@genai/port-model' },
+              },
+              {
                 to: 'port-knowledge',
                 label: 'Search and fetch through the knowledge port',
                 kind: 'call',
@@ -6596,6 +6640,22 @@
                                 '^(?![\\d.]+(?::\\d+)?$)(?=.{1,253}(?::\\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\\d{1,5})?$',
                             },
                           },
+                          settings: {
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^[\\x21-\\x7e](?:[\\x20-\\x7e]{0,254}[\\x21-\\x7e])?$',
+                            },
+                          },
+                          keys: {
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
+                            },
+                          },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -6955,9 +7015,12 @@
                           sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
                           keys: {
                             default: [],
-                            maxItems: 1,
+                            maxItems: 4,
                             type: 'array',
-                            items: { type: 'string', enum: ['connection'] },
+                            items: {
+                              type: 'string',
+                              pattern: '^connection(?:\\.[a-z][a-zA-Z0-9_]{0,31})?$',
+                            },
                           },
                         },
                         required: ['sha256'],
@@ -7220,6 +7283,19 @@
                             required: ['use', 'emits', 'headers'],
                             additionalProperties: false,
                           },
+                          parts: {
+                            type: 'object',
+                            properties: {
+                              of: {
+                                type: 'string',
+                                pattern: '^\\$input(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+$',
+                              },
+                              bytes: { type: 'integer', minimum: 1, maximum: 33554432 },
+                              most: { type: 'integer', minimum: 1, maximum: 100 },
+                            },
+                            required: ['of', 'bytes', 'most'],
+                            additionalProperties: false,
+                          },
                           request: {
                             type: 'object',
                             properties: {
@@ -7387,6 +7463,7 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              after: {},
                               fail: {
                                 type: 'object',
                                 properties: {
@@ -7449,6 +7526,7 @@
                                   ],
                                 },
                                 message: {},
+                                retry: { type: 'boolean' },
                               },
                               required: ['status', 'kind'],
                               additionalProperties: false,
@@ -7775,6 +7853,19 @@
                             required: ['use', 'emits', 'headers'],
                             additionalProperties: false,
                           },
+                          parts: {
+                            type: 'object',
+                            properties: {
+                              of: {
+                                type: 'string',
+                                pattern: '^\\$input(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+$',
+                              },
+                              bytes: { type: 'integer', minimum: 1, maximum: 33554432 },
+                              most: { type: 'integer', minimum: 1, maximum: 100 },
+                            },
+                            required: ['of', 'bytes', 'most'],
+                            additionalProperties: false,
+                          },
                           request: {
                             type: 'object',
                             properties: {
@@ -7942,6 +8033,7 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              after: {},
                               fail: {
                                 type: 'object',
                                 properties: {
@@ -8004,6 +8096,7 @@
                                   ],
                                 },
                                 message: {},
+                                retry: { type: 'boolean' },
                               },
                               required: ['status', 'kind'],
                               additionalProperties: false,
@@ -8216,6 +8309,7 @@
                         equals: {},
                         intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                         longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                        after: {},
                         fail: {
                           type: 'object',
                           properties: {
@@ -8278,6 +8372,7 @@
                             ],
                           },
                           message: {},
+                          retry: { type: 'boolean' },
                         },
                         required: ['status', 'kind'],
                         additionalProperties: false,

@@ -14,7 +14,7 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { useT, type PlainKey } from '../../i18n';
 import { operationName, rebind } from '../../model-operations';
@@ -46,6 +46,13 @@ export const capabilityLabel: Record<Capability, PlainKey> = {
   reasoning: 'endpoints.capReasoning',
 };
 
+const modelSlug = (deployment: string) =>
+  deployment
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+|-+$/g, '');
+
 const secretPrefix = 'secret://platform/';
 
 const problemText = (error: unknown, fallback: string) => {
@@ -59,7 +66,22 @@ interface EndpointSpec {
   families?: Record<string, string>;
   discovery?: DiscoveryRule[];
   auth?: { kind?: string; secret?: string; header?: string };
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
 }
+
+interface PairRow {
+  name: string;
+  value: string;
+}
+
+const settingNamePattern = /^[a-z][a-zA-Z0-9_]{0,31}$/;
+const settingValuePattern = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
+const rowsOf = (pairs: Record<string, string> | undefined, strip = '') =>
+  Object.entries(pairs ?? {}).map(([name, value]) => ({
+    name,
+    value: value.startsWith(strip) ? value.slice(strip.length) : value,
+  }));
 
 interface FamilyRow {
   family: string;
@@ -95,6 +117,66 @@ export const ruleOf = ({ rule, include, exclude }: RuleDraft): DiscoveryRule => 
     ...(patterns(include).length ? { include: patterns(include) } : {}),
     ...(patterns(exclude).length ? { exclude: patterns(exclude) } : {}),
   };
+};
+
+const PairFields = ({
+  kind,
+  rows,
+  setRows,
+  labels,
+  error,
+}: {
+  kind: string;
+  rows: PairRow[];
+  setRows: Dispatch<SetStateAction<PairRow[]>>;
+  labels: Record<'title' | 'description' | 'name' | 'value' | 'add', PlainKey> & {
+    remove: 'endpoints.removeSetting' | 'endpoints.removeKey';
+  };
+  error: string | undefined;
+}) => {
+  const t = useT();
+  const set = (index: number, change: Partial<PairRow>) =>
+    setRows((all) => all.map((r, i) => (i === index ? { ...r, ...change } : r)));
+  return (
+    <Fieldset>
+      <FieldsetLegend>{t(labels.title)}</FieldsetLegend>
+      <Paragraph data-size="sm">{t(labels.description)}</Paragraph>
+      {rows.map((row, index) => (
+        <div className="actions-row" key={index}>
+          <Textfield
+            id={`endpoint-${kind}-name-${index}`}
+            label={t(labels.name)}
+            value={row.name}
+            onChange={(e) => set(index, { name: e.target.value.trim() })}
+          />
+          <Textfield
+            id={`endpoint-${kind}-value-${index}`}
+            label={t(labels.value)}
+            value={row.value}
+            onChange={(e) => set(index, { value: e.target.value })}
+          />
+          <Button
+            variant="tertiary"
+            data-size="sm"
+            aria-label={t(labels.remove, { name: row.name })}
+            onClick={() => setRows((all) => all.filter((_, i) => i !== index))}
+          >
+            {t('endpoints.remove')}
+          </Button>
+        </div>
+      ))}
+      {error ? <ValidationMessage>{error}</ValidationMessage> : null}
+      <div className="actions-row">
+        <Button
+          variant="secondary"
+          data-size="sm"
+          onClick={() => setRows((all) => [...all, { name: '', value: '' }])}
+        >
+          {t(labels.add)}
+        </Button>
+      </div>
+    </Fieldset>
+  );
 };
 
 export const EndpointForm = ({
@@ -135,6 +217,8 @@ export const EndpointForm = ({
   );
   const offered = (apis ?? []).filter((a) => rows.some((r) => r.family === a.family));
   const [baseURL, setBaseURL] = useState(spec.baseURL ?? '');
+  const [settingRows, setSettingRows] = useState<PairRow[]>(rowsOf(spec.settings));
+  const [keyRows, setKeyRows] = useState<PairRow[]>(rowsOf(spec.keys, secretPrefix));
   const [authKind, setAuthKind] = useState<'api-key' | 'bearer'>(
     spec.auth?.kind === 'bearer' ? 'bearer' : 'api-key',
   );
@@ -163,6 +247,26 @@ export const EndpointForm = ({
             : rows.some((r) => !familyBasePattern.test(r.base.trim()))
               ? t('endpoints.familyBaseHint')
               : undefined,
+      settings: settingRows.some(
+        (r, i, all) =>
+          !settingNamePattern.test(r.name) || all.findIndex((o) => o.name === r.name) !== i,
+      )
+        ? t('endpoints.settingNameHint')
+        : settingRows.some(
+              (r) => !settingValuePattern.test(r.value) || r.value.startsWith('secret://'),
+            )
+          ? t('endpoints.settingValueHint')
+          : undefined,
+      keys: keyRows.some(
+        (r, i, all) =>
+          !settingNamePattern.test(r.name) ||
+          all.findIndex((o) => o.name === r.name) !== i ||
+          settingRows.some((o) => o.name === r.name),
+      )
+        ? t('endpoints.keyNameHint')
+        : keyRows.some((r) => !/^[a-z0-9][a-z0-9-]*$/.test(r.value))
+          ? t('endpoints.secretNameHint')
+          : undefined,
       secretName: /^[a-z0-9][a-z0-9-]*$/.test(secretName)
         ? undefined
         : t('endpoints.secretNameHint'),
@@ -193,7 +297,7 @@ export const EndpointForm = ({
 
   const save = async () => {
     setFailed(undefined);
-    if (!check(['id', 'baseURL', 'families', 'secretName', 'reason'])) return;
+    if (!check(['id', 'baseURL', 'families', 'settings', 'keys', 'secretName', 'reason'])) return;
     setBusy(true);
     const header = authKind === 'api-key' ? spec.auth?.header : undefined;
     const input: ModelEndpointInput = {
@@ -205,6 +309,12 @@ export const EndpointForm = ({
       },
       families: Object.fromEntries(rows.map((r) => [r.family, r.base.trim()])),
       ...(rules.length || spec.discovery ? { discovery: rules.map(ruleOf) } : {}),
+      ...(settingRows.length || spec.settings
+        ? { settings: Object.fromEntries(settingRows.map((r) => [r.name, r.value])) }
+        : {}),
+      ...(keyRows.length || spec.keys
+        ? { keys: Object.fromEntries(keyRows.map((r) => [r.name, `${secretPrefix}${r.value}`])) }
+        : {}),
     };
     try {
       if (existing) await api.updateModelEndpoint(id, input, reason.trim());
@@ -430,6 +540,34 @@ export const EndpointForm = ({
             </Alert>
           ) : null}
         </Fieldset>
+        <PairFields
+          kind="setting"
+          rows={settingRows}
+          setRows={setSettingRows}
+          labels={{
+            title: 'endpoints.settings',
+            description: 'endpoints.settingsDescription',
+            name: 'endpoints.settingName',
+            value: 'endpoints.settingValue',
+            add: 'endpoints.addSetting',
+            remove: 'endpoints.removeSetting',
+          }}
+          error={errors.settings}
+        />
+        <PairFields
+          kind="key"
+          rows={keyRows}
+          setRows={setKeyRows}
+          labels={{
+            title: 'endpoints.keys',
+            description: 'endpoints.keysDescription',
+            name: 'endpoints.keyName',
+            value: 'endpoints.keySecret',
+            add: 'endpoints.addKey',
+            remove: 'endpoints.removeKey',
+          }}
+          error={errors.keys}
+        />
         <ReasonField value={reason} error={errors.reason} onChange={setReason} />
         {failed ? (
           <Alert data-color="danger" data-size="sm" role="alert">
@@ -483,7 +621,11 @@ export const ModelForm = ({
 
   const save = async () => {
     const found = {
-      ...(deployment.trim() ? {} : { deployment: t('endpoints.deploymentRequired') }),
+      ...(deployment.trim()
+        ? modelSlug(deployment)
+          ? {}
+          : { deployment: t('endpoints.deploymentNeedsLetterOrDigit') }
+        : { deployment: t('endpoints.deploymentRequired') }),
       ...(target ? {} : { target: t('endpoints.chooseEndpoint') }),
       ...(reasonError(reason, t) ? { reason: reasonError(reason, t) as string } : {}),
     };
@@ -493,7 +635,7 @@ export const ModelForm = ({
     setBusy(true);
     try {
       const saved = await api.saveModel(
-        `${target}/${deployment.trim().toLowerCase()}`,
+        `${target}/${modelSlug(deployment)}`,
         {
           endpoint: target,
           deployment: deployment.trim(),

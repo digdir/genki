@@ -614,6 +614,22 @@ const ModelEndpointFields = {
         "Hosts besides the connection's own that an answer link of a descriptor may lead to, each with an optional port; only the operator sets them, and a change is audited",
       example: ['files.provider.example'],
     }),
+  settings: z
+    .record(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,31}$/), z.string().max(256))
+    .optional()
+    .openapi({
+      description:
+        'Non-secret values a descriptor reads as $connection.<name> in headers, the query and module input, never in the host, the path or the body; at most 20, only the operator sets them, and a change is audited',
+      example: { keyId: 'AKID-7', region: 'eu-north-1' },
+    }),
+  keys: z
+    .record(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,31}$/), z.string())
+    .optional()
+    .openapi({
+      description:
+        'Named extra keys, each a platform secret reference; only a descriptor module reaches them, as connection.<name>, and no request carries them; at most 4, only the operator sets them, and a change is audited',
+      example: { signing: 'secret://platform/provider-signing-key' },
+    }),
 };
 const ModelEndpointInput = z
   .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })

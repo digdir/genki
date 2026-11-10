@@ -14,6 +14,7 @@ import {
   type PortContext,
 } from '@genai/kernel';
 import { parseDescriptor, type Descriptor } from './descriptor.js';
+import type { DescribedEndpoint } from './executor.js';
 import { describedSession, type SessionIO, type SessionOutcome } from './session.js';
 import { acceptWebSocket, type WsMessage, type WsPeer } from './websocket.js';
 
@@ -133,6 +134,7 @@ const run = async (
     maturity?: () => Promise<Maturity>;
     abort?: AbortController;
     baseURL?: string;
+    endpoint?: Partial<DescribedEndpoint>;
   } = {},
 ) => {
   const audit: GateRecord[] = [];
@@ -173,6 +175,7 @@ const run = async (
         endpoint: {
           baseURL: options.baseURL ?? where.url,
           credential: { kind: 'api-key', key: async () => 'connection-key' },
+          ...options.endpoint,
         },
         deployment: 'model-1',
         ...(options.maturity ? { maturity: options.maturity, maturityEveryMs: 20 } : {}),
@@ -362,6 +365,49 @@ describe('a live session through the gate (E)', () => {
     const message = (outcome as { error: Error }).error.message;
     expect(message).toMatch(/did not accept the session/);
     expect(message).not.toContain('connection-key');
+  });
+
+  it('a session whose websocket step reads a setting the connection lacks fails before its first http request leaves', async () => {
+    const where = await provider(() => undefined);
+    const yaml = readFileSync(
+      join(here, 'testdata/descriptors/example/chat-session@1.yaml'),
+      'utf8',
+    )
+      .replace(
+        'steps:\n  - name: session\n    request:\n      method: GET\n      path: /live\n',
+        `steps:
+  - name: token
+    request:
+      method: POST
+      path: /token
+      body: { topic: $input.topic }
+    wire:
+      request: { object: { topic: text } }
+      response: { object: { token: plain } }
+  - name: session
+    request:
+      method: GET
+      path: /live
+      headers: { x-region: $connection.region }
+`,
+      )
+      .replace(
+        '    wire:\n      query:\n        object: {}\n',
+        '    wire:\n      query:\n        object: {}\n      headers:\n        object: { x-region: plain }\n',
+      );
+    const requests: string[] = [];
+    const fetcher: typeof fetch = async (url) => {
+      requests.push(String(url));
+      return Response.json({ token: 'abc' });
+    };
+    const { outcome } = await run(parseDescriptor(yaml), where, { topic: 'x' }, () => undefined, {
+      endpoint: { fetch: fetcher, settings: { keyId: 'AKID-7' } },
+    });
+    expect((outcome as { error: Error }).error.message).toMatch(
+      /the connection has no setting region/,
+    );
+    expect(requests).toEqual([]);
+    expect(where.requests).toEqual([]);
   });
 
   it('a guard that must see the whole answer first cannot be used on a live session', async () => {

@@ -540,6 +540,72 @@ describe('recording fixtures from tries', () => {
     });
   });
 
+  it('a recorded fixture keeps the connection settings the try read, so the contract can replay them', async () => {
+    const server = await fakeHttp(() => ({
+      status: 200,
+      json: { label: 'billing', usage: { input_tokens: 7 } },
+    }));
+    servers.push(server);
+    const booted = await bootPlatform({
+      people,
+      environmentTier: 'test',
+      models: {
+        endpoints: {
+          lab: {
+            families: { openai: '' },
+            baseURL: `${server.url}/v1`,
+            auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
+            settings: { keyId: 'AKID-7' },
+          },
+        },
+        models: [
+          {
+            id: 'lab/small',
+            endpoint: 'lab',
+            deployment: 'small',
+            residency: 'norway',
+            capabilities: ['json-schema'],
+          },
+        ],
+      },
+    });
+    const yaml = classifyYaml()
+      .replace(
+        '  path: /classifications\n',
+        '  path: /classifications\n  headers:\n    x-key-id: $connection.keyId\n',
+      )
+      .replace(
+        'wire:\n  request:',
+        'wire:\n  headers:\n    object:\n      x-key-id: plain\n  request:',
+      );
+    expect(
+      (await booted.send(path, 'drift', { method: 'PUT', body: upload(yaml, []), reason })).status,
+    ).toBe(201);
+    expect(
+      (
+        await booted.admin.classifyModel(
+          people.drift as Principal,
+          'lab/small',
+          { apis: { chat: 'openai/chat-completions@1', classify: 'example/classify@1' } },
+          reason,
+        )
+      ).ok,
+    ).toBe(true);
+    const tried = await tryWith(booted as Booted, 'hei');
+    expect(tried.exchange).toMatchObject({ settings: { keyId: 'AKID-7' } });
+    const recorded = await record(booted as Booted, {
+      task: tried.task,
+      name: 'with-settings',
+      exchange: tried.exchange,
+    });
+    expect(recorded.status).toBe(201);
+    expect(await recorded.json()).toMatchObject({ contract: { passed: true } });
+    const stored = (await (await booted.send(path, 'drift')).json()) as {
+      fixtureCases: { settings?: Record<string, string> }[];
+    };
+    expect(stored.fixtureCases[0]?.settings).toEqual({ keyId: 'AKID-7' });
+  });
+
   it('a fixture is recorded only with the exchange the try answered', async () => {
     const booted = await ready();
     const tried = await tryWith(booted, 'hei');

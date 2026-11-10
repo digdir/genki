@@ -110,6 +110,14 @@ const nb = {
     label: 'Tillatte verter for svarlenker',
     help: 'Verter utenom endepunktets egen som en lenke i et svar kan føre til. Bare en operatør setter dem.',
   },
+  settings: {
+    label: 'Innstillinger',
+    help: 'Verdier som ikke er hemmelige, som en nøkkel-ID. En beskrivelse leser dem i headere og spørringen, aldri i adressen eller stien. Bare en operatør setter dem.',
+  },
+  keys: {
+    label: 'Flere nøkler',
+    help: 'Navngitte hemmeligheter som bare en signeringsmodul kan bruke. De sendes aldri med en forespørsel.',
+  },
   discovery: { label: 'Finn modeller automatisk' },
   'discovery.source': { label: 'Kilde' },
   'discovery.from': { label: 'Bruk oppslaget fra endepunktet' },
@@ -193,6 +201,14 @@ const en: Record<keyof typeof nb, LabelText> = {
   allowedHosts: {
     label: 'Allowed hosts for answer links',
     help: "Hosts besides the endpoint's own that a link in an answer may lead to. Only an operator sets them.",
+  },
+  settings: {
+    label: 'Settings',
+    help: 'Values that are not secret, such as a key id. A descriptor reads them in headers and the query, never in the address or the path. Only an operator sets them.',
+  },
+  keys: {
+    label: 'More keys',
+    help: 'Named secrets that only a signing module can use. They are never sent with a request.',
   },
   discovery: { label: 'Find models automatically' },
   'discovery.source': { label: 'Source' },

@@ -297,6 +297,22 @@ export class ModelRouter implements PortProvider<ModelPort> {
         ? { modules: (sha: string) => this.options.descriptors?.module?.(sha) }
         : {}),
       ...(hosts.length > 0 ? { allowedHosts: hosts } : {}),
+      ...(endpoint.settings ? { settings: endpoint.settings } : {}),
+      ...(endpoint.keys
+        ? {
+            keys: Object.fromEntries(
+              Object.entries(endpoint.keys).map(([name, secret]) => {
+                const key = credentialFor(
+                  { kind: 'api-key', secret },
+                  this.options.secrets,
+                  this.options.tokenProviders,
+                  endpoint.baseURL,
+                );
+                return [name, key.kind === 'api-key' ? key.key : key.token];
+              }),
+            ),
+          }
+        : {}),
     };
   }
 

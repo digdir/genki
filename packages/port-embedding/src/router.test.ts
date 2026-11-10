@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { bundledDescriptorDir, descriptorRegistry, parseDescriptor } from '@genai/operations';
 import { createGate, envSecrets } from '@genai/kernel';
 import { EmbeddingRouter, parseEmbedders, type Residency } from './index.js';
 import { fakeEmbedder, fakeEmbeddingAdapter, fakeVector, testContext } from './testing.js';
@@ -116,6 +119,45 @@ describe('embedders in the model catalogue', () => {
     router.reload(catalog());
     await router.open(ref, testContext().ctx).embed(['hei']);
     expect(adapter.calls).toHaveLength(1);
+  });
+});
+
+describe('a described embedder on a connection with settings', () => {
+  it("a described embed call reads the connection's settings, as a model call does", async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'embeddings@1.yaml'), 'utf8')
+      .replace('id: openai/embeddings@1', 'id: fake/embed-described@1')
+      .replace('family: openai', 'family: fake')
+      .replace(
+        '  path: /embeddings\n',
+        '  path: /embeddings\n  headers:\n    x-key-id: $connection.keyId\n',
+      )
+      .replace(
+        'wire:\n  request:',
+        'wire:\n  headers:\n    object:\n      x-key-id: plain\n  request:',
+      );
+    const descriptor = parseDescriptor(yaml);
+    const keyIds: (string | null)[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      keyIds.push(new Headers(init?.headers).get('x-key-id'));
+      return Response.json({
+        data: [{ index: 0, embedding: fakeVector('hei', 16) }],
+        usage: { prompt_tokens: 1 },
+      });
+    };
+    const base = catalog({ apis: { embed: descriptor.id } });
+    const router = new EmbeddingRouter({
+      catalog: {
+        ...base,
+        endpoints: { foundry: { ...base.endpoints.foundry, settings: { keyId: 'AKID-7' } } },
+      },
+      adapters: [],
+      secrets: envSecrets({ K: 'k' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    const result = await router.open(ref, testContext().ctx).embed(['hei']);
+    expect(result.vectors).toHaveLength(1);
+    expect(keyIds).toEqual(['AKID-7']);
   });
 });
 
