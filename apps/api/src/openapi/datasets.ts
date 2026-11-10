@@ -1,5 +1,5 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
-import { sourceLinkRules } from '@genai/contracts';
+import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
 import {
   apiIdPattern,
@@ -416,6 +416,21 @@ const EngineSwitch = z
       .int()
       .optional()
       .describe('Into the knowledge database: documents of the fill that could not be read in'),
+    copy: z
+      .object({
+        copied: z.number().int(),
+        skipped: z.record(z.string(), z.number().int()),
+        failed: z.number().int(),
+      })
+      .optional()
+      .describe(
+        'A copy into the knowledge database, once filled: documents copied, skipped by reason (no_uuid, same_uuid, no_text) and failed',
+      ),
+    subset: z
+      .number()
+      .int()
+      .optional()
+      .describe('A copy of named documents: how many it names; it compares but is never activated'),
     minimumReasonLength: z.number().int(),
     previousKeptUntil: z.string().optional(),
     canRollback: z.boolean(),
@@ -435,10 +450,25 @@ const SwitchEstimate = z
     from: z.string(),
     to: z.string(),
     estimate: z.literal(true),
-    basis: z.object({ documents: z.number().int(), counted: z.boolean() }),
+    basis: z.object({
+      documents: z.number().int(),
+      counted: z.boolean(),
+      chunks: z
+        .number()
+        .int()
+        .optional()
+        .describe(
+          'A copy into the knowledge database: chunks, scaled from the first 100 documents',
+        ),
+      tokens: z.number().int().optional().describe('The same, in tokens to embed'),
+    }),
     method: SwitchMethod.optional(),
     copy: MethodEstimate,
     reingest: MethodEstimate,
+    embeddings: z
+      .array(Embedding)
+      .optional()
+      .describe('The embedding models the platform serves, for a dataset that has none'),
   })
   .openapi('EngineSwitchEstimate');
 
@@ -476,6 +506,14 @@ const StartSwitch = z
     method: SwitchMethod,
     embedding: Embedding.optional(),
     options: z.record(z.string(), z.unknown()).optional(),
+    documents: z
+      .array(z.string())
+      .min(1)
+      .max(1000)
+      .optional()
+      .describe(
+        'A copy into the knowledge database of these source ids only, to try it out: it deletes nothing and is never activated',
+      ),
   })
   .openapi('EngineSwitchStart');
 
@@ -567,6 +605,15 @@ const ModelEndpointFields = {
     example: { openai: '/openai/v1', anthropic: '/anthropic' },
   }),
   discovery: z.array(DiscoveryRule).optional(),
+  allowedHosts: z
+    .array(z.string())
+    .max(20)
+    .optional()
+    .openapi({
+      description:
+        "Hosts besides the connection's own that an answer link of a descriptor may lead to, each with an optional port; only the operator sets them, and a change is audited",
+      example: ['files.provider.example'],
+    }),
 };
 const ModelEndpointInput = z
   .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })
@@ -579,6 +626,11 @@ const ApiView = z
     family: z.string(),
     source: z.enum(['built-in', 'bundled', 'uploaded']),
     status: z.enum(['review', 'described', 'typed']),
+    units: z
+      .array(z.string().regex(unitNamePattern))
+      .describe(
+        'The units its usage reports, which prices name: the built-in units and any unit its descriptor names',
+      ),
     summary: z.string().optional(),
     models: z.array(z.string()).describe('The models that bind it'),
   })
@@ -602,6 +654,24 @@ const PlatformModelInput = z
   })
   .openapi('PlatformModelInput');
 const Price = z.object({ inputPerThousand: z.number(), outputPerThousand: z.number() });
+const UnitPrices = z
+  .object(Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])))
+  .catchall(z.number().min(0))
+  .describe(
+    'Kroner per unit: the built-in units, and any other unit a descriptor names, such as page',
+  )
+  .openapi('UnitPrices');
+const ModelPrices = z
+  .record(z.string().regex(operationKindPattern), UnitPrices)
+  .describe('Kroner per unit, per operation kind the model binds')
+  .openapi('ModelPrices', {
+    example: { chat: { 'input-token': 0.0000119, 'output-token': 0.0000952 } },
+  });
+const PriceInput = z
+  .union([ModelPrices, Price])
+  .describe(
+    'Prices per kind and unit, or a price per 1,000 input and output tokens from before ADR 0048, which is set for every kind the model binds',
+  );
 const PublicModel = z
   .object({
     id: z.string(),
@@ -832,7 +902,11 @@ const engineRoutes = (base: Base): RouteConfig[] => {
       summary: `Estimate cost and time of moving a dataset to another engine (${who(base, 'manage-datasets')})`,
       request: {
         params,
-        query: z.object({ to: z.string(), method: SwitchMethod.optional() }),
+        query: z.object({
+          to: z.string(),
+          method: SwitchMethod.optional(),
+          model: z.string().optional().openapi({ description: 'The embedding model to price' }),
+        }),
       },
       responses: {
         200: json(SwitchEstimate, 'Estimate'),
@@ -1289,6 +1363,15 @@ const ProcessorRecordBody = z
     retention: z
       .object({ days: z.number().int().min(0), note: z.string().optional() })
       .describe('How long the provider keeps what it is sent'),
+    providerState: z
+      .object({
+        allowed: z.boolean(),
+        retention: z.object({ days: z.number().int().min(0), note: z.string() }),
+      })
+      .optional()
+      .describe(
+        'Whether descriptors may leave objects at the provider, and how long it keeps them',
+      ),
   })
   .openapi('ProcessorRecordInput');
 const ProcessorRecordView = z
@@ -1363,7 +1446,17 @@ const operatorModelRoutes: RouteConfig[] = [
     summary:
       'Every model endpoint with its processor record, or null where it has none (operators)',
     responses: {
-      200: json(z.object({ data: z.array(ProcessorRecordView) }), 'The endpoints'),
+      200: json(
+        z.object({
+          data: z.array(ProcessorRecordView),
+          typedCalls: z
+            .enum(['warn', 'enforce'])
+            .describe(
+              'What a chat or decide call with real data does on an endpoint without a record: warn and go on, or be refused (GENAI_PROCESSOR_RECORDS)',
+            ),
+        }),
+        'The endpoints',
+      ),
       ...operatorOnly,
     },
   }),
@@ -1412,14 +1505,17 @@ const operatorModelRoutes: RouteConfig[] = [
     method: 'put',
     path: '/operator/models/{id}/price',
     summary:
-      'Set the price of a model in NOK per thousand tokens (operators, audited). The id may contain slashes.',
+      'Set the prices of a model per operation kind and unit, in kroner per unit (operators, audited). The id may contain slashes.',
     request: {
       params: z.object({ id: param('fake/gpt') }),
       headers: reasonHeader,
-      body: body(Price),
+      body: body(PriceInput),
     },
     responses: {
-      200: audited(Price.extend({ id: z.string(), currency: z.literal('NOK') }), 'Saved'),
+      200: audited(
+        Price.extend({ id: z.string(), prices: ModelPrices, currency: z.literal('NOK') }),
+        'Saved',
+      ),
       400: problem('Invalid price or missing reason'),
       ...operatorOnly,
       404: problem('No such model'),

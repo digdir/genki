@@ -47,12 +47,36 @@ export const applyParameterRules = (
   return Object.fromEntries([...kept, ...fixed]) as unknown as ChatRequest;
 };
 
+const tokenParameters = ['max_completion_tokens', 'max_tokens'] as const;
+export type TokenParameter = (typeof tokenParameters)[number];
+
+const tokenRefusal = /extra_forbidden|extra inputs|unsupported|not supported|unrecognized|unknown/i;
+
+// Each diagnostic in a validation error ends at a closing brace, so a refusal is read per diagnostic.
+const refusedTokenParameter = (message: string): TokenParameter | undefined => {
+  for (const diagnostic of message.split('}')) {
+    if (!tokenRefusal.test(diagnostic)) continue;
+    const named = tokenParameters
+      .map((name) => ({ name, at: diagnostic.indexOf(name) }))
+      .filter(({ at }) => at >= 0)
+      .sort((a, b) => a.at - b.at)[0];
+    if (named) return named.name;
+  }
+  return undefined;
+};
+
 export const rejectedParameter = (
   status: number | undefined,
   message: string,
-): 'temperature' | undefined =>
-  status === 400 &&
-  /temperature/i.test(message) &&
-  /unsupported|not support|deprecated|only the default/i.test(message)
-    ? 'temperature'
-    : undefined;
+  param?: string | null,
+): 'temperature' | TokenParameter | undefined => {
+  if (
+    status === 400 &&
+    /temperature/i.test(message) &&
+    /unsupported|not support|deprecated|only the default/i.test(message)
+  )
+    return 'temperature';
+  if (status !== 400 && status !== 422) return undefined;
+  const refused = refusedTokenParameter(message);
+  return param && param !== refused ? undefined : refused;
+};

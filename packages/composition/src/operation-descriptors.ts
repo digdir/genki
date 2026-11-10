@@ -1,4 +1,8 @@
 import {
+  currentApiId,
+  moduleLimits,
+  moduleProblems,
+  sha256Of,
   descriptorDocument,
   DescriptorError,
   toDescriptor,
@@ -24,6 +28,8 @@ export interface UploadedDescriptor {
   document: Record<string, unknown>;
   fixtures: OperationFixture[];
   status: UploadStatus;
+  /** Module bytes in base64 by SHA-256; a descriptor runs only the modules it pins. */
+  modules?: Record<string, string>;
 }
 
 export interface UploadProblem {
@@ -34,6 +40,12 @@ export interface UploadProblem {
 export const DescriptorUploadBody = z.strictObject({
   descriptor: z.union([z.string().min(1), z.record(z.string(), z.unknown())]),
   fixtures: z.array(OperationFixtureSpec).max(maxDescriptorFixtures).default([]),
+  modules: z
+    .record(
+      z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
+      z.string().max(Math.ceil((moduleLimits.maxBytes * 4) / 3) + 4),
+    )
+    .default({}),
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -116,8 +128,43 @@ export const checkDescriptorUpload = async (id: string, body: unknown): Promise<
     if (!(error instanceof DescriptorError)) throw error;
     return refuse(error.message.split('; ').map((message) => ({ path: 'descriptor', message })));
   }
+  const moduleBytes = new Map<string, Uint8Array>();
+  const moduleProblemsFound: UploadProblem[] = [];
+  const declared = Object.entries(descriptor.modules);
+  for (const name of Object.keys(parsed.data.modules))
+    if (!(name in descriptor.modules))
+      moduleProblemsFound.push({
+        path: `modules.${name}`,
+        message: `the descriptor declares no module ${name}`,
+      });
+  for (const [name, pin] of declared) {
+    const given = parsed.data.modules[name];
+    if (given === undefined) {
+      moduleProblemsFound.push({
+        path: `modules.${name}`,
+        message: `the module ${name} is pinned but not uploaded`,
+      });
+      continue;
+    }
+    const bytes = new Uint8Array(Buffer.from(given, 'base64'));
+    if (sha256Of(bytes) !== pin.sha256)
+      moduleProblemsFound.push({
+        path: `modules.${name}`,
+        message: `the uploaded bytes do not match the pinned SHA-256 ${pin.sha256}`,
+      });
+    for (const message of moduleProblems(bytes))
+      moduleProblemsFound.push({ path: `modules.${name}`, message });
+    moduleBytes.set(pin.sha256, bytes);
+  }
+  if (moduleProblemsFound.length > 0) return refuse(moduleProblemsFound);
+  if (moduleBytes.size > 0)
+    upload.modules = Object.fromEntries(
+      [...moduleBytes].map(([sha, bytes]) => [sha, Buffer.from(bytes).toString('base64')]),
+    );
   if (fixtures.length === 0) return { ok: true, upload, descriptor, checks: 0 };
-  const results = await operationContract(descriptor, fixtures);
+  const results = await operationContract(descriptor, fixtures, {
+    modules: (sha) => moduleBytes.get(sha),
+  });
   const failed = contractFailures(results);
   if (failed.length > 0)
     return refuse(
@@ -151,19 +198,27 @@ export const liveDescriptors = (
   bundled: DescriptorRegistry,
   store: ConfigEntryStore,
 ): LiveDescriptorRegistry => {
-  let uploaded = new Map<string, { version: number; descriptor: Descriptor }>();
+  type Held = { version: number; descriptor: Descriptor; modules: Map<string, Uint8Array> };
+  let uploaded = new Map<string, Held>();
   let started = 0;
   let applied = 0;
   return {
     bundled,
-    get: (id) => bundled.get(id) ?? uploaded.get(id)?.descriptor,
+    get: (id) => bundled.get(id) ?? uploaded.get(currentApiId(id))?.descriptor,
     list: () =>
       [...bundled.list(), ...[...uploaded.values()].map((u) => u.descriptor)].sort((a, b) =>
         a.id.localeCompare(b.id),
       ),
+    module: (sha256) => {
+      for (const held of uploaded.values()) {
+        const bytes = held.modules.get(sha256);
+        if (bytes) return bytes;
+      }
+      return undefined;
+    },
     refresh: async () => {
       const mine = ++started;
-      const next = new Map<string, { version: number; descriptor: Descriptor }>();
+      const next = new Map<string, Held>();
       for (const entry of await uploadedDescriptors(store)) {
         if (bundled.get(entry.id)) continue;
         const known = uploaded.get(entry.id);
@@ -173,7 +228,16 @@ export const liveDescriptors = (
         }
         const descriptor = loads(entry.spec);
         if (!(descriptor instanceof Error))
-          next.set(entry.id, { version: entry.version, descriptor });
+          next.set(entry.id, {
+            version: entry.version,
+            descriptor,
+            modules: new Map(
+              Object.entries(entry.spec.modules ?? {}).map(([sha, base64]) => [
+                sha,
+                new Uint8Array(Buffer.from(base64, 'base64')),
+              ]),
+            ),
+          });
       }
       if (mine < applied) return;
       applied = mine;

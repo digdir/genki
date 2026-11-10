@@ -40,7 +40,7 @@ const passed = (fixtures: number) =>
 
 type Entry = DescriptorDetail;
 
-const seed = (): Entry[] => [
+export const exampleDescriptors = (): Entry[] => [
   {
     id: 'openai/decide@1',
     operation: 'decide',
@@ -96,6 +96,27 @@ const seed = (): Entry[] => [
     ],
   },
   {
+    id: 'openai/plain-language@1',
+    operation: 'plain-language',
+    status: 'described',
+    source: 'uploaded',
+    summary: 'Rewrites a text in plain Norwegian',
+    family: 'openai',
+    fixtures: 2,
+    contract: passed(2),
+    input: { kind: 'object', fields: { text: { kind: 'text' } } },
+    usedBy: [{ tenant: '991825827', service: 'klarsprak-akseptansetest', version: 1 }],
+    version: 3,
+    by: 'operator:entra:lise',
+    at: '2026-11-04T13:41:00Z',
+    reason: 'Klarspråk for vedtaksbrev',
+    document: { id: 'openai/plain-language@1', operation: 'plain-language', status: 'described' },
+    fixtureCases: [
+      { name: 'vedtak-1', source: 'recorded from the synthetic try t-try-7', input: { text: 'x' } },
+      { name: 'vedtak-2', source: 'recorded from the synthetic try t-try-8', input: { text: 'y' } },
+    ],
+  },
+  {
     id: 'openai/generate-image@1',
     operation: 'generate-image',
     status: 'review',
@@ -140,13 +161,21 @@ const view = (e: Entry) =>
   >;
 
 /** The operator routes for operation descriptors, kind maturity and processor records, offline. */
-export const operationsMock = (models: () => OperatorModel[], environment: Maturity = 'test') => {
-  let entries = seed();
-  const maturity = new Map<string, Maturity>([['classify', 'production']]);
+export const operationsMock = (
+  models: () => OperatorModel[],
+  environment: Maturity = 'test',
+  connections: () => string[] = () => [],
+  audit: (action: string, target: string, reason: string) => void = () => undefined,
+) => {
+  let entries = exampleDescriptors();
+  const maturity = new Map<string, Maturity>([
+    ['classify', 'production'],
+    ['plain-language', 'production'],
+  ]);
   const tries = new Map<string, { id: string; exchange: string }>();
   const records = new Map<string, ProcessorRecord>([
     [
-      'foundry-openai',
+      'foundry',
       {
         agreement: 'DBA-2026-17',
         subProcessors: [{ name: 'Microsoft Ireland Operations Ltd', location: 'Sverige' }],
@@ -178,11 +207,14 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
     if (!entry) return problem(404, [{ path: 'id', message: `no descriptor ${id}` }]);
     const model = models().find((m) => m.id === b.model);
     if (!model) return problem(404, [{ path: 'model', message: `no model ${String(b.model)}` }]);
-    if (!(model.operations ?? ['chat']).includes(entry.operation))
+    const bound = model.apis?.[entry.operation];
+    if (bound !== id)
       return problem(400, [
         {
           path: 'unsupported',
-          message: `${model.id} does not list the ${entry.operation} operation`,
+          message: bound
+            ? `model ${model.id} binds ${bound} for ${entry.operation}, not ${id}`
+            : `model ${model.id} does not offer the ${entry.operation} operation`,
         },
       ]);
     const input = maskAll(b.input) as Record<string, unknown>;
@@ -338,7 +370,7 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
     record: records.get(endpoint) ?? null,
   });
 
-  return (
+  const handle = (
     path: string,
     method: string,
     reason: string | null,
@@ -352,6 +384,7 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
       const k = decodeURIComponent(kind[1] ?? '');
       const to = body().maturity === 'production' ? 'production' : 'test';
       maturity.set(k, to);
+      audit('platform.operations.maturity', `operation-kind:${k}`, reason);
       return json({ ...kinds().find((x) => x.kind === k), step: 'promoted' });
     }
     if (path === '/operator/operation-descriptors' && method === 'GET')
@@ -359,7 +392,9 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
     const tried = /^\/operator\/operations\/(.+)\/try$/.exec(path);
     if (tried && method === 'POST') {
       if (!reason) return problem(400, [{ path: 'change-reason', message: 'missing' }]);
-      return tryIt(tried[1] ?? '', body());
+      const response = tryIt(tried[1] ?? '', body());
+      if (response.ok) audit('platform.operations.try', `operation:${tried[1] ?? ''}`, reason);
+      return response;
     }
     const descriptor = /^\/operator\/operation-descriptors\/(.+?)(\/status|\/fixtures)?$/.exec(
       path,
@@ -372,20 +407,32 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
         return entry ? json(entry) : problem(404, [{ path: 'id', message: `no descriptor ${id}` }]);
       }
       if (!reason) return problem(400, [{ path: 'change-reason', message: 'missing' }]);
-      if (method === 'PUT' && !action) return upload(id, body());
-      if (method === 'POST' && action === '/status') return setStatus(id, body());
-      if (method === 'POST' && action === '/fixtures') return recordFixture(id, body());
+      const audited = (action: string, response: Response) => {
+        if (response.ok) audit(action, `operation-descriptor:${id}`, reason);
+        return response;
+      };
+      if (method === 'PUT' && !action)
+        return audited('platform.operations.descriptor-upload', upload(id, body()));
+      if (method === 'POST' && action === '/status')
+        return audited('platform.operations.descriptor-status', setStatus(id, body()));
+      if (method === 'POST' && action === '/fixtures')
+        return audited('platform.operations.descriptor-fixture', recordFixture(id, body()));
       if (method === 'DELETE' && !action) {
         const entry = entries.find((e) => e.id === id);
         if (!entry) return problem(404, [{ path: 'id', message: `no descriptor ${id}` }]);
         if (entry.source === 'bundled')
           return problem(409, [{ path: 'id', message: `${id} is bundled with Genki` }]);
         entries = entries.filter((e) => e.id !== id);
+        audit('platform.operations.descriptor-withdraw', `operation-descriptor:${id}`, reason);
         return new Response(null, { status: 204 });
       }
     }
     if (path === '/operator/processor-records' && method === 'GET') {
-      const endpoints = new Set([...models().map((m) => m.endpoint), ...records.keys()]);
+      const endpoints = new Set([
+        ...connections(),
+        ...models().map((m) => m.endpoint),
+        ...records.keys(),
+      ]);
       return json({ data: [...endpoints].sort().map(processorView) });
     }
     const processor = /^\/operator\/model-endpoints\/([^/]+)\/processor-record$/.exec(path);
@@ -401,6 +448,11 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
         if (!b.agreement?.trim())
           return problem(400, [{ path: 'agreement', message: 'Too small: expected string' }]);
         records.set(endpoint, b);
+        audit(
+          'platform.operations.processor-record',
+          `model-endpoint:${endpoint}/processor-record`,
+          reason,
+        );
         return json(processorView(endpoint));
       }
       if (method === 'DELETE') {
@@ -410,4 +462,5 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
     }
     return undefined;
   };
+  return Object.assign(handle, { descriptors: () => entries });
 };

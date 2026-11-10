@@ -391,13 +391,12 @@ describe('Prøveområde', () => {
       input: { text: 'Hva sier evalueringene om digital veiledning?' },
     });
     const [first] = screen.getAllByRole('article');
-    expect(
-      within(first as HTMLElement)
-        .getByText(/^Evaluering av digital veiledning i Testetaten \(2023\)/)
-        .closest('li')?.textContent,
-    ).toBe(
-      'Evaluering av digital veiledning i Testetaten (2023) · Kudos-rapporter, side 12 [1] [2] [3]',
-    );
+    const sources = within(first as HTMLElement).getByRole('list', { name: 'Kilder' });
+    const sourceItem = within(sources)
+      .getByText('Evaluering av digital veiledning i Testetaten (2023)')
+      .closest('li');
+    expect(sourceItem?.textContent).toBe('Evaluering av digital veiledning i Testetaten (2023)');
+    expect(sourceItem?.value).toBe(1);
     expect(within(first as HTMLElement).getByText('Norge')).toBeTruthy();
 
     const [saveA] = screen.getAllByRole('button', { name: 'Lagre som testtilfelle' });

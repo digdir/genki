@@ -316,3 +316,90 @@ describe('operator onboarding', () => {
     );
   });
 });
+
+describe('allowed hosts of a model connection', () => {
+  const connection = {
+    families: { openai: '' },
+    baseURL: 'https://modeller.example.no/v1',
+    auth: { kind: 'api-key', secret: 'secret://env/other-key' },
+  };
+
+  it('lets the operator set the hosts an answer link may lead to, audited like any catalog change', async () => {
+    const { admin, call } = await boot();
+    const saved = await call('/operator/catalog/model-endpoint/norsk', {
+      method: 'PUT',
+      body: {
+        ...connection,
+        allowedHosts: ['files.provider.example', 'cdn.provider.example:8443'],
+      },
+    });
+    expect(saved.status).toBe(200);
+    const entry = (await admin.audit('991825827')).find(
+      (e) => e.action === 'platform.catalog.publish',
+    );
+    expect(entry).toMatchObject({ outcome: 'applied', actor: 'operator:test:drift' });
+  });
+
+  it('keeps the hosts when an operator change to the connection leaves them out', async () => {
+    const { call } = await boot();
+    await call('/operator/model-endpoints', {
+      body: {
+        id: 'norsk',
+        families: { openai: '' },
+        baseURL: 'https://modeller.example.no/v1',
+        auth: { kind: 'api-key', secret: 'secret://platform/other-key' },
+        allowedHosts: ['files.provider.example'],
+      },
+    });
+    const changed = await call('/operator/model-endpoints/norsk', {
+      method: 'PUT',
+      body: {
+        families: { openai: '' },
+        baseURL: 'https://modeller.example.no/v2',
+        auth: { kind: 'api-key', secret: 'secret://platform/other-key' },
+      },
+    });
+    expect(changed.status).toBe(200);
+    expect(JSON.stringify(await json(changed))).toContain('files.provider.example');
+  });
+
+  it('refuses a host that is an address, a URL or a path', async () => {
+    const { call } = await boot();
+    for (const bad of [
+      'https://files.provider.example',
+      '10.0.0.4',
+      'files.provider.example/x',
+      'localhost',
+    ])
+      expect(
+        (
+          await call('/operator/model-endpoints', {
+            body: {
+              id: 'norsk',
+              families: { openai: '' },
+              baseURL: 'https://modeller.example.no/v1',
+              auth: { kind: 'api-key', secret: 'secret://platform/other-key' },
+              allowedHosts: [bad],
+            },
+          })
+        ).status,
+      ).toBe(400);
+  });
+
+  it('refuses allowed hosts on a tenant connection, because only the operator sets them', async () => {
+    const { call, support } = await boot();
+    const session = await support();
+    const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
+      method: 'PUT',
+      session,
+      body: {
+        families: { openai: '' },
+        baseURL: 'https://modeller.example.no/v1',
+        auth: { kind: 'api-key', secret: `secret://tenant/${tenant}/key` },
+        allowedHosts: ['files.provider.example'],
+      },
+    });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await json(refused))).toContain('only the operator sets allowedHosts');
+  });
+});

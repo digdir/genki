@@ -1,6 +1,7 @@
 export * from './chunk-document.js';
 export * from './chunking.js';
 export * from './converter.js';
+export * from './copy-listing.js';
 export * from './database.js';
 export * from './document-records.js';
 export * from './documents.js';

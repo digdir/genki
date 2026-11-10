@@ -104,6 +104,7 @@ export const catalogErrors = defineNamespace({
   familyAndBase: 'oppgi minst én API-familie og stien eller adressen til den',
   noApiFamily: 'ingen API-er i familien {family}; en av {knownFamilies}',
   familyBase: 'en sti under baseURL, eller en HTTPS-adresse uten påloggingsopplysninger',
+  allowedHostList: 'en liste på høyst 20 vertsnavn, hvert med valgfri port',
   discoveryRules: 'en liste med regler for å finne modeller',
   apiKeyOrBearer: 'api-key eller bearer',
   usePlatformSecret: 'bruk en hemmelighet for plattformen: secret://platform/<name>',
@@ -434,6 +435,8 @@ export const operationErrors = defineNamespace({
   stepAt: '{at}: {message}',
   fixedOperation: 'operasjonen og modellen er faste verdier, ikke fylt inn mens tjenesten kjører',
   noOperationDescriptor: 'det finnes ingen operasjonsbeskrivelse {id}',
+  mediaInputWithoutConsent:
+    '{id} tar imot {mediaType}, som ikke kan maskeres; tjenestens risikovurdering må registrere umaskert inndata av {mediaType} med en begrunnelse',
   descriptorInReview:
     '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
   kindInTest:

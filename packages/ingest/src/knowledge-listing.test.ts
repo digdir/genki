@@ -5,6 +5,7 @@ import { InMemoryBlobStore } from '@genai/port-blob';
 import { describe, expect, it } from 'vitest';
 import { documentId } from './ids.js';
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
+import { toIndexDocument } from './index-writer.js';
 import {
   knowledgeListingOf,
   pipelineSpec,
@@ -76,6 +77,28 @@ describe('knowledge listings', () => {
     });
     const loaded = await listing.load(first(docs).record);
     expect(loaded.texts.join('')).toContain('Side a.');
+  });
+
+  it('a Markdown page on the knowledge database keeps its frontmatter title, product and language', async () => {
+    const pages = {
+      'https://www.example.no/sitemap.xml': sitemap([
+        { loc: 'https://www.example.no/docs/kom_i_gang.md', lastmod: '2026-10-30' },
+      ]),
+      'https://www.example.no/docs/kom_i_gang.md':
+        '---\ntitle: Kom i gang\nproduct: Maskinporten\nlang: nb\n---\n\nTekst.\n',
+    };
+    const listing = await knowledgeListingOf(
+      spec({ kind: 'website', sitemap: 'https://www.example.no/sitemap.xml' }),
+      { web: site(pages, []) },
+      scope,
+      signal,
+    );
+    const loaded = await listing.load(first(await all(listing)).record);
+
+    const indexed = toIndexDocument(loaded.docNum, loaded.stored([]), [], []);
+
+    expect(indexed.title).toBe('Kom i gang');
+    expect(indexed.fields).toMatchObject({ product: 'Maskinporten', language: 'nb' });
   });
 
   it('a page that answers 404 when its index job loads it is gone', async () => {

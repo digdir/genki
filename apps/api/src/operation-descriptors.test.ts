@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
@@ -343,14 +346,14 @@ describe('uploading operation descriptors', () => {
 
   it('an uploaded descriptor cannot replace a bundled one', async () => {
     const { send } = await boot();
-    const refused = await send('/operator/operation-descriptors/openai/embed@1', 'drift', {
+    const refused = await send('/operator/operation-descriptors/openai/embeddings@1', 'drift', {
       method: 'PUT',
       body: upload(),
       reason,
     });
     expect(refused.status).toBe(409);
     expect((await errorsOf(refused))[0]?.message).toContain('upload a new version instead');
-    const withdrawn = await send('/operator/operation-descriptors/openai/embed@1', 'drift', {
+    const withdrawn = await send('/operator/operation-descriptors/openai/embeddings@1', 'drift', {
       method: 'DELETE',
       reason,
     });
@@ -384,7 +387,7 @@ describe('uploading operation descriptors', () => {
     const listed = (await (await send('/operator/operation-descriptors', 'drift')).json()) as {
       data: { id: string }[];
     };
-    expect(listed.data.find((d) => d.id === 'openai/embed@1')).toMatchObject({
+    expect(listed.data.find((d) => d.id === 'openai/embeddings@1')).toMatchObject({
       source: 'bundled',
       status: 'typed',
       fixtures: 2,
@@ -579,7 +582,7 @@ describe('recording fixtures from tries', () => {
     const tried = await tryWith(booted, 'hei');
     const body = { task: tried.task, name: 'late', exchange: tried.exchange };
     expect(
-      (await record(booted, body, '/operator/operation-descriptors/openai/embed@1')).status,
+      (await record(booted, body, '/operator/operation-descriptors/openai/embeddings@1')).status,
     ).toBe(409);
     expect((await record(booted, { ...body, name: 'first' })).status).toBe(201);
     expect((await booted.setStatus('described')).status).toBe(200);
@@ -613,5 +616,124 @@ describe('who uses a descriptor', () => {
     expect(kinds.data.find((k) => k.kind === 'classify')?.descriptors).toEqual([
       { id: 'example/classify@1', status: 'review', family: 'openai' },
     ]);
+  });
+});
+
+describe('modules in an upload (D)', () => {
+  const wasm = new Uint8Array(
+    readFileSync(
+      join(
+        import.meta.dirname,
+        '../../../packages/operations/src/testdata/modules/hmac-signer.wasm',
+      ),
+    ),
+  );
+  const pin = createHash('sha256').update(wasm).digest('hex');
+  const at = '2026-11-06T10:00:00.000Z';
+  const signed = (sha = pin) => `
+id: example/classify@1
+operation: classify
+status: review
+summary: A made-up classification API that wants every request signed.
+api: { family: openai, version: '2026-10-01' }
+modules:
+  signer: { sha256: ${sha}, keys: [connection] }
+input: { object: { text: text } }
+output: { object: { label: plain } }
+result: { label: $response.label }
+steps:
+  - name: classify
+    request: { method: POST, path: /classifications, body: { model: $deployment, text: $input.text } }
+    module:
+      use: signer
+      emits:
+        sig: { ref: '^[0-9a-f]{64}$' }
+        ts: { ref: '^[0-9]{10}$' }
+      headers: { x-signature: sig, x-timestamp: ts }
+    wire:
+      request: { object: { model: plain, text: text } }
+      response: { object: { label: plain } }
+    usage: { requests: 1 }
+`;
+  const signedFixture = {
+    name: 'signed',
+    source: 'hand-made for the upload test; not a recording',
+    deployment: 'small',
+    at,
+    input: { text: 'Hei' },
+    request: {
+      method: 'POST',
+      path: '/classifications',
+      body: { model: 'small', text: 'Hei' },
+    },
+    response: { status: 200, body: { label: 'billing' } },
+    result: { label: 'billing' },
+    usage: { requests: 1 },
+  };
+  const withModule = (
+    extra: Record<string, string> = { signer: Buffer.from(wasm).toString('base64') },
+  ) => ({
+    descriptor: signed(),
+    fixtures: [signedFixture],
+    modules: extra,
+  });
+
+  it('a module is uploaded with its descriptor, held to its pin, and proven by a fixture that signs', async () => {
+    const { put } = await boot();
+    const uploaded = await put(withModule());
+    expect(uploaded.status).toBe(201);
+    expect(await uploaded.json()).toMatchObject({
+      modules: [{ name: 'signer', sha256: pin }],
+      contract: { passed: true },
+    });
+  });
+
+  it('an upload whose module returns a value outside what the descriptor pins fails operation@1', async () => {
+    const { put } = await boot();
+    const refused = await put({
+      ...withModule(),
+      descriptor: signed().replace('^[0-9]{10}$', '^[a-z]{10}$'),
+    });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('outside its wire shape');
+  });
+
+  it('an upload whose module bytes do not match the pin is refused', async () => {
+    const { put } = await boot();
+    const refused = await put({ ...withModule(), descriptor: signed('a'.repeat(64)) });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('do not match the pinned SHA-256');
+  });
+
+  it('an upload that pins a module without sending it is refused', async () => {
+    const { put } = await boot();
+    const refused = await put(withModule({}));
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('is pinned but not uploaded');
+  });
+
+  it('an upload that sends a module the descriptor does not declare is refused', async () => {
+    const { put } = await boot();
+    const refused = await put(
+      withModule({ signer: Buffer.from(wasm).toString('base64'), extra: 'AAAA' }),
+    );
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('declares no module extra');
+  });
+
+  it('an upload of a module over the size cap is refused', async () => {
+    const { put } = await boot();
+    const refused = await put(withModule({ signer: Buffer.alloc(200 * 1024).toString('base64') }));
+    expect(refused.status).toBe(422);
+  });
+
+  it('an upload with a module is audited like any upload, by who and why', async () => {
+    const { put, admin } = await boot();
+    await put(withModule());
+    const entries = (await admin.audit()).filter(
+      (a) => a.action === 'platform.operations.descriptor-upload',
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ outcome: 'applied', actor: 'operator:test:drift' });
   });
 });

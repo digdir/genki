@@ -148,7 +148,10 @@ describe('local test model response files', () => {
 
   it('serves a descriptor fixture file unchanged', async () => {
     const fixture = readFileSync(
-      join(import.meta.dirname, '../packages/operations/fixtures/openai/embed@1/one-text.json'),
+      join(
+        import.meta.dirname,
+        '../packages/operations/fixtures/openai/embeddings@1/one-text.json',
+      ),
       'utf8',
     );
     writeFileSync(join(folder, 'embed.json'), fixture);

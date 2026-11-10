@@ -13,7 +13,6 @@ import {
 } from '@genai/definitions';
 import { guardrailSchemas } from '@genai/guardrails';
 import { isPlatformRight } from '@genai/identity';
-import { embeddingCatalog } from '@genai/port-embedding';
 import { knowledgeCatalog } from '@genai/port-knowledge';
 import { modelCatalog } from '@genai/port-model';
 import { rerankCatalog } from '@genai/port-rerank';
@@ -288,13 +287,6 @@ describe('configuration schemas (ADR 0030)', () => {
         list: 'rerankers',
         item: 'Reranker',
         endpoint: 'RerankEndpoint',
-      },
-      {
-        file: 'embeddings.yaml',
-        zod: embeddingCatalog,
-        list: 'models',
-        item: 'Embedding',
-        endpoint: 'EmbeddingEndpoint',
       },
     ];
     let catalogued = 0;

@@ -33,8 +33,50 @@ An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed
 | `openai/responses@1`        | `chat`   | `openai`    | Always Responses.                                      |
 | `openai/decide@1`           | `decide` | `openai`    | Structured decisions.                                  |
 | `anthropic/messages@1`      | `chat`   | `anthropic` | Default for the family; option `defaultMaxTokens`.     |
+| `openai/embeddings@1`       | `embed`  | `openai`    | Embeddings; was `openai/embed@1`, still read.          |
+| `colbert/rerank@1`          | `rerank` | `colbert`   | Reranking; option `maxInputLength`.                    |
 
-A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
+A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
+
+## Embedding and rerank models
+
+Embedders and rerankers are models in the same catalogue, with a binding for `embed` or `rerank` and the kind's settings under the kind. They are changed like any model, without a deploy, and are not offered as chat models.
+
+```yaml
+models:
+  - id: foundry/text-embedding-3-small
+    endpoint: foundry
+    deployment: text-embedding-3-small
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 1536, maxBatch: 64 }
+  - id: colbert
+    endpoint: colbert
+    deployment: colbert
+    residency: norway
+    apis: { rerank: colbert/rerank@1 }
+    rerank: { onFailure: degrade }
+```
+
+An embedding model must name `embed.dimensions`. A rerank engine that a plug-in registers without an API stays in the rerank catalogue; a model with the same id wins over it.
+
+## Prices
+
+A price is per model and kind, in kroner per unit. The units are `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` and `request`, and `GET /operator/apis` lists the units each API reports.
+
+```yaml
+foundry-openai/gpt-6-luna:
+  chat: { input-token: 0.00003, output-token: 0.00012 }
+  decide: { input-token: 0.00003, output-token: 0.00012 }
+foundry/text-embedding-3-small:
+  embed: { input-token: 0.0000002 }
+```
+
+A call that reports a unit without a price is metered and left unpriced. A `request` without a price costs nothing, and a `cached-input-token` without a price costs as an input token. A cost the provider reports is kept. A price per 1,000 tokens (`inputPerThousand`, `outputPerThousand`) is still accepted and holds for every kind the model binds; stored ones move to unit prices once at start, and `GET /models` still shows the per-1,000 view as `price`.
+
+## Processor records on typed calls
+
+Typed chat and decide calls carry the connection's processor record to the gate, as descriptor calls do. `GENAI_PROCESSOR_RECORDS` decides what happens on a connection without one: `warn` (the default) logs `model call on a connection without a processor record` once per connection and lets the call through, and `enforce` refuses real data. At start the platform logs `model connections without a processor record` with their ids, and `GET /operator/processor-records` answers `typedCalls` with the setting. Synthetic data in the raw tier needs no record.
 
 ## OpenAI-compatible APIs
 
@@ -42,9 +84,9 @@ A model binds one API per kind with `apis`. A binding is valid when the API exis
 
 Model `options` are validated strictly against the options the bound APIs declare:
 
-| Option       | Values                                | Behavior                                                                                                   |
-| ------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `tokenParam` | `max_completion_tokens`, `max_tokens` | Defaults to `max_completion_tokens`; applies only to Chat Completions. Responses uses `max_output_tokens`. |
+| Option       | Values                                | Behavior                                                                                                                                                                                                                                                                                      |
+| ------------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tokenParam` | `max_completion_tokens`, `max_tokens` | Defaults to `max_completion_tokens`; applies only to Chat Completions. Responses uses `max_output_tokens`. A deployment that refuses the configured one by name (HTTP 400 or 422) is retried once with the other, which is remembered for that deployment for the lifetime of its connection. |
 
 For a known Responses deployment, bind the API:
 
@@ -67,6 +109,9 @@ Before ADR 0048 a connection named one `protocol` and a model listed `operations
 - connections on the same resource root with the same credential become one connection with one family per former protocol (`foundry-openai` and `foundry-claude` become `foundry`), and each former discovery rule keeps its ids through `idPrefix`;
 - models keep their ids, move to the new connection and get `apis` from their former protocol, `operations` and `options.api`;
 - processor records and model classifications follow;
+- the embedding catalogue's endpoints merge into the connection on the same resource (`foundry-embeddings` into `foundry`) and its models become embedding models with the same ids;
+- a reranker whose engine has an API (`colbert`) becomes a model with the same id;
+- a binding to `openai/embed@1` becomes `openai/embeddings@1`;
 - a seed connection whose rules name a former id with `idPrefix` takes over its models and processor records.
 
 Every rewrite is a config entry by `genki` with the reason `ADR 0048: ...`, so it shows in the audit history. A catalog file in the old shape is read in the new one.

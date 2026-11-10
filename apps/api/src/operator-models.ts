@@ -1,4 +1,5 @@
-import type { Principal } from '@genai/contracts';
+import { perThousandView, type Principal } from '@genai/contracts';
+import { allowedHostPattern } from '@genai/port-model';
 import type { Context } from 'hono';
 import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
@@ -67,6 +68,16 @@ export const endpointProblems = (
   }
   if (body.discovery !== undefined && !Array.isArray(body.discovery))
     errors.push({ path: 'discovery', message: 'a list of discovery rules' });
+  if (
+    body.allowedHosts !== undefined &&
+    (!Array.isArray(body.allowedHosts) ||
+      body.allowedHosts.length > 20 ||
+      body.allowedHosts.some((h) => typeof h !== 'string' || !allowedHostPattern.test(h)))
+  )
+    errors.push({
+      path: 'allowedHosts',
+      message: 'a list of at most 20 host names, each with an optional port',
+    });
   const auth = record(body.auth);
   if (auth.kind !== 'api-key' && auth.kind !== 'bearer')
     errors.push({ path: 'auth.kind', message: 'api-key or bearer' });
@@ -139,6 +150,7 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
         },
         families: input.families,
         ...(Array.isArray(input.discovery) ? { discovery: input.discovery } : {}),
+        ...(Array.isArray(input.allowedHosts) ? { allowedHosts: input.allowedHosts } : {}),
       };
     };
 
@@ -196,6 +208,9 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
           ...connectionSpec(input),
           ...(input.discovery === undefined && endpoint.spec.discovery
             ? { discovery: endpoint.spec.discovery }
+            : {}),
+          ...(input.allowedHosts === undefined && endpoint.spec.allowedHosts
+            ? { allowedHosts: endpoint.spec.allowedHosts }
             : {}),
           ...(endpoint.spec.sharing ? { sharing: endpoint.spec.sharing } : {}),
         },
@@ -271,17 +286,14 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
       const id = c.req.param('id') ?? '';
       if (!deps.models.describe().some((m) => m.id === id) && !deps.catalog.get('model', id))
         return problem(c, 404, 'Not found');
-      const input = await body(c);
       const result = await catalogChange(c, guard.principal, 'platform.catalog.publish', {
         kind: 'price',
         id,
-        spec: {
-          inputPerThousand: input.inputPerThousand,
-          outputPerThousand: input.outputPerThousand,
-        },
+        spec: await body(c),
       });
       if (!result.ok) return problem(c, 400, 'Invalid request', result.errors);
-      return c.json({ id, ...result.value.spec, currency: 'NOK' });
+      const prices = result.value.spec;
+      return c.json({ id, prices, ...perThousandView(prices), currency: 'NOK' });
     });
 
     app.put('/operator/models/:id{.+}', async (c) => {

@@ -33,6 +33,9 @@ const discoveryRule = z.strictObject({
   apis: bindings.optional(),
 });
 
+export const allowedHostPattern =
+  /^(?![\d.]+(?::\d+)?$)(?=.{1,253}(?::\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\d{1,5})?$/;
+
 const endpoint = z.strictObject({
   baseURL: z.url({ protocol: /^https?$/ }),
   auth,
@@ -40,7 +43,19 @@ const endpoint = z.strictObject({
     .record(z.string().regex(apiFamilyPattern), familyBase)
     .refine((f) => Object.keys(f).length > 0, 'a connection offers at least one API family'),
   discovery: z.array(discoveryRule).default([]),
+  allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
 });
+
+export const rerankFailureModes = ['degrade', 'fail'] as const;
+
+/** Settings that belong to one operation kind, kept under the kind's name on the model. */
+export const kindSettings = {
+  embed: z.strictObject({
+    dimensions: z.number().int().positive(),
+    maxBatch: z.number().int().positive().optional(),
+  }),
+  rerank: z.strictObject({ onFailure: z.enum(rerankFailureModes).default('degrade') }),
+};
 
 const model = z.strictObject({
   id,
@@ -54,6 +69,8 @@ const model = z.strictObject({
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
+  embed: kindSettings.embed.optional(),
+  rerank: kindSettings.rerank.optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -186,6 +203,11 @@ export const parseCatalog = (
       return;
     }
     bindingErrors(`models.${index}.apis`, bound, Object.keys(e.families));
+    if (bound.embed && !m.embed)
+      errors.push({
+        path: `models.${index}.embed`,
+        message: 'an embedding model names its dimensions under embed',
+      });
     const options = modelOptionsSchema(bound, apis).safeParse(m.options);
     if (!options.success) {
       for (const i of options.error.issues)

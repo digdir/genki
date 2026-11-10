@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { textPart, type Principal } from '@genai/contracts';
-import { createGate, createKernel, envSecrets } from '@genai/kernel';
+import { createGate, createKernel, envSecrets, InMemoryProviderObjects } from '@genai/kernel';
 import {
   bundledDescriptorDir,
   descriptorRegistry,
@@ -12,6 +12,7 @@ import {
 } from '@genai/operations';
 import { contractFailures, fixturesFor, operationContract } from '@genai/operations/contract';
 import {
+  apiRegistry,
   ModelError,
   ModelRouter,
   modelOutputCeiling,
@@ -1090,6 +1091,39 @@ describe('operations on the catalogue', () => {
     expect(urls).toEqual(['https://a.example/v1/decisions']);
   });
 
+  it('a descriptor decide error keeps the provider status and body for the audit', async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8');
+    const descriptor = parseDescriptor(yaml.replace('family: openai', 'family: proto-a'));
+    const egress: typeof fetch = async () =>
+      Response.json({ error: { message: 'the deployment is overloaded' } }, { status: 503 });
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            apis: { decide: descriptor.id },
+          },
+        ],
+      },
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    const error = await decide(router)
+      .decide(question)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      code: 'unavailable',
+      message: 'the model is unavailable',
+      provider: { status: 503, body: expect.stringContaining('the deployment is overloaded') },
+    });
+  });
+
   it('a descriptor call names the API the model binds for its kind', async () => {
     const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8');
     const descriptor = parseDescriptor(yaml.replace('family: openai', 'family: proto-a'));
@@ -1245,7 +1279,7 @@ describe('a new operation kind from a descriptor alone', () => {
     const sent: unknown[] = [];
     const egress: typeof fetch = async (_url, init) => {
       sent.push(JSON.parse(String(init?.body)));
-      return Response.json(fixture.response.body);
+      return Response.json(fixture.response?.body);
     };
     const router = new ModelRouter({
       catalog: sorter({ classify: id }),
@@ -1259,7 +1293,7 @@ describe('a new operation kind from a descriptor alone', () => {
       await expect(
         ports.open({ kind: 'model', id: 'a/sorter' }, testContext().ctx).call(id, fixture.input),
       ).resolves.toEqual(fixture.result);
-    expect(sent).toEqual([fixture.request.body, fixture.request.body]);
+    expect(sent).toEqual([fixture.request?.body, fixture.request?.body]);
   });
 
   it('the catalogue refuses a binding to an API no implementation or descriptor defines', async () => {
@@ -1295,5 +1329,292 @@ describe('a new operation kind from a descriptor alone', () => {
       ['example/classify@1', 'classify', 'proto-a', 'bundled'],
       ['proto-a/chat@1', 'chat', 'proto-a', 'built-in'],
     ]);
+  });
+});
+
+describe('typed calls and processor records (ADR 0048)', () => {
+  const recorded = (endpoints: string[]) => ({
+    maturity: async () => 'test' as const,
+    processorRecorded: async (endpoint: string) => endpoints.includes(endpoint),
+  });
+
+  it('a typed chat call on a connection without a processor record is refused for real data when the check is enforced', async () => {
+    const a = recording('proto-a');
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      governance: recorded(['two']),
+      typedCalls: 'enforce',
+    });
+
+    await expect(open(router, 'a/small').chat({ messages: [] })).rejects.toMatchObject({
+      message: expect.stringMatching(/has no processor record/),
+    });
+    expect(a.calls).toEqual([]);
+    await expect(open(router, 'b/large').chat({ messages: [] })).resolves.toMatchObject({
+      content: 'proto-b:large-dep',
+    });
+  });
+
+  it('a typed chat call without a processor record goes through and warns once per connection when the check warns', async () => {
+    const warned: string[] = [];
+    const router = new ModelRouter({
+      catalog,
+      adapters: [recording('proto-a').adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      governance: recorded([]),
+      onUnrecordedProcessor: (endpoint, kind) => warned.push(`${endpoint}:${kind}`),
+    });
+
+    await open(router, 'a/small').chat({ messages: [] });
+    await open(router, 'a/small').chat({ messages: [] });
+    for await (const chunk of open(router, 'a/small').chatStream({ messages: [] })) void chunk;
+    await open(router, 'b/large').chat({ messages: [] });
+
+    expect(warned).toEqual(['one:chat', 'two:chat']);
+  });
+
+  it('a typed call is production by construction, so a kind still in test does not stop it', async () => {
+    const router = new ModelRouter({
+      catalog,
+      adapters: [recording('proto-a').adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      governance: recorded(['one']),
+      typedCalls: 'enforce',
+      gate: createGate({ tier: 'production' }),
+    });
+
+    await expect(open(router, 'a/small').chat({ messages: [] })).resolves.toMatchObject({
+      content: 'proto-a:small-dep',
+    });
+  });
+});
+
+describe('prices per kind and unit (ADR 0048)', () => {
+  it('a chat call is priced with the chat prices of its model, and shown per 1,000 tokens', async () => {
+    const a = recording('proto-a', async () => ({
+      ...answer('ok'),
+      usage: { inputTokens: 2000, outputTokens: 500, cachedInputTokens: 1000, requests: 1 },
+    }));
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      priceOf: (id) =>
+        id === 'a/small'
+          ? {
+              chat: {
+                'input-token': 0.00002,
+                'output-token': 0.0001,
+                'cached-input-token': 0.000005,
+              },
+              decide: { 'input-token': 1 },
+            }
+          : undefined,
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(metered.map((m) => m.usage.costMicroNok)).toEqual([75_000]);
+    expect(router.describe().find((m) => m.id === 'a/small')).toMatchObject({
+      price: { inputPerThousand: 0.02, outputPerThousand: 0.1 },
+      prices: { chat: { 'input-token': 0.00002 } },
+    });
+  });
+
+  it('a model that names no price for a kind leaves its calls of that kind unpriced', async () => {
+    const router = new ModelRouter({
+      catalog,
+      adapters: [recording('proto-a').adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      priceOf: () => ({ decide: { 'input-token': 1, 'output-token': 1 } }),
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(metered[0]?.usage.costMicroNok).toBeUndefined();
+  });
+});
+
+describe('embedding and rerank models in the model catalogue (ADR 0048)', () => {
+  const portApis = [
+    { id: 'proto-a/embed@1', kind: 'embed', family: 'proto-a', modelOptions: z.strictObject({}) },
+  ];
+  const embedder = (extra: Record<string, unknown> = {}) => ({
+    endpoints: catalog.endpoints,
+    models: [
+      {
+        id: 'a/embedder',
+        endpoint: 'one',
+        deployment: 'emb',
+        residency: 'eu',
+        apis: { embed: 'proto-a/embed@1' },
+        ...extra,
+      },
+    ],
+  });
+
+  it('an embedding model in the catalogue names its dimensions under embed', () => {
+    const apis = apiRegistry([recording('proto-a').adapter], undefined, portApis);
+
+    expect(parseCatalog(embedder(), apis)).toMatchObject({
+      ok: false,
+      errors: [{ path: 'models.0.embed' }],
+    });
+    expect(parseCatalog(embedder({ embed: { dimensions: 8, maxBatch: 4 } }), apis)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('a model that binds only another port kind is listed for operators but is not a model a service can name', () => {
+    const router = new ModelRouter({
+      catalog: embedder({ embed: { dimensions: 8 } }),
+      adapters: [recording('proto-a').adapter],
+      portApis,
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+    });
+
+    expect(router.describe().map((m) => [m.id, m.operations])).toEqual([['a/embedder', ['embed']]]);
+    expect(router.models().has('a/embedder')).toBe(false);
+  });
+
+  it('an API renamed after models bound it is found by its old id', () => {
+    const apis = apiRegistry([], loadDescriptors());
+
+    expect(apis.get('openai/embed@1')).toMatchObject({ id: 'openai/embeddings@1', kind: 'embed' });
+    expect(apis.get('openai/embeddings@1')?.units).toEqual(['input-token', 'request']);
+  });
+});
+
+describe('provider-side objects and the processor record', () => {
+  const keepNote = parseDescriptor(`
+id: example/keep-note@1
+operation: keep-note
+status: described
+summary: A made-up API that stores a note at the provider, answers from it and deletes it.
+api: { family: example, version: '1' }
+input: { object: { text: text } }
+output: { object: { answer: text } }
+resources:
+  - { id: create.note, delete: remove_note, longestSeconds: 3600 }
+steps:
+  - name: create
+    request: { method: POST, path: /notes, body: { text: $input.text } }
+    wire:
+      request: { object: { text: text } }
+      response: { object: { id: plain } }
+    bind:
+      note: { from: $response.id, class: { issued: '^note-[a-z0-9]+$' } }
+  - name: ask
+    request: { method: POST, path: /answers, body: { note: $steps.create.note } }
+    wire:
+      request: { object: { note: { issued: '^note-[a-z0-9]+$' } } }
+      response: { object: { text: text } }
+finally:
+  - name: remove_note
+    request: { method: DELETE, path: '/notes/{steps.create.note}' }
+    wire: { response: { object: { deleted: boolean } } }
+result: { answer: $response.text }
+`);
+  const lab = {
+    endpoints: {
+      lab: {
+        baseURL: 'https://lab.example/v1',
+        auth: { kind: 'api-key', secret: 'secret://env/key-a' },
+        families: { example: '' },
+      },
+    },
+    models: [
+      {
+        id: 'lab/small',
+        endpoint: 'lab',
+        deployment: 'small',
+        residency: 'eu',
+        apis: { 'keep-note': 'example/keep-note@1' },
+      },
+    ],
+  };
+
+  const provider = (failDelete = false) => {
+    const seen: string[] = [];
+    const egress: typeof fetch = async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      seen.push(`${init?.method} ${path}`);
+      if (path === '/v1/notes') return Response.json({ id: 'note-a1' });
+      if (path === '/v1/answers') return Response.json({ text: 'done' });
+      return failDelete ? new Response('no', { status: 500 }) : Response.json({ deleted: true });
+    };
+    return { seen, egress };
+  };
+
+  const routerFor = (
+    stateAllowed: boolean,
+    egress: typeof fetch,
+    objects: InMemoryProviderObjects,
+  ) =>
+    new ModelRouter({
+      catalog: lab,
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([keepNote]),
+      governance: {
+        maturity: async () => 'production',
+        processorRecorded: async () => true,
+        providerStateAllowed: async () => stateAllowed,
+      },
+      objects,
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+
+  const run = (router: ModelRouter) =>
+    router
+      .described()
+      .open({ kind: 'model', id: 'lab/small' }, testContext().ctx)
+      .call('example/keep-note@1', { text: 'hei' });
+
+  it('a descriptor that leaves objects at the provider is refused as processor when the processor record does not allow provider state', async () => {
+    const { seen, egress } = provider();
+    await expect(
+      run(routerFor(false, egress, new InMemoryProviderObjects())),
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/does not name the provider's retention/),
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it('writes the object to the ledger when it is issued and strikes it when the finally step deletes it', async () => {
+    const { seen, egress } = provider();
+    const objects = new InMemoryProviderObjects();
+    await expect(run(routerFor(true, egress, objects))).resolves.toEqual({ answer: 'done' });
+    expect(seen).toEqual(['POST /v1/notes', 'POST /v1/answers', 'DELETE /v1/notes/note-a1']);
+    const [note] = await objects.list(testContext().ctx.tenant);
+    expect(note).toMatchObject({ objectId: 'note-a1', state: 'deleted', connection: 'lab' });
+  });
+
+  it('leaves the object open in the ledger when the provider will not delete it, so the sweep finds it', async () => {
+    const { egress } = provider(true);
+    const objects = new InMemoryProviderObjects();
+    await run(routerFor(true, egress, objects)).catch(() => undefined);
+    const [note] = await objects.list(testContext().ctx.tenant);
+    expect(note).toMatchObject({ objectId: 'note-a1', state: 'open' });
+  });
+
+  it('the sweep deletes a leftover object through the descriptor of the call that made it', async () => {
+    const failing = provider(true);
+    const objects = new InMemoryProviderObjects();
+    await run(routerFor(true, failing.egress, objects)).catch(() => undefined);
+    const [left] = await objects.list(testContext().ctx.tenant, 'open');
+    const healthy = provider();
+    await routerFor(true, healthy.egress, objects).removeProviderObject(left as never);
+    expect(healthy.seen).toEqual(['DELETE /v1/notes/note-a1']);
   });
 });

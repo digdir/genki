@@ -5,6 +5,12 @@ import type { IndexDocument } from './writer.js';
  * and index jobs reach them. `packages/ingest` compares and indexes; a provider stores.
  */
 
+/**
+ * The owner of the records an engine switch copies into the knowledge database (#366). It is no
+ * valid pipeline id, so no pipeline owns them until one takes them over.
+ */
+export const copyOwner = '_copy';
+
 export interface ListedFile {
   name: string;
   /** The hash the source lists for the file, when it lists one without a download. */
@@ -36,6 +42,8 @@ export interface OwnedRecord {
   applied?: number;
   /** When the generation last wrote it, so a crawled page is downloaded again after a while. */
   appliedAt?: string;
+  /** Owned by an engine switch's copy, not by this pipeline: a run that lists it takes it over (#366). */
+  copied?: boolean;
 }
 
 /** A change to one record. `new`, `changed` and `delete` take the next number in the change sequence. */

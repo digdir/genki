@@ -55,6 +55,7 @@ export {
   type ThreadRetentionStore,
 } from './retention.js';
 export * from './media.js';
+export * from './provider-objects.js';
 export {
   chatShape,
   decideShape,

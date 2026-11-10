@@ -32,7 +32,7 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
   'retrieval.autoFilter.enabled': {
     label: 'Automatisk filter',
     cat: 'Søk',
-    desc: 'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+    desc: 'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   },
   'retrieval.autoFilter.rules': { label: 'Regler for automatisk filter', cat: 'Søk' },
   'retrieval.docTitle.fanout': { label: 'Tekstbiter per titteltreff', cat: 'Søk' },

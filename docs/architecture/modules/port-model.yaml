@@ -25,7 +25,10 @@ responsibilities:
   - Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing
     and residency, holds the request and the answer to their closed shapes, runs the payload guard
     and meters (ADR 0047); the router itself only routes
-  - The API registry and the binding of each model kind to an API (ADR 0048)
+  - The API registry and the binding of each model kind to an API, with the units each API
+    reports; embedding and rerank models bind APIs other ports implement (ADR 0048)
+  - Prices per model, kind and unit; typed chat and decide calls carry the connection's processor
+    record and production maturity (ADR 0048, #325)
   - Credential resolution
 files:
   - packages/port-model/src/port.ts

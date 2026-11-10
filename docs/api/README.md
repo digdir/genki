@@ -63,10 +63,50 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-10: polls, retries and uploads in parts from descriptors
+
+- A descriptor's `until` takes `after`, the wait an answer asks for, from a field or a declared header; an error rule takes `retry: true`, which retries its status within the step's `retry`; a step takes `parts: { of, bytes, most }`, which sends a media input in byte ranges and binds the answers as lists (ADR 0049, [operations.md](operations.md)). Descriptors without them load and run as before.
+
+### 2026-11-10: provider errors are kept for the audit, and a non-streamed descriptor step answers with its text
+
+- When a provider answers a model's descriptor call (chat, decide or an operation step, not embeddings) with an error, the run's audit `kernel.error` event carries `provider: { status, body }`: the HTTP status and the first 500 characters of the error body, JSON or plain text, with the connection's key and bound secrets replaced by `[redacted]`. For a built-in provider (OpenAI, Anthropic) `body` is the SDK's error message. The run timeline shows it to those who manage the service. The caller's `kernel.error` and answer are unchanged.
+- A `call-operation@1` step without `stream` outputs `{ result, text }` when `result` is text or has a text field `text`, so a flow that ends on it answers with that text instead of the JSON of `result`.
+
+### 2026-11-06: a streamed descriptor step answers with its text
+
+- A `call-operation@1` step with `stream: true` now outputs `{ result, text }`, and a flow that ends on it answers with `text` instead of the JSON of `result`. Deltas reach `/v1/chat/completions` only with `genai_stream: "live"`; without it the text comes as one piece.
+
+### 2026-11-06: any provider API by descriptor
+
+- Descriptors gain the classes `issued` and `url`, per-step `credential` placements (`header`, `query`, `form`, `basic`), multipart `filenames`, `request.follow`, `until.fail`, the mapping functions `$dataUrl`, `$add`, `$sub`, `$mul` and `$coalesce`, several media types in one output, and `response.stream` (`sse`, `ndjson`, `lines`) with `resources`, `modules` and `websocket` steps (ADR 0049, [operations.md](operations.md)).
+- `GET /v1/sessions?model=<service>` with an upgrade to WebSocket opens a live session on a service whose way of working is `live-session@1`. A request without an upgrade answers `426 upgrade_required`; `/v1/chat/completions` answers `400 live_only` for such a service. The close codes are 1000, 1001, 4001 (longest duration), 4002 (kind moved back to test) and 1011.
+- `/v1/chat/completions` with `stream: true` streams the deltas of a `call-operation@1` step with `stream: true`.
+- `PUT /operator/model-endpoints/{id}/processor-record` takes `providerState: { allowed, retention: { days, note } }`; `GET /operator/processor-records` shows it. `allowedHosts` on a model connection is set by operators only.
+- `PUT /operator/operation-descriptors/{id}` takes `modules: { <name>: <base64 WebAssembly> }`; the answer lists `modules: [{ name, sha256 }]`. A fixture may carry `at` and `session`.
+- A provider object that cannot be deleted becomes the audit action `platform.provider-object.incident` (rejected) in the tenant's log.
+- Usage totals carry `units` for open units wherever usage is returned.
+- A caller can send audio and images to a service that lists the media type in `spec.input.accepts` (`audio/*` is not a valid entry; name each type, such as `audio/wav` or `image/png`). `/v1/chat/completions` takes `input_audio` (`{ data, format }`, `wav` or `mp3`) and `image_url` with a base64 data URL in the last user message; `GET /v1/models` shows the accepted types as `_media: { accepts, max_bytes, max_count }`. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`. In a step flow the files are `{{input.files.0}}`, `{{input.files.1}}` and so on, media references that a `call-operation@1` step passes as a descriptor's `media` input. The consent rule is unchanged.
+- A descriptor is refused at load when a mapped request field, nested ones included, has no class in `wire.request`, or when an `opaque` request field is filled from input instead of an earlier step.
+
+### 2026-11-05: descriptors from primitives and media input with consent
+
+- Operation descriptors may be a list of `steps` with `bind`, `until`, `finally`, request encodings `multipart`, `form`, `binary`, `text` and `ndjson`, answer encodings `binary`, `text` and `ndjson`, classified query parameters and headers, open usage units, `errors` and `checks` (ADR 0049, [operations.md](operations.md)). One-request descriptors and their fixtures are read unchanged; a fixture may record `steps: [{ step, request, response }]`.
+- An answer whose content type is not the one its descriptor declares fails the call. This includes a JSON answer sent as `text/plain`.
+- Image, audio and file input to a descriptor call is let through when the service's confirmed risk assessment records it, `spec.riskConfirmation.unmaskedInput: [{ mediaType, reason }]`, and otherwise refused as before (#326). `kernel.gate.call` adds `mediaInput` with each input's type, size and SHA-256.
+- A price may name any unit a descriptor names, such as `page`, besides the eight built-in units; a unit name is lowercase letters, digits and hyphens. `GET /operator/apis` lists such units in `units`.
+
+### 2026-11-05: embedders, rerankers and prices per unit
+
+- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: colbert/rerank@1 }` and `rerank: { onFailure }`. Ids do not change, and neither model is listed in `GET /models` as a chat model.
+- The descriptor `openai/embed@1` is `openai/embeddings@1`; the old id is still read, and a model bound to it moves to the new one.
+- `PUT /operator/models/{id}/price` takes `{ <kind>: { <unit>: <kroner per unit> } }` with the units `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` and `request`. `{ inputPerThousand, outputPerThousand }` is still accepted and holds for every kind the model binds. The answer adds `prices`, and keeps `inputPerThousand` and `outputPerThousand` as the per-1,000-token view. A unit not in the list answers `400`.
+- `GET /operator/apis` adds `units`, the units each API reports.
+- `GET /operator/processor-records` adds `typedCalls`: `warn` or `enforce`, what a typed chat or decide call does on a connection without a processor record (`GENAI_PROCESSOR_RECORDS`).
+
 ### 2026-11-05: connections serve many APIs
 
 - A model connection (`model-endpoint`) takes `baseURL`, `auth`, `families: { <family>: <base> }` and `discovery: [<rule>]`, and no longer `protocol` or `options`. A base is a path under `baseURL` or a full URL. `POST /operator/model-endpoints` takes the new shape, and `PUT /operator/model-endpoints/{id}` (operators, audited, `change-reason`) edits a connection in place; a `PUT` without `discovery` keeps the stored rules. A family no API is in answers `400` (`errors[0].path: "families.<family>"`).
-- A model binds one API per kind: `apis: { <kind>: <API id> }`, such as `{ chat: openai/responses@1, decide: openai/decide@1 }`. It replaces `operations`, `descriptors` and `options.api` in the catalogue, `PUT /operator/models/{id}` and `PATCH /operator/models/{id}`, where `operations` now answers `400`. A binding to an unknown API, an API of another kind or an API in a family the connection does not offer answers `422` (`errors[0].path: "apis.<kind>"`). `GET /operator/models` adds `apis` and keeps `operations`, the kinds it binds.
+- A model binds one API per kind: `apis: { <kind>: <API id> }`, such as `{ chat: openai/responses@1, decide: openai/decide@1 }`. It replaces `operations`, `descriptors` and `options.api` in the catalogue, `PUT /operator/models/{id}` and `PATCH /operator/models/{id}`, where `operations` now answers `400`. A binding to an unknown API, an API of another kind, an API in a family the connection does not offer, or a `chat` API without a built-in implementation answers `422` (`errors[0].path: "apis.<kind>"`). `GET /operator/models` adds `apis` and keeps `operations`, the kinds it binds.
 - `GET /operator/apis` (operators): every API a model can bind, `{ id, kind, family, source, status, summary?, models }`, with `source` one of `built-in`, `bundled` or `uploaded`.
 - Each descriptor in `GET /operator/operation-kinds` and `GET /operator/operation-descriptors` names its `family` instead of `protocol`. A stored descriptor that names `protocol` is read with that protocol's family.
 - Stored connections, models, processor records and classifications move to the new shape once at start; see [Model providers](../providers.md). Model ids do not change.
@@ -104,7 +144,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - Publishing a service with a `call-operation` step answers `422` unless it has the `pii-before-model` guardrail, and when the descriptor's kind is `decide` (served only through `purpose-check`).
 - A draft (builder, playground, skill test, assistant) cannot run a `call-operation` step; the step fails as refused.
 - Image, audio and file input to a descriptor call is always refused. The processor record no longer has `acceptsUnmaskedInput` or `unmaskedInputReason`; a `PUT` with either answers `400`.
-- `GET /operator/operation-kinds` lists `chat` and `decide` always, with `builtIn: true` and `typed: "production"`, and says `governs: "descriptor-calls"`: maturity governs descriptor calls only.
+- `GET /operator/operation-kinds` lists `chat`, `decide`, `embed` and `rerank` always, with `builtIn: true` and `typed: "production"`, and says `governs: "descriptor-calls"`: maturity governs descriptor calls only.
 
 ### 2026-11-03: the described tier, maturity per kind and processor records
 

@@ -16,6 +16,10 @@ endpoints:
         include: ['claude-*']
         capabilities: [stream, tools, json-schema, reasoning]
         apis: { chat: anthropic/messages@1 }
+  colbert:
+    baseURL: ${COLBERT_API_URL}
+    auth: { kind: api-key, header: x-api-key, secret: secret://env/colbert-api-key }
+    families: { colbert: '' }
   local-model:
     baseURL: ${LOCAL_MODEL_URL}
     auth: { kind: bearer, secret: secret://env/local-model-key }
@@ -37,3 +41,29 @@ models:
     residency: eu
     capabilities: [stream, tools, json-schema]
     apis: { chat: openai/chat-completions@1, decide: openai/decide@1 }
+  - id: foundry/text-embedding-3-small
+    endpoint: foundry
+    deployment: text-embedding-3-small
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 1536, maxBatch: 64 }
+  - id: foundry/text-embedding-3-large
+    endpoint: foundry
+    deployment: text-embedding-3-large
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 3072, maxBatch: 64 }
+  # 3-large sent at 1,536 dimensions, as the Kudos pilot (#92) chose: shortening cost nothing there.
+  - id: foundry/text-embedding-3-large-1536
+    endpoint: foundry
+    deployment: text-embedding-3-large
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 1536, maxBatch: 64 }
+    options: { sendDimensions: true }
+  - id: colbert
+    endpoint: colbert
+    deployment: colbert
+    residency: norway
+    apis: { rerank: colbert/rerank@1 }
+    rerank: { onFailure: degrade }

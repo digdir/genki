@@ -244,6 +244,8 @@ const RunStats = z
     cachedInputTokens: z.number().int().optional(),
     costMicroNok: z.number().int().optional(),
     unpricedTokens: z.number().int().optional(),
+    units: z.record(z.string(), z.number()).optional(),
+    unpricedUnits: z.record(z.string(), z.number()).optional(),
     byModel: z
       .array(
         z.object({
@@ -271,6 +273,11 @@ const Timeline = z
     inputTokens: z.number().optional(),
     outputTokens: z.number().optional(),
     costOre: z.number().optional(),
+    units: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('Units besides tokens, built in or open, by name'),
+    unpricedUnits: z.record(z.string(), z.number()).optional(),
     costMicroNok: z.number().int().nullable().optional(),
     priced: z.boolean().optional(),
     erasure: RunErasure.optional(),

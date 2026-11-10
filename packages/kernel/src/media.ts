@@ -155,3 +155,50 @@ export const decodeBase64 = (text: string): Uint8Array | undefined => {
     return undefined;
   }
 };
+
+export const mediaInputKind = 'media-input';
+
+/** Media input the gate has admitted and read: its bytes, ready for the executor to encode. */
+export interface MediaInput {
+  kind: typeof mediaInputKind;
+  mediaType: string;
+  bytes: number;
+  sha256: string;
+  body: Uint8Array;
+}
+
+/** Media given inline in an input: a media type and its base64 data. */
+export interface InlineMedia {
+  mediaType: string;
+  data: string;
+}
+
+export interface MediaInputSource {
+  read(ctx: PortContext, ref: MediaRef): Promise<Uint8Array | undefined>;
+}
+
+export const isMediaInput = (value: unknown): value is MediaInput =>
+  typeof value === 'object' &&
+  value !== null &&
+  (value as { kind?: unknown }).kind === mediaInputKind &&
+  (value as { body?: unknown }).body instanceof Uint8Array;
+
+export const isInlineMedia = (value: unknown): value is InlineMedia => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Object.keys(v).length === 2 && typeof v.mediaType === 'string' && typeof v.data === 'string'
+  );
+};
+
+/** Whether a media type rule (`type/subtype` or `type/*`) covers a media type, which may itself be `type/*`. */
+export const mediaTypeCovers = (rule: string, mediaType: string) =>
+  rule === mediaType ||
+  (rule.endsWith('/*') && !mediaType.endsWith('/*') && mediaType.startsWith(rule.slice(0, -1)));
+
+export const sha256Hex = async (body: Uint8Array) => {
+  const digest = await crypto.subtle.digest('SHA-256', body as Uint8Array<ArrayBuffer>);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+export const encodeBase64 = (body: Uint8Array) => Buffer.from(body).toString('base64');

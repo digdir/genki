@@ -10,42 +10,27 @@ import {
   Select,
   SelectOption,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-  Tag,
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useRef, useState } from 'react';
-import { useAsync } from '../../hooks';
-import { ApiError, type ApiClient } from '../../api';
 import { useFormat } from '@genai/i18n/react';
+import { useRef, useState } from 'react';
+import { ApiError, type ApiClient } from '../../api';
 import { useT, type PlainKey } from '../../i18n';
-import { useTenantNames } from '../../tenant-names';
+import { operationName, rebind } from '../../model-operations';
 import type {
+  ApiBindings,
   Capability,
   ConfigEntry,
-  EndpointProcessorRecord,
+  DiscoveryRule,
+  ModelApi,
   ModelEndpointInput,
   ModelPrice,
   OperatorModel,
   Residency,
 } from '../../types';
-import {
-  DialogError,
-  inUseOf,
-  InUseList,
-  ReasonDialog,
-  SidePanel,
-  TableRegion,
-  VisuallyHidden,
-  type InUse,
-} from '../../ui';
-import { ProcessorRecordForm } from './ProcessorRecord';
+import { DialogError, ReasonDialog, SidePanel } from '../../ui';
+import { apisFor, familiesOf } from './area-data';
 import { reasonError, ReasonField } from './reason-field';
 
 export const residencyLabel: Record<Residency, PlainKey> = {
@@ -61,6 +46,13 @@ export const capabilityLabel: Record<Capability, PlainKey> = {
   reasoning: 'endpoints.capReasoning',
 };
 
+const modelSlug = (deployment: string) =>
+  deployment
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+|-+$/g, '');
+
 const secretPrefix = 'secret://platform/';
 
 const problemText = (error: unknown, fallback: string) => {
@@ -72,17 +64,9 @@ const problemText = (error: unknown, fallback: string) => {
 interface EndpointSpec {
   baseURL?: string;
   families?: Record<string, string>;
+  discovery?: DiscoveryRule[];
   auth?: { kind?: string; secret?: string; header?: string };
 }
-
-const specOf = (entry: ConfigEntry) => {
-  const spec = entry.spec as EndpointSpec;
-  return {
-    families: Object.keys(spec.families ?? {}),
-    baseURL: spec.baseURL,
-    secret: spec.auth?.secret?.replace(secretPrefix, ''),
-  };
-};
 
 interface FamilyRow {
   family: string;
@@ -91,13 +75,44 @@ interface FamilyRow {
 
 const familyBasePattern = /^((\/[A-Za-z0-9._~-]+)*\/?|https:\/\/\S+)$/;
 
-const EndpointForm = ({
+interface RuleDraft {
+  rule: DiscoveryRule;
+  include: string;
+  exclude: string;
+}
+
+const patterns = (text: string) =>
+  text
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+const draftOf = (rule: DiscoveryRule): RuleDraft => ({
+  rule,
+  include: (rule.include ?? []).join(', '),
+  exclude: (rule.exclude ?? []).join(', '),
+});
+
+export const ruleOf = ({ rule, include, exclude }: RuleDraft): DiscoveryRule => {
+  const rest = { ...rule };
+  delete rest.include;
+  delete rest.exclude;
+  return {
+    ...rest,
+    ...(patterns(include).length ? { include: patterns(include) } : {}),
+    ...(patterns(exclude).length ? { exclude: patterns(exclude) } : {}),
+  };
+};
+
+export const EndpointForm = ({
   api,
+  apis,
   existing,
   onClose,
   onSaved,
 }: {
   api: ApiClient;
+  apis: ModelApi[] | undefined;
   existing?: ConfigEntry | undefined;
   onClose: () => void;
   onSaved: (id: string) => void;
@@ -109,15 +124,23 @@ const EndpointForm = ({
   const storedSecret = spec.auth?.secret?.startsWith(secretPrefix)
     ? spec.auth.secret.slice(secretPrefix.length)
     : '';
-  const [apis] = useAsync((signal) => api.modelApis(signal), [api]);
-  const known =
-    apis.status === 'ready' ? [...new Set(apis.data.map((a) => a.family))].sort() : undefined;
+  const known = apis ? [...new Set(apis.map((a) => a.family))].sort() : undefined;
+  const [rules, setRules] = useState<RuleDraft[]>(
+    Array.isArray(spec.discovery) ? spec.discovery.map(draftOf) : [],
+  );
+  const setRule = (index: number, change: Partial<RuleDraft>) =>
+    setRules((all) => all.map((r, i) => (i === index ? { ...r, ...change } : r)));
+  const bindRule = (index: number, bindings: ApiBindings) =>
+    setRules((all) =>
+      all.map((r, i) => (i === index ? { ...r, rule: { ...r.rule, apis: bindings } } : r)),
+    );
   const [id, setId] = useState(existing?.id ?? '');
   const [rows, setRows] = useState<FamilyRow[]>(
     spec.families
       ? Object.entries(spec.families).map(([family, base]) => ({ family, base }))
       : [{ family: 'openai', base: '' }],
   );
+  const offered = (apis ?? []).filter((a) => rows.some((r) => r.family === a.family));
   const [baseURL, setBaseURL] = useState(spec.baseURL ?? '');
   const [authKind, setAuthKind] = useState<'api-key' | 'bearer'>(
     spec.auth?.kind === 'bearer' ? 'bearer' : 'api-key',
@@ -188,6 +211,7 @@ const EndpointForm = ({
         ...(header ? { header } : {}),
       },
       families: Object.fromEntries(rows.map((r) => [r.family, r.base.trim()])),
+      ...(rules.length || spec.discovery ? { discovery: rules.map(ruleOf) } : {}),
     };
     try {
       if (existing) await api.updateModelEndpoint(id, input, reason.trim());
@@ -283,6 +307,86 @@ const EndpointForm = ({
             </Button>
           </div>
         </Fieldset>
+        <Fieldset>
+          <FieldsetLegend>{t('connections.discovery')}</FieldsetLegend>
+          <Paragraph data-size="sm">{t('connections.discoveryIntro')}</Paragraph>
+          {rules.map((draft, index) => {
+            const bound = draft.rule.apis ?? {};
+            const n = index + 1;
+            return (
+              <div className="stack-sm rule-box" key={index}>
+                <span className="label-strong">{t('connections.ruleN', { n })}</span>
+                <Textfield
+                  label={t('connections.ruleInclude', { n })}
+                  description={index === 0 ? t('connections.rulePatternsHint') : undefined}
+                  value={draft.include}
+                  onChange={(e) => setRule(index, { include: e.target.value })}
+                />
+                <Textfield
+                  label={t('connections.ruleExclude', { n })}
+                  value={draft.exclude}
+                  onChange={(e) => setRule(index, { exclude: e.target.value })}
+                />
+                <ul className="plain stack-sm">
+                  {Object.entries(bound).map(([kind, id]) => (
+                    <li key={kind} className="actions-row">
+                      <span>
+                        {operationName(kind, t)}: <code>{id}</code>
+                      </span>
+                      <Button
+                        variant="tertiary"
+                        data-size="sm"
+                        onClick={() => bindRule(index, rebind(bound, kind, ''))}
+                      >
+                        {t('connections.ruleUnbind', { kind: operationName(kind, t), n })}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="field">
+                  <Label htmlFor={`rule-api-${index}`}>{t('connections.ruleBind', { n })}</Label>
+                  <Select
+                    id={`rule-api-${index}`}
+                    value=""
+                    onChange={(e) => {
+                      const chosen = offered.find((a) => a.id === e.target.value);
+                      if (chosen) bindRule(index, rebind(bound, chosen.kind, chosen.id));
+                    }}
+                  >
+                    <SelectOption value="">{t('connections.ruleBindChoose')}</SelectOption>
+                    {offered
+                      .filter((a) => !bound[a.kind])
+                      .map((a) => (
+                        <SelectOption key={a.id} value={a.id}>
+                          {operationName(a.kind, t)}: {a.id}
+                        </SelectOption>
+                      ))}
+                  </Select>
+                </div>
+                <div className="actions-row">
+                  <Button
+                    variant="tertiary"
+                    data-size="sm"
+                    onClick={() => setRules((all) => all.filter((_, i) => i !== index))}
+                  >
+                    {t('connections.ruleRemove', { n })}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+          <div className="actions-row">
+            <Button
+              variant="secondary"
+              data-size="sm"
+              onClick={() =>
+                setRules((all) => [...all, draftOf({ source: 'azure-deployments', apis: {} })])
+              }
+            >
+              {t('connections.ruleAdd')}
+            </Button>
+          </div>
+        </Fieldset>
         <div className="field">
           <Label htmlFor="endpoint-auth">{t('endpoints.login')}</Label>
           <Select
@@ -355,14 +459,14 @@ const EndpointForm = ({
 export const ModelForm = ({
   api,
   endpoints,
-  model,
+  apis,
   endpoint,
   onClose,
   onSaved,
 }: {
   api: ApiClient;
-  endpoints: string[];
-  model?: OperatorModel | undefined;
+  endpoints: ConfigEntry[];
+  apis: ModelApi[] | undefined;
   endpoint?: string | undefined;
   onClose: () => void;
   onSaved: (model: OperatorModel) => void;
@@ -370,20 +474,27 @@ export const ModelForm = ({
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
-  const [target, setTarget] = useState(model?.endpoint ?? endpoint ?? endpoints[0] ?? '');
-  const [deployment, setDeployment] = useState(model?.deployment ?? '');
-  const [family, setFamily] = useState(model?.family ?? '');
-  const [residency, setResidency] = useState<Residency>(model?.residency ?? 'global');
-  const [capabilities, setCapabilities] = useState<Capability[]>(model?.capabilities ?? ['stream']);
-  const [enabled, setEnabled] = useState(model?.enabled ?? false);
+  const [target, setTarget] = useState(endpoint ?? endpoints[0]?.id ?? '');
+  const [deployment, setDeployment] = useState('');
+  const [family, setFamily] = useState('');
+  const [residency, setResidency] = useState<Residency>('global');
+  const [capabilities, setCapabilities] = useState<Capability[]>(['stream']);
+  const [chat, setChat] = useState('');
+  const [enabled, setEnabled] = useState(false);
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const families = familiesOf(endpoints.find((e) => e.id === target));
+  const chatApis = apisFor(apis ?? [], families, 'chat');
 
   const save = async () => {
     const found = {
-      ...(deployment.trim() ? {} : { deployment: t('endpoints.deploymentRequired') }),
+      ...(deployment.trim()
+        ? modelSlug(deployment)
+          ? {}
+          : { deployment: t('endpoints.deploymentNeedsLetterOrDigit') }
+        : { deployment: t('endpoints.deploymentRequired') }),
       ...(target ? {} : { target: t('endpoints.chooseEndpoint') }),
       ...(reasonError(reason, t) ? { reason: reasonError(reason, t) as string } : {}),
     };
@@ -392,15 +503,15 @@ export const ModelForm = ({
     if (Object.keys(found).length) return;
     setBusy(true);
     try {
-      const id = model?.id ?? `${target}/${deployment.trim().toLowerCase()}`;
       const saved = await api.saveModel(
-        id,
+        `${target}/${modelSlug(deployment)}`,
         {
           endpoint: target,
           deployment: deployment.trim(),
           ...(family.trim() ? { family: family.trim() } : {}),
           residency,
           capabilities,
+          ...(chat ? { apis: { chat } } : {}),
           enabled,
         },
         reason.trim(),
@@ -418,7 +529,7 @@ export const ModelForm = ({
       <div className="panel-head">
         <span className="eyebrow">{t('endpoints.panelEyebrow')}</span>
         <Heading level={2} data-size="xs" id="model-panel-h" tabIndex={-1}>
-          {model ? t('endpoints.editModel', { model: model.deployment }) : t('endpoints.addModel')}
+          {t('endpoints.addModel')}
         </Heading>
       </div>
       <div className="panel-body">
@@ -427,12 +538,14 @@ export const ModelForm = ({
           <Select
             id="model-endpoint"
             value={target}
-            disabled={Boolean(model)}
-            onChange={(e) => setTarget(e.target.value)}
+            onChange={(e) => {
+              setTarget(e.target.value);
+              setChat('');
+            }}
           >
             {endpoints.map((e) => (
-              <SelectOption key={e} value={e}>
-                {e}
+              <SelectOption key={e.id} value={e.id}>
+                {e.id}
               </SelectOption>
             ))}
           </Select>
@@ -442,7 +555,6 @@ export const ModelForm = ({
           label={t('endpoints.deployment')}
           description={t('endpoints.deploymentDescription')}
           value={deployment}
-          readOnly={Boolean(model)}
           onChange={(e) => setDeployment(e.target.value)}
           error={errors.deployment}
         />
@@ -481,6 +593,17 @@ export const ModelForm = ({
             />
           ))}
         </Fieldset>
+        <div className="field">
+          <Label htmlFor="model-chat-api">{t('endpoints.chatApi')}</Label>
+          <Select id="model-chat-api" value={chat} onChange={(e) => setChat(e.target.value)}>
+            <SelectOption value="">{t('endpoints.chatApiDefault')}</SelectOption>
+            {chatApis.map((a) => (
+              <SelectOption key={a.id} value={a.id}>
+                {a.id}
+              </SelectOption>
+            ))}
+          </Select>
+        </div>
         <Switch
           label={t('endpoints.inUse')}
           checked={enabled}
@@ -570,208 +693,5 @@ export const PriceDialog = ({
         onChange={(e) => setOutput(e.target.value)}
       />
     </ReasonDialog>
-  );
-};
-
-export const Endpoints = ({
-  api,
-  endpoints,
-  models,
-  onAdded,
-  onRemoved,
-  onAddModel,
-  onProcessorSaved,
-}: {
-  api: ApiClient;
-  endpoints: ConfigEntry[];
-  models: OperatorModel[];
-  onAdded: () => void;
-  onRemoved: (id: string) => void;
-  onAddModel: (endpoint: string) => void;
-  onProcessorSaved: (id: string) => void;
-}) => {
-  const t = useT();
-  const [adding, setAdding] = useState(false);
-  const [editingEndpoint, setEditingEndpoint] = useState<ConfigEntry | undefined>();
-  const [removing, setRemoving] = useState<string | undefined>();
-  const [inUse, setInUse] = useState<InUse[] | undefined>();
-  const [recording, setRecording] = useState<string | undefined>();
-  const [records, reloadRecords] = useAsync((signal) => api.processorRecords(signal), [api]);
-  const recordOf = (id: string): EndpointProcessorRecord | undefined =>
-    records.status === 'ready' ? records.data.find((r) => r.endpoint === id) : undefined;
-  const tenantName = useTenantNames(api);
-
-  const remove = async (reason: string) => {
-    if (!removing) return;
-    try {
-      await api.deleteModelEndpoint(removing, reason);
-    } catch (error) {
-      const used = inUseOf(error, 'services');
-      if (used) {
-        setInUse(used);
-        throw new DialogError(t('endpoints.stillInUse'));
-      }
-      throw error;
-    }
-    onRemoved(removing);
-  };
-
-  return (
-    <section className="stack" aria-labelledby="endepunkter-h">
-      <div className="card-head">
-        <Heading level={2} data-size="xs" id="endepunkter-h">
-          {t('endpoints.title')}
-        </Heading>
-        <Button variant="secondary" data-size="sm" onClick={() => setAdding(true)}>
-          {t('endpoints.addTitle')}
-        </Button>
-      </div>
-      <Paragraph data-size="sm">{t('endpoints.intro')}</Paragraph>
-      {endpoints.length === 0 ? (
-        <Paragraph>{t('endpoints.none')}</Paragraph>
-      ) : (
-        <TableRegion label={t('endpoints.tableLabel')}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell scope="col">{t('endpoints.colEndpoint')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('endpoints.colFamilies')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('endpoints.colSecret')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('endpoints.colModels')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('endpoints.colProcessor')}</TableHeaderCell>
-                <TableHeaderCell scope="col">
-                  <VisuallyHidden>{t('endpoints.colActions')}</VisuallyHidden>
-                </TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {endpoints.map((e) => {
-                const spec = specOf(e);
-                return (
-                  <TableRow key={e.id}>
-                    <TableHeaderCell scope="row">
-                      <span className="two-line">
-                        <strong>{e.id}</strong>
-                        <span className="meta">{spec.baseURL ?? ''}</span>
-                      </span>
-                    </TableHeaderCell>
-                    <TableCell>
-                      {spec.families.length > 0 ? spec.families.join(', ') : t('endpoints.unknown')}
-                    </TableCell>
-                    <TableCell>{spec.secret ?? t('endpoints.noSecret')}</TableCell>
-                    <TableCell>{models.filter((m) => m.endpoint === e.id).length}</TableCell>
-                    <TableCell>
-                      {records.status === 'ready' ? (
-                        <span className="two-line">
-                          {recordOf(e.id)?.record ? (
-                            <Tag data-size="sm" data-color="success">
-                              {t('endpoints.processorRecorded')}
-                            </Tag>
-                          ) : (
-                            <Tag data-size="sm" data-color="warning">
-                              {t('endpoints.processorMissing')}
-                            </Tag>
-                          )}
-                          <span className="meta">
-                            {recordOf(e.id)?.record
-                              ? t('endpoints.processorRecordedHint')
-                              : t('endpoints.processorMissingHint')}
-                          </span>
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <span className="row-actions">
-                        <Button
-                          variant="tertiary"
-                          data-size="sm"
-                          aria-label={t('endpoints.editId', { id: e.id })}
-                          onClick={() => setEditingEndpoint(e)}
-                        >
-                          {t('endpoints.edit')}
-                        </Button>
-                        <Button
-                          variant="tertiary"
-                          data-size="sm"
-                          aria-label={t('endpoints.processorOpenFor', { id: e.id })}
-                          onClick={() => setRecording(e.id)}
-                        >
-                          {recordOf(e.id)?.record
-                            ? t('endpoints.processorChange')
-                            : t('endpoints.processorAdd')}
-                        </Button>
-                        <Button
-                          variant="tertiary"
-                          data-size="sm"
-                          aria-label={t('endpoints.addModelUnder', { id: e.id })}
-                          onClick={() => onAddModel(e.id)}
-                        >
-                          {t('endpoints.addModel')}
-                        </Button>
-                        <Button
-                          variant="tertiary"
-                          data-size="sm"
-                          aria-label={t('endpoints.removeId', { id: e.id })}
-                          onClick={() => {
-                            setInUse(undefined);
-                            setRemoving(e.id);
-                          }}
-                        >
-                          {t('endpoints.remove')}
-                        </Button>
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableRegion>
-      )}
-      {recording ? (
-        <ProcessorRecordForm
-          api={api}
-          endpoint={recording}
-          current={recordOf(recording)}
-          onClose={() => setRecording(undefined)}
-          onSaved={() => {
-            setRecording(undefined);
-            onProcessorSaved(recording);
-            reloadRecords();
-          }}
-        />
-      ) : null}
-      {adding || editingEndpoint ? (
-        <EndpointForm
-          key={editingEndpoint?.id ?? 'new'}
-          api={api}
-          existing={editingEndpoint}
-          onClose={() => {
-            setAdding(false);
-            setEditingEndpoint(undefined);
-          }}
-          onSaved={() => {
-            setAdding(false);
-            setEditingEndpoint(undefined);
-            onAdded();
-          }}
-        />
-      ) : null}
-      <ReasonDialog
-        open={Boolean(removing)}
-        title={removing ? t('endpoints.removeId', { id: removing }) : ''}
-        text={t('endpoints.removeText')}
-        confirmLabel={t('endpoints.remove')}
-        onClose={() => setRemoving(undefined)}
-        onConfirm={remove}
-      >
-        {inUse?.length ? (
-          <div className="stack-sm">
-            <span className="label-strong">{t('endpoints.usedBy', { count: inUse.length })}</span>
-            <InUseList items={inUse} tenantName={tenantName} />
-          </div>
-        ) : null}
-      </ReasonDialog>
-    </section>
   );
 };

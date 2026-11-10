@@ -239,6 +239,8 @@ export interface KnowledgePoolSource {
   user?: string;
   password?: string | (() => Promise<string>);
   ssl?: boolean | { rejectUnauthorized: boolean };
+  /** Connections in each pool; pg's 10 when left out. */
+  max?: number;
 }
 
 const loginRoles = {

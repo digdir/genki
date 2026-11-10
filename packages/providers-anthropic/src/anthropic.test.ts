@@ -91,6 +91,22 @@ describe('anthropic-messages adapter', () => {
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false, false]);
   });
 
+  it('keeps temperature when the model refuses a token parameter instead', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 400,
+      json: {
+        type: 'error',
+        error: { type: 'invalid_request_error', message: "Unsupported parameter: 'max_tokens'." },
+      },
+    }));
+    const port = router(url).open({ kind: 'model', id: 'foundry/claude-opus' }, testContext().ctx);
+
+    await expect(
+      port.chat({ messages: [{ role: 'user', content: 'hei' }], temperature: 0 }),
+    ).rejects.toThrow();
+    expect(seen.every((s) => 'temperature' in s.body)).toBe(true);
+  });
+
   it('keeps temperature off the wire when the operator marked it unsupported', async () => {
     const { url, seen } = await fake(() => ({
       status: 200,

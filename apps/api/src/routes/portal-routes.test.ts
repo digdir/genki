@@ -20,6 +20,8 @@ import {
   InMemoryTenantApiKeys,
   portalAdminHandlers,
   registerPortalRoutes,
+  tallyOf,
+  usageView,
   type PortalTaskRow,
 } from './portal-routes.js';
 
@@ -1283,4 +1285,22 @@ describe('usage from an AI gateway', () => {
     });
     return store;
   };
+});
+
+describe('usage totals with open units', () => {
+  it('shows units besides tokens and marks a unit without a price as not priced', () => {
+    const view = usageView(tallyOf({ units: { page: 3 }, audioSeconds: 7 }));
+
+    expect(view).toMatchObject({
+      priced: false,
+      units: { page: 3, 'audio-second': 7 },
+      unpricedUnits: { page: 3, 'audio-second': 7 },
+    });
+  });
+
+  it('counts a unit as priced when the call that reported it was priced', () => {
+    const view = usageView(tallyOf({ units: { page: 3 }, costMicroNok: 30_000 }));
+
+    expect(view).toMatchObject({ priced: true, units: { page: 3 }, unpricedUnits: {} });
+  });
 });

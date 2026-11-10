@@ -1,24 +1,12 @@
 import { parse as parseYaml } from 'yaml';
 import { ApiError } from './api';
 import type { PlainKey } from './i18n';
-import type {
-  DescriptorStatus,
-  InputShape,
-  Maturity,
-  OperationDescriptor,
-  OperationKind,
-} from './types';
+import type { DescriptorStatus, InputShape, Maturity } from './types';
 
 export const statusLabel: Record<DescriptorStatus, PlainKey> = {
   review: 'modelOperations.statusReview',
   described: 'modelOperations.statusDescribed',
   typed: 'modelOperations.statusTyped',
-};
-
-export const statusMeaning: Record<DescriptorStatus, PlainKey> = {
-  review: 'modelOperations.statusReviewMeaning',
-  described: 'modelOperations.statusDescribedMeaning',
-  typed: 'modelOperations.statusTypedMeaning',
 };
 
 export const statusColor: Record<DescriptorStatus, 'warning' | 'success' | 'info'> = {
@@ -30,31 +18,6 @@ export const statusColor: Record<DescriptorStatus, 'warning' | 'success' | 'info
 export const maturityLabel: Record<Maturity, PlainKey> = {
   test: 'modelOperations.maturityTest',
   production: 'modelOperations.maturityProduction',
-};
-
-export type NextStep = 'try' | 'fix' | 'approve' | 'promote' | 'ready' | 'none';
-
-export const nextStepLabel: Record<NextStep, PlainKey> = {
-  try: 'modelOperations.nextTry',
-  fix: 'modelOperations.nextFix',
-  approve: 'modelOperations.nextApprove',
-  promote: 'modelOperations.nextPromote',
-  ready: 'modelOperations.nextReady',
-  none: 'modelOperations.nextNone',
-};
-
-/** What the operator does next with a descriptor, from its status, fixtures and kind. */
-export const nextStep = (
-  descriptor: Pick<OperationDescriptor, 'source' | 'status' | 'fixtures' | 'contract'>,
-  kind: Pick<OperationKind, 'maturity' | 'builtIn'> | undefined,
-): NextStep => {
-  if (descriptor.source === 'uploaded' && descriptor.status === 'review') {
-    if (descriptor.fixtures === 0) return 'try';
-    return descriptor.contract?.passed ? 'approve' : 'fix';
-  }
-  if (descriptor.status === 'review') return 'none';
-  if (kind && !kind.builtIn && kind.maturity === 'test') return 'promote';
-  return 'ready';
 };
 
 export type UploadField = 'id' | 'descriptor' | 'fixtures' | 'reason' | 'general';

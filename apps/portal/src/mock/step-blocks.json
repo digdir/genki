@@ -250,7 +250,7 @@
     "ref": "call-operation@1",
     "name": "call-operation",
     "version": "1",
-    "description": "Call a reviewed operation descriptor on one of the service's models, with the step input as its typed input",
+    "description": "Call a reviewed operation descriptor on one of the service's models, with the step input as its typed input; streams its text to the answer when asked",
     "title": {
       "nb": "Kall en operasjon",
       "en": "Call an operation"
@@ -294,6 +294,15 @@
             "en": "One of the service's models that can perform the operation. Empty means the model the service has chosen for this kind of operation, else the main model."
           },
           "x-widget": "text"
+        },
+        "stream": {
+          "default": false,
+          "type": "boolean",
+          "x-label": {
+            "nb": "Strøm svaret",
+            "en": "Stream the answer"
+          },
+          "x-widget": "toggle"
         }
       },
       "required": ["descriptor"],
@@ -302,7 +311,10 @@
     "output": {
       "type": "object",
       "properties": {
-        "result": {}
+        "result": {},
+        "text": {
+          "type": "string"
+        }
       },
       "required": ["result"],
       "additionalProperties": false

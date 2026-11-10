@@ -78,6 +78,14 @@ const nb = {
   mode: { label: 'Regel', values: parameterModes },
   value: { label: 'Verdi' },
   tenants: { label: 'Virksomheter som kan bruke den', help: 'Tomt betyr alle.' },
+  embed: { label: 'Innbygging' },
+  dimensions: { label: 'Dimensjoner' },
+  maxBatch: { label: 'Flest tekster per kall' },
+  rerank: { label: 'Omrangering' },
+  onFailure: {
+    label: 'Når omrangeringen feiler',
+    values: { degrade: 'Behold rekkefølgen fra søket', fail: 'Avbryt' },
+  },
   options: { label: 'Andre valg' },
   protocol: { label: 'Protokoll' },
   families: {
@@ -98,6 +106,10 @@ const nb = {
   secret: { label: 'Hemmelighet', help: 'En secret://-referanse, aldri selve nøkkelen.' },
   header: { label: 'Header' },
   provider: { label: 'Tokenleverandør' },
+  allowedHosts: {
+    label: 'Tillatte verter for svarlenker',
+    help: 'Verter utenom endepunktets egen som en lenke i et svar kan føre til. Bare en operatør setter dem.',
+  },
   discovery: { label: 'Finn modeller automatisk' },
   'discovery.source': { label: 'Kilde' },
   'discovery.from': { label: 'Bruk oppslaget fra endepunktet' },
@@ -150,6 +162,14 @@ const en: Record<keyof typeof nb, LabelText> = {
   mode: { label: 'Rule', values: parameterModesEn },
   value: { label: 'Value' },
   tenants: { label: 'Organisations that may use it', help: 'Empty means all.' },
+  embed: { label: 'Embedding' },
+  dimensions: { label: 'Dimensions' },
+  maxBatch: { label: 'Most texts per call' },
+  rerank: { label: 'Reranking' },
+  onFailure: {
+    label: 'When reranking fails',
+    values: { degrade: 'Keep the search order', fail: 'Stop' },
+  },
   options: { label: 'Other options' },
   protocol: { label: 'Protocol' },
   families: {
@@ -170,6 +190,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   secret: { label: 'Secret', help: 'A secret:// reference, never the key itself.' },
   header: { label: 'Header' },
   provider: { label: 'Token provider' },
+  allowedHosts: {
+    label: 'Allowed hosts for answer links',
+    help: "Hosts besides the endpoint's own that a link in an answer may lead to. Only an operator sets them.",
+  },
   discovery: { label: 'Find models automatically' },
   'discovery.source': { label: 'Source' },
   'discovery.from': { label: 'Use the lookup from the endpoint' },

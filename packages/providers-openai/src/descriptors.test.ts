@@ -18,8 +18,8 @@ afterEach(async () => {
 
 const serve = async (fixture: OperationFixture) => {
   const server = await fakeHttp(() => ({
-    status: fixture.response.status ?? 200,
-    json: fixture.response.body,
+    status: fixture.response?.status ?? 200,
+    json: fixture.response?.body,
   }));
   servers.push(server);
   return server;
@@ -31,7 +31,7 @@ const embedders = (url: string, fixture: OperationFixture, described?: string) =
   new EmbeddingRouter({
     catalog: {
       endpoints: {
-        compatible: { protocol: 'openai-embeddings', baseURL: `${url}/v1`, auth },
+        compatible: { families: { openai: '/v1' }, baseURL: url, auth },
       },
       models: [
         {
@@ -39,12 +39,14 @@ const embedders = (url: string, fixture: OperationFixture, described?: string) =
           endpoint: 'compatible',
           deployment: fixture.deployment,
           residency: 'eu',
-          dimensions: (fixture.result as { vectors: number[][] }).vectors[0]?.length ?? 1,
-          ...(described ? { descriptors: { embed: described } } : {}),
+          apis: { embed: described ?? 'openai/embeddings@1' },
+          embed: {
+            dimensions: (fixture.result as { vectors: number[][] }).vectors[0]?.length ?? 1,
+          },
         },
       ],
     },
-    adapters: [openAiEmbeddings],
+    adapters: described ? [] : [openAiEmbeddings],
     secrets: envSecrets({ TEST_KEY: 'test-key' }),
     descriptors,
     maxRetries: 0,
@@ -126,7 +128,7 @@ describe('descriptors against the hand-written adapters', () => {
       expect(described.seen[0]?.path).toBe(adapter.seen[0]?.path);
       expect(described.seen[0]?.path).toBe('/v1/embeddings');
       expect(described.seen[0]?.body).toEqual(adapter.seen[0]?.body);
-      expect(described.seen[0]?.body).toEqual(fixture.request.body);
+      expect(described.seen[0]?.body).toEqual(fixture.request?.body);
       expect(described.seen[0]?.headers['api-key']).toBe('test-key');
       expect(adapter.seen[0]?.headers['api-key']).toBe('test-key');
       expect(described.result).toEqual(adapter.result);

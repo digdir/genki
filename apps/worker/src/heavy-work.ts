@@ -285,8 +285,8 @@ export const heavyWindow = (deps: HeavyDeps, work: { build: QueueWork; fill: Que
       const inside = inNightWindow(window, now);
       if (inside && !offs)
         offs = [
-          await deps.queue.work(work.build.queue, work.build.handler),
-          await deps.queue.work(work.fill.queue, work.fill.handler),
+          await deps.queue.work(work.build.queue, work.build.handler, work.build.options),
+          await deps.queue.work(work.fill.queue, work.fill.handler, work.fill.options),
         ];
       else if (!inside && offs) await stop();
     },
