@@ -1,0 +1,93 @@
+{
+  "source": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/decisions#interpret-answers-and-handle-refusals",
+  "deployment": "gpt-6-luna",
+  "input": {
+    "input": "I was charged twice for my order. Please return the extra charge.",
+    "questions": [
+      {
+        "type": "predicate",
+        "name": "refund_requested",
+        "instructions": "Does the customer ask for a refund?"
+      },
+      {
+        "type": "predicate",
+        "name": "customer_lying",
+        "instructions": "Is the customer lying?"
+      }
+    ]
+  },
+  "request": {
+    "method": "POST",
+    "path": "/decisions",
+    "body": {
+      "model": "gpt-6-luna",
+      "input": "I was charged twice for my order. Please return the extra charge.",
+      "questions": [
+        {
+          "type": "predicate",
+          "name": "refund_requested",
+          "instructions": "Does the customer ask for a refund?"
+        },
+        {
+          "type": "predicate",
+          "name": "customer_lying",
+          "instructions": "Is the customer lying?"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "gpt-6-luna",
+      "answers": [
+        {
+          "type": "predicate",
+          "name": "refund_requested",
+          "probability": 0.95
+        },
+        {
+          "type": "refusal",
+          "name": "customer_lying"
+        }
+      ],
+      "usage": {
+        "input_tokens": 180,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 180
+      }
+    }
+  },
+  "result": {
+    "answers": [
+      {
+        "type": "predicate",
+        "name": "refund_requested",
+        "probability": 0.95
+      },
+      {
+        "type": "refusal",
+        "name": "customer_lying"
+      }
+    ],
+    "usage": {
+      "inputTokens": 180,
+      "outputTokens": 0,
+      "requests": 1
+    },
+    "servedModel": "gpt-6-luna",
+    "calibrated": true
+  },
+  "usage": {
+    "inputTokens": 180,
+    "outputTokens": 0,
+    "requests": 1
+  }
+}

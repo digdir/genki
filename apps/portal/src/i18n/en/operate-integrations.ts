@@ -3,8 +3,6 @@ import type { integrationsArea as source } from '../nb/operate-integrations';
 
 export const integrationsArea = {
   integrations: {
-    heading: 'Integrations',
-    lead: 'Systems and frontends that call the platform, and sources that start services automatically.',
     callFromCode: 'Call a service from code',
     tabSystems: 'Systems',
     tabFrontends: 'Frontends',
@@ -18,7 +16,6 @@ export const integrationsArea = {
       one: '{count} integration needs follow-up',
       other: '{count} integrations need follow-up',
     },
-    badgeFailing: '{count} failing',
     systemRejected: '{name}: calls are being rejected',
     systemSub: '{env} · Owner: {owner}',
     triggerSub: '{kind} · starts {service}',

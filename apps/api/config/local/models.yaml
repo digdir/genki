@@ -1,28 +1,69 @@
 endpoints:
-  foundry-openai:
-    protocol: openai-chat
+  foundry:
     baseURL: ${FOUNDRY_OPENAI_BASE_URL}
-    auth: { kind: api-key, header: api-key, secret: secret://env/foundry-openai-key }
+    auth: { kind: api-key, secret: secret://env/foundry-openai-key }
+    families:
+      openai: ''
+      anthropic: ${FOUNDRY_CLAUDE_BASE_URL}
     discovery:
-      source: azure-deployments
-      exclude: ['claude-*', 'text-embedding-*', '*-codex*', 'gpt-4.5-preview']
-      capabilities: [stream, tools, json-schema]
-  foundry-claude:
-    protocol: anthropic-messages
-    baseURL: ${FOUNDRY_CLAUDE_BASE_URL}
-    auth: { kind: api-key, secret: secret://env/foundry-claude-key }
-    discovery:
-      source: azure-deployments
-      from: foundry-openai
-      include: ['claude-*']
-      capabilities: [stream, tools, json-schema, reasoning]
+      - source: azure-deployments
+        idPrefix: foundry-openai
+        exclude: ['claude-*', 'text-embedding-*', '*-codex*', 'gpt-4.5-preview']
+        capabilities: [stream, tools, json-schema]
+        apis: { chat: openai/chat-completions@1 }
+      - source: azure-deployments
+        idPrefix: foundry-claude
+        include: ['claude-*']
+        capabilities: [stream, tools, json-schema, reasoning]
+        apis: { chat: anthropic/messages@1 }
+  colbert:
+    baseURL: ${COLBERT_API_URL}
+    auth: { kind: api-key, header: x-api-key, secret: secret://env/colbert-api-key }
+    families: { colbert: '' }
   local-model:
-    protocol: openai-chat
     baseURL: ${LOCAL_MODEL_URL}
     auth: { kind: bearer, secret: secret://env/local-model-key }
+    families: { openai: '' }
 models:
   - id: local/echo
     endpoint: local-model
     deployment: echo
     residency: norway
     capabilities: [stream, json-schema]
+  - id: local/replay
+    endpoint: local-model
+    deployment: replay
+    residency: norway
+  # gpt-6-luna on genki-test-ai is DataZoneStandard in Sweden Central and serves chat and the Decisions API
+  - id: foundry-openai/gpt-6-luna
+    endpoint: foundry
+    deployment: gpt-6-luna
+    residency: eu
+    capabilities: [stream, tools, json-schema]
+    apis: { chat: openai/chat-completions@1, decide: openai/decide@1 }
+  - id: foundry/text-embedding-3-small
+    endpoint: foundry
+    deployment: text-embedding-3-small
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 1536, maxBatch: 64 }
+  - id: foundry/text-embedding-3-large
+    endpoint: foundry
+    deployment: text-embedding-3-large
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 3072, maxBatch: 64 }
+  # 3-large sent at 1,536 dimensions, as the Kudos pilot (#92) chose: shortening cost nothing there.
+  - id: foundry/text-embedding-3-large-1536
+    endpoint: foundry
+    deployment: text-embedding-3-large
+    residency: global
+    apis: { embed: openai/embeddings@1 }
+    embed: { dimensions: 1536, maxBatch: 64 }
+    options: { sendDimensions: true }
+  - id: colbert
+    endpoint: colbert
+    deployment: colbert
+    residency: norway
+    apis: { rerank: colbert/rerank@1 }
+    rerank: { onFailure: degrade }

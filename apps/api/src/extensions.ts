@@ -1,5 +1,5 @@
 import { t } from './i18n/index.js';
-import type { Principal, TaskStatus } from '@genai/contracts';
+import type { Event, Principal, Task, TaskStatus } from '@genai/contracts';
 import {
   anonymousFeedback,
   basicPiiRedactor,
@@ -65,6 +65,9 @@ export interface TaskIndex {
   all(tenant?: string): Promise<TrackedTask[]>;
   running(): Promise<TrackedTask[]>;
   tokensUsed?(tenant: string, since: string): Promise<number>;
+  envelopes?(tenant: string, query: { since?: string; limit?: number }): Promise<Task[]>;
+  usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
+  eventsOfType?(tasks: string[], type: string): Promise<Event[]>;
 }
 
 const taskStatuses: readonly TaskStatus[] = [
@@ -192,16 +195,10 @@ export const adminExtensions = (deps: {
         target,
       };
     const name = String(input.name ?? '').trim() || org;
-    await deps.directory.add(
-      { orgNumber: org, name, status: 'onboarding' },
-      `${principal.issuer}:${principal.subject}`,
-    );
-    return {
-      ok: true,
-      value: { orgNumber: org, name, status: 'onboarding' },
-      target,
-      audit: { scope: 'platform' },
-    };
+    const existing = (await deps.directory.list()).find((e) => e.orgNumber === org);
+    const entry = { orgNumber: org, name, status: existing?.status ?? 'onboarding' } as const;
+    await deps.directory.add(entry, `${principal.issuer}:${principal.subject}`);
+    return { ok: true, value: entry, target, audit: { scope: 'platform' } };
   },
   'platform.tools.register': async (input, principal) => {
     const tenant = input.tenant;

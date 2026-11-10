@@ -1,3 +1,4 @@
+import { PadlockLockedIcon, VitalsIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -14,13 +15,11 @@ import {
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { type ComponentRef, useEffect, useRef, useState } from 'react';
+import { type ComponentRef, useContext, useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { highRiskServices, traceServices, traceTools } from '../../data/integrations';
 import { useT } from '../../i18n';
-
-const lock = 'M7 11V8a5 5 0 0 1 10 0v3 M5 11h14v10H5z';
-const pulse = 'M4 12h4l3-7 4 14 3-7h2';
+import { IntegrationTab } from '../developer-routes';
 
 interface Connection {
   status: 'ok' | 'feil';
@@ -58,6 +57,8 @@ export const Tracing = ({
   fullContent: boolean;
 }) => {
   const t = useT();
+  // Utviklerverktøy already names the page above it.
+  const inDeveloperTools = useContext(IntegrationTab) !== undefined;
   const tRef = useRef(t);
   tRef.current = t;
   const [toolId, setToolId] = useState('langfuse');
@@ -156,16 +157,18 @@ export const Tracing = ({
   return (
     <div className="stack-md">
       <div className="stack-sm int-trace-head">
-        <Heading level={2} data-size="md">
-          {t('integrations.tabTracing')}
-        </Heading>
+        {inDeveloperTools ? null : (
+          <Heading level={2} data-size="md">
+            {t('integrations.tabTracing')}
+          </Heading>
+        )}
         <p className="lead">{t('integTracing.lead', { tenant: tenantName })}</p>
       </div>
       <Alert data-color="info" data-size="sm">
         {t('integTracing.sourceNote')}
       </Alert>
       <div role="note" className="int-rule">
-        <Icon d={lock} />
+        <Icon icon={PadlockLockedIcon} />
         <span>{t.rich('integTracing.fixedRule', { strong: (c) => <strong>{c}</strong> })}</span>
       </div>
       <div aria-live="polite">
@@ -322,7 +325,7 @@ export const Tracing = ({
                     {help ? t(help) : null}
                     {isStored ? (
                       <span className="int-stored">
-                        <Icon d={lock} size={18} />
+                        <Icon icon={PadlockLockedIcon} size={18} />
                         {t('integTracing.storedInVault')}
                       </span>
                     ) : null}
@@ -481,7 +484,7 @@ export const Tracing = ({
             [t('integTracing.exampleSentDigdir'), t('integTracing.openDigdir')],
           ].map(([note, link]) => (
             <span key={link} className="row-wrap small">
-              <Icon d={pulse} size={16} />
+              <Icon icon={VitalsIcon} size={16} />
               {note}
               <a href="#/log">{link}</a>
             </span>

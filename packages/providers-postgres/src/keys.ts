@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { ErasureReason } from '@genai/kernel';
 import type { Pool } from 'pg';
 import type { KeyWrapper } from './crypto.js';
 
@@ -35,7 +36,11 @@ export class ContentKeys {
     return key;
   }
 
-  async erase(tenant: string, scope: string): Promise<void> {
+  async erase(
+    tenant: string,
+    scope: string,
+    reason: ErasureReason = 'conversation-deleted',
+  ): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
@@ -44,8 +49,9 @@ export class ContentKeys {
         scope,
       ]);
       await client.query(
-        'insert into erased_scopes (tenant, scope) values ($1, $2) on conflict (tenant, scope) do update set erased_at = now()',
-        [tenant, scope],
+        `insert into erased_scopes (tenant, scope, reason) values ($1, $2, $3)
+         on conflict (tenant, scope) do update set erased_at = now(), reason = excluded.reason`,
+        [tenant, scope, reason],
       );
       await client.query('commit');
     } catch (error) {

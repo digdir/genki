@@ -1,0 +1,18 @@
+{
+  "name": "@genai/admin-mcp",
+  "version": "0.0.0",
+  "description": "A local MCP server that lets coding agents work on genki through its API, as the person who logged in (ADR 0046)",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx --conditions=source src/main.ts"
+  },
+  "dependencies": {
+    "@digdir/designsystemet-css": "^1.23.0",
+    "@digdir/designsystemet-theme": "^1.11.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  }
+}

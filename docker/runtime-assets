@@ -3,3 +3,5 @@ apps/parity/config/services
 packages/eval/judges
 packages/eval/testsets
 packages/jobs/examples
+packages/operations/descriptors
+packages/operations/fixtures

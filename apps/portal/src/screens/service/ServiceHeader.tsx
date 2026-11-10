@@ -1,3 +1,4 @@
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Heading, Tag } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
@@ -22,7 +23,7 @@ export const ServiceHeader = ({
   return (
     <header className="service-head">
       <a href="#/services" className="back-link">
-        <Icon d="M15 6l-6 6 6 6" size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('service.back')}
       </a>
       <div className="service-head-row">

@@ -6,6 +6,11 @@ import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
 import { capitalize, javaSplit } from './text.js';
 
+/** A response larger than the caller's limit; the download stops there. */
+export class ResponseTooLarge extends Error {
+  override readonly name = 'ResponseTooLarge';
+}
+
 export interface FetchPolicy {
   allowedHosts: Set<string>;
   connectTimeoutMs: number;
@@ -161,6 +166,8 @@ export class HttpStatusError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The response's `Retry-After`, for a caller that waits it out. */
+    readonly retryAfter?: string,
   ) {
     super(message);
   }
@@ -232,6 +239,7 @@ export const guardedFetchStream = async (
         throw new HttpStatusError(
           response.status,
           `Website answered HTTP ${response.status} for ${current}`,
+          response.headers.get('retry-after') ?? undefined,
         );
       }
       const reader = response.body?.getReader();
@@ -253,7 +261,7 @@ export const guardedFetchStream = async (
           }
           total += value.byteLength;
           if (total > maxBytes)
-            throw new Error(`Website response exceeds size limit of ${maxBytes} bytes`);
+            throw new ResponseTooLarge(`Website response exceeds size limit of ${maxBytes} bytes`);
           await consume(value);
         }
         return response.headers;
@@ -443,11 +451,25 @@ export const parseFrontmatter = (markdown: string): Record<string, unknown> | un
   }
 };
 
-/** A non-empty frontmatter `title` also replaces the title derived from the URL. */
+const scalar = (value: unknown) =>
+  typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+
+const frontmatterLanguages: Record<string, string> = { nb: 'nb', no: 'nb', nn: 'nn', en: 'en' };
+
+/** `nb`, `nb-NO`, `no`, `nn`, `en-GB` and the like; anything else is not a language we store. */
+const frontmatterLanguage = (value: unknown) =>
+  frontmatterLanguages[scalar(value).toLowerCase().split(/[-_]/)[0] ?? ''];
+
+/**
+ * A non-empty frontmatter `title` also replaces the title derived from the URL, and `lang` or
+ * `language` fills in a language the URL did not give. `product` is kept as a field.
+ */
 export const mergeFrontmatter = <D extends object>(doc: D, markdown: string) => {
   const fm = parseFrontmatter(markdown) ?? {};
-  const title =
-    typeof fm.title === 'string' || typeof fm.title === 'number' ? String(fm.title).trim() : '';
+  const title = scalar(fm.title);
+  const product = scalar(fm.product);
+  const language = frontmatterLanguage(fm.lang ?? fm.language);
+  const urlLanguage = (doc as { language?: unknown }).language;
   return {
     ...doc,
     ...(fm.linktitle !== undefined && fm.linktitle !== null
@@ -458,6 +480,8 @@ export const mergeFrontmatter = <D extends object>(doc: D, markdown: string) => 
     ...(fm.diataxis !== undefined && fm.diataxis !== null
       ? { diataxis: String(fm.diataxis).replace(/^diataxis_/, '') }
       : {}),
+    ...(product ? { product } : {}),
+    ...(language && !urlLanguage ? { language } : {}),
   };
 };
 
@@ -468,6 +492,7 @@ const websiteDocFields = [
   'linktitle',
   'frontmatter_title',
   'diataxis',
+  'product',
   'language',
   'url',
   'lastmod',

@@ -141,6 +141,16 @@ export const settingLabels: Record<string, { label: PlainKey; cat: PlainKey; des
     cat: 'settings.catAnswer',
     desc: 'settings.descSynthesisTemperature',
   },
+  'knowledge.nightWindow': {
+    label: 'settings.labelKnowledgeNightWindow',
+    cat: 'settings.catSearch',
+    desc: 'settings.descKnowledgeNightWindow',
+  },
+  'knowledge.heavyThreshold': {
+    label: 'settings.labelKnowledgeHeavyThreshold',
+    cat: 'settings.catSearch',
+    desc: 'settings.descKnowledgeHeavyThreshold',
+  },
   'knowledge.switchRetentionDays': {
     label: 'settings.labelKnowledgeSwitchRetentionDays',
     cat: 'settings.catSearch',

@@ -652,11 +652,6 @@
   font-size: 15px;
 }
 
-.flip {
-  display: inline-flex;
-  transform: rotate(180deg);
-}
-
 .feedback-form {
   display: flex;
   flex-direction: column;

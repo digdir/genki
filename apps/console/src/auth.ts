@@ -78,8 +78,6 @@ const claimsOf = (jwt: string): Record<string, unknown> => {
   }
 };
 
-export const isEntraLogin = (token: string) => claimsOf(token).acr === 'entraid';
-
 const nameOf = (...claims: Record<string, unknown>[]) => {
   for (const key of ['name', 'email'])
     for (const found of claims) if (typeof found[key] === 'string' && found[key]) return found[key];
@@ -168,7 +166,7 @@ export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
       return new Promise<OperatorSession>(() => undefined);
     },
     completeLogin: async (url: URL) => {
-      const pending = read<{ verifier: string; state: string }>(pendingKey);
+      const pending = read<{ verifier: string; state: string; nonce?: string }>(pendingKey);
       forget(pendingKey);
       const params = url.searchParams;
       if (params.get('error')) throw new LoginError(say()('api.loginCancelled'));
@@ -191,6 +189,8 @@ export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
       if (!response.ok) throw new LoginError(say()('api.loginIncomplete'));
       const tokens = (await response.json()) as { access_token: string; id_token?: string };
       const claims = claimsOf(tokens.id_token ?? '');
+      if (tokens.id_token && (!pending.nonce || claims.nonce !== pending.nonce))
+        throw new LoginError(say()('api.loginIncomplete'));
       const session: OperatorSession = {
         name: nameOf(claims, claimsOf(tokens.access_token)) ?? say()('api.unknownUser'),
         roles: await rolesFor(tokens.access_token),

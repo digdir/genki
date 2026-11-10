@@ -11,7 +11,7 @@ import { actorLabel, formatDateTime, formatKroner, formatSeconds, statusOf } fro
 import { translator } from './i18n';
 import { exampleOrganisations, mockFetch } from './mock';
 import { NoAccess } from './screens/NoAccess';
-import { PublicDataHandling } from './screens/DataHandling';
+import { DataHandlingContent } from './screens/DataHandling';
 import { Startside } from './screens/Startside';
 import { requestProblems } from './screens/Unregistered';
 import { needsRight, rightLabel } from './Shell';
@@ -114,7 +114,7 @@ describe('screens in English', () => {
   });
 
   it('shows the data handling page in English', () => {
-    render(inEnglish(<PublicDataHandling />));
+    render(inEnglish(<DataHandlingContent />));
     expect(screen.getByRole('heading', { level: 1, name: 'How data is handled' })).toBeTruthy();
     expect(document.body.textContent).toContain('Digdir never creates API keys');
   });
@@ -141,12 +141,12 @@ describe('screens in English', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent)
-        .slice(0, 3),
+        .slice(1, 4),
     ).toEqual(['Overview', 'Services', 'Shared services']);
     expect(screen.getByRole('link', { name: 'Skip to main content' })).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Latest changes' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /open user menu/ }));
-    expect(screen.getByText('Your rights')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Profile' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
   });
 });

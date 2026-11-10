@@ -7,7 +7,13 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { InMemoryConfigEntryStore, type ConfigEntryStore } from './config-store.js';
-import { InMemoryIngestionBackend, type IngestionBackend } from './ingestion.js';
+import {
+  InMemoryIngestionBackend,
+  type Execution,
+  type IngestionBackend,
+  type JobRunStore,
+  type JobRuns,
+} from './ingestion.js';
 
 const digdir = '991825827';
 const other = '999888777';
@@ -22,6 +28,13 @@ const principals: Record<string, Principal> = {
     subject: 'erik',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-datasets'] }],
+  },
+  siri: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'siri',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
 };
 
@@ -74,6 +87,7 @@ export const boot = async (
   options: {
     store?: ConfigEntryStore;
     ingestion?: IngestionBackend;
+    jobRuns?: JobRuns;
     answer?: string;
     searchOnlyClusters?: string[];
   } = {},
@@ -87,7 +101,7 @@ export const boot = async (
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -124,6 +138,7 @@ export const boot = async (
     configurables: {
       ...(options.store ? { store: options.store } : {}),
       ...(options.ingestion ? { ingestion: options.ingestion } : {}),
+      ...(options.jobRuns ? { jobRuns: options.jobRuns } : {}),
     },
     authenticate: async (request) => {
       const principal = principals[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -198,7 +213,7 @@ describe('model, price and endpoint catalog over the API', () => {
   it('lets an operator add a model endpoint and model, versions and audits it, and refuses others', async () => {
     const { call, platform, admin } = await boot();
     const endpoint = {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modeller.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/other-key' },
     };
@@ -321,7 +336,7 @@ describe('model, price and endpoint catalog over the API', () => {
     await first.call('/operator/catalog/model-endpoint/norsk', 'drift', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
         auth: { kind: 'api-key', secret: 'secret://env/other-key' },
       },
@@ -489,7 +504,7 @@ describe('tenant catalog entries', () => {
     await call(`/tenants/${digdir}/catalog/model-endpoint/egen`, 'kari', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://llm.testetaten.example.no/v1',
         auth: { kind: 'api-key', secret: `secret://tenant/${digdir}/llm-key` },
       },
@@ -722,6 +737,74 @@ describe('ingestion pipelines', () => {
     expect(await reportFor('erik')).toMatchObject({ stored: 1 });
     expect(await reportFor('erik')).not.toHaveProperty('usage');
     expect(await reportFor('kari')).toHaveProperty('usage');
+  });
+
+  it('sending back is audited and needs the dataset right', async () => {
+    const runs = new Map<string, Execution>();
+    const sentBack: { execution: string; by: string; reason: string }[] = [];
+    const store: JobRunStore = {
+      start: async (input) => {
+        const run: Execution = { ...input, status: 'running', runsAsJobs: true };
+        runs.set(run.id, run);
+        return { ok: true, value: run };
+      },
+      cancel: async () => undefined,
+      redrive: async (input) => {
+        const run = runs.get(input.execution);
+        if (!run || run.status !== 'failed')
+          return { ok: false, message: 'only an ended run that runs as jobs can be sent back' };
+        sentBack.push({ execution: input.execution, by: input.by, reason: input.reason });
+        const reopened: Execution = { ...run, status: 'running', admittedAt: input.at };
+        runs.set(run.id, reopened);
+        return { ok: true, value: reopened };
+      },
+    };
+    const { call, admin } = await boot({
+      ingestion: new InMemoryIngestionBackend(),
+      jobRuns: { runsAsJobs: (dataset) => dataset === `${digdir}/sider`, runs: store },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    const started = await json<{ id: string }>(
+      await call(`${base}/nettsider/execute`, 'erik', { body: {} }),
+    );
+    const run = runs.get(started.id);
+    if (!run) throw new Error('the run was not started as jobs');
+    runs.set(run.id, { ...run, status: 'failed', error: 'listing failed' });
+    const redrive = `${base}/nettsider/executions/${run.id}/redrive`;
+
+    expect((await call(redrive, 'siri', { body: {}, reason: 'Kudos svarer igjen' })).status).toBe(
+      403,
+    );
+    expect((await call(redrive, 'erik', { body: {}, reason: null })).status).toBe(400);
+    expect(sentBack).toEqual([]);
+
+    const sent = await call(redrive, 'erik', { body: {}, reason: 'Kudos svarer igjen' });
+    expect(sent.status).toBe(202);
+    expect(await json(sent)).toMatchObject({ id: run.id, status: 'running' });
+    expect(sentBack).toEqual([
+      { execution: run.id, by: expect.stringContaining('erik'), reason: 'Kudos svarer igjen' },
+    ]);
+    expect(
+      (await admin.audit(digdir)).filter((entry) => entry.action === 'platform.jobs.redrive'),
+    ).toEqual([expect.objectContaining({ reason: 'Kudos svarer igjen' })]);
+
+    expect((await call(redrive, 'erik', { body: {}, reason: 'Igjen' })).status).toBe(400);
   });
 
   it('runs a pipeline on the pluggable backend and records the execution', async () => {

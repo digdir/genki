@@ -1,0 +1,20 @@
+dataset: digdir/kudos
+id: kudos
+spec:
+  name: Kudos
+  description: Kudos-dokumentene Kunnskapsassistenten søker i, fra 2020, lest inn etter UUID
+  source:
+    kind: kudos
+    profile: prod
+    types:
+      - Tildelingsbrev
+      - Årsrapport
+      - Instruks
+      - Proposisjon til Stortinget
+      - Melding til Stortinget
+      - Strategi/plan
+      - Evaluering
+      - Statusrapport
+    since: '2020-01-01'
+  schedule: none
+  enabled: false

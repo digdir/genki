@@ -1,0 +1,33 @@
+name: review snapshot
+
+on:
+  schedule:
+    - cron: '7 5 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      security-events: read
+    steps:
+      - name: Write the CodeQL alerts and review settings
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHADOW_PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}
+        shell: bash
+        run: |
+          gh api "repos/$REPO/code-scanning/alerts?per_page=100" --paginate \
+            --jq '.[] | select(.tool.name == "CodeQL") | {created: .created_at, fixed: .fixed_at, dismissed: .dismissed_at, state, severity: (.rule.security_severity_level // .rule.severity)}' \
+            | jq -s --arg shadow "$SHADOW_PERCENT" \
+              '{schema: "digdir.ai-review.snapshot/v1", generated_at: (now | todate), shadow_percent: ($shadow | tonumber? // 0), codeql: .}' \
+            > review-snapshot.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-snapshot
+          path: review-snapshot.json
+          retention-days: 7
