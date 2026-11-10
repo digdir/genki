@@ -250,7 +250,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         {
           ...defaultObserve(outcome.parts, []),
           text: outcome.answer,
-          noAnswer: outcome.noAnswer,
+          noAnswer: markedNotFound(outcome),
         },
         {
           ...(judge ? { judge } : {}),
