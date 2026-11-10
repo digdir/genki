@@ -52,6 +52,8 @@ export const maxRetryWaitSeconds = 60;
 export const maxUntilSeconds = 600;
 export const maxResourceLifeSeconds = 30 * 86_400;
 export const maxSessionSeconds = 3600;
+export const maxRequestsPerCall = 100;
+export const maxPartBytes = 32 * 1024 * 1024;
 
 /** The operations Genki has its own types for; a typed descriptor must declare exactly their shapes. */
 export const typedShapes: Readonly<Record<string, OperationShape>> = {
@@ -336,6 +338,7 @@ const stepFields = {
       equals: z.unknown().optional(),
       intervalSeconds: z.number().min(0.1).max(60),
       longestSeconds: z.number().min(1).max(maxUntilSeconds),
+      after: z.unknown().optional(),
       fail: z
         .strictObject({
           test: z.unknown().optional(),
@@ -358,6 +361,7 @@ const stepFields = {
         status: statusRule,
         kind: z.enum(operationErrorKinds),
         message: z.unknown().optional(),
+        retry: z.boolean().optional(),
       }),
     )
     .default([]),
@@ -370,6 +374,13 @@ const stepFile = z.strictObject({
   credential: authFile.optional(),
   websocket: websocketFile.optional(),
   module: stepModuleFile.optional(),
+  parts: z
+    .strictObject({
+      of: z.string().regex(/^\$input(?:\.[A-Za-z_][A-Za-z0-9_-]*)+$/),
+      bytes: z.number().int().min(1).max(maxPartBytes),
+      most: z.number().int().min(1).max(maxRequestsPerCall),
+    })
+    .optional(),
   ...stepFields,
 });
 
@@ -424,6 +435,7 @@ export interface ErrorRule {
   status: number | number[] | '4xx' | '5xx';
   kind: OperationErrorKind;
   message?: unknown;
+  retry?: boolean | undefined;
 }
 
 export interface StreamEvent {
@@ -486,8 +498,10 @@ export interface Step {
     equals?: unknown;
     intervalSeconds: number;
     longestSeconds: number;
+    after?: unknown;
     fail?: { test?: unknown; equals?: unknown; kind: OperationErrorKind; message?: unknown };
   };
+  parts?: { of: string[]; bytes: number; most: number };
   retry: { attempts: number; longestWaitSeconds: number };
   errors: ErrorRule[];
   checks: Check[];
@@ -618,6 +632,19 @@ const checkEveryFieldClassified = (
 };
 
 const stepPath = /^\$steps\.([a-z][a-z0-9_]*)\.([a-z][a-zA-Z0-9_]*)$/;
+
+const partFillsIssued = (template: unknown, s: Shape): boolean => {
+  const u = unwrapped(s);
+  if (
+    u.kind === 'object' &&
+    isRecord(template) &&
+    !Object.keys(template).every((k) => k.startsWith('$'))
+  )
+    return Object.entries(u.fields).some(([k, f]) => partFillsIssued(template[k], f));
+  if (u.kind === 'array' && Array.isArray(template))
+    return template.some((t) => partFillsIssued(t, u.item));
+  return holdsKind(u, 'issued') && rootsOf(template).includes('part');
+};
 
 /** A field filled from input may never carry a URL or a provider object, and a provider object comes only from a bound step value. */
 const checkFieldSources = (
@@ -995,6 +1022,10 @@ const toStep = (
   const stream = raw.response.stream ? toStream(at, raw.response.stream) : undefined;
   if (stream && (raw.until || sessionSpec))
     throw new DescriptorError(`${at}: a streamed answer is read once, so it has no until`);
+  if (raw.parts && (raw.until || stream || sessionSpec || request.follow !== undefined))
+    throw new DescriptorError(
+      `${at}: a step sent in parts is one plain request per part, without until, a stream, a session or a link`,
+    );
   if ((stream || sessionSpec) && raw.wire.response !== undefined)
     throw new DescriptorError(
       `${at}: wire.response is not declared for a ${stream ? 'stream' : 'session'}; its events are`,
@@ -1095,7 +1126,7 @@ const toStep = (
         throw new DescriptorError(`${at}: a file name is text or plain`);
   } else if (raw.wire.filenames !== undefined)
     throw new DescriptorError(`${at}: wire.filenames without filenames`);
-  const requestRoots = ['input', 'deployment', 'steps', 'item'];
+  const requestRoots = ['input', 'deployment', 'steps', 'item', ...(raw.parts ? ['part'] : [])];
   checkRoots(template, requestRoots, `${at}: request.body`);
   checkRoots(request.query, [...requestRoots, 'connection'], `${at}: request.query`);
   checkRoots(request.headers, [...requestRoots, 'connection'], `${at}: request.headers`);
@@ -1119,6 +1150,7 @@ const toStep = (
       throw new DescriptorError(`${at}: reads ${path}, a link only the gate may follow`);
   }
   const answerRoots = ['response', 'headers', 'item'];
+  const bindRoots = raw.parts ? [...answerRoots, 'part'] : answerRoots;
   checkRoots(raw.usage, answerRoots, `${at}: usage`);
   if (raw.until) {
     checkRoots(raw.until, answerRoots, `${at}: until`);
@@ -1132,7 +1164,7 @@ const toStep = (
   );
   const bind = Object.fromEntries(
     Object.entries(raw.bind).map(([field, spec]) => {
-      checkRoots(spec.from, answerRoots, `${at}: bind.${field}`);
+      checkRoots(spec.from, bindRoots, `${at}: bind.${field}`);
       const cls: BindClass =
         spec.class === 'secret'
           ? { kind: 'secret' }
@@ -1141,6 +1173,12 @@ const toStep = (
             : { kind: 'shape', shape: shapeOf(spec.class, `${at}: bind.${field}.class`) };
       if (cls.kind === 'shape' && holdsMedia(cls.shape))
         throw new DescriptorError(`${at}: bind.${field}: media is not bound between steps`);
+      if (raw.parts && cls.kind !== 'shape')
+        throw new DescriptorError(`${at}: bind.${field}: a step sent in parts binds values only`);
+      if (raw.parts && cls.kind === 'shape' && partFillsIssued(spec.from, cls.shape))
+        throw new DescriptorError(
+          `${at}: bind.${field}: an issued id comes from the answer, never from $part`,
+        );
       return [field, { from: spec.from, class: cls }];
     }),
   );
@@ -1171,7 +1209,14 @@ const toStep = (
     };
   }
   for (const [field, b] of Object.entries(bind))
-    bound.set(`${raw.name}.${field}`, { step: raw.name, field, class: b.class });
+    bound.set(`${raw.name}.${field}`, {
+      step: raw.name,
+      field,
+      class:
+        raw.parts && b.class.kind === 'shape'
+          ? { kind: 'shape', shape: shape.array(b.class.shape) }
+          : b.class,
+    });
   return {
     name: raw.name,
     ...(auth ? { auth } : {}),
@@ -1216,10 +1261,12 @@ const toStep = (
             ...(raw.until.equals === undefined ? {} : { equals: raw.until.equals }),
             intervalSeconds: raw.until.intervalSeconds,
             longestSeconds: raw.until.longestSeconds,
+            ...(raw.until.after === undefined ? {} : { after: raw.until.after }),
             ...(raw.until.fail ? { fail: raw.until.fail } : {}),
           },
         }
       : {}),
+    ...(raw.parts ? { parts: { ...raw.parts, of: raw.parts.of.split('.').slice(1) } } : {}),
     retry: raw.retry,
     errors: raw.errors,
     checks: raw.checks.map((c): Check => {
@@ -1348,6 +1395,7 @@ export const toDescriptor = (value: unknown): Descriptor => {
   const finallySteps = d.finally.map((s) => {
     if (Object.keys(s.bind).length > 0)
       throw new DescriptorError(`${at}: step ${s.name}: a finally step binds nothing`);
+    if (s.parts) throw new DescriptorError(`${at}: step ${s.name}: a finally step is one request`);
     return toStep(`${at}: step ${s.name}`, s, bound, defaults, d.status);
   });
   const resources = resourcesOf(at, d.resources, bound, steps, finallySteps);
@@ -1361,7 +1409,7 @@ export const toDescriptor = (value: unknown): Descriptor => {
     const found = bound.get(`${step}.${field}`);
     if (!found || found.class.kind === 'secret' || found.class.kind === 'url')
       throw new DescriptorError(`${at}: result reads ${path}, which no step binds as a value`);
-    if (found.class.kind === 'shape' && found.class.shape.kind === 'issued')
+    if (found.class.kind === 'shape' && holdsKind(found.class.shape, 'issued'))
       throw new DescriptorError(
         `${at}: result reads ${path}, an id the provider issued stays in the run`,
       );
@@ -1374,6 +1422,19 @@ export const toDescriptor = (value: unknown): Descriptor => {
     );
   if (mediaTypesOf(output).some((t) => t.endsWith('/*')))
     throw new DescriptorError(`${at}: output: media coming back names its media types`);
+  for (const step of steps)
+    if (step.parts && shapeAtPath(input, step.parts.of)?.kind !== 'media')
+      throw new DescriptorError(
+        `${at}: step ${step.name}: parts.of reads a media field of the input, which the gate admits with its consent`,
+      );
+  const mostRequests =
+    steps.length +
+    finallySteps.length +
+    steps.reduce((sum, s) => sum + (s.parts ? s.parts.most - 1 : 0), 0);
+  if (mostRequests > maxRequestsPerCall)
+    throw new DescriptorError(
+      `${at}: its steps may need ${mostRequests} requests with every part, more than the ${maxRequestsPerCall} a call may make`,
+    );
   const streaming = steps.find((s) => s.response.stream)?.response.stream;
   const descriptor: Descriptor = {
     id: d.id,

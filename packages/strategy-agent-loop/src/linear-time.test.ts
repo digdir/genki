@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { normaliseCitationMarkers } from '@genai/port-model';
 import { stripSourceLists } from './citations.js';
 import { stripCodeFences } from './structured.js';
 
@@ -12,6 +13,15 @@ describe('answer cleanup on adversarial input', () => {
   it('recognises a source list line in linear time', () => {
     expect(quickly(() => stripSourceLists(`kilde ${'\t[0]'.repeat(30_000)}x`))).toBeLessThan(1000);
     expect(stripSourceLists('Svar.\n**Kilder:** [1], [2]')).toBe('Svar.');
+  });
+
+  it('rewrites citation markers in linear time', () => {
+    expect(quickly(() => normaliseCitationMarkers(`【0${'\t'.repeat(100_000)}x`))).toBeLessThan(
+      1000,
+    );
+    expect(quickly(() => normaliseCitationMarkers('【1†'.repeat(30_000)))).toBeLessThan(1000);
+    expect(quickly(() => normaliseCitationMarkers(`【${'1'.repeat(100_000)}`))).toBeLessThan(1000);
+    expect(normaliseCitationMarkers('Svar【1†L1-L4】.')).toBe('Svar[1].');
   });
 
   it('strips code fences in linear time', () => {

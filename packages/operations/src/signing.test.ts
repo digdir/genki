@@ -27,6 +27,7 @@ interface Parts {
   headers?: string;
   result?: string;
   output?: string;
+  step?: string;
 }
 
 const yamlOf = (bytes: Uint8Array, p: Parts = {}) => `
@@ -45,7 +46,7 @@ output: ${p.output ?? '{ object: { status: plain } }'}
 result: ${p.result ?? '{ status: $response.status }'}
 steps:
   - name: place
-    request: ${p.request ?? '{ method: POST, path: /orders, body: { item: $input.item } }'}
+${p.step ? `    ${p.step}\n` : ''}    request: ${p.request ?? '{ method: POST, path: /orders, body: { item: $input.item } }'}
     module:
       use: signer
       emits: ${p.emits ?? "{ sig: { ref: '^[ -~]{1,500}$' } }"}
@@ -662,5 +663,88 @@ describe('connection settings and named keys (D)', () => {
       contractFailures(await operationContract(descriptor, [without], { modules: () => bytes }))
         .length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe('a signing module on a step sent in parts or retried (D)', () => {
+  const inParts = {
+    keys: '[connection, connection.signing]',
+    input: '{ object: { file: { media: image/png } } }',
+    step: 'parts: { of: $input.file, bytes: 32, most: 4 }',
+    request: '{ method: PUT, path: /objects, encoding: binary, body: $part.body }',
+    wire: '      request: { media: image/png }\n      response: { object: { status: plain } }',
+  };
+  const file = Buffer.from(png, 'base64');
+  const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+  const partSha = (n: number) => sha(file.subarray(n * 32, (n + 1) * 32));
+  const named = { endpoint: { keys: { signing: async () => 'extra-signing-key' } } };
+
+  it("a step sent in parts signs every part over the SHA-256 of that part's bytes, with the module's header on each", async () => {
+    const bytes = signer([
+      { input: 'body_sha256' },
+      { text: ':' },
+      { hmac: { key: 'connection.signing', of: [{ input: 'body_sha256' }] } },
+    ]);
+    const placed = json({ status: 'placed' });
+    const { outcome, sent, exchanges } = await run(bytes, inParts, { file: png }, named, [
+      placed,
+      placed,
+      placed,
+    ]);
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(sent).toHaveLength(3);
+    expect(sent.map((_, n) => headersOf(sent, n).get('x-signature'))).toEqual(
+      [0, 1, 2].map((n) => `${partSha(n)}:${hex('extra-signing-key', partSha(n))}`),
+    );
+    expect(sent.map((_, n) => headersOf(sent, n).get('x-api-version'))).toEqual(['7', '7', '7']);
+    expect(leaks(sent, exchanges, ['extra-signing-key', 'connection-key'])).toEqual([]);
+  });
+
+  it("a part the provider refuses keeps its body on the failure with the named key and the part's signature redacted", async () => {
+    const bytes = signer([{ hmac: { key: 'connection.signing', of: [{ input: 'body_sha256' }] } }]);
+    const signature = hex('extra-signing-key', partSha(1));
+    const { outcome, sent, exchanges } = await run(bytes, inParts, { file: png }, named, [
+      json({ status: 'placed' }),
+      json({ error: { message: `bad signature ${signature} for key extra-signing-key` } }, 403),
+    ]);
+    expect(sent).toHaveLength(2);
+    expect(headersOf(sent, 1).get('x-signature')).toBe(signature);
+    const error = errorOf(outcome) as Error & { provider?: { status: number; body?: string } };
+    expect(error.provider).toEqual({
+      status: 403,
+      body: expect.stringContaining('bad signature [redacted] for key [redacted]'),
+    });
+    expect(leaks(sent, exchanges, ['extra-signing-key', 'connection-key'])).toEqual([]);
+    expect(`${error.message}${error.provider?.body ?? ''}`).not.toContain(signature);
+  });
+
+  it("a retried request is signed anew on every attempt, so a module that reads the timestamp signs each attempt's time", async () => {
+    let ticks = 0;
+    const now = () => new Date(at.getTime() + 1000 * ticks++);
+    const stamp = (n: number) => String(Math.floor(at.getTime() / 1000) + n);
+    const bytes = signer([
+      { input: 'timestamp' },
+      { text: ':' },
+      { hmac: { key: 'connection', of: [{ input: 'timestamp' }, { input: 'body' }] } },
+    ]);
+    const { outcome, sent, slept } = await run(
+      bytes,
+      {
+        response:
+          '    usage: { request: 1 }\n    errors: [{ status: 503, kind: unavailable, retry: true }]',
+      },
+      undefined,
+      { endpoint: { now } },
+      [
+        json({ error: { message: 'busy' } }, 503, { 'retry-after': '1' }),
+        json({ status: 'placed' }),
+      ],
+    );
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(slept).toEqual([1000]);
+    const body = String(sent[0]?.init?.body);
+    expect(sent.map((_, n) => headersOf(sent, n).get('x-signature'))).toEqual(
+      [0, 1].map((n) => `${stamp(n)}:${hex('connection-key', stamp(n) + body)}`),
+    );
   });
 });
