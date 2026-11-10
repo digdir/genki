@@ -88,8 +88,9 @@
             <ul>
               <li>
                 <code>steps</code>: the steps in order. A run of steps with the same title one after
-                another is one line with a count, «Leste de relevante delene nøye (4 ganger)». The
-                same step again after another one is a line of its own.
+                another is one line with a count, «Leste de relevante delene nøye (4 ganger)», that
+                shows the last step's description, documents and links. The same step again after
+                another one is a line of its own, and a step that waits is never part of a run.
               </li>
               <li>
                 <code>working</code>, <code>startedAt</code> and <code>finishedAt</code>: while it
@@ -123,7 +124,8 @@
               <li><code>description</code>: a line under the title.</li>
               <li>
                 <code>documents</code> and <code>documentsRead</code>: the first documents the step
-                read, with where in them, and how many it read in all.
+                read, each a <code>title</code> with a <code>detail</code> saying where in it, and
+                how many it read in all.
               </li>
               <li>
                 <code>excerptsRead</code>: the excerpts the step read closely. A run of such steps
@@ -146,11 +148,12 @@
             <p>
               A brand is a Designsystemet theme. The block sits in
               <code>@layer genai.components</code>, after Designsystemet's layers, follows
-              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
-              and reads every token through its own variable, with the token as the fallback. Set
-              one on any ancestor to change that detail only. The grey lines are pinned to neutral,
-              as kunnskapsassistenten draws them. Its words are in its own catalogue,
-              <code>approach</code>, so a host that imports Approach alone loads no other block's.
+              <code>data-color-scheme</code> and <code>data-size</code>, and its stylesheet reads
+              every token through its own variable, with the token as the fallback. Set one on any
+              ancestor to change that detail only. The card is pinned to
+              <code>data-color="neutral"</code> and its grey lines to neutral tokens, as
+              kunnskapsassistenten draws them. Its words are in its own catalogue,
+              <code>approach</code>.
             </p>
             <table>
               <thead>
@@ -282,7 +285,8 @@
               <li>
                 A run of the same step one after another is one line with a count, «Lette etter
                 steder som handler om spørsmålet (2 ganger)», or, for a reading run that knows its
-                excerpts, «Leste 12 utdrag nøye».
+                excerpts, «Leste 12 utdrag nøye». The workspace already sends a tool called again in
+                a row as one step, so it draws no count.
               </li>
               <li>
                 Each step is done, in progress or waiting. The status is always text: «· pågår» and
