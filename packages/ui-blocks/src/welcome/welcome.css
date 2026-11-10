@@ -1,5 +1,4 @@
-/* ADR V2-0009: after Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-welcome-* variable at the point of use, listed on docs/components/chat.html. */
+/* After Designsystemet's layers, every token read through a --genai-welcome-* variable. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {

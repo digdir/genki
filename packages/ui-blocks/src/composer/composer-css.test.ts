@@ -34,8 +34,7 @@ describe('the Composer styles', () => {
   });
 });
 
-// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
-// each is named here and justified by the comment on the line above it.
+// A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.
 const pins: Record<string, string[]> = {
   'Composer.tsx': ['uib-composer-scroll', 'uib-composer-attach', 'uib-composer-attach'],
   'Attachments.tsx': ['composer.retryLabel'],
