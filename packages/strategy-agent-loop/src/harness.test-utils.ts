@@ -7,6 +7,7 @@ import {
   evaluatorSystemPrompt,
   exhaustionNudge,
   readEvaluatorSystemPrompt,
+  smallTalkCheck,
   SOURCES_MIME,
   type AgentLoopRuntimeConfig,
   type AgentRetrieval,
@@ -96,6 +97,8 @@ export interface Script {
   synth?: ((request: ChatRequest) => string)[];
   read?: ((prompt: string) => string)[];
   sufficiency?: ((prompt: string) => string)[];
+  smallTalk?: (message: string) => string;
+  final?: string;
   deltas?: string[];
   failFirst?: Error;
 }
@@ -134,6 +137,10 @@ export const models = (scripts: Record<string, Script>, stream = false) => {
           seen.push({ model: ref.id, kind: 'read', request });
           return result((pick(script.read, 'read') ?? allSupported)(user));
         }
+        if (system === smallTalkCheck) {
+          seen.push({ model: ref.id, kind: 'small-talk', request });
+          return result(script.smallTalk?.(user) ?? 'QUESTION');
+        }
         if (system === evaluatorSystemPrompt) {
           seen.push({ model: ref.id, kind: 'sufficiency', request });
           return result(
@@ -144,7 +151,7 @@ export const models = (scripts: Record<string, Script>, stream = false) => {
         }
         if (request.messages.at(-1)?.content === exhaustionNudge) {
           seen.push({ model: ref.id, kind: 'final', request });
-          return result('Beste svar ut fra det jeg fant.');
+          return result(script.final ?? 'Beste svar ut fra det jeg fant.');
         }
         seen.push({ model: ref.id, kind: 'synth', request });
         const synth = pick(script.synth, 'synth');
@@ -266,6 +273,7 @@ export const run = async (opts: {
   registry?: ToolRegistry;
   tools?: string[];
   question?: string;
+  history?: { role: 'user' | 'assistant'; text: string }[];
   overrides?: Record<string, unknown>;
   parts?: Part[];
 }) => {
@@ -289,7 +297,7 @@ export const run = async (opts: {
   const started = await kernel.invoke(kari, 'ka', {
     data: {
       query: opts.question ?? 'Hva sier tildelingsbrevet til Digdir for 2025?',
-      history: [],
+      history: opts.history ?? [],
       ...(opts.overrides ? { overrides: opts.overrides } : {}),
     },
     ...(opts.parts ? { parts: opts.parts } : {}),
