@@ -137,6 +137,76 @@ jobs:
       - if: always() && github.event.action == 'labeled'
         run: gh pr edit "$PR" --remove-label 'review again'
 
+  cross-model:
+    needs: review
+    if: >-
+      !cancelled() &&
+      needs.review.result != 'skipped' &&
+      github.event.action != 'labeled' &&
+      vars.CROSS_REVIEW_DEPLOYMENT != ''
+    concurrency:
+      group: review-cross-model-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+      BASE: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - name: Take the review scripts from the base branch
+        run: |
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$BASE"
+          mkdir -p "$RUNNER_TEMP/review"
+          for f in review-run review-summary review-cross; do git show "$BASE:scripts/$f.ts" > "$RUNNER_TEMP/review/$f.mts"; done
+      - id: arm
+        env:
+          PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}
+          ACTION: ${{ github.event.action }}
+        run: node "$RUNNER_TEMP/review/review-run.mts" arm >> "$GITHUB_OUTPUT"
+      - id: scope
+        name: Decide from the changed paths whether the change is security-sensitive
+        run: node "$RUNNER_TEMP/review/review-cross.mts" scope
+      - if: steps.scope.outputs.sensitive == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_REVIEW_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_REVIEW_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_REVIEW_SUBSCRIPTION_ID }}
+      - id: cross
+        name: Review the change adversarially with a model from another family
+        if: steps.scope.outputs.sensitive == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOYMENT: ${{ vars.CROSS_REVIEW_DEPLOYMENT }}
+          RESOURCE: ${{ vars.AZURE_REVIEW_FOUNDRY_RESOURCE }}
+          ARM: ${{ steps.arm.outputs.arm }}
+          STARTED_AT: ${{ steps.arm.outputs.started_at }}
+        run: node "$RUNNER_TEMP/review/review-cross.mts" review
+      - name: Update the summary comment
+        if: steps.cross.outputs.posted != '' && steps.cross.outputs.posted != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node "$RUNNER_TEMP/review/review-summary.mts" refresh
+      - if: always() && steps.scope.outputs.sensitive == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-review-run-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cross-review-run.json
+          retention-days: 90
+          if-no-files-found: ignore
+
   follow-up:
     if: >-
       github.event.action == 'synchronize' &&
