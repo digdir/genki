@@ -104,6 +104,18 @@
                 Chat in the secondary panel opens it from the start, as a drawer on a phone. Every
                 way back to the answer shows Chat's tool again.
               </li>
+              <li>
+                <strong>The next look,</strong> a layout from the template
+                <code>knowledge-assistant-next</code>: the shell's cards frame, with no top bar.
+                Every panel is titled alike, «Tråder» and «Verktøy», and the primary panel lands on
+                «Tråder». The thread's title is the page's <code>h1</code> at the top of the main
+                card, where the conversation no longer names it, and the hidden <code>h1</code> with
+                the assistant's name is gone. With a reader in the profile, the reader stands pinned
+                at the primary panel's foot, the shell's <code>ShellProfile</code>, in place of
+                «Innlogget som» and the links: its menu has «Innstillinger», the profile's
+                <code>menu</code> pages and «Logg ut». Without a reader, the links stay. The docked
+                field stands on the card's ground. Every other template draws what it drew before.
+              </li>
             </ul>
           </div>
           <div>
@@ -122,7 +134,11 @@
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
                 follow-ups, the collections' words and fields, the family of services, the trials
-                and who is signed in.
+                and who is signed in. For the next look, also the reader's
+                <code>organisation</code> and the profile menu's <code>menu</code> pages:
+                <code>feedback</code>, <code>changelog</code> (with <code>news</code> for its dot),
+                <code>about</code> and <code>contact</code> (with <code>to</code>), each an
+                <code>href</code> or an <code>onSelect</code>. A page not given is not drawn.
               </li>
               <li>
                 <code>threadInUrl</code>: the thread as <code>?t=</code>, «Innstillinger» as

@@ -23,6 +23,7 @@ import {
   optionInForce,
   serviceOf,
   settingsOf,
+  templateLook,
   zoneOf,
   type AssistantLayout,
   type BlockId,
@@ -847,12 +848,13 @@ export const useAssistant = ({
     view === 'notfound'
       ? t('assembly.threadNotFoundTitle')
       : named || shortTitle(firstQuestion) || t('threads.newThread');
+  // The thread's title as the page names it: the tab, and the next look's `h1`.
+  const threadTitle = repeatsQuestion ? shortTitle(heading) : heading;
   useEffect(() => {
     if (!threadInUrl) return;
-    const name =
-      page === 'settings' ? t('settings.title') : repeatsQuestion ? shortTitle(heading) : heading;
+    const name = page === 'settings' ? t('settings.title') : threadTitle;
     document.title = t('assembly.tabTitle', { page: name, assistant: assistantName });
-  }, [threadInUrl, page, heading, repeatsQuestion, assistantName, t]);
+  }, [threadInUrl, page, threadTitle, assistantName, t]);
 
   // Each row names its collection only when the list mixes several, by the collection's name.
   const threadRows = useMemo(() => {
@@ -986,6 +988,8 @@ export const useAssistant = ({
   return {
     // what is placed
     layout,
+    // The template's look: `next` draws the dev boards' frame, titles and profile menu.
+    look: templateLook(layout.template),
     facts,
     modelsFailed,
     // From a failed `/v1/models` until the rows come: the failure's region stays drawn while it is
@@ -1044,6 +1048,7 @@ export const useAssistant = ({
     currentId,
     named,
     repeatsQuestion,
+    threadTitle,
     leave,
     urlThreads,
     newThread: () => {

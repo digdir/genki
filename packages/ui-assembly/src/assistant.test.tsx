@@ -529,6 +529,151 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
   });
 });
 
+// The «_Ready for dev» boards' frame (dev-navbar, dev-innstillinger-0-start), behind its template.
+describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () => {
+  const nextLayout = fromTemplate('knowledge-assistant-next').layout;
+  const reader: AssistantProfile = {
+    assistantName: 'KA',
+    signedInAs: 'Simen Strøm Braaten',
+    organisation: 'Digitaliseringsdirektoratet',
+  };
+  const drawNext = (profile: AssistantProfile = reader, layout = nextLayout) =>
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={layout}
+        service="ka"
+        tenant="digdir"
+        profile={profile}
+        threadInUrl
+      />,
+    );
+  const opened = async () => screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+  const menu = () => document.querySelector<HTMLElement>('.uib-shell-profile-menu');
+  const entries = () =>
+    [...(menu()?.querySelectorAll('li .uib-shell-profile-label') ?? [])].map((e) => e.textContent);
+
+  it('draws the cards frame, with no top bar, and lands on «Tråder», titled so, not on the filter', async () => {
+    drawNext();
+    await opened();
+    expect(document.querySelector('.uib-shell')?.getAttribute('data-frame')).toBe('cards');
+    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    expect(within(nav).getByRole('heading', { level: 2, name: 'Tråder' })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: 'Ny tråd' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Kunnskapsassistenten' })).toBeNull();
+  });
+
+  it('titles the secondary panel «Verktøy», with its tool named under it', async () => {
+    drawNext();
+    await opened();
+    fireEvent.click(screen.getByRole('button', { name: 'Vis kilder' }));
+    const tools = screen.getByRole('complementary', { name: 'Kilder' });
+    expect(within(tools).getByRole('heading', { level: 2, name: 'Verktøy' })).toBeTruthy();
+    expect(
+      within(tools)
+        .getAllByRole('heading')
+        .map((h) => `${h.tagName} ${h.textContent}`),
+    ).toEqual(['H2 Verktøy', 'H3 Kilder', 'H4 Ingen kilder ennå']);
+  });
+
+  it('makes the thread’s title the page’s one h1, «Ny tråd» before, the thread’s own after', async () => {
+    drawNext();
+    await opened();
+    const h1 = () => screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent);
+    expect(h1()).toEqual(['Ny tråd']);
+    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    await waitFor(() =>
+      expect(document.querySelector('.uib-answer')?.textContent).toContain(
+        'Rapporteringen er fast',
+      ),
+    );
+    expect(h1()).toEqual(['En gammel tråd']);
+    // Named once: the conversation draws no title of its own under it.
+    expect(screen.getAllByRole('heading', { name: 'En gammel tråd' })).toHaveLength(1);
+  });
+
+  it('puts the reader at the panel’s foot, pinned, in place of «Innlogget som» and the links', async () => {
+    drawNext();
+    await opened();
+    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    const button = within(nav).getByRole('button', { name: 'Simen Strøm Braaten' });
+    expect(button.closest('.uib-shell-foot')?.parentElement?.classList).toContain('uib-shell-box');
+    expect(document.querySelector('.uib-threads-signed-in')).toBeNull();
+    expect(document.querySelector('.uib-settings-links')).toBeNull();
+  });
+
+  it('offers «Innstillinger» and «Logg ut» in the menu, with the reader’s organisation, and no page the host does not give', async () => {
+    drawNext();
+    await opened();
+    expect(entries()).toEqual(['Innstillinger', 'Logg ut']);
+    expect(menu()?.querySelector('.uib-shell-profile-who')?.textContent).toContain(
+      'Digitaliseringsdirektoratet',
+    );
+    expect(menu()?.querySelector('.uib-shell-profile-news')).toBeNull();
+  });
+
+  it('offers the host’s pages from the profile, in the design’s order, with the dot only when it says so', async () => {
+    drawNext({
+      ...reader,
+      menu: {
+        changelog: { href: '/endringslogg', news: true },
+        about: { href: '/om' },
+        contact: { href: 'mailto:post@digdir.no', to: 'Digdir' },
+      },
+    });
+    await opened();
+    expect(entries()).toEqual([
+      'Innstillinger',
+      'Endringslogg',
+      'Om tjenesten',
+      'Kontakt Digdir',
+      'Logg ut',
+    ]);
+    expect(menu()?.querySelector('.uib-shell-profile-news')).toBeTruthy();
+  });
+
+  it('opens «Innstillinger» from the menu', async () => {
+    drawNext();
+    await opened();
+    const settings = within(menu() as HTMLElement).getByRole('link', {
+      name: 'Innstillinger',
+      hidden: true,
+    });
+    fireEvent.click(settings);
+    expect(location.hash).toBe('#innstillinger');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+  });
+
+  it('keeps the links in the foot when the host names no reader, so «Innstillinger» stays in reach', async () => {
+    drawNext({ assistantName: 'KA' });
+    await opened();
+    expect(screen.queryByRole('button', { name: 'Simen Strøm Braaten' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
+  });
+
+  it('stands the docked field on the main card’s ground, not the page’s', async () => {
+    drawNext();
+    await opened();
+    expect(
+      document
+        .querySelector<HTMLElement>('.uia-chat')
+        ?.style.getPropertyValue('--genai-composer-sticky-background'),
+    ).toBe('var(--genai-shell-card-background, var(--ds-color-neutral-surface-default))');
+  });
+
+  it('leaves «Kunnskapsassistenten» as it was: flush, the hidden name as the h1, the filter first, the links in the foot', async () => {
+    drawNext(reader, fromTemplate('knowledge-assistant').layout);
+    await opened();
+    expect(document.querySelector('.uib-shell')?.hasAttribute('data-frame')).toBe(false);
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['KA']);
+    expect(screen.queryByRole('heading', { level: 2, name: 'Tråder' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Tråder/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Simen Strøm Braaten' })).toBeNull();
+    expect(document.querySelector('.uia-chat')?.getAttribute('style')).toBeNull();
+  });
+});
+
 describe('Dokumentvisning in the assistant', () => {
   // The stored thread, whose answer cites the excerpt c1 of «Tildelingsbrev 2022».
   const stored = async (layout: AssistantLayout, api = fakeApi().api) => {

@@ -21,6 +21,7 @@ import {
   Settings,
   SettingsLinks,
   Shell,
+  ShellProfile,
   ShellTools,
   SignedIn,
   Sources,
@@ -34,6 +35,7 @@ import {
   type AnswerFeedbackStatus,
   type ConversationAnswer,
   type ShellPanel,
+  type ShellProfileProps,
   type ShellTool,
   type SourceDocument,
   type SourceTarget,
@@ -51,6 +53,13 @@ import {
 import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
+
+// The cards frame's ground, the shell's, under the docked field: it fades into the card, not the
+// page (the next look).
+const cardGround = {
+  '--genai-composer-sticky-background':
+    'var(--genai-shell-card-background, var(--ds-color-neutral-surface-default))',
+} as CSSProperties;
 
 // The modifier to name; the shortcut takes both (kunnskapsassistenten's shortcutModifier.ts).
 const modifier = () =>
@@ -201,6 +210,9 @@ export const AssistantView = ({
   const documentOn = a.has('document-view');
   const settingsOn = a.has('settings');
   const name = a.assistantName;
+  // The dev boards' look (`knowledge-assistant-next`): cards, every panel titled, the thread's
+  // title as the `h1`, and the reader at the primary panel's foot with the profile menu.
+  const next = a.look === 'next';
   // The document stands where the conversation was, with Dokumentvisning beside Chat in «Innhold».
   const chatHidden = a.documentOverChat && !!a.openDoc;
 
@@ -216,8 +228,10 @@ export const AssistantView = ({
   };
 
   // The primary panel holds Tråder and Filter as two views, as kunnskapsassistenten does, and a
-  // first visit lands on the filter.
-  const [primaryView, setPrimaryView] = useState<'threads' | 'filters'>('filters');
+  // first visit lands on the filter. The next look lands on «Tråder», as its boards draw it.
+  const [primaryView, setPrimaryView] = useState<'threads' | 'filters'>(
+    next ? 'threads' : 'filters',
+  );
   const [switchedView, setSwitchedView] = useState(false);
   const [filterPin, setFilterPin] = useState<HTMLDivElement | null>(null);
   // The secondary panel's pinned region, where its tools' switcher stays while a tool scrolls. The
@@ -267,7 +281,8 @@ export const AssistantView = ({
 
   // The page's one `h1`, the assistant's name, before everything else on it (WCAG 1.3.1, 2.4.6).
   // Chat alone in the main column draws it, as kunnskapsassistenten does; otherwise the column.
-  const pageHeading = <h1 className="ds-sr-only">{name}</h1>;
+  // In the next look the `h1` is the thread's title, at the top of the main card (`mainTitle`).
+  const pageHeading = next ? null : <h1 className="ds-sr-only">{name}</h1>;
 
   // ── Chat ──
   const chat = (inPanel: boolean, titled: boolean) => {
@@ -312,7 +327,8 @@ export const AssistantView = ({
           loading={a.view === 'loading'}
           assistantName={name}
           answerColor="neutral"
-          {...(a.named ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
+          // The next look names the thread once, in the main card's `h1`.
+          {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
           header={(turn) =>
             turn.kind === 'answer' && approachZone === 'main' && chatZone === 'main'
@@ -354,6 +370,8 @@ export const AssistantView = ({
         className="uia-chat"
         data-start={start || undefined}
         data-in-panel={inPanel || undefined}
+        // In the next look the docked field stands on the main card's ground, not the page's.
+        style={next && !inPanel ? cardGround : undefined}
       >
         {titled ? pageHeading : null}
         {middle}
@@ -528,8 +546,10 @@ export const AssistantView = ({
       }}
       {...(a.renameThread ? { onRename: a.renameThread } : {})}
       {...(a.deleteThread ? { onDelete: a.deleteThread } : {})}
+      // Under the panel's title «Tråder» in the next look, which has the reader in the panel's foot.
+      {...(next ? { headingLevel: 3 as const } : {})}
       foot={
-        a.profile?.signedInAs ? (
+        a.profile?.signedInAs && !next ? (
           <SignedIn name={a.profile.signedInAs} signOutHref={a.hrefOf()} onSignOut={a.signOut} />
         ) : undefined
       }
@@ -545,22 +565,53 @@ export const AssistantView = ({
     />
   );
 
+  // ── The reader in the next look: the profile button at the primary panel's foot, which opens
+  // the profile menu, «Innstillinger» first. Only with a name to show; without one, the links. ──
+  const profile: ShellProfileProps | undefined =
+    next && a.profile?.signedInAs
+      ? {
+          name: a.profile.signedInAs,
+          organisation: a.profile.organisation,
+          ...(settingsOn
+            ? { settings: { href: a.settingsHref, onSelect: () => a.showSettings() } }
+            : {}),
+          ...a.profile.menu,
+          signOut: { href: a.hrefOf(), onSignOut: a.signOut },
+        }
+      : undefined;
+  // Pinned, so the list scrolls above it and never runs under it (WCAG 2.4.11); on the rail, the
+  // avatar alone.
+  const profileFoot: Partial<ShellPanel> = profile
+    ? {
+        foot: <ShellProfile {...profile} />,
+        footPinned: true,
+        railFoot: <ShellProfile {...profile} compact />,
+      }
+    : {};
+
   // ── Settings, from the primary panel's foot ──
-  const foot = settingsOn ? (
-    <SettingsLinks
-      settingsHref={a.settingsHref}
-      currentHref={a.page === 'settings' ? a.settingsHref : undefined}
-      assistantName={name}
-      onNavigate={() => a.showSettings()}
-    />
-  ) : undefined;
+  const foot =
+    settingsOn && !profile ? (
+      <SettingsLinks
+        settingsHref={a.settingsHref}
+        currentHref={a.page === 'settings' ? a.settingsHref : undefined}
+        assistantName={name}
+        onNavigate={() => a.showSettings()}
+      />
+    ) : undefined;
+
+  // The next look's sizes, the dev-navbar board's at 1720: threads 220, tools 380.
+  const nextPrimary: Partial<ShellPanel> = next
+    ? { size: { width: 220, minWidth: 220 }, ...profileFoot }
+    : {};
+  const threadsTitle = next ? { title: t('builder.threads') } : {};
 
   const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
   let primary: ShellPanel | undefined;
   if (twoViews) {
     primary =
       primaryView === 'threads'
-        ? { label: threadsAndFilter, children: threadList, foot }
+        ? { label: threadsAndFilter, ...threadsTitle, children: threadList, foot, ...nextPrimary }
         : {
             label: threadsAndFilter,
             head: (
@@ -580,18 +631,28 @@ export const AssistantView = ({
             pinnedRef: setFilterPin,
             children: filter(filterPin, 2),
             foot,
+            ...nextPrimary,
           };
   } else if (threadsOn) {
-    primary = { label: t('builder.threads'), children: threadList, foot };
+    primary = {
+      label: t('builder.threads'),
+      ...threadsTitle,
+      children: threadList,
+      foot,
+      ...nextPrimary,
+    };
   } else if (filterZone === 'primary' && !filtersBeside) {
     primary = {
       label: t('builder.filter'),
       pinnedRef: setFilterPin,
       children: filter(filterPin, 2),
       foot,
+      ...nextPrimary,
     };
   } else if (foot) {
     primary = { label: t('builder.settings'), foot, footPinned: true };
+  } else if (profile) {
+    primary = { label: t('builder.settings'), ...nextPrimary };
   }
 
   // ── The secondary panel's tools, in the catalogue's order ──
@@ -614,7 +675,8 @@ export const AssistantView = ({
       disclaimer={a.option('sources', 'disclaimer')}
       search={a.option('sources', 'search')}
       details
-      headingLevel={3}
+      // Its title one under the panel's «Verktøy» in the next look.
+      headingLevel={next ? 4 : 3}
       {...(documentOn
         ? {
             excerptActions: ({ source, excerpt }) => (
@@ -721,7 +783,13 @@ export const AssistantView = ({
   const toolsView = onlySources ? (
     sourcesView(true)
   ) : tools.length > 0 ? (
-    <ShellTools tools={tools} value={a.tool} onChange={a.setTool} pinIn={toolsPin} />
+    <ShellTools
+      tools={tools}
+      value={a.tool}
+      onChange={a.setTool}
+      pinIn={toolsPin}
+      {...(next ? { headingLevel: 3 as const } : {})}
+    />
   ) : null;
   // `filters-right-panel`: the filter over the tools, drawn first and named first, as
   // kunnskapsassistenten's withFiltersBesideSources.
@@ -746,6 +814,8 @@ export const AssistantView = ({
           // Folded until it has something to show, as kunnskapsassistenten's Kilder; open from the
           // start when Chat stands here, or there would be nothing to ask in.
           ...(chatZone === 'secondary' ? { defaultCollapsed: false } : {}),
+          // The next look titles the panel «Verktøy», its tools under it, 380 wide.
+          ...(next ? { title: t('shell.tools'), size: { width: 380 } } : {}),
         }
       : undefined;
 
@@ -840,11 +910,17 @@ export const AssistantView = ({
     );
   }
 
+  const settingsPage = a.page === 'settings' && settingsOn;
   return (
     <Shell
       primary={primary}
       secondary={secondary}
       request={a.request}
+      // The next look: cards, and the thread's title as the page's `h1` over the conversation.
+      // «Innstillinger» keeps its own `h1` until it gets its own panels.
+      {...(next
+        ? { frame: 'cards' as const, mainTitle: settingsPage ? undefined : a.threadTitle }
+        : {})}
       mainId={mainId}
       initialLayout={a.shellLayout}
       onLayoutChange={a.onShellLayout}

@@ -2,6 +2,7 @@
 // suggested questions, and per collection the labels of its filter fields and where a document
 // lives. kunnskapsassistenten's own choices are one such profile; without one, the assembly uses
 // genki's names as they come.
+import type { ShellProfileProps } from '@genai/ui-blocks';
 
 /** One filter field as the reader sees it. */
 export interface FieldSpec {
@@ -40,8 +41,19 @@ export interface AssistantProfile {
   followUps?: readonly string[] | undefined;
   /** Per collection, by its key. */
   corpora?: Readonly<Record<string, CorpusProfile>> | undefined;
-  /** Who the reader is, for «Innlogget som» under the threads. */
+  /**
+   * Who the reader is: «Innlogget som» under the threads, or in the template's next look the name
+   * on the profile button at the primary panel's foot, which opens the profile menu.
+   */
   signedInAs?: string | undefined;
+  /** The reader's organisation, under their name at the top of the profile menu (next look). */
+  organisation?: string | undefined;
+  /**
+   * The host's pages in the profile menu (next look), each a link or an action, after
+   * «Innstillinger». One not given is not drawn, and «Endringslogg» has its dot only when `news`
+   * says something is new.
+   */
+  menu?: Pick<ShellProfileProps, 'feedback' | 'changelog' | 'about' | 'contact'> | undefined;
   /**
    * The services the reader may switch between as variants, and whose threads are listed, when
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
