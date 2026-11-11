@@ -138,6 +138,39 @@ describe('the design’s list, `variant="nav"`', () => {
     expect(box?.hasAttribute('data-size')).toBe(false);
   });
 
+  it('keeps the box inside the list’s scrolling region, up from a row at its end, so it never covers what is pinned under the list', () => {
+    withSizes({ scrollWidth: 172, clientWidth: 172, scrollHeight: 120, clientHeight: 48 });
+    // The list scrolls in the panel above its pinned foot, as the shell's primary panel draws it.
+    render(
+      <div className="scroller" style={{ overflowY: 'auto' }}>
+        <Threads
+          threads={threads}
+          threadHref={(thread) => `/threads/${thread.id}`}
+          newThreadHref="/"
+          variant="nav"
+        />
+      </div>,
+    );
+    const scroller = document.querySelector('.scroller') as HTMLElement;
+    const link = row('Retningslinjer for generativ KI');
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    rect.mockImplementation(function (this: HTMLElement) {
+      if (this === scroller) return new DOMRect(16, 112, 220, 973);
+      if (this === link) return new DOMRect(28, 970, 196, 74);
+      // The whole title on six lines, taller than its row.
+      if (this.classList.contains('uib-threads-overlay')) return new DOMRect(28, 970, 196, 146);
+      return new DOMRect();
+    });
+    try {
+      fireEvent.pointerEnter(link);
+      const box = document.querySelector<HTMLElement>('.uib-threads-overlay');
+      // Its bottom on the region's, 1085: from 970, it would cover the line over the foot at 1101.
+      expect(box?.style.insetBlockStart).toBe(`${1085 - 146}px`);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it('shows no box when the title fits in its lines', () => {
     withSizes({ scrollWidth: 172, clientWidth: 172, scrollHeight: 48, clientHeight: 48 });
     draw({ variant: 'nav' });

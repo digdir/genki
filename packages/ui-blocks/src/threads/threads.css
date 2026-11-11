@@ -271,9 +271,11 @@
     font-weight: var(--genai-threads-current-font-weight, var(--ds-font-weight-medium));
   }
 
-  /* The box is the row it repeats, opened downward: its spacing, its corners, its pinned colours. */
+  /* The box is the row it repeats, opened downward: its spacing, its corners, its pinned colours.
+     Never taller than where the list scrolls, which a title of more lines than that is cut at. */
   .uib-threads[data-variant='nav'] .uib-threads-overlay {
     box-sizing: border-box;
+    overflow: hidden;
     padding: var(--genai-threads-thread-padding-block, var(--ds-size-1))
       var(--genai-threads-thread-padding-inline, var(--ds-size-3));
     border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-xl));

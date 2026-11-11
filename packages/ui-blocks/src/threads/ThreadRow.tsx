@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent,
@@ -155,6 +156,15 @@ export const ThreadRow = ({
   );
 };
 
+const clipping = new Set(['auto', 'scroll', 'hidden', 'clip']);
+
+/** Where the list is seen, in viewport coordinates: the box it scrolls in, or else the window. */
+const clipOf = (from: Element | null): { top: number; bottom: number } => {
+  for (let node = from; node; node = node.parentElement)
+    if (clipping.has(getComputedStyle(node).overflowY)) return node.getBoundingClientRect();
+  return { top: 0, bottom: window.innerHeight };
+};
+
 interface RowOverlayProps {
   anchor: Anchor;
   /** A wrapping row's box: the row's width and size, opening downward over the row. */
@@ -196,6 +206,20 @@ const RowOverlay = ({
     };
   }, [onDismiss]);
 
+  // A wrapping row's box opens downward, so from a row at the end of the list it would run past
+  // where the list scrolls, over what is pinned under it: the reader at the panel's foot and the
+  // line over it, which stay in sight for the focus (WCAG 2.4.11). It moves up as far as it must,
+  // and is never taller than that box. Before the paint, so it is never drawn where it would cover.
+  const [fit, setFit] = useState<{ top: number; room: number }>();
+  useLayoutEffect(() => {
+    const box = ref.current;
+    if (!wrap || !box) return;
+    const clip = clipOf(box.parentElement);
+    const room = clip.bottom - clip.top;
+    const height = Math.min(box.getBoundingClientRect().height, room);
+    setFit({ top: Math.min(Math.max(anchor.top, clip.top), clip.bottom - height), room });
+  }, [anchor, wrap, ref]);
+
   return (
     <div
       ref={ref}
@@ -204,10 +228,13 @@ const RowOverlay = ({
       onPointerLeave={onPointerLeave}
       data-size={wrap ? undefined : 'sm'}
       style={{
-        insetBlockStart: `${anchor.top}px`,
+        insetBlockStart: `${fit?.top ?? anchor.top}px`,
         insetInlineStart: `${anchor.left}px`,
         ...(wrap
-          ? { inlineSize: `${anchor.width}px` }
+          ? {
+              inlineSize: `${anchor.width}px`,
+              ...(fit ? { maxBlockSize: `${fit.room}px` } : {}),
+            }
           : {
               maxInlineSize: `calc(100vw - ${anchor.left}px - var(--genai-threads-overlay-edge-gap, var(--ds-size-4)))`,
             }),
