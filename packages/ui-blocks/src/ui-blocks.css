@@ -13,6 +13,7 @@
 @import './filter/filter.css';
 @import './corpus/corpus.css';
 @import './documents/documents.css';
+@import './settings/settings.css';
 
 .uib-visually-hidden {
   position: absolute;
