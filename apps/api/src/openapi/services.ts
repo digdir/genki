@@ -1303,6 +1303,7 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason, or promoting an environment to itself'),
       ...tenantErrors,
       404: problem('No such service or environment'),
+      409: problem('prod is the only environment'),
     },
   }),
   createRoute({
@@ -1320,6 +1321,7 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason, no such version, or nothing to roll back to'),
       ...tenantErrors,
       404: problem('No such service or environment'),
+      409: problem('prod is the only environment'),
     },
   }),
   createRoute({

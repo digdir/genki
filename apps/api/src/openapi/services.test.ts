@@ -71,6 +71,27 @@ const schemaFor = (method: string, path: string, status: number, type: string) =
 };
 
 describe('services and definitions in the API reference', () => {
+  it('documents every status the environment routes answer', () => {
+    const base = '/tenants/{tenant}/services/{id}/environments';
+    const documentedStatuses = (method: string, path: string) =>
+      Object.keys(
+        serviceRoutes.find((r) => r.method === method && r.path === path)?.responses ?? {},
+      )
+        .map(Number)
+        .sort();
+    expect({
+      add: documentedStatuses('post', base),
+      remove: documentedStatuses('delete', `${base}/{environment}`),
+      promote: documentedStatuses('post', `${base}/{environment}/promote`),
+      rollback: documentedStatuses('post', `${base}/{environment}/rollback`),
+    }).toEqual({
+      add: expect.arrayContaining([201, 400, 404, 409]),
+      remove: expect.arrayContaining([200, 400, 404, 409]),
+      promote: expect.arrayContaining([200, 400, 404, 409]),
+      rollback: expect.arrayContaining([200, 400, 404, 409]),
+    });
+  });
+
   it('every service and definition operation has its path parameters and response schemas', async () => {
     const ops = await documented();
     expect(ops.length).toBeGreaterThanOrEqual(75);
