@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
@@ -29,6 +29,22 @@ const jobs = workflow.jobs;
 const holdsKey = (job: Job) => JSON.stringify(job).includes('secrets.SMOKE_API_KEY');
 const callsModel = (job: Job) =>
   job.steps.some((s) => s.uses?.startsWith('anthropics/claude-code-action@'));
+
+const thirdPartyImports = (file: string, seen = new Set<string>()): string[] => {
+  if (seen.has(file)) return [];
+  seen.add(file);
+  const source = readFileSync(file, 'utf8');
+  const specifiers = [...source.matchAll(/^import (?!type\b)[^;]*?from '([^']+)'/gms)].map(
+    (m) => m[1] ?? '',
+  );
+  return specifiers.flatMap((s) =>
+    s.startsWith('.')
+      ? thirdPartyImports(join(dirname(file), s), seen)
+      : s.startsWith('node:')
+        ? []
+        : [s],
+  );
+};
 
 describe('the smoke workflow', () => {
   it('never runs on a pull request and grants nothing by default', () => {
@@ -123,5 +139,26 @@ describe('the smoke workflow', () => {
     for (const job of Object.values(jobs))
       for (const step of job.steps.filter((s) => s.uses?.startsWith('actions/checkout@')))
         expect(step.with?.['persist-credentials']).toBe(false);
+  });
+
+  it('installs dependencies before every job that runs a smoke script needing a package', () => {
+    const ran: string[] = [];
+    for (const [name, job] of Object.entries(jobs)) {
+      const installAt = job.steps.findIndex((s) => s.run?.startsWith('npm ci'));
+      job.steps.forEach((step, index) => {
+        const script = /node (scripts\/smoke\/[\w.-]+\.ts)/.exec(step.run ?? '')?.[1];
+        if (!script) return;
+        const needsPackages =
+          thirdPartyImports(join(import.meta.dirname, '../..', script)).length > 0;
+        ran.push(script);
+        if (needsPackages)
+          expect({ name, script, installedFirst: installAt >= 0 && installAt < index }).toEqual({
+            name,
+            script,
+            installedFirst: true,
+          });
+      });
+    }
+    expect(ran).toContain('scripts/smoke/report.ts');
   });
 });

@@ -367,7 +367,10 @@ export const main = async () => {
     };
     if (needsGrant('access', 'free', 'access:models-in-lockdown') && key) {
       const admission = assessKeyAdmission(
-        await client.get(`/tenants/${plan.tenant}/services/${plan.service}/api-keys`),
+        [
+          await client.get(`/tenants/${plan.tenant}/services/${plan.service}/api-keys`),
+          await client.get(`/tenants/${plan.tenant}/access`),
+        ],
         key,
         health.lockdown,
       );
