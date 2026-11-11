@@ -27,9 +27,9 @@ const draw = (props: Partial<ShellProps> = {}) =>
         label: 'Tråder og filter',
         title: 'Tråder',
         children: <a href="/t/1">En tråd</a>,
-        foot: <button type="button">Simen Strøm Braaten</button>,
+        foot: <button type="button">Kari Marie Nordmann</button>,
         footPinned: true,
-        railFoot: <button type="button">SB</button>,
+        railFoot: <button type="button">KN</button>,
       }}
       secondary={{ label: 'Kilder', title: 'Verktøy', children: <a href="#k">Kilde 1</a> }}
       frame="cards"
@@ -96,7 +96,7 @@ describe('the cards frame', () => {
   it('keeps the pinned foot under what scrolls, so a focused row is never under it (WCAG 2.4.11)', () => {
     draw();
     const foot = primary().querySelector('.uib-shell-box > .uib-shell-foot');
-    expect(foot?.textContent).toBe('Simen Strøm Braaten');
+    expect(foot?.textContent).toBe('Kari Marie Nordmann');
     expect(primary().querySelector('.uib-shell-content .uib-shell-foot')).toBeNull();
   });
 
@@ -104,9 +104,9 @@ describe('the cards frame', () => {
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
     expect(within(primary()).queryByRole('heading', { name: 'Tråder' })).toBeNull();
-    expect(within(primary()).queryByText('Simen Strøm Braaten')).toBeNull();
+    expect(within(primary()).queryByText('Kari Marie Nordmann')).toBeNull();
     const railFoot = primary().querySelector('.uib-shell-rail-foot');
-    expect(railFoot?.textContent).toBe('SB');
+    expect(railFoot?.textContent).toBe('KN');
     expect(railFoot?.parentElement?.lastElementChild).toBe(railFoot);
   });
 

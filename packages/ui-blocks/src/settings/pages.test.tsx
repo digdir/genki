@@ -168,9 +168,9 @@ describe('«Generelt»', () => {
 
 describe('«Om deg»', () => {
   it('shows the reader’s name and organisation from the sign-in, locked, and promises nothing more', () => {
-    render(<SettingsAboutYou name="Simen Strøm Braaten" organisation="Digdir" />);
+    render(<SettingsAboutYou name="Kari Marie Nordmann" organisation="Digdir" />);
     const name = screen.getByRole<HTMLInputElement>('textbox', { name: 'Navn' });
-    expect(name.value).toBe('Simen Strøm Braaten');
+    expect(name.value).toBe('Kari Marie Nordmann');
     expect(name.readOnly).toBe(true);
     expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Virksomhet' }).readOnly).toBe(
       true,

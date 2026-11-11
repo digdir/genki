@@ -9,7 +9,7 @@ import { initialsOf, ShellProfile, type ShellProfileProps } from './Profile.js';
 document.getAnimations ??= () => [];
 afterEach(cleanup);
 
-const name = 'Simen Strøm Braaten';
+const name = 'Kari Marie Nordmann';
 const draw = (props: Partial<ShellProfileProps> = {}) =>
   render(<ShellProfile name={name} {...props} />);
 
@@ -41,7 +41,7 @@ describe('the profile at the panel’s foot', () => {
     expect(trigger().getAttribute('data-variant')).toBe('tertiary');
     expect(trigger().getAttribute('data-color')).toBe('neutral');
     const avatar = trigger().querySelector('.ds-avatar');
-    expect(avatar?.textContent).toBe('SB');
+    expect(avatar?.textContent).toBe('KN');
     expect(avatar?.getAttribute('data-size')).toBe('xs');
     expect(avatar?.getAttribute('data-color')).toBe('accent');
     expect(trigger().querySelector('.uib-shell-profile-name')?.textContent).toBe(name);
@@ -57,7 +57,7 @@ describe('the profile at the panel’s foot', () => {
     draw({ compact: true });
     expect(trigger().classList.contains('uib-shell-profile-rail')).toBe(true);
     expect(trigger().querySelector('.uib-shell-profile-name')).toBeNull();
-    expect(trigger().textContent).toBe('SB');
+    expect(trigger().textContent).toBe('KN');
   });
 });
 
@@ -97,7 +97,7 @@ describe('the profile menu', () => {
     draw(everything);
     const who = menu()?.querySelector('.uib-shell-profile-who');
     expect(who?.querySelector('.ds-avatar')?.getAttribute('data-size')).toBe('sm');
-    expect(who?.textContent).toBe(`SB${name}Digitaliseringsdirektoratet`);
+    expect(who?.textContent).toBe(`KN${name}Digitaliseringsdirektoratet`);
     cleanup();
     draw();
     expect(menu()?.querySelector('.uib-shell-profile-who-organisation')).toBeNull();
@@ -155,7 +155,7 @@ describe('the profile menu', () => {
 
 describe('the initials', () => {
   it('are the first and the last word’s first letters, in capitals', () => {
-    expect(initialsOf('Simen Strøm Braaten')).toBe('SB');
+    expect(initialsOf('Kari Marie Nordmann')).toBe('KN');
     expect(initialsOf('øystein ås')).toBe('ØÅ');
     expect(initialsOf('Testidentitet: ka-ui-blocks-preview')).toBe('TK');
     expect(initialsOf('Kari')).toBe('K');

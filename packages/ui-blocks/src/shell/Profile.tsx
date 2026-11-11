@@ -44,7 +44,7 @@ export interface ShellProfileProps {
   className?: string | undefined;
 }
 
-/** «Simen Strøm Braaten» → «SB»: the first and the last word's first letters. */
+/** «Kari Marie Nordmann» → «KN»: the first and the last word's first letters. */
 export const initialsOf = (name: string) => {
   const words = name.match(/\p{L}[\p{L}\p{M}'’-]*/gu) ?? [];
   const first = words[0]?.charAt(0) ?? '';

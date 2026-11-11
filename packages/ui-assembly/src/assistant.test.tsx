@@ -534,7 +534,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   const nextLayout = fromTemplate('knowledge-assistant-next').layout;
   const reader: AssistantProfile = {
     assistantName: 'KA',
-    signedInAs: 'Simen Strøm Braaten',
+    signedInAs: 'Kari Marie Nordmann',
     organisation: 'Digitaliseringsdirektoratet',
   };
   const drawNext = (profile: AssistantProfile = reader, layout = nextLayout) =>
@@ -681,7 +681,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     drawNext();
     await opened();
     const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
-    const button = within(nav).getByRole('button', { name: 'Simen Strøm Braaten' });
+    const button = within(nav).getByRole('button', { name: 'Kari Marie Nordmann' });
     expect(button.closest('.uib-shell-foot')?.parentElement?.classList).toContain('uib-shell-box');
     expect(document.querySelector('.uib-threads-signed-in')).toBeNull();
     expect(document.querySelector('.uib-settings-links')).toBeNull();
@@ -782,7 +782,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(screen.queryByRole('link', { name: 'Ny tråd' })).toBeNull();
       expect(document.querySelector('.uib-shell-side[data-side="secondary"]')).toBeNull();
       // The reader stays at the panel's foot.
-      expect(within(nav).getByRole('button', { name: 'Simen Strøm Braaten' })).toBeTruthy();
+      expect(within(nav).getByRole('button', { name: 'Kari Marie Nordmann' })).toBeTruthy();
     });
 
     it('draws the settings menu at the board’s 220 when opened from a thread, not as wide as the threads and their filter, and keeps no width for it', async () => {
@@ -836,7 +836,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       go(/^Om deg/);
       expect(screen.getByRole('heading', { level: 1, name: 'Om deg' })).toBeTruthy();
       expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Navn' }).value).toBe(
-        'Simen Strøm Braaten',
+        'Kari Marie Nordmann',
       );
       expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Virksomhet' }).readOnly).toBe(
         true,
@@ -899,7 +899,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   it('keeps the links in the foot when the host names no reader, so «Innstillinger» stays in reach', async () => {
     drawNext({ assistantName: 'KA' });
     await opened();
-    expect(screen.queryByRole('button', { name: 'Simen Strøm Braaten' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Kari Marie Nordmann' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
   });
 
@@ -921,7 +921,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(screen.queryByRole('heading', { level: 2, name: 'Tråder' })).toBeNull();
     expect(screen.getByRole('button', { name: /Tråder/ })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Simen Strøm Braaten' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Kari Marie Nordmann' })).toBeNull();
     expect(document.querySelector('.uia-chat')?.getAttribute('style')).toBeNull();
   });
 });
@@ -955,7 +955,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
         tenant="digdir"
         profile={{
           assistantName: 'KA',
-          signedInAs: 'Simen Strøm Braaten',
+          signedInAs: 'Kari Marie Nordmann',
           // The field each document has one value in, which the filter counts exactly by.
           corpora: { kudos: { typeField: 'type' } },
         }}
