@@ -217,6 +217,7 @@ import { compiledCapabilityCache } from './compiled-capabilities.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
+import { evalSlots, type EvalSlotLimits } from './eval-slots.js';
 import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
@@ -457,6 +458,7 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
   documentConverter?: DocumentConverter;
@@ -1711,6 +1713,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     quota,
     drafts,
+    evalSlots: evalSlots(input.evalSlots),
     pinService: async (tenant, service, version) => {
       const compiled = (await definitions.capabilities()).find(
         (c) => c.service.tenant === tenant && c.service.id === service,

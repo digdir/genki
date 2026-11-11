@@ -1169,6 +1169,11 @@ const ServiceEvalRun = z
       .int()
       .optional()
       .describe('The cases done so far; passed, score and cost count only these'),
+    queuePlace: z
+      .number()
+      .int()
+      .optional()
+      .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
     cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
