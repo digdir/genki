@@ -5,6 +5,8 @@
 @import './conversation/conversation.css';
 @import './document-view/document-view.css';
 @import './shell/shell.css';
+@import './states/states.css';
+@import './variant-picker/variant-picker.css';
 
 .uib-visually-hidden {
   position: absolute;
