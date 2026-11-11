@@ -36,6 +36,7 @@ export interface EvalRun {
   passed?: number | null;
   total?: number | null;
   finished?: number;
+  queuePlace?: number;
   cost?: number | null;
   error?: string;
   interrupted?: boolean;

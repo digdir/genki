@@ -27,6 +27,7 @@ import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
 import type { ApiLog } from './failure-log.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
+import type { EvalSlots } from './eval-slots.js';
 import type { TaskIndex } from './extensions.js';
 import type { IngestSourceConfig } from './index-ingestion.js';
 import type { IngestionService } from './ingestion.js';
@@ -67,6 +68,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     options?: { fresh?: boolean },
   ): Promise<{ usedTokens: number; monthlyTokens: number; exhausted: boolean }>;
   drafts: DraftRunner;
+  evalSlots?: EvalSlots;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
   operations?: {

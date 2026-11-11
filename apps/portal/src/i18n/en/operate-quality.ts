@@ -147,6 +147,7 @@ export const qualityArea = {
     runDone: 'Done',
     runFailed: 'Failed',
     runRunning: 'Running',
+    runWaiting: 'Waiting for a free slot, number {place} in line',
     runInterrupted: 'Interrupted by a restart',
     passedOf: '{passed} of {total}',
     passedOfFinished: '{passed} of {finished}, {finished} of {total} run',

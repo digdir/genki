@@ -210,6 +210,11 @@ const EvalRunSummary = z
       .int()
       .optional()
       .describe('The cases done so far; passed, score and cost count only these'),
+    queuePlace: z
+      .number()
+      .int()
+      .optional()
+      .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),

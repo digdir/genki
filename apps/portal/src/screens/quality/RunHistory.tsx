@@ -28,6 +28,8 @@ const versionText = (t: T, v: RunVersion) =>
       ? t('quality.versionPublished')
       : t('quality.versionN', { version: v });
 
+const active = (r: EvalRun) => r.status === 'running' || r.status === 'queued';
+
 const statusTag = (
   t: T,
   r: EvalRun,
@@ -38,9 +40,11 @@ const statusTag = (
       ? [t('quality.runInterrupted'), 'warning']
       : r.status === 'failed'
         ? [t('quality.runFailed'), 'danger']
-        : r.status === 'running' || r.status === 'queued'
-          ? [t('quality.runRunning'), 'info']
-          : [r.status, 'neutral'];
+        : typeof r.queuePlace === 'number' && active(r)
+          ? [t('quality.runWaiting', { place: r.queuePlace }), 'neutral']
+          : active(r)
+            ? [t('quality.runRunning'), 'info']
+            : [r.status, 'neutral'];
 
 const percent = (f: Format, score: number | null | undefined) =>
   typeof score === 'number' ? f.percent(score) : '–';
@@ -56,8 +60,6 @@ const costText = (t: T, f: Format, r: EvalRun) =>
   typeof r.cost === 'number'
     ? formatKroner(r.cost, f, t)
     : t(r.interrupted ? 'quality.costUnknown' : 'quality.notPricedLower');
-
-const active = (r: EvalRun) => r.status === 'running' || r.status === 'queued';
 
 const usageDays = 30;
 

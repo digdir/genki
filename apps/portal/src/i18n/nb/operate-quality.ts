@@ -144,6 +144,7 @@ export const qualityArea = {
     runDone: 'Ferdig',
     runFailed: 'Feilet',
     runRunning: 'Kjører',
+    runWaiting: 'Venter på ledig plass, nr. {place} i køen',
     runInterrupted: 'Avbrutt av omstart',
     passedOf: '{passed} av {total}',
     passedOfFinished: '{passed} av {finished}, {finished} av {total} kjørt',
