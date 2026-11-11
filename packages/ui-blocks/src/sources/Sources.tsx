@@ -117,7 +117,8 @@ const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`)
 
 const qualifier = (id: string | undefined) => (id?.includes('::') ? id.split('::')[0] : undefined);
 
-const isOwn = (source: SourceDocument) => source.documentId?.startsWith('attached:') ?? false;
+export const isOwn = (source: SourceDocument) =>
+  source.documentId?.startsWith('attached:') ?? false;
 
 export const sourceDataset = (source: SourceDocument) =>
   qualifier(source.documentId) ?? qualifier(source.excerpts[0]?.chunkId);
@@ -142,7 +143,8 @@ export const targetPosition = (
 
 const titleKey = (title: string) => title.trim().replace(/\s+/g, ' ').toLocaleLowerCase('nb');
 
-const distinctNames = (
+/** Each document's name, with its id after it when another document has the same title. */
+export const distinctNames = (
   sources: readonly SourceDocument[],
   name: (title: string, id: string) => string,
 ) => {
@@ -187,7 +189,7 @@ const prepare = (
 };
 
 /** The section an excerpt is from: the last step of its heading path. */
-const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
+export const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
 /** What the links back to the answer need beyond an item's uses. */
 interface BackTo {

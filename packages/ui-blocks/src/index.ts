@@ -1,3 +1,4 @@
+export * from './answer/index.js';
 export * from './approach/Approach.js';
 export * from './sources/pairing.js';
 export * from './sources/Sources.js';
