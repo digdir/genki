@@ -7,8 +7,8 @@ export interface SignedInProps {
   name?: string | undefined;
   /** The reader's e-mail address, shown on hover. */
   email?: string | undefined;
-  /** Where «Logg ut» leads: a full navigation to the host's sign-out. */
-  signOutHref: string;
+  /** Where «Logg ut» leads: a full navigation to the host's sign-out. Without it, no «Logg ut». */
+  signOutHref?: string | undefined;
   /** The reader is leaving by «Logg ut»: the host forgets what this browser kept for them. */
   onSignOut?: (() => void) | undefined;
   className?: string | undefined;
@@ -29,17 +29,19 @@ export const SignedIn = ({ name, email, signOutHref, onSignOut, className }: Sig
         </span>
       </Paragraph>
       {/* A plain link, since signing out navigates; a middle click fires only `auxclick`. */}
-      <Link
-        href={signOutHref}
-        data-size="sm"
-        onClick={() => onSignOut?.()}
-        onAuxClick={(event) => {
-          if (event.button === 1) onSignOut?.();
-        }}
-      >
-        <LeaveIcon aria-hidden="true" />
-        {t('threads.signOut')}
-      </Link>
+      {signOutHref && (
+        <Link
+          href={signOutHref}
+          data-size="sm"
+          onClick={() => onSignOut?.()}
+          onAuxClick={(event) => {
+            if (event.button === 1) onSignOut?.();
+          }}
+        >
+          <LeaveIcon aria-hidden="true" />
+          {t('threads.signOut')}
+        </Link>
+      )}
     </div>
   );
 };

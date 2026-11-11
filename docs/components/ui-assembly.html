@@ -113,8 +113,9 @@
                 the assistant's name is gone. With a reader in the profile, the reader stands pinned
                 at the primary panel's foot, the shell's <code>ShellProfile</code>, in place of
                 «Innlogget som» and the links: its menu has «Innstillinger», the profile's
-                <code>menu</code> pages and «Logg ut». Without a reader, the links stay. The docked
-                field stands on the card's ground. Every other template draws what it drew before.
+                <code>menu</code> pages and «Logg ut» when the profile gives a sign-out. Without a
+                reader, the links stay. The docked field stands on the card's ground. Every other
+                template draws what it drew before.
               </li>
               <li>
                 <strong>The next look's thread list</strong> is the Threads block's
@@ -159,6 +160,10 @@
                 <code>feedback</code>, <code>changelog</code> (with <code>news</code> for its dot),
                 <code>about</code> and <code>contact</code> (with <code>to</code>), each an
                 <code>href</code> or an <code>onSelect</code>. A page not given is not drawn.
+                <code>signOut</code> is the host's sign-out, an <code>href</code> and an optional
+                <code>onSignOut</code>: «Logg ut» first forgets the reader's choices kept in this
+                browser, the threads' filters included, then calls it and goes there. Without it, no
+                «Logg ut» is drawn, in either look.
               </li>
               <li>
                 <code>threadInUrl</code>: the thread as <code>?t=</code>, «Innstillinger» as

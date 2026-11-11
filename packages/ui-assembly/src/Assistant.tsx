@@ -653,7 +653,12 @@ export const AssistantView = ({
       {...(next ? { headingLevel: 3 as const } : {})}
       foot={
         a.profile?.signedInAs && !next ? (
-          <SignedIn name={a.profile.signedInAs} signOutHref={a.hrefOf()} onSignOut={a.signOut} />
+          <SignedIn
+            name={a.profile.signedInAs}
+            {...(a.profile.signOut
+              ? { signOutHref: a.profile.signOut.href, onSignOut: a.signOut }
+              : {})}
+          />
         ) : undefined
       }
       {...(twoViews && !next
@@ -689,7 +694,9 @@ export const AssistantView = ({
               }
             : {}),
           ...a.profile.menu,
-          signOut: { href: a.hrefOf(), onSignOut: a.signOut },
+          ...(a.profile.signOut
+            ? { signOut: { href: a.profile.signOut.href, onSignOut: a.signOut } }
+            : {}),
         }
       : undefined;
   // Pinned, so the list scrolls above it and never runs under it (WCAG 2.4.11); on the rail, the

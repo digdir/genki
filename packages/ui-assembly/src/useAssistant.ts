@@ -1087,11 +1087,13 @@ export const useAssistant = ({
     threads,
     threadRows,
     // «Logg ut» forgets what this browser kept of the reader's choices, as kunnskapsassistenten's
-    // beforeLogout: the next person on a shared machine starts without them.
+    // beforeLogout: the next person on a shared machine starts without them. Then the host's own.
     signOut: () => {
       storage?.remove('filter');
       storage?.remove('flags');
       storage?.remove('corpus');
+      storage?.remove('threadFilters');
+      profile?.signOut?.onSignOut?.();
     },
     threadsFailed,
     reloadThreads,

@@ -350,9 +350,11 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     };
     return { kept, storage };
   };
+  const hostSignOut = vi.fn();
   const profile: AssistantProfile = {
     assistantName: 'KA',
     signedInAs: 'Testidentitet: test',
+    signOut: { href: '/auth/logout', onSignOut: hostSignOut },
     settingsNote: 'Valgene huskes i denne nettleseren.',
     experiments: [
       { id: 'year-ranges', title: 'Årsfilter med perioder' },
@@ -401,11 +403,12 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     ).toBeTruthy();
   });
 
-  it('keeps the filter, and forgets it, the trials and the collection on «Logg ut»', async () => {
+  it('keeps the filter, and forgets it, the trials, the collection and the threads’ filters on «Logg ut», which goes to the host’s sign-out', async () => {
     const { kept, storage } = memory();
     storage.write('filter', { type: ['Årsrapport'], bad: [1] });
     storage.write('flags', ['year-ranges']);
     storage.write('corpus', 'kudos');
+    storage.write('threadFilters', { 't-old': { type: ['Årsrapport'] } });
     const { api } = fakeApi();
     drawKa(storage, kaLayout, api);
     // Kept: the facets are asked for the stored filter, without the field that is not all strings.
@@ -418,9 +421,28 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     );
     fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
     const signOut = await screen.findByRole('link', { name: 'Logg ut' });
+    expect(signOut.getAttribute('href')).toBe('/auth/logout');
     signOut.addEventListener('click', (event) => event.preventDefault());
     fireEvent.click(signOut);
     expect([...kept.keys()]).toEqual([]);
+    expect(hostSignOut).toHaveBeenCalled();
+  });
+
+  it('says who is signed in, with no «Logg ut», when the host gives no sign-out', async () => {
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={kaLayout}
+        service="ka"
+        tenant="digdir"
+        profile={{ ...profile, signOut: undefined }}
+        storage={memory().storage}
+        threadInUrl
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
+    expect(await screen.findByText('Testidentitet: test')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Logg ut' })).toBeNull();
   });
 
   // A host that is only the assistant: a path per page, as the UI blocks preview has them.
@@ -536,6 +558,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     assistantName: 'KA',
     signedInAs: 'Kari Marie Nordmann',
     organisation: 'Digitaliseringsdirektoratet',
+    signOut: { href: '/auth/logout' },
   };
   const drawNext = (profile: AssistantProfile = reader, layout = nextLayout) =>
     render(
@@ -691,10 +714,17 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     drawNext();
     await opened();
     expect(entries()).toEqual(['Innstillinger', 'Logg ut']);
+    expect(menu()?.querySelector('a[href="/auth/logout"]')?.textContent).toContain('Logg ut');
     expect(menu()?.querySelector('.uib-shell-profile-who')?.textContent).toContain(
       'Digitaliseringsdirektoratet',
     );
     expect(menu()?.querySelector('.uib-shell-profile-news')).toBeNull();
+  });
+
+  it('leaves «Logg ut» out of the menu when the host gives no sign-out', async () => {
+    drawNext({ ...reader, signOut: undefined });
+    await opened();
+    expect(entries()).toEqual(['Innstillinger']);
   });
 
   it('offers the host’s pages from the profile, in the design’s order, with the dot only when it says so', async () => {

@@ -57,6 +57,11 @@ export interface AssistantProfile {
    */
   menu?: Pick<ShellProfileProps, 'feedback' | 'changelog' | 'about' | 'contact'> | undefined;
   /**
+   * «Logg ut»: the host's sign-out, a full navigation to `href`. The assembly first forgets the
+   * reader's choices kept in this browser, then calls `onSignOut`. Without it, no «Logg ut» is drawn.
+   */
+  signOut?: { href: string; onSignOut?: (() => void) | undefined } | undefined;
+  /**
    * The services the reader may switch between as variants, and whose threads are listed, when
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
    */
