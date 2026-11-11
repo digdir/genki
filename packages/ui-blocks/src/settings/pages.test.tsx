@@ -54,7 +54,8 @@ describe('the settings menu', () => {
       <SettingsMenu onChange={() => {}} pages={[{ id: 'beta', badge: 2 }]} value="general" />,
     );
     const button = screen.getByRole('button', {
-      name: /^Beta-funksjoner ?, 2 slått på$/,
+      // jsdom trims each element's words; a browser keeps the space.
+      name: /^Beta-funksjoner ?\(2 slått på\)$/,
       description: 'Prøv før de er ferdige',
     });
     expect(button.querySelector('.ds-badge')?.getAttribute('aria-hidden')).toBe('true');

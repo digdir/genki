@@ -734,7 +734,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       kept.set('flags', ['year-ranges', 'compact-filter-chips']);
       drawSettings();
       await screen.findByRole('heading', { level: 1, name: 'Generelt' });
-      go(/^Beta-funksjoner ?, 2 slått på$/);
+      go(/^Beta-funksjoner ?\(2 slått på\)$/);
       expect(document.querySelector('.uib-settings-count')?.textContent).toContain(
         '2 av 2 slått på',
       );

@@ -112,7 +112,10 @@ export const SettingsMenu = ({
                     <>
                       {/* The count is drawn by Designsystemet's CSS, so it is said in words too. */}
                       <Badge aria-hidden className="uib-settings-menu-badge" count={badge} />
-                      <span className="ds-sr-only">, {t('settings.betaOn', { count: badge })}</span>
+                      <span className="ds-sr-only">
+                        {' '}
+                        ({t('settings.betaOn', { count: badge })})
+                      </span>
                     </>
                   ) : null}
                 </span>
