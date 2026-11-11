@@ -1,6 +1,6 @@
 # 0027 Platform rights
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; test-runner keys in the locked test environment, ADR 0033, 2026-11-10). Proposed 2026-10-07
 
 ## Decision
 
@@ -27,6 +27,6 @@ Before this, any Altinn action gave full tenant administration. Agencies need to
 ## Consequences
 
 - The portal shows the person's rights per organisation and hides or disables what they cannot do; the API is still what enforces it.
-- Admin actions check rights too, not only the routes. `adminActionRights` in `apps/api/src/rights.ts` maps every admin action to the right it needs, or to operators only, and `admin.perform` checks it before the handler runs, so a module calling a handler directly gets the same refusal. An action missing from the map needs Administrere tjenester, and a test fails when a registered action is missing. The check applies to people with Altinn actions; operators, support sessions and API keys bound to the tenant keep their access.
+- Admin actions check rights too, not only the routes. `adminActionRights` in `apps/api/src/rights.ts` maps every admin action to the right it needs, or to operators only, and `admin.perform` checks it before the handler runs, so a module calling a handler directly gets the same refusal. An action missing from the map needs Administrere tjenester, and a test fails when a registered action is missing. The check applies to people with Altinn actions; operators, support sessions and API keys bound to the tenant keep their access. A test-runner key in the locked test environment (ADR 0033) is the exception: it may only publish, change the lifecycle of, and save or delete the draft of a definition whose id starts with `smoke-`.
 - A person with Altinn actions can only save or attach an API key policy whose scopes stay within their own rights. `admin` needs all five rights and `ingest` needs Administrere datasett.
 - Token counts and cost of a tenant's runs and totals are shown only to people with Se forbruk og kostnad. The person who started a task or a batch run still sees its own numbers.

@@ -158,9 +158,21 @@ export const qualityArea = {
     reasoning: 'Begrunnelse',
     runFinished: 'Kjøringen er ferdig. Resultatet vises i listen.',
     runReason: 'Kjørte {name} på {version}',
+    runMarkedReason: 'Kjørte merkede testtilfeller ({count}) i {name} på {version}',
+    markHint: 'Kryss av testtilfeller for å kjøre bare dem.',
+    clearMarks: 'Fjern merkingen',
+    runMarked: {
+      one: 'Kjør det merkede testtilfellet',
+      other: 'Kjør de {count} merkede testtilfellene',
+    },
+    confirmMarkedTitle: {
+      one: 'Kjøre bare det merkede testtilfellet?',
+      other: 'Kjøre bare de {count} merkede testtilfellene?',
+    },
     runStarted: 'Testsettet kjører. Resultatet vises i listen.',
     runsTitle: 'Kjøringer av testsettet',
     runOn: 'Kjør på',
+    model: 'Språkmodell',
     runSet: 'Kjør testsettet',
     confirmRunTitle: {
       one: 'Kjøre testsettet med {count} testtilfelle?',

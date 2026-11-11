@@ -39,6 +39,43 @@
             host can keep it open or shut.
           </li>
           <li>
+            <strong>9 November 2026:</strong> Document view is in the Building phase, in
+            <code>@genai/ui-blocks</code>: one source document's excerpts in its own order, the
+            excerpt the reader came for marked, «Utdrag i svaret» to jump straight to each cited
+            excerpt, and a question for the thread. genki has no route for a document's whole text
+            yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> The conversation in Chat is in the Building phase, as
+            <code>Conversation</code> in <code>@genai/ui-blocks</code>, on a page of its own:
+            <a href="conversation.html">Conversation</a>. No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Footnotes is in the Building phase, as
+            <code>Answer</code> in <code>@genai/ui-blocks</code>: the answer with footnotes paired
+            both ways with Sources, and «Kilder brukt i svaret». No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Sources is in the Building phase, in
+            <code>@genai/ui-blocks</code>: only cited excerpts are numbered, each linked both ways
+            with its footnotes, and every token it uses can be changed through a
+            <code>--genai-sources-*</code> variable. No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Shell is in the Building phase: the three columns that
+            hold the other blocks, which fold, resize and become drawers.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Two blocks that sit inside others are in the Building
+            phase, in <code>@genai/ui-blocks</code>: the variant picker for the question field, and
+            the empty, error and not-found states. No app draws them yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Threads is in the Building phase, in
+            <code>@genai/ui-blocks</code>: grouped by period, with search, rename and delete as
+            events the app handles. No app draws it yet.
+          </li>
+          <li>
             <strong>6 November 2026:</strong> Chat is in the Building phase: the question field, the
             welcome and the suggestions are in <code>@genai/ui-blocks</code>, ported from
             Kunnskapsassistenten, with every token behind a <code>--genai-composer-*</code> or
@@ -73,6 +110,27 @@
           The components are grouped by where they sit: the conversation in the main area, the
           primary sidebar with threads, and the tools in the secondary sidebar.
         </p>
+
+        <h3 class="group-title">The page <span>· holds the others</span></h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="shell.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="6" y="12" width="40" height="100" rx="8" />
+                <rect class="s-bar" x="14" y="22" width="24" height="6" rx="3" />
+                <rect class="s-soft" x="14" y="36" width="24" height="5" rx="2.5" />
+                <rect class="s-accent" x="47" y="12" width="2" height="100" rx="1" />
+                <rect class="s-bar" x="60" y="22" width="56" height="6" rx="3" />
+                <rect class="s-soft" x="60" y="36" width="56" height="5" rx="2.5" />
+                <rect class="s-soft" x="60" y="84" width="56" height="12" rx="6" />
+                <rect class="s-panel" x="126" y="12" width="28" height="100" rx="8" />
+              </svg>
+              <span class="stamp-name">Shell</span>
+              <span class="stamp-desc">Three columns that fold, resize and become drawers.</span>
+              <span class="badges"><span class="badge phase">Building</span></span>
+            </a>
+          </li>
+        </ul>
 
         <h3 class="group-title">Conversation <span>· main area</span></h3>
         <ul class="stamps">
@@ -133,7 +191,7 @@
               <span class="stamp-name">Footnotes</span>
               <span class="stamp-desc">Numbers in the answer that point to the source.</span>
               <span class="badges"
-                ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
               >
             </a>
           </li>
@@ -175,7 +233,7 @@
               <span class="stamp-name">Threads</span>
               <span class="stamp-desc">The conversations, and a new thread.</span>
               <span class="badges"
-                ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
               >
             </a>
           </li>
@@ -297,7 +355,7 @@
               <span class="stamp-name">Sources</span>
               <span class="stamp-desc">The documents and excerpts behind the answer.</span>
               <span class="badges"
-                ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
               >
             </a>
           </li>
@@ -327,7 +385,7 @@
               <span class="stamp-name">Document view</span>
               <span class="stamp-desc">The whole document, with the excerpt marked.</span>
               <span class="badges"
-                ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
               >
             </a>
           </li>
@@ -369,6 +427,56 @@
               <span class="stamp-desc">Collect excerpts, and keep the sources.</span>
               <span class="badges"
                 ><span class="badge phase">Draft</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+        </ul>
+
+        <h3 class="group-title">
+          Inside other blocks <span>· the question field and every panel</span>
+        </h3>
+        <ul class="stamps">
+          <li>
+            <a class="stamp-card" href="variant-picker.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-soft" x="62" y="16" width="74" height="52" rx="8" />
+                <rect class="s-bar" x="70" y="23" width="34" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="66" y="33" width="66" height="14" rx="5" />
+                <rect class="s-bar" x="71" y="37.5" width="40" height="5" rx="2.5" />
+                <rect class="s-accent" x="117" y="34.5" width="11" height="11" rx="3" />
+                <path class="s-check" d="M120 40l2.2 2.2 3.8-4.4" />
+                <rect class="s-bar" x="71" y="54" width="46" height="5" rx="2.5" />
+                <rect class="s-soft" x="24" y="74" width="112" height="28" rx="10" />
+                <rect class="s-bar" x="32" y="80" width="56" height="5" rx="2.5" />
+                <rect class="s-accent" x="86" y="91" width="24" height="5" rx="2.5" />
+                <path class="s-accent" d="M113 91.5l3 3 3-3z" />
+                <circle class="s-accent" cx="128" cy="93" r="5" />
+              </svg>
+              <span class="stamp-name">Variant picker</span>
+              <span class="stamp-desc">Which variant of the service answers.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="states.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="24" width="58" height="7" rx="3.5" />
+                <rect class="s-bar" x="28" y="37" width="96" height="5" rx="2.5" />
+                <rect class="s-bar" x="28" y="46" width="70" height="5" rx="2.5" />
+                <rect class="s-accent" x="28" y="56" width="40" height="5" rx="2.5" />
+                <rect class="s-soft" x="24" y="70" width="112" height="32" rx="8" />
+                <circle class="s-bar" cx="34" cy="80" r="4" />
+                <rect class="s-bar" x="44" y="77.5" width="60" height="5" rx="2.5" />
+                <rect class="s-accent-soft" x="44" y="88" width="34" height="9" rx="4.5" />
+              </svg>
+              <span class="stamp-name">States</span>
+              <span class="stamp-desc">Empty, error and not found.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Shared</span></span
               >
             </a>
           </li>

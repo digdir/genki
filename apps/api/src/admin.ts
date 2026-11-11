@@ -24,6 +24,7 @@ import {
 } from '@genai/kernel';
 import { ModelError } from '@genai/port-model';
 import type { Context } from 'hono';
+import { t } from './i18n/index.js';
 import { refusedAction, type RightProblem } from './rights.js';
 import { confirmedAs, riskConfirmationProblems } from './risk-confirmation.js';
 import { serviceHealth, type ServiceModels } from './service-health.js';
@@ -502,6 +503,12 @@ export const createAdmin = (options: AdminOptions) => {
   ): Outcome | undefined => {
     const refusal = refusedAction(principal, action, data.tenant || (principal.tenant ?? ''), data);
     if (!refusal) return undefined;
+    if (refusal.kind === 'test-runner')
+      return {
+        ok: false,
+        errors: [{ path: 'principal', message: t('problems.testRunnerOnlySmoke') }],
+        target: action,
+      };
     if (refusal.kind === 'operator')
       return {
         ok: false,

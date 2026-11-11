@@ -60,6 +60,21 @@ const literalSizes = (flat: string) => {
 
 const bareWeights = (css: string) => css.match(/font-weight:(?!\s*var\()[^;}]*/g) ?? [];
 
+// Pinned to a colour family on purpose, each with a comment in the CSS.
+const accentPins = [
+  '--genai-sources-toggle-color',
+  '--genai-sources-excerpt-active-background',
+  '--genai-sources-excerpt-active-marker-color',
+];
+// The disclaimer is grey in kunnskapsassistenten whatever the host's family.
+const neutralPins = ['--genai-sources-disclaimer-color'];
+const warningPins = [
+  '--genai-sources-mark-background',
+  '--genai-sources-mark-color',
+  '--genai-sources-mark-current-background',
+  '--genai-sources-mark-current-color',
+];
+
 describe.each(sheets)('the styles in $path', ({ path, css, flat }) => {
   it('hold no literal colour, only Designsystemet tokens', () => {
     expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
@@ -122,9 +137,13 @@ describe.each(sheets)('the styles in $path', ({ path, css, flat }) => {
 });
 
 describe('the lint', () => {
-  it('reads the stylesheets in the blocks’ folders, Approach’s among them', () => {
+  it('reads the stylesheets in the blocks’ folders, Approach’s, Sources’ and Markdown’s among them', () => {
     expect(sheets.map((sheet) => sheet.path)).toEqual(
-      expect.arrayContaining(['approach/approach.css']),
+      expect.arrayContaining([
+        'approach/approach.css',
+        'markdown/markdown.css',
+        'sources/sources.css',
+      ]),
     );
   });
 
@@ -159,5 +178,55 @@ describe('the lint', () => {
     const bare = flatten(`a { ${property}: ${value}; }`);
     expect(literalSizes(behind)).toEqual([]);
     expect(literalSizes(bare)).toEqual([value]);
+  });
+});
+
+describe('the Sources styles', () => {
+  const flat = sheets.find((sheet) => sheet.path === 'sources/sources.css')?.flat ?? '';
+
+  it('follow the host’s colour family, but for the eight deliberate pins', () => {
+    const uses = genaiUses(flat);
+    const pinned = uses
+      .filter((use) =>
+        /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.fallback),
+      )
+      .map((use) => use.name);
+    expect([...new Set(pinned)].sort()).toEqual(
+      [...accentPins, ...warningPins, ...neutralPins].sort(),
+    );
+    for (const name of accentPins)
+      expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-accent-/);
+    for (const name of warningPins)
+      expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-warning-/);
+    for (const name of neutralPins)
+      expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-neutral-/);
+  });
+
+  it('say that a closed card’s body is hidden, which the layer would otherwise undo', () => {
+    expect(flat).toContain('.uib-sources-document-body[hidden] { display: none; }');
+  });
+
+  it('give a document’s title the card’s whole width, with its controls under it', () => {
+    const head = flat.match(/\.uib-sources-document-head \{([^}]*)\}/)?.[1] ?? '';
+    expect(head).toContain('flex-direction: column');
+  });
+
+  it('keep each link back at least 24 px both ways, which a size token under data-size="sm" is not', () => {
+    const rule = flat.match(/\.uib-sources-use \{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).toContain('min-inline-size: var(--genai-sources-use-min-size, 24px)');
+    expect(rule).toContain('min-block-size: var(--genai-sources-use-min-size, 24px)');
+  });
+
+  it('draw «Utdrag N» two steps larger and bolder than the links back beside it', () => {
+    const title = flat.match(/\.uib-sources-excerpt-number \{([^}]*)\}/)?.[1] ?? '';
+    const uses = flat.match(/\.uib-sources-uses \{([^}]*)\}/)?.[1] ?? '';
+    expect(title).toContain(
+      'var(--genai-sources-excerpt-number-font-size, var(--ds-body-md-font-size))',
+    );
+    expect(title).toContain(
+      'var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-semibold))',
+    );
+    expect(uses).toContain('var(--genai-sources-uses-font-size, var(--ds-body-xs-font-size))');
+    expect(uses).toContain('var(--genai-sources-uses-font-weight, var(--ds-font-weight-regular))');
   });
 });
