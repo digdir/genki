@@ -363,7 +363,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     render(<Host cites="documents" />);
     expect(footnotes()).toEqual([]);
     expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
-    expect(screen.queryAllByRole('link', { name: /fotnote \d|i Kilder$/i })).toEqual([]);
+    expect(screen.queryAllByRole('link', { name: /(?:fotnote \d.*|i Kilder)$/i })).toEqual([]);
     expect(screen.getByRole('link', { name: nkom.title })).toBeTruthy();
     expect(screen.getByRole('link', { name: tildeling.title })).toBeTruthy();
   });
