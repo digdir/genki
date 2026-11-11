@@ -19,6 +19,14 @@ export const problems = defineNamespace({
   tenantNotRegistered: 'Virksomheten er ikke registrert på plattformen',
   keyScope: 'API-nøkkelen gir ikke tilgang til denne ruten',
   keyScopeDetail: 'Ruter for virksomheter krever en nøkkel med admin-omfang.',
+  testRunnerScope: 'En testkjørernøkkel kan ikke gjøre dette',
+  testRunnerScopeDetail:
+    'En testkjørernøkkel leser i egen virksomhet, sjekker definisjoner, gir tilbakemelding, prøver publiserte tjenester den når og smoke-tjenester i prøveområdet og endrer bare definisjoner som begynner med smoke-.',
+  testRunnerRefused: 'Nøkkelen kan ikke få testkjørertilgang',
+  testRunnerEnvironmentDetail:
+    'Testkjørertilgang kan bare gis i et låst testmiljø (GENAI_LOCKDOWN=true og GENAI_ENV=test).',
+  testRunnerCreatorDetail:
+    'Bare driftsoperatører som logger inn med Entra ID kan gi testkjørertilgang.',
   tenantNotRegisteredDetail: 'Virksomheten {tenant} er ikke registrert av Digdir.',
   modelsLocked:
     'Miljøet er låst: bare registrerte klienter og Entra ID-innlogging kan bruke modeller her',
@@ -78,6 +86,7 @@ export const problems = defineNamespace({
   reasonMinimum: 'Begrunnelsen må ha minst {minimum} tegn.',
   version: 'versjon {version}',
   operatorsOnly: 'bare operatører',
+  testRunnerOnlySmoke: 'testkjørernøkler endrer bare smoke-definisjoner',
   onlyOperatorsDoThis: 'bare operatører kan gjøre dette',
   invalidInputTitle: 'Ugyldig input',
   lowercaseDashes: 'små bokstaver, sifre og bindestrek',
