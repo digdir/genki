@@ -184,4 +184,138 @@
     margin: 0;
     overflow-wrap: anywhere;
   }
+
+  /* ── `variant="nav"`: the design's dev-trader board ── */
+
+  /* The parts as far apart as the board's panel draws them; the groups bring their own space. */
+  .uib-threads[data-variant='nav'] {
+    gap: var(--genai-threads-gap, var(--ds-size-4));
+  }
+
+  /* «Ny tråd» across the panel, the board's 44 high, with the rows' corners. */
+  .uib-threads[data-variant='nav'] > .uib-threads-new {
+    --dsc-button-size: var(--genai-threads-new-size, var(--ds-size-11));
+    --dsc-button-border-radius: var(
+      --genai-threads-thread-border-radius,
+      var(--ds-border-radius-xl)
+    );
+
+    inline-size: 100%;
+    font-size: var(--genai-threads-new-font-size, var(--ds-font-size-3));
+  }
+
+  /* One list, as the board draws it: the space is above each heading, none between the groups. */
+  .uib-threads-groups {
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+  }
+
+  .uib-threads[data-variant='nav'] .uib-threads-group {
+    gap: var(--genai-threads-list-gap, var(--ds-size-1));
+  }
+
+  /* The period's name small over its rows, its text in line with theirs: a label, not a stop. */
+  .uib-threads[data-variant='nav'] .uib-threads-group-title {
+    padding: var(--genai-threads-group-title-padding-block-start, var(--ds-size-6))
+      var(--genai-threads-thread-padding-inline, var(--ds-size-3))
+      var(--genai-threads-group-title-padding-block-end, var(--ds-size-1));
+    color: var(--genai-threads-group-title-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-threads-group-title-font-size, var(--ds-font-size-1));
+    font-weight: var(--genai-threads-group-title-font-weight, var(--ds-font-weight-semibold));
+    line-height: var(--genai-threads-group-title-line-height, var(--ds-line-height-md));
+  }
+
+  /* The row holds the ground, so its «…» can stand on it. */
+  .uib-threads[data-variant='nav'] .uib-threads-row {
+    position: relative;
+    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-xl));
+  }
+
+  /* Pinned to neutral, as the board draws it: a list to read, not a column of links. */
+  .uib-threads[data-variant='nav'] .uib-threads-thread {
+    padding: var(--genai-threads-thread-padding-block, var(--ds-size-1))
+      var(--genai-threads-thread-padding-inline, var(--ds-size-3));
+    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-xl));
+    color: var(--genai-threads-thread-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-threads-thread-font-size, var(--ds-font-size-3));
+    line-height: var(--genai-threads-thread-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-threads[data-variant='nav'] .uib-threads-thread:is(:hover, [aria-current='page']) {
+    background: none;
+  }
+
+  /* Up to two lines, then «…»; the box shows the rest. */
+  .uib-threads[data-variant='nav'] .uib-threads-thread-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--genai-threads-title-lines, 2);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* Pinned to neutral: a row under the pointer or in focus is not the open one, so not its tint. */
+  .uib-threads[data-variant='nav'] .uib-threads-row:is(:hover, :focus-within) {
+    background: var(--genai-threads-thread-hover-background, var(--ds-color-neutral-surface-hover));
+  }
+
+  /* The open row tinted in the host's colour, its text that colour's own; after the hover, so it
+     stays the open one under the pointer. */
+  .uib-threads[data-variant='nav'] .uib-threads-row:has(> [aria-current='page']) {
+    background: var(--genai-threads-current-background, var(--ds-color-background-tinted));
+  }
+
+  .uib-threads[data-variant='nav'] .uib-threads-thread[aria-current='page'] {
+    color: var(--genai-threads-current-color, var(--ds-color-text-default));
+    font-weight: var(--genai-threads-current-font-weight, var(--ds-font-weight-medium));
+  }
+
+  /* The box is the row it repeats, opened downward: its spacing, its corners, its pinned colours. */
+  .uib-threads[data-variant='nav'] .uib-threads-overlay {
+    box-sizing: border-box;
+    padding: var(--genai-threads-thread-padding-block, var(--ds-size-1))
+      var(--genai-threads-thread-padding-inline, var(--ds-size-3));
+    border-radius: var(--genai-threads-thread-border-radius, var(--ds-border-radius-xl));
+    background: var(--genai-threads-thread-hover-background, var(--ds-color-neutral-surface-hover));
+    color: var(--genai-threads-thread-color, var(--ds-color-neutral-text-default));
+  }
+
+  .uib-threads[data-variant='nav'] .uib-threads-thread[aria-current='page'] > .uib-threads-overlay {
+    background: var(--genai-threads-current-background, var(--ds-color-background-tinted));
+    color: var(--genai-threads-current-color, var(--ds-color-text-default));
+  }
+
+  .uib-threads[data-variant='nav'] .uib-threads-menu-trigger {
+    --dsc-button-size: var(--genai-threads-menu-size, var(--ds-size-8));
+  }
+
+  /* The «…» over its row's end, seen on hover or focus where a pointer can hover: the board draws
+     no menu, and one in every row would take the titles' width. It wears the row's ground. */
+  @media (hover: hover) {
+    .uib-threads[data-variant='nav'] .uib-threads-menu-trigger {
+      position: absolute;
+      inset-block: var(--genai-threads-menu-inset, var(--ds-size-0));
+      inset-inline-end: var(--genai-threads-menu-inset, var(--ds-size-0));
+      margin-block: auto;
+      background-color: inherit;
+    }
+
+    .uib-threads[data-variant='nav'] .uib-threads-menu-trigger:hover {
+      background-color: var(--genai-threads-menu-hover-background, var(--ds-color-surface-hover));
+    }
+
+    /* The whole title wraps clear of the «…» standing over the box. */
+    .uib-threads[data-variant='nav']
+      .uib-threads-row:has(> .uib-threads-menu-trigger)
+      .uib-threads-overlay {
+      padding-inline-end: var(--genai-threads-menu-size, var(--ds-size-8));
+    }
+
+    .uib-threads[data-variant='nav']
+      .uib-threads-row:not(:hover, :focus-within)
+      > .uib-threads-menu-trigger:not([aria-expanded='true']) {
+      opacity: 0;
+    }
+  }
 }

@@ -21,16 +21,28 @@ export interface ThreadRowProps {
   dataset: string | undefined;
   /** A plain click, for a host with its own router. Clicks that open a new tab are the browser's. */
   onOpen: (() => void) | undefined;
+  /** The title wraps, up to the lines its style allows, at the panel's size (the `nav` variant). */
+  wrap?: boolean | undefined;
 }
 
 /** Where the hover box is drawn, in viewport coordinates. */
 interface Anchor {
   top: number;
   left: number;
+  /** The row's width, which a wrapping row's box keeps, so it opens downward over the row. */
+  width: number;
 }
 
-/** One thread: a link named by its title alone, with a box showing what its one line cuts off. */
-export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: ThreadRowProps) => {
+/** One thread: a link named by its title alone, with a box showing what its lines cut off. */
+export const ThreadRow = ({
+  title,
+  href,
+  current,
+  time,
+  dataset,
+  onOpen,
+  wrap = false,
+}: ThreadRowProps) => {
   const titleId = useId();
   const titleRef = useRef<HTMLSpanElement>(null);
   const rowRef = useRef<HTMLAnchorElement>(null);
@@ -41,8 +53,13 @@ export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: Threa
   useEffect(() => {
     const element = titleRef.current;
     if (!element) return;
-    // A pixel of slack absorbs sub-pixel rounding on rows where nothing is hidden.
-    const measure = () => setClipped(element.scrollWidth - element.clientWidth > 1);
+    // A pixel of slack absorbs sub-pixel rounding on rows where nothing is hidden. A wrapping title
+    // is cut below its last line, not at its end.
+    const measure = () =>
+      setClipped(
+        element.scrollWidth - element.clientWidth > 1 ||
+          (wrap && element.scrollHeight - element.clientHeight > 1),
+      );
     measure();
     // Again once the web font has loaded: a title that fits only in the fallback face needs a box.
     let live = true;
@@ -61,14 +78,14 @@ export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: Threa
       observer.disconnect();
     };
     // `current` too: the open row is bolder, which widens the title without resizing its box.
-  }, [title, current]);
+  }, [title, current, wrap]);
 
   const show = useCallback(() => {
     const row = rowRef.current;
     // Only when something is hidden: a box repeating a title already seen whole gives nothing.
     if (!row || !clipped) return;
     const box = row.getBoundingClientRect();
-    setAnchor({ top: box.top, left: box.left });
+    setAnchor({ top: box.top, left: box.left, width: box.width });
   }, [clipped]);
 
   const hide = useCallback(() => setAnchor(undefined), []);
@@ -101,7 +118,8 @@ export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: Threa
     <Link
       ref={rowRef}
       href={href}
-      data-size="sm"
+      // A wrapping row keeps the panel's size, so its spacing is the panel's tokens, not a small link's.
+      data-size={wrap ? undefined : 'sm'}
       className="uib-threads-thread"
       aria-current={current ? 'page' : undefined}
       // The title alone: with the time in it, the name would change with the clock.
@@ -122,7 +140,13 @@ export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: Threa
       {meta(true)}
       {/* Inside the link, so a click on the box is a click on the row, middle click included. */}
       {anchor ? (
-        <RowOverlay ref={overlayRef} anchor={anchor} onDismiss={hide} onPointerLeave={leave}>
+        <RowOverlay
+          ref={overlayRef}
+          anchor={anchor}
+          wrap={wrap}
+          onDismiss={hide}
+          onPointerLeave={leave}
+        >
           <span className="uib-threads-overlay-title">{title}</span>
           {meta(false)}
         </RowOverlay>
@@ -133,6 +157,8 @@ export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: Threa
 
 interface RowOverlayProps {
   anchor: Anchor;
+  /** A wrapping row's box: the row's width and size, opening downward over the row. */
+  wrap: boolean;
   /** Escape, a scroll, a resize: anything that ends the hover from outside. */
   onDismiss: () => void;
   onPointerLeave: (event: PointerEvent<Element>) => void;
@@ -140,8 +166,18 @@ interface RowOverlayProps {
   children: ReactNode;
 }
 
-/** The whole row again, across the panel's edge (WCAG 1.4.13: dismissible, hoverable, persistent). */
-const RowOverlay = ({ anchor, onDismiss, onPointerLeave, ref, children }: RowOverlayProps) => {
+/**
+ * The whole row again, across the panel's edge, or down over the row when it wraps (WCAG 1.4.13:
+ * dismissible, hoverable, persistent).
+ */
+const RowOverlay = ({
+  anchor,
+  wrap,
+  onDismiss,
+  onPointerLeave,
+  ref,
+  children,
+}: RowOverlayProps) => {
   useEffect(() => {
     // Captured and prevented, so the first Escape closes the box and not a dialog around the panel.
     const onKeyDown = (event: KeyboardEvent) => {
@@ -166,11 +202,15 @@ const RowOverlay = ({ anchor, onDismiss, onPointerLeave, ref, children }: RowOve
       aria-hidden="true"
       className="uib-threads-overlay"
       onPointerLeave={onPointerLeave}
-      data-size="sm"
+      data-size={wrap ? undefined : 'sm'}
       style={{
         insetBlockStart: `${anchor.top}px`,
         insetInlineStart: `${anchor.left}px`,
-        maxInlineSize: `calc(100vw - ${anchor.left}px - var(--genai-threads-overlay-edge-gap, var(--ds-size-4)))`,
+        ...(wrap
+          ? { inlineSize: `${anchor.width}px` }
+          : {
+              maxInlineSize: `calc(100vw - ${anchor.left}px - var(--genai-threads-overlay-edge-gap, var(--ds-size-4)))`,
+            }),
       }}
     >
       {children}
