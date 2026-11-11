@@ -1,10 +1,18 @@
 import type { Principal } from '@genai/contracts';
-import { grantsOf, isApiKeyPrincipal, isTestRunnerKey, keyReaches } from '@genai/identity';
+import {
+  grantsOf,
+  isApiKeyPrincipal,
+  isTestRunnerKey,
+  keyReaches,
+  platformRightsOf,
+  rightsOnlyFromGrants,
+} from '@genai/identity';
 import type { Context, MiddlewareHandler } from 'hono';
 import { t } from './i18n/index.js';
 
 export const tenantNotRegisteredType = 'urn:genai:problem:tenant-not-registered';
 export const keyScopeType = 'urn:genai:problem:api-key-scope';
+export const clientScopeType = 'urn:genai:problem:client-scope';
 
 export interface TenantGateDeps {
   caller(request: Request): Promise<Principal | undefined>;
@@ -38,12 +46,19 @@ export const tenantNotRegistered = (c: Context, tenant: string) =>
     t('problems.tenantNotRegisteredDetail', { tenant }),
   );
 
+const holdsNoRight = (principal: Principal, tenant: string) =>
+  rightsOnlyFromGrants(principal) && platformRightsOf(principal, tenant).length === 0;
+
+const clientScope = (c: Context) =>
+  refuse(c, clientScopeType, t('problems.clientScope'), t('problems.clientScopeDetail'));
+
 export const adminKeysOnly =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const principal = await caller(c.req.raw);
     if (principal && isApiKeyPrincipal(principal) && !keyReachesRoute(principal, c))
       return refuse(c, keyScopeType, t('problems.keyScope'), t('problems.keyScopeDetail'));
+    if (principal && holdsNoRight(principal, principal.tenant ?? '')) return clientScope(c);
     return next();
   };
 
@@ -65,6 +80,7 @@ export const tenantGate =
       return refuse(c, keyScopeType, t('problems.keyScope'), t('problems.keyScopeDetail'));
     const member =
       principal.tenant === tenant || principal.authorizedFor?.some((a) => a.org === tenant);
+    if (member && holdsNoRight(principal, tenant)) return clientScope(c);
     if (member && !(await deps.registered(tenant))) return tenantNotRegistered(c, tenant);
     return next();
   };

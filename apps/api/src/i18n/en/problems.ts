@@ -20,6 +20,9 @@ export const problems = {
   tenantNotRegistered: 'The organisation is not registered on the platform',
   keyScope: 'The API key does not reach this route',
   keyScopeDetail: 'Tenant routes need a key with the admin scope.',
+  clientScope: 'The client does not reach this route',
+  clientScopeDetail:
+    'A Maskinporten client uses the services it is registered for. It holds no rights in the organisation.',
   testRunnerScope: 'A test-runner key cannot do this',
   testRunnerScopeDetail:
     'A test-runner key reads in its own organisation, checks definitions, gives feedback, tries published services it reaches and smoke- services in the playground, and changes only definitions whose id starts with smoke-.',

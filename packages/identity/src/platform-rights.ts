@@ -1,5 +1,5 @@
 import type { Principal } from '@genai/contracts';
-import { resourceId } from './claims.js';
+import { isApiKeyPrincipal, isTestRunnerKey, resourceId } from './claims.js';
 
 export const PLATFORM_RESOURCE = 'urn:altinn:resource:digdir-genai-platform';
 
@@ -28,7 +28,34 @@ export const platformRightsFromActions = (actions: readonly string[]): PlatformR
   return PLATFORM_RIGHTS.filter((right) => legacy.has(right));
 };
 
-/** Operators get every right; principals without Altinn actions keep today's tenant-wide access. */
+export const KEY_SCOPE_RIGHTS: Readonly<Record<string, readonly PlatformRight[]>> = {
+  admin: PLATFORM_RIGHTS,
+  ingest: ['manage-datasets'],
+};
+
+const platformIssuers = new Set(['platform', 'urn:genai:worker']);
+
+export const carriesAltinnActions = (principal: Principal) =>
+  principal.authorizedFor?.some((entry) => entry.actions !== undefined) ?? false;
+
+export const rightsOnlyFromGrants = (principal: Principal) =>
+  principal.kind !== 'operator' &&
+  principal.kind !== 'employee' &&
+  !platformIssuers.has(principal.issuer);
+
+const grantedRights = (principal: Principal, tenant: string): PlatformRight[] => {
+  if (principal.tenant !== tenant || !isApiKeyPrincipal(principal)) return [];
+  if (isTestRunnerKey(principal)) return [...PLATFORM_RIGHTS];
+  const granted = new Set(
+    (principal.scopes ?? []).flatMap((s) => {
+      const scope = s.startsWith('legacy:') ? s.slice('legacy:'.length) : '';
+      return Object.hasOwn(KEY_SCOPE_RIGHTS, scope) ? (KEY_SCOPE_RIGHTS[scope] ?? []) : [];
+    }),
+  );
+  return PLATFORM_RIGHTS.filter((right) => granted.has(right));
+};
+
+/** Operators get every right; keys and clients only what they were granted. */
 export const platformRightsOf = (
   principal: Principal,
   tenant: string,
@@ -40,7 +67,8 @@ export const platformRightsOf = (
       entry.org === tenant &&
       (entry.resource === undefined || resourceId(entry.resource) === resourceId(resource)),
   );
-  const fromAltinn = principal.authorizedFor?.some((entry) => entry.actions !== undefined);
-  if (fromAltinn) return platformRightsFromActions(entries.flatMap((entry) => entry.actions ?? []));
+  if (carriesAltinnActions(principal))
+    return platformRightsFromActions(entries.flatMap((entry) => entry.actions ?? []));
+  if (rightsOnlyFromGrants(principal)) return grantedRights(principal, tenant);
   return entries.length > 0 || principal.tenant === tenant ? [...PLATFORM_RIGHTS] : [];
 };

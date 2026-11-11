@@ -1,5 +1,11 @@
 import type { Principal } from '@genai/contracts';
-import { isTestRunnerKey, PLATFORM_RIGHTS, platformRightsOf } from '@genai/identity';
+import {
+  carriesAltinnActions,
+  isTestRunnerKey,
+  PLATFORM_RIGHTS,
+  platformRightsOf,
+  rightsOnlyFromGrants,
+} from '@genai/identity';
 import type { Context } from 'hono';
 import { platformScope } from './config-store.js';
 import { testRunnerMayPerform } from './test-runner.js';
@@ -223,8 +229,8 @@ export const actionRequirement = (action: string, input: ActionInput): ActionReq
   return typeof entry === 'function' ? entry(input) : entry;
 };
 
-export const carriesAltinnActions = (principal: Principal) =>
-  principal.authorizedFor?.some((entry) => entry.actions !== undefined) ?? false;
+export const rightsAreChecked = (principal: Principal) =>
+  carriesAltinnActions(principal) || rightsOnlyFromGrants(principal);
 
 export const isOperator = (principal: Principal) =>
   principal.kind === 'operator' || principal.actor?.kind === 'operator';
@@ -242,7 +248,7 @@ export const refusedAction = (
 ): ActionRefusal | undefined => {
   if (isTestRunnerKey(principal))
     return testRunnerMayPerform(action, input) ? undefined : { kind: 'test-runner' };
-  if (isOperator(principal) || !carriesAltinnActions(principal)) return undefined;
+  if (isOperator(principal) || !rightsAreChecked(principal)) return undefined;
   const requirement = actionRequirement(action, input);
   if (requirement === 'operator') return { kind: 'operator' };
   const held = rightsOf(principal, tenant);

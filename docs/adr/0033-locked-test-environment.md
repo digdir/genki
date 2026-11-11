@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03; admission shown on keys, 2026-11-10; test-runner keys built, 2026-11-10)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03; admission shown on keys, 2026-11-10; test-runner keys built, 2026-11-10; Maskinporten clients hold no right, ADR 0027, 2026-11-11)
 
 ## Context
 
@@ -17,7 +17,7 @@ In lockdown, only a credential from configuration, a trusted Entra login (below)
 - The model port refuses the same callers, so a model call from a route not on that list, a background job or a trigger fails too.
 - The worker reads the same setting. It binds no triggers, so a document that lands in a folder or a scheduled trigger starts nothing, and each sync logs that it is locked. Its model port uses the same rule, and the worker runs as a system user without the mark, so any model call it makes is refused.
 - The ingestion service refuses to start a run that a credential from configuration did not start. Scheduled runs and the first sync of a new connector therefore do not run; a scheduled run is recorded as failed with the reason and logged.
-- People other than a trusted Entra login (below) are read-only: every change, meaning every write that needs a change reason (ADR 0026), gets the same problem with a title saying changes need an Entra ID login. Their own preferences, conversations, feedback and checks that change nothing stay open. API keys and Maskinporten clients keep their normal rights to change configuration. Startup seeding from YAML is unchanged.
+- People other than a trusted Entra login (below) are read-only: every change, meaning every write that needs a change reason (ADR 0026), gets the same problem with a title saying changes need an Entra ID login. Their own preferences, conversations, feedback and checks that change nothing stay open. API keys keep the rights their scopes grant to change configuration; Maskinporten clients have none (ADR 0027). Startup seeding from YAML is unchanged.
 - Checks that send a stored secret to an address the caller chooses (a building-block contract test, an operator knowledge endpoint test) are not reads: they get the same problem for people other than a trusted Entra login.
 - For the same people, opening a draft with `rebase=clean` shows that it is behind instead of rebasing it, and a batch estimate skips the sample runs and assumes a range.
 - One authenticator decides for the lockdown gate and the routes: the routes use the same caller as the gate (API keys excluded from the definition and platform routes, as before, except a test-runner key, below). When a locked route gets a credential that resolves to nobody, the gate answers 401 instead of passing the request on.

@@ -14,7 +14,7 @@ import { actorOf, type Admin, type AdminHandler, type AdminOutcome } from './adm
 import { appendVersion, serialized, type ConfigEntry } from './config-store.js';
 import type { ModuleDeps, MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import {
-  carriesAltinnActions,
+  rightsAreChecked,
   requireRight,
   rightLabels,
   rightRefused,
@@ -250,7 +250,7 @@ export const createProposalsModule =
           if (
             op === 'approve' &&
             proposal.level === 3 &&
-            carriesAltinnActions(principal) &&
+            rightsAreChecked(principal) &&
             !rightsOf(principal, tenant).has('register-building-blocks')
           )
             return failed(

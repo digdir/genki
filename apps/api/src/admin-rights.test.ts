@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { envSecrets } from '@genai/kernel';
 import { createAdmin, platformActions, type AdminHandler } from './admin.js';
 import { createPlatform, platformModules } from './composition.js';
@@ -25,9 +26,18 @@ const kari = person('kari', ['use-services', 'manage-services', 'manage-datasets
 const operator: Principal = { kind: 'operator', issuer: 'test', subject: 'drift' };
 const apiKey: Principal = {
   kind: 'agency-system',
-  issuer: 'api-key',
+  issuer: LEGACY_KEY_ISSUER,
   subject: 'nøkkel-1',
   tenant: digdir,
+  scopes: ['legacy:admin'],
+};
+
+const client: Principal = {
+  kind: 'agency-system',
+  issuer: 'https://maskinporten.test/',
+  subject: 'sak-123',
+  tenant: digdir,
+  client: 'sak-123',
 };
 
 const applied: AdminHandler = async () => ({ ok: true, value: 'utført', target: 'test' });
@@ -134,7 +144,26 @@ describe('rights on admin actions', () => {
     expect(settings.tenant(digdir).values['search.topK']).toBe(7);
   });
 
-  it('an API key bound to the tenant keeps access', async () => {
+  it('a Maskinporten client gets no admin action, not even when a module calls admin directly', async () => {
+    const { admin, settings, setTopK } = setup();
+
+    const outcome = await setTopK(client);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? [] : outcome.errors).toContainEqual({
+      path: 'right',
+      message: 'manage-services',
+    });
+    expect(settings.tenant(digdir).values['search.topK']).toBeUndefined();
+    for (const action of ['platform.pipeline.save', 'platform.block.decide'])
+      expect(
+        await admin.perform(client, action, { tenant: digdir, reason: 'Ny innhenting' }),
+      ).toMatchObject({
+        ok: false,
+        errors: expect.arrayContaining([{ path: 'principal', message: expect.any(String) }]),
+      });
+  });
+
+  it('an API key with the admin scope keeps access in its own tenant', async () => {
     const { settings, setTopK } = setup();
 
     expect((await setTopK(apiKey)).ok).toBe(true);

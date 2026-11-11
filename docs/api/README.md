@@ -14,11 +14,11 @@ Both are open to everyone and need no credential.
 
 Send one of these with every call.
 
-| Caller                | Header                                                | Notes                                                                                                                                      |
-| --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| A person              | `Authorization: Bearer <Ansattporten access token>`   | Rights come from Altinn for each organisation (tenant). Add `GenAI-Acting-For: <org number>` to pick the organisation on `/v1` and `/api`. |
-| A system with a key   | `X-API-Key: <key>` (or `Authorization: Bearer <key>`) | Create keys in the portal or with `POST /tenants/{tenant}/api-keys`. A server serving end users adds `X-User-Id: <pseudonymous id>`.       |
-| A system with a token | `Authorization: Bearer <Maskinporten token>`          | Only when Maskinporten is configured and the client is registered with `POST /tenants/{tenant}/maskinporten-clients`.                      |
+| Caller                | Header                                                | Notes                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A person              | `Authorization: Bearer <Ansattporten access token>`   | Rights come from Altinn for each organisation (tenant). Add `GenAI-Acting-For: <org number>` to pick the organisation on `/v1` and `/api`.                                         |
+| A system with a key   | `X-API-Key: <key>` (or `Authorization: Bearer <key>`) | Create keys in the portal or with `POST /tenants/{tenant}/api-keys`. A server serving end users adds `X-User-Id: <pseudonymous id>`.                                               |
+| A system with a token | `Authorization: Bearer <Maskinporten token>`          | Only when Maskinporten is configured and the client is registered with `POST /tenants/{tenant}/maskinporten-clients`. It reaches the registered services, never the tenant routes. |
 
 **In local development** the API runs a mock Ansattporten. Get a token for a test person without the browser flow:
 
