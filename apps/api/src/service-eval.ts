@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { variantId, variantModelOf, type Variant } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import {
   caseTypeOf,
@@ -22,11 +23,15 @@ import {
 import { appendVersion, type ConfigEntry } from './config-store.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
+import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
+// Embedders and rerankers write no answer to judge.
+const notAnswering = new Set(['embedder', 'reranker']);
+
 export const judgedModels = (byModel: DraftModelUsage[]) =>
-  byModel.filter((m) => m.kind !== 'embedder').map((m) => m.model);
+  byModel.filter((m) => !notAnswering.has(m.kind ?? '')).map((m) => m.model);
 
 export const serviceRunKind = 'service-eval-run';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
@@ -54,7 +59,11 @@ export interface ServiceRun extends Leased {
   version: RunVersion;
   subject?: string;
   variant?: string;
+  // The model the run is set to answer with.
+  model?: string;
   split?: CaseSplit;
+  // The cases the run was limited to.
+  selected?: string[];
   startedAt: string;
   endedAt: string | null;
   score: number | null;
@@ -85,8 +94,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export const casesIn = (set: TestSet, split?: CaseSplit) =>
-  split ? set.spec.cases.filter((c) => splitsFor(split).includes(c.split)) : set.spec.cases;
+export const casesIn = (set: TestSet, split?: CaseSplit, only?: string[]) =>
+  set.spec.cases.filter(
+    (c) => (!split || splitsFor(split).includes(c.split)) && (!only || only.includes(c.id)),
+  );
 
 export const summarize = (results: CaseResult[]): Outcome => {
   const passed = results.filter((r) => r.pass).length;
@@ -115,6 +126,14 @@ const modelsOf = (definition: Record<string, unknown>) => {
   const model = (isRecord(definition.spec) ? definition.spec.model : undefined) as
     { primary?: unknown; fallback?: unknown } | undefined;
   return [model?.primary, model?.fallback].filter((m): m is string => typeof m === 'string');
+};
+
+// Without a chosen variant, the first one, as the draft runner does.
+export const answeringModel = ({ definition, variant }: Subject) => {
+  const variants = isRecord(definition.spec) ? definition.spec.variants : undefined;
+  const list = Array.isArray(variants) ? (variants as Variant[]) : [];
+  const chosen = variant === undefined ? list[0] : list.find((v) => variantId(v) === variant);
+  return (chosen && variantModelOf(chosen)) ?? modelsOf(definition)[0];
 };
 
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
@@ -229,7 +248,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         {
           ...defaultObserve(outcome.parts, []),
           text: outcome.answer,
-          noAnswer: outcome.noAnswer,
+          noAnswer: markedNotFound(outcome),
         },
         {
           ...(judge ? { judge } : {}),
@@ -310,8 +329,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     set: TestSet,
     subject: Subject,
     split?: CaseSplit,
+    only?: string[],
   ) => {
     const actor = actorOf(principal.actor ?? principal);
+    const model = answeringModel(subject);
     const queued: ServiceRun = {
       id: randomUUID(),
       service,
@@ -321,12 +342,14 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       version: subject.version,
       subject: publishedSubject(subject.definition, deps.plugins),
       ...(subject.variant ? { variant: subject.variant } : {}),
+      ...(model ? { model } : {}),
       ...(split ? { split } : {}),
+      ...(only ? { selected: only } : {}),
       startedAt: new Date().toISOString(),
       endedAt: null,
       score: null,
       passed: 0,
-      total: casesIn(set, split).length,
+      total: casesIn(set, split, only).length,
       cost: null,
       tokens: { input: 0, output: 0 },
       cases: [],
@@ -345,7 +368,13 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const meter = choice.meter();
       try {
         await lease.update((run) => ({ ...run, status: 'running' }), 'Kjører');
-        const outcome = await runCases(principal, tenant, subject, casesIn(set, split), meter);
+        const outcome = await runCases(
+          principal,
+          tenant,
+          subject,
+          casesIn(set, split, only),
+          meter,
+        );
         await lease.update(
           (run) => ({
             ...run,

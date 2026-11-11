@@ -28,6 +28,8 @@ export interface EvalRun {
   status: 'queued' | 'running' | 'succeeded' | 'failed' | (string & {});
   testSet: string;
   version: RunVersion;
+  model?: string;
+  selected?: string[];
   startedAt: string;
   endedAt?: string | null;
   score?: number | null;
@@ -243,7 +245,12 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     startRun: (
       tenant: string,
       id: string,
-      body: { testSet: string; version?: RunVersion },
+      body: {
+        testSet: string;
+        version?: RunVersion;
+        split?: CaseSplit;
+        cases?: string[];
+      },
       reason: string,
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>

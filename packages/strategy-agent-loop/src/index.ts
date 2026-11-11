@@ -22,6 +22,8 @@ import { inferQueryIntent } from './intent.js';
 import {
   activeFiltersInstruction,
   agentTools,
+  cutOffToolCallNudge,
+  answerInstructionsLead,
   defaultSystemPrompt,
   type ActiveFilter,
   exhaustionDefault,
@@ -29,6 +31,7 @@ import {
   noToolCallHonestMiss,
   noToolCallNudge,
   searchScaffold,
+  smallTalkCheck,
   systemPromptWithDate,
 } from './prompts.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
@@ -134,6 +137,8 @@ export const agentLoopConfig = z.strictObject({
   synthesisMaxTokens: z.number().int().positive().optional(),
   evaluatorTemperature: z.number().min(0).max(2).optional(),
   noToolCallRetry: z.boolean().optional(),
+  noAnswerText: z.string().min(1).max(500).optional(),
+  instructionsInAnswer: z.boolean().optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -341,6 +346,14 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;
 
+// A second sentence explains more than that nothing was found.
+const onlySaysNothingFound = (text: string) =>
+  text.trim().length <= 200 &&
+  text
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.length > 0).length <= 1;
+
 interface ExtraTool {
   spec: ToolSpec;
   port: ToolPort;
@@ -455,13 +468,27 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         })
       ).content;
 
+    let smallTalk: Promise<boolean> | undefined;
+    const isSmallTalk = (text: string) =>
+      // The question is data, so it cannot answer the check.
+      (smallTalk ??= evaluator(smallTalkCheck, untrustedData('user-message', text)).then(
+        (verdict) => /^\s*SMALL_TALK\b/i.test(verdict),
+        () => false,
+      ));
+
     const environment = (push: (text: string) => void, onStream: () => void): ToolEnvironment => ({
       workspace,
       retrieval,
       query,
       history,
       signal: ctx.signal,
-      systemPrompt: `${systemPromptWithDate((options.now ?? (() => new Date()))())}\n\n${untrustedDataNote(config.languages)}`,
+      // The untrusted-data note comes last, as in the agent's prompt.
+      systemPrompt:
+        systemPromptWithDate((options.now ?? (() => new Date()))()) +
+        (settings.instructionsInAnswer && settings.instructions
+          ? `\n\n${answerInstructionsLead}\n\n${baseInstructions(settings.instructions)}`
+          : '') +
+        `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: (system, user) =>
         synthesisSession.text(
@@ -518,16 +545,22 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         turn.toolCalls.length === 0 ||
         !(turn.finishReason === 'tool_calls' || turn.finishReason === 'stop')
       ) {
-        const searched = workspace.searches.length > 0;
-        const guard = Boolean(settings.noToolCallRetry);
-        if (guard && !searched && workspace.noToolCallRetries < 2) {
+        // An answer before any search comes from the model's own knowledge.
+        const cutOff = turn.toolCalls.length > 0;
+        const guard =
+          Boolean(settings.noToolCallRetry) &&
+          workspace.searches.length === 0 &&
+          (cutOff || !(await isSmallTalk(query)));
+        if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
-          messages = [...messages, assistant, { role: 'system', content: noToolCallNudge }];
+          messages = cutOff
+            ? [...messages, { role: 'system', content: cutOffToolCallNudge }]
+            : [...messages, assistant, { role: 'system', content: noToolCallNudge }];
           continue;
         }
         answer =
-          guard && !searched && searchScaffold.test(turn.content)
-            ? noToolCallHonestMiss
+          guard && (history.length === 0 || searchScaffold.test(turn.content))
+            ? (settings.noAnswerText ?? noToolCallHonestMiss)
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
         fallbackMessages = initialMessages;
@@ -878,6 +911,25 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       workspace.citations = citationsFor(answer, workspace);
     }
 
+    const foundNothing =
+      !clarification &&
+      workspace.citations.length === 0 &&
+      (soundsLikeRefusal(answer ?? '') ||
+        (settings.noAnswerText !== undefined && answer === settings.noAnswerText));
+    // Only a plain miss in the sources gets the service's own words.
+    if (
+      foundNothing &&
+      settings.noAnswerText &&
+      answer !== settings.noAnswerText &&
+      answer !== exhaustionDefault &&
+      onlySaysNothingFound(answer ?? '') &&
+      workspace.searches.length > 0
+    ) {
+      yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'no-answer' } };
+      yield { type: 'kernel.part.delta', data: { text: settings.noAnswerText } };
+      answer = settings.noAnswerText;
+    }
+
     const outputChunks = () =>
       sourcesFirst(
         workspace.sourceOrder.map((c) => workspace.chunks.get(c.chunkId) ?? c),
@@ -921,11 +973,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             citations: clarification
               ? []
               : workspace.citations.map((c) => ({ index: c.index, chunkId: c.chunkId })),
-            ...(!clarification &&
-            workspace.citations.length === 0 &&
-            soundsLikeRefusal(answer ?? '')
-              ? { noAnswer: true }
-              : {}),
+            ...(foundNothing ? { noAnswer: true } : {}),
           },
         },
         sourcesPart([...published, ...extraSources], clarification, {
