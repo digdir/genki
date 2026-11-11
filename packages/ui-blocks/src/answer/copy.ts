@@ -104,7 +104,7 @@ export const finishedText = (markdown: string) => {
 export const answerCopy = (text: string, options: AnswerCopyOptions = {}): AnswerCopy => {
   const { sources = [], markers, locale = 'nb' } = options;
   const t = translator(locale);
-  const { pairing } = readFootnotes(text, sources, markers);
+  const { pairing, met } = readFootnotes(text, sources, markers);
   const byExcerpt = pairing.mode === 'excerpt';
   const keys = documentKeys(sources);
   const names = distinctNames(sources, (title, id) => t('sources.sameTitle', { title, id })).map(
@@ -186,7 +186,20 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
     return (byExcerpt && marker && pairing.numbers.get(marker.chunkId)) || null;
   };
 
-  const body = plain(text, label);
+  // A footnote the screen drops, such as a repeat beside its twin, is copied as nothing too.
+  const seen: number[] = [];
+  plain(text, (n) => {
+    seen.push(n);
+    return undefined;
+  });
+  const drawn = met.filter((m) => m.n < 1000);
+  const inStep = seen.length === drawn.length && seen.every((n, i) => drawn[i]?.n === n);
+  let at = 0;
+  const body = plain(text, (n) => {
+    const dropped = inStep && drawn[at]?.dropped;
+    at += 1;
+    return dropped ? null : label(n);
+  });
   return references.length === 0
     ? { text: body, sources: 0 }
     : {

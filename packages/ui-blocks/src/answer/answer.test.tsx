@@ -363,7 +363,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     render(<Host cites="documents" />);
     expect(footnotes()).toEqual([]);
     expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
-    expect(screen.queryAllByRole('link', { name: /fotnote \d|i Kilder$/i })).toEqual([]);
+    expect(screen.queryAllByRole('link', { name: /(?:fotnote \d.*|i Kilder)$/i })).toEqual([]);
     expect(screen.getByRole('link', { name: nkom.title })).toBeTruthy();
     expect(screen.getByRole('link', { name: tildeling.title })).toBeTruthy();
   });
@@ -825,6 +825,21 @@ describe('the answer as copied', () => {
       'Kjør items[1] først [1].\n\nx[1] = 2',
     );
     expect(finishedText(`${markdown}\n\nslutt`)).toBe('Kjør items[1] først.\n\nx[1] = 2');
+  });
+
+  it('copies two markers the screen draws as one footnote as that one footnote', () => {
+    const twins = [
+      ...markers,
+      { marker: '4', chunkId: 'kudos::2022-1', documentId: 'kudos::2022' },
+    ];
+    const body = (answer: string) =>
+      answerCopy(answer, { sources, markers: twins }).text.split('\n\nKilder')[0];
+    expect(body('Samme utdrag [1] [4].')).toBe('Samme utdrag [1].');
+    expect(body('Samme utdrag [1][4] og [1]\t[1].')).toBe('Samme utdrag [1] og [1].');
+    // Apart, they are two footnotes on the screen and on the clipboard.
+    expect(body('Først [1], så [4].')).toBe('Først [1], så [1].');
+    draw({ text: 'Samme utdrag [1] [4].', markers: twins });
+    expect(footnotes()).toHaveLength(1);
   });
 
   it('writes the reference list in the reader’s language', () => {
