@@ -85,6 +85,8 @@ const cardGround = {
 // titles in the text's own grey, not in brand3's blue.
 const sourcesTool = {
   '--genai-sources-head-color': 'var(--ds-color-neutral-text-default)',
+  // As wide as the panel, also as the panel's only tool, where nothing stretches it.
+  inlineSize: '100%',
 } as CSSProperties;
 
 // The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,

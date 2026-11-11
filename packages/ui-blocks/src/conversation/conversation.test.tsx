@@ -862,9 +862,16 @@ describe('while the thread is read', () => {
 describe('the dev boards’ answer, `answerVariant="plain"` (dev-kilder-hoyre)', () => {
   it('puts the assistant’s name over the header and the answer, for the eye, and the answer has no card', () => {
     const header = () => <p>Fremgangsmåte</p>;
-    draw({ answerVariant: 'plain', assistantName: 'Kunnskapsassistenten', header });
+    draw({
+      answerVariant: 'plain',
+      assistantName: 'Kunnskapsassistenten',
+      answerColor: 'neutral',
+      header,
+    });
     const label = document.querySelector('.uib-conversation-label');
     expect(label?.textContent).toBe('Kunnskapsassistenten');
+    // In the answers' family, as the answer it names.
+    expect(label?.getAttribute('data-color')).toBe('neutral');
     expect(label?.getAttribute('aria-hidden')).toBe('true');
     const over = screen.getAllByText('Fremgangsmåte')[0] as HTMLElement;
     expect(label?.compareDocumentPosition(over)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

@@ -222,7 +222,8 @@ export const Conversation = ({
   const plain = answerVariant === 'plain';
   // For the eye: the answer's own line, «… svarte:», still tells a screen reader who answered.
   const answerLabel = plain ? (
-    <p aria-hidden="true" className="uib-conversation-label">
+    // In the answers' family, as the answer it names.
+    <p aria-hidden="true" className="uib-conversation-label" data-color={answerColor}>
       {assistantName ?? t('answer.assistant')}
     </p>
   ) : null;

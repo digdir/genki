@@ -57,7 +57,8 @@ export const SourcesUsed = ({
   return (
     <Card
       className="uib-answer-sources-used-card"
-      variant="tinted"
+      // The dev boards' box is plain, its bar tinted.
+      variant={counted ? 'default' : 'tinted'}
       data-counted={counted || undefined}
     >
       <Details className="uib-answer-sources-used" defaultOpen>

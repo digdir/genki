@@ -923,6 +923,10 @@ describe('the dev boards’ answer, `variant="plain"` (dev-kilder-hoyre)', () =>
     draw({ variant: 'plain' });
     const summary = document.querySelector('.uib-answer-sources-used summary');
     expect(summary?.textContent).toBe('Kilder· 2 brukt i svaret');
+    // A plain box under its tinted bar, as the board draws it.
+    expect(
+      document.querySelector('.uib-answer-sources-used-card')?.getAttribute('data-variant'),
+    ).toBe('default');
     const list = document.querySelector('.uib-answer-sources-used-list');
     expect(list?.tagName).toBe('OL');
     expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([

@@ -247,6 +247,14 @@
     overflow: visible;
   }
 
+  /* The counted box's bar on the family's tint, over a plain box (dev-kilder-hoyre). */
+  .uib-answer-sources-used-card[data-counted] > .uib-answer-sources-used {
+    --dsc-details-summary-background: var(
+      --genai-answer-sources-used-bar-background,
+      var(--ds-color-surface-tinted)
+    );
+  }
+
   /* «Kilder · 3 brukt i svaret»: the count after the name, quieter. */
   .uib-answer-sources-used-count {
     color: var(--genai-answer-sources-used-count-color, var(--ds-color-text-subtle));
