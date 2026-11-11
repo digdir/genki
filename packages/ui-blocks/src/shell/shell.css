@@ -115,8 +115,32 @@
   }
 
   /* An empty head row in a drawer takes no room: a zero-height flex item still gets the gap. */
-  .uib-shell-drawer .uib-shell-header:has(> .uib-shell-head:empty) {
+  .uib-shell-drawer .uib-shell-header:has(> .uib-shell-head:empty):not(:has(> .uib-shell-title)) {
     display: none;
+  }
+
+  /* Every title the shell draws looks alike, the panels' and the main column's (dev-navbar): one
+     line, cut with «…». Its line is `--ds-size-8` tall, so the text stands 3 under its top, as the
+     design's titles do. */
+  .uib-shell-title {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--genai-shell-title-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-shell-title-font-size, var(--ds-heading-xs-font-size));
+    font-weight: var(--genai-shell-title-font-weight, var(--ds-font-weight-medium));
+    line-height: var(--genai-shell-title-line-height, var(--ds-size-8));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* What a folded panel shows at its bottom, such as the reader's avatar. */
+  .uib-shell-rail-foot {
+    display: flex;
+    justify-content: center;
+    inline-size: 100%;
+    margin-block-start: auto;
   }
 
   /* The panel's only scroller; `min-block-size: 0`, or it grows to its content. */
@@ -262,6 +286,120 @@
     flex-grow: 1;
   }
 
+  /* ── The cards frame (`frame="cards"`), the design's dev-navbar board ── */
+
+  /* The cards stand inset from the window; it must match the shell's `inset`. Not in the top row. */
+  .uib-shell[data-frame='cards']:not([data-compact]) {
+    box-sizing: border-box;
+    padding: var(--genai-shell-inset, var(--ds-size-4));
+  }
+
+  /* The gap between the cards, a rail's too, since a rail is a card; it must match the `gap`. */
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='primary'] {
+    margin-inline-end: var(--genai-shell-gap, var(--ds-size-3));
+  }
+
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='secondary'] {
+    margin-inline-start: var(--genai-shell-gap, var(--ds-size-3));
+  }
+
+  /* Rounded and lifted off the page's ground, with no lines between them. */
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side > .uib-shell-box,
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-main {
+    border-radius: var(--genai-shell-card-radius, var(--ds-border-radius-xl));
+    box-shadow: var(--genai-shell-card-shadow, var(--ds-shadow-xs));
+  }
+
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side > .uib-shell-box {
+    padding-block: var(--genai-shell-card-padding-block, var(--ds-size-4));
+    border-inline: 0;
+  }
+
+  .uib-shell[data-frame='cards']:not([data-compact])
+    > .uib-shell-side[data-side='secondary']
+    > .uib-shell-box {
+    --_shell-region: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+
+    background: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+  }
+
+  /* The title's text on the head's top line, whatever the button beside it. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header {
+    align-items: start;
+  }
+
+  /* The primary card's edge, 12 as the design's thread list; the secondary one and a rail 16. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='primary'] > .uib-shell-box > * {
+    padding-inline: var(--genai-shell-primary-card-padding-inline, var(--ds-size-3));
+  }
+
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='secondary'] > .uib-shell-box > *,
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side[data-collapsed]
+    > .uib-shell-box
+    > .uib-shell-header {
+    padding-inline: var(--genai-shell-card-padding-inline, var(--ds-size-4));
+  }
+
+  /* The panel's name over its list, its text on the design's line: «Tråder», 48 above «Ny tråd». */
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='primary'] .uib-shell-title {
+    margin-block-end: var(--genai-shell-title-margin-block-end, var(--ds-size-8));
+    padding-inline-start: var(--genai-shell-title-inset, var(--ds-size-1));
+  }
+
+  /* The panel's button is the design's 44, so a rail is 16 + 44 + 16. */
+  .uib-shell[data-frame='cards'] .uib-shell-toggle {
+    --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
+  }
+
+  /* The foot under a line inside the card's edges, as the design's profile. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-foot {
+    align-self: stretch;
+    inline-size: auto;
+    margin-inline: var(--genai-shell-card-padding-inline, var(--ds-size-4));
+    padding-inline: 0;
+    padding-block-start: var(--genai-shell-card-foot-padding-block-start, var(--ds-size-3));
+    border-block-start-color: var(
+      --genai-shell-divider-color,
+      var(--ds-color-neutral-surface-tinted)
+    );
+  }
+
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side[data-side='primary']
+    > .uib-shell-box
+    > .uib-shell-foot {
+    margin-inline: var(--genai-shell-primary-card-padding-inline, var(--ds-size-3));
+  }
+
+  /* The main card: a column whose title stays at its top, over the whole card. */
+  .uib-shell[data-frame='cards'] > .uib-shell-main {
+    --_shell-region: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+
+    display: flex;
+    flex-direction: column;
+    background: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+  }
+
+  .uib-shell[data-frame='cards'] > .uib-shell-main > .uib-shell-pinned {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    padding-block-start: var(--genai-shell-card-padding-block, var(--ds-size-4));
+    padding-inline: var(--genai-shell-main-title-padding-inline, var(--ds-size-6));
+    border-block-end-color: var(
+      --genai-shell-divider-color,
+      var(--ds-color-neutral-surface-tinted)
+    );
+  }
+
+  /* What the title leaves, filled: not 100 % under it, which would always scroll. */
+  .uib-shell[data-frame='cards'] > .uib-shell-main > .uib-shell-column {
+    flex: 1 0 auto;
+    inline-size: 100%;
+    min-block-size: 0;
+    padding-block-start: var(--genai-shell-main-padding-block-start, var(--ds-size-6));
+  }
+
   /* ── The top row, below 774 unless the host sets `compactBar` to false ── */
 
   /* The rails as one row above the main column, by grid placement, keeping the tab order. */
@@ -300,6 +438,11 @@
   .uib-shell[data-compact] > .uib-shell-side {
     container-type: normal;
     min-inline-size: 0;
+  }
+
+  /* The row holds the panels' buttons only; what a rail shows at its bottom is in the drawer. */
+  .uib-shell[data-compact] .uib-shell-rail-foot {
+    display: none;
   }
 
   /* In the bar a rail is just its button. */

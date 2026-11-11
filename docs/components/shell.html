@@ -104,6 +104,13 @@
                 above the main column (kunnskapsassistenten#120). <code>compactBar={false}</code>
                 keeps them at the sides.
               </li>
+              <li>
+                <strong>Cards,</strong> <code>frame="cards"</code>, the design's dev-navbar board:
+                each panel and the main column is a rounded card on the page's ground, 16 from the
+                window and 12 apart, with no top bar. A rail is a card of 76 with the same gap, and
+                the panel's button is a 44 icon. Not in the top row, which stays as it is. Flush,
+                the default, is what kunnskapsassistenten draws today.
+              </li>
             </ul>
           </div>
           <div>
@@ -120,13 +127,24 @@
                 its own head under it; the main column's <code>mainPinned</code> does the same),
                 <code>pinnedRef</code> (that region's element, for a block that draws its own head
                 there, such as the filter's <code>pinIn</code>; a stable function),
-                <code>foot</code> and <code>footPinned</code>,
-                <code>size</code> (<code>width</code>, <code>minWidth</code>,
+                <code>foot</code> and <code>footPinned</code>, <code>railFoot</code> (what the
+                folded panel shows at its bottom, such as the reader's avatar; not in the top row),
+                <code>title</code> (the panel's visible name, an <code>h2</code> on its row:
+                «Tråder», «Verktøy»), <code>size</code> (<code>width</code>, <code>minWidth</code>,
                 <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>.
               </li>
               <li>
                 <code>children</code> and <code>mainPinned</code>: the main column, and what stays
-                at its top. <code>mainSize</code>: its floor and reading width, 640 and 800.
+                at its top. <code>mainTitle</code>: the page's <code>h1</code>, such as the thread's
+                title, pinned at the top of the main column with a line under it; in the cards frame
+                it spans the card. Every title the shell draws looks alike, Heading xs on one line
+                cut with «…», and its text stands on the same line in every panel.
+                <code>mainSize</code>: its floor and reading width, 640 and 800.
+              </li>
+              <li>
+                <code>frame</code>: <code>flush</code>, the default, or <code>cards</code>.
+                <code>inset</code>: the cards' margin from the window, 16; it must match
+                <code>--genai-shell-inset</code>.
               </li>
               <li>
                 <code>initialLayout</code> and <code>onLayoutChange</code>: which panels are folded,
@@ -148,8 +166,10 @@
                 til skrivefeltet».
               </li>
               <li>
-                <code>gap</code> and <code>rail</code>: 32 and 67 by default. The sums use them, so
-                they must match <code>--genai-shell-gap</code> and the rail's button and padding.
+                <code>gap</code> and <code>rail</code>: 32 and 67 by default, 12 and 76 for cards.
+                The sums use them, so they must match <code>--genai-shell-gap</code> and the rail's
+                button and padding. In the cards frame the breakpoints count the margins and each
+                rail's gap too.
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the shell, set only
@@ -263,12 +283,12 @@
               The block sits in <code>@layer genai.components</code>, after Designsystemet's layers,
               follows <code>data-color</code>, <code>data-color-scheme</code> and
               <code>data-size</code>, and reads every token through its own variable, with the token
-              as the fallback. Six are pinned to the neutral family on purpose, as
-              kunnskapsassistenten's shell: the page, the panels, the rails, the top row, the drawer
-              and the borders stay grey whatever <code>data-color</code> the app sets, because
-              accent belongs to the content and to what can be pressed. The separator's line takes
-              the accent role without a family. The widths are not tokens: the shell sets them from
-              its own sums.
+              as the fallback. The chrome is pinned to the neutral family on purpose, as
+              kunnskapsassistenten's shell: the page, the panels, the cards, the rails, the top row,
+              the drawer, the borders and lines, and the titles stay grey whatever
+              <code>data-color</code> the app sets, because accent belongs to the content and to
+              what can be pressed. The separator's line takes the accent role without a family. The
+              widths are not tokens: the shell sets them from its own sums.
             </p>
             <div class="table-wrap">
               <table>
@@ -322,8 +342,10 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-gap</code></td>
-                    <td><code>--ds-size-8</code></td>
-                    <td>beside an open panel; must match the <code>gap</code> prop</td>
+                    <td><code>--ds-size-8</code>; <code>--ds-size-3</code> for cards</td>
+                    <td>
+                      beside an open panel, and a card's rail; must match the <code>gap</code> prop
+                    </td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-padding-block</code></td>
@@ -402,8 +424,8 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-main-padding-block-start</code></td>
-                    <td><code>--ds-size-8</code></td>
-                    <td>above the main column</td>
+                    <td><code>--ds-size-8</code>; <code>--ds-size-6</code> for cards</td>
+                    <td>above the main column; under the main title for cards</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-main-padding-block-end</code></td>
@@ -509,6 +531,95 @@
                     <td><code>--genai-shell-tools-tab-selected-font-weight</code></td>
                     <td><code>--ds-font-weight-medium</code></td>
                     <td>the chosen tab's text</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>every title the shell draws (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-font-size</code></td>
+                    <td><code>--ds-heading-xs-font-size</code></td>
+                    <td>every title, 21 at the default size</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>every title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-line-height</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>every title's line, so its text stands 3 under the line's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-margin-block-end</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>under the primary card's title, 48 to its content with the box's gap</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-inset</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>before the primary card's title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-inset</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>
+                      the cards' margin from the window; must match the <code>inset</code> prop
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the main card and the secondary one (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>each card</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-shadow</code></td>
+                    <td><code>--ds-shadow-xs</code></td>
+                    <td>each card</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-padding-block</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>above and below a card's content, and above the main title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-primary-card-padding-inline</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>beside the primary card's content and foot</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>beside the secondary card's content, and a rail's button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-foot-padding-block-start</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between a card's foot and the line over it</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-title-padding-inline</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>beside the main card's title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-divider-color</code></td>
+                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td>the lines under the main card's title and over a card's foot (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-button-size</code></td>
+                    <td><code>--ds-size-11</code></td>
+                    <td>
+                      a card's button and the avatar's on a rail; part of the <code>rail</code>
+                    </td>
                   </tr>
                 </tbody>
               </table>

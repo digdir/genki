@@ -1,4 +1,4 @@
-import { Button, Dialog, SkipLink, Tooltip } from '@digdir/designsystemet-react';
+import { Button, Dialog, Heading, SkipLink, Tooltip } from '@digdir/designsystemet-react';
 import { SidebarLeftIcon, SidebarRightIcon } from '@navikt/aksel-icons';
 import {
   useCallback,
@@ -16,6 +16,9 @@ import { useMedia, useScrollPadding, useScrollTabStop, useViewportWidth } from '
 import { useT } from './i18n.js';
 import {
   breakpoints,
+  cardsGap,
+  cardsInset,
+  cardsRail,
   clampWidth,
   defaultCollapsed,
   defaultGap,
@@ -50,6 +53,11 @@ import { Separator } from './Separator.js';
 export interface ShellPanel {
   /** The panel's name after what is in it, «Tråder og filter»: the landmark's and its buttons'. */
   label: string;
+  /**
+   * The panel's visible title, an `h2` on its head row, «Tråder» or «Verktøy». Every title the
+   * shell draws looks alike and stands on one line with the main column's (`mainTitle`).
+   */
+  title?: string | undefined;
   /** What the panel holds. It scrolls; the head and a pinned foot stay put. */
   children?: ReactNode;
   /** Controls that belong to the panel, on its head row beside «Skjul». Not on a rail. */
@@ -62,6 +70,8 @@ export interface ShellPanel {
   foot?: ReactNode;
   /** Keep the foot at the panel's bottom instead of at the end of what scrolls. */
   footPinned?: boolean | undefined;
+  /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
+  railFoot?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
   size?: Partial<ShellPanelSize> | undefined;
   /** Folded when the page opens, until the reader chooses. Primary open, secondary folded. */
@@ -83,6 +93,19 @@ export interface ShellProps {
   children?: ReactNode;
   /** Pinned to the top of the main column while it scrolls. */
   mainPinned?: ReactNode;
+  /**
+   * The page's `h1`, at the top of the main column with a line under it and always in sight, such
+   * as the thread's title. It looks like the panels' titles and stands on one line with them.
+   */
+  mainTitle?: string | undefined;
+  /**
+   * `flush`, the default: the panels meet the window's edges and the main column, divided by lines.
+   * `cards`: each panel and the main column is a card on the page's ground, `inset` from the
+   * window and `gap` apart, a rail too (the design's dev-navbar board).
+   */
+  frame?: 'flush' | 'cards' | undefined;
+  /** The cards frame's margin from the window in CSS pixels, 16. Must match `--genai-shell-inset`. */
+  inset?: number | undefined;
   /** The main column's floor and reading width, 640 and 800 by default. */
   mainSize?: Partial<ShellMainSize> | undefined;
   /** The `id` of `<main>`, the target of «Hopp til hovedinnhold». */
@@ -96,9 +119,9 @@ export interface ShellProps {
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
-  /** The gap beside an open panel in CSS pixels. Must match `--genai-shell-gap`. */
+  /** The gap beside an open panel in CSS pixels, 32, or 12 for cards. Must match `--genai-shell-gap`. */
   gap?: number | undefined;
-  /** A folded panel's width in CSS pixels. Must match the rail's button and padding. */
+  /** A folded panel's width in CSS pixels, 67, or 76 for cards. Must match its button and padding. */
   rail?: number | undefined;
   /** Designsystemet's `data-color` for the shell, set only when given. */
   color?: string | undefined;
@@ -119,6 +142,7 @@ export const Shell = ({
   secondary,
   children,
   mainPinned,
+  mainTitle,
   mainSize,
   mainId = 'main-content',
   initialLayout,
@@ -126,12 +150,18 @@ export const Shell = ({
   request,
   compactBar = true,
   skipLinks,
-  gap = defaultGap,
-  rail = defaultRail,
+  frame = 'flush',
+  inset: givenInset,
+  gap: givenGap,
+  rail: givenRail,
   color,
   className,
 }: ShellProps) => {
   const t = useT();
+  const cards = frame === 'cards';
+  const inset = cards ? (givenInset ?? cardsInset) : 0;
+  const gap = givenGap ?? (cards ? cardsGap : defaultGap);
+  const rail = givenRail ?? (cards ? cardsRail : defaultRail);
   const p = primary ? sized('primary', primary.size) : undefined;
   const s = secondary ? sized('secondary', secondary.size) : undefined;
   const mainMin = mainSize?.minWidth ?? defaultMainSize.minWidth;
@@ -142,6 +172,7 @@ export const Shell = ({
       main: { minWidth: mainMin, maxWidth: mainMax },
       gap,
       rail,
+      ...(cards ? { inset, railGap: true } : {}),
     }),
     // The numbers, not the objects, which are new on every render.
     [
@@ -155,6 +186,8 @@ export const Shell = ({
       mainMax,
       gap,
       rail,
+      cards,
+      inset,
     ],
   );
   const points = breakpoints(geometry);
@@ -163,6 +196,8 @@ export const Shell = ({
   const narrow = useMedia(narrowerThan(points.both));
   const drawer = useMedia(narrowerThan(points.drawer));
   const compact = useMedia(narrowerThan(points.compact)) && compactBar;
+  // In the top row the cards frame has no margins: the row and the main column take the window.
+  const sums = useMemo(() => (compact ? { ...geometry, inset: 0 } : geometry), [compact, geometry]);
 
   const [state, setState] = useState<ShellState>(() =>
     initialState(
@@ -263,15 +298,29 @@ export const Shell = ({
   );
 
   const sideProps = {
-    geometry,
+    geometry: sums,
     state,
     viewport,
     drawer,
+    cards,
     onToggle: (side: ShellSide) => byReader(side, (current) => !current.collapsed[side]),
     onCollapse: (side: ShellSide, collapsed: boolean) => byReader(side, () => collapsed),
     onWidth: (side: ShellSide, width: number) =>
       setState((current) => withWidth(geometry, current, side, width)),
   };
+
+  // First in the region, so nothing reachable ends up under it once pinned. In the cards frame it
+  // spans the main card, its line from edge to edge; flush, it keeps to the reading width.
+  const mainHeadRegion = (
+    <div className="uib-shell-pinned" ref={setMainHead}>
+      {mainTitle ? (
+        <Heading className="uib-shell-title" data-size="xs" level={1}>
+          {mainTitle}
+        </Heading>
+      ) : null}
+      {mainPinned}
+    </div>
+  );
 
   return (
     <>
@@ -281,7 +330,8 @@ export const Shell = ({
         className={classes('uib-shell', className)}
         data-compact={compact || undefined}
         data-drawer={drawer || undefined}
-        style={layoutStyle(geometry, state, viewport, drawer, compact) as CSSProperties}
+        data-frame={cards ? 'cards' : undefined}
+        style={layoutStyle(sums, state, viewport, drawer, compact) as CSSProperties}
         {...colored(color)}
       >
         {primary ? <Side side="primary" panel={primary} {...sideProps} /> : null}
@@ -299,11 +349,9 @@ export const Shell = ({
           ref={setMain}
           tabIndex={mainFocusable ? 0 : undefined}
         >
+          {cards ? mainHeadRegion : null}
           <div className="uib-shell-column">
-            {/* First in the region, so nothing reachable ends up under it once pinned. */}
-            <div className="uib-shell-pinned" ref={setMainHead}>
-              {mainPinned}
-            </div>
+            {cards ? null : mainHeadRegion}
             {children}
           </div>
         </main>
@@ -322,6 +370,8 @@ interface SideProps {
   viewport: number;
   /** Draw an open panel over the main column rather than beside it. */
   drawer: boolean;
+  /** The cards frame: the panel is a card, its button an icon. */
+  cards: boolean;
   onToggle: (side: ShellSide) => void;
   onCollapse: (side: ShellSide, collapsed: boolean) => void;
   onWidth: (side: ShellSide, width: number) => void;
@@ -335,6 +385,7 @@ const Side = ({
   state,
   viewport,
   drawer,
+  cards,
   onToggle,
   onCollapse,
   onWidth,
@@ -411,8 +462,9 @@ const Side = ({
 
   // A rail on the row, folded or in drawer mode, is not a shut panel: the button is an icon.
   const railed = collapsed || drawer;
-  // Only the word: the whole name does not fit beside the head's controls.
-  const showsWord = side === 'primary' && !railed;
+  // Only the word: the whole name does not fit beside the head's controls. A card's title names
+  // the panel already, so its button is an icon, as the design draws the secondary one.
+  const showsWord = side === 'primary' && !railed && !cards;
   // The button stands at the panel's edge towards the main column.
   const toggleLast = side === 'primary';
   // Must equal the tooltip, which Designsystemet otherwise writes over `aria-label`.
@@ -463,7 +515,8 @@ const Side = ({
         className={classes('uib-shell-toggle', showsWord && 'uib-shell-hide')}
         // Pinned to neutral, as kunnskapsassistenten draws it: the panel's own control.
         data-color="neutral"
-        data-size="sm"
+        // A card's button is the design's 44, sized from the default size mode's tokens.
+        data-size={cards ? 'md' : 'sm'}
         icon={!showsWord}
         onClick={() => onToggle(side)}
         ref={toggle}
@@ -474,6 +527,12 @@ const Side = ({
       </Button>
     </Tooltip>
   );
+
+  const title = panel.title ? (
+    <Heading className="uib-shell-title" data-size="xs" level={2}>
+      {panel.title}
+    </Heading>
+  ) : null;
 
   return (
     <Landmark
@@ -498,11 +557,15 @@ const Side = ({
         {/* Outside the scroller, so the button never scrolls out of sight. */}
         <div className="uib-shell-header">
           {toggleLast ? null : toggleButton}
+          {railed ? null : title}
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
           {toggleLast ? toggleButton : null}
         </div>
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}
+        {railed && panel.railFoot != null ? (
+          <div className="uib-shell-rail-foot">{panel.railFoot}</div>
+        ) : null}
       </div>
 
       {/* A native modal dialog, kept mounted so what is in it keeps its state. */}
@@ -518,6 +581,7 @@ const Side = ({
         >
           <div className="uib-shell-box">
             <div className="uib-shell-header">
+              {title}
               <div className="uib-shell-head">{panel.head}</div>
             </div>
             {panelContent}
