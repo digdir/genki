@@ -538,7 +538,8 @@ export const AssistantView = ({
       onOpenThread={(thread) => a.leave(thread.id)}
       newThreadHref={a.hrefOf()}
       onNewThread={() => {
-        if (twoViews) {
+        // The next look stays on «Tråder»: its filter is to get a panel of its own.
+        if (twoViews && !next) {
           setPrimaryView('filters');
           setSwitchedView(false);
         }
@@ -553,7 +554,7 @@ export const AssistantView = ({
           <SignedIn name={a.profile.signedInAs} signOutHref={a.hrefOf()} onSignOut={a.signOut} />
         ) : undefined
       }
-      {...(twoViews
+      {...(twoViews && !next
         ? {
             onShowFilters: () => {
               setPrimaryView('filters');
@@ -562,6 +563,8 @@ export const AssistantView = ({
             focusShowFilters: switchedView,
           }
         : {})}
+      // The dev-trader board's list in the next look: no search, and no way to the filter here.
+      {...(next ? { variant: 'nav' as const, search: false } : {})}
     />
   );
 
