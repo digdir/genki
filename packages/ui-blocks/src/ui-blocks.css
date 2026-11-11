@@ -1,6 +1,8 @@
 @import './approach/approach.css';
 @import './markdown/markdown.css';
 @import './sources/sources.css';
+@import './answer/answer.css';
+@import './conversation/conversation.css';
 @import './document-view/document-view.css';
 
 .uib-visually-hidden {

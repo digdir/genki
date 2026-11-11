@@ -161,8 +161,20 @@ export const qualityArea = {
     reasoning: 'Reasoning',
     runFinished: 'The run has finished. The result is shown in the list.',
     runReason: 'Ran {name} on {version}',
+    runMarkedReason: 'Ran marked test cases ({count}) of {name} on {version}',
+    markHint: 'Tick test cases to run only those.',
+    clearMarks: 'Clear the marks',
+    runMarked: {
+      one: 'Run the marked test case',
+      other: 'Run the {count} marked test cases',
+    },
+    confirmMarkedTitle: {
+      one: 'Run only the marked test case?',
+      other: 'Run only the {count} marked test cases?',
+    },
     runStarted: 'The test set is running. The result is shown in the list.',
     runsTitle: 'Runs of the test set',
+    model: 'Language model',
     runOn: 'Run on',
     runSet: 'Run the test set',
     confirmRunTitle: {
