@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-11: only operators change sharing
+
+- `POST /definitions` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:share-operator-only` when someone other than an operator changes `spec.availableTo` of a service, compared with its published version. A dry run of the import lists the same error with 422. The console route `PUT /operator/shared-services/{tenant}/{id}` is unchanged.
+
 ### 2026-11-10: connection settings and signing modules
 
 - `POST` and `PUT /operator/model-endpoints` take `settings` (non-secret values a descriptor reads as `$connection.<name>`) and `keys` (named platform secrets only a module reaches). Only an operator sets them, and a change is audited with its reason. `GET /tenants/{tenant}/catalog` lists a shared connection without `settings` and `keys`.

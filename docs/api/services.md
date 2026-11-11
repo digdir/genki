@@ -7,6 +7,7 @@ Build, test and publish services. A service is a versioned definition; drafts, t
 - Reading needs membership in the tenant (any right).
 - Saving drafts, publishing, test runs, settings, skills and import need `manage-services`. The playground also accepts `manage-datasets`.
 - `POST /definitions` and `POST /definitions/validate` answer 403 `urn:genai:problem:tenant-not-registered` for an organisation Digdir has not registered, as the `/tenants/{tenant}` routes do. Publishing never registers an organisation.
+- Only an operator changes who a service is shared with (`spec.availableTo`), through `PUT /operator/shared-services/{tenant}/{id}` or a publish in a support session. `POST /definitions` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:share-operator-only` when anyone else sends a value that differs from the published version, also when restoring an older version. Sending the published value unchanged is fine.
 - Another organisation reads, exports, copies and pins only the version of a shared skill that Digdir approved; any other version answers 404.
 - A skill package may hold at most 1000 files and 20 MB of content, counted from the bytes actually unpacked; duplicate or overlapping entries are refused, and an import of an existing skill writes nothing.
 - A high-risk service needs two different people to confirm its risk class (`POST .../risk-confirmations`) before it can be published. A confirmation the audit refuses answers problem+json with the task in `genai-task`.

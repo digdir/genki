@@ -7,7 +7,7 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 - Reading runs, test sets, gates and feedback needs membership in the tenant. A run's timeline is open to whoever started it, or to `manage-services`.
 - Projects and their runs need `use-services`; a subscription that runs a service needs `manage-services`.
 - Test sets, eval runs, improvements, batch runs, gates, guardrail rules and candidate reviews need `manage-services`.
-- An API key needs the `admin` scope on these routes, also on the ones outside `/tenants/{tenant}` (`/eval-runs/*`, `/eval-tasks/*`, `/testcase-candidates/*`); other keys get 403 `urn:genai:problem:api-key-scope`.
+- An API key needs the `admin` scope on these routes, also on the ones outside `/tenants/{tenant}` (`/eval-runs/*`, `/eval-tasks/*`, `/testcase-candidates/*`); other keys get 403 `urn:genai:problem:api-key-scope`. A test-runner key in a locked test environment is the exception on `/tenants/{tenant}` (see [Access](access.md#test-runner-keys)).
 - A rerun of a batch with the same `batchId` skips the items that already succeeded. Their entries in the new result carry status, attempts and the task that produced them, not the answer, which stays with that task and its retention.
 - Editing and approving a table review (`PUT .../tasks/{task}/review/edits`, `POST .../review/approve`) needs `use-services` and is open only to whoever started the run. Both are audited admin tasks with `change-reason`; an edit that races another answers 409.
 - Usage and cost need `view-usage`.
@@ -29,7 +29,7 @@ A run whose content was erased on purpose carries `erasure: { reason, at }` on t
 
 ## Two kinds of evaluation run
 
-- A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`.
+- A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`. It runs every case of the test set, only one split with `split` (`locked` or `open`), or only the cases named in `cases` (case ids); a case id the test set does not have is a 400.
 - An eval capability run starts with `POST /tenants/{tenant}/eval-runs` (capability, test set, evaluators and provenance are required) and is listed by `GET /tenants/{tenant}/eval-runs`. Follow it with `GET /eval-tasks/{task}`; every instance answers the same status, read from the task and the stored run.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both. `kind` tells them apart: `service` answers the run with its case results, `kernel` answers the same body as `GET /eval-runs/{id}`.
 - Neither kind shows its lease (`owner`, `heartbeatAt`).
