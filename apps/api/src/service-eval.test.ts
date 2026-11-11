@@ -32,17 +32,59 @@ describe('the models a judge is checked against', () => {
     ]);
   });
 
-  it('leaves out the embedders and rerankers a run used, since they write no answer to be judged', () => {
-    const byModel = usageByModel(
+  const mixedRun = () =>
+    usageByModel(
       [
         usage({ kind: 'model', id: 'foundry-openai/gpt-4o' }, 10),
         usage({ kind: 'embedder', id: 'foundry/text-embedding-3-small' }, 4),
         usage({ kind: 'reranker', id: 'colbert' }, 7),
+        usage({ kind: 'transcriber', id: 'foundry/whisper' }, 3),
       ],
       {},
     );
+  const [criteria] = parseTestSet({
+    apiVersion: 'genai/v1',
+    kind: 'TestSet',
+    metadata: { tenant: '991825827', id: 'judged', name: 'Judged', version: 1 },
+    spec: {
+      cases: [
+        {
+          id: 'lansering',
+          split: 'train',
+          input: 'Når ble Altinn 3 lansert?',
+          expected: { sources: [], referenceAnswer: 'Juni 2020.' },
+        },
+      ],
+    },
+  }).spec.cases;
+  const judge = (family: string) => ({
+    id: `${family}/judge`,
+    family,
+    complete: async () => '{"scores": {"criteria": 1}, "rationale": "Riktig."}',
+  });
+  const families: Record<string, string> = { 'foundry-openai/gpt-4o': 'openai' };
+  const grade = async (family: string) => {
+    if (!criteria) throw new Error('the test set has no case');
+    return gradeAnswer(
+      criteria,
+      { text: 'Juni 2020.' },
+      {
+        judge: judge(family),
+        context: { servedModels: judgedModels(mixedRun()), modelFamily: (m) => families[m] },
+      },
+    );
+  };
 
-    expect(judgedModels(byModel)).toEqual(['foundry-openai/gpt-4o']);
+  it("checks the judge's family only against language models the run used", async () => {
+    expect(judgedModels(mixedRun())).toEqual(['foundry-openai/gpt-4o']);
+    expect(await grade('anthropic')).toMatchObject({ pass: true, score: 1 });
+  });
+
+  it('still refuses a judge from the family of a language model the run used beside other kinds', async () => {
+    expect(await grade('openai')).toMatchObject({
+      pass: false,
+      reason: expect.stringMatching(/same family \(openai\)/),
+    });
   });
 
   it('keeps usage that names no kind, as a strategy that charges without a model reports it', () => {
