@@ -55,6 +55,20 @@ jobs:
           PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}
           ACTION: ${{ github.event.action }}
         run: node "$RUNNER_TEMP/review/review-run.mts" arm >> "$GITHUB_OUTPUT"
+      - id: size
+        name: Measure the pull request without generated files
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git show "$BASE:scripts/review-size.ts" > "$RUNNER_TEMP/review/review-size.mts"
+          node "$RUNNER_TEMP/review/review-size.mts" >> "$GITHUB_OUTPUT"
+      - name: Suggest splitting a large pull request
+        if: steps.arm.outputs.arm == 'treated' && steps.size.outputs.oversized == 'true'
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: node "$RUNNER_TEMP/review/review-size.mts" post
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_REVIEW_CLIENT_ID }}
@@ -126,6 +140,7 @@ jobs:
           FILES_CHANGED: ${{ github.event.pull_request.changed_files }}
           ADDITIONS: ${{ github.event.pull_request.additions }}
           DELETIONS: ${{ github.event.pull_request.deletions }}
+          OVERSIZED: ${{ steps.size.outputs.oversized }}
         run: node "$RUNNER_TEMP/review/review-run.mts"
       - if: always() && steps.arm.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

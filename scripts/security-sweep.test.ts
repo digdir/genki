@@ -13,6 +13,7 @@ import {
   report,
   runRecord,
   seal,
+  stepOutcomes,
   structuredOutput,
   unfinishedSteps,
   type Candidate,
@@ -156,6 +157,7 @@ describe('the run record', () => {
       runId: '1',
       model: 'claude-opus-5-5',
       startedAt: '2026-11-16T03:17:00Z',
+      outcomes: 'tenancy=success rights=success secrets=failure coordinate=skipped',
       executions: [
         [{ type: 'result', total_cost_usd: 2.5, duration_ms: 60_000, num_turns: 30 }],
         [{ type: 'result', total_cost_usd: 1.25, duration_ms: 30_000, num_turns: 10 }],
@@ -171,6 +173,32 @@ describe('the run record', () => {
       turns: 40,
     });
     expect(Object.keys(record)).not.toContain('findings');
+  });
+
+  it('says how each pass and the coordinator ended, so a reader needs no job log', () => {
+    expect(
+      stepOutcomes('tenancy=success rights=failure secrets=cancelled coordinate=skipped'),
+    ).toEqual({
+      tenancy: 'success',
+      rights: 'failure',
+      secrets: 'cancelled',
+      coordinate: 'skipped',
+    });
+  });
+
+  it('records an unknown or missing outcome as null, never as the text it was given', () => {
+    expect(stepOutcomes('tenancy=success rights=leaked-text')).toEqual({
+      tenancy: 'success',
+      rights: null,
+      secrets: null,
+      coordinate: null,
+    });
+    expect(stepOutcomes('')).toEqual({
+      tenancy: null,
+      rights: null,
+      secrets: null,
+      coordinate: null,
+    });
   });
 });
 
@@ -238,7 +266,7 @@ describe('the sweep commands in the workflow', () => {
       COORDINATE_EXECUTION: coordinator,
       SWEEP_PUBLIC_KEYS: key.publicKey,
       SHA: 'a'.repeat(40),
-      OUTCOMES: 'tenancy=success rights=success secrets=success coordinate=success',
+      OUTCOMES: 'tenancy=success rights=failure secrets=success coordinate=success',
     });
     expect(sealed.status, sealed.stderr).toBe(0);
     expect(`${sealed.stdout}${sealed.stderr}`).not.toContain(secret);
@@ -246,5 +274,18 @@ describe('the sweep commands in the workflow', () => {
     expect(file).not.toContain(secret);
     expect(open(JSON.parse(file), key.privateKey)).toContain(secret);
     expect(readFileSync(join(dir, 'security-sweep-run.json'), 'utf8')).not.toContain(secret);
+  });
+
+  it('seal writes the outcome of every model step into the run record', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-'));
+    const sealed = run('seal', dir, {
+      SWEEP_PUBLIC_KEYS: rsa().publicKey,
+      SHA: 'a'.repeat(40),
+      OUTCOMES: 'tenancy=success rights=failure secrets=success coordinate=skipped',
+    });
+    expect(sealed.status, sealed.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(dir, 'security-sweep-run.json'), 'utf8')).outcomes).toEqual(
+      { tenancy: 'success', rights: 'failure', secrets: 'success', coordinate: 'skipped' },
+    );
   });
 });

@@ -91,6 +91,25 @@ export function unfinishedSteps(outcomes: string): string[] {
     .map(([step]) => step ?? '');
 }
 
+export const STEPS = [...PASSES, 'coordinate'] as const;
+const OUTCOMES = ['success', 'failure', 'skipped', 'cancelled'] as const;
+export type Outcome = (typeof OUTCOMES)[number];
+
+export function stepOutcomes(outcomes: string): Record<(typeof STEPS)[number], Outcome | null> {
+  const pairs = new Map(
+    outcomes
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((pair) => pair.split('=') as [string, string | undefined]),
+  );
+  return Object.fromEntries(
+    STEPS.map((step) => {
+      const outcome = pairs.get(step);
+      return [step, OUTCOMES.find((o) => o === outcome) ?? null];
+    }),
+  ) as Record<(typeof STEPS)[number], Outcome | null>;
+}
+
 export function report(
   findings: Finding[],
   meta: { sha: string; runUrl: string; unfinished: string[] },
@@ -204,6 +223,7 @@ export function runRecord(input: {
   runId: string;
   model: string;
   startedAt: string;
+  outcomes: string;
   executions: ExecutionMessage[][];
 }) {
   const results = input.executions.map((e) => e.find((m) => m.type === 'result'));
@@ -221,6 +241,7 @@ export function runRecord(input: {
     duration_s: Math.round(sum((r) => r.duration_ms) / 1000),
     turns: sum((r) => r.num_turns),
     cost_usd: Math.round(sum((r) => r.total_cost_usd) * 100) / 100,
+    outcomes: stepOutcomes(input.outcomes),
   };
 }
 
@@ -276,6 +297,7 @@ function main(command: string | undefined, args: string[]) {
       runId: env('GITHUB_RUN_ID'),
       model: env('MODEL'),
       startedAt: env('STARTED_AT'),
+      outcomes: env('OUTCOMES'),
       executions: [...passExecutions(), coordinator].map((e) => e ?? []),
     });
     writeFileSync('security-sweep-run.json', JSON.stringify(record, null, 2));

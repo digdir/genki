@@ -100,6 +100,12 @@ describe('the security sweep workflow', () => {
     expect(text).not.toMatch(/outputs\.structured_output/);
   });
 
+  it('hands the seal step only how each model step ended, for the run record', () => {
+    expect(job.steps.find((s) => s.id === 'seal')?.env?.OUTCOMES).toBe(
+      'tenancy=${{ steps.pass_tenancy.outcome }} rights=${{ steps.pass_rights.outcome }} secrets=${{ steps.pass_secrets.outcome }} coordinate=${{ steps.coordinate.outcome }}',
+    );
+  });
+
   it('never expands an expression inside a run script', () => {
     for (const step of job.steps) expect(step.run ?? '').not.toContain('${{');
   });

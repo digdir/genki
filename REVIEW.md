@@ -28,6 +28,7 @@ Report every finding in one review. Never hold one back for a later round: the a
 
 - The checks CI runs on the code: Prettier, ESLint, TypeScript, dependency boundaries, size budgets, gitleaks, CodeQL. The CI wiring itself, what a workflow runs and when, stays in scope
 - `package-lock.json` and files written by a generator, such as `docs/architecture/system-atlas.html` from `npm run atlas:build`
+- The size of the pull request: the workflow measures it and posts its own note when it is large
 - Portal mock data under `apps/portal/src/mock`
 - Test code that breaks production rules on purpose
 - A missing community health file such as `SECURITY.md` or a code of conduct: Digdir provides them for every repository from `digdir/.github`
