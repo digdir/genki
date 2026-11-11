@@ -34,6 +34,7 @@ export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter((m) => !notAnswering.has(m.kind ?? '')).map((m) => m.model);
 
 export const serviceRunKind = 'service-eval-run';
+export const serviceRunCaseKind = 'service-eval-case';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -69,9 +70,11 @@ export interface ServiceRun extends Leased {
   score: number | null;
   passed: number;
   total: number;
+  finished?: number;
   cost: number | null;
   tokens: { input: number; output: number };
   error?: string;
+  interrupted?: boolean;
   cases: CaseResult[];
 }
 
@@ -113,6 +116,7 @@ export const runView = (run: ServiceRun) => {
   const shown: Partial<ServiceRun> = { ...run };
   delete shown.owner;
   delete shown.heartbeatAt;
+  if (run.error === restartMessage) shown.interrupted = true;
   return shown;
 };
 
@@ -199,7 +203,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     cases: TestCase[],
     meter: Meter,
-    options: { avoidAsJudge?: string[]; chargeTo?: string } = {},
+    options: {
+      avoidAsJudge?: string[];
+      chargeTo?: string;
+      onCase?: (results: CaseResult[]) => Promise<void>;
+    } = {},
   ): Promise<Outcome> => {
     const served = modelsOf(subject.definition);
     const judgeTenant = options.chargeTo ?? tenant;
@@ -240,6 +248,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           pass: false,
           reason: outcome.errors.map((e) => e.message).join('; '),
         });
+        await options.onCase?.([...results]);
         continue;
       }
       const usedModels = judgedModels(outcome.usage.byModel);
@@ -264,6 +273,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         pass: grade.pass,
         ...(grade.reason ? { reason: grade.reason } : {}),
       });
+      await options.onCase?.([...results]);
     }
     return summarize(results);
   };
@@ -279,6 +289,37 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       reason,
     });
 
+  const caseKey = (run: string, index: number) => `${run}/${index}`;
+
+  const saveCase = (
+    actor: string,
+    tenant: string,
+    run: string,
+    index: number,
+    result: CaseResult,
+  ) =>
+    appendVersion<CaseResult>(deps.configEntries, {
+      kind: serviceRunCaseKind,
+      scope: tenant,
+      id: caseKey(run, index),
+      spec: result,
+      deleted: false,
+      by: actor,
+      reason: `Testtilfelle ${index + 1}`,
+    });
+
+  const finishedCases = async (tenant: string, run: ServiceRun) => {
+    if (run.cases.length > 0 || !run.finished) return run.cases;
+    const found = await Promise.all(
+      Array.from({ length: run.finished }, async (_, index) =>
+        (await deps.configEntries.history(serviceRunCaseKind, tenant, caseKey(run.id, index))).at(
+          -1,
+        ),
+      ),
+    );
+    return found.flatMap((e) => (e ? [e.spec as CaseResult] : []));
+  };
+
   const settled = async (entry: ConfigEntry<ServiceRun>) => {
     const run = entry.spec;
     if (run.status !== 'queued' && run.status !== 'running') return run;
@@ -288,6 +329,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       status: 'failed',
       endedAt: leases.now().toISOString(),
       error: restartMessage,
+      interrupted: true,
+      cases: await finishedCases(entry.scope, run),
     };
     await appendVersion<ServiceRun>(deps.configEntries, {
       kind: serviceRunKind,
@@ -305,7 +348,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   const runOf = async (tenant: string, id: string) => {
     const entry = (await deps.configEntries.history(serviceRunKind, tenant, id)).at(-1) as
       ConfigEntry<ServiceRun> | undefined;
-    return entry ? settled(entry) : undefined;
+    if (!entry) return undefined;
+    const run = await settled(entry);
+    return { ...run, cases: await finishedCases(tenant, run) };
   };
 
   const runsOf = async (tenant: string, service: string) =>
@@ -350,7 +395,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       score: null,
       passed: 0,
       total: casesIn(set, split, only).length,
-      cost: null,
+      finished: 0,
+      cost: 0,
       tokens: { input: 0, output: 0 },
       cases: [],
       ...leases.stamp(),
@@ -366,6 +412,25 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     }
     const done = (async () => {
       const meter = choice.meter();
+      let finished: CaseResult[] = [];
+      const progress = (run: ServiceRun): ServiceRun => {
+        const { passed, score } = summarize(finished);
+        return {
+          ...run,
+          passed,
+          score,
+          finished: finished.length,
+          cost: meter.costMicroNok(),
+          tokens: { input: meter.inputTokens, output: meter.outputTokens },
+        };
+      };
+      const onCase = async (results: CaseResult[]) => {
+        finished = results;
+        const index = results.length - 1;
+        await saveCase(actor, tenant, queued.id, index, results[index] as CaseResult)
+          .then(() => lease.update(progress, `Testtilfelle ${results.length} av ${queued.total}`))
+          .catch(() => undefined);
+      };
       try {
         await lease.update((run) => ({ ...run, status: 'running' }), 'Kjører');
         const outcome = await runCases(
@@ -374,17 +439,15 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           subject,
           casesIn(set, split, only),
           meter,
+          { onCase },
         );
+        finished = outcome.results;
         await lease.update(
           (run) => ({
-            ...run,
+            ...progress(run),
             status: 'succeeded',
             endedAt: new Date().toISOString(),
-            score: outcome.score,
-            passed: outcome.passed,
             total: outcome.total,
-            cost: meter.costMicroNok(),
-            tokens: { input: meter.inputTokens, output: meter.outputTokens },
             cases: outcome.results,
           }),
           'Ferdig',
@@ -392,12 +455,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       } catch (error) {
         await lease.update(
           (run) => ({
-            ...run,
+            ...progress(run),
             status: 'failed',
             endedAt: new Date().toISOString(),
-            cost: meter.costMicroNok(),
-            tokens: { input: meter.inputTokens, output: meter.outputTokens },
             error: messageOf(error),
+            cases: finished,
           }),
           'Feilet',
         );

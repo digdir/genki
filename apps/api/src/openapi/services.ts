@@ -205,9 +205,15 @@ const EvalRunSummary = z
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
+    finished: z
+      .number()
+      .int()
+      .optional()
+      .describe('The cases done so far; passed, score and cost count only these'),
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),
+    interrupted: z.boolean().optional().describe('The platform restarted before the run was done'),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
   })

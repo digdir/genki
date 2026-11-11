@@ -1164,9 +1164,15 @@ const ServiceEvalRun = z
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
+    finished: z
+      .number()
+      .int()
+      .optional()
+      .describe('The cases done so far; passed, score and cost count only these'),
     cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
+    interrupted: z.boolean().optional().describe('The platform restarted before the run was done'),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
     cases: z.array(
