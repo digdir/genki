@@ -142,6 +142,54 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it('shows a run the platform restarted as interrupted, with the cases it finished and their cost', async () => {
+    const finished = {
+      caseId: 'tc-1',
+      input: 'Hvor mange tilsyn hadde vi i 2025?',
+      expected: 'Oppgir tallet for 2025 og viser til årsrapporten.',
+      output: 'Vi hadde 41 tilsyn i 2025.',
+      pass: true,
+    };
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-avbrutt',
+          service: 'rapportassistenten',
+          status: 'failed',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: '2026-11-11T09:20:00Z',
+          score: 1,
+          passed: 1,
+          total: 3,
+          finished: 1,
+          cost: 2_500_000,
+          error: 'Avbrutt fordi plattformen ble startet på nytt',
+          interrupted: true,
+          cases: [finished],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history as HTMLElement).findAllByRole('row'))[1] as HTMLElement;
+
+    expect(within(row).getByText('Avbrutt av omstart')).toBeTruthy();
+    expect(within(row).getByText('1 av 1, 1 av 3 kjørt')).toBeTruthy();
+    expect(within(row).queryByText('ikke priset')).toBeNull();
+    expect(within(row).getByText(/2,50/)).toBeTruthy();
+
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const detail = await screen.findByRole('region', { name: 'Resultat per testtilfelle' });
+    expect(
+      await within(detail).findByText(
+        'Plattformen ble startet på nytt før kjøringen var ferdig. Her er de 1 av 3 testtilfellene som ble kjørt. Kjør testsettet på nytt for å få med resten.',
+      ),
+    ).toBeTruthy();
+    expect(within(detail).getByText('Vi hadde 41 tilsyn i 2025.')).toBeTruthy();
+    expectAccessible();
+  });
+
   it('closes the question about marked test cases when every mark is taken off', async () => {
     const { writes } = await openLive();
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

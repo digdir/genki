@@ -15,6 +15,8 @@ import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
+import type { LeaseOptions } from './background-lease.js';
+import { InMemoryConfigEntryStore } from './config-store.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { ServiceRun } from './service-eval.js';
 
@@ -138,7 +140,13 @@ const testSet = parseTestSet({
   },
 });
 
-const boot = async (prices?: Record<string, ModelPrice>) => {
+interface BootOptions {
+  store?: InMemoryConfigEntryStore;
+  leases?: LeaseOptions;
+  holdLocked?: boolean;
+}
+
+const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = {}) => {
   const optimiserPrompts: string[] = [];
   const judgePrompts: { system: string; user: string }[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
@@ -170,6 +178,8 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
         stream,
       );
     }
+    if (options.holdLocked && user.includes(locked))
+      return { ...reply('Fristen er 1. mai.', stream), delayMs: 60_000 };
     if (user.includes('personnummer')) return reply('Jeg kan ikke svare på det.', stream);
     return reply(
       system.includes('Oppgi alltid fristen') ? 'Fristen er 1. mai.' : 'Vi svarer snart.',
@@ -195,9 +205,13 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
     ...(prices ? { prices } : {}),
+    ...(options.store ? { configurables: { store: options.store } } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
-      createQualityModule({ onBackground: (w) => background.push(w) }),
+      createQualityModule({
+        onBackground: (w) => background.push(w),
+        ...(options.leases ? { leases: options.leases } : {}),
+      }),
     ],
     authenticate: async (request) => {
       const who = request.headers.get('authorization')?.replace('Bearer ', '') ?? '';
@@ -583,6 +597,73 @@ describe('eval runs for a service', () => {
     expect((await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'ola')).status).toBe(404);
     expect((await env.send('GET', `${services}/eval-runs`, 'ola')).status).toBe(404);
     expect((await env.send('GET', `/tenants/${other}/eval-runs/${id}`, 'ola')).status).toBe(404);
+  });
+});
+
+describe('an eval run the platform restarts', () => {
+  const prices = {
+    [modelId]: { inputPerThousand: 1, outputPerThousand: 2 },
+    [judgeId]: { inputPerThousand: 1, outputPerThousand: 2 },
+  };
+  const startedAt = new Date('2026-11-11T10:00:00Z');
+
+  const interrupt = async () => {
+    const store = new InMemoryConfigEntryStore();
+    const before = await boot(prices, {
+      store,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => startedAt },
+    });
+    const started = await before.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    const id = String(started.body.id);
+    const read = async (env: Awaited<ReturnType<typeof boot>>) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body as unknown as ServiceRun;
+    await vi.waitFor(async () => expect((await read(before)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const running = await read(before);
+    const after = await boot(prices, {
+      store,
+      leases: { instance: 'after', now: () => new Date(startedAt.getTime() + 10 * 60_000) },
+    });
+    await after.settled();
+    return { running, run: await read(after), after };
+  };
+
+  it('counts the finished cases and what they cost while the run is going', async () => {
+    const { running } = await interrupt();
+
+    expect(running).toMatchObject({ status: 'running', finished: 2, total: 3 });
+    expect(running.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
+    expect(running.cost).toBeGreaterThan(0);
+  });
+
+  it('keeps the finished cases of a run the platform restarts', async () => {
+    const { run, after } = await interrupt();
+    const listed = (await after.send('GET', `${services}/eval-runs`)).body.data;
+
+    expect(run).toMatchObject({
+      status: 'failed',
+      interrupted: true,
+      finished: 2,
+      total: 3,
+      passed: 1,
+      score: 0.5,
+    });
+    expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
+    expect(listed).toEqual([
+      expect.objectContaining({ id: run.id, interrupted: true, finished: 2 }),
+    ]);
+  });
+
+  it('records the cost of the finished cases when a run is interrupted', async () => {
+    const { running, run } = await interrupt();
+
+    expect(run.cost).toBeGreaterThan(0);
+    expect(run.cost).toBe(running.cost);
+    expect(run.tokens.input).toBeGreaterThan(0);
   });
 });
 

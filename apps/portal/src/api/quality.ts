@@ -35,7 +35,10 @@ export interface EvalRun {
   score?: number | null;
   passed?: number | null;
   total?: number | null;
+  finished?: number;
   cost?: number | null;
+  error?: string;
+  interrupted?: boolean;
 }
 
 export interface EvalCaseResult {

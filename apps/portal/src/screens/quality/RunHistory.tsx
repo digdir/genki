@@ -28,35 +28,43 @@ const versionText = (t: T, v: RunVersion) =>
       ? t('quality.versionPublished')
       : t('quality.versionN', { version: v });
 
-const statusTag = (t: T, r: EvalRun): [string, 'success' | 'danger' | 'info' | 'neutral'] =>
+const statusTag = (
+  t: T,
+  r: EvalRun,
+): [string, 'success' | 'danger' | 'warning' | 'info' | 'neutral'] =>
   r.status === 'succeeded'
     ? [t('quality.runDone'), 'success']
-    : r.status === 'failed'
-      ? [t('quality.runFailed'), 'danger']
-      : r.status === 'running' || r.status === 'queued'
-        ? [t('quality.runRunning'), 'info']
-        : [r.status, 'neutral'];
+    : r.interrupted
+      ? [t('quality.runInterrupted'), 'warning']
+      : r.status === 'failed'
+        ? [t('quality.runFailed'), 'danger']
+        : r.status === 'running' || r.status === 'queued'
+          ? [t('quality.runRunning'), 'info']
+          : [r.status, 'neutral'];
 
 const percent = (f: Format, score: number | null | undefined) =>
   typeof score === 'number' ? f.percent(score) : '–';
 
 const passedText = (t: T, r: EvalRun) =>
-  typeof r.passed === 'number' && typeof r.total === 'number'
-    ? t('quality.passedOf', { passed: r.passed, total: r.total })
-    : '–';
+  typeof r.passed !== 'number' || typeof r.total !== 'number'
+    ? '–'
+    : typeof r.finished === 'number' && r.finished < r.total
+      ? t('quality.passedOfFinished', { passed: r.passed, finished: r.finished, total: r.total })
+      : t('quality.passedOf', { passed: r.passed, total: r.total });
 
-const costText = (t: T, f: Format, cost: number | null | undefined) =>
-  typeof cost === 'number' ? formatKroner(cost, f, t) : t('quality.notPricedLower');
+const costText = (t: T, f: Format, r: EvalRun) =>
+  typeof r.cost === 'number'
+    ? formatKroner(r.cost, f, t)
+    : t(r.interrupted ? 'quality.costUnknown' : 'quality.notPricedLower');
 
 const active = (r: EvalRun) => r.status === 'running' || r.status === 'queued';
 
 const usageDays = 30;
 
 const perCaseFromRuns = (runs: EvalRun[]) => {
-  const priced = runs.filter(
-    (r) => !active(r) && typeof r.cost === 'number' && typeof r.total === 'number' && r.total > 0,
-  );
-  const cases = priced.reduce((n, r) => n + (r.total ?? 0), 0);
+  const casesOf = (r: EvalRun) => r.finished ?? r.total ?? 0;
+  const priced = runs.filter((r) => !active(r) && typeof r.cost === 'number' && casesOf(r) > 0);
+  const cases = priced.reduce((n, r) => n + casesOf(r), 0);
   return cases > 0 ? priced.reduce((n, r) => n + (r.cost ?? 0), 0) / cases : undefined;
 };
 
@@ -134,35 +142,47 @@ const RunDetail = ({
         <Loading label={t('quality.runLoading')} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
-      ) : state.data.cases.length === 0 ? (
-        <Paragraph data-size="sm">{t('quality.runNoResults')}</Paragraph>
       ) : (
-        <ul className="live-case-list">
-          {state.data.cases.map((c) => (
-            <li key={c.caseId}>
-              <dl className="case-detail run-case">
-                <dt>{t('quality.input')}</dt>
-                <dd>{c.input}</dd>
-                <dt>{t('quality.goodAnswer')}</dt>
-                <dd>{c.expected}</dd>
-                <dt>{t('quality.theAnswer')}</dt>
-                <dd>{c.output}</dd>
-                <dt>{t('quality.result')}</dt>
-                <dd>
-                  <Tag data-size="sm" data-color={c.pass ? 'success' : 'danger'}>
-                    {t(c.pass ? 'quality.passed' : 'quality.notPassed')}
-                  </Tag>
-                </dd>
-                {c.reason ? (
-                  <>
-                    <dt>{t('quality.reasoning')}</dt>
-                    <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
-                  </>
-                ) : null}
-              </dl>
-            </li>
-          ))}
-        </ul>
+        <>
+          {state.data.interrupted ? (
+            <Paragraph data-size="sm">
+              {t('quality.runInterruptedNote', {
+                finished: state.data.cases.length,
+                total: state.data.total ?? state.data.cases.length,
+              })}
+            </Paragraph>
+          ) : null}
+          {state.data.cases.length === 0 && !state.data.interrupted ? (
+            <Paragraph data-size="sm">{t('quality.runNoResults')}</Paragraph>
+          ) : (
+            <ul className="live-case-list">
+              {state.data.cases.map((c) => (
+                <li key={c.caseId}>
+                  <dl className="case-detail run-case">
+                    <dt>{t('quality.input')}</dt>
+                    <dd>{c.input}</dd>
+                    <dt>{t('quality.goodAnswer')}</dt>
+                    <dd>{c.expected}</dd>
+                    <dt>{t('quality.theAnswer')}</dt>
+                    <dd>{c.output}</dd>
+                    <dt>{t('quality.result')}</dt>
+                    <dd>
+                      <Tag data-size="sm" data-color={c.pass ? 'success' : 'danger'}>
+                        {t(c.pass ? 'quality.passed' : 'quality.notPassed')}
+                      </Tag>
+                    </dd>
+                    {c.reason ? (
+                      <>
+                        <dt>{t('quality.reasoning')}</dt>
+                        <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );
@@ -376,7 +396,7 @@ export const RunHistory = ({
                     </Table.Cell>
                     <Table.Cell className="right numeric">{percent(f, r.score)}</Table.Cell>
                     <Table.Cell>{passedText(t, r)}</Table.Cell>
-                    {costShown ? <Table.Cell>{costText(t, f, r.cost)}</Table.Cell> : null}
+                    {costShown ? <Table.Cell>{costText(t, f, r)}</Table.Cell> : null}
                     <Table.Cell>
                       {active(r) ? null : (
                         <Button
