@@ -312,6 +312,20 @@ describe('attaching where uploading is coming', () => {
     expect(screen.queryByText('Slipp filen for å legge den ved')).toBeNull();
   });
 
+  it('names a limit that is not a whole number of megabytes to one decimal', () => {
+    let text!: ReturnType<typeof useAttachmentText>;
+    const Probe = ({ maxBytes }: { maxBytes: number }) => {
+      text = useAttachmentText(attachmentsWith({ maxBytes }));
+      return null;
+    };
+    const { rerender } = render(<Probe maxBytes={1.5 * 1024 * 1024} />);
+    expect(text.error('too-large')).toBe('Filen er større enn 1,5 MB.');
+    rerender(<Probe maxBytes={512 * 1024} />);
+    expect(text.error('too-large')).toBe('Filen er større enn 0,5 MB.');
+    rerender(<Probe maxBytes={20 * 1024 * 1024} />);
+    expect(text.error('too-large')).toBe('Filen er større enn 20 MB.');
+  });
+
   it('still takes fileTypes and maxMegabytes, the old names, until hosts have moved', () => {
     let text!: ReturnType<typeof useAttachmentText>;
     const Probe = () => {

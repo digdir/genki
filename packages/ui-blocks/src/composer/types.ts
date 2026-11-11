@@ -24,7 +24,7 @@ export interface ComposerAttachments {
   accept?: string | undefined;
   /** The file types as the reader knows them, such as `['PDF', '.docx']`. Named as in `OwnDocuments`. */
   types?: readonly string[] | undefined;
-  /** The largest file, in bytes, shown in whole megabytes. Named as in `OwnDocuments`. */
+  /** The largest file, in bytes, shown in megabytes to one decimal. Named as in `OwnDocuments`. */
   maxBytes?: number | undefined;
   /** @deprecated `types`, the name `OwnDocuments` uses too; kept until hosts have moved. */
   fileTypes?: readonly string[] | undefined;
