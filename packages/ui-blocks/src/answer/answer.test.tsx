@@ -909,3 +909,25 @@ describe('the catalogue', () => {
     expect(nb.sources).toBe(sourcesNb.sources);
   });
 });
+
+describe('the dev boards’ answer, `variant="plain"` (dev-kilder-hoyre)', () => {
+  it('draws no card around the answer, which the default still does', () => {
+    draw({ variant: 'plain' });
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
+    cleanup();
+    draw();
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(false);
+  });
+
+  it('counts the documents in «Kilder brukt i svaret»’s bar and numbers them, with no excerpt line', () => {
+    draw({ variant: 'plain' });
+    const summary = document.querySelector('.uib-answer-sources-used summary');
+    expect(summary?.textContent).toBe('Kilder· 2 brukt i svaret');
+    const list = document.querySelector('.uib-answer-sources-used-list');
+    expect(list?.tagName).toBe('OL');
+    expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([
+      'Tildelingsbrev Nkom 2022',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    ]);
+  });
+});

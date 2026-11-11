@@ -858,3 +858,21 @@ describe('while the thread is read', () => {
     expect(container.querySelector('.uib-conversation-loading')).toBeNull();
   });
 });
+
+describe('the dev boards’ answer, `answerVariant="plain"` (dev-kilder-hoyre)', () => {
+  it('puts the assistant’s name over the header and the answer, for the eye, and the answer has no card', () => {
+    const header = () => <p>Fremgangsmåte</p>;
+    draw({ answerVariant: 'plain', assistantName: 'Kunnskapsassistenten', header });
+    const label = document.querySelector('.uib-conversation-label');
+    expect(label?.textContent).toBe('Kunnskapsassistenten');
+    expect(label?.getAttribute('aria-hidden')).toBe('true');
+    const over = screen.getAllByText('Fremgangsmåte')[0] as HTMLElement;
+    expect(label?.compareDocumentPosition(over)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
+  });
+
+  it('draws no label by default', () => {
+    draw({ assistantName: 'Kunnskapsassistenten' });
+    expect(document.querySelector('.uib-conversation-label')).toBeNull();
+  });
+});

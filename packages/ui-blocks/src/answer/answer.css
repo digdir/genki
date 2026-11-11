@@ -237,6 +237,22 @@
     white-space: nowrap;
   }
 
+  /* `variant="plain"`, the dev boards' answer (dev-kilder-hoyre): no card around it. */
+  .uib-answer[data-plain] {
+    --dsc-card-background: transparent;
+    --dsc-card-border-width: 0;
+    --dsc-card-block-border-width: 0;
+    --dsc-card-padding: 0;
+
+    overflow: visible;
+  }
+
+  /* «Kilder · 3 brukt i svaret»: the count after the name, quieter. */
+  .uib-answer-sources-used-count {
+    color: var(--genai-answer-sources-used-count-color, var(--ds-color-text-subtle));
+    font-weight: var(--genai-answer-sources-used-count-font-weight, var(--ds-font-weight-regular));
+  }
+
   /* The row under the answer: «Generer på nytt», then the app's own row. The app's row fills
      what is left, so its far end is the card's, as kunnskapsassistenten puts the time. */
   .uib-answer-row,

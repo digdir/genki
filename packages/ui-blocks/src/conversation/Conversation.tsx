@@ -112,6 +112,11 @@ export interface ConversationProps {
   questionColor?: string | undefined;
   /** Designsystemet's `data-color` for each answer, question back and stand-in, when given. */
   answerColor?: string | undefined;
+  /**
+   * `plain`, the dev boards' answer (dev-kilder-hoyre): under the label «Kunnskapsassistenten»,
+   * `assistantName`, over what the `header` puts there, and with no card (`Answer`'s `plain`).
+   */
+  answerVariant?: 'card' | 'plain' | undefined;
   /** Designsystemet's `data-color` for the block, set only when given. */
   color?: string | undefined;
   /** The moment an answer's «i dag» and «i går» are counted from. */
@@ -208,11 +213,19 @@ export const Conversation = ({
   headingLevel = 3,
   questionColor,
   answerColor,
+  answerVariant = 'card',
   color,
   now,
   className,
 }: ConversationProps) => {
   const t = useT();
+  const plain = answerVariant === 'plain';
+  // For the eye: the answer's own line, «… svarte:», still tells a screen reader who answered.
+  const answerLabel = plain ? (
+    <p aria-hidden="true" className="uib-conversation-label">
+      {assistantName ?? t('answer.assistant')}
+    </p>
+  ) : null;
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
@@ -537,6 +550,7 @@ export const Conversation = ({
     return (
       // Focusable from script only: where focus goes when the button it was on goes away.
       <li key={turn.id} className="uib-conversation-turn ds-focus" data-kind="answer" tabIndex={-1}>
+        {answerLabel}
         {/* Over the card: a fact about the question, not part of the answer. */}
         {scopeLine(turn.scope, t('conversation.answerScope'))}
         {header?.(turn, question)}
@@ -563,6 +577,7 @@ export const Conversation = ({
           assistantName={assistantName}
           headingLevel={headingLevel}
           color={answerColor}
+          variant={answerVariant}
         />
       </li>
     );
