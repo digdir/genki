@@ -1,27 +1,42 @@
 {
   "tenant": "312521172",
+  "otherTenant": "999999999",
   "service": "smoke",
-  "maxKrPerRun": 2.5,
+  "throwaway": "smoke-throwaway",
+  "maxKrPerRun": 4,
+  "maxKrExtra": 1,
   "prices": {
-    "foundry-openai/gpt-5.4-mini": { "input": 0.0000076483, "output": 0.00004589 },
-    "foundry-openai/gpt-5.6-terra": { "input": 0.0000203955, "output": 0.0001223732 },
-    "foundry-claude/claude-haiku-5-5": { "input": 0.0000105, "output": 0.0000525 }
+    "foundry-openai/gpt-5.4-mini": {
+      "input": 7.6483e-6,
+      "output": 4.589e-5
+    },
+    "foundry-openai/gpt-5.6-terra": {
+      "input": 2.03955e-5,
+      "output": 0.0001223732
+    },
+    "foundry-claude/claude-haiku-5-5": {
+      "input": 1.05e-5,
+      "output": 5.25e-5
+    }
   },
   "models": [
     {
       "variant": "model-gpt-5-4-mini",
       "model": "foundry-openai/gpt-5.4-mini",
-      "estimateKr": 0.04
+      "estimateKr": 0.04,
+      "playgroundKr": 0.1
     },
     {
       "variant": "model-gpt-5-6-terra",
       "model": "foundry-openai/gpt-5.6-terra",
-      "estimateKr": 0.2
+      "estimateKr": 0.2,
+      "playgroundKr": 0.4
     },
     {
       "variant": "model-claude-haiku-5-5",
       "model": "foundry-claude/claude-haiku-5-5",
-      "estimateKr": 0.1
+      "estimateKr": 0.1,
+      "playgroundKr": 0.2
     }
   ],
   "modelQuestion": "Hva sier evalueringene om digital veiledning? Svar med én setning.",
@@ -44,17 +59,28 @@
       "id": "agent-detect",
       "variant": "default",
       "model": "foundry-openai/gpt-5.4-mini",
-      "question": "Hva sier DFØ om Datatilsynet?",
+      "question": "Hva sier Direktoratet for forvaltning og økonomistyring om Datatilsynet?",
       "stream": true,
       "minCitations": 1,
       "detected": ["Datatilsynet"],
       "estimateKr": 0.2
     },
     {
+      "id": "agent-detect-dfo",
+      "variant": "default",
+      "model": "foundry-openai/gpt-5.4-mini",
+      "question": "Hva sier DFØ om Datatilsynet?",
+      "stream": true,
+      "minCitations": 1,
+      "detected": ["DFØ", "Datatilsynet"],
+      "knownIssue": "#442",
+      "estimateKr": 0.2
+    },
+    {
       "id": "retrieve-detect",
       "variant": "retrieve-only",
       "model": "foundry-openai/gpt-5.4-mini",
-      "question": "Hva sier DFØ om Datatilsynet?",
+      "question": "Hva sier Direktoratet for forvaltning og økonomistyring om Datatilsynet?",
       "stream": false,
       "minSources": 1,
       "detected": ["Datatilsynet"],
@@ -80,5 +106,226 @@
       "detected": [],
       "estimateKr": 0.02
     }
+  ],
+  "refusals": [
+    {
+      "id": "unknown-strategy",
+      "replace": ["id: agent-loop", "id: agent-lop"],
+      "path": "spec.strategy",
+      "baseline": true
+    },
+    {
+      "id": "temperature",
+      "replace": ["temperature: 0.3", "temperature: 7"],
+      "path": "spec.strategy.config.temperature",
+      "baseline": false
+    },
+    {
+      "id": "residency",
+      "replace": ["residency: global", "residency: mars"],
+      "path": "spec.model.residency",
+      "baseline": false
+    },
+    {
+      "id": "iterations",
+      "replace": ["maxIterations: 6", "maxIterations: -1"],
+      "path": "spec.strategy.config.maxIterations",
+      "baseline": false
+    }
+  ],
+  "screens": {
+    "portal": [
+      {
+        "path": "#/overview",
+        "baseline": true
+      },
+      {
+        "path": "#/services",
+        "baseline": true
+      },
+      {
+        "path": "#/services/smoke",
+        "baseline": true
+      },
+      {
+        "path": "#/services/smoke/test",
+        "baseline": true
+      },
+      {
+        "path": "#/services/smoke/setup",
+        "baseline": false
+      },
+      {
+        "path": "#/services/smoke/channels",
+        "baseline": false
+      },
+      {
+        "path": "#/services/smoke/settings",
+        "baseline": false
+      },
+      {
+        "path": "#/services/smoke/quality",
+        "baseline": false
+      },
+      {
+        "path": "#/services/smoke/versions",
+        "baseline": false
+      },
+      {
+        "path": "#/services/smoke/log",
+        "baseline": false,
+        "personal": true
+      },
+      {
+        "path": "#/playground",
+        "baseline": true
+      },
+      {
+        "path": "#/log",
+        "baseline": true,
+        "personal": true
+      },
+      {
+        "path": "#/statistics",
+        "baseline": false
+      },
+      {
+        "path": "#/datasets",
+        "baseline": false
+      },
+      {
+        "path": "#/building-blocks",
+        "baseline": false
+      },
+      {
+        "path": "#/skills",
+        "baseline": false
+      },
+      {
+        "path": "#/step-flows",
+        "baseline": false
+      },
+      {
+        "path": "#/shared-services",
+        "baseline": false
+      },
+      {
+        "path": "#/settings",
+        "baseline": false
+      },
+      {
+        "path": "#/developer",
+        "baseline": false
+      },
+      {
+        "path": "#/developer/keys",
+        "baseline": false
+      },
+      {
+        "path": "#/developer/runs",
+        "baseline": false,
+        "personal": true
+      },
+      {
+        "path": "#/api-reference",
+        "baseline": false
+      },
+      {
+        "path": "#/status",
+        "baseline": false
+      },
+      {
+        "path": "#/data-handling",
+        "baseline": false
+      }
+    ],
+    "console": [
+      {
+        "path": "#/tenants",
+        "baseline": true,
+        "personal": true
+      },
+      {
+        "path": "#/models",
+        "baseline": true
+      },
+      {
+        "path": "#/catalog",
+        "baseline": false
+      },
+      {
+        "path": "#/quality",
+        "baseline": false
+      },
+      {
+        "path": "#/schemas",
+        "baseline": false
+      }
+    ]
+  },
+  "scopeRefusal": "urn:genai:problem:test-runner-scope",
+  "operatorReads": [
+    {
+      "path": "/operator/tenants",
+      "baseline": true
+    },
+    {
+      "path": "/operator/models",
+      "baseline": true
+    },
+    {
+      "path": "/operator/operations",
+      "baseline": true
+    },
+    {
+      "path": "/operator/apis",
+      "baseline": false
+    },
+    {
+      "path": "/operator/knowledge/engines",
+      "baseline": false
+    },
+    {
+      "path": "/operator/shared-services",
+      "baseline": false,
+      "refused": true
+    },
+    {
+      "path": "/operator/quality",
+      "baseline": false
+    },
+    {
+      "path": "/operator/tracing",
+      "baseline": false
+    },
+    {
+      "path": "/operator/running-tasks",
+      "baseline": true,
+      "refused": true
+    },
+    {
+      "path": "/operator/settings/overrides",
+      "baseline": false,
+      "refused": true
+    }
+  ],
+  "unsafePlaygroundText": [
+    "svarte ikke",
+    "did not respond",
+    "Det er ikke noe galt med oppsettet",
+    "There is nothing wrong with the setup"
+  ],
+  "screenErrorText": [
+    "Du er ikke logget inn lenger",
+    "You are no longer signed in",
+    "Kunne ikke hente dataene",
+    "Could not load the data",
+    "Could not fetch the data"
+  ],
+  "signedOutHeadings": [
+    "Du er logget ut",
+    "You are signed out",
+    "Økten din er utløpt",
+    "Your session has expired"
   ]
 }

@@ -1,135 +1,195 @@
 # Smoke tests on genki-test
 
-After every deploy to genki-test, the `smoke` workflow calls the running platform the way a client does and checks that it still works: the API answers with the deployed version, published services run on every model in use, answers cite sources, and the run's timeline shows its steps. Unit tests use fakes; this is the one place the deployed system, the real providers and the real data are checked together.
+After every deploy to genki-test, the `smoke` workflow tests the running platform the way its users do: the API with a key, the portal and console in a browser, the playground, run timelines, validation and the operator screens. It then reads the pull requests merged since the last green run, runs the check groups those pull requests touch in full, and lets a model look for what the fixed checks miss. Unit tests use fakes; this is the one place the deployed system, the real providers and the real data are checked together.
 
-It exists because the manual smoke test of 96305c01 on 2026-11-10 found four bugs unit tests had missed (a timeline that never showed provider status, a playground refusal, a model that failed every call and an organisation the auto-filter did not detect).
+It exists because the manual smoke test of 96305c01 on 2026-11-10 found four bugs and three oddities the unit tests had missed. The smoke test must catch every one of them, and the same kind of mistake in any later pull request. Its results also feed the AI review experiment: a failure it traces to a pull request the AI review saw is a candidate for the `escaped` label.
 
-## What runs, and what it would have caught
+## What it would have caught on 2026-11-10
 
-Checks run in three tiers by cost. A check's question and expectations live in `scripts/smoke/plan.json`; the assertions are structural only. Answer wording is never asserted.
+Each row names the check and why it fails on 96305c01. The Haiku, detection and sources rows need only a key bound to `smoke`; the timeline and playground rows need the `test-runner` grant (Layer 1); the session checks need no credential. Six of the seven are caught; the console session row is not proven. The playground residency, Haiku temperature and timeline fixes have since merged (#444, #445, #446), so those checks now guard against the same mistake coming back.
 
-| Tier  | Check               | What it asserts                                                                                                                                                                           | Cost                                    |
-| ----- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| free  | `health`            | `/health` is `ok` and reports the deployed SHA                                                                                                                                            | 0                                       |
-| free  | `openapi`           | `/openapi.json` has the same version and the `/v1/chat/completions` route                                                                                                                 | 0                                       |
-| free  | `portal`, `console` | Both answer 200                                                                                                                                                                           | 0                                       |
-| free  | `models`            | `GET /v1/models` with the key lists every variant of the smoke service, none paused                                                                                                       | 0                                       |
-| free  | `facets`            | Each organisation the detection questions name is a facet value of the dataset                                                                                                            | 0                                       |
-| cheap | `model:<model>`     | One short agent run per model the smoke service reaches, with the service's temperature and tools: completes, answers, uses tokens, and when `genai-model` names one model it is that one | 0.04 to 0.2 kr each                     |
-| core  | `question:<id>`     | A fixed question on the agent variant (streamed, with steps) or the retrieve-only variant: completes, a streamed run has steps, and it cites or lists at least N sources                  | 0.2 kr (agent), 0.02 kr (retrieve-only) |
-| core  | `feedback`          | `POST /api/feedback` on a smoke run twice (up, then down) answers 201 both times                                                                                                          | 0                                       |
-| core  | `timeline:<id>`     | The run's timeline is `completed`, has steps and input tokens, and has (or lacks) the expected "Found in the search" tags. Skipped while a key cannot read a timeline (see Auth)          | 0                                       |
+| Found on 2026-11-10                                                                  | Check                                                                   | Why it fails on 96305c01                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| claude-haiku-5-5 fails every call (`temperature: Extra inputs are not permitted`)    | `model:foundry-claude/claude-haiku-5-5`                                 | The model variant sends the service's temperature, as a real service does. Anthropic refuses it, twice, so the check fails                                                                                                                                         |
+| The run timeline never shows the provider's status, nor any token stats (#434)       | `timeline:<run>` on every run                                           | The timeline reader dropped audit and usage events (`apps/api/src/timeline.ts:81`), so every timeline has no input tokens and no `stats.byModel`, and the failed Haiku run's timeline has no provider block. Both are asserted                                     |
+| The portal playground refuses a published service with another model (residency 422) | `playground:<model>` (API) and `screen:portal/playground-run` (browser) | The smoke service is `residency: global` over a global dataset. Tried with the EU model `gpt-5.4-mini`, the playground swapped in the model's residency and answered `422 Invalid setup`                                                                           |
+| The auto-filter detects "Datatilsynet" but not "DFØ"                                 | `timeline:agent-detect-dfo` expects DFØ in "Found in the search"        | Not detected. Kudos has DFØ only by its full name, so this stays a known failure (`knownIssue: #442`) until aliases land: reported on every run, not red                                                                                                           |
+| Oddity: the playground shows a 422 as "the model did not respond"                    | `screen:portal/playground-run`                                          | The browser sees the API answer 422 and the page say "did not respond / There is nothing wrong with the setup" (`PlaygroundPanel.tsx:177-188`). The check fails when a 4xx is shown with the timeout text                                                          |
+| Oddity: sources repeated once per chunk                                              | `sources:<run>` on every cited answer                                   | `answerSourcesOf` returns every cited chunk (`packages/adapter-openai/src/sources.ts:122`), so a document cited from three chunks is listed three times. The check requires one source per `document_id`. It fails on main today: see Decisions                    |
+| Oddity: the console's expired session                                                | `session:console-expired`, `session:portal-expired`                     | Not proven. Both load with a token the API refuses and require the signed-out page with no screen error on the way. On 96305c01 both show the signed-out page (dry run, 2026-11-10), so they guard the behaviour but do not reproduce what was seen. See Decisions |
 
-| Failure on 2026-11-10                                                                     | Caught by                                                                                                                                                                                                               |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| claude-haiku-5-5 fails every call (`temperature: Extra inputs are not permitted`)         | Yes: `model:foundry-claude/claude-haiku-5-5` fails twice with `model_error`                                                                                                                                             |
-| Auto-filter detects "Datatilsynet" but not "DFØ"                                          | No. Kudos stores DFØ only by its full name and has no short names, so "DFØ" cannot be detected until #442 adds aliases. Then add DFØ to the expected detections in `plan.json`                                          |
-| #434 provider status never reaches the timeline (`apps/api/src/timeline.ts:81`)           | No. The provider status is shown only to those with `manage-services` (`apps/api/src/platform.ts:838`), and a failure cannot be provoked safely on a shared environment. The fix branch's route-level test is the guard |
-| Portal playground refuses a published service on residency (`apps/api/src/playground.ts`) | No. The playground routes take a person's token, never a key (`apps/api/src/app.ts:66-71`). It stays a manual browser check until the scripted browser step below exists                                                |
+## Layer 1: identity
 
-## Trigger
+### What exists today does not reach far enough
 
-Deploys are manual: `deploy.yml` runs only on `workflow_dispatch` (`.github/workflows/deploy.yml:3-10`), deploys genki-test in `deploy-test` (`:112-116`) and then, when asked, prod (`:206-208`). Its own `smoke` step only waits for `/health` to report the SHA (`:196-204`).
+The smoke test needs to run services, use the playground on a published service, read run timelines with provider details and token stats, validate definitions, read the console's operator routes, write feedback, and create and remove throwaway `smoke-*` objects. What each credential reaches on genki-test (lockdown on, `GENAI_ENV=test`), proven by route tests run against the code:
 
-`smoke.yml` runs on `workflow_run` when `deploy` completes, and on `workflow_dispatch`:
+| Need                              | Admitted API key (Entra-created) | Maskinporten client        | TestID person (Ansattporten)                             | Operator (Entra) |
+| --------------------------------- | -------------------------------- | -------------------------- | -------------------------------------------------------- | ---------------- |
+| Run a bound service               | yes                              | yes                        | no, read-only in lockdown                                | yes              |
+| Playground on a published service | no (`tenant-gate.ts:56`)         | only if bound to `*`       | no                                                       | yes              |
+| Timeline with details and tokens  | no (`app.ts:66-71`)              | yes, any run in the tenant | details with `manage-services`, tokens with `view-usage` | yes              |
+| Validate a definition             | no                               | yes                        | yes                                                      | yes              |
+| Operator read routes              | no                               | no                         | no                                                       | yes              |
+| Feedback                          | yes, its own runs                | yes                        | yes                                                      | yes              |
+| Publish and archive `smoke-*`     | no                               | yes, and any other service | no                                                       | yes              |
 
-- It runs only when the deploy succeeded, was itself dispatched, and ran on `main`. A `workflow_run` workflow always runs from the default branch's file, so neither a fork nor a pull request can start it or change what it runs. It never runs on `pull_request`. A dispatch runs only from `main` too.
-- A separate workflow keeps the deploy workflow, which holds the Azure identity, unchanged, and keeps a red smoke test from painting a finished deploy red. The cost: after a prod deploy it runs once the whole deploy workflow is done, a few minutes later than it could.
-- Dispatch takes `tiers` (`free`, `cheap` or `all`) and an optional `sha`. Without `sha` it tests whatever `/health` reports.
-- The `smoke` job has `concurrency: smoke-genki-test`: one run at a time, and a running one is never cancelled. GitHub keeps only one waiting run per group, so when deploys come faster than the smoke test, an older waiting run is replaced by the newer one, which tests the newer deploy. The concurrency sits on the job, so a run skipped after a failed deploy never takes a place in the queue.
-- If a deploy succeeds without deploying the API (`deploy.yml:188-194`, when `ALTINN_PDP_URL` is unset), `/health` keeps the old SHA, `health` fails and the run is red on the deployed commit. That is on purpose: genki-test does not run that commit.
+- A TestID person can be admitted in lockdown only through Entra (`packages/identity/src/verify.ts:186,199`); Ansattporten logins are read-only, so a scripted TestID browser could look but never run a model.
+- An operator token has write rights everywhere. It never goes into CI.
+- A Maskinporten client reaches every tenant route with every right, whatever services it is bound to. genki-test does not trust Maskinporten logins today (`MASKINPORTEN_JWKS_URI` is unset), so this is latent. It is reported separately and is not a credential to build on.
 
-Jobs and permissions:
+### The `test-runner` grant (separate pull request)
 
-| Job      | Environment  | Permissions                                          | Holds the key |
-| -------- | ------------ | ---------------------------------------------------- | ------------- |
-| `smoke`  | `genki-test` | `contents: read`, `actions: read` (daily cap)        | yes           |
-| `report` | none         | `contents: read`, `issues: write`, `statuses: write` | no            |
+The narrowest credential that does the whole test is an API key with a new `test-runner` grant, built in its own pull request (branch `smoke-identity`), with amendments to ADR 0033 and ADR 0008:
 
-The `genki-test` environment is a new one that holds only `SMOKE_API_KEY`, limited to `main`. The existing `test` environment is not reused: it is the subject the Azure deploy identity trusts, and a secret there would be readable by the deploy jobs too.
+- Only an admitted Entra login can create it, and only on a server in lockdown on the test tier. A stored grant is ignored anywhere else, so it cannot work in prod.
+- In the key's own tenant it reads what a person with every right reads (timelines with details and usage, every portal screen), and it may write only: validation and other checks, feedback, playground runs on its bound services, and publish, lifecycle and drafts of definitions whose id starts with `smoke-`.
+- Under `/operator` it reads only an allowlist, as an operator that is not admitted: `GET` on `/operator/tenants`, `operations`, `models`, `apis`, `plugins` (and `/operator/plugins/...`), `catalog` (and `/operator/catalog/...`), `tracing`, `quality` and `knowledge/engines`. Every other operator route, and every other method, answers 403 `urn:genai:problem:test-runner-scope`. It never opens support sessions, reads secrets, makes keys or registers clients.
+- Creating it requires `expiresInDays` (1 to 90) and `callsPerMinute`.
+- It still runs models only for its bound services.
 
-## Auth: one service key
+A non-JWT bearer token is already read as an API key (`packages/identity/src/authenticate.ts:73`), so the browser layer puts the same key into the portal's and console's session storage and the screens load with real data.
 
-The smoke test needs one API key bound to the smoke service on genki-test, stored as the environment secret `SMOKE_API_KEY`. Never an operator token.
+The key lives in the GitHub environment `genki-test`, limited to `main`, as `SMOKE_API_KEY`. Writes go only to `smoke-*` objects, and the runner archives what it published in a `finally` step, also when checks fail.
 
-What a key reaches, from the code:
+Until the grant is deployed, the runner works with a plain service key: model runs, answers, sources and facets work, and the checks the key cannot reach (timelines, playground, validation, operator reads, screens with data) report `skip: credential` and turn themselves on when the routes answer.
 
-| Route                                                  | Key                                                                                                       | Evidence                                                                           |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `POST /v1/chat/completions`, `GET /v1/models`          | Yes, only its own service                                                                                 | `packages/identity/src/api-keys.ts:148`, `packages/identity/src/policy.ts:101-115` |
-| `GET /api/facets`                                      | Yes, datasets its service searches                                                                        | `apps/api/src/composition.ts:1346-1355`                                            |
-| `POST /api/feedback`                                   | Yes, on runs the same key made                                                                            | `docs/frontend-contract.md`, Feedback                                              |
-| `GET /tenants/{t}/tasks/{task}`, `.../timeline`, usage | No: definition and platform routes drop API keys, and `/tenants/*` refuses keys without the `admin` scope | `apps/api/src/app.ts:66-71,118`, `apps/api/src/tenant-gate.ts:16-20,56-57`         |
-| `POST /definitions/validate`                           | No, same reason                                                                                           | `apps/api/src/definitions.ts:327-329`                                              |
-| Playground                                             | No                                                                                                        | as above                                                                           |
-| Operator routes                                        | No                                                                                                        | operator principals only                                                           |
+## Layer 2: the deterministic suite
 
-A key made in the portal always has scope `query` (`apps/api/src/routes/portal-routes.ts:260`), so there is no `admin` key to fall back on, and none is wanted.
+Checks are grouped. Every group has a baseline that runs on every deploy and a full set that runs when a merged pull request touches the group (Layer 3). Assertions are structural; answer wording is never asserted.
 
-So two of the checks the design asks for cannot run with one key today: the timeline checks (steps, token counts, detection tags) and definition validation. For validation nothing is lost: the refusals are pure code paths covered by `packages/definitions` tests, and `scripts/smoke/smoke-service.test.ts` validates the smoke definition offline. For the timeline the narrowest option is a small API change, not a second credential: let a key read `GET /tenants/{t}/tasks/{task}/timeline` for a run it started, the rule the route already applies to people (`startedBy`, `apps/api/src/platform.ts:827-828`) and the one feedback already uses for keys. Provider details would stay behind `manage-services`. That changes what an API key may read, so it needs an amendment to ADR 0008 and its own pull request. Until then `timeline:*` reports `skip` with the reason, and turns itself on when the route answers 200.
+| Group         | Baseline                                                                                                                                                                                                                                                                    | Full adds                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `platform`    | `/health` reports the deployed SHA and lockdown, `/openapi.json` has the same version, portal and console answer, `/v1/models` lists the plan's models. A closing `/health` that reports another version makes the run `partial`                                            | nothing more                                                                          |
+| `models`      | `model:<id>`: one short agent run per model on the service's own parameters (temperature, tools, request shape)                                                                                                                                                             | the same run streamed                                                                 |
+| `runs`        | `question:<id>`: every planned question (agent questions streamed, with steps, and retrieve-only questions); `sources:<id>`: one source per document in each cited answer                                                                                                   | nothing more                                                                          |
+| `retrieval`   | `facets`: the organisations the detection questions name are facet values of the dataset                                                                                                                                                                                    | nothing more                                                                          |
+| `timeline`    | `timeline:<run>` for each question run and each unstreamed model run: completed, steps, input tokens, `stats.byModel`; a failed run shows the provider's status; detection tags as planned                                                                                  | timelines of the streamed model runs                                                  |
+| `playground`  | `playground:options` lists the smoke service; `playground:<model>`: the playground on the published smoke service with each model, through the API; `screen:portal/playground-run`: the same in the browser, which fails when a `4xx` is shown as a timeout                 | nothing more                                                                          |
+| `definitions` | `validate:smoke`: the published definition validates; `validate:unknown-strategy` gets `422` at the expected path; `lifecycle:throwaway`: publish `smoke-throwaway`, read it back, archive it                                                                               | every refusal case (temperature, residency, iterations)                               |
+| `portal`      | Overview, services, the smoke service and its test page, playground and log, in a browser                                                                                                                                                                                   | every listed portal screen                                                            |
+| `console`     | The tenants and models screens; operator reads of tenants, models and operations; `/operator/running-tasks` answers 403 `urn:genai:problem:test-runner-scope`                                                                                                               | every listed console screen, every allowed operator read, and the other refused reads |
+| `access`      | Without a key `/v1` answers 401; the key gets 403 or 404 on another tenant's timeline, 403 publishing an id without `smoke-`, 403 on an operator write; in lockdown the key's own entry in its service's key list says `modelsInLockdown: true`; both expired-session pages | nothing more                                                                          |
+| `feedback`    | `POST /api/feedback` up and down on a smoke run                                                                                                                                                                                                                             | nothing more                                                                          |
+| `language`    | A missing route in `nb` and in `en` gives different problem titles, and the `en` one has no Norwegian letters                                                                                                                                                               | the portal overview and test page in English, with the same screen checks             |
 
-Lockdown: genki-test reports `"lockdown": true`. Lockdown is about credentials, not networks: `infra/` has no IP restrictions, and GitHub-hosted runners reach the API like anyone. In lockdown a run that reaches a model needs a credential that may use models (`apps/api/src/lockdown.ts:62-73,110-118`, `packages/composition/src/lockdown.ts:24-28`). A key gets that mark only when a trusted Entra login creates it (`apps/api/src/routes/portal-routes.ts:273`, ADR 0033). So the key must be created by someone signed in to the portal with Entra ID in one of the lockdown groups, not with a TestID person. A key without the mark gets `403 urn:genai:problem:locked-environment` on every model check; the summary shows the 403 and the start of the problem text. As ADR 0033 says, removing the creator from the Entra group does not revoke the key: rotate or revoke it when the person leaves.
+Browser checks (Playwright, `playwright-core` with Chromium) visit each screen, wait for the network to settle, and fail on: a danger alert on the page, a known error text, a `5xx` from the API, a `4xx` other than `404`, an uncaught page error, or a missing main heading. Each screen leaves a screenshot and its visible text for Layer 4, except screens marked `personal` (the logs, the developer runs and the console's tenants), which show names and emails: those are checked but neither saved nor offered to the model. The access, queue, audit and tracing screens are left out for the same reason. The playground run also fails when the network shows a `4xx` and the page shows the "did not respond" text. A `403` with the problem type `urn:genai:problem:test-runner-scope` is the key's allowlist at work, not a failure, and the screen still fails on anything it shows. Console screens whose main data lies outside the allowlist (operations, policies, building blocks, search engines, shared services, settings) are left out: the console shows that refusal as the same generic load error as a real failure, so a check there could only pass by ignoring errors.
 
-## The smoke service
+Known failures: a planned question may carry `knownIssue` (an issue number or a short reason). Its timeline check is reported as `known` and does not make the run red; when the check passes, it is reported as a pass, so the entry can be removed. A run that fails outright is never hidden by it.
 
-`scripts/smoke/smoke-service.yaml` is a definition the maintainers publish once on genki-test. It is an ordinary agent service over one dataset with a retrieve-only variant and one variant per model. Nothing about it is specific to Kunnskapsassistenten: the dataset (`digdir/kudos`) and the questions are data in the definition and the plan, not code.
+Flakiness, unchanged from the first version: timeouts per request (30 s, 150 s for model runs), one retry 20 s later only for transient or model-dependent failures, `flaky` when fail-then-pass, `fail` when twice. Model checks stop at 14 minutes so the report always gets written. If `/health` does not report the expected SHA after ten polls, no model check runs; if it changes during the run (a new deploy), the run is `partial` with a note.
 
-- Id `smoke`, risk class minimal, exposed only on `openai`, not in chat. No other service, frontend or key may depend on it; it is changed only together with `plan.json`.
-- `default` runs `agent-loop` on a mini model with a small budget (2 searches, 3 reads, 6000 characters, 6 iterations) and temperature 0.3, the parameters a real agent service sends.
-- `retrieve-only` runs `rag-single-shot` without generation; its query planner still makes one small model call.
-- `model-*` variants set the model and shrink the run (1 search, 1 read, 2000 characters, 3 iterations). Temperature, tools and the request shape stay those of the service, which is what broke Haiku on 2026-11-10. A run costs 0.04 kr (mini) to 0.2 kr (gpt-5.6-terra).
-- Models today: `foundry-openai/gpt-5.4-mini`, `foundry-openai/gpt-5.6-terra` and `foundry-claude/claude-haiku-5-5` (the Anthropic path), the chat models published services on genki-test use. Add a variant, and a row in `plan.json`, for each model a published service uses; `smoke-service.test.ts` fails if the two disagree.
+## Layer 3: checks targeted by pull request
 
-## Cost and caps
+Before the checks start, the runner finds the commits since the last green `smoke/genki-test` status and the pull requests merged in them (squash titles `(#N)`), and for each one reads its title, body, changed paths and diff from the GitHub API.
 
-Prices are from `apps/api/config/local/prices.yaml` (Sweden Central). Claude Haiku has no price there; the plan assumes 0.0000105 kr per input and 0.0000525 kr per output token.
+`scripts/smoke/groups.json` maps changed paths to groups, by path prefix (`packages/port-model/` to `models`, `apps/portal/` to `portal`, and so on):
 
-| Part                                      | Estimate per run |
-| ----------------------------------------- | ---------------- |
-| free tier                                 | 0                |
-| cheap: 3 models, one short agent run each | about 0.35 kr    |
-| core: 2 agent questions on the mini model | about 0.4 kr     |
-| core: 3 retrieve-only questions           | about 0.06 kr    |
-| A full run, by the plan's estimates       | about 0.8 kr     |
-| Worst case, every model check rerun       | about 1.6 kr     |
+- A pull request runs the full set of every group it touches.
+- A path no rule maps runs every group in full: an unmapped change is treated as touching everything, so a new package is covered before anyone adds a rule.
+- Docs and Markdown map to nothing; the smoke test's own files are ignored.
+- A pull request with more files than GitHub lists counts as unmapped.
 
-At about 3 deploys per weekday, about 65 runs a month: about 50 kr a month, about 105 kr if every model check were rerun. The estimates are deliberately high. The summary's figure is what the budget counted: the measured cost from token counts where a run reports them, and never less than the estimate. A streamed run reports no tokens, so the two agent questions count at their estimate.
+The summary lists, per group, the pull requests that made it run in full and the unmapped paths, so a missing rule is visible. When a check fails, the pull requests that touched its group are its suspects: a deterministic link, marked as suspected.
 
-Caps, so a loop cannot burn money:
+## Layer 4: model review
 
-1. **Per run**: every model check has an estimate in `plan.json`. Before each attempt the runner adds it to what the run has counted so far and skips the check (`skip: budget`) when the total would pass `maxKrPerRun` (2.5 kr). A retry that would pass it is not made, and the check fails. The free tier always runs.
-2. **Per day**: the runner counts this workflow's runs since midnight UTC that were not skipped, this one included. Past `SMOKE_MAX_RUNS_PER_DAY` (variable, default 6) it runs the free tier only and says so; if GitHub does not answer the count, it does the same. Six runs at the per-run cap is 15 kr. Run from a laptop without `GITHUB_TOKEN`, there is no daily cap.
-3. **Per minute**: create the key with `callsPerMinute: 30`, so genki itself refuses a runaway loop.
-4. Deploys are manual and `workflow_run` fires once per deploy, so nothing retriggers itself.
+After the deterministic run, a model reviews it in two passes, with Claude on Azure AI Foundry through the same federated identity as the AI review (`anthropics/claude-code-action` with `use_foundry`).
 
-## Flakiness
+1. **Propose.** The model gets the pull requests (bodies, paths, diffs), the targets and the check report, and proposes up to 8 extra checks for behaviour these pull requests change that the suite does not cover. It can only pick from a fixed toolbox of typed, safe actions:
 
-- Every request has a timeout: 30 s for the free tier, 150 s for a model run. Model checks must finish within 14 minutes of the start: one that could not is skipped (`skip: time`), so a hanging genki-test still leaves time to write the report inside the job's 20 minutes.
-- `/health` is polled up to 10 times, 15 s apart, until it reports the expected SHA; the deploy already waits for the same, so this normally passes at once. If it never does, no model check runs: they would test another version and cost money for nothing.
-- Requests never follow a redirect, so the key cannot be sent to another host.
-- Only model-dependent checks are retried, once, 20 s later: network errors, timeouts, `429`, `502`, `503`, `504`, a `500` with `model_failed: true`, and a run that completed but missed a structural expectation (no citation, say). A key, routing or validation error (`401`, `403`, `404`, `400`) is never retried.
-- Pass on the first try is `pass`. Fail then pass is `flaky`: it counts as passed, and the summary marks it so a pattern shows. Fail twice is `fail`. A model that refuses its parameters, like Haiku on 2026-11-10, fails twice.
+   | Action          | Arguments                                                                           | What runs                                         |
+   | --------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------- |
+   | `ask`           | a variant of the smoke service, a question of up to 300 characters, streamed or not | one run of the smoke service, with its timeline   |
+   | `playground`    | a listed model, a question                                                          | one playground run on the published smoke service |
+   | `validate`      | a definition of up to 8000 characters whose id starts with `smoke-`                 | validation only, never publish                    |
+   | `screen`        | portal or console, a listed screen, `nb` or `en`                                    | a browser visit with screenshot and text          |
+   | `operator-read` | a listed operator read the key is allowed                                           | one read                                          |
+
+   The runner validates every proposal against this list and the plan, drops anything else and says why. There is no free-form HTTP, no write outside `smoke-*`, and no action can name a URL. Proposed runs have their own budget, `maxKrExtra`, and run only if genki-test still reports the tested SHA.
+
+2. **Judge.** A second pass gets everything: the pull requests, the full report, the timelines, answers, screen texts and screenshots, and the results of the proposed checks. It looks for what a structural check misses: an error in the wrong language, a misleading message, duplicate sources, a number that does not add up, a behaviour a pull request body promises that is not visible. It returns findings, each with evidence, the checks or screens it rests on, and the pull requests it suspects.
+
+The model treats everything it reads as data. Pull request text, page content and answers are written by others and may try to instruct it, so:
+
+- The prompt says so, and each pull request's text sits inside `<pull-request>` tags. The model's tools are `Read`, `Glob` and `Grep`, with reads of the Azure, Claude and system directories denied. It has no shell and no network, and its GitHub token can only read the repository.
+- Its output is a fixed JSON schema. The runner validates proposals against the toolbox and keeps only findings whose checks and pull requests exist in this run.
+- The model jobs never hold the smoke key, and the jobs that hold the key never run a model of ours.
+- Before anything is posted, the report job removes anything shaped like a token or key from the model's text, and cuts each field to a fixed length. Findings never mention anyone.
+
+Model choice: Sonnet (`claude-sonnet-5-5`) for both passes. Reading a long report and diffs and spotting what is off is within its reach, and it costs about 60 percent of Opus per token. Opus would add more reliable reasoning across a large diff and fewer false findings on subtle cases (a promised behaviour that only partly shows). Switching is one variable, `SMOKE_REVIEW_MODEL`.
+
+## Layer 5: the experiment link
+
+- Every finding, deterministic or from the model, carries suspected pull requests.
+- A suspected pull request merged on or after 2026-11-09 whose AI review ran is listed in the issue as a candidate for `escaped`. "The AI review ran" means a `review` workflow run on its branch with a successful `review` job, in either arm.
+- A person decides and applies the label; the workflow never labels.
+- The report counts findings by layer: failed checks (deterministic) and model findings that no failed check already covers. Both counts go into the issue, the job summary and the report artifact (`counts.checks`, `counts.model`), so the experiment can measure each layer.
+
+## Layer 6: cost and safety
+
+Prices: genki's own `apps/api/config/local/prices.yaml` (Sweden Central). Claude on Foundry is assumed at USD 3 per million input tokens and 15 per million output tokens for Sonnet, and 5 and 25 for Opus; confirm on the Azure invoice. USD at 10.5 kr.
+
+| Layer                              | Per run                         | Hard cap and what happens at it                                                                                                                                                                                                                                                                                         |
+| ---------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deterministic, baseline            | about 1.8 kr (genki model runs) | `maxKrPerRun` 4 kr: a model check that would pass it is skipped (`skip: budget`), free checks still run                                                                                                                                                                                                                 |
+| Deterministic, every group full    | about 2.2 kr                    | same cap                                                                                                                                                                                                                                                                                                                |
+| Extra checks proposed by the model | at most 1 kr                    | `maxKrExtra` 1 kr and 8 checks; the rest are skipped and listed                                                                                                                                                                                                                                                         |
+| Model review (Sonnet, two passes)  | about 15 kr (USD 1.4)           | 15 turns to propose, 30 to judge, at most 40,000 characters of diff per pull request and 30 pull requests. Runs only when at least one pull request was merged since the last green run, and on the first `SMOKE_REVIEW_MAX_PER_DAY` (default 3) smoke runs of the day; otherwise it is skipped and the summary says so |
+| Model review on Opus instead       | about 25 kr                     | same caps                                                                                                                                                                                                                                                                                                               |
+| Daily                              | at most 6 runs                  | `SMOKE_MAX_RUNS_PER_DAY`: past it, or if GitHub does not answer the count, only checks without a model run                                                                                                                                                                                                              |
+
+At about three deploys a weekday (65 a month, about 45 with merged pull requests), the deterministic layer costs about 120 to 145 kr a month and the model review about 700 kr (Sonnet) or 1150 kr (Opus). The real cost of both passes, from the action's own report, is written into `assessment.json` and the job summary.
+
+Concurrency: one `smoke` job at a time (`concurrency: smoke-genki-test`, never cancelled). The `extra` job has no concurrency group, so it can overlap with the next run's `smoke` job; both write only `smoke-*` objects. A deploy during a run is detected by the closing `/health` check and makes the run `partial`, and `extra` runs nothing if `/health` no longer reports the tested SHA. The smoke test never deploys and never blocks a deploy.
+
+Secrets:
+
+| Where                                      | What                                                                                                             | Who can use it                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Environment `genki-test` (branch `main`)   | `SMOKE_API_KEY`, the `test-runner` key                                                                           | the `smoke` and `extra` jobs only                |
+| Environment `smoke-review` (branch `main`) | no secrets; the federated credential subject `repo:digdir/genki:environment:smoke-review` on the review identity | the `propose` and `judge` jobs, to reach Foundry |
+| Repository                                 | the `AZURE_REVIEW_*` variables the AI review uses                                                                | read by the model jobs                           |
+
+The report job gets `issues: write` and `statuses: write`, and no environment.
+
+## Trigger and jobs
+
+`smoke.yml` runs on `workflow_run` when `deploy` completes successfully on `main` after a dispatch, and on `workflow_dispatch` from `main` (inputs `tiers`: `free`, `cheap` or `all`; `sha`; `full`: run every group in full; `review`: run the model layer or not). It never runs on `pull_request`, and a `workflow_run` workflow always runs from the default branch's file.
+
+| Job       | Environment    | Permissions                                                                | Does                                                                              |
+| --------- | -------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `smoke`   | `genki-test`   | `contents: read`, `actions: read`, `pull-requests: read`, `statuses: read` | changes and targets, the deterministic suite with the browser, uploads the bundle |
+| `propose` | `smoke-review` | `contents: read`, `id-token: write`                                        | the model proposes extra checks                                                   |
+| `extra`   | `genki-test`   | `contents: read`                                                           | runs the accepted proposals, uploads their results                                |
+| `judge`   | `smoke-review` | `contents: read`, `id-token: write`                                        | the model reviews everything and returns findings                                 |
+| `report`  | none           | `contents: read`, `issues: write`, `statuses: write`                       | status, issue, escaped candidates, counts                                         |
 
 ## Reporting
 
-- **Job summary**: one table with every check, its outcome, attempts, tokens and the genki run ids (the `genai-task` header), plus what was skipped and why.
-- **Commit status**: `smoke/genki-test` on the tested SHA (the deployed one, even when `/health` reports another), linking the run. A failed check gives `failure`. `success` needs every tier to have run with nothing skipped, except timelines the key cannot read; any other run sets no status, and neither does a run without a known SHA. The status is the "last green" state: no extra store, visible on each commit, and something the AI review experiment can read per commit.
-- **Suspect range**: from the tested SHA back to the newest commit with a green `smoke/genki-test` status (one GraphQL history query, 100 commits), with the merged pull requests in it read from the squash-merge titles (`(#123)`).
-- **Issue**: on failure, the report job opens one issue labelled `smoke`, or comments on the open one, with the failing checks, run ids, the suspect range and its pull requests. Text from genki is cut to one line and cannot mention anyone. It names a range, never a culprit: tracing the failure is a person's job, and when it lands on a merged pull request the AI review saw, the fix pull request gets the `escaped` label. When a later run is green, the job comments and closes the issue. The `smoke` label is created on first use.
+- **Job summary**: every check with outcome, attempts, tokens, genki run ids and why it ran (baseline or which pull request), the targets, the model's findings and the counts.
+- **Commit status** `smoke/genki-test` on the tested SHA: `failure` when a check failed or the smoke job crashed, `success` when every tier ran and no check failed or was skipped (flaky checks, known failures and checks the credential cannot reach yet do not count against it), none otherwise. It is the "last green" marker.
+- **Issue**: one open issue labelled `smoke`. A failure, or a model finding of severity high, opens it or comments on it with the failing checks, the findings with their evidence, the suspect range and its pull requests, the `escaped` candidates and the counts. Suspects are always marked as suspected; the issue names a range and evidence, never a culprit. A green run with no high finding closes it.
+- **Artifacts**: `smoke-bundle` (report, timelines, answers, screen texts and screenshots, pull requests), `smoke-proposals` and `smoke-judged` (the model's output and cost), `smoke-extra` (the proposed checks' results) and `smoke-assessment` (findings, counts, escaped candidates and model cost), kept 30 days.
 
 ## Where the code lives
 
-| Path                               | What                                                                                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/smoke.yml`      | Trigger, environment, the two jobs                                                                                                          |
-| `scripts/smoke/smoke-service.yaml` | The definition to publish                                                                                                                   |
-| `scripts/smoke/plan.json`          | Variants, models, prices, estimates, questions and expectations                                                                             |
-| `scripts/smoke/assess.ts`          | Pure assertions (health, models, facets, completions, the SSE stream, timelines), and the retry, budget and deadline rules of a model check |
-| `scripts/smoke/run.ts`             | The runner: HTTP calls in order, the summary, and the report as a job output                                                                |
-| `scripts/smoke/report.ts`          | Pure range, pull request, issue text and issue decision, and the GitHub calls for status and issue                                          |
-| `scripts/smoke/*.test.ts`          | Tests for the pure parts, and an offline validation of the definition against the plan                                                      |
-
-The scripts use only Node's built-ins and run with `node` like the other workflow scripts, so the job needs no `npm ci`.
+| Path                               | What                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| `.github/workflows/smoke.yml`      | Trigger, environments and the five jobs                                                   |
+| `scripts/smoke/smoke-service.yaml` | The smoke service definition                                                              |
+| `scripts/smoke/plan.json`          | Models, prices, questions, screens, operator reads, refusal cases, known issues           |
+| `scripts/smoke/groups.json`        | Paths to check groups                                                                     |
+| `scripts/smoke/assess.ts`          | Pure assertions and the retry, budget and deadline rules                                  |
+| `scripts/smoke/changes.ts`         | The range since the last green run, its pull requests, AI review and targets              |
+| `scripts/smoke/review.ts`          | The toolbox, proposal validation, findings, escaped candidates and counts                 |
+| `scripts/smoke/browser.ts`         | The browser checks                                                                        |
+| `scripts/smoke/run.ts`             | The deterministic run and the bundle                                                      |
+| `scripts/smoke/extra.ts`           | Runs the accepted proposals                                                               |
+| `scripts/smoke/model-output.ts`    | Takes the model's structured output and cost from the action's execution file             |
+| `scripts/smoke/prompts/`           | The instructions for the propose and judge passes                                         |
+| `scripts/smoke/report.ts`          | Status, issue and summary                                                                 |
+| `scripts/smoke/*.test.ts`          | Tests for the pure parts, the workflow's permissions, and the definition against the plan |
 
 Run it from a laptop against genki-test, with the key in your own environment:
 
@@ -137,24 +197,20 @@ Run it from a laptop against genki-test, with the key in your own environment:
 SMOKE_TIERS=free node scripts/smoke/run.ts
 ```
 
-## What stays manual
-
-These need a person's login and stay in the manual checklist after a deploy:
-
-- Portal playground on a published service, sources rendering, the run in the Log.
-- Console: models and connections load, the APIs tab, Diagnostics, the add-model form's dry run.
-- Anything that needs `manage-services` or an operator: provider status on a failed run, the tenant catalogue, feedback lists.
-
-The `feedback` check leaves two ratings on a smoke run each time, about 130 a month, all on the `smoke` service in the platform organisation's feedback list.
-
-A later step can script these with a headless browser. On genki-test the Ansattporten test login is a click on a test account with no password, so a Playwright job could sign in as a fixed TestID person without a stored secret. Such a person is read-only in lockdown, which suits a smoke test but cannot run models; a run through the playground would need an Entra login, which does need a secret. That is a separate decision.
-
 ## Setting it up
 
-1. Publish `scripts/smoke/smoke-service.yaml` on genki-test in the platform organisation, after checking with `list_models` that each model id exists, with the reason "Smoke test service for the post-deploy CI".
-2. Signed in to the portal with Entra ID, create a key bound to the `smoke` service, `callsPerMinute: 30`, no expiry or a long one.
-3. In GitHub, create the environment `genki-test` and set its deployment branches to the selected branch `main` (not "protected branches") before adding the key as the secret `SMOKE_API_KEY`. The workflow would otherwise create the environment without that limit on its first run.
-4. Optionally set the variables `SMOKE_MAX_RUNS_PER_DAY` and `SMOKE_API_URL`, `SMOKE_PORTAL_URL`, `SMOKE_CONSOLE_URL` (they default to genki-test).
-5. Dispatch `smoke` once with `tiers: free`, then `all`.
+1. Merge the `test-runner` grant pull request and deploy it.
+2. Check with `list_models` that each model id in `plan.json` exists on genki-test, then publish `scripts/smoke/smoke-service.yaml` in the platform organisation.
+3. Signed in to the portal with Entra ID, create a key bound to `smoke` with the `test-runner` grant, `callsPerMinute: 30` and `expiresInDays: 90`. The key expires after 90 days at most, so rotate it by then: create a new one and replace `SMOKE_API_KEY`.
+4. Create the environment `genki-test` with deployment branches set to the selected branch `main`, then add the key as `SMOKE_API_KEY`.
+5. Create the environment `smoke-review`, branch `main`, and add the federated credential `repo:digdir/genki:environment:smoke-review` to the Entra app the AI review uses (`AZURE_REVIEW_CLIENT_ID`). Its role on the Foundry resource already covers `claude-sonnet-5-5`.
+6. Optionally set `SMOKE_MAX_RUNS_PER_DAY`, `SMOKE_REVIEW_MAX_PER_DAY`, `SMOKE_REVIEW_MODEL` and the URLs.
+7. Dispatch `smoke` with `tiers: free` and `review: false`, then `all` with `review: true`.
 
-No ADR: this adds a workflow and a script and changes no contract, boundary or security property. Letting a key read its own run's timeline would, and needs one.
+## Decisions
+
+- The `test-runner` grant changes what an API key may do and amends ADR 0033 and ADR 0008, in its own pull request. This workflow needs no ADR of its own.
+- The Maskinporten gap is fixed before anyone sets `MASKINPORTEN_JWKS_URI`.
+- Sources repeated per chunk fail on main today. File an issue and put its number in `plan.json` as `knownIssue`, or fix `answerSourcesOf`; until then the first runs are red on `sources:*`.
+- The console session oddity: the expired-session checks pass on 96305c01. Say what was seen (a screen error, a blank page, a login loop, the session ending too soon), and the check gets the step that reproduces it.
+- The feedback check leaves two ratings on a smoke run each time, about 130 a month, all on the `smoke` service.

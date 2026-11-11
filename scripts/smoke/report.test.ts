@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { SmokeReport } from './assess.ts';
+import { suspectRange, type HistoryNode } from './changes.ts';
 import {
+  assess,
   commitStatus,
-  failureBody,
   greenBody,
   issueAction,
-  rangeText,
+  issueBody,
   renderTable,
-  suspectRange,
-  type HistoryNode,
+  sanitize,
+  missingBundle,
 } from './report.ts';
+import type { Finding } from './review.ts';
 
 const tested = 'c'.repeat(40);
 const green = 'a'.repeat(40);
@@ -27,6 +29,7 @@ const report = (over: Partial<SmokeReport> = {}): SmokeReport => ({
     {
       id: 'model:foundry-claude/claude-haiku-5-5',
       tier: 'cheap',
+      group: 'models',
       outcome: 'fail',
       detail: '500 model_error: the service failed',
       attempts: 2,
@@ -37,61 +40,214 @@ const report = (over: Partial<SmokeReport> = {}): SmokeReport => ({
 });
 
 const history: HistoryNode[] = [
-  {
-    oid: tested,
-    messageHeadline: 'Let signing modules set Authorization (#438)',
-    smoke: 'FAILURE',
-  },
-  { oid: 'b'.repeat(40), messageHeadline: 'Console add model with prefixed deployment (#439)' },
-  { oid: 'd'.repeat(40), messageHeadline: 'Fix a typo directly on main' },
+  { oid: tested, messageHeadline: 'Retry without temperature (#438)', smoke: 'FAILURE' },
+  { oid: 'b'.repeat(40), messageHeadline: 'Console add model (#439)' },
   { oid: green, messageHeadline: 'Something earlier (#400)', smoke: 'SUCCESS' },
-  { oid: 'e'.repeat(40), messageHeadline: 'Older (#399)', smoke: 'SUCCESS' },
 ];
 
-describe('suspect range', () => {
-  it('runs from the tested commit back to the newest green smoke run, without it', () => {
-    const range = suspectRange(history);
-    expect(range.green).toBe(green);
-    expect(range.commits.map((c) => c.oid)).toEqual([tested, 'b'.repeat(40), 'd'.repeat(40)]);
-  });
+const targets = { full: ['models'], reasons: { models: [438] }, unmapped: [] };
+const prs = [
+  { number: 438, mergedAt: '2026-11-10T08:00:00Z', aiReviewed: true },
+  { number: 439, mergedAt: '2026-11-10T09:00:00Z', aiReviewed: false },
+];
+const bundle = { report: report(), targets, prs };
 
-  it('lists the merged pull requests in the range from squash-merge titles', () => {
-    expect(suspectRange(history).pullRequests).toEqual([438, 439]);
-  });
-
-  it('ignores a green status on the tested commit itself, as on a rerun', () => {
-    const rerun = history.map((n, i) => (i === 0 ? { ...n, smoke: 'SUCCESS' } : n));
-    expect(suspectRange(rerun).green).toBe(green);
-  });
-
-  it('is unbounded when no commit has a green smoke run', () => {
-    const range = suspectRange(history.slice(0, 3));
-    expect(range.green).toBeUndefined();
-    expect(range.commits).toHaveLength(3);
-  });
-});
+const judged = {
+  findings: [
+    {
+      title: 'Validation errors are English on a Norwegian page',
+      severity: 'medium',
+      evidence: 'screens/portal-services-smoke-test.txt shows "Too big"',
+      checks: ['health'],
+      suspectedPrs: [439, 999],
+    },
+  ],
+};
 
 describe('report text', () => {
-  it('names the failing checks, their genki runs, the range and its pull requests, and blames none', () => {
-    const body = failureBody(report(), 'digdir/genki', suspectRange(history));
-    expect(body).toContain('`model:foundry-claude/claude-haiku-5-5`: 500 model_error');
-    expect(body).toContain('`t-1`, `t-2`');
-    expect(body).toContain(`https://github.com/digdir/genki/compare/${green}...${tested}`);
-    expect(body).toContain('#438, #439');
-    expect(body).toContain('not a verdict on any pull request');
-    expect(body).not.toContain('`health`');
+  const body = () => {
+    const a = assess(bundle, undefined, judged);
+    return issueBody(report(), 'digdir/genki', suspectRange(history), targets, a);
+  };
+
+  it('names the failing check and the pull requests that touched its group as suspected', () => {
+    expect(body()).toContain(
+      '**high** (check): `model:foundry-claude/claude-haiku-5-5 failed`. `500 model_error: the service failed` Suspected: #438.',
+    );
+  });
+
+  it('adds the model’s findings with only pull requests from this run', () => {
+    expect(body()).toContain('(model): `Validation errors are English on a Norwegian page`');
+    expect(body()).toContain('Suspected: #439.');
+    expect(body()).not.toContain('#999');
+  });
+
+  it('counts findings by layer', () => {
+    expect(body()).toContain('Found by the checks: 1. Found only by the model review: 1.');
+  });
+
+  it('lists as escaped candidates only suspects merged after the start that the AI review saw', () => {
+    expect(body()).toContain('- #438: `model:foundry-claude/claude-haiku-5-5 failed`');
+    expect(body()).not.toContain('- #439:');
+  });
+
+  it('says why each group ran in full', () => {
+    expect(body()).toContain('- `models` in full, for #438');
+  });
+
+  it('names a range and suspects, never a culprit', () => {
+    expect(body()).toContain(`https://github.com/digdir/genki/compare/${green}...${tested}`);
+    expect(body()).toContain('not a verdict on anyone');
   });
 
   it('says the range is unknown when the tested commit is not in the repository', () => {
-    expect(failureBody(report(), 'digdir/genki', undefined)).toContain('range is unknown');
+    const a = assess(bundle, undefined, {});
+    expect(issueBody(report(), 'digdir/genki', undefined, targets, a)).toContain(
+      'range is unknown',
+    );
   });
 
-  it('puts every check in the summary table with attempts and runs', () => {
+  it('names an unknown version when the run had no SHA', () => {
+    const a = assess(bundle, undefined, {});
+    expect(issueBody(report({ sha: '' }), 'digdir/genki', undefined, targets, a)).toMatch(
+      /^The smoke test of an unknown version on genki-test failed/,
+    );
+  });
+
+  it('puts every check in the summary table with its group, attempts and runs', () => {
     const table = renderTable(report());
-    expect(table).toContain('| cheap | `model:foundry-claude/claude-haiku-5-5` | **FAIL** | 2 |');
+    expect(table).toContain('| models | `model:foundry-claude/claude-haiku-5-5` | **FAIL** | 2 |');
+  });
+
+  it('shows a known failure with its issue in the table', () => {
+    const table = renderTable(
+      report({
+        checks: [
+          {
+            id: 'timeline:agent-detect-dfo',
+            tier: 'core',
+            group: 'timeline',
+            outcome: 'known',
+            knownIssue: '#442',
+            detail: 'not detected: DFØ',
+            attempts: 2,
+            tasks: [],
+          },
+        ],
+      }),
+    );
+    expect(table).toContain(
+      '| timeline | `timeline:agent-detect-dfo` | known failure | 2 |  |  | not detected: DFØ (#442) |',
+    );
+  });
+});
+
+describe('the layers', () => {
+  it('counts a failed extra check as found by the model review', () => {
+    const extra = {
+      proposed: 1,
+      rejected: [],
+      spentKr: 0.1,
+      checks: [
+        {
+          id: 'extra:1:screen',
+          tier: 'free' as const,
+          outcome: 'fail' as const,
+          detail: 'error shown: Kunne ikke hente dataene',
+          attempts: 1,
+          tasks: [],
+          why: 'the console lists models differently now',
+          pullRequest: 439,
+        },
+      ],
+    };
+    const a = assess(bundle, extra, {});
+    expect(a.counts).toEqual({ checks: 1, model: 1 });
+    expect(a.fromModel[0]?.suspectedPrs).toEqual([439]);
+  });
+
+  it('does not count a model finding that only repeats a failed check', () => {
+    const repeat = {
+      findings: [
+        {
+          title: 'Haiku fails',
+          severity: 'high',
+          evidence: 'answers/model.json',
+          checks: ['model:foundry-claude/claude-haiku-5-5'],
+          suspectedPrs: [],
+        },
+      ],
+    };
+    expect(assess(bundle, undefined, repeat).counts).toEqual({ checks: 1, model: 0 });
+  });
+
+  it('ignores model output that is not the expected shape', () => {
+    expect(assess(bundle, undefined, 'not json at all').counts.model).toBe(0);
+    expect(assess(bundle, undefined, { findings: [{ title: '' }] }).counts.model).toBe(0);
+  });
+});
+
+describe('model text before it is posted', () => {
+  it('removes JWTs, genki keys and other long random strings', () => {
+    const jwt = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'abcdefghijklmnop'].join(
+      '.',
+    );
+    expect(sanitize(`see ${jwt}`)).toBe('`see [removed]`');
+    expect(sanitize('key gp_AbCdEfGhIjKlMnOpQrStUvWx12')).toBe('`key [removed]`');
+    expect(sanitize(`token ${'aB3'.repeat(15)}`)).toBe('`token [removed]`');
+  });
+
+  it('removes email addresses', () => {
+    expect(sanitize('mail ola.nordmann@digdir.no now')).toBe('`mail [removed] now`');
+  });
+
+  it('keeps commit SHAs, file paths and links into the repository', () => {
+    const text =
+      'commit 96305c019aafa0db6f985cea5e6499a7f0fee357 in apps/portal/src/components/playground/PlaygroundPanel.tsx';
+    expect(sanitize(text)).toBe(`\`${text}\``);
+  });
+
+  it('puts model text in a code span, so links, images, mentions, references and HTML stay text', () => {
     expect(
-      table.split('\n').filter((l) => l.startsWith('| free') || l.startsWith('| cheap')),
-    ).toHaveLength(2);
+      sanitize('![x](//evil.example/a) www.evil.example @someone other/repo#5 <img src=x>'),
+    ).toBe('`![x](//evil.example/a) www.evil.example @someone other/repo#5 <img src=x>`');
+  });
+
+  it('cannot close the code span', () => {
+    expect(sanitize('a ` [x](https://evil.example)')).toBe("`a ' [x](https://evil.example)`");
+  });
+
+  it('cuts long text', () => {
+    expect(sanitize('word '.repeat(300), 20)).toHaveLength(22);
+  });
+
+  it('sanitizes a long adversarial string in linear time', () => {
+    const started = performance.now();
+    sanitize('eyJ'.repeat(70_000) + 'aB3'.repeat(70_000) + 'a@'.repeat(70_000));
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it('posts no mention, foreign link or HTML from a model finding in the issue body', () => {
+    const hostile = {
+      findings: [
+        {
+          title: '@someone see https://evil.example',
+          severity: 'high',
+          evidence: '<img src=x> ![p](https://evil.example/p.png)',
+          checks: [],
+          suspectedPrs: [438],
+        },
+      ],
+    };
+    const text = issueBody(
+      report(),
+      'digdir/genki',
+      undefined,
+      targets,
+      assess(bundle, undefined, hostile),
+    );
+    for (const line of text.split('\n').filter((l) => l.includes('evil')))
+      expect(line).toMatch(/`[^`]*evil[^`]*`/);
   });
 });
 
@@ -136,35 +292,28 @@ describe('the smoke issue', () => {
     );
   });
 
-  it('names an unknown version when the run had no SHA', () => {
-    expect(failureBody(report({ sha: '' }), 'digdir/genki', undefined)).toMatch(
-      /^The smoke test of an unknown version on genki-test failed/,
-    );
-  });
-});
-
-describe('range text', () => {
-  it('says the range is not bounded when no green run is in the history', () => {
-    const text = rangeText('digdir/genki', tested, suspectRange(history.slice(0, 3)));
-    expect(text).toContain('No green smoke run in the last 3 commits');
-  });
-
-  it('says so when the range has no merged pull request', () => {
-    const direct = [history[0], { oid: green, messageHeadline: 'x', smoke: 'SUCCESS' }].flatMap(
-      (n) => (n ? [{ ...n, messageHeadline: 'Fix on main' }] : []),
-    );
-    expect(rangeText('digdir/genki', tested, suspectRange(direct))).toContain(
-      'No merged pull requests found in the range.',
-    );
+  it('opens one for a high model finding on a passing run', () => {
+    const high: Finding = {
+      source: 'model',
+      title: 'x',
+      severity: 'high',
+      evidence: 'y',
+      checks: [],
+      suspectedPrs: [],
+    };
+    expect(issueAction(report({ outcome: 'pass' }), undefined, [high])).toBe('open');
   });
 
-  it('lists a pull request once even if two commits name it', () => {
-    const twice = history.map((n, i) => (i === 1 ? { ...n, messageHeadline: 'Again (#438)' } : n));
-    expect(suspectRange(twice).pullRequests).toEqual([438]);
-  });
-
-  it('is empty for an empty history', () => {
-    expect(suspectRange([])).toEqual({ commits: [], pullRequests: [] });
+  it('keeps the issue open while a high model finding remains', () => {
+    const high: Finding = {
+      source: 'model',
+      title: 'x',
+      severity: 'high',
+      evidence: 'y',
+      checks: [],
+      suspectedPrs: [],
+    };
+    expect(issueAction(report({ outcome: 'pass' }), 12, [high])).toBe('comment');
   });
 });
 
@@ -188,5 +337,15 @@ describe('summary table', () => {
     );
     expect(table).toContain('SMOKE_API_KEY is not set.');
     expect(table).toContain('| free | `models` | skip | 0 |  |  | key: no key |');
+  });
+});
+
+describe('a smoke job without a result', () => {
+  it('fails on the tested commit and opens the issue', () => {
+    const { report } = missingBundle('96305c019aafa0db6f985cea5e6499a7f0fee357', 'https://run');
+    expect(report.outcome).toBe('fail');
+    expect(commitStatus(report)).toBe('failure');
+    expect(issueAction(report, undefined)).toBe('open');
+    expect(report.runUrl).toBe('https://run');
   });
 });

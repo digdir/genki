@@ -39,7 +39,7 @@ ContainerAppConsoleLogs
 
 **API down.** Check whether the API answers at all: `curl -i https://api.genki-test.digdir.cloud/health`. Then look at the revision and its replicas (`az containerapp revision list -n genai-test-api -g <resource group> -o table`) and at `ContainerAppSystemLogs` for `ProbeFailed`, `ContainerTerminated` or a failed revision. A `refusing to start` line in the console log names the missing setting. If the last deploy broke it, run the deploy workflow on the previous good commit. A failing certificate check means the managed certificate on the custom domain did not renew.
 
-**Smoke test failed.** After each deploy to genki-test the `smoke` workflow runs a fixed set of checks and opens or updates one issue labelled `smoke` with the failing checks, the genki run ids and the commits since the last green run. What each check means and how to rerun it is in [Smoke tests](smoke-tests.md).
+**Smoke test failed.** After each deploy to genki-test the `smoke` workflow tests the API, the playground, timelines and the portal and console screens, runs in full the check groups the merged pull requests touch, and lets a model review the results. It opens or updates one issue labelled `smoke` with the failing checks, the model's findings and the pull requests since the last green run, marked as suspected. The genki run ids are in the run's job summary, and its `smoke-bundle` artifact holds the answers, timelines and screenshots. What each check means and how to rerun it is in [Smoke tests](smoke-tests.md).
 
 **API error rate.** Group the failures to find the route and the cause:
 

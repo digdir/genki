@@ -3,21 +3,37 @@ import {
   assessCompletion,
   assessFacets,
   assessHealth,
+  assessKeyAdmission,
   assessModels,
   assessOpenapi,
   assessPage,
   assessStream,
+  assessPlayground,
+  assessPlaygroundScreen,
+  assessProblemLanguage,
+  assessRefusal,
+  assessScopeRefusal,
+  assessScreen,
+  assessSignedOut,
+  assessSourcesUnique,
+  assessStatus,
   assessTimeline,
   Budget,
   clip,
   costOf,
+  fileNameOf,
   isTransient,
   outcomeOf,
   overallOutcome,
+  parseJsonOr,
   parseSse,
+  runFailedOf,
   runModelCheck,
+  sourcesOfAnswer,
   tiersToRun,
+  withKnownIssue,
   type CheckResult,
+  type ScreenObservation,
   type HttpResult,
   type ModelCheckDeps,
   type Tier,
@@ -346,6 +362,7 @@ describe('timelines', () => {
   const timeline = (items: string[], label = 'Found in the search') => ({
     status: 'completed',
     inputTokens: 1200,
+    stats: { byModel: [{ model: 'foundry-openai/gpt-5.4-mini', inputTokens: 1200 }] },
     steps: [{ type: 'search', blocks: items.length ? [{ kind: 'tags', label, items }] : [] }],
   });
 
@@ -402,6 +419,44 @@ describe('timelines', () => {
     const t = { ...timeline([]), inputTokens: undefined };
     expect(assessTimeline(http(200, t), { tokens: true }).ok).toBe(false);
   });
+
+  it('fails a timeline without token stats per model, as on 96305c01', () => {
+    const t = { ...timeline([]), stats: { byModel: [] } };
+    expect(assessTimeline(http(200, t), { tokens: true }).detail).toBe(
+      'no token stats per model on the timeline',
+    );
+  });
+
+  const failed = (blocks: object[]) => ({
+    status: 'failed',
+    steps: [{ type: 'model', blocks }],
+  });
+
+  it('passes a failed run whose timeline shows the provider’s status', () => {
+    const t = failed([
+      { kind: 'quote', text: 'The model refused the request' },
+      { kind: 'quote', label: 'The provider answered 400', text: 'temperature: Extra inputs' },
+    ]);
+    expect(assessTimeline(http(200, t), { tokens: true, failed: true }).ok).toBe(true);
+  });
+
+  it('reads the provider label in bokmål too', () => {
+    const t = failed([{ kind: 'note', text: 'Leverandøren svarte 400' }]);
+    expect(assessTimeline(http(200, t), { tokens: true, failed: true }).ok).toBe(true);
+  });
+
+  it('fails a failed run whose timeline hides the provider’s status, as on 96305c01', () => {
+    const t = failed([{ kind: 'quote', text: 'step failed' }]);
+    expect(assessTimeline(http(200, t), { tokens: true, failed: true }).detail).toBe(
+      'a failed run shows no provider status',
+    );
+  });
+
+  it('fails when a run that failed shows as completed', () => {
+    expect(assessTimeline(http(200, timeline([])), { tokens: true, failed: true }).detail).toBe(
+      'status completed, expected failed',
+    );
+  });
 });
 
 describe('outcomes', () => {
@@ -425,12 +480,12 @@ describe('outcomes', () => {
     expect(overallOutcome([check({ outcome: 'fail' }), check({})], allTiers)).toBe('fail');
   });
 
-  it('does not count a timeline the key cannot read against a green run', () => {
-    const unread = check({ outcome: 'skip', skipReason: 'unavailable' });
+  it('does not count a timeline the credential cannot read against a green run', () => {
+    const unread = check({ outcome: 'skip', skipReason: 'credential' });
     expect(overallOutcome([check({}), unread], allTiers)).toBe('pass');
   });
 
-  it.each(['budget', 'time', 'key', 'tier'] as const)(
+  it.each(['budget', 'time', 'key', 'tier', 'unavailable'] as const)(
     'calls a run with a check skipped for %s partial',
     (skipReason) => {
       expect(overallOutcome([check({ outcome: 'skip', skipReason })], allTiers)).toBe('partial');
@@ -609,5 +664,337 @@ describe('text from genki', () => {
     const started = performance.now();
     clip(`${' \n|@'.repeat(200_000)}x`);
     expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
+describe('sources', () => {
+  const source = (document_id: string, index?: number) => ({
+    document_id,
+    ...(index === undefined ? {} : { index }),
+  });
+
+  it('passes when each cited document is listed once', () => {
+    expect(assessSourcesUnique([source('a', 1), source('b', 2), source('a')]).ok).toBe(true);
+  });
+
+  it('fails when a cited document is listed once per chunk, as on 96305c01', () => {
+    const v = assessSourcesUnique([source('a', 1), source('a', 2), source('a', 3), source('b', 4)]);
+    expect(v).toMatchObject({ ok: false, detail: '1 documents listed more than once (a x3)' });
+  });
+
+  it('reads the sources of a streamed answer from its frames', () => {
+    const text = `data: ${JSON.stringify({ sources: [source('a', 1)] })}\n\ndata: [DONE]\n`;
+    expect(sourcesOfAnswer(http(200, text), true)).toEqual([source('a', 1)]);
+  });
+
+  it('reads the sources of an answer from its body', () => {
+    expect(sourcesOfAnswer(http(200, { sources: [source('b', 1)] }), false)).toEqual([
+      source('b', 1),
+    ]);
+  });
+});
+
+describe('the playground', () => {
+  it('passes an answered run and keeps its run id', () => {
+    const v = assessPlayground(
+      http(200, { runId: 'r-1', text: 'Svar', sources: [{}], tokensIn: 10, tokensOut: 2 }),
+    );
+    expect(v).toMatchObject({ ok: true, task: 'r-1', detail: '1 sources, 10/2 tokens' });
+  });
+
+  it('fails the residency refusal of 96305c01 with its path', () => {
+    const v = assessPlayground(
+      http(422, {
+        title: 'Invalid setup',
+        errors: [{ path: 'setup.knowledge', message: 'dataset is global, the model is eu' }],
+      }),
+    );
+    expect(v).toMatchObject({ ok: false, retry: false });
+    expect(v.detail).toBe(
+      'playground answered 422 Invalid setup: setup.knowledge dataset is global, the model is eu',
+    );
+  });
+
+  it('fails an empty answer and retries it', () => {
+    expect(assessPlayground(http(200, { runId: 'r', text: ' ' }))).toMatchObject({
+      ok: false,
+      retry: true,
+    });
+  });
+});
+
+describe('validation', () => {
+  it('passes a refusal at the expected path', () => {
+    const r = http(422, { errors: [{ path: 'spec.strategy.config.temperature', message: 'x' }] });
+    expect(assessRefusal(r, 'spec.strategy.config.temperature').ok).toBe(true);
+  });
+
+  it('passes a refusal below the expected path', () => {
+    const r = http(422, { errors: [{ path: 'spec.strategy.id', message: 'x' }] });
+    expect(assessRefusal(r, 'spec.strategy').ok).toBe(true);
+  });
+
+  it('fails a refusal at another path', () => {
+    const r = http(422, { errors: [{ path: 'spec.model', message: 'x' }] });
+    expect(assessRefusal(r, 'spec.strategy').detail).toBe('422 without spec.strategy (spec.model)');
+  });
+
+  it('fails when a broken definition is accepted', () => {
+    expect(assessRefusal(http(200, { valid: true }), 'spec.strategy').ok).toBe(false);
+  });
+});
+
+describe('expected statuses', () => {
+  it('passes an expected refusal', () => {
+    expect(assessStatus(http(403, {}), [403], 'an operator write')).toEqual({
+      ok: true,
+      detail: 'an operator write: 403',
+    });
+  });
+
+  it('fails a write that should have been refused', () => {
+    expect(assessStatus(http(201, {}), [403], 'publish').detail).toBe('publish: 201, expected 403');
+  });
+});
+
+describe('scope refusals', () => {
+  const problem = (status: number, type: string) => http(status, { type });
+
+  it('passes a 403 with the test-runner scope type', () => {
+    expect(assessScopeRefusal(problem(403, scope), scope, '/operator/x').ok).toBe(true);
+  });
+
+  it('fails a read that answered', () => {
+    expect(assessScopeRefusal(http(200, {}), scope, '/operator/x').detail).toBe(
+      '/operator/x: 200, expected 403',
+    );
+  });
+
+  it('fails a 403 of another kind', () => {
+    expect(assessScopeRefusal(problem(403, 'about:blank'), scope, '/operator/x').ok).toBe(false);
+  });
+});
+
+describe('problem language', () => {
+  const problem = (title: string) => http(404, { title });
+
+  it('passes different titles with no Norwegian letters in English', () => {
+    expect(assessProblemLanguage(problem('Fant ikke'), problem('Not found')).ok).toBe(true);
+  });
+
+  it('fails the same title in both languages', () => {
+    expect(assessProblemLanguage(problem('Not found'), problem('Not found')).ok).toBe(false);
+  });
+
+  it('fails Norwegian in the English title', () => {
+    expect(assessProblemLanguage(problem('Fant ikke'), problem('Ikke tilgjengelig på')).ok).toBe(
+      false,
+    );
+  });
+});
+
+const scope = 'urn:genai:problem:test-runner-scope';
+
+const plan = {
+  screenErrorText: ['Kunne ikke hente dataene'],
+  scopeRefusal: scope,
+  unsafePlaygroundText: ['svarte ikke', 'There is nothing wrong with the setup'],
+  signedOutHeadings: ['Du er logget ut', 'Økten din er utløpt'],
+};
+
+const screen = (over: Partial<ScreenObservation> = {}): ScreenObservation => ({
+  app: 'portal',
+  path: '#/overview',
+  status: 200,
+  api: [{ path: '/tenants/1/overview', status: 200 }],
+  pageErrors: [],
+  alerts: [],
+  heading: true,
+  text: 'Oversikt',
+  ...over,
+});
+
+describe('screens', () => {
+  it('passes a screen that loaded', () => {
+    expect(assessScreen(screen(), plan).ok).toBe(true);
+  });
+
+  it('fails a screen whose API answered 5xx', () => {
+    const v = assessScreen(screen({ api: [{ path: '/tenants/1/usage', status: 500 }] }), plan);
+    expect(v.detail).toBe('API 500 /tenants/1/usage');
+  });
+
+  it('tolerates a 404 the screen asked for, and fails a 403', () => {
+    expect(assessScreen(screen({ api: [{ path: '/x', status: 404 }] }), plan).ok).toBe(true);
+    expect(assessScreen(screen({ api: [{ path: '/x', status: 403 }] }), plan).ok).toBe(false);
+  });
+
+  it('tolerates a read refused to the test-runner key, and fails another 403', () => {
+    const refused = { path: '/operator/proposals', status: 403, problem: scope };
+    expect(assessScreen(screen({ api: [refused] }), plan).detail).toBe(
+      '1 API calls, 1 refused to the test-runner key',
+    );
+    const other = { ...refused, problem: 'urn:genai:problem:forbidden' };
+    expect(assessScreen(screen({ api: [other] }), plan).ok).toBe(false);
+  });
+
+  it('fails an error shown on the page', () => {
+    expect(assessScreen(screen({ alerts: ['Noe er galt'] }), plan).ok).toBe(false);
+    expect(assessScreen(screen({ text: 'Kunne ikke hente dataene' }), plan).ok).toBe(false);
+  });
+
+  it('fails an uncaught page error', () => {
+    expect(assessScreen(screen({ pageErrors: ['TypeError'] }), plan).ok).toBe(false);
+  });
+
+  it('fails a screen without a main heading', () => {
+    expect(assessScreen(screen({ heading: false }), plan).detail).toBe('no main heading');
+  });
+
+  it('fails a page that did not load', () => {
+    expect(assessScreen(screen({ status: 502 }), plan).detail).toBe('the page answered 502');
+  });
+});
+
+describe('the playground screen', () => {
+  const run = (status: number, text: string) =>
+    screen({ api: [{ path: '/tenants/1/playground/runs/stream', status }], text });
+
+  it('fails a 422 shown as the model not answering, as on 96305c01', () => {
+    expect(assessPlaygroundScreen(run(422, 'Modellen svarte ikke. Prøv igjen.'), plan).detail).toBe(
+      'the API answered 422 and the page says "svarte ikke"',
+    );
+  });
+
+  it('fails a refused run even when the message is right', () => {
+    expect(assessPlaygroundScreen(run(422, 'Ugyldig oppsett'), plan).detail).toBe(
+      'the playground run answered 422',
+    );
+  });
+
+  it('passes an answered run', () => {
+    expect(assessPlaygroundScreen(run(200, 'Svar'), plan).ok).toBe(true);
+  });
+
+  it('fails an answered run when the page throws', () => {
+    const crashed = { ...run(200, 'Svar'), pageErrors: ['TypeError: x is undefined'] };
+    expect(assessPlaygroundScreen(crashed, plan).ok).toBe(false);
+  });
+
+  it('fails when no run was sent', () => {
+    expect(assessPlaygroundScreen(screen(), plan).detail).toBe('no playground run was sent');
+  });
+});
+
+describe('an expired session', () => {
+  it('passes the signed-out page', () => {
+    expect(assessSignedOut(screen({ text: 'Du er logget ut' }), plan).ok).toBe(true);
+  });
+
+  it('fails a screen error instead of the signed-out page', () => {
+    expect(
+      assessSignedOut(screen({ text: 'Du er logget ut. Kunne ikke hente dataene' }), plan).ok,
+    ).toBe(false);
+  });
+
+  it('fails when the page shows neither', () => {
+    expect(assessSignedOut(screen({ text: 'Oversikt' }), plan).ok).toBe(false);
+  });
+});
+
+describe('known issues', () => {
+  const check = (outcome: CheckResult['outcome']): CheckResult => ({
+    id: 'timeline:agent-detect-dfo',
+    tier: 'core',
+    outcome,
+    detail: 'not detected: DFØ',
+    attempts: 2,
+    tasks: [],
+  });
+
+  it('reports a failure with a known issue as known, not failed', () => {
+    expect(withKnownIssue(check('fail'), '#442')).toMatchObject({
+      outcome: 'known',
+      knownIssue: '#442',
+    });
+  });
+
+  it('says when a known issue starts passing', () => {
+    expect(withKnownIssue(check('pass'), '#442').detail).toBe(
+      'not detected: DFØ; known issue #442 now passes',
+    );
+  });
+
+  it('keeps a flaky pass flaky and notes that the known issue passes', () => {
+    expect(withKnownIssue(check('flaky'), '#442')).toMatchObject({
+      outcome: 'flaky',
+      knownIssue: '#442',
+    });
+  });
+
+  it('keeps a skipped check skipped', () => {
+    expect(withKnownIssue(check('skip'), '#442').outcome).toBe('skip');
+  });
+
+  it('leaves a check without a known issue alone', () => {
+    expect(withKnownIssue(check('fail'), undefined).outcome).toBe('fail');
+  });
+
+  it('does not fail the run for a known failure', () => {
+    expect(overallOutcome([withKnownIssue(check('fail'), '#442')], allTiers)).toBe('pass');
+  });
+
+  it('does not count a check the credential cannot reach yet against a green run', () => {
+    expect(overallOutcome([{ ...check('skip'), skipReason: 'credential' }], allTiers)).toBe('pass');
+  });
+});
+
+describe('run helpers', () => {
+  it('treats a run as failed on a non-200 answer or a stream that ends in error', () => {
+    expect(runFailedOf(http(422, {}), false)).toBe(true);
+    expect(runFailedOf(http(200, completion()), false)).toBe(false);
+    const errorFrame = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'error' }] })}\n\ndata: [DONE]\n\n`;
+    expect(runFailedOf(http(200, errorFrame), true)).toBe(true);
+  });
+
+  it('falls back when a body is not JSON or is null', () => {
+    expect(parseJsonOr('<html>', { services: [] })).toEqual({ services: [] });
+    expect(parseJsonOr('null', { services: [] })).toEqual({ services: [] });
+    expect(parseJsonOr('{"a":1}', {})).toEqual({ a: 1 });
+  });
+
+  it('turns a check id into a file name without slashes', () => {
+    expect(fileNameOf('model:foundry-openai/gpt-5.4-mini')).toBe(
+      'model-foundry-openai-gpt-5.4-mini',
+    );
+    expect(fileNameOf('../x')).not.toContain('/');
+  });
+});
+
+describe('the key in lockdown', () => {
+  const key = 'gp_test_abcdefghijklmnopqrstuvwxyz1234';
+  const keys = (modelsInLockdown: boolean) =>
+    http(200, {
+      keys: [
+        { prefix: 'gp_othe', lastFour: '9999', modelsInLockdown: true },
+        { prefix: key.slice(0, 7), lastFour: key.slice(-4), modelsInLockdown },
+      ],
+    });
+
+  it('fails when the key may not use models in lockdown, and says how to fix it', () => {
+    expect(assessKeyAdmission(keys(false), key, true)).toMatchObject({
+      ok: false,
+      detail: expect.stringContaining('rotate it from an Entra login'),
+    });
+    expect(assessKeyAdmission(keys(true), key, true).ok).toBe(true);
+  });
+
+  it('passes outside lockdown, and fails when the key is not in its own list', () => {
+    expect(assessKeyAdmission(keys(false), key, false).ok).toBe(true);
+    expect(assessKeyAdmission(http(200, { keys: [] }), key, true).ok).toBe(false);
+  });
+
+  it('is unavailable when the key may not read its key list', () => {
+    expect(assessKeyAdmission(http(403, {}), key, true).unavailable).toBe(true);
   });
 });

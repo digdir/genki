@@ -2,8 +2,8 @@
 
 export type Tier = 'free' | 'cheap' | 'core';
 export type WantedTiers = 'free' | 'cheap' | 'all';
-export type Outcome = 'pass' | 'flaky' | 'fail' | 'skip';
-export type SkipReason = 'budget' | 'time' | 'tier' | 'key' | 'unavailable';
+export type Outcome = 'pass' | 'flaky' | 'fail' | 'known' | 'skip';
+export type SkipReason = 'budget' | 'time' | 'tier' | 'key' | 'credential' | 'unavailable';
 
 export interface Verdict {
   ok: boolean;
@@ -21,6 +21,8 @@ export interface Tokens {
 export interface CheckResult {
   id: string;
   tier: Tier;
+  group?: string;
+  knownIssue?: string;
   outcome: Outcome;
   detail: string;
   attempts: number;
@@ -35,6 +37,7 @@ export interface SmokeReport {
   api: string;
   tiers: Tier[];
   notes: string[];
+  full?: string[];
   checks: CheckResult[];
   spentKr: number;
   outcome: 'pass' | 'fail' | 'partial';
@@ -55,18 +58,43 @@ export interface Question {
   minCitations?: number;
   minSources?: number;
   detected?: string[];
+  knownIssue?: string;
   estimateKr: number;
+}
+
+export interface Refusal {
+  id: string;
+  replace: [string, string];
+  path: string;
+  baseline: boolean;
+}
+
+export interface Listed {
+  path: string;
+  baseline: boolean;
+  personal?: boolean;
+  refused?: boolean;
 }
 
 export interface Plan {
   tenant: string;
+  otherTenant: string;
   service: string;
+  throwaway: string;
   maxKrPerRun: number;
+  maxKrExtra: number;
   prices: Record<string, Price>;
-  models: { variant: string; model: string; estimateKr: number }[];
+  models: { variant: string; model: string; estimateKr: number; playgroundKr: number }[];
   modelQuestion: string;
   facets: { fields: string[]; values: string[] };
   questions: Question[];
+  refusals: Refusal[];
+  screens: { portal: Listed[]; console: Listed[] };
+  operatorReads: Listed[];
+  scopeRefusal: string;
+  unsafePlaygroundText: string[];
+  screenErrorText: string[];
+  signedOutHeadings: string[];
 }
 
 export interface HttpResult {
@@ -320,6 +348,42 @@ export const assessStream = (result: HttpResult, expect: Expect): Verdict => {
   return { ok: true, detail: `${steps} steps, ${sources.length} sources`, ...withTask };
 };
 
+export const runFailedOf = (result: HttpResult, stream: boolean) =>
+  result.status !== 200 ||
+  (stream &&
+    parseSse(result.text).frames.some((f) => record(list(f.choices)[0]).finish_reason === 'error'));
+
+export const assessKeyAdmission = (
+  result: HttpResult,
+  key: string,
+  lockdown: boolean | undefined,
+): Verdict & { unavailable?: boolean } => {
+  if (result.status === 401 || result.status === 403)
+    return { ok: false, unavailable: true, detail: `the key list answered ${result.status}` };
+  if (result.status !== 200) return { ok: false, detail: `the key list answered ${result.status}` };
+  const own = list(record(json(result.text)).keys)
+    .map(record)
+    .find((k) => k.prefix === key.slice(0, 7) && k.lastFour === key.slice(-4));
+  if (!own) return { ok: false, detail: 'the key is not in its service’s key list' };
+  if (!lockdown) return { ok: true, detail: 'not in lockdown' };
+  return own.modelsInLockdown === true
+    ? { ok: true, detail: 'the key may use models in lockdown' }
+    : {
+        ok: false,
+        detail: 'the key may not use models in lockdown: rotate it from an Entra login',
+      };
+};
+
+export const parseJsonOr = <T>(text: string, fallback: T): T => {
+  try {
+    return (JSON.parse(text) as T) ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+export const fileNameOf = (id: string) => id.replace(/[^a-z0-9.-]+/gi, '-');
+
 export const detectionsOf = (timeline: Record<string, unknown>): string[] =>
   list(timeline.steps).flatMap((step) =>
     list(record(step).blocks)
@@ -328,24 +392,44 @@ export const detectionsOf = (timeline: Record<string, unknown>): string[] =>
       .flatMap((b) => list(b.items).map(String)),
   );
 
+const providerLabel = /^(The provider answered|Leverandøren svarte) \d{3}/;
+
+export const providerBlocksOf = (timeline: Record<string, unknown>): string[] =>
+  list(timeline.steps).flatMap((step) =>
+    list(record(step).blocks)
+      .map(record)
+      .filter((b) => providerLabel.test(String(b.label ?? b.text ?? '')))
+      .map((b) => String(b.label ?? b.text)),
+  );
+
 export const assessTimeline = (
   result: HttpResult,
-  expect: { detected?: string[]; tokens: boolean },
+  expect: { detected?: string[]; tokens: boolean; failed?: boolean },
 ): Verdict & { unavailable?: boolean } => {
   if ([401, 403].includes(result.status))
     return {
       ok: false,
       unavailable: true,
-      detail: `the key cannot read a run's timeline (${result.status})`,
+      detail: `the credential cannot read a run's timeline (${result.status})`,
     };
   if (result.status !== 200) return { ok: false, detail: `timeline answered ${result.status}` };
   const timeline = record(json(result.text));
+  if (expect.failed) {
+    if (timeline.status !== 'failed')
+      return { ok: false, detail: `status ${clip(String(timeline.status))}, expected failed` };
+    const provider = providerBlocksOf(timeline);
+    return provider.length
+      ? { ok: true, detail: `failed run shows ${clip(provider[0] ?? '', 60)}` }
+      : { ok: false, detail: 'a failed run shows no provider status' };
+  }
   if (timeline.status !== 'completed')
     return { ok: false, detail: `status ${clip(String(timeline.status))}` };
   const steps = list(timeline.steps).length;
   if (steps === 0) return { ok: false, detail: 'no steps' };
   if (expect.tokens && !(Number(timeline.inputTokens) > 0))
     return { ok: false, detail: 'no input tokens on the timeline' };
+  if (expect.tokens && list(record(timeline.stats).byModel).length === 0)
+    return { ok: false, detail: 'no token stats per model on the timeline' };
   const found = detectionsOf(timeline);
   if (expect.detected?.length === 0 && found.length)
     return { ok: false, detail: `unexpected detection ${clip(found.join('; '))}`, retry: true };
@@ -356,6 +440,169 @@ export const assessTimeline = (
     ok: true,
     detail: `${steps} steps${found.length ? `, detected ${clip(found.join('; '), 120)}` : ''}`,
   };
+};
+
+export const sourcesOfAnswer = (result: HttpResult, stream: boolean): unknown[] =>
+  stream
+    ? parseSse(result.text).frames.flatMap((f) => list(f.sources))
+    : list(record(json(result.text)).sources);
+
+export const assessSourcesUnique = (sources: unknown[]): Verdict => {
+  const cited = sources.map(record).filter((s) => typeof s.index === 'number');
+  const seen = new Map<string, number>();
+  for (const s of cited) {
+    const id = String(s.document_id ?? s.url ?? s.title ?? '');
+    if (id) seen.set(id, (seen.get(id) ?? 0) + 1);
+  }
+  const repeated = [...seen.entries()].filter(([, n]) => n > 1);
+  if (repeated.length)
+    return {
+      ok: false,
+      detail: `${repeated.length} documents listed more than once (${clip(repeated.map(([d, n]) => `${d} x${n}`).join(', '), 120)})`,
+    };
+  return { ok: true, detail: `${cited.length} cited sources, one per document` };
+};
+
+export const assessPlayground = (result: HttpResult): Verdict => {
+  const body = record(json(result.text));
+  const task = typeof body.runId === 'string' ? clip(body.runId, 80) : undefined;
+  if (result.status !== 200) {
+    const first = record(list(body.errors)[0]);
+    const why = first.path
+      ? `: ${clip(String(first.path), 60)} ${clip(String(first.message ?? ''), 100)}`
+      : '';
+    return {
+      ok: false,
+      detail: `playground answered ${result.status} ${clip(String(body.title ?? ''), 40)}${why}`,
+      retry: isTransient(result),
+    };
+  }
+  if (typeof body.text !== 'string' || !body.text.trim())
+    return { ok: false, detail: 'empty answer', retry: true, ...(task ? { task } : {}) };
+  return {
+    ok: true,
+    detail: `${list(body.sources).length} sources, ${Number(body.tokensIn) || 0}/${Number(body.tokensOut) || 0} tokens`,
+    ...(task ? { task } : {}),
+  };
+};
+
+export const assessRefusal = (result: HttpResult, path: string): Verdict => {
+  if (result.status !== 422)
+    return { ok: false, detail: `answered ${result.status}, expected 422` };
+  const paths = list(record(json(result.text)).errors).map((e) => String(record(e).path));
+  return paths.some((p) => p === path || p.startsWith(`${path}.`))
+    ? { ok: true, detail: `422 at ${path}` }
+    : { ok: false, detail: `422 without ${path} (${clip(paths.join(', '), 120)})` };
+};
+
+export const assessStatus = (result: HttpResult, expected: number[], what: string): Verdict =>
+  expected.includes(result.status)
+    ? { ok: true, detail: `${what}: ${result.status}` }
+    : {
+        ok: false,
+        detail: `${what}: ${result.status}, expected ${expected.join(' or ')}`,
+      };
+
+export const assessScopeRefusal = (result: HttpResult, type: string, what: string): Verdict => {
+  if (result.status !== 403)
+    return { ok: false, detail: `${what}: ${result.status}, expected 403` };
+  const found = String(record(json(result.text)).type ?? '');
+  return found === type
+    ? { ok: true, detail: `${what}: 403 ${type}` }
+    : { ok: false, detail: `${what}: 403 ${clip(found || 'without a problem type', 80)}` };
+};
+
+export const assessProblemLanguage = (nb: HttpResult, en: HttpResult): Verdict => {
+  const title = (r: HttpResult) => String(record(json(r.text)).title ?? '');
+  const [a, b] = [title(nb), title(en)];
+  if (!a || !b) return { ok: false, detail: `no problem title (${nb.status}, ${en.status})` };
+  if (a === b) return { ok: false, detail: `the same title in nb and en: ${clip(a, 80)}` };
+  if (/[æøåÆØÅ]/.test(b)) return { ok: false, detail: `Norwegian in English: ${clip(b, 80)}` };
+  return { ok: true, detail: `${clip(a, 40)} / ${clip(b, 40)}` };
+};
+
+export interface ScreenObservation {
+  app: 'portal' | 'console';
+  path: string;
+  status: number;
+  api: { path: string; status: number; problem?: string }[];
+  pageErrors: string[];
+  alerts: string[];
+  heading: boolean;
+  text: string;
+}
+
+const firstOf = (text: string, phrases: string[]) => phrases.find((p) => text.includes(p));
+
+export const assessScreen = (
+  o: ScreenObservation,
+  plan: Pick<Plan, 'screenErrorText' | 'scopeRefusal'>,
+): Verdict => {
+  if (o.status !== 200) return { ok: false, detail: `the page answered ${o.status}` };
+  const refused = o.api.filter((a) => a.status === 403 && a.problem === plan.scopeRefusal);
+  const broken = o.api.filter(
+    (a) => !refused.includes(a) && (a.status >= 500 || (a.status >= 400 && a.status !== 404)),
+  );
+  if (broken.length)
+    return {
+      ok: false,
+      detail: `API ${broken
+        .map((a) => `${a.status} ${clip(a.path, 60)}`)
+        .slice(0, 3)
+        .join(', ')}`,
+    };
+  if (o.pageErrors.length)
+    return { ok: false, detail: `page error ${clip(o.pageErrors[0] ?? '', 120)}` };
+  if (o.alerts.length) return { ok: false, detail: `error shown: ${clip(o.alerts[0] ?? '', 120)}` };
+  const error = firstOf(o.text, plan.screenErrorText);
+  if (error) return { ok: false, detail: `error shown: ${clip(error, 80)}` };
+  if (!o.heading) return { ok: false, detail: 'no main heading' };
+  const note = refused.length ? `, ${refused.length} refused to the test-runner key` : '';
+  return { ok: true, detail: `${o.api.length} API calls${note}` };
+};
+
+export const assessPlaygroundScreen = (
+  o: ScreenObservation,
+  plan: Pick<Plan, 'unsafePlaygroundText'>,
+): Verdict => {
+  const runs = o.api.filter((a) => a.path.includes('/playground/runs'));
+  if (runs.length === 0) return { ok: false, detail: 'no playground run was sent' };
+  const refused = runs.find((r) => r.status >= 400);
+  const timeoutText = firstOf(o.text, plan.unsafePlaygroundText);
+  if (refused && refused.status < 500 && timeoutText)
+    return {
+      ok: false,
+      detail: `the API answered ${refused.status} and the page says "${clip(timeoutText, 60)}"`,
+    };
+  if (refused) return { ok: false, detail: `the playground run answered ${refused.status}` };
+  if (o.pageErrors.length)
+    return { ok: false, detail: `page error ${clip(o.pageErrors[0] ?? '', 120)}` };
+  if (o.alerts.length) return { ok: false, detail: `error shown: ${clip(o.alerts[0] ?? '', 120)}` };
+  return { ok: true, detail: 'answered' };
+};
+
+export const assessSignedOut = (
+  o: ScreenObservation,
+  plan: Pick<Plan, 'signedOutHeadings' | 'screenErrorText'>,
+): Verdict => {
+  const error = firstOf(o.text, plan.screenErrorText);
+  if (error)
+    return { ok: false, detail: `shows "${clip(error, 60)}" instead of the signed-out page` };
+  return firstOf(o.text, plan.signedOutHeadings)
+    ? { ok: true, detail: 'signed-out page' }
+    : { ok: false, detail: `no signed-out page (${clip(o.text, 80)})` };
+};
+
+export const withKnownIssue = (check: CheckResult, knownIssue: string | undefined): CheckResult => {
+  if (!knownIssue) return check;
+  if (check.outcome === 'fail') return { ...check, outcome: 'known', knownIssue };
+  if (check.outcome === 'pass' || check.outcome === 'flaky')
+    return {
+      ...check,
+      knownIssue,
+      detail: `${check.detail}; known issue ${knownIssue} now passes`,
+    };
+  return { ...check, knownIssue };
 };
 
 export const outcomeOf = (passes: boolean[]): Outcome => {
@@ -385,7 +632,7 @@ export class Budget {
 
 export const overallOutcome = (checks: CheckResult[], tiers: Tier[]): SmokeReport['outcome'] => {
   if (checks.some((c) => c.outcome === 'fail')) return 'fail';
-  const skipped = checks.some((c) => c.outcome === 'skip' && c.skipReason !== 'unavailable');
+  const skipped = checks.some((c) => c.outcome === 'skip' && c.skipReason !== 'credential');
   return skipped || !tiers.includes('core') ? 'partial' : 'pass';
 };
 

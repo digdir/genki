@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   strategyKey,
@@ -86,7 +86,7 @@ describe('smoke service', () => {
   });
 
   it('checks the facets for every organisation a question expects detected', () => {
-    for (const q of plan.questions)
+    for (const q of plan.questions.filter((x) => !x.knownIssue))
       for (const value of q.detected ?? []) expect(plan.facets.values).toContain(value);
   });
 
@@ -98,8 +98,68 @@ describe('smoke service', () => {
     for (const model of models) expect(plan.prices).toHaveProperty([model]);
   });
 
-  it('fits a full run, every model check rerun once, under the per-run cap', () => {
-    const once = [...plan.models, ...plan.questions].reduce((sum, c) => sum + c.estimateKr, 0);
-    expect(once * 2).toBeLessThanOrEqual(plan.maxKrPerRun);
+  const baseline =
+    [...plan.models, ...plan.questions].reduce((sum, c) => sum + c.estimateKr, 0) +
+    plan.models.reduce((sum, m) => sum + m.playgroundKr, 0) +
+    0.1;
+
+  it('fits a baseline run, every model check rerun once, under the per-run cap', () => {
+    expect(baseline * 2).toBeLessThanOrEqual(plan.maxKrPerRun);
+  });
+
+  it('fits a run with every group in full under the per-run cap', () => {
+    const streamed = plan.models.reduce((sum, m) => sum + m.estimateKr, 0);
+    expect(baseline + streamed).toBeLessThanOrEqual(plan.maxKrPerRun);
+  });
+
+  it('refuses each broken definition offline at the path the run expects', () => {
+    for (const r of plan.refusals) {
+      const broken = yaml
+        .replace('id: smoke,', 'id: smoke-refusal,')
+        .replace(r.replace[0], r.replace[1]);
+      expect(broken).not.toBe(yaml.replace('id: smoke,', 'id: smoke-refusal,'));
+      const result = validateYaml(broken, plugins);
+      expect(result.ok).toBe(false);
+      const paths = result.ok ? [] : result.errors.map((e) => e.path);
+      expect({
+        refusal: r.id,
+        found: paths.some((p) => p === r.path || p.startsWith(`${r.path}.`)),
+      }).toEqual({
+        refusal: r.id,
+        found: true,
+      });
+    }
+  });
+
+  it('publishes its throwaway only under the smoke- prefix', () => {
+    expect(plan.throwaway).toMatch(/^smoke-/);
+  });
+
+  it('visits the smoke service’s test page, where the playground run happens', () => {
+    expect(plan.screens.portal.map((s) => s.path)).toContain('#/services/smoke/test');
+  });
+
+  it('links every known failure to an issue', () => {
+    for (const q of plan.questions.filter((x) => x.knownIssue))
+      expect(q.knownIssue).toMatch(/^#\d+$/);
+  });
+});
+
+describe('the texts the screens are checked for', () => {
+  const sources = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory()
+        ? sources(join(dir, e.name))
+        : /\.tsx?$/.test(e.name)
+          ? [readFileSync(join(dir, e.name), 'utf8')]
+          : [],
+    );
+  const apps = ['portal', 'console'].flatMap((app) =>
+    sources(join(import.meta.dirname, '../../apps', app, 'src')),
+  );
+
+  it('still exist in the apps, so a renamed text does not silently turn a check off', () => {
+    for (const text of [...plan.screenErrorText, ...plan.signedOutHeadings])
+      expect({ text, found: apps.some((s) => s.includes(text)) }).toEqual({ text, found: true });
   });
 });
