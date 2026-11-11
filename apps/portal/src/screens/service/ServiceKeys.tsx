@@ -237,13 +237,23 @@ export const ServiceKeys = ({
                     </span>
                     <span className="meta">
                       {k.prefix ?? 'gp'}…{k.lastFour ?? ''}
-                      {t('serviceKeys.created', {
+                      {t(k.createdByName ? 'serviceKeys.createdBy' : 'serviceKeys.created', {
                         when: k.createdAt
                           ? f.date(k.createdAt, 'medium')
                           : t('serviceKeys.unknownDate'),
+                        who: k.createdByName ?? '',
                       })}
                       {k.rotatedFrom ? t('serviceKeys.rotated') : ''}
                     </span>
+                    {!active || k.modelsInLockdown === undefined ? null : (
+                      <span className="meta">
+                        {t(
+                          k.modelsInLockdown
+                            ? 'serviceKeys.modelsAllowed'
+                            : 'serviceKeys.modelsRefused',
+                        )}
+                      </span>
+                    )}
                   </span>
                   <span className="stack-xs fe-row-meta">
                     <span>

@@ -440,6 +440,8 @@ export const mockFetch = (
             baseURL: 'https://foundry.example',
             families: { openai: '/openai/v1', anthropic: '/anthropic' },
             auth: { kind: 'api-key', secret: 'secret://platform/foundry-key' },
+            settings: { keyId: 'AKID-7' },
+            keys: { signing: 'secret://platform/foundry-signing-key' },
             discovery: [
               {
                 source: 'azure-deployments',
@@ -756,6 +758,8 @@ export const mockFetch = (
         baseURL?: string;
         auth?: { kind?: string; secret?: string };
         discovery?: unknown[];
+        settings?: Record<string, string>;
+        keys?: Record<string, string>;
       };
       const id = editing ?? b.id;
       const list = configs.get(endpointKey) ?? [];
@@ -793,6 +797,8 @@ export const mockFetch = (
             : existing && (existing.spec as Record<string, unknown>).discovery
               ? { discovery: (existing.spec as Record<string, unknown>).discovery }
               : {}),
+          ...(b.settings ? { settings: b.settings } : {}),
+          ...(b.keys ? { keys: b.keys } : {}),
         },
         by: 'operator:entra:lise',
         at: new Date().toISOString(),

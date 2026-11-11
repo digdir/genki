@@ -175,6 +175,37 @@ describe('service definition sections', () => {
     expect(JSON.stringify(sent)).toContain('Svar langt.');
   });
 
+  it('restores an earlier version with the sharing of the version in use', async () => {
+    const withSharing = (version: number, availableTo: string[]) => {
+      const d = definition('Svar langt.', version);
+      return { ...d, spec: { ...d.spec, availableTo } };
+    };
+    const { api, calls } = platform({
+      [`GET ${service}`]: () => {
+        const h = history();
+        return { ...h, latest: { ...h.latest, definition: withSharing(2, ['999888777']) } };
+      },
+      [`GET ${service}/versions/1`]: () => ({
+        ...published(1),
+        definition: withSharing(1, ['111222333']),
+      }),
+      'POST /definitions': () => published(3),
+    });
+    render(<Versions api={api} tenant={tenant} serviceId="klarsprak" />);
+
+    await screen.findByText('Begrunnelse: Kortere');
+    fireEvent.click(screen.getByRole('button', { name: /Ta i bruk igjen/ }));
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Tilbake til lange svar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser versjon 1 på nytt' }));
+
+    await screen.findByText('Versjon 1 er publisert på nytt som versjon 3.');
+    const publish = calls.find((c) => c.method === 'POST' && c.path === '/definitions');
+    const sent = (publish?.body as { definition: { spec: { availableTo?: unknown } } }).definition;
+    expect(sent.spec.availableTo).toEqual(['999888777']);
+  });
+
   it('test runs the definition in use once and links the run in the log', async () => {
     const { api, calls } = platform({
       [`GET ${service}`]: history,

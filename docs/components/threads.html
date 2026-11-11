@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Threads · Components</title>
+    <meta
+      name="description"
+      content="The list of conversations, where the user switches between threads and starts a new one."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Threads</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="threads"
+        data-component="threads"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="threads-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="threads-title">Threads</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Primary sidebar</span>
+            </div>
+            <p class="summary">
+              The list of conversations, where the user switches between threads and starts a new
+              one.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Tråder»</dd>
+              <dt>Sits in</dt>
+              <dd>Primary sidebar</dd>
+              <dt>Code</dt>
+              <dd><code>Threads</code> in <code>@genai/ui-blocks</code></dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/175"
+                  >kunnskapsassistenten#175</a
+                >
+              </dd>
+              <dt>Canvas</dt>
+              <dd>No page of its own. 00-Hierarki (HI-A4, HI-A4b, HI-A4c), 02-DFØ (DF-1b)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="130" y="12" width="50" height="100" rx="10" opacity="0.55" />
+            <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+            <rect class="s-accent" x="18" y="20" width="50" height="12" rx="6" />
+            <rect class="s-check-fill" x="23" y="25" width="7" height="2" rx="1" />
+            <rect class="s-check-fill" x="25.5" y="22.5" width="2" height="7" rx="1" />
+            <rect class="s-check-fill" x="34" y="25" width="26" height="2" rx="1" />
+            <rect class="s-accent-soft" x="14" y="38" width="102" height="14" rx="6" />
+            <rect class="s-accent" x="19" y="41" width="9" height="7" rx="2" />
+            <path class="s-accent" d="M21 47l0 3.5 3.5-3.5z" />
+            <rect class="s-bar" x="33" y="42.5" width="66" height="5" rx="2.5" />
+            <rect class="s-bar" x="19" y="58" width="9" height="7" rx="2" />
+            <path class="s-bar" d="M21 64l0 3.5 3.5-3.5z" />
+            <rect class="s-bar" x="33" y="59.5" width="56" height="5" rx="2.5" />
+            <rect class="s-bar" x="19" y="73" width="9" height="7" rx="2" />
+            <path class="s-bar" d="M21 79l0 3.5 3.5-3.5z" />
+            <rect class="s-bar" x="33" y="74.5" width="62" height="5" rx="2.5" />
+            <rect class="s-bar" x="19" y="88" width="9" height="7" rx="2" />
+            <path class="s-bar" d="M21 94l0 3.5 3.5-3.5z" />
+            <rect class="s-bar" x="33" y="89.5" width="50" height="5" rx="2.5" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>Users come back to earlier conversations.</li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>Threads and filter in one panel</strong> (HI-A4): «Filtrer dokumenter» above
+                «Ny tråd», when the host passes <code>onShowFilters</code>.
+              </li>
+              <li>
+                <strong>Thread menu:</strong> rename and delete, each only when the host can. Moving
+                a thread waits for <a href="projects.html">Projects</a>.
+              </li>
+            </ul>
+            <h2>What it does</h2>
+            <ul>
+              <li>
+                Groups the threads by period: «I dag», «Siste 7 dager», «Siste 30 dager», the months
+                of this year, then the years, newest first, in Oslo time. Each row is dated as
+                briefly as its heading allows.
+              </li>
+              <li>
+                One line per title; a cut title shows the whole row in a box on hover or focus (WCAG
+                1.4.13). The link's name is the title alone.
+              </li>
+              <li>
+                «Søk i tråder» filters as the person types and counts what is left. Over an empty
+                list there is no search, and «Ny tråd» reads «Start din første tråd».
+              </li>
+              <li>
+                A rename happens in the row; a delete asks first. Both show at once, focus lands on
+                the row's menu or the next row, and a screen reader is told what happened.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>threads</code>: <code>id</code>, <code>title</code> (the contract's
+                <code>topic</code>), <code>updatedAt</code> (ISO text, epoch milliseconds or a date)
+                and an optional <code>dataset</code>. Undefined while they load.
+              </li>
+              <li>
+                <code>threadHref</code> and <code>onOpenThread</code>: each row is a link, and a
+                plain click goes to the host's router. A click for a new tab is the browser's.
+              </li>
+              <li>
+                <code>onRename</code> and <code>onDelete</code>: events the host handles. Return a
+                promise, and the block shows the change at once and puts it back, with a message, if
+                it rejects. It keeps the change until the host's list moves past it, so a read that
+                was already out cannot undo it. A thread the host finds already gone: resolve the
+                rename with <code>'gone'</code>, and its row goes with a message; resolve the
+                delete, which then counts as done.
+              </li>
+              <li>
+                <code>onShowFilters</code> and <code>focusShowFilters</code>: «Filtrer dokumenter»
+                over the list, for a filter that shares the panel, with focus on it when the person
+                just came from the filter. <code>headingLevel</code>, 2 by default, for the list's
+                hidden heading, with the groups one below. <code>color</code>: Designsystemet's
+                <code>data-color</code>, set only when given.
+              </li>
+              <li>
+                <code>failed</code> and <code>onRetry</code>, <code>currentId</code>,
+                <code>newThreadHref</code> and <code>onNewThread</code>, and a
+                <code>foot</code> slot for who is signed in, named as the shell's panels name theirs
+                (<code>footer</code> still works until hosts have moved).
+              </li>
+              <li>
+                <code>SignedIn</code>, for the <code>foot</code>: the reader's <code>name</code>,
+                with the <code>email</code> on hover, and «Logg ut», a plain link to
+                <code>signOutHref</code>. <code>onSignOut</code> comes before the browser leaves, a
+                middle click included, so the host can forget what this browser kept for the reader:
+                the filter, the collection, the experiments. It stands after the last row and
+                scrolls with the list, so it never covers a row the keyboard has reached.
+              </li>
+            </ul>
+            <p>
+              Deleting the thread on screen is the host's to follow up: it opens a new thread in
+              <code>onDelete</code>.
+            </p>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="chat.html">Chat</a>: the selected thread is shown in the chat</li>
+              <li><a href="filter.html">Filter</a>: each thread has its own filter</li>
+              <li><a href="projects.html">Projects</a>: threads can be grouped in a project</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. Four are pinned to neutral on purpose,
+              as the reference draws them: the group headings, the time and dataset under a title,
+              «Ingen treff», and the line above who is signed in.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-threads-actions-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between «Lagre» and «Avbryt», and in the delete dialog</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-current-background</code></td>
+                  <td><code>--ds-color-surface-active</code></td>
+                  <td>the open thread's row</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-current-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>the open thread's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-current-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>the open thread's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-focus-color</code></td>
+                  <td><code>--ds-color-focus-outer</code></td>
+                  <td>the focus ring on the whole-title box</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-focus-width</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>the inset focus ring, and the row's bottom padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font family</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>gap between the block's parts</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap under a group heading</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>group headings, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-list-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between rows</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-loading-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the loading lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-meta-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>time and dataset under a title, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-meta-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>time and dataset under a title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-meta-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the time and the dataset</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-no-matches-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«Ingen treff», pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-no-matches-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in «Ingen treff»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-overlay-background</code></td>
+                  <td><code>--ds-color-surface-hover</code></td>
+                  <td>the whole-title box</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-overlay-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>text in the whole-title box</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-overlay-edge-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>space the box keeps from the window's edge</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-overlay-padding-block</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the box's padding above and below</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-overlay-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the box's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-overlay-shadow</code></td>
+                  <td><code>--ds-shadow-md</code></td>
+                  <td>the box's shadow</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-rename-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in the rename field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-row-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between a row and its menu</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-border-color</code></td>
+                  <td><code>--ds-color-neutral-border-subtle</code></td>
+                  <td>the line above who is signed in, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the line above who is signed in</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the name and «Logg ut»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-padding-block-start</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>space between the line and the name</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-border-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>a row's and the box's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-hover-background</code></td>
+                  <td><code>--ds-color-surface-hover</code></td>
+                  <td>a row under the pointer</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-padding-block</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>a row's padding above the title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>a row's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-user-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between the person icon and the name</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Built from kunnskapsassistenten's thread list, with its look, wording and tests. The
+                platform's <code>Conversation</code> has no time of the last change, so a host
+                passes <code>created</code> as <code>updatedAt</code>, as kunnskapsassistenten does.
+              </li>
+              <li>
+                Times read as kunnskapsassistenten writes them, «14:32» and «kl. 09:05», not in the
+                platform's «14.32». Its views are the reference for these blocks (decided
+                2026-11-03).
+              </li>
+              <li>
+                The thread is above the sources. A thread has its own document selection, and each
+                question remembers the selection it was asked with.
+              </li>
+              <li>
+                Don't put «Kilder» and «Tråder» side by side, for example in a tab selector. The
+                filter belongs to one thread and shows the documents for it.
+              </li>
+              <li>No counter for the number of threads.</li>
+              <li>
+                Collapsed, the primary sidebar shows only the show button, «Ny tråd» and «Tråder».
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                How do we show that a thread owns its document selection, if «Kilder» and «Tråder»
+                aren't side by side?
+              </li>
+              <li>Can an assistant work without threads? Every example in the canvas has them.</li>
+              <li>
+                Should the list sort by the last answer rather than the start? That needs a time of
+                the last change on <code>Conversation</code>.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="footnotes.html" rel="prev"><small>Previous</small>Footnotes</a>
+        <a class="next" href="filter.html" rel="next"><small>Next</small>Filter</a>
+      </nav>
+    </main>
+  </body>
+</html>

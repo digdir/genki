@@ -168,7 +168,12 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
   let next = 1;
   const newId = (prefix: string) => `${prefix}-${String(next++).padStart(3, '0')}`;
 
-  const runOf = (service: string, set: MockSet, version: RunVersion) => {
+  const runOf = (
+    service: string,
+    set: MockSet,
+    version: RunVersion,
+    model = 'foundry-openai/gpt-4o-2m-tps',
+  ) => {
     const results: EvalCaseResult[] = set.cases.map((c, i) => {
       const pass = passes(c, i);
       return {
@@ -192,6 +197,7 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
       status: stay ? 'running' : 'succeeded',
       testSet: set.id,
       version,
+      model,
       startedAt: now,
       endedAt: stay ? null : now,
       score: stay ? null : total ? passed / total : 0,
@@ -366,10 +372,21 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         });
       if (parts[2] === 'eval-runs' && req.method === 'POST') {
         if (!req.reason) return req.reasonMissing();
-        const body = req.body<{ testSet?: string; version?: RunVersion }>();
+        const body = req.body<{
+          testSet?: string;
+          version?: RunVersion;
+          cases?: string[];
+        }>();
         const set = sets.find((s) => s.id === body.testSet && s.service === service);
         if (!set) return req.notFound();
-        const run = runOf(service, set, body.version ?? 'draft');
+        // Like the API: a list of cases is non-empty and names only cases in the set.
+        if (
+          body.cases !== undefined &&
+          (body.cases.length === 0 || body.cases.some((id) => !set.cases.some((c) => c.id === id)))
+        )
+          return req.json({ title: 'Ugyldig forespørsel', status: 400 }, 400);
+        const cases = set.cases.filter((c) => !body.cases || body.cases.includes(c.id));
+        const run = runOf(service, { ...set, cases }, body.version ?? 'draft');
         runs.unshift(run);
         return req.json({ id: run.id }, 202);
       }

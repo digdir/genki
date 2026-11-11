@@ -3,6 +3,28 @@ import type { endpoints as source } from '../nb/endpoints';
 
 export const endpoints = {
   residencyNorway: 'Norway',
+  settings: 'Settings',
+  settingsDescription:
+    'Values that are not secret, such as a key id or a region. A descriptor reads them as $connection.name in headers and the query, never in the address or the path.',
+  settingName: 'Setting name',
+  settingValue: 'Value',
+  settingNameHint:
+    'Start with a lower-case letter and use letters, digits and _, for example keyId.',
+  settingValueHint:
+    'Write a value with no space first or last, at most 256 characters. A secret belongs under More keys.',
+  addSetting: 'Add setting',
+  removeSetting: 'Remove the setting {name}',
+  keys: 'More keys',
+  keysDescription:
+    'Named secrets that only a signing module can use, as connection.name. They are never sent with a request.',
+  keyName: 'Key name',
+  keySecret: 'Secret name',
+  keyNameHint:
+    'Start with a lower-case letter and use letters, digits and _. A name is either a setting or a key.',
+  addKey: 'Add key',
+  removeKey: 'Remove the key {name}',
+  noSettings: 'No settings',
+  noKeys: 'No more keys',
   residencyEu: 'EU',
   residencyGlobal: 'Global',
   capStream: 'Streaming',
@@ -48,6 +70,7 @@ export const endpoints = {
   secretSaved: 'The secret {name} is saved. The value is not shown again.',
   addEndpoint: 'Add connection',
   deploymentRequired: 'Write the name of the deployment at the provider.',
+  deploymentNeedsLetterOrDigit: 'The deployment name must contain at least one letter or digit.',
   chooseEndpoint: 'Choose a connection.',
   saveModelFailed: 'Could not save the model. Try again shortly.',
   addModel: 'Add model',

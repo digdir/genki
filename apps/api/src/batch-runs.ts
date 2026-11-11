@@ -11,7 +11,6 @@ import {
 import type { DocumentSummary, FilterValue, KnowledgePort } from '@genai/port-knowledge';
 import type { PortContext } from '@genai/kernel';
 import { defaultMaxOutputTokens } from '@genai/port-model';
-import { soundsLikeRefusal } from '@genai/strategy-agent-loop';
 import { actorOf } from './admin.js';
 import {
   backgroundLeases,
@@ -20,7 +19,8 @@ import {
   type LeaseOptions,
 } from './background-lease.js';
 import { appendVersion, type ConfigEntry } from './config-store.js';
-import type { ServiceRunOutcome, ServiceRunSuccess } from './draft-runner.js';
+import type { ServiceRunOutcome } from './draft-runner.js';
+import { notFoundOf } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { lifecycleOf, runRefusal } from './service-lifecycle.js';
 
@@ -203,13 +203,6 @@ export class BatchProblem extends Error {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const shortRefusalLength = 80;
-
-export const notFoundOf = (outcome: Pick<ServiceRunSuccess, 'noAnswer' | 'answer' | 'parts'>) =>
-  outcome.noAnswer ||
-  outcome.parts.some((p) => p.meta?.noAnswer === true) ||
-  (outcome.answer.trim().length <= shortRefusalLength && soundsLikeRefusal(outcome.answer));
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 

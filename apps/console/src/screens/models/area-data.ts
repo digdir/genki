@@ -43,6 +43,8 @@ export interface ConnectionSpec {
   discovery: DiscoveryRule[];
   authKind?: string;
   secret?: string;
+  settings: Record<string, string>;
+  keys: Record<string, string>;
 }
 
 const secretPrefix = 'secret://platform/';
@@ -53,6 +55,8 @@ export const connectionSpec = (entry: ConfigEntry): ConnectionSpec => {
     families?: Record<string, string>;
     discovery?: DiscoveryRule[];
     auth?: { kind?: string; secret?: string };
+    settings?: Record<string, string>;
+    keys?: Record<string, string>;
   };
   return {
     ...(spec.baseURL ? { baseURL: spec.baseURL } : {}),
@@ -60,6 +64,12 @@ export const connectionSpec = (entry: ConfigEntry): ConnectionSpec => {
     discovery: Array.isArray(spec.discovery) ? spec.discovery : [],
     ...(spec.auth?.kind ? { authKind: spec.auth.kind } : {}),
     ...(spec.auth?.secret ? { secret: spec.auth.secret.replace(secretPrefix, '') } : {}),
+    settings: spec.settings && typeof spec.settings === 'object' ? spec.settings : {},
+    keys: Object.fromEntries(
+      Object.entries(spec.keys && typeof spec.keys === 'object' ? spec.keys : {}).map(
+        ([name, ref]) => [name, String(ref).replace(secretPrefix, '')],
+      ),
+    ),
   };
 };
 

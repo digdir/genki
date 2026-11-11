@@ -1,12 +1,13 @@
 # 0004 Service, capability and version
 
-Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11). Proposed 2026-10-06
 
 ## Decision
 
 - A **service** is what a tenant defines. A **capability** is what the kernel invokes.
 - A service has one or more **variants**, which replace headless-rag's modes. Each variant becomes one capability with id `<tenant>/<service>/<variant>`. A variant may have its own way of working (ADR 0031).
 - A **fellestjeneste** is a service owned by Digdir and shared with other tenants. It is not a separate kind.
+- `spec.availableTo` (`'*'` or a list of organisation numbers) says which other tenants may see and call a service. Only an operator changes it; the API refuses a publish or import by anyone else that changes it compared with the published version (`urn:genai:problem:share-operator-only`). Seeded definitions from git keep the value they declare.
 - A service has one version scheme: an integer that increases by one on every publish. Published versions are immutable.
 - All capabilities from one service version carry that version.
 - Each variant has a public name, `<service>__<variant>` unless the definition sets one, and may keep extra names as aliases.

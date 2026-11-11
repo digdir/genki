@@ -15,6 +15,12 @@ export const callOperationModel = (
   model: { primary?: string; operations?: Record<string, string> | undefined } | undefined,
 ) => stepModel ?? model?.operations?.[operationKindOf(descriptor) ?? ''] ?? model?.primary;
 
+const textOf = (result: unknown) => {
+  if (typeof result === 'string') return result;
+  const text = (result as { text?: unknown } | null | undefined)?.text;
+  return typeof text === 'string' ? text : undefined;
+};
+
 const operationParams = z.strictObject({
   descriptor: z.string().regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*@[1-9][0-9]*$/),
   model: z.string().min(1).optional(),
@@ -28,7 +34,7 @@ export const callOperationBlock: Block<Record<string, unknown>, z.infer<typeof o
     "Call a reviewed operation descriptor on one of the service's models, with the step input as its typed input; streams its text to the answer when asked",
   input: z.record(z.string(), z.unknown()),
   params: operationParams,
-  output: z.strictObject({ result: z.unknown() }),
+  output: z.strictObject({ result: z.unknown(), text: z.string().optional() }),
   run: async function* (ctx, input, params) {
     const model = callOperationModel(params.descriptor, params.model, ctx.config.model);
     if (!model) throw new Error(`step ${ctx.step} needs a model, and the service names none`);
@@ -39,18 +45,22 @@ export const callOperationBlock: Block<Record<string, unknown>, z.infer<typeof o
     });
     if (params.stream && port.stream) {
       let result: unknown;
+      let text = '';
       for await (const chunk of port.stream(params.descriptor, input)) {
-        if (chunk.kind === 'delta') yield { type: 'kernel.part.delta', data: { text: chunk.text } };
-        else result = chunk.result;
+        if (chunk.kind === 'delta') {
+          text += chunk.text;
+          yield { type: 'kernel.part.delta', data: { text: chunk.text } };
+        } else result = chunk.result;
       }
       if (result === undefined)
         throw new Error(`step ${ctx.step}: the stream ended without a result`);
       for (const ref of mediaRefsIn(result)) ref.step ??= ctx.step;
-      return { result };
+      return { result, text };
     }
     yield* [];
     const result = await port.call(params.descriptor, input);
     for (const ref of mediaRefsIn(result)) ref.step ??= ctx.step;
-    return { result };
+    const text = textOf(result);
+    return text === undefined ? { result } : { result, text };
   },
 };

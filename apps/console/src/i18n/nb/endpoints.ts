@@ -2,6 +2,27 @@ import { defineNamespace } from '@genai/i18n';
 
 export const endpoints = defineNamespace({
   residencyNorway: 'Norge',
+  settings: 'Innstillinger',
+  settingsDescription:
+    'Verdier som ikke er hemmelige, som en nøkkel-ID eller en region. En beskrivelse leser dem som $connection.navn i headere og spørringen, aldri i adressen eller stien.',
+  settingName: 'Navn på innstillingen',
+  settingValue: 'Verdi',
+  settingNameHint: 'Start med en liten bokstav og bruk bokstaver, tall og _, for eksempel keyId.',
+  settingValueHint:
+    'Skriv en verdi uten mellomrom først og sist, høyst 256 tegn. En hemmelighet hører hjemme under Flere nøkler.',
+  addSetting: 'Legg til innstilling',
+  removeSetting: 'Fjern innstillingen {name}',
+  keys: 'Flere nøkler',
+  keysDescription:
+    'Navngitte hemmeligheter som bare en signeringsmodul kan bruke, som connection.navn. De sendes aldri med en forespørsel.',
+  keyName: 'Navn på nøkkelen',
+  keySecret: 'Navn på hemmeligheten',
+  keyNameHint:
+    'Start med en liten bokstav og bruk bokstaver, tall og _. Et navn er enten en innstilling eller en nøkkel.',
+  addKey: 'Legg til nøkkel',
+  removeKey: 'Fjern nøkkelen {name}',
+  noSettings: 'Ingen innstillinger',
+  noKeys: 'Ingen flere nøkler',
   residencyEu: 'EU',
   residencyGlobal: 'Globalt',
   capStream: 'Strømming',
@@ -49,6 +70,8 @@ export const endpoints = defineNamespace({
   secretSaved: 'Hemmeligheten {name} er lagret. Verdien vises ikke igjen.',
   addEndpoint: 'Legg til tilkobling',
   deploymentRequired: 'Skriv navnet på utrullingen hos leverandøren.',
+  deploymentNeedsLetterOrDigit:
+    'Navnet på utrullingen må inneholde minst én bokstav eller ett siffer.',
   chooseEndpoint: 'Velg en tilkobling.',
   saveModelFailed: 'Kunne ikke lagre modellen. Prøv igjen om litt.',
   addModel: 'Legg til modell',

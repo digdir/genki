@@ -1,3 +1,5 @@
+import type { Principal } from '@genai/contracts';
+
 export const INTERNAL_GRANT_PREFIX = 'grant:';
 
 export const trustedEntraScope = `${INTERNAL_GRANT_PREFIX}trusted-entra-login`;
@@ -5,6 +7,15 @@ export const trustedEntraScope = `${INTERNAL_GRANT_PREFIX}trusted-entra-login`;
 export const admittedCredentialScope = `${INTERNAL_GRANT_PREFIX}admitted-credential`;
 
 export const lockdownUserScope = `${INTERNAL_GRANT_PREFIX}lockdown-user`;
+
+export const testRunnerScope = `${INTERNAL_GRANT_PREFIX}test-runner`;
+
+export const LEGACY_KEY_ISSUER = 'urn:genai:legacy-api-key';
+
+export const isApiKeyPrincipal = (principal: Principal) => principal.issuer === LEGACY_KEY_ISSUER;
+
+export const isTestRunnerKey = (principal: Principal) =>
+  isApiKeyPrincipal(principal) && (principal.scopes?.includes(testRunnerScope) ?? false);
 
 export const ORGNO_AUTHORITY = 'iso6523-actorid-upis';
 

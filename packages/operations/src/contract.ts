@@ -22,7 +22,7 @@ import {
 } from '@genai/kernel';
 import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import { z } from 'zod';
-import type { Descriptor, Step } from './descriptor.js';
+import { settingNamePattern, type Descriptor, type Step } from './descriptor.js';
 import { recordedBody } from './encoding.js';
 import { describedCall, describedSend, type RecordedRequest } from './executor.js';
 import { unwrapped } from './shape.js';
@@ -52,6 +52,7 @@ export interface OperationFixture {
   deployment: string;
   /** The time a module signs with, when the descriptor has one. */
   at?: string;
+  settings?: Record<string, string>;
   input: unknown;
   request?: FixtureRequest;
   response?: FixtureResponse;
@@ -84,6 +85,10 @@ export const OperationFixtureSpec = z
     source: z.string().max(500).optional(),
     deployment: z.string().min(1).max(200),
     at: z.iso.datetime().optional(),
+    settings: z
+      .record(z.string().regex(settingNamePattern), z.string().max(256))
+      .refine((s) => Object.keys(s).length <= 20, 'at most 20 settings')
+      .optional(),
     input: z.unknown(),
     request: fixtureRequest.optional(),
     response: fixtureResponse.optional(),
@@ -223,7 +228,7 @@ const wireTextFromInputText = async (
       baseURL: 'https://contract.invalid/base',
       credential: { kind: 'api-key', key: async () => contractKey },
       ledger: memoryLedger().ledger,
-      ...moduleEndpoint(fixture),
+      ...moduleEndpoint(descriptor, fixture),
       fetch: async () => {
         const answer = recorded[at];
         at += 1;
@@ -337,6 +342,7 @@ const seed = (s: Shape, v: unknown, every: boolean): unknown => {
 interface Recorded extends RecordedRequest {
   query: Record<string, string>;
   credentialSent: boolean;
+  signingKeySent: boolean;
 }
 
 const contractKey = 'contract-key';
@@ -438,11 +444,17 @@ type ModuleLookup = (sha256: string) => Uint8Array | undefined;
 
 const contractModules = new AsyncLocalStorage<ModuleLookup | undefined>();
 
-const moduleEndpoint = (fixture: OperationFixture) => {
+const moduleEndpoint = (descriptor: Descriptor, fixture: OperationFixture) => {
   const modules = contractModules.getStore();
+  const named = Object.values(descriptor.modules)
+    .flatMap((m) => m.keys)
+    .filter((k) => k.startsWith('connection.'))
+    .map((k) => k.slice('connection.'.length));
   return {
     ...(modules ? { modules } : {}),
     ...(fixture.at ? { now: () => new Date(fixture.at as string) } : {}),
+    ...(fixture.settings ? { settings: fixture.settings } : {}),
+    keys: Object.fromEntries(named.map((n) => [n, async () => `${contractKey}-${n}`])),
   };
 };
 
@@ -475,6 +487,10 @@ const run = async (
       formField && isRecord(recordedBodyOf)
         ? Object.fromEntries(Object.entries(recordedBodyOf).filter(([k]) => k !== formField))
         : recordedBodyOf;
+    const keySent =
+      Object.values(headers).some((v) => v.includes(contractKey)) ||
+      Object.values(sentQuery).includes(contractKey);
+    const signingKeySent = !secret && placement?.place === 'module' && keySent;
     const credentialSent = secret
       ? secret.place === 'query'
         ? secret.name in sentQuery
@@ -483,8 +499,7 @@ const run = async (
         ? isRecord(recordedBodyOf) && recordedBodyOf[formField] === contractKey
         : placement?.place === 'basic'
           ? headers.authorization === basic
-          : Object.values(headers).some((v) => v.includes(contractKey)) ||
-            Object.values(sentQuery).includes(contractKey);
+          : placement?.place === 'module' || keySent;
     const query = Object.fromEntries(
       Object.entries(sentQuery).filter(
         ([name, value]) =>
@@ -501,6 +516,7 @@ const run = async (
       headers: Object.fromEntries(Object.entries(headers).filter(([h]) => mapped.includes(h))),
       body,
       credentialSent,
+      signingKeySent,
     });
     const answer = recorded[at]?.response;
     if (!answer)
@@ -538,7 +554,7 @@ const run = async (
         baseURL: 'https://contract.invalid/base',
         credential: { kind: 'api-key', key: async () => contractKey },
         ledger: objects.ledger,
-        ...moduleEndpoint(fixture),
+        ...moduleEndpoint(descriptor, fixture),
         connection: 'contract',
         tenant: '999888777',
         run: 'operation-contract',
@@ -601,6 +617,7 @@ const checks: {
           ...same(`${at}headers`, request.headers, want.headers ?? {}),
           ...same(`${at}body`, request.body, want.body),
           ...(request.credentialSent ? [] : [`${at}the endpoint credential was not sent`]),
+          ...(request.signingKeySent ? [`${at}the key that only signs was sent`] : []),
         ];
       });
     },

@@ -66,6 +66,7 @@ import {
   deleteConversationDocuments,
   runtimeDocumentStore,
   runtimeDocumentTypes,
+  runtimeMediaTypes,
 } from './runtime-documents.js';
 import {
   EgressGuard,
@@ -84,6 +85,7 @@ import {
   grantsOf,
   InMemoryClients,
   isBoundToServices,
+  isTestRunnerKey,
   keyGrantPolicy,
   keyReaches,
   keyReachesMode,
@@ -117,6 +119,8 @@ import {
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
 import { publicDatasetState } from './dataset-status.js';
+import { datasetDeleteModule } from './dataset-delete.js';
+import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
@@ -208,6 +212,7 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
+import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { originOf } from './draft-runner.js';
@@ -310,6 +315,7 @@ export const platformModules: PlatformModuleFactory[] = [
   strategyCatalogueModule,
   definitionCompletionModule,
   datasetUploadsModule,
+  datasetDeleteModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
@@ -577,6 +583,7 @@ export interface ResolverHooks {
   chat?(compiled: CompiledCapability): Promise<boolean>;
   batch?(compiled: CompiledCapability): Promise<boolean>;
   documents?(compiled: CompiledCapability): Promise<string[]>;
+  media?(compiled: CompiledCapability): Promise<string[]>;
 }
 
 const humanized = (id: string) => {
@@ -618,6 +625,8 @@ export const capabilityResolver = (
   ): Promise<ModelEntry> => {
     const documents = (await hooks.documents?.(compiled)) ?? [];
     if (documents.length) entry = { ...entry, documents };
+    const media = (await hooks.media?.(compiled)) ?? [];
+    if (media.length) entry = { ...entry, media };
     const searches = hooks.searches?.(principal, compiled) ?? [];
     if (searches.length) entry = { ...entry, searches };
     const fields = entry.inputFields;
@@ -1170,6 +1179,15 @@ export const createPlatform = async (input: PlatformInput) => {
     adapters: { knowledge: knowledgeAdapters },
     embeddingResidency,
     testSets: evalStores.testSets,
+    usedBy: (dataset) =>
+      datasetReaders(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        dataset,
+      ),
   });
   if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
@@ -1376,6 +1394,11 @@ export const createPlatform = async (input: PlatformInput) => {
         (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
           .spec,
       ),
+    media: async (compiled) =>
+      runtimeMediaTypes(
+        (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
+          .spec,
+      ),
     batch: async (compiled) => {
       const found = await definitions.get('Service', compiled.service.tenant, compiled.service.id);
       return (
@@ -1413,6 +1436,7 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return [...used];
   };
+  const testRunnersAllowed = input.lockdown !== undefined && input.environmentTier === 'test';
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -1420,12 +1444,13 @@ export const createPlatform = async (input: PlatformInput) => {
     const found = (async () => {
       const authenticated = await input.authenticate(request);
       if (!authenticated) return undefined;
-      const caller = input.lockdown
-        ? {
-            ...authenticated,
-            principal: withCredentialOrigin(input.lockdown, request, authenticated.principal),
-          }
-        : authenticated;
+      const origin = input.lockdown
+        ? withCredentialOrigin(input.lockdown, request, authenticated.principal)
+        : authenticated.principal;
+      const caller = {
+        ...authenticated,
+        principal: testRunnerView(origin, request, testRunnersAllowed),
+      };
       return (await admitConfined(clients, request, caller.principal)) ? caller : undefined;
     })();
     callers.set(request, found);
@@ -1674,7 +1699,12 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
     ingestion: config.ingestion,
-    ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
+    ...(input.lockdown
+      ? {
+          modelAdmission: mayUseModels,
+          readOnly: (p: Principal) => readOnlyInLockdown(p) || isTestRunnerKey(p),
+        }
+      : {}),
     evalStores,
     connections,
     blobs: blobStore,
@@ -1780,7 +1810,7 @@ export const createPlatform = async (input: PlatformInput) => {
       },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys }),
+    ...portalAdminHandlers({ apiKeys, testRunnerKeys: testRunnersAllowed }),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -1868,7 +1898,9 @@ export const createPlatform = async (input: PlatformInput) => {
         traces: { enabled: Boolean(input.traces?.()), content: Boolean(input.traces?.()?.content) },
         drafts,
         names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
+        testRunnerKeys: testRunnersAllowed,
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);
@@ -1879,6 +1911,8 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         apiKeys,
         webhooks,
+        names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         ...(input.endpoints ? { endpoints: input.endpoints } : {}),
       });
       const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };

@@ -141,7 +141,13 @@ import {
   type TryExchanges,
   type EnvironmentTier,
 } from './operation-try.js';
-import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
+import {
+  failureLoggingEventLog,
+  loggedEmbedders,
+  loggedModels,
+  throttleLoggedFetch,
+  type ApiLog,
+} from './failure-log.js';
 import {
   guardedSend,
   httpSearchAdapter,
@@ -448,7 +454,18 @@ export const createRuntime = async (input: RuntimeInput) => {
     media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
     mediaInput: blobMediaInput(blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
-    ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
+    ...(input.logger
+      ? {
+          egress: (endpoint: string) =>
+            throttleLoggedFetch(
+              endpoint,
+              input.endpointFetch?.(endpoint) ?? globalThis.fetch,
+              input.logger as ApiLog,
+            ),
+        }
+      : input.endpointFetch
+        ? { egress: input.endpointFetch }
+        : {}),
     outside: outsideRun(input.log, input.now),
   });
   const embedders = new EmbeddingRouter({
@@ -460,6 +477,13 @@ export const createRuntime = async (input: RuntimeInput) => {
     priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
+  const loggedEmbedderRouter = input.logger
+    ? loggedEmbedders(
+        embedders,
+        input.logger,
+        async (task) => (await input.tasks.get(task))?.task.service.capability.id,
+      )
+    : embedders;
   const embeddingModels = new Set(embedders.describe().map((e) => e.id));
   const embeddingResidency = (model: string) =>
     embedders.describe().find((e) => e.id === model)?.residency;
@@ -476,7 +500,7 @@ export const createRuntime = async (input: RuntimeInput) => {
         signal: new AbortController().signal,
         meter: async () => undefined,
       };
-      const port = embedders.open({ kind: 'embedder', id: model }, ctx, {
+      const port = loggedEmbedderRouter.open({ kind: 'embedder', id: model }, ctx, {
         ...(residency ? { maxResidency: residency } : {}),
       });
       return (await port.embed(texts)).vectors;
@@ -701,6 +725,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     rerankers: new Set(rerank.rerankers()),
     rerankerResidency: (id) => rerank.residency(id),
     datasets: new Set(knowledge.datasets().keys()),
+    datasetFilters: (dataset) => knowledge.datasets().get(dataset)?.filters,
     modelNeeds: strategyModelNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
@@ -1010,7 +1035,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     models,
     knowledge,
     rerank,
-    embedders,
+    embedders: loggedEmbedderRouter,
     writers,
     tools,
     mcp,

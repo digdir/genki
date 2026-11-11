@@ -1,4 +1,5 @@
 import type { Locale } from '@genai/i18n';
+import type { StreamedStep, StreamStep } from './procedure';
 import type { ResultTable } from './ResultTable';
 export interface Organisation {
   orgNumber: string;
@@ -111,6 +112,16 @@ export interface AssistantMessage {
   table?: ResultTable;
   csv?: string;
   media?: MediaAttachment[];
+  procedure?: AnswerProcedure;
+}
+
+/** How the assistant worked on an answer, from the step frames in the stream. */
+export interface AnswerProcedure {
+  steps: readonly StreamedStep[];
+  /** Documents the run reads from in all, when the platform says. */
+  read?: number;
+  startedAt: number;
+  finishedAt?: number;
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -159,6 +170,7 @@ export interface WorkspaceApi {
     input?: FormInput,
     conversation?: { id?: string },
     documents?: AttachedDocument[],
+    onStep?: (step: StreamStep) => void,
   ): Promise<ChatReply>;
   conversations?: ConversationApi;
   sendFeedback(input: FeedbackInput): Promise<void>;

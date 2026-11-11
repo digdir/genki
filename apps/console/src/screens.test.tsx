@@ -8,7 +8,7 @@ import { validOrgNumber } from './screens/Onboarding';
 import { createFormat } from '@genai/i18n';
 import { translator } from './i18n';
 import { formatValue, parseDraft } from './settings-model';
-import type { GridSetting } from './types';
+import type { GridSetting, TaskTimeline } from './types';
 
 document.getAnimations ??= () => [];
 HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -637,6 +637,41 @@ describe('diagnostikk', () => {
       .closest('tr') as HTMLElement;
     expect(within(pinned).getByText('Festet til v11')).toBeTruthy();
     expect(screen.getAllByText('Satt på datasettet').length).toBeGreaterThan(0);
+  });
+
+  it("shows the provider's status and error body on a failed run", async () => {
+    const base = mockFetch();
+    const failed: typeof fetch = async (input, init) => {
+      if (!String(input).endsWith('/tasks/opg_7f2kq9d1/timeline')) return base(input, init);
+      const run = (await (await base(input, init)).json()) as TaskTimeline;
+      return Response.json({
+        ...run,
+        status: 'failed',
+        steps: [
+          {
+            id: 'e9f',
+            type: 'error',
+            title: 'Steget «svar» feilet',
+            summary: 'Vi fikk ikke svar fra modellen.',
+            at: 1,
+            blocks: [
+              { kind: 'quote', text: 'step svar failed: the model is unavailable' },
+              { kind: 'quote', label: 'Leverandøren svarte 503', text: 'upstream reset' },
+            ],
+          },
+        ],
+      });
+    };
+    await open('#/tenants', failed);
+    await screen.findByRole('table');
+    await startSupport();
+    window.location.hash = '#/diagnostics?tenant=999888777';
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'ID for kjøringen' }), {
+      target: { value: 'opg_7f2kq9d1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Slå opp' }));
+    expect(await screen.findByText('Leverandøren svarte 503: upstream reset')).toBeTruthy();
   });
 
   it('says when a run is not found', async () => {

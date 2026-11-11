@@ -24,6 +24,7 @@ import {
 } from '@genai/jobs';
 import { GenerationBusy } from '@genai/port-knowledge';
 import type { EmbeddingPort } from '@genai/port-embedding';
+import type { RunProgress } from './run-progress.js';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
@@ -69,6 +70,8 @@ export interface KnowledgeHandlerDeps {
   admission: AdmissionDeps;
   /** How many index and fill jobs this worker works at once; 1 when left out. */
   indexConcurrency?: number;
+  /** The once-a-minute `knowledge run progress` line of each run this worker writes. */
+  progress?: RunProgress;
 }
 
 const tenantOf = (run: IngestionExecution, platformTenant: string) => {
@@ -239,49 +242,58 @@ export const knowledgeWork = (
           });
           return;
         }
-        const signal = job.signal;
-        const { dataset } = await datasetOf(deps, run, signal);
-        const tenant = tenantOf(run, deps.admission.platformTenant);
-        const found = await listingFor(deps, run, signal);
-        const listing = found.listing;
-        const chunking = await deps.records.chunking(
-          job.data.generation,
-          run.pipeline,
-          found.chunking,
-        );
-        // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
-        const embedding = await deps.records.embedding(job.data.generation);
-        const embedder = embedding
-          ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
-          : undefined;
-        let chunks = 0;
-        let outcome: Awaited<ReturnType<typeof indexRecord>>;
+        // From here the job counts as active in the run's progress line.
+        const ended = deps.progress?.started({ id: run.id, dataset: run.dataset });
         try {
-          outcome = await indexRecord({
-            records: deps.records,
-            listing,
-            dataset: run.dataset,
-            run: run.id,
-            record: job.data.record,
-            generation: job.data.generation,
-            // A copied document keeps its engine's chunks, so a copy's chunking is never applied.
-            chunking: chunking as ChunkDocumentConfig,
-            onStored: (n) => {
-              chunks = n;
-            },
-            ...(embedder ? { embedder } : {}),
-          });
-        } catch (error) {
-          if (!(error instanceof GenerationBusy)) throw error;
-          // VACUUM holds the generation: give way, and keep every retry.
-          await deps.knowledge.sendAgain(queue, job, {
-            key: knowledgeKeys.index(job.data.generation, job.data.record),
-            startAfter: new Date(now.getTime() + givingWayMs),
-          });
-          return;
+          const signal = job.signal;
+          const { dataset } = await datasetOf(deps, run, signal);
+          const tenant = tenantOf(run, deps.admission.platformTenant);
+          const found = await listingFor(deps, run, signal);
+          const listing = found.listing;
+          const chunking = await deps.records.chunking(
+            job.data.generation,
+            run.pipeline,
+            found.chunking,
+          );
+          // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
+          const embedding = await deps.records.embedding(job.data.generation);
+          const embedder = embedding
+            ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
+            : undefined;
+          let chunks = 0;
+          let outcome: Awaited<ReturnType<typeof indexRecord>>;
+          try {
+            outcome = await indexRecord({
+              records: deps.records,
+              listing,
+              dataset: run.dataset,
+              run: run.id,
+              record: job.data.record,
+              generation: job.data.generation,
+              // A copied document keeps its engine's chunks, so a copy's chunking is never applied.
+              chunking: chunking as ChunkDocumentConfig,
+              onStored: (n) => {
+                chunks = n;
+              },
+              ...(embedder ? { embedder } : {}),
+            });
+          } catch (error) {
+            if (!(error instanceof GenerationBusy)) throw error;
+            // VACUUM holds the generation: give way, and keep every retry.
+            await deps.knowledge.sendAgain(queue, job, {
+              key: knowledgeKeys.index(job.data.generation, job.data.record),
+              startAfter: new Date(now.getTime() + givingWayMs),
+            });
+            return;
+          }
+          if (outcome === 'stored') {
+            await deps.runs.report(run.id, { stored: 1, chunks }, 'add');
+            deps.progress?.stored(run.id, chunks);
+          }
+          if (outcome === 'skipped') await deps.runs.report(run.id, { skipped: 1 }, 'add');
+        } finally {
+          ended?.();
         }
-        if (outcome === 'stored') await deps.runs.report(run.id, { stored: 1, chunks }, 'add');
-        if (outcome === 'skipped') await deps.runs.report(run.id, { skipped: 1 }, 'add');
       },
       deps.admission,
     );
