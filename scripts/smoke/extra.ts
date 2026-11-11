@@ -12,6 +12,7 @@ import {
   assessStream,
   assessTimeline,
   Budget,
+  parseJsonOr,
   runModelCheck,
   type CheckResult,
   type Plan,
@@ -59,6 +60,11 @@ export const priceOf = (p: ProposedCheck['proposal'], plan: Plan) => {
         : undefined;
   return model ? plan.prices[model] : undefined;
 };
+
+export const playgroundVersionOf = (text: string, service: string) =>
+  parseJsonOr<{ services?: { id: string; latestVersion: number }[] }>(text, {}).services?.find(
+    (s) => s.id === service,
+  )?.latestVersion;
 
 export const main = async () => {
   const env = process.env;
@@ -127,11 +133,7 @@ export const main = async () => {
     }
 
   const version = async () =>
-    (
-      JSON.parse((await client.playgroundOptions()).text || '{}') as {
-        services?: { id: string; latestVersion: number }[];
-      }
-    ).services?.find((s) => s.id === plan.service)?.latestVersion;
+    playgroundVersionOf((await client.playgroundOptions()).text, plan.service);
 
   try {
     for (const [i, item] of accepted.entries()) {

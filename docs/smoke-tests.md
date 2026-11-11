@@ -145,11 +145,11 @@ Concurrency: one `smoke` job at a time (`concurrency: smoke-genki-test`, never c
 
 Secrets:
 
-| Where                                      | What                                                                                                             | Who can use it                                   |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Environment `genki-test` (branch `main`)   | `SMOKE_API_KEY`, the `test-runner` key                                                                           | the `smoke` and `extra` jobs only                |
-| Environment `smoke-review` (branch `main`) | no secrets; the federated credential subject `repo:digdir/genki:environment:smoke-review` on the review identity | the `propose` and `judge` jobs, to reach Foundry |
-| Repository                                 | the `AZURE_REVIEW_*` variables the AI review uses                                                                | read by the model jobs                           |
+| Where                                      | What                                                                                                                                 | Who can use it                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Environment `genki-test` (branch `main`)   | `SMOKE_API_KEY`, the `test-runner` key                                                                                               | the `smoke` and `extra` jobs only                |
+| Environment `smoke-review` (branch `main`) | no secrets; the federated credential subject `repo:digdir@51157288/genki@1411915404:environment:smoke-review` on the review identity | the `propose` and `judge` jobs, to reach Foundry |
+| Repository                                 | the `AZURE_REVIEW_*` variables the AI review uses                                                                                    | read by the model jobs                           |
 
 The report job gets `issues: write` and `statuses: write`, and no environment.
 
@@ -203,7 +203,7 @@ SMOKE_TIERS=free node scripts/smoke/run.ts
 2. Check with `list_models` that each model id in `plan.json` exists on genki-test, then publish `scripts/smoke/smoke-service.yaml` in the platform organisation.
 3. Signed in to the portal with Entra ID, create a key bound to `smoke` with the `test-runner` grant, `callsPerMinute: 30` and `expiresInDays: 90`. The key expires after 90 days at most, so rotate it by then: create a new one and replace `SMOKE_API_KEY`.
 4. Create the environment `genki-test` with deployment branches set to the selected branch `main`, then add the key as `SMOKE_API_KEY`.
-5. Create the environment `smoke-review`, branch `main`, and add the federated credential `repo:digdir/genki:environment:smoke-review` to the Entra app the AI review uses (`AZURE_REVIEW_CLIENT_ID`). Its role on the Foundry resource already covers `claude-sonnet-5-5`.
+5. Create the environment `smoke-review`, branch `main`, and add a federated credential with the subject `repo:digdir@51157288/genki@1411915404:environment:smoke-review` to the managed identity the AI review uses (`id-genki-review`, client id in `AZURE_REVIEW_CLIENT_ID`). The repository issues subjects with owner and repository ids, as the review's existing `pull_request` credential does. Its role on the Foundry resource already covers `claude-sonnet-5-5`.
 6. Optionally set `SMOKE_MAX_RUNS_PER_DAY`, `SMOKE_REVIEW_MAX_PER_DAY`, `SMOKE_REVIEW_MODEL` and the URLs.
 7. Dispatch `smoke` with `tiers: free` and `review: false`, then `all` with `review: true`.
 

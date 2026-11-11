@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screenFile, sessionFor } from './browser.ts';
-import { estimateOf, priceOf } from './extra.ts';
+import { estimateOf, playgroundVersionOf, priceOf } from './extra.ts';
 import { loadPlan } from './client.ts';
 import { finalOutcome, portalClientIdOf, reviewDecision } from './run.ts';
 
@@ -74,6 +74,16 @@ describe('the browser', () => {
 
 describe('extra checks', () => {
   const plan = loadPlan();
+
+  it('find no playground version when the options response is not JSON', () => {
+    expect(playgroundVersionOf('network error', plan.service)).toBeUndefined();
+    expect(playgroundVersionOf('<html>Bad gateway</html>', plan.service)).toBeUndefined();
+  });
+
+  it('find the latest playground version of the smoke service', () => {
+    const options = JSON.stringify({ services: [{ id: plan.service, latestVersion: 4 }] });
+    expect(playgroundVersionOf(options, plan.service)).toBe(4);
+  });
 
   it('are estimated by what they do, and reads are free', () => {
     expect(

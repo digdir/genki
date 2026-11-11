@@ -652,6 +652,10 @@ describe('text from genki', () => {
     expect(clip('a|b\nc')).toBe('a\\|b c');
   });
 
+  it('keeps a backslash before a pipe from opening the cell', () => {
+    expect(clip('a\\|b')).toBe('a\\\\\\|b');
+  });
+
   it('mentions nobody', () => {
     expect(clip('@someone')).not.toMatch(/@[a-z]/);
   });

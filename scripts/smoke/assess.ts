@@ -108,7 +108,7 @@ const sha = /^[0-9a-f]{40}$/;
 export const detectedLabels = ['Found in the search', 'Gjenkjent i søket'];
 
 export const clip = (text: string, max = 200) => {
-  const line = text.replace(/\s+/g, ' ').replace(/\|/g, '\\|').replace(/@/g, '@​').trim();
+  const line = text.replace(/\s+/g, ' ').replace(/[\\|]/g, '\\$&').replace(/@/g, '@​').trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 };
 
