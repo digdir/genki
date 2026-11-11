@@ -397,6 +397,10 @@ export const integrationsArea = {
     datasets: 'Datasets',
     rate: 'Calls per minute',
     rateHelp: 'From 1 to 6,000.',
+    testRunner: 'Test runner for smoke tests',
+    testRunnerHelp:
+      'The key can read everything in the organisation and the platform configuration in the operator overviews, try services in the playground when it reaches all services, and create and archive definitions whose id starts with smoke-. It expires after 90 days. Only in this locked test environment.',
+    testRunnerTag: 'Test runner',
     createKey: 'Create key',
     none: 'No API keys yet',
     noneText: 'Create a key for systems that cannot use Maskinporten.',

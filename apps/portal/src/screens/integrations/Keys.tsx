@@ -41,6 +41,7 @@ interface KeyForm {
   datasets: string[];
   rate: string;
   reason: string;
+  testRunner: boolean;
   tried: boolean;
 }
 
@@ -176,7 +177,13 @@ export const Keys = ({
       setSaveError('');
       const result = await api.createApiKey(
         tenant,
-        { name: form.name.trim(), datasets, agents: services, callsPerMinute: rate },
+        {
+          name: form.name.trim(),
+          datasets,
+          agents: services,
+          callsPerMinute: rate,
+          ...(form.testRunner ? { testRunner: true, expiresInDays: 90 } : {}),
+        },
         form.reason.trim(),
       );
       setExtras((all) => ({
@@ -250,6 +257,7 @@ export const Keys = ({
               datasets: [],
               rate: String(defaultKeyCallsPerMinute),
               reason: '',
+              testRunner: false,
               tried: false,
             });
           }}
@@ -379,6 +387,14 @@ export const Keys = ({
             error={shown['nk-grense']}
             onChange={(e) => setForm({ ...form, rate: e.target.value })}
           />
+          {!form.id && state.data.access.testRunnerKeys ? (
+            <Checkbox
+              label={t('integKeys.testRunner')}
+              description={t('integKeys.testRunnerHelp')}
+              checked={form.testRunner}
+              onChange={() => setForm({ ...form, testRunner: !form.testRunner })}
+            />
+          ) : null}
           {form.id ? null : (
             <Textfield
               id="nk-grunn"
@@ -420,6 +436,11 @@ export const Keys = ({
                       <Tag data-size="sm" data-color={active ? 'success' : 'neutral'}>
                         {t(active ? 'integrations.statusActive' : 'integKeys.revokedStatus')}
                       </Tag>
+                      {k.testRunner ? (
+                        <Tag data-size="sm" data-color="warning">
+                          {t('integKeys.testRunnerTag')}
+                        </Tag>
+                      ) : null}
                     </span>
                     <span className="meta">
                       {t('integKeys.prefixCreated', {
@@ -471,6 +492,7 @@ export const Keys = ({
                             datasets: [...v.datasets],
                             rate: String(v.extra.rate),
                             reason: '',
+                            testRunner: k.testRunner === true,
                             tried: false,
                           })
                         }
