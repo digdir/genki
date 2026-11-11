@@ -143,13 +143,15 @@ interface Asking {
 }
 
 // kunnskapsassistenten's threadHeading.ts: the first sentence, cut on a word at 80.
+// A stop then a space ends it. One character each and a scan for the stops at its end, never a
+// repeated stop in a pattern, so a question of nothing but «!» is read in linear time.
+const stops = new Set(['.', '?', '!', '…']);
 export const shortTitle = (text: string) => {
   const flat = text.trim().replace(/\s+/g, ' ');
-  const end = flat.search(/[.?!…]+(?=\s)/u);
-  const sentence = (end < 0 ? flat : flat.slice(0, end + flat.slice(end).search(/\s/u))).replace(
-    /[.?!…]+$/u,
-    '',
-  );
+  const space = flat.search(/[.?!…] /u);
+  let end = space < 0 ? flat.length : space + 1;
+  while (end > 0 && stops.has(flat[end - 1] ?? '')) end -= 1;
+  const sentence = flat.slice(0, end);
   if (sentence.length <= 80) return sentence;
   const cut = sentence.lastIndexOf(' ', 80);
   return `${sentence.slice(0, cut > 0 ? cut : 80).trimEnd()} …`;
@@ -170,13 +172,18 @@ const readSelection = (stored: unknown): FilterSelection => {
   );
 };
 
-/** Each thread's kept filter (the next look), as `readSelection` reads one. */
-const readThreadFilters = (stored: unknown): Readonly<Record<string, FilterSelection>> => {
-  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
-  return Object.fromEntries(
+/**
+ * Each thread's kept filter (the next look), as `readSelection` reads one. A Map, since a thread's
+ * id comes from the address, and an id such as `constructor` must not read an object's own.
+ */
+const readThreadFilters = (stored: unknown): ReadonlyMap<string, FilterSelection> => {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return new Map();
+  return new Map(
     Object.entries(stored).map(([thread, selection]) => [thread, readSelection(selection)]),
   );
 };
+const storeThreadFilters = (filters: ReadonlyMap<string, FilterSelection>) =>
+  Object.fromEntries(filters);
 
 /** The first sentence of a service's description, as the picker's line under a variant, if short. */
 const firstSentence = (text: string | undefined) => {
@@ -354,7 +361,8 @@ export const useAssistant = ({
   // ── Threads ──
   const [loadedThreads, setThreads] = useState<ThreadRow[]>();
   const [threadsFailed, setThreadsFailed] = useState(false);
-  const [renamed, setRenamed] = useState<Record<string, string>>({});
+  // Maps, as every list here keyed by an id from genki or the address.
+  const [renamed, setRenamed] = useState<ReadonlyMap<string, string>>(new Map());
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   const reloadThreads = useCallback(() => {
     if (!threadsOn) return;
@@ -373,7 +381,9 @@ export const useAssistant = ({
             !deleted.has(thread.id) && (allThreads || !thread.service || inFamily(thread.service)),
         )
         .map((thread) =>
-          renamed[thread.id] ? { ...thread, title: renamed[thread.id] ?? thread.title } : thread,
+          renamed.has(thread.id)
+            ? { ...thread, title: renamed.get(thread.id) ?? thread.title }
+            : thread,
         ),
     [loadedThreads, renamed, deleted, inFamily, allThreads],
   );
@@ -572,13 +582,14 @@ export const useAssistant = ({
     storage,
     'threadFilters',
     readThreadFilters,
+    storeThreadFilters,
   );
   const keepFilter = (thread: string, asked: FilterSelection) => {
-    if (threadFiltersOn) setThreadFilters({ ...threadFilters, [thread]: asked });
+    if (threadFiltersOn) setThreadFilters(new Map(threadFilters).set(thread, asked));
   };
   useEffect(() => {
     if (!threadFiltersOn || !currentId) return;
-    const kept = threadFilters[currentId];
+    const kept = threadFilters.get(currentId);
     if (kept && !sameSelection(kept, chosenSelection)) setSelection(kept);
     // Only when another thread opens: a change made in the thread stays.
   }, [currentId, threadFiltersOn]);
@@ -646,7 +657,7 @@ export const useAssistant = ({
 
   // The line under each title in «Dokumenter», where the profile says how to find it.
   const documentsOn = filterOn && option('filter', 'documents');
-  const [about, setAbout] = useState<Record<string, readonly string[]>>({});
+  const [about, setAbout] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const sourceKey =
     documentsOn && corpusKey
       ? (activeAnswer?.sources ?? [])
@@ -659,7 +670,7 @@ export const useAssistant = ({
     let gone = false;
     for (const id of sourceKey.split(','))
       void api.loadAbout(corpusKey, id).then((line) => {
-        if (!gone && line) setAbout((all) => (all[id] ? all : { ...all, [id]: line }));
+        if (!gone && line) setAbout((all) => (all.has(id) ? all : new Map(all).set(id, line)));
       });
     return () => {
       gone = true;
@@ -668,7 +679,7 @@ export const useAssistant = ({
   const documents = useMemo<DocumentItem[] | undefined>(
     () =>
       activeAnswer?.sources?.map((s, i) => {
-        const line = s.documentId ? about[s.documentId] : undefined;
+        const line = s.documentId ? about.get(s.documentId) : undefined;
         return {
           id: s.documentId ?? `${i}-${s.title}`,
           // Documents names no untitled source itself; Sources' word for one.
@@ -1087,7 +1098,7 @@ export const useAssistant = ({
     renameThread: onRename
       ? async (thread: ThreadRow, title: string) => {
           await onRename(thread, title);
-          setRenamed((all) => ({ ...all, [thread.id]: title }));
+          setRenamed((all) => new Map(all).set(thread.id, title));
         }
       : undefined,
     deleteThread: onDelete

@@ -1064,6 +1064,21 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     );
   });
 
+  it('reads no kept filter for a thread whose id every object has as a property, such as constructor', async () => {
+    const fake = counted();
+    fake.api.loadThreads = vi.fn(async () => [
+      { id: 'constructor', title: 'En tråd fra adressen', updatedAt: Date.now(), service: 'ka' },
+    ]);
+    drawNext(fake.api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    fireEvent.click(await screen.findByRole('link', { name: 'En tråd fra adressen' }));
+    await waitFor(() => expect(answers()).toBe(1));
+    expect(
+      within(filterPanel()).getByRole('button', { name: 'Dokumenttype Årsrapport' }),
+    ).toBeTruthy();
+  });
+
   it('leaves «Kunnskapsassistenten»’s filter as it was: a view of the panel, no line under the field', async () => {
     drawNext(counted().api, fromTemplate('knowledge-assistant').layout);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
