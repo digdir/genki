@@ -39,6 +39,9 @@ describe('the assembly’s styles', () => {
   it('hold no literal colour, only Designsystemet tokens', () => {
     expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
     expect(css.match(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi) ?? []).toEqual([]);
+    expect(
+      css.match(/:\s*(?:white|black|red|blue|green|gr[ae]y|orange|yellow|purple)\b/gi) ?? [],
+    ).toEqual([]);
   });
 
   it('hold no literal size outside a --genai- fallback', () => {
