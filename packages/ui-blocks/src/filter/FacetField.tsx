@@ -27,6 +27,8 @@ export interface FieldProps {
   compact: boolean;
   /** Most values a field may send. */
   max: number;
+  /** Named by the row it opens from (the `panel` variant), so its label is for screen readers. */
+  labelHidden?: boolean | undefined;
 }
 
 /** Chosen values from which `compact` draws one chip instead of one per value. */
@@ -60,6 +62,7 @@ export const FacetField = ({
   onChange,
   compact: compactChips,
   max,
+  labelHidden = false,
 }: FieldProps) => {
   const t = useT();
   const texts = useComboboxTexts();
@@ -174,7 +177,7 @@ export const FacetField = ({
   return (
     <Field className="uib-filter-field">
       <div className="uib-filter-label-row">
-        <Label>{field.label}</Label>
+        <Label className={labelHidden ? 'ds-sr-only' : undefined}>{field.label}</Label>
 
         <div className="uib-filter-field-actions">
           {!allChosen && total > 0 && (

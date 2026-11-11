@@ -209,4 +209,214 @@
   .uib-filter-placeholder-input[hidden] {
     display: none;
   }
+
+  /* ── `variant="panel"`: the dev boards' filter beside the threads (dev-filter-panel) ── */
+
+  /* Tight, as a panel's parts are, and to the panel's foot, where the documents end. */
+  .uib-filter[data-variant='panel'] {
+    gap: var(--genai-filter-panel-gap, var(--ds-size-3));
+    padding-block-end: var(--genai-filter-panel-padding-block-end, 0);
+  }
+
+  .uib-filter-rows {
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+  }
+  .uib-filter-rows[hidden] {
+    display: none;
+  }
+
+  /* «Fjern alle filtre» at the end of its own line over the fields, which keeps its height. */
+  .uib-filter-clear-all {
+    display: flex;
+    justify-content: flex-end;
+    min-block-size: var(--genai-filter-clear-all-min-height, var(--ds-size-5));
+    font-size: var(--genai-filter-clear-all-font-size, var(--ds-font-size-2));
+    font-weight: var(--genai-filter-clear-all-font-weight, var(--ds-font-weight-medium));
+  }
+  .uib-filter-clear-all[hidden] {
+    display: none;
+  }
+
+  .uib-filter-clear-all > .ds-link {
+    text-decoration: none;
+  }
+
+  /* Each field a row under a hairline, as the design's. */
+  .uib-filter-row {
+    border-block-end: var(--genai-filter-row-border-width, var(--ds-border-width-default)) solid
+      var(--genai-filter-row-border-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  .uib-filter-row-heading {
+    margin: 0;
+    font: inherit;
+  }
+
+  /* The whole row opens the field: its name, what is chosen, and the chevron at the end. */
+  .uib-filter-row-toggle {
+    display: flex;
+    gap: var(--genai-filter-row-gap, var(--ds-size-2));
+    align-items: center;
+    inline-size: 100%;
+    padding: var(--genai-filter-row-padding-block, var(--ds-size-2))
+      var(--genai-filter-row-padding-inline, var(--ds-size-1));
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .uib-filter-row-toggle[hidden] {
+    display: none;
+  }
+
+  .uib-filter-row-toggle:focus-visible {
+    outline: var(--genai-filter-row-focus-width, var(--ds-border-width-focus)) solid
+      var(--genai-filter-row-focus-color, var(--ds-color-focus-outer));
+    outline-offset: calc(-1 * var(--genai-filter-row-focus-width, var(--ds-border-width-focus)));
+  }
+
+  .uib-filter-row-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+  .uib-filter-row-text[hidden] {
+    display: none;
+  }
+
+  .uib-filter-row-name {
+    color: var(--genai-filter-row-name-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-filter-row-name-font-size, var(--ds-font-size-3));
+    font-weight: var(--genai-filter-row-name-font-weight, var(--ds-font-weight-medium));
+    line-height: var(--genai-filter-row-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-filter-row-chosen {
+    color: var(--genai-filter-row-chosen-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-filter-row-chosen-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-filter-row-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-filter-row-icon {
+    flex: 0 0 auto;
+    color: var(--genai-filter-row-icon-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-filter-row-icon-size, var(--ds-font-size-3));
+  }
+
+  .uib-filter-row-body {
+    padding: 0 var(--genai-filter-row-padding-inline, var(--ds-size-1))
+      var(--genai-filter-row-padding-block, var(--ds-size-2));
+  }
+
+  /* Two columns of ticks, each under a hairline, its count at the end. */
+  .uib-filter-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--genai-filter-checkboxes-gap, var(--ds-size-4));
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .uib-filter-checkboxes[hidden] {
+    display: none;
+  }
+
+  .uib-filter-checkbox {
+    align-items: center;
+    padding-block: var(--genai-filter-checkbox-padding-block, var(--ds-size-2));
+    border-block-end: var(--genai-filter-row-border-width, var(--ds-border-width-default)) solid
+      var(--genai-filter-row-border-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  .uib-filter-checkbox > label {
+    display: flex;
+    flex: 1 1 auto;
+    gap: var(--genai-filter-row-gap, var(--ds-size-2));
+    align-items: baseline;
+    justify-content: space-between;
+    min-inline-size: 0;
+    font-size: var(--genai-filter-checkbox-font-size, var(--ds-font-size-2));
+  }
+
+  .uib-filter-checkbox-label {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .uib-filter-checkbox-count {
+    flex: 0 0 auto;
+    color: var(--genai-filter-count-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-filter-count-font-size, var(--ds-font-size-1));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── What an answer read from (FilterRead), and the line under the field (FilterNext) ── */
+
+  .uib-filter-read {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--genai-filter-read-gap, var(--ds-size-2));
+    align-items: center;
+  }
+  .uib-filter-read[hidden] {
+    display: none;
+  }
+
+  .uib-filter-read-lead {
+    display: inline-flex;
+    gap: var(--genai-filter-read-lead-gap, var(--ds-size-1));
+    align-items: center;
+    color: var(--genai-filter-read-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-filter-read-font-size, var(--ds-font-size-2));
+  }
+  .uib-filter-read-lead[hidden] {
+    display: none;
+  }
+
+  /* Chips alike, with no border and no emphasis, not controls («9 · Filtrering», choice 6). */
+  .uib-filter-read-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--genai-filter-read-gap, var(--ds-size-2));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .uib-filter-read-values[hidden] {
+    display: none;
+  }
+
+  .uib-filter-read-value {
+    padding: var(--genai-filter-chip-padding-block, var(--ds-size-1))
+      var(--genai-filter-chip-padding-inline, var(--ds-size-2));
+    border-radius: var(--genai-filter-chip-radius, var(--ds-border-radius-md));
+    background: var(--genai-filter-chip-background, var(--ds-color-neutral-surface-tinted));
+    color: var(--genai-filter-chip-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-filter-chip-font-size, var(--ds-font-size-1));
+    line-height: var(--genai-filter-chip-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-filter-next {
+    display: flex;
+    gap: var(--genai-filter-next-gap, var(--ds-size-2));
+    align-items: baseline;
+    margin: 0;
+    color: var(--genai-filter-next-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-filter-next-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-filter-next-line-height, var(--ds-line-height-md));
+  }
+  .uib-filter-next[hidden] {
+    display: none;
+  }
+
+  .uib-filter-next-icon {
+    flex: 0 0 auto;
+    align-self: center;
+  }
 }

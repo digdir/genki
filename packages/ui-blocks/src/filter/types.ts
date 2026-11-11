@@ -14,6 +14,8 @@ export interface FilterField {
   id: string;
   /** The field's name as a plural noun, «Dokumenttyper». It is lower-cased inside sentences. */
   label: string;
+  /** The field's name over its row in the `panel` variant, in the singular: «Dokumenttype». */
+  heading?: string | undefined;
   /** `year` lets `yearPeriods` draw the field as periods. */
   kind?: 'year' | undefined;
   options: readonly FilterOption[];
