@@ -93,4 +93,24 @@ describe('portal test runs as gate evidence', () => {
     expect(none.size).toBe(0);
     expect(found.get(set.metadata.id)?.id).toBe('this-draft');
   });
+
+  it('does not take a later run of only the marked cases for the whole test set', async () => {
+    const first = set.spec.cases[0]?.id ?? 'case';
+    const entries = await stored(
+      portalRun({ id: 'whole-set' }),
+      portalRun({
+        id: 'marked',
+        startedAt: '2026-11-02T14:00:00.000Z',
+        selected: [first],
+        total: 1,
+        passed: 1,
+      }),
+    );
+
+    const found = await portalGateRuns(entries, testSets, tenant, 'nynorsk', 'spec:draft', [
+      set.metadata.id,
+    ]);
+
+    expect(found.get(set.metadata.id)?.id).toBe('whole-set');
+  });
 });

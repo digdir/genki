@@ -1,5 +1,5 @@
 import type { Principal } from '@genai/contracts';
-import { grantsOf, isApiKeyPrincipal, keyReaches } from '@genai/identity';
+import { grantsOf, isApiKeyPrincipal, isTestRunnerKey, keyReaches } from '@genai/identity';
 import type { Context, MiddlewareHandler } from 'hono';
 import { t } from './i18n/index.js';
 
@@ -53,7 +53,15 @@ export const tenantGate =
     const tenant = c.req.param('tenant');
     const principal = tenant ? await deps.caller(c.req.raw) : undefined;
     if (!tenant || !principal || principal.kind === 'operator') return next();
-    if (isApiKeyPrincipal(principal) && !keyReachesRoute(principal, c))
+    if (isTestRunnerKey(principal) && principal.tenant !== tenant)
+      return c.json({ type: 'about:blank', title: t('problems.notFound'), status: 404 }, 404, {
+        'content-type': 'application/problem+json',
+      });
+    if (
+      isApiKeyPrincipal(principal) &&
+      !isTestRunnerKey(principal) &&
+      !keyReachesRoute(principal, c)
+    )
       return refuse(c, keyScopeType, t('problems.keyScope'), t('problems.keyScopeDetail'));
     const member =
       principal.tenant === tenant || principal.authorizedFor?.some((a) => a.org === tenant);

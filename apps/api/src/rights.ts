@@ -1,7 +1,8 @@
 import type { Principal } from '@genai/contracts';
-import { PLATFORM_RIGHTS, platformRightsOf } from '@genai/identity';
+import { isTestRunnerKey, PLATFORM_RIGHTS, platformRightsOf } from '@genai/identity';
 import type { Context } from 'hono';
 import { platformScope } from './config-store.js';
+import { testRunnerMayPerform } from './test-runner.js';
 
 export type Right =
   | 'use-services'
@@ -229,7 +230,9 @@ const isOperator = (principal: Principal) =>
   principal.kind === 'operator' || principal.actor?.kind === 'operator';
 
 export type ActionRefusal =
-  { kind: 'operator' } | { kind: 'right'; right: Right; problem: RightProblem };
+  | { kind: 'operator' }
+  | { kind: 'test-runner' }
+  | { kind: 'right'; right: Right; problem: RightProblem };
 
 export const refusedAction = (
   principal: Principal,
@@ -237,6 +240,8 @@ export const refusedAction = (
   tenant: string,
   input: ActionInput,
 ): ActionRefusal | undefined => {
+  if (isTestRunnerKey(principal))
+    return testRunnerMayPerform(action, input) ? undefined : { kind: 'test-runner' };
   if (isOperator(principal) || !carriesAltinnActions(principal)) return undefined;
   const requirement = actionRequirement(action, input);
   if (requirement === 'operator') return { kind: 'operator' };

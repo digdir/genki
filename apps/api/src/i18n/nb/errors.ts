@@ -3,6 +3,8 @@ import { defineNamespace } from '@genai/i18n';
 export const catalogErrors = defineNamespace({
   onlyOperatorsChangeModels: 'bare operatører endrer modeller',
   routeOnlyAction: 'denne handlingen kjøres bare fra sin egen rute',
+  testRunnerExpiry: 'en testkjørernøkkel må utløpe innen 1 til {testRunnerMaxDays} dager',
+  testRunnerCallsPerMinute: 'en testkjørernøkkel må ha en grense for kall per minutt',
   supportMinutes: '1 til {minutes} minutter',
   noModel: 'ingen modell {id}',
   tenantsCannotRegister: 'virksomheter kan ikke registrere {kind}',
@@ -392,6 +394,8 @@ export const qualityErrors = defineNamespace({
   baseVersionRange: 'baseVersion er en publisert versjon fra 0 til {latest}',
   inputRequired: 'input er påkrevd',
   lockedOrOpen: 'split er locked eller open',
+  caseIdList: 'cases er en liste med minst én id for et testtilfelle',
+  noCaseIn: 'ingen testtilfelle {id} i {setId}',
   expectedRequired: 'forventet svar eller kriterier er påkrevd',
   caseExists: 'testtilfellet {id} finnes',
   testSetRequired: 'testsettet er påkrevd',

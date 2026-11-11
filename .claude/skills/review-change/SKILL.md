@@ -28,7 +28,7 @@ Then sweep the diff three times. Each sweep turns the diff into a list of places
 Start these five subagents (the Agent tool) in one message, so they run at the same time. Give each the range, the file list, the rules and the candidates from the sweeps. Each must look at every changed file and every candidate, and return candidates with file and line, or say it found nothing in that file.
 
 - **Correctness**: logic, edge cases, error paths, the second call, the failed call, concurrency, data loss.
-- **Security**: the checklist in `.github/review-security.md` and the promises in `docs/security/README.md`.
+- **Security**: the checklist and the Invariants in `.github/review-security.md`, checked on every path the change touches, and the promises in `docs/security/README.md`.
 - **Other paths**: every other route, job, batch path or caller that reaches the same data, rule or model, and callers outside the diff that a changed contract breaks.
 - **Tests**: each behaviour change has a test that fails without it; no dependence on the clock, the order or leftovers; names state the rule.
 - **Docs and rules**: ADRs, the API description, docs, both i18n catalogues, comments, and the Always check list in REVIEW.md.
