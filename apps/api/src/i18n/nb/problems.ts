@@ -122,6 +122,9 @@ export const problems = defineNamespace({
   datasetInUseTitle: 'Datasettet er i bruk',
   datasetRunOpenTitle: 'En innlesing av datasettet pågår',
   datasetDeleting: 'En sletting av datasettet pågår allerede',
+  shareOperatorOnly:
+    'Bare plattformoperatører endrer hvem tjenesten deles med. Behold spec.availableTo slik den er i publisert versjon.',
+  shareOperatorOnlyTitle: 'Bare operatører endrer deling',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',

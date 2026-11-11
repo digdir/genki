@@ -19,6 +19,8 @@ import { refusedRight, type Access } from './access.js';
 import { requireRight, rights, rightsOf, seesUsage } from './rights.js';
 import {
   settingsConflictMessage,
+  shareOperatorOnlyType,
+  sharingRefused,
   type Admin,
   type AdminResult,
   type AuditEntry as AuditRecord,
@@ -554,7 +556,10 @@ const routes = {
       200: json(ImportPlan, 'Plan'),
       400: problems[400],
       401: problems[401],
-      403: problems[403],
+      403: {
+        content: problemContent,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change`,
+      },
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -1110,7 +1115,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         onConflict,
         actor: '',
         reason,
-        check: admin.checkImport,
+        check: admin.importCheck(acting),
       });
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);
@@ -1118,6 +1123,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const result = await admin.importTenant(acting, tenant, bundle, onConflict, reason);
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === shareOperatorOnlyType)
+      return sharingRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });
     return c.json({ dryRun: false, task: result.task, plan: result.value }, 200);
   });

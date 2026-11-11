@@ -122,6 +122,9 @@ export const problems = {
   datasetInUseTitle: 'The dataset is in use',
   datasetRunOpenTitle: 'An ingestion of the dataset is running',
   datasetDeleting: 'A delete of the dataset is already going',
+  shareOperatorOnly:
+    'Only platform operators change who the service is shared with. Keep spec.availableTo as it is in the published version.',
+  shareOperatorOnlyTitle: 'Only operators change sharing',
   uploadRequestTooLarge:
     'The request is larger than {size} MB. Send the files in several requests.',
   status400: 'The request cannot be read',

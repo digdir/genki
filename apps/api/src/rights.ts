@@ -226,7 +226,7 @@ export const actionRequirement = (action: string, input: ActionInput): ActionReq
 export const carriesAltinnActions = (principal: Principal) =>
   principal.authorizedFor?.some((entry) => entry.actions !== undefined) ?? false;
 
-const isOperator = (principal: Principal) =>
+export const isOperator = (principal: Principal) =>
   principal.kind === 'operator' || principal.actor?.kind === 'operator';
 
 export type ActionRefusal =
