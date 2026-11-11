@@ -368,7 +368,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     if (run.status !== 'queued' && run.status !== 'running') return run;
     if (!leases.abandoned(`${entry.scope}/${run.id}`, run, run.startedAt)) return run;
     const failed: ServiceRun = {
-      ...run,
+      ...withoutPlace(run),
       status: 'failed',
       endedAt: leases.now().toISOString(),
       error: restartMessage,

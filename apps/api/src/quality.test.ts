@@ -682,6 +682,35 @@ describe('an eval run the platform restarts', () => {
     expect(run.cost).toBe(running.cost);
     expect(run.tokens.input).toBeGreaterThan(0);
   });
+
+  it('drops the place in line from a waiting run the platform restarts', async () => {
+    const store = new InMemoryConfigEntryStore();
+    const before = await boot(prices, {
+      store,
+      holdLocked: true,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => startedAt },
+    });
+    const send = (body: Record<string, unknown>) =>
+      before.send('POST', `${services}/eval-runs`, 'kari', body);
+    await send({ testSet: 'svar-frister', cases: ['l1'] });
+    const waiting = String((await send({ testSet: 'svar-frister' })).body.id);
+    const readWaiting = async (env: Awaited<ReturnType<typeof boot>>) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${waiting}`))
+        .body as unknown as ServiceRun;
+    await vi.waitFor(async () =>
+      expect(await readWaiting(before)).toMatchObject({ status: 'queued', queuePlace: 1 }),
+    );
+    const after = await boot(prices, {
+      store,
+      leases: { instance: 'after', now: () => new Date(startedAt.getTime() + 10 * 60_000) },
+    });
+    await after.settled();
+
+    const run = await readWaiting(after);
+    expect(run).toMatchObject({ status: 'failed', interrupted: true });
+    expect(run).not.toHaveProperty('queuePlace');
+  });
 });
 
 describe('test-set runs on a shared instance', () => {
