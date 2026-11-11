@@ -340,6 +340,65 @@
     margin: 0;
     overflow-wrap: anywhere;
   }
+  /* ── `variant="tool"`: the dev boards' «Kilder» tool (dev-kilder-hoyre) ── */
+
+  .uib-sources[data-variant='tool'],
+  .uib-sources[data-variant='tool'] > .uib-sources-head {
+    gap: var(--genai-sources-tool-gap, var(--ds-size-3));
+  }
+
+  /* The field alone: the line for the hits takes room only once there is something to say. */
+  .uib-sources[data-variant='tool'] .uib-sources-search-form {
+    gap: 0;
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-search-results:not([data-empty]) {
+    margin-block-start: var(--genai-sources-search-gap, var(--ds-size-2));
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-search-results[data-empty] {
+    min-block-size: 0;
+  }
+
+  /* «Utdrag svaret bygger på», a quiet line over the list. */
+  .uib-sources-caption {
+    margin: 0;
+    color: var(--genai-sources-caption-color, var(--ds-color-text-subtle));
+    font-size: var(--genai-sources-caption-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-sources-caption-line-height, var(--ds-line-height-md));
+  }
+
+  /* An excerpt's title, its section or «Utdrag N», bold in the text's own colour. */
+  .uib-sources[data-variant='tool'] .uib-sources-excerpt-number {
+    font-size: var(--genai-sources-tool-excerpt-title-font-size, var(--ds-font-size-3));
+    font-weight: var(
+      --genai-sources-tool-excerpt-title-font-weight,
+      var(--ds-font-weight-semibold)
+    );
+    color: var(--genai-sources-tool-excerpt-title-color, var(--ds-color-text-default));
+  }
+
+  /* A closed excerpt is two lines of its text, its paragraphs run together, and the last line
+     fades into the excerpt's ground. */
+  .uib-sources[data-variant='tool'] .uib-sources-preview {
+    position: relative;
+    max-block-size: var(--genai-sources-preview-block-size, 2lh);
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-preview > * {
+    margin-block-end: 0;
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-preview::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: var(--genai-sources-preview-fade-block-size, 1lh);
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--genai-sources-excerpt-background, var(--ds-color-surface-default))
+    );
+    pointer-events: none;
+  }
+
   @container uib-sources (inline-size >= 410px) {
     .uib-sources:not([data-variant='compact']) .uib-sources-document {
       --_head-padding: var(--ds-size-4);

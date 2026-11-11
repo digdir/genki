@@ -11,6 +11,12 @@ export interface SourcesSearchProps {
   currentHitIndex: number;
   onStep: (step: 1 | -1) => void;
   describedBy?: string | undefined;
+  /** The field's name, «Søk i kildene» by default. */
+  label?: string | undefined;
+  /** The words in the empty field, «Søk» by default. */
+  placeholder?: string | undefined;
+  /** The name for a screen reader only, where the placeholder says it (the `tool` variant). */
+  labelHidden?: boolean | undefined;
 }
 
 /** A filter over the excerpts already drawn. The counter is a live region, as `<mark>` is silent. */
@@ -21,6 +27,9 @@ export const SourcesSearch = ({
   currentHitIndex,
   onStep,
   describedBy,
+  label,
+  placeholder,
+  labelHidden = false,
 }: SourcesSearchProps) => {
   const t = useT();
   const fieldId = useId();
@@ -39,19 +48,21 @@ export const SourcesSearch = ({
     <search className="uib-sources-search">
       {/* Search.Clear is a reset button, which needs a form. */}
       <form className="uib-sources-search-form" onSubmit={(event) => event.preventDefault()}>
-        <Label htmlFor={fieldId}>{t('sources.search')}</Label>
+        <Label htmlFor={fieldId} className={labelHidden ? 'ds-sr-only' : undefined}>
+          {label ?? t('sources.search')}
+        </Label>
         <Search data-sr-clear={t('sources.clearSearch')}>
           <Search.Input
             id={fieldId}
             name="uib-sources-search"
             aria-describedby={describedBy}
-            placeholder={t('sources.searchPlaceholder')}
+            placeholder={placeholder ?? t('sources.searchPlaceholder')}
             value={query}
             onChange={(event) => onQueryChange(event.currentTarget.value)}
           />
           <Search.Clear aria-label={t('sources.clearSearch')} onClick={() => onQueryChange('')} />
         </Search>
-        <div className="uib-sources-search-results">
+        <div className="uib-sources-search-results" data-empty={status ? undefined : true}>
           <Paragraph data-size="xs" aria-live="polite" className="uib-sources-search-status">
             {status}
           </Paragraph>
