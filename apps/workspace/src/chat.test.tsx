@@ -198,6 +198,24 @@ describe('chat', () => {
     expect(source.textContent).toBe('Årsrapport 2025 · 1. mars 2026');
   });
 
+  it('shows no date for a source without a publish date', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async () => ({
+        text: 'Ventetida gjekk ned.',
+        task: 't-1',
+        sources: [{ title: 'Årsrapport 2025' }],
+      }),
+    };
+    await renderApp('#/chat', { api, initialMessages: [] });
+    fireEvent.change(await screen.findByLabelText(/Still et spørsmål/), {
+      target: { value: 'Kva seier rapportane?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const source = (await screen.findByText('Årsrapport 2025')).closest('li') as HTMLElement;
+    expect(source.textContent).toBe('Årsrapport 2025');
+  });
+
   it('tags every answer as made with AI, lists sources and marks nynorsk text with lang="nn"', async () => {
     await renderApp('#/chat');
     await screen.findByRole('list', { name: 'Samtale' });
