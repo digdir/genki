@@ -347,6 +347,31 @@ describe('workspace api', () => {
     });
   });
 
+  it('asks for step frames only when the screen listens, and passes each one on', async () => {
+    const { calls, fetcher } = recorder(() =>
+      sse([
+        { choices: [{ index: 0, delta: {}, finish_reason: null }], genai_step: { tool: 'search' } },
+        delta('Ja.'),
+        delta('', 'stop'),
+      ]),
+    );
+    const steps: unknown[] = [];
+    await client(fetcher).chat(
+      'ka__default',
+      [],
+      () => {},
+      undefined,
+      undefined,
+      undefined,
+      [],
+      (s) => steps.push(s),
+    );
+    await client(fetcher).chat('ka__default', [], () => {});
+    expect(steps).toEqual([{ tool: 'search' }]);
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ genai_steps: true });
+    expect(JSON.parse(String(calls[1]?.init?.body))).not.toHaveProperty('genai_steps');
+  });
+
   it('drops a draft the server retracts and keeps only the answer that replaced it', async () => {
     const { fetcher } = recorder(() =>
       sse([

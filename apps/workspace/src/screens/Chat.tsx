@@ -19,6 +19,7 @@ import { DocumentPicker } from '../DocumentPicker';
 import { useAsync } from '../hooks';
 import { useT } from '../i18n';
 import { detectLang } from '../language';
+import { allDone, withStep } from '../procedure';
 import { restoreRuns, runTitle } from '../saved-runs';
 import { serviceIdOf } from './projects/shared';
 import {
@@ -206,9 +207,16 @@ export const Chat = ({
     setEditingForm(true);
   }, [service.id]);
 
-  const patch = (id: string, change: Partial<AssistantMessage>) =>
+  const patch = (
+    id: string,
+    change: Partial<AssistantMessage> | ((m: AssistantMessage) => Partial<AssistantMessage>),
+  ) =>
     setMessages((list) =>
-      list.map((m) => (m.id === id && m.role === 'assistant' ? { ...m, ...change } : m)),
+      list.map((m) =>
+        m.id === id && m.role === 'assistant'
+          ? { ...m, ...(typeof change === 'function' ? change(m) : change) }
+          : m,
+      ),
     );
 
   const ask = async (answerId: string, history: ChatMessage[]) => {
@@ -218,6 +226,7 @@ export const Chat = ({
     inFlight.current = controller;
     setAnnounce('');
     setBusy(true);
+    const startedAt = now().getTime();
     let reply: ChatReply;
     try {
       reply = await api.chat(
@@ -228,6 +237,12 @@ export const Chat = ({
         input,
         savesConversation ? { ...(conversationId ? { id: conversationId } : {}) } : undefined,
         rules && documents.length ? documents : undefined,
+        (frame) =>
+          patch(answerId, (m) => {
+            const before = m.procedure ?? { steps: [], startedAt };
+            const next = withStep(before, frame, t);
+            return next === before ? {} : { procedure: { ...before, ...next } };
+          }),
       );
     } catch {
       if (controller.signal.aborted) return;
@@ -254,6 +269,17 @@ export const Chat = ({
         : {}),
       ...(reply.failure ? { failure: reply.failure } : {}),
     });
+    patch(answerId, (m) =>
+      m.procedure
+        ? {
+            procedure: {
+              ...m.procedure,
+              steps: allDone(m.procedure.steps),
+              finishedAt: now().getTime(),
+            },
+          }
+        : {},
+    );
     setAnnounce(reply.failure ? t('chat.answerFailed') : t('chat.answerReady'));
     setBusy(false);
   };
@@ -558,6 +584,7 @@ export const Chat = ({
           messages={shown}
           organisation={organisation}
           now={now()}
+          clock={now}
           onRetry={retry}
           onFeedback={(input) => api.sendFeedback(input)}
           {...(api.media ? { loadMedia: api.media } : {})}
