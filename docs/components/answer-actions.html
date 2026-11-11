@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Answer actions · Components</title>
+    <meta
+      name="description"
+      content="What a reader can do with a finished answer: copy it with its sources, copy the link to its thread, and say whether it was useful."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Answer actions</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="answer-actions"
+        data-component="answer-actions"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="answer-actions-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="answer-actions-title">Answer actions</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Main area</span>
+            </div>
+            <p class="summary">
+              What a reader can do with a finished answer: copy it with its sources, copy the link
+              to its thread, and say whether it was useful.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Kopier svaret», «Kopier lenke til tråden», «Var svaret nyttig?»</dd>
+              <dt>Sits in</dt>
+              <dd>The last row of the answer</dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/224"
+                  >kunnskapsassistenten#224</a
+                >
+              </dd>
+              <dt>Code</dt>
+              <dd><code>AnswerActions</code> in <code>packages/ui-blocks</code></dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-bar" x="28" y="24" width="96" height="6" rx="3" />
+            <rect class="s-bar" x="28" y="36" width="72" height="6" rx="3" />
+            <rect class="s-soft" x="26" y="52" width="40" height="12" rx="6" />
+            <rect class="s-accent" x="31" y="55" width="6" height="6" rx="1.5" />
+            <rect class="s-soft" x="70" y="52" width="40" height="12" rx="6" />
+            <rect class="s-accent" x="75" y="55" width="6" height="6" rx="1.5" />
+            <rect class="s-bar" x="118" y="55" width="16" height="6" rx="3" />
+            <rect class="s-bar" x="28" y="76" width="40" height="5" rx="2.5" />
+            <rect class="s-accent-soft" x="74" y="72" width="24" height="12" rx="6" />
+            <rect class="s-accent-soft" x="102" y="72" width="24" height="12" rx="6" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>Readers take answers elsewhere: into a document, an email or a case.</li>
+              <li>The service wants to learn which answers help, and why not.</li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>
+                The answer is not finished. There is nothing to copy from half an answer, so the app
+                draws no row until the answer is done.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>Copy</strong>, as in kunnskapsassistenten: «Kopier svaret» and «Kopier lenke
+                til tråden», with when the answer came at the far end.
+              </li>
+              <li>
+                <strong>Feedback</strong>, as in genki's workspace: «Var svaret nyttig?» with «Ja»
+                and «Nei», then reasons for a no, a comment, «Send» and «Hopp over». Off unless the
+                app asks for it with <code>feedback</code>: kunnskapsassistenten took the feedback
+                under each answer out on 6 October 2026, because it adds a lot of noise under every
+                answer, and has it to be rethought.
+              </li>
+              <li><strong>Both</strong>, the copy row first and the feedback under a rule.</li>
+            </ul>
+            <p>
+              Each copy button is drawn only when the app passes its event, the feedback only when
+              it also passes <code>feedback</code>, and the block draws nothing when it has none.
+            </p>
+            <p>
+              The answer block's <code>answerCopy</code> gives the text for «Kopier svaret» with its
+              reference list, and the count for the receipt.
+            </p>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <p>The block raises events. The app copies, sends, and passes back what happened.</p>
+            <ul>
+              <li>
+                <code>onCopyAnswer</code> and <code>onCopyLink</code>: the reader asked to copy.
+                <code>copied</code> is the receipt: <code>{ kind: 'answer', sources }</code>,
+                <code>{ kind: 'link' }</code> or <code>{ kind: 'failed' }</code>. A new object for
+                each copy; the receipt clears itself after four seconds.
+              </li>
+              <li>
+                <code>linkOnlyHere</code>: the link opens the thread only for this person, in this
+                browser, and the block says so.
+              </li>
+              <li>
+                <code>feedback</code> and <code>onFeedback</code>: the form, off by default, and
+                <code>{ rating, reasons, comment }</code>, the platform's feedback without the task
+                id, which the app adds. <code>feedbackStatus</code> is <code>'sending'</code>,
+                <code>'sent'</code> or <code>'failed'</code>. The form scrolls into sight once when
+                the person opens it.
+              </li>
+              <li>
+                <code>actions</code>: the app's own buttons after the copy buttons.
+                <code>end</code>: what sits at the far end, such as when the answer came.
+              </li>
+              <li>
+                <code>color</code>: Designsystemet's <code>data-color</code>. Neutral unless given,
+                as kunnskapsassistenten draws the actions under an answer.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="chat.html">Chat</a>: the row closes each answer</li>
+              <li><a href="footnotes.html">Footnotes</a>: the copied answer keeps its numbers</li>
+              <li><a href="sources.html">Sources</a>: the copied answer lists them under it</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. Eight are pinned to neutral on
+              purpose, as kunnskapsassistenten and the workspace draw them: the helper text, the
+              rule above the feedback, and the form's ground and field.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-answer-actions-comment-background</code></td>
+                  <td><code>--ds-color-neutral-background-default</code></td>
+                  <td>the comment field's ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-counter-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the character count under the comment</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-counter-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>the character count under the comment</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-end-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>what sits at the far end of the row</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-end-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>what sits at the far end of the row</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-feedback-border-color</code></td>
+                  <td><code>--ds-color-neutral-border-subtle</code></td>
+                  <td>the rule above the feedback</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-feedback-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the rule above the feedback</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-feedback-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the question, the form and the status</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-feedback-padding-block-start</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space under the rule</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-feedback-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the question and «Ja» and «Nei»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>the block's font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-form-actions-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between «Send» and «Hopp over»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-form-background</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>the form's ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-form-border-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>the form's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-form-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the form's parts</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-form-padding</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>space inside the form</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the copy row and the feedback</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-question-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«Var svaret nyttig?»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-question-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«Var svaret nyttig?»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-reasons-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the reasons</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-receipt-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the line that says what was copied</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-receipt-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>the line that says what was copied</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-receipt-scroll-margin-block-end</code></td>
+                  <td><code>0</code></td>
+                  <td>
+                    how far above the bottom the receipt stops when it scrolls into view, for a
+                    field that stays put under the conversation
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the copy buttons</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-status-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«Takk!» and the other feedback statuses</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-actions-status-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«Takk!» and the other feedback statuses</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                An answer must not leave the service without where it came from. In
+                kunnskapsassistenten, «Kopier svaret» copies the answer with its numbers and the
+                sources under it, and the receipt counts them: «Svaret og 3 kilder er kopiert.».
+                What goes on the clipboard is the app's; the block shows the count it gets.
+              </li>
+              <li>
+                In kunnskapsassistenten, a thread's link opens it only in the browser it was made in
+                (kunnskapsassistenten#119). The limit is the button's description, not its name, so
+                the row keeps its height; the tooltip, the description and the receipt say the same
+                sentence.
+              </li>
+              <li>
+                The receipt is a polite live region that is always in the page, even empty. A region
+                and its text that arrive in the same frame announce nothing. It scrolls into view as
+                little as it must, and a focus ring a keyboard user sees stays in view too.
+              </li>
+              <li>
+                Feedback is stored for the service, not for the person, and the form says so after
+                «Send». The comment is at most 300 characters and asks for no personal data.
+              </li>
+              <li>
+                The reasons are sent in bokmål whatever language the person reads, as the workspace
+                stores them, so the service reads them the same way.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                Designsystemet <code>Button</code>s, tertiary and small, with the clipboard icons,
+                as in kunnskapsassistenten. <code>Tooltip</code> for the link's limit.
+              </li>
+              <li>
+                Feedback as in the workspace: «Ja» and «Nei» are toggle buttons with
+                <code>aria-pressed</code>, a <code>Fieldset</code> of <code>Chip</code> checkboxes
+                for a no, a <code>Textarea</code> with its count, and a status line.
+              </li>
+              <li>
+                While the app sends, «Send» shows that it is busy and nothing is sent twice. When it
+                is sent, the form closes and the rating can't be changed. When it failed, the form
+                stays for another try.
+              </li>
+              <li>
+                The block never calls the platform; tests check that it copies and sends nothing.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Should kunnskapsassistenten ask for feedback again, and where? It took the link
+                under each answer out on 6 October 2026, to be rethought; the block keeps the form
+                behind <code>feedback</code>.
+              </li>
+              <li>
+                Should an answer opened again show the rating already given? The block can only show
+                what the app passes in.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="footnotes.html" rel="prev"><small>Previous</small>Footnotes</a>
+        <a class="next" href="threads.html" rel="next"><small>Next</small>Threads</a>
+      </nav>
+    </main>
+  </body>
+</html>
