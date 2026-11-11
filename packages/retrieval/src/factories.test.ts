@@ -531,7 +531,9 @@ describe('documents for step flows', () => {
   it('lists an undated document without a publish date, even when it has an ingestion date', async () => {
     const undated = { ingested_at: '2026-10-01T08:00:00.000Z' };
     const searched = port({
-      search: async () => ({ hits: [{ id: 'u-0', score: 0, document: 'u', fields: undated }] }),
+      search: async () => ({
+        hits: [{ id: 'u-0', score: 0, text: '', document: 'u', fields: undated }],
+      }),
     });
     const listing = port({
       documents: async () => ({ documents: [{ id: 'u', fields: undated }] }),
