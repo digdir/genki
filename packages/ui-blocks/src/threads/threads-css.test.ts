@@ -5,9 +5,27 @@ const css = readFileSync(`${import.meta.dirname}/threads.css`, 'utf8').replace(
   /\/\*[\s\S]*?\*\//g,
   '',
 );
-const uses = [...css.matchAll(/var\((--genai-threads-[a-z-]+),\s*var\((--ds-[a-z0-9-]+)\)\)/g)].map(
-  ([, name, token]) => ({ name, token }),
-);
+const usesOf = (body: string) =>
+  [...body.matchAll(/var\(\s*(--genai-threads-[a-z-]+),\s*var\((--ds-[a-z0-9-]+)\)\s*\)/g)].map(
+    ([, name, token]) => ({ name, token }),
+  );
+// Each rule apart, so kunnskapsassistenten's rows and the design's (`variant="nav"`) are each held
+// to their own pins.
+const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector = '', body = '']) => ({
+  nav: selector.includes("[data-variant='nav']"),
+  uses: usesOf(body),
+}));
+const uses = rules.filter((rule) => !rule.nav).flatMap((rule) => rule.uses);
+const navUses = rules.filter((rule) => rule.nav).flatMap((rule) => rule.uses);
+const pinnedIn = (list: typeof uses) => [
+  ...new Set(
+    list
+      .filter((use) =>
+        /^--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.token ?? ''),
+      )
+      .map((use) => use.name),
+  ),
+];
 
 // Pinned to neutral on purpose, as the reference draws them, each with a comment in the CSS.
 const neutralPins = [
@@ -17,7 +35,31 @@ const neutralPins = [
   '--genai-threads-signed-in-border-color',
 ];
 
+// The design's rows: dark text, a grey hover and grey group names, as the dev-trader board draws.
+const navNeutralPins = [
+  '--genai-threads-group-title-color',
+  '--genai-threads-thread-color',
+  '--genai-threads-thread-hover-background',
+];
+
 describe('the Threads styles', () => {
+  it('read the design’s rows through their own rules, which the lint reads too', () => {
+    expect(navUses.length).toBeGreaterThan(0);
+    expect(rules.filter((rule) => rule.nav).length).toBeGreaterThan(0);
+  });
+
+  it('pin the design’s rows to neutral, as the board draws them, and nothing else', () => {
+    expect(pinnedIn(navUses).sort()).toEqual(navNeutralPins);
+    for (const use of navUses.filter((u) => navNeutralPins.includes(u.name ?? '')))
+      expect(use.token).toMatch(/^--ds-color-neutral-/);
+  });
+
+  it('tint the design’s open row in the host’s colour family, its text that family’s own', () => {
+    for (const name of ['--genai-threads-current-background', '--genai-threads-current-color'])
+      for (const use of navUses.filter((u) => u.name === name))
+        expect(use.token).toMatch(/^--ds-color-(?:background|text)-/);
+  });
+
   it('follow the host’s colour family, but for the four deliberate neutral pins', () => {
     const pinned = uses
       .filter((use) =>
