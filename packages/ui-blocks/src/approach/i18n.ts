@@ -3,6 +3,8 @@ import { defineTranslations } from '@genai/i18n/react';
 
 const nbApproach = defineNamespace({
   title: 'Fremgangsmåte',
+  // Over the steps in the `list` variant, the dev boards' tool.
+  caption: 'Slik jobbet assistenten med svaret',
   done: 'ferdig',
   active: 'pågår',
   waiting: 'venter',
@@ -29,6 +31,7 @@ const nbApproach = defineNamespace({
 
 const enApproach = {
   title: 'Approach',
+  caption: 'How the assistant worked on the answer',
   done: 'done',
   active: 'in progress',
   waiting: 'waiting',

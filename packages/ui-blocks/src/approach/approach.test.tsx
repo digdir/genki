@@ -307,3 +307,43 @@ describe('a host that keeps the card open or shut', () => {
     expect(card().open).toBe(false);
   });
 });
+
+describe('the steps as the dev boards’ tool, `variant="list"`', () => {
+  const done: ApproachStep[] = [
+    { id: 'understand', title: 'Forsto spørsmålet', status: 'done' },
+    { id: 'read', title: 'Leste de relevante delene nøye', status: 'done', excerptsRead: 11 },
+    {
+      id: 'write',
+      title: 'Skrev svaret',
+      description: 'Skilte mellom det kildene sier og det som er sammenstilt',
+      status: 'active',
+    },
+  ];
+
+  it('draws the caption and each step with its mark and title, and no card that folds', () => {
+    render(<Approach variant="list" steps={done} working startedAt={started} />);
+    expect(screen.getByText('Slik jobbet assistenten med svaret')).toBeTruthy();
+    expect(document.querySelector('details')).toBeNull();
+    const list = screen.getByRole('list', { name: 'Fremgangsmåte' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items.map((item) => item.getAttribute('data-status'))).toEqual([
+      'done',
+      'done',
+      'active',
+    ]);
+    expect(items[0]?.querySelector('.uib-approach-mark svg')).not.toBeNull();
+    expect(items[2]?.getAttribute('aria-current')).toBe('step');
+  });
+
+  it('keeps the step’s title and puts what it read, or its description, on the line under it', () => {
+    render(<Approach variant="list" steps={done} working startedAt={started} />);
+    const lines = [...document.querySelectorAll('.uib-approach-step-line')].map(
+      (line) => line.textContent,
+    );
+    expect(lines).toEqual([
+      'Leste 11 utdrag nøye',
+      'Skilte mellom det kildene sier og det som er sammenstilt',
+    ]);
+    expect(screen.getByText('Leste de relevante delene nøye')).toBeTruthy();
+  });
+});

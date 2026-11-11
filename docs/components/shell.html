@@ -129,6 +129,8 @@
                 there, such as the filter's <code>pinIn</code>; a stable function),
                 <code>foot</code> and <code>footPinned</code>, <code>railFoot</code> (what the
                 folded panel shows at its bottom, such as the reader's avatar; not in the top row),
+                <code>rail</code> (what the folded panel shows under its button, such as a button
+                per tool that opens the panel on it, dev-verktoy-4; not in the top row or a drawer),
                 <code>title</code> (the panel's visible name, an <code>h2</code> on its row:
                 «Tråder», «Verktøy»), <code>size</code> (<code>width</code>, <code>minWidth</code>,
                 <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>. A
@@ -198,7 +200,14 @@
                 dropdown, the design's tool rule (board 3, kunnskapsassistenten#168). The tabs
                 follow the tabs pattern: one tab stop, the arrows choose, Home and End go to the
                 ends. The dropdown is Designsystemet's <code>Select</code>. Every tool stays mounted
-                while hidden.
+                while hidden. A tool's <code>icon</code> stands beside its name in the tinted
+                switcher. <code>variant</code>: <code>tinted</code> is the dev boards' switcher
+                (dev-verktoy-2 and -3): two tools as joined buttons on the host family's tinted
+                ground, the chosen one plain with a border, as Designsystemet's ToggleGroup; three
+                or more as a tinted button as wide as the panel, «Fremgangsmåte, velg verktøy», that
+                opens Designsystemet's <code>Dropdown</code> with the tools, the one shown marked
+                <code>aria-current</code>. In the cards frame the tools card's parts stand 12 apart,
+                with no line under the switcher, and its folded button has a ground of its own.
               </li>
               <li>
                 <code>ShellProfile</code>, for the primary panel's pinned <code>foot</code> and,
@@ -345,6 +354,108 @@
                     <td><code>--genai-shell-rail-background</code></td>
                     <td><code>--ds-color-neutral-surface-default</code></td>
                     <td>a folded panel's rail (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the buttons under a folded panel's own (<code>rail</code>)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-toggle-background</code></td>
+                    <td><code>--ds-color-background-tinted</code></td>
+                    <td>the folded tools card's own button, in the cards frame</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-card-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between the tools card's head, switcher and tool, in the cards frame</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-background</code></td>
+                    <td><code>--ds-color-surface-tinted</code></td>
+                    <td>the tinted switcher's ground, the joined buttons' and the dropdown's</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-hover-background</code></td>
+                    <td><code>--ds-color-surface-hover</code></td>
+                    <td>a tinted button under the pointer, and the dropdown open</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-selected-background</code></td>
+                    <td><code>--ds-color-surface-default</code></td>
+                    <td>the chosen joined button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-selected-border-color</code></td>
+                    <td><code>--ds-color-border-default</code></td>
+                    <td>the chosen joined button's border</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-color</code></td>
+                    <td><code>--ds-color-text-default</code></td>
+                    <td>the tinted switcher's words and icons</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-radius</code></td>
+                    <td><code>--ds-border-radius-default</code></td>
+                    <td>the tinted switcher's corners</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-height</code></td>
+                    <td><code>--ds-size-12</code></td>
+                    <td>a tinted button, and a tool in the menu: the design's 48</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between a tool's icon and its name</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>a joined button's sides</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-font-size</code></td>
+                    <td><code>--ds-font-size-4</code></td>
+                    <td>
+                      a tool's name in the tinted switcher and its menu, 18 at the default size
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>a tool's name in the tinted switcher</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-icon-size</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>a tool's icon in the tinted switcher and its menu</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-chevron-size</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>the dropdown's chevron</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-color</code></td>
+                    <td><code>--ds-color-text-subtle</code></td>
+                    <td>a tool in the dropdown's menu (neutral, as the menu)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-font-weight</code></td>
+                    <td><code>--ds-font-weight-regular</code></td>
+                    <td>a tool in the menu</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-current-background</code></td>
+                    <td><code>--ds-color-surface-tinted</code></td>
+                    <td>the tool shown, in the menu</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-current-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the tool shown, in the menu</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-bar-background</code></td>

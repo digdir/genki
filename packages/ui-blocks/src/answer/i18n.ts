@@ -46,6 +46,9 @@ export const nbAnswer = defineNamespace({
   regenerate: 'Generer på nytt',
   closingQuestion: 'Er det noe mer jeg kan hjelpe deg med?',
   sourcesUsed: 'Kilder brukt i svaret',
+  // The `plain` answer's bar, as the dev boards draw it: «Kilder · 3 brukt i svaret».
+  sourcesUsedLead: 'Kilder',
+  sourcesUsedCount: '· {count} brukt i svaret',
   excerptInSources: '{label} i Kilder',
   table: 'Tabell',
   tableNumber: 'Tabell {n}',
@@ -101,6 +104,8 @@ export const enAnswer = {
   regenerate: 'Generate again',
   closingQuestion: 'Is there anything else I can help you with?',
   sourcesUsed: 'Sources used in the answer',
+  sourcesUsedLead: 'Sources',
+  sourcesUsedCount: '· {count} used in the answer',
   excerptInSources: '{label} in Sources',
   table: 'Table',
   tableNumber: 'Table {n}',

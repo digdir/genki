@@ -16,6 +16,8 @@ export const nbShell = defineNamespace({
   width: '{width} piksler',
   // The name of the secondary panel's tabs, and of its dropdown, when it holds more than one tool.
   tools: 'Verktøy',
+  // The tinted dropdown's button: the tool it shows, then what it does.
+  toolChoice: '{tool}, velg verktøy',
   // The profile menu's entries, the design's words (dev-navbar), and the dot's words for a screen
   // reader. `{to}` is whom the reader contacts: «Kontakt Digdir».
   profileSettings: 'Innstillinger',
@@ -37,6 +39,7 @@ export const enShell = {
   hidden: 'Hidden',
   width: '{width} pixels',
   tools: 'Tools',
+  toolChoice: '{tool}, choose a tool',
   profileSettings: 'Settings',
   profileFeedback: 'Give feedback',
   profileChangelog: 'Changelog',

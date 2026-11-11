@@ -125,6 +125,84 @@
     font-size: var(--genai-approach-bar-font-size, var(--ds-font-size-2));
   }
 
+  /* ── `variant="list"`: the dev boards' «Fremgangsmåte» tool (dev-verktoy-1 to -3) ── */
+
+  .uib-approach[data-variant='list'] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-approach-list-gap, var(--ds-size-2));
+    inline-size: 100%;
+  }
+
+  .uib-approach-caption {
+    margin: 0;
+    color: var(--genai-approach-caption-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-approach-caption-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-approach-caption-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-approach-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* A step: its mark, then its title over its line, under a hairline. Grey, as the card is. */
+  .uib-approach-list > li {
+    display: flex;
+    gap: var(--genai-approach-list-item-gap, var(--ds-size-3));
+    align-items: start;
+    padding-block: var(--genai-approach-list-item-padding-block, var(--ds-size-2));
+    border-block-start: var(--genai-approach-scope-border-width, var(--ds-border-width-default))
+      solid var(--genai-approach-list-divider-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  /* Done is a check on success's tint, the design's green in the theme's own success tokens. */
+  .uib-approach-mark {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--genai-approach-mark-size, var(--ds-size-6));
+    block-size: var(--genai-approach-mark-size, var(--ds-size-6));
+    border-radius: var(--genai-approach-mark-radius, var(--ds-border-radius-full));
+    background: var(--genai-approach-mark-background, var(--ds-color-success-surface-tinted));
+    color: var(--genai-approach-mark-color, var(--ds-color-success-text-subtle));
+    font-size: var(--genai-approach-mark-icon-size, var(--ds-font-size-3));
+  }
+
+  .uib-approach-list > li:not([data-status='done']) > .uib-approach-mark {
+    background: var(
+      --genai-approach-mark-pending-background,
+      var(--ds-color-neutral-surface-tinted)
+    );
+    color: var(--genai-approach-mark-pending-color, var(--ds-color-neutral-text-subtle));
+  }
+
+  .uib-approach-entry {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-approach-entry-gap, var(--ds-size-1));
+    min-inline-size: 0;
+  }
+
+  .uib-approach-list .uib-approach-step-title {
+    color: var(--genai-approach-list-title-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-approach-list-title-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-approach-list-title-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-approach-list > li[data-status='waiting'] .uib-approach-step-title {
+    color: var(--genai-approach-waiting-color, var(--ds-color-neutral-text-subtle));
+    font-weight: var(--genai-approach-waiting-font-weight, var(--ds-font-weight-regular));
+  }
+
+  .uib-approach-step-line {
+    color: var(--genai-approach-step-description-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-approach-step-description-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-approach-list-line-height, var(--ds-line-height-md));
+  }
+
   /* What the answer read from, over the steps, a line between. */
   .uib-approach-scope {
     padding-block-end: var(--genai-approach-scope-padding-block-end, var(--ds-size-2));

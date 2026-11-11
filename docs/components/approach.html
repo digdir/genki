@@ -131,6 +131,15 @@
                 filter's <code>FilterRead</code>: «Leste fra 8 781 dokumenter:» and the chosen
                 values as chips.
               </li>
+              <li>
+                <code>variant</code>: <code>list</code> draws the steps as the dev boards'
+                «Fremgangsmåte» tool in the secondary panel (dev-verktoy-1 to -3), with no card and
+                nothing that folds: the caption «Slik jobbet assistenten med svaret», then each step
+                with a mark (a check on success's tint when done, a spinner while it works), its
+                title, and a grey line under it: its <code>description</code>, or «Leste 11 utdrag
+                nøye» for the excerpts it read. <code>card</code>, the default, is the card above
+                the answer.
+              </li>
             </ul>
             <h3>A step</h3>
             <ul>
@@ -335,6 +344,101 @@
                   <td><code>--genai-approach-scope-padding-block-end</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>the totals bar: scope padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the list: between the caption and the steps</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the list: «Slik jobbet assistenten med svaret» (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-item-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the list: between a step's mark and its words</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-item-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the list: above and below a step</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-divider-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the list: the hairline over each step (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the list: a step's round mark</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>the list: the mark's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-background</code></td>
+                  <td><code>--ds-color-success-surface-tinted</code></td>
+                  <td>the list: a done step's mark (pinned to success, the design's green)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-color</code></td>
+                  <td><code>--ds-color-success-text-subtle</code></td>
+                  <td>the list: a done step's check (pinned to success)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the list: the check</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-pending-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the list: a step's mark while it works or waits (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-pending-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the list: the spinner (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-entry-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the list: between a step's title and its line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the list: a step's title (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: the grey line under a step's title</td>
                 </tr>
                 <tr>
                   <td><code>--genai-approach-subtitle-color</code></td>

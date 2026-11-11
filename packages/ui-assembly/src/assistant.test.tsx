@@ -563,17 +563,102 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(screen.queryByRole('heading', { name: 'Kunnskapsassistenten' })).toBeNull();
   });
 
-  it('titles the secondary panel «Verktøy», with its tool named under it', async () => {
+  it('titles the tool panel «Verktøy» over Fremgangsmåte and Kilder as two joined buttons (dev-verktoy-2)', async () => {
     drawNext();
     await opened();
-    fireEvent.click(screen.getByRole('button', { name: 'Vis kilder' }));
-    const tools = screen.getByRole('complementary', { name: 'Kilder' });
-    expect(within(tools).getByRole('heading', { level: 2, name: 'Verktøy' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
     expect(
       within(tools)
         .getAllByRole('heading')
         .map((h) => `${h.tagName} ${h.textContent}`),
-    ).toEqual(['H2 Verktøy', 'H3 Kilder', 'H4 Ingen kilder ennå']);
+    ).toEqual(['H2 Verktøy']);
+    const tablist = within(tools).getByRole('tablist', { name: 'Verktøy' });
+    expect(tablist.getAttribute('data-variant')).toBe('tinted');
+    expect(
+      within(tablist)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Fremgangsmåte', 'Kilder']);
+    // Each with its icon, as the board draws them.
+    expect(
+      within(tablist)
+        .getAllByRole('tab')
+        .every((tab) => tab.querySelector('svg')),
+    ).toBe(true);
+  });
+
+  it('makes one tool’s name the panel’s title, with no switcher (dev-verktoy-1)', async () => {
+    drawNext(reader, { ...nextLayout, zones: { ...nextLayout.zones, secondary: [] } });
+    await opened();
+    fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
+    expect(within(tools).getByRole('heading', { level: 2 }).textContent).toBe('Fremgangsmåte');
+    expect(within(tools).queryByRole('tablist')).toBeNull();
+    expect(within(tools).queryByRole('button', { name: /velg verktøy/ })).toBeNull();
+  });
+
+  it('offers three tools in a tinted button that opens a menu of them (dev-verktoy-3)', async () => {
+    drawNext(reader, {
+      ...nextLayout,
+      zones: {
+        ...nextLayout.zones,
+        secondary: [...nextLayout.zones.secondary, { block: 'document-view' }],
+      },
+    });
+    await opened();
+    fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
+    const trigger = within(tools).getByRole('button', { name: 'Fremgangsmåte, velg verktøy' });
+    expect(trigger.className).toContain('uib-shell-tools-trigger');
+    const menu = document.querySelector<HTMLElement>('.uib-shell-tools-menu');
+    expect([...(menu?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toEqual([
+      'Fremgangsmåte',
+      'Kilder',
+      'Dokumentvisning',
+    ]);
+    const kilder = [...(menu?.querySelectorAll('button') ?? [])].find(
+      (b) => b.textContent === 'Kilder',
+    );
+    if (!kilder) throw new Error('Kilder is not in the menu');
+    fireEvent.click(kilder);
+    expect(within(tools).getByRole('button', { name: 'Kilder, velg verktøy' })).toBeTruthy();
+  });
+
+  it('shows the folded panel as its button and one button per tool, which opens it on that tool (dev-verktoy-4)', async () => {
+    drawNext();
+    await opened();
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
+    const rail = tools.querySelector<HTMLElement>('.uib-shell-rail');
+    if (!rail) throw new Error('The folded panel shows no tools');
+    expect([...rail.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Fremgangsmåte',
+      'Kilder',
+    ]);
+    fireEvent.click(within(rail).getByRole('button', { name: 'Kilder' }));
+    expect(screen.getByRole('button', { name: 'Skjul verktøypanelet' })).toBeTruthy();
+    expect(within(tools).getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(tools.querySelector('.uib-shell-rail')).toBeNull();
+  });
+
+  it('lists the steps of a question asked here in «Fremgangsmåte», each with its mark', async () => {
+    drawNext();
+    await ask();
+    // The sources may have opened it already.
+    const show = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
+    if (show) fireEvent.click(show);
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
+    fireEvent.click(within(tools).getByRole('tab', { name: 'Fremgangsmåte' }));
+    const panel = within(tools).getByRole('tabpanel', { name: 'Fremgangsmåte' });
+    expect(within(panel).getByText('Slik jobbet assistenten med svaret')).toBeTruthy();
+    const steps = within(panel).getByRole('list', { name: 'Fremgangsmåte' });
+    expect(
+      within(steps)
+        .getAllByRole('listitem')
+        .map((step) => step.getAttribute('data-status')),
+    ).toEqual(['done', 'done']);
   });
 
   it('makes the thread’s title the page’s one h1, «Ny tråd» before, the thread’s own after', async () => {

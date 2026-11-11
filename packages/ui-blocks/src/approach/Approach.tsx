@@ -1,6 +1,6 @@
-import { Card, Details, Link, List } from '@digdir/designsystemet-react';
+import { Card, Details, Link, List, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { RobotIcon } from '@navikt/aksel-icons';
+import { CheckmarkIcon, RobotIcon } from '@navikt/aksel-icons';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from './i18n.js';
 import { linesOf, type ApproachLine } from './runs.js';
@@ -62,6 +62,13 @@ export interface ApproachProps {
   note?: string | undefined;
   /** At the top of the open card, before the steps, such as what the answer read from. */
   scope?: ReactNode;
+  /**
+   * `list`: the steps as the dev boards' «Fremgangsmåte» tool (dev-verktoy-1 to -3), with no card
+   * and nothing that folds: «Slik jobbet assistenten med svaret», then each step with a mark, its
+   * title and a line under it, its `description` or the excerpts it read. `card`, the default: the
+   * card above the answer.
+   */
+  variant?: 'card' | 'list' | undefined;
 }
 
 const useSeconds = (
@@ -184,6 +191,7 @@ export const Approach = ({
   summary: summaryPlace,
   note,
   scope,
+  variant = 'card',
 }: ApproachProps) => {
   const t = useT();
   const [ownOpen, setOwnOpen] = useOwnOpen(working);
@@ -231,6 +239,59 @@ export const Approach = ({
       : t('approach.footer', { summary, took: t('approach.took', { count: seconds }) });
   const headSummary = inHead ? summary : undefined;
   const headNote = inHead ? note : undefined;
+  const live = (
+    <p className="uib-visually-hidden" aria-live="polite">
+      {working ? announced : ''}
+    </p>
+  );
+
+  if (variant === 'list')
+    return (
+      <div className="uib-approach" data-variant="list">
+        <p className="uib-approach-caption">{t('approach.caption')}</p>
+        <ol className="uib-approach-list" aria-label={t('approach.title')}>
+          {lines.map((line) => {
+            const { step } = line;
+            // The title stays the step's; what it read goes on the line under it.
+            const detail =
+              step.description ??
+              (line.excerpts > 0
+                ? t('approach.excerptsRead', { count: line.excerpts })
+                : undefined);
+            return (
+              <li
+                key={line.key}
+                data-status={step.status}
+                aria-current={step.status === 'active' ? 'step' : undefined}
+              >
+                <span className="uib-approach-mark" aria-hidden="true">
+                  {step.status === 'done' ? (
+                    <CheckmarkIcon />
+                  ) : step.status === 'active' ? (
+                    <Spinner aria-hidden="true" data-size="2xs" />
+                  ) : null}
+                </span>
+                <span className="uib-approach-entry">
+                  <span className="uib-approach-step-title">
+                    {line.count > 1
+                      ? t('approach.repeated', { title: step.title, count: line.count })
+                      : step.title}
+                    <span className="uib-visually-hidden">
+                      {' '}
+                      {t('approach.hiddenStatus', { status: t(`approach.${step.status}`) })}
+                    </span>
+                  </span>
+                  {detail && step.status !== 'waiting' ? (
+                    <span className="uib-approach-step-line">{detail}</span>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        {live}
+      </div>
+    );
 
   return (
     <div className="uib-approach" data-summary={summaryPlace}>
@@ -294,9 +355,7 @@ export const Approach = ({
           </Details.Content>
         </Details>
       </Card>
-      <p className="uib-visually-hidden" aria-live="polite">
-        {working ? announced : ''}
-      </p>
+      {live}
     </div>
   );
 };
