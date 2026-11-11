@@ -101,6 +101,11 @@ const ApiKey = z
       ),
     expiresAt: z.string().nullable(),
     revokedAt: z.string().nullable(),
+    testRunner: z
+      .boolean()
+      .describe(
+        'The key has the test-runner grant (ADR 0033); it only takes effect in a locked test environment.',
+      ),
   })
   .openapi('TenantApiKey');
 
@@ -735,6 +740,9 @@ export const accessRoutes: RouteConfig[] = [
             }),
           ),
           keys: z.array(ApiKey).describe('Newest first.'),
+          testRunnerKeys: z
+            .boolean()
+            .describe('The caller may create keys with the test-runner grant here.'),
         }),
         'Services and keys',
       ),
@@ -758,6 +766,12 @@ export const accessRoutes: RouteConfig[] = [
           allowedOverrides: overrides,
           expiresInDays: z.number().positive().optional(),
           callsPerMinute: z.number().int().min(1).max(6000).optional(),
+          testRunner: z
+            .boolean()
+            .optional()
+            .describe(
+              'Give the key the test-runner grant (ADR 0033). Only in a locked test environment and only by a trusted Entra ID login (an operator acting in its own organisation).',
+            ),
         }),
       ),
     },
@@ -765,7 +779,9 @@ export const accessRoutes: RouteConfig[] = [
       201: json(NewApiKey, 'Created. No datasets and no agents means the key reaches everything.'),
       400: invalid,
       401: unauthorized,
-      403: problem('Missing right, or an operator (keys are made by the tenant itself)'),
+      403: problem(
+        'Missing right, an operator (keys are made by the tenant itself), or urn:genai:problem:test-runner-refused when the test-runner grant is not allowed',
+      ),
       404: notMember,
     },
   }),
@@ -789,7 +805,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/api-keys/{id}/rotate',
     summary:
-      'Replace an API key with a new one carrying the same grants and revoke the old one (manage-services, audited)',
+      'Replace an API key with a new one carrying the same grants, except the test-runner grant, and revoke the old one (manage-services, audited)',
     request: {
       params: z.object({ tenant, id: pathParam('id', '3f9a1c2b-7d4e-4b8a-9c11-2a6f0e5d8b77') }),
       headers: reason,

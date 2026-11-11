@@ -6,6 +6,8 @@ export const admittedCredentialScope = `${INTERNAL_GRANT_PREFIX}admitted-credent
 
 export const lockdownUserScope = `${INTERNAL_GRANT_PREFIX}lockdown-user`;
 
+export const testRunnerScope = `${INTERNAL_GRANT_PREFIX}test-runner`;
+
 export const ORGNO_AUTHORITY = 'iso6523-actorid-upis';
 
 export interface OrgNo {

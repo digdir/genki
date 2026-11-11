@@ -395,6 +395,10 @@ export const integrationsArea = {
     datasets: 'Datasett',
     rate: 'Kall per minutt',
     rateHelp: 'Fra 1 til 6 000.',
+    testRunner: 'Testkjører for røyktester',
+    testRunnerHelp:
+      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager. Bare i dette låste testmiljøet.',
+    testRunnerTag: 'Testkjører',
     createKey: 'Lag nøkkel',
     none: 'Ingen API-nøkler ennå',
     noneText: 'Lag en nøkkel for systemer som ikke kan bruke Maskinporten.',

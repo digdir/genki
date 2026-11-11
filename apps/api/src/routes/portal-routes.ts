@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { usageUnits, type Event, type Principal, type Task, type Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
-import { isAdmittedEntraLogin } from '@genai/composition';
+import { isAdmittedEntraLogin, isTrustedEntraLogin } from '@genai/composition';
 import type { CompiledCapability, DefinitionStore } from '@genai/definitions';
 import {
   ALL_GRANT,
@@ -42,6 +42,8 @@ import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import { failureOf, failureReason } from '../failures.js';
 import type { Lockdown } from '../lockdown.js';
 import { erasureOf } from '../timeline.js';
+import { t } from '../i18n/index.js';
+import { testRunnerRefusedType } from '../test-runner.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 
@@ -194,6 +196,7 @@ export interface PortalRouteDeps {
   drafts?: DraftRunner;
   gatewayUsage?: UsageReads;
   throughGateway?(model: string): boolean;
+  testRunnerKeys?: boolean;
   now?(): Date;
   newKey?(): string;
   newId?(): string;
@@ -201,6 +204,39 @@ export interface PortalRouteDeps {
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator' || principal.tenant === tenant;
+
+const testRunnerRefusal = (c: Context, allowed: boolean, principal: Principal) => {
+  const detail = !allowed
+    ? t('problems.testRunnerEnvironmentDetail')
+    : isTrustedEntraLogin(principal)
+      ? undefined
+      : t('problems.testRunnerCreatorDetail');
+  if (detail === undefined) return undefined;
+  return c.json(
+    { type: testRunnerRefusedType, title: t('problems.testRunnerRefused'), status: 403, detail },
+    403,
+    { 'content-type': 'application/problem+json' },
+  );
+};
+
+const testRunnerMaxDays = 90;
+
+const testRunnerLimitErrors = (expiresInDays: unknown, rate: unknown) => [
+  ...(typeof expiresInDays === 'number' &&
+  Number.isInteger(expiresInDays) &&
+  expiresInDays >= 1 &&
+  expiresInDays <= testRunnerMaxDays
+    ? []
+    : [
+        {
+          path: 'expiresInDays',
+          message: `a test-runner key needs an expiry of 1 to ${testRunnerMaxDays} days`,
+        },
+      ]),
+  ...(callsPerMinute(rate)
+    ? []
+    : [{ path: 'callsPerMinute', message: 'a test-runner key needs a calls-per-minute limit' }]),
+];
 
 const refused = (target: string, message: string): AdminOutcome => ({
   ok: false,
@@ -226,6 +262,7 @@ export const keyView = (key: TenantApiKey) => ({
   createdAt: key.createdAt ?? null,
   expiresAt: key.expiresAt ?? null,
   revokedAt: key.revokedAt ?? null,
+  testRunner: key.testRunner === true,
 });
 
 export interface KeyViewContext {
@@ -279,6 +316,7 @@ export const overridable = (value: unknown) =>
 
 export const portalAdminHandlers = (deps: {
   apiKeys: TenantApiKeys;
+  testRunnerKeys?: boolean;
 }): Record<string, AdminHandler> => ({
   'platform.apikeys.create': async (input, principal) => {
     const target = `api-key:${input.tenant}/${String(input.id ?? '')}`;
@@ -309,6 +347,11 @@ export const portalAdminHandlers = (deps: {
       ...(typeof input.expiresAt === 'string' ? { expiresAt: input.expiresAt } : {}),
       createdBy: actorOf(principal.actor ?? principal),
       ...(isAdmittedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
+      ...(input.testRunner === true &&
+      deps.testRunnerKeys === true &&
+      isTrustedEntraLogin(principal)
+        ? { testRunner: true }
+        : {}),
     };
     await deps.apiKeys.add(key);
     return {
@@ -325,6 +368,7 @@ export const portalAdminHandlers = (deps: {
           allowedOverrides: key.allowedOverrides ?? [],
           callsPerMinute: key.callsPerMinute ?? null,
           expiresAt: key.expiresAt ?? null,
+          testRunner: key.testRunner === true,
         },
       },
     };
@@ -343,6 +387,7 @@ export const portalAdminHandlers = (deps: {
     delete kept.revokedAt;
     delete kept.lastUsedAt;
     delete kept.admittedInLockdown;
+    delete kept.testRunner;
     if (isAdmittedEntraLogin(principal)) kept.admittedInLockdown = true;
     if (Array.isArray(input.allowedOverrides)) {
       const chosen = overridable(input.allowedOverrides);
@@ -1173,7 +1218,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       ...(deps.names ? { names: deps.names } : {}),
       ...(deps.lockdown ? { lockdown: deps.lockdown } : {}),
     });
-    return c.json({ services, keys });
+    return c.json({
+      services,
+      keys,
+      testRunnerKeys:
+        deps.testRunnerKeys === true &&
+        isTrustedEntraLogin(g.principal) &&
+        g.principal.kind !== 'operator' &&
+        g.principal.tenant === g.tenant,
+    });
   });
 
   const reasonOf = (c: Context) => changeReasonOf(c)?.trim() ?? '';
@@ -1227,7 +1280,16 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       allowedOverrides?: unknown;
       expiresInDays?: unknown;
       callsPerMinute?: unknown;
+      testRunner?: unknown;
     };
+    if (body.testRunner === true) {
+      const member = await guard(c, 'manage-services');
+      if (member instanceof Response) return member;
+      const refused = testRunnerRefusal(c, deps.testRunnerKeys === true, principal);
+      if (refused) return refused;
+      const limits = testRunnerLimitErrors(body.expiresInDays, body.callsPerMinute);
+      if (limits.length > 0) return problem(c, 400, 'Invalid request', limits);
+    }
     const days =
       typeof body.expiresInDays === 'number' && body.expiresInDays > 0
         ? body.expiresInDays
@@ -1250,6 +1312,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       lastFour: key.slice(-4),
       createdAt: created.toISOString(),
       ...(days ? { expiresAt: new Date(created.getTime() + days * 86_400_000).toISOString() } : {}),
+      ...(body.testRunner === true ? { testRunner: true } : {}),
     });
     if (!outcome.ok) return outcome.response;
     return c.json({ key, apiKey: outcome.value }, 201);

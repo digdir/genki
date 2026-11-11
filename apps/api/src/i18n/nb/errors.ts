@@ -3,6 +3,8 @@ import { defineNamespace } from '@genai/i18n';
 export const catalogErrors = defineNamespace({
   onlyOperatorsChangeModels: 'bare operatører endrer modeller',
   routeOnlyAction: 'denne handlingen kjøres bare fra sin egen rute',
+  testRunnerExpiry: 'en testkjørernøkkel må utløpe innen 1 til {testRunnerMaxDays} dager',
+  testRunnerCallsPerMinute: 'en testkjørernøkkel må ha en grense for kall per minutt',
   supportMinutes: '1 til {minutes} minutter',
   noModel: 'ingen modell {id}',
   tenantsCannotRegister: 'virksomheter kan ikke registrere {kind}',

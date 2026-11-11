@@ -360,6 +360,7 @@ export interface ApiKeyView {
   modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
+  testRunner?: boolean;
 }
 
 export type ClientChannel = 'mcp' | 'openai' | 'rest' | 'conversations' | 'feedback' | 'facets';
@@ -424,6 +425,7 @@ export interface AccessView {
     requirement: { resource: string; action: string; scope?: string };
   }[];
   keys: ApiKeyView[];
+  testRunnerKeys?: boolean;
 }
 
 export interface UsageReport {
