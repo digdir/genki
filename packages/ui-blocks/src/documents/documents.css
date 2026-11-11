@@ -204,13 +204,15 @@
   }
 
   .uib-documents-scope-document {
-    --dsc-input-size--toggle: var(--genai-documents-scope-checkbox-size, var(--ds-size-5));
-
     inline-size: auto;
     align-items: start;
     padding-block: var(--genai-documents-scope-document-padding-block, var(--ds-size-2));
     border-block-end: var(--genai-documents-scope-border-width, var(--ds-border-width-default))
       solid var(--genai-documents-scope-border-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  .uib-documents-scope-document > .ds-input {
+    --dsc-input-size--toggle: var(--genai-documents-scope-checkbox-size, var(--ds-size-5));
   }
 
   .uib-documents-scope-text {
