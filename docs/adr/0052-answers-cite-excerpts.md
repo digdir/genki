@@ -2,7 +2,7 @@
 
 Status: proposed, 2026-11-03 (prototype, agent loop only)
 
-Left: the `rag` and `step-flow` strategies keep numbering documents, and conversation history stores no markers.
+Left: the `rag` and `step-flow` strategies keep numbering documents, and a stored conversation turn has no top-level `markers` list and no `markers` on its sources.
 
 ## Context
 
@@ -52,5 +52,5 @@ Not measured: the whole loop against live retrieval (search, reading, backfill),
 
 - **Migration note for frontends.** With `citeBy: excerpt`, several markers can lead to one source, and `sources[].index` is only the lowest of them. Resolve `[N]` through `markers` (`/v1`) or `structuredContent.markers` (MCP), never through `index` alone. `docs/frontend-contract.md` says so.
 - A service turns it on with one line in its strategy config, after its frontend reads `markers`.
-- Not built: excerpt numbering in the `rag` and `step-flow` strategies, and markers in stored conversation turns.
+- Not built: excerpt numbering in the `rag` and `step-flow` strategies, and the `markers` list in stored conversation turns.
 - The tests are `packages/strategy-agent-loop/src/excerpt-citations.test.ts`, `packages/adapter-openai/src/frontend-contract.test.ts` ("when the answer cites excerpts") and `packages/adapter-mcp/src/markers.test.ts`.
