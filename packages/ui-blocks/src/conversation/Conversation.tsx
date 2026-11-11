@@ -136,11 +136,16 @@ const questionBefore = (turns: readonly ConversationTurn[], index: number) => {
 // sentence, cut on a word at 80 characters. Such a title says nothing the question under it
 // doesn't, so it stays in the outline and out of sight.
 const titleLength = 80;
+const isStop = (char: string | undefined) => char !== undefined && '.?!…'.includes(char);
+// Read by hand, not by pattern, so a long run of stops takes linear time.
 const firstSentence = (question: string) => {
   const text = question.trim().replace(/\s+/gu, ' ');
-  const end = text.search(/[.?!…]+(?=\s)/u);
-  const sentence = end < 0 ? text : text.slice(0, end + text.slice(end).search(/\s/u));
-  return sentence.replace(/[.?!…]+$/u, '').trimEnd();
+  let space = text.indexOf(' ');
+  while (space > 0 && !isStop(text[space - 1])) space = text.indexOf(' ', space + 1);
+  const sentence = space > 0 ? text.slice(0, space) : text;
+  let end = sentence.length;
+  while (end > 0 && isStop(sentence[end - 1])) end -= 1;
+  return sentence.slice(0, end).trimEnd();
 };
 const shortened = (text: string) => {
   if (text.length <= titleLength) return text;

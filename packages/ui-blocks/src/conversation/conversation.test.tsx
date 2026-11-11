@@ -96,6 +96,22 @@ describe('the thread’s title', () => {
     );
   });
 
+  it('reads the question’s first sentence in linear time, however long its run of stops', () => {
+    const stops = '!'.repeat(100_000);
+    for (const text of [`${stops}x`, `Hva${stops}`, `Hva ${'.?'.repeat(50_000)}x y`]) {
+      cleanup();
+      const started = performance.now();
+      draw({ turns: [{ kind: 'question', id: 'q', text }], title: 'Hva' });
+      expect(performance.now() - started).toBeLessThan(1000);
+    }
+    cleanup();
+    draw({
+      turns: [{ ...question, text: 'Hva rapporterer Nkom om?!… Og mer.' }],
+      title: 'Hva rapporterer Nkom om',
+    });
+    expect(screen.getByRole('heading', { level: 2 }).classList.contains('ds-sr-only')).toBe(true);
+  });
+
   it('is not drawn when the app gives none', () => {
     draw();
     expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
