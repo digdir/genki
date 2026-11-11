@@ -700,6 +700,37 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(within(nav).getByRole('button', { name: 'Simen Strøm Braaten' })).toBeTruthy();
     });
 
+    it('draws the settings menu at the board’s 220 when opened from a thread, not as wide as the threads and their filter, and keeps no width for it', async () => {
+      render(
+        <Assistant
+          api={fakeApi().api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={settingsProfile}
+          storage={storage}
+          threadInUrl
+        />,
+      );
+      fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+      await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
+      const width = () =>
+        document
+          .querySelector<HTMLElement>('.uib-shell')
+          ?.style.getPropertyValue('--uib-shell-primary-width');
+      // The threads with the filter's panel in their card, 220 + 440 (dev-filter-panel).
+      expect(width()).toBe('660px');
+      fireEvent.click(
+        within(menu() as HTMLElement).getByRole('link', { name: 'Innstillinger', hidden: true }),
+      );
+      expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
+      // dev-innstillinger-1: the menu alone, 220 at 1720, with no filter column beside it.
+      expect(width()).toBe('220px');
+      expect(screen.queryByRole('region', { name: 'Filter for tråden' })).toBeNull();
+      // The reader dragged nothing, so the host keeps no width for the next visit.
+      expect((kept.get('layout') as { widths?: object } | undefined)?.widths ?? {}).toEqual({});
+    });
+
     it('draws on «Generelt» only «Utseende», which the host keeps, and hands the choice to it', async () => {
       const onColorSchemeChange = drawSettings();
       const group = await screen.findByRole('group', { name: 'Utseende' });

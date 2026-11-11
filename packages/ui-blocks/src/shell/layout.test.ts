@@ -94,6 +94,22 @@ describe('the widths drawn in a window', () => {
     const folded = withAllCollapsed(start);
     expect(fittedWidths(geometry, folded, 400)).toEqual({ primary: 67, secondary: 67 });
   });
+
+  it('keep a panel within its floor and ceiling as they are now, after the host changes its size', () => {
+    // The next look's primary panel: the threads with the filter's column, then the settings menu.
+    const threads = { width: 660, minWidth: 660, maxWidth: Number.POSITIVE_INFINITY };
+    const menu = { width: 220, minWidth: 220, maxWidth: 220 };
+    const before = { ...geometry, panels: { primary: threads } };
+    const after = { ...geometry, panels: { primary: menu } };
+    const held = initialState(before, defaultCollapsed, undefined);
+    expect(fittedWidths(after, held, 1720).primary).toBe(220);
+    // Not a width the reader dragged, so nothing for the host to keep.
+    expect(storedLayout(after, held).widths).toEqual({});
+    // A width dragged in the threads' card is still theirs when they come back.
+    const dragged = withWidth(before, held, 'primary', 700);
+    expect(fittedWidths(after, dragged, 1720).primary).toBe(220);
+    expect(fittedWidths(before, dragged, 1720).primary).toBe(700);
+  });
 });
 
 describe('how far a panel may be dragged', () => {

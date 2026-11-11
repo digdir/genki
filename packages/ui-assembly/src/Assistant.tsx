@@ -768,6 +768,9 @@ export const AssistantView = ({
       ),
       foot,
       ...nextPrimary,
+      // The menu alone, 220 at 1720 (dev-innstillinger-1), and never wider: the threads' card, 660
+      // with the filter beside them or as the reader dragged it, keeps its width for the way back.
+      size: { width: 220, minWidth: 220, maxWidth: 220 },
     };
 
   // ── The secondary panel's tools, in the catalogue's order ──

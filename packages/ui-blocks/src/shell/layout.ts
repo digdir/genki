@@ -161,6 +161,18 @@ export const initialState = (
   return next;
 };
 
+/**
+ * A panel's width within its floor and ceiling as they are now. The host may change a panel's size
+ * while the reader is on the page, as the next look's primary panel does between the threads with
+ * their filter (660) and the settings menu (220): the width asked for before still stands, but is
+ * drawn within the new size.
+ */
+const heldWidth = (geometry: ShellGeometry, state: ShellState, side: ShellSide) => {
+  const size = geometry.panels[side];
+  const width = state.widths[side];
+  return size ? Math.min(Math.max(width, size.minWidth), size.maxWidth) : width;
+};
+
 /** The layout worth storing: a width only when the reader moved it. */
 export const storedLayout = (geometry: ShellGeometry, state: ShellState): ShellLayout => {
   const layout: Required<{ [K in keyof ShellLayout]: NonNullable<ShellLayout[K]> }> = {
@@ -171,8 +183,8 @@ export const storedLayout = (geometry: ShellGeometry, state: ShellState): ShellL
   for (const side of present(geometry)) {
     layout.collapsed[side] = state.collapsed[side];
     layout.dismissed[side] = state.dismissed[side];
-    if (state.widths[side] !== geometry.panels[side]?.width)
-      layout.widths[side] = state.widths[side];
+    const width = heldWidth(geometry, state, side);
+    if (width !== geometry.panels[side]?.width) layout.widths[side] = width;
   }
   return layout;
 };
@@ -213,7 +225,7 @@ export const withWidth = (
 /** What a panel takes up on the row: its rail when folded. */
 const occupied = (geometry: ShellGeometry, state: ShellState, side: ShellSide) => {
   if (!geometry.panels[side]) return 0;
-  return state.collapsed[side] ? geometry.rail : state.widths[side];
+  return state.collapsed[side] ? geometry.rail : heldWidth(geometry, state, side);
 };
 
 /** The gap a panel puts between itself and the main column. A rail has none, unless it keeps one. */
