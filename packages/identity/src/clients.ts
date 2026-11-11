@@ -43,6 +43,12 @@ const slug = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]{0,62}$/, 'must be lowercase letters, digits and dashes');
 
+export const environmentNamePattern = /^[a-z][a-z0-9-]{0,31}$/;
+
+export const environmentName = z
+  .string()
+  .regex(environmentNamePattern, 'must be a lowercase environment name such as prod or test');
+
 export const clientDefinition = z
   .strictObject({
     apiVersion: z.literal('genai/v1'),
@@ -54,6 +60,7 @@ export const clientDefinition = z
     }),
     spec: z.strictObject({
       service: slug,
+      environments: z.array(environmentName).max(8).optional(),
       kind: z.enum(['server', 'browser']),
       url: webUrl.optional(),
       channels: z.array(z.enum(clientChannels)).min(1),
@@ -190,6 +197,9 @@ export const confinementOf = (definition: ClientDefinition): Confinement => ({
   tenant: definition.metadata.tenant,
   service: definition.spec.service,
   client: definition.metadata.id,
+  ...(definition.spec.environments?.length
+    ? { environments: [...new Set(definition.spec.environments)] }
+    : {}),
 });
 
 export const channelOf = (pathname: string): ClientChannel | undefined => {

@@ -24,15 +24,18 @@ import {
 import { appendVersion, type ConfigEntry } from './config-store.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
+import { evalSlots, type QueueWatch } from './eval-slots.js';
 import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
+import { chooseEnvironment } from './service-environments.js';
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter(judgedAgainst).map((m) => m.model);
 
 export const serviceRunKind = 'service-eval-run';
 export const serviceRunCaseKind = 'service-eval-case';
+export const quotaStopMessage = 'Stoppet fordi månedskvoten for tokens er brukt opp';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -56,6 +59,7 @@ export interface ServiceRun extends Leased {
   testSet: string;
   testSetVersion: number;
   version: RunVersion;
+  environment?: string;
   subject?: string;
   variant?: string;
   // The model the run is set to answer with.
@@ -69,6 +73,8 @@ export interface ServiceRun extends Leased {
   passed: number;
   total: number;
   finished?: number;
+  doneCases?: number[];
+  queuePlace?: number;
   cost: number | null;
   tokens: { input: number; output: number };
   error?: string;
@@ -80,6 +86,7 @@ export interface Subject {
   definition: Record<string, unknown>;
   files: Record<string, string>;
   version: RunVersion;
+  environment?: string;
   variant?: string;
 }
 
@@ -114,8 +121,15 @@ export const runView = (run: ServiceRun) => {
   const shown: Partial<ServiceRun> = { ...run };
   delete shown.owner;
   delete shown.heartbeatAt;
+  delete shown.doneCases;
   if (run.error === restartMessage) shown.interrupted = true;
   return shown;
+};
+
+const withoutPlace = (run: ServiceRun): ServiceRun => {
+  const rest = { ...run };
+  delete rest.queuePlace;
+  return rest;
 };
 
 export const runSummary = (run: ServiceRun) => {
@@ -140,6 +154,7 @@ export const answeringModel = ({ definition, variant }: Subject) => {
 
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
   const choice = modelChoice(deps);
+  const slots = deps.evalSlots ?? evalSlots();
   const leases = backgroundLeases(leaseOptions);
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
@@ -166,7 +181,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     tenant: string,
     service: string,
     version: unknown,
-    inline?: { definition?: unknown; files?: unknown },
+    inline?: { definition?: unknown; files?: unknown; environment?: unknown },
   ): Promise<Subject | undefined> => {
     if (version === 'draft') {
       if (isRecord(inline?.definition)) {
@@ -189,7 +204,17 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ? { definition: draft.spec.definition, files: draft.spec.files, version: 'draft' }
         : undefined;
     }
-    if (version === undefined || version === 'published') return published(tenant, service);
+    if (version === undefined || version === 'published') {
+      const requested = typeof inline?.environment === 'string' ? inline.environment : undefined;
+      const environment = await chooseEnvironment(
+        deps.configEntries,
+        { tenant, id: service },
+        requested,
+      );
+      if (!environment.ok) return undefined;
+      const found = await published(tenant, service, environment.version);
+      return found && { ...found, ...(environment.name ? { environment: environment.name } : {}) };
+    }
     return typeof version === 'number' && Number.isInteger(version)
       ? published(tenant, service, version)
       : undefined;
@@ -204,7 +229,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     options: {
       avoidAsJudge?: string[];
       chargeTo?: string;
-      onCase?: (results: CaseResult[]) => Promise<void>;
+      run?: string;
+      onCaseStart?: () => void;
+      onCase?: (index: number, result: CaseResult) => Promise<void>;
+      onQueue?: QueueWatch;
     } = {},
   ): Promise<Outcome> => {
     const served = modelsOf(subject.definition);
@@ -218,8 +246,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     const judge = judgeId
       ? choice.judgeModel(principal, judgeTenant, judgeId, 'builder', meter)
       : undefined;
-    const results: CaseResult[] = [];
-    for (const c of cases) {
+    const runCase = async (c: TestCase): Promise<CaseResult> => {
       const view = caseView(c);
       const base = {
         caseId: c.id,
@@ -239,16 +266,13 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(options.chargeTo ? { chargeTo: options.chargeTo } : {}),
       });
       meter.add(outcome);
-      if (!outcome.ok) {
-        results.push({
+      if (!outcome.ok)
+        return {
           ...base,
           output: '',
           pass: false,
           reason: outcome.errors.map((e) => e.message).join('; '),
-        });
-        await options.onCase?.([...results]);
-        continue;
-      }
+        };
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
@@ -265,15 +289,48 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           },
         },
       );
-      results.push({
+      return {
         ...base,
         output: outcome.answer,
         pass: grade.pass,
         ...(grade.reason ? { reason: grade.reason } : {}),
-      });
-      await options.onCase?.([...results]);
+      };
+    };
+    const results: (CaseResult | undefined)[] = Array.from({ length: cases.length });
+    const session = slots.session(options.run ?? randomUUID(), judgeTenant, options.onQueue);
+    let next = 0;
+    let stop: { error: unknown } | undefined;
+    const worker = async () => {
+      while (!stop && next < cases.length) {
+        const release = await session.acquire();
+        try {
+          if (stop || next >= cases.length) return;
+          if ((await deps.quota?.(judgeTenant, { fresh: true }))?.exhausted) {
+            stop = { error: new Error(quotaStopMessage) };
+            return;
+          }
+          const index = next++;
+          const c = cases[index] as TestCase;
+          options.onCaseStart?.();
+          const result = await runCase(c);
+          results[index] = result;
+          await options.onCase?.(index, result);
+        } catch (error) {
+          stop ??= { error };
+        } finally {
+          release();
+        }
+      }
+    };
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(slots.limits.perRun, cases.length) }, worker),
+      );
+    } finally {
+      session.end();
     }
-    return summarize(results);
+    if (stop) throw stop.error;
+    return summarize(results.filter((r): r is CaseResult => r !== undefined));
   };
 
   const saveRun = (actor: string, tenant: string, run: ServiceRun, reason: string) =>
@@ -308,8 +365,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
 
   const finishedCases = async (tenant: string, run: ServiceRun) => {
     if (run.cases.length > 0 || !run.finished) return run.cases;
+    const indexes = run.doneCases ?? Array.from({ length: run.finished }, (_, index) => index);
     const found = await Promise.all(
-      Array.from({ length: run.finished }, async (_, index) =>
+      indexes.map(async (index) =>
         (await deps.configEntries.history(serviceRunCaseKind, tenant, caseKey(run.id, index))).at(
           -1,
         ),
@@ -323,7 +381,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     if (run.status !== 'queued' && run.status !== 'running') return run;
     if (!leases.abandoned(`${entry.scope}/${run.id}`, run, run.startedAt)) return run;
     const failed: ServiceRun = {
-      ...run,
+      ...withoutPlace(run),
       status: 'failed',
       endedAt: leases.now().toISOString(),
       error: restartMessage,
@@ -383,6 +441,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       testSet: set.metadata.id,
       testSetVersion: set.metadata.version,
       version: subject.version,
+      ...(subject.environment ? { environment: subject.environment } : {}),
       subject: publishedSubject(subject.definition, deps.plugins),
       ...(subject.variant ? { variant: subject.variant } : {}),
       ...(model ? { model } : {}),
@@ -410,41 +469,64 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     }
     const done = (async () => {
       const meter = choice.meter();
-      let finished: CaseResult[] = [];
+      const saved = new Map<number, CaseResult>();
+      const completed = new Map<number, CaseResult>();
+      const inOrder = () => [...saved.keys()].sort((a, b) => a - b);
       const progress = (run: ServiceRun): ServiceRun => {
-        const { passed, score } = summarize(finished);
+        const doneCases = inOrder();
+        const { passed, score } = summarize(doneCases.map((i) => saved.get(i) as CaseResult));
         return {
           ...run,
           passed,
           score,
-          finished: finished.length,
+          finished: doneCases.length,
+          doneCases,
           cost: meter.costMicroNok(),
           tokens: { input: meter.inputTokens, output: meter.outputTokens },
         };
       };
-      const onCase = async (results: CaseResult[]) => {
-        finished = results;
-        const index = results.length - 1;
-        await saveCase(actor, tenant, queued.id, index, results[index] as CaseResult)
-          .then(() => lease.update(progress, `Testtilfelle ${results.length} av ${queued.total}`))
+      const onCase = async (index: number, result: CaseResult) => {
+        completed.set(index, result);
+        await saveCase(actor, tenant, queued.id, index, result)
+          .then(() => {
+            saved.set(index, result);
+            return lease.update(progress, `Testtilfelle ${saved.size} av ${queued.total}`);
+          })
           .catch(() => undefined);
       };
+      const onCaseStart = () => {
+        if (started) return;
+        started = true;
+        void lease
+          .update((run) => ({ ...withoutPlace(run), status: 'running' }), 'Kjører')
+          .catch(() => undefined);
+      };
+      const onQueue = (place: number | undefined) => {
+        void lease
+          .update(
+            (run) => (place === undefined ? withoutPlace(run) : { ...run, queuePlace: place }),
+            place === undefined ? 'Kjører' : `Venter på ledig plass, nr. ${place}`,
+          )
+          .catch(() => undefined);
+      };
+      let started = false;
       try {
-        await lease.update((run) => ({ ...run, status: 'running' }), 'Kjører');
         const outcome = await runCases(
           principal,
           tenant,
           subject,
           casesIn(set, split, only),
           meter,
-          { onCase },
+          { run: queued.id, onCase, onCaseStart, onQueue },
         );
-        finished = outcome.results;
         await lease.update(
           (run) => ({
-            ...progress(run),
+            ...withoutPlace(progress(run)),
             status: 'succeeded',
             endedAt: new Date().toISOString(),
+            passed: outcome.passed,
+            score: outcome.score,
+            finished: outcome.total,
             total: outcome.total,
             cases: outcome.results,
           }),
@@ -453,11 +535,13 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       } catch (error) {
         await lease.update(
           (run) => ({
-            ...progress(run),
+            ...withoutPlace(progress(run)),
             status: 'failed',
             endedAt: new Date().toISOString(),
             error: messageOf(error),
-            cases: finished,
+            cases: [...completed.keys()]
+              .sort((a, b) => a - b)
+              .map((i) => completed.get(i) as CaseResult),
           }),
           'Feilet',
         );

@@ -67,6 +67,19 @@ describe('the sources block', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Kilder' })).toBeTruthy();
   });
 
+  it('shows a publish date only for a document that has one', () => {
+    const undated: SourceDocument = {
+      index: 3,
+      title: 'Udatert rapport',
+      documentId: 'kudos::u',
+      excerpts: [{ chunkId: 'kudos::u-1', text: 'Rapporten har ingen dato.' }],
+    };
+    render(<Sources sources={[nkom, undated]} corpus="Kudos" />);
+
+    expect(screen.getAllByText(/Publisert/)).toHaveLength(1);
+    expect(screen.getByText(/Publisert 1\. mars 2022/)).toBeTruthy();
+  });
+
   it('names each document by its title and never by a number', () => {
     draw({ citations: cite('kudos::2021-2') });
     const heading = screen.getByRole('heading', { level: 3, name: nkom.title });

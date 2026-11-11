@@ -17,6 +17,7 @@ import { qualityMock } from './mock/quality';
 import { batchRunsMock } from './mock/batch-runs';
 import { searchEnginesMock } from './mock/search-engines';
 import { skillsMock } from './mock/skills';
+import { exampleSecretNames } from './data/building-blocks';
 import { inputFieldsOf } from './data/playground';
 import { parseYaml } from './yaml';
 import { reasonProblem } from './components/ReasonField';
@@ -1192,7 +1193,24 @@ export const mockFetch = (
     }
     if (/^\/tenants\/[^/]+\/secrets\/[^/]+$/.test(path) && init?.method === 'PUT') {
       if (needsReason()) return missingReason();
-      return json({ ref: 'secret://tenant/999888777/x' });
+      const name = decodeURIComponent(path.split('/').pop() ?? '');
+      const { allowedHosts } = JSON.parse(String(init.body)) as { allowedHosts?: string[] };
+      if (!exampleSecretNames.includes(name) && !allowedHosts?.length)
+        return json(
+          {
+            title: 'Invalid request',
+            status: 400,
+            errors: [
+              {
+                path: 'allowedHosts',
+                message:
+                  'Skriv adressene hemmeligheten skal brukes mot, for eksempel https://api.example.no.',
+              },
+            ],
+          },
+          400,
+        );
+      return json({ ref: `secret://tenant/999888777/${name}` });
     }
     const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
     const [root, tenant, area, kind, id, versions, version] = parts;

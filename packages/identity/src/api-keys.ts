@@ -21,6 +21,7 @@ export interface StoredApiKey {
   agents: string[];
   clientId?: string;
   service?: string;
+  environments?: string[];
   allowedOverrides?: string[];
   callsPerMinute?: number;
   skillGraphs?: string[];
@@ -151,7 +152,12 @@ export const verifyApiKey = async (
   const agents = granted.filter((a) => !a.startsWith(SERVICE_GRANT));
   const everything = service !== undefined;
   const confinedTo: Confinement | undefined = service
-    ? { tenant: stored.tenant, service, ...(stored.clientId ? { client: stored.clientId } : {}) }
+    ? {
+        tenant: stored.tenant,
+        service,
+        ...(stored.clientId ? { client: stored.clientId } : {}),
+        ...(stored.environments?.length ? { environments: [...stored.environments] } : {}),
+      }
     : undefined;
   return {
     principal: {

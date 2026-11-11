@@ -190,6 +190,35 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it('shows a run that waits for a free slot as waiting, with its place in line', async () => {
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-venter',
+          service: 'rapportassistenten',
+          status: 'queued',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: null,
+          score: null,
+          passed: 0,
+          total: 3,
+          finished: 0,
+          queuePlace: 2,
+          cost: 0,
+          cases: [],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history as HTMLElement).findAllByRole('row'))[1] as HTMLElement;
+
+    expect(within(row).getByText('Venter på ledig plass, nr. 2 i køen')).toBeTruthy();
+    expect(within(row).queryByText('Kjører')).toBeNull();
+    expectAccessible();
+  });
+
   it('closes the question about marked test cases when every mark is taken off', async () => {
     const { writes } = await openLive();
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

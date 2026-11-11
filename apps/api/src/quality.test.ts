@@ -18,7 +18,8 @@ import type { ModelPrice } from './draft-runner.js';
 import type { LeaseOptions } from './background-lease.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { createQualityModule, qualityModule } from './quality.js';
-import type { ServiceRun } from './service-eval.js';
+import type { EvalSlotLimits } from './eval-slots.js';
+import { quotaStopMessage, type ServiceRun } from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -144,6 +145,8 @@ interface BootOptions {
   store?: InMemoryConfigEntryStore;
   leases?: LeaseOptions;
   holdLocked?: boolean;
+  evalSlots?: Partial<EvalSlotLimits>;
+  otherTenant?: boolean;
 }
 
 const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = {}) => {
@@ -206,6 +209,7 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
     policy: { decide: async () => ({ allow: true }) },
     ...(prices ? { prices } : {}),
     ...(options.store ? { configurables: { store: options.store } } : {}),
+    ...(options.evalSlots ? { evalSlots: options.evalSlots } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({
@@ -231,6 +235,19 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
   const published = await platform.definitions.publish(service, 'kari', 'første');
   if (!published.ok) throw new Error(JSON.stringify(published.errors));
   await platform.evalStores.testSets.put(testSet);
+  if (options.otherTenant) {
+    const theirs = await platform.definitions.publish(
+      { ...service, metadata: { ...service.metadata, tenant: other, id: 'svar-to' } },
+      'ola',
+      'første',
+    );
+    if (!theirs.ok) throw new Error(JSON.stringify(theirs.errors));
+    await platform.evalStores.testSets.put({
+      ...testSet,
+      metadata: { ...testSet.metadata, tenant: other },
+      spec: { ...testSet.spec, service: 'svar-to' },
+    });
+  }
   const send = async (
     method: string,
     path: string,
@@ -425,6 +442,51 @@ describe('eval runs for a service', () => {
       reason: 'Vurdert.',
     });
     expect(run.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('runs the version prod runs by default, and the version of the environment asked for', async () => {
+    const env = await boot();
+    const added = await env.send(
+      'POST',
+      `${services}/environments`,
+      'kari',
+      { name: 'test' },
+      { 'change-reason': 'Prøver ny instruks på testerne' },
+    );
+    expect(added.status).toBe(201);
+    const republished = await env.platform.definitions.publish(
+      {
+        ...service,
+        spec: {
+          ...service.spec,
+          strategy: { ...service.spec.strategy, config: { instructions: 'Svar langt.' } },
+        },
+      },
+      'kari',
+      'andre',
+    );
+    expect(republished.ok).toBe(true);
+
+    const prod = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1'],
+    });
+    const test = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1'],
+      environment: 'test',
+    });
+    const missing = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      environment: 'staging',
+    });
+    await env.settled();
+    const runOf = async (id: unknown) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(id)}`)).body;
+
+    expect(await runOf(prod.body.id)).toMatchObject({ version: 1, environment: 'prod' });
+    expect(await runOf(test.body.id)).toMatchObject({ version: 2, environment: 'test' });
+    expect(missing.status).toBe(404);
   });
 
   it('runs only the cases asked for by id, and refuses a case the test set does not have', async () => {
@@ -664,6 +726,243 @@ describe('an eval run the platform restarts', () => {
     expect(run.cost).toBeGreaterThan(0);
     expect(run.cost).toBe(running.cost);
     expect(run.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('drops the place in line from a waiting run the platform restarts', async () => {
+    const store = new InMemoryConfigEntryStore();
+    const before = await boot(prices, {
+      store,
+      holdLocked: true,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => startedAt },
+    });
+    const send = (body: Record<string, unknown>) =>
+      before.send('POST', `${services}/eval-runs`, 'kari', body);
+    await send({ testSet: 'svar-frister', cases: ['l1'] });
+    const waiting = String((await send({ testSet: 'svar-frister' })).body.id);
+    const readWaiting = async (env: Awaited<ReturnType<typeof boot>>) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${waiting}`))
+        .body as unknown as ServiceRun;
+    await vi.waitFor(async () =>
+      expect(await readWaiting(before)).toMatchObject({ status: 'queued', queuePlace: 1 }),
+    );
+    const after = await boot(prices, {
+      store,
+      leases: { instance: 'after', now: () => new Date(startedAt.getTime() + 10 * 60_000) },
+    });
+    await after.settled();
+
+    const run = await readWaiting(after);
+    expect(run).toMatchObject({ status: 'failed', interrupted: true });
+    expect(run).not.toHaveProperty('queuePlace');
+  });
+});
+
+describe('test-set runs on a shared instance', () => {
+  const held = (env: Awaited<ReturnType<typeof boot>>) => {
+    const runDraft = env.platform.drafts.run.bind(env.platform.drafts);
+    const waiting: { tenant: string; input: string; go: () => void }[] = [];
+    const started: { tenant: string; input: string }[] = [];
+    let inFlight = 0;
+    let most = 0;
+    let open = false;
+    vi.spyOn(env.platform.drafts, 'run').mockImplementation(async (input) => {
+      if (!(input.definition as typeof service).metadata.id.startsWith('svar'))
+        return runDraft(input);
+      const first = input.parts[0] as { text?: string } | undefined;
+      const asked = { tenant: input.tenant, input: first?.text ?? '' };
+      started.push(asked);
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      try {
+        if (!open) await new Promise<void>((go) => waiting.push({ ...asked, go }));
+        return await runDraft(input);
+      } finally {
+        inFlight -= 1;
+      }
+    });
+    const release = async (input: string, from = tenant) => {
+      await vi.waitFor(() =>
+        expect(waiting.some((w) => w.input === input && w.tenant === from)).toBe(true),
+      );
+      const index = waiting.findIndex((w) => w.input === input && w.tenant === from);
+      waiting.splice(index, 1)[0]?.go();
+    };
+    const finish = async () => {
+      open = true;
+      for (const w of waiting.splice(0)) w.go();
+      await env.settled();
+    };
+    return { started, release, finish, most: () => most, inFlight: () => inFlight };
+  };
+
+  const start = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    who = 'kari',
+    at = tenant,
+    body: Record<string, unknown> = {},
+  ) => {
+    const id = at === tenant ? 'svar' : 'svar-to';
+    const started = await env.send('POST', `/tenants/${at}/services/${id}/eval-runs`, who, {
+      testSet: 'svar-frister',
+      ...body,
+    });
+    expect(started.status).toBe(202);
+    return String(started.body.id);
+  };
+  const read = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    id: string,
+    who = 'kari',
+    at = tenant,
+  ) => (await env.send('GET', `/tenants/${at}/eval-runs/${id}`, who)).body as unknown as ServiceRun;
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const o1 = 'Når er fristen for søknad?';
+  const o2 = 'Hva er personnummeret til Ola?';
+
+  it('runs the cases of one run at most the per-run limit at a time', async () => {
+    const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } });
+    const cases = held(env);
+    const id = await start(env);
+
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+    await pause();
+    expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
+    await cases.release(o1);
+    await vi.waitFor(() => expect(cases.started).toHaveLength(3));
+    await cases.finish();
+
+    expect(cases.most()).toBe(2);
+    expect((await read(env, id)).status).toBe('succeeded');
+  });
+
+  it('saves each case as soon as it finishes, in any order, and keeps case order in the result', async () => {
+    const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 3 } });
+    const cases = held(env);
+    const id = await start(env);
+    await vi.waitFor(() => expect(cases.started).toHaveLength(3));
+
+    await cases.release(o2);
+    await vi.waitFor(async () => expect((await read(env, id)).finished).toBe(1));
+    const running = await read(env, id);
+    await cases.release(locked);
+    await cases.release(o1);
+    await env.settled();
+    const run = await read(env, id);
+
+    expect(running).toMatchObject({ status: 'running', finished: 1, total: 3 });
+    expect(running.cases.map((c) => c.caseId)).toEqual(['o2']);
+    expect(running).not.toHaveProperty('doneCases');
+    expect(run).toMatchObject({ status: 'succeeded', finished: 3, passed: 1 });
+    expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2', 'l1']);
+  });
+
+  it('lets a second tenant run while the first tenant has used its share of the instance', async () => {
+    const env = await boot(undefined, {
+      otherTenant: true,
+      evalSlots: { perInstance: 2, perTenant: 1, perRun: 1 },
+    });
+    const cases = held(env);
+    const first = await start(env);
+    const second = await start(env);
+    const theirs = await start(env, 'ola', other);
+
+    await vi.waitFor(() =>
+      expect(cases.started).toEqual([
+        { tenant, input: o1 },
+        { tenant: other, input: o1 },
+      ]),
+    );
+    expect(await read(env, second)).toMatchObject({ status: 'queued', queuePlace: 1 });
+    await cases.release(o1, other);
+    await cases.release(o1);
+    await vi.waitFor(() => expect(cases.started).toHaveLength(4));
+    expect(cases.started.slice(2)).toEqual(
+      expect.arrayContaining([
+        { tenant, input: o1 },
+        { tenant: other, input: o2 },
+      ]),
+    );
+    await cases.finish();
+
+    for (const [id, who, at] of [
+      [first, 'kari', tenant],
+      [second, 'kari', tenant],
+      [theirs, 'ola', other],
+    ] as const)
+      expect((await read(env, id, who, at)).status).toBe('succeeded');
+  });
+
+  it('does not let one run take every slot on an instance', async () => {
+    const env = await boot(undefined, { evalSlots: { perInstance: 3, perTenant: 3, perRun: 2 } });
+    const cases = held(env);
+    await start(env);
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+    const second = await start(env, 'kari', tenant, { cases: ['l1'] });
+
+    await vi.waitFor(() => expect(cases.inFlight()).toBe(3));
+    expect(cases.started.map((c) => c.input)).toEqual([o1, o2, locked]);
+    expect((await read(env, second)).status).toBe('running');
+    await cases.finish();
+  });
+
+  it('answers a live service call while every test-set slot is taken', async () => {
+    const env = await boot(undefined, { evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 } });
+    const cases = held(env);
+    await start(env);
+    const waiting = await start(env);
+    await vi.waitFor(() => expect(cases.inFlight()).toBe(1));
+
+    const live = await env.send('POST', '/v1/chat/completions', 'kari', {
+      model: 'svar__default',
+      messages: [{ role: 'user', content: o1 }],
+    });
+
+    expect(live.status).toBe(200);
+    expect((await read(env, waiting)).status).toBe('queued');
+    await cases.finish();
+  });
+
+  it('says a run is waiting, with its place in line, until it gets a slot in turn', async () => {
+    const env = await boot(undefined, { evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 } });
+    const cases = held(env);
+    const first = await start(env);
+    await vi.waitFor(() => expect(cases.started).toHaveLength(1));
+    const second = await start(env);
+    const third = await start(env);
+
+    await vi.waitFor(async () =>
+      expect(await read(env, third)).toMatchObject({ status: 'queued', queuePlace: 2 }),
+    );
+    expect(await read(env, second)).toMatchObject({ status: 'queued', queuePlace: 1 });
+    expect(await read(env, first)).not.toHaveProperty('queuePlace');
+    await cases.release(o1);
+    await vi.waitFor(async () => expect((await read(env, second)).status).toBe('running'));
+    await vi.waitFor(async () =>
+      expect(await read(env, third)).toMatchObject({ status: 'queued', queuePlace: 1 }),
+    );
+
+    expect(await read(env, second)).not.toHaveProperty('queuePlace');
+    expect(await read(env, first)).toMatchObject({ status: 'running', queuePlace: 2 });
+    await cases.finish();
+    expect(await read(env, third)).not.toHaveProperty('queuePlace');
+  });
+
+  it('stops starting cases once the monthly token quota is used up, past only the cases in flight', async () => {
+    const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } });
+    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 1).ok).toBe(true);
+    const cases = held(env);
+    const id = await start(env);
+    await vi.waitFor(() => expect(cases.started).toHaveLength(2));
+
+    await cases.release(o1);
+    await cases.release(o2);
+    await env.settled();
+    const run = await read(env, id);
+
+    expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
+    expect(run).toMatchObject({ status: 'failed', error: quotaStopMessage, finished: 2, total: 3 });
+    expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
   });
 });
 

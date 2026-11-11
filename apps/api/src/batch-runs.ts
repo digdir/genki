@@ -22,6 +22,7 @@ import { appendVersion, type ConfigEntry } from './config-store.js';
 import type { ServiceRunOutcome } from './draft-runner.js';
 import { notFoundOf } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
+import { productionVersion } from './service-environments.js';
 import { lifecycleOf, runRefusal } from './service-lifecycle.js';
 
 export const batchEstimateKind = 'batch-estimate';
@@ -402,7 +403,8 @@ export const batchRuns = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => 
     if (refusal) throw new BatchProblem(503, refusal.message, 'service', refusal.code);
   };
 
-  const published = async (tenant: string, service: string, version?: number) => {
+  const published = async (tenant: string, service: string, pinned?: number) => {
+    const version = pinned ?? (await productionVersion(deps.configEntries, tenant, service));
     const compiled = (await deps.definitions.capabilities()).find(
       (c) => c.service.tenant === tenant && c.service.id === service,
     );

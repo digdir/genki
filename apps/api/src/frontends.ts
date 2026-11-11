@@ -13,6 +13,7 @@ import {
   type ClientRegistry,
   type ClientStore,
   type StoredClient,
+  environmentNamePattern,
 } from '@genai/identity';
 import type { Context, Env, Hono, MiddlewareHandler, Schema } from 'hono';
 import { enterTenant, tenantAccess } from './access.js';
@@ -34,6 +35,7 @@ import {
 import { rightRefused, type Right } from './rights.js';
 import type { Webhooks } from './webhooks.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import { t } from './i18n/index.js';
 
 export interface ClientListener {
   saved?(client: ClientDefinition, before?: ClientDefinition): void | Promise<void>;
@@ -94,7 +96,7 @@ export const admitConfined = async (
 const corsHeaders = (origin: string) => ({
   'access-control-allow-origin': origin,
   'access-control-expose-headers':
-    'genai-task, genai-conversation, genai-service-version, genai-model, mcp-session-id',
+    'genai-task, genai-conversation, genai-service-version, genai-environment, genai-model, mcp-session-id',
   vary: 'Origin',
 });
 
@@ -108,7 +110,7 @@ export const clientCors =
       return c.body(null, 204, {
         ...corsHeaders(origin),
         'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'access-control-allow-headers': `authorization, content-type, accept, mcp-session-id, mcp-protocol-version, genai-version, ${actingForHeader}`,
+        'access-control-allow-headers': `authorization, content-type, accept, mcp-session-id, mcp-protocol-version, genai-version, genai-environment, ${actingForHeader}`,
         'access-control-max-age': '600',
       });
     await next();
@@ -404,7 +406,17 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
       client?: unknown;
       expiresInDays?: unknown;
       allowedOverrides?: unknown;
+      environments?: unknown;
     };
+    const environments = body.environments ?? [];
+    if (
+      !Array.isArray(environments) ||
+      environments.length > 8 ||
+      !environments.every((e) => typeof e === 'string' && environmentNamePattern.test(e))
+    )
+      return problem(c, 400, 'Invalid request', [
+        { path: 'environments', message: t('services.environmentName') },
+      ]);
     const client = typeof body.client === 'string' && body.client ? body.client : undefined;
     if (client) {
       const found = await deps.clients.get(g.tenant, client);
@@ -425,6 +437,7 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
       name: typeof body.name === 'string' ? body.name : '',
       service,
       ...(client ? { clientId: client } : {}),
+      ...(environments.length ? { environments: [...new Set(environments as string[])] } : {}),
       datasets: [],
       agents: [],
       allowedOverrides: overridable(body.allowedOverrides),

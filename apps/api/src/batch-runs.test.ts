@@ -1136,6 +1136,41 @@ describe('a batch run keeps the version it was estimated on', () => {
   });
 });
 
+describe('a batch run of a service with environments', () => {
+  it('runs on the version prod runs, not a newer one only test runs', async () => {
+    const env = await boot();
+    const added = await env.send(
+      'POST',
+      `/tenants/${tenant}/services/oppsummering/environments`,
+      'kari',
+      {
+        name: 'test',
+      },
+    );
+    expect(added.status).toBe(201);
+    const republished = await env.platform.definitions.publish(
+      {
+        ...service,
+        spec: {
+          ...service.spec,
+          strategy: { ...service.spec.strategy, config: { instructions: 'Ny versjon.' } },
+        },
+      },
+      'kari',
+      'andre',
+    );
+    expect(republished.ok).toBe(true);
+    env.state.broken = false;
+
+    const estimate = await estimateFor(env);
+    const run = await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
+
+    expect(estimate).toMatchObject({ version: 1 });
+    expect(run).toMatchObject({ version: 1 });
+    expect(env.state.users.some((u) => u.includes('Ny versjon.'))).toBe(false);
+  });
+});
+
 describe('batch runs of a paused or archived service', () => {
   const setState = (store: InMemoryConfigEntryStore, state: 'paused' | 'archived' | 'active') =>
     appendVersion(store, {

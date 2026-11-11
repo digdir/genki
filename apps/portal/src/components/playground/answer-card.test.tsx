@@ -82,6 +82,18 @@ describe('an answer in Prøveområde', () => {
     expect(screen.queryByRole('link', { name: 'Notat' })).toBeNull();
   });
 
+  it('shows no publish date for a source without one', () => {
+    card(
+      result({
+        text: 'Du har rett til permisjon.',
+        sources: [{ chunkId: 'c1', title: 'Kudos-rapport', url: 'digdir://doc/48211' }],
+      }),
+    );
+
+    const item = screen.getByRole('link', { name: 'Kudos-rapport' }).closest('li') as HTMLElement;
+    expect(item.textContent).not.toContain('Publisert');
+  });
+
   it('does not label an empty answer as made with AI', () => {
     card(result({ text: '' }));
     expect(screen.queryByText('Svar laget med KI')).toBeNull();

@@ -355,6 +355,46 @@ describe('API keys', () => {
     expect(verified.grants.allowedOverrides).toEqual(['retrieval.*', 'answer.language']);
   });
 
+  it('keeps the environments a service key may use, and confines the key to them', async () => {
+    const keys = new PostgresApiKeys(runtime);
+    await keys.add({
+      id: 'key-environments',
+      name: 'KA-server med test',
+      digest: apiKeyDigest('gp_environment_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    await keys.add({
+      id: 'key-no-environments',
+      name: 'KA-server',
+      digest: apiKeyDigest('gp_plain_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+    });
+
+    expect((await keys.list(ORG_A)).find((k) => k.id === 'key-environments')).toMatchObject({
+      environments: ['prod', 'test'],
+    });
+    expect((await keys.list(ORG_A)).find((k) => k.id === 'key-no-environments')).not.toHaveProperty(
+      'environments',
+    );
+    expect((await verifyApiKey(keys, 'gp_environment_key')).principal.confinedTo).toEqual({
+      tenant: ORG_A,
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    expect(await keys.list(ORG_B)).not.toContainEqual(
+      expect.objectContaining({ id: 'key-environments' }),
+    );
+  });
+
   it('keeps the calls per minute of a key', async () => {
     const keys = new PostgresApiKeys(runtime);
     const key = (id: string, n: number, callsPerMinute?: number) => ({

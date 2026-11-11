@@ -20,6 +20,7 @@ export interface CapabilityEntry {
   inputSchema?: JSONSchema;
   inputFields?: InputField[];
   version?: number;
+  environment?: string;
   datasets?: string[];
 }
 
@@ -33,14 +34,21 @@ export type ResolveErrorCode =
   | 'dataset_not_authorized'
   | 'no_dataset_scope'
   | 'service_paused'
-  | 'version_not_found';
+  | 'version_not_found'
+  | 'invalid_environment'
+  | 'environment_not_authorized'
+  | 'environment_not_found';
 
 export type Resolution =
   { ok: true; entry: CapabilityEntry } | { ok: false; code: ResolveErrorCode; message: string };
 
 export interface CapabilityResolver {
   list(principal: Principal): Promise<CapabilityEntry[]>;
-  resolve(principal: Principal, name: string, options?: { version?: number }): Promise<Resolution>;
+  resolve(
+    principal: Principal,
+    name: string,
+    options?: { version?: number; environment?: string },
+  ): Promise<Resolution>;
 }
 
 export interface Authenticator {
