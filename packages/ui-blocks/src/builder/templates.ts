@@ -10,6 +10,7 @@ import type { BuilderKey } from './i18n.js';
 
 export const templateIds = [
   'knowledge-assistant',
+  'knowledge-assistant-next',
   'sources-only',
   'approach-only',
   'without-filter',
@@ -25,6 +26,13 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
   // the template is kunnskapsassistenten, and its «Prøv assistenten» must be the same app as the
   // UI blocks preview, which has Innstillinger in the foot and no document view.
   'knowledge-assistant': {
+    primary: ['threads', 'filter', 'settings'],
+    main: ['approach', 'chat'],
+    secondary: ['sources', 'notes'],
+  },
+  // The same blocks in the dev boards' look (`templateLook`), built here step by step, so
+  // «Kunnskapsassistenten» keeps drawing what it draws today.
+  'knowledge-assistant-next': {
     primary: ['threads', 'filter', 'settings'],
     main: ['approach', 'chat'],
     secondary: ['sources', 'notes'],
@@ -53,6 +61,16 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
   },
   'chat-only': { primary: [], main: ['approach', 'chat'], secondary: [] },
 };
+
+/**
+ * The look a layout's template draws. `next` is the «_Ready for dev» boards' (the cards frame, the
+ * panels' titles, the profile menu), and every new look sits behind it until it is the only one;
+ * `current` is what the other templates draw today.
+ */
+export type TemplateLook = 'current' | 'next';
+
+export const templateLook = (template: string | undefined): TemplateLook =>
+  template === 'knowledge-assistant-next' ? 'next' : 'current';
 
 /** The catalogue key of a template's name. */
 export const templateKey = (id: TemplateId) =>

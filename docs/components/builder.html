@@ -6,7 +6,7 @@
     <title>App builder catalogue · Components</title>
     <meta
       name="description"
-      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the eight templates; the layout rules; and the service facts the needs are checked against."
+      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the templates; the layout rules; and the service facts the needs are checked against."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -37,8 +37,8 @@
             <p class="summary">
               The blocks the app builder offers, at the canvas's grain: where each may stand, in
               what order, what it needs from the service, and the options a service owner may set.
-              With them, the eight templates, the rules a layout must keep, and the service facts
-              the needs are checked against. It draws nothing: the builder page does.
+              With them, the templates, the rules a layout must keep, and the service facts the
+              needs are checked against. It draws nothing: the builder page does.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
@@ -271,6 +271,11 @@
               <code>fromTemplate</code> leaves them out, with the blocks the service cannot back.
               Choosing one replaces the layout. «Kunnskapsassistenten» has Innstillinger and no
               Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
+              After it, <code>knowledge-assistant-next</code> has the same blocks in the look of the
+              «_Ready for dev» boards, built there step by step: <code>templateLook</code> says
+              <code>next</code> for it and <code>current</code> for every other template, and the
+              assembly draws the new look only for <code>next</code>, so the others draw what they
+              draw today.
             </p>
             <div class="table-wrap">
               <table>
@@ -286,6 +291,15 @@
                   <tr>
                     <th scope="row">
                       <code>knowledge-assistant</code> <small>«Kunnskapsassistenten»</small>
+                    </th>
+                    <td>threads, filter, settings</td>
+                    <td>approach, chat</td>
+                    <td>sources, notes</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>knowledge-assistant-next</code>
+                      <small>«Kunnskapsassistenten, ny utgave»</small>
                     </th>
                     <td>threads, filter, settings</td>
                     <td>approach, chat</td>

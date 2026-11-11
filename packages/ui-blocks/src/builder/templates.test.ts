@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { blockSpec, zones } from './catalogue.js';
 import { blocksIn, layoutProblems } from './layout.js';
-import { fromTemplate, templateIds, templates } from './templates.js';
+import { fromTemplate, templateIds, templateLook, templates } from './templates.js';
 
 describe('the templates', () => {
-  it('are the design’s eight, in its order', () => {
+  it('are the design’s eight, in its order, with Kunnskapsassistenten’s next look after it', () => {
     expect(templateIds).toEqual([
       'knowledge-assistant',
+      'knowledge-assistant-next',
       'sources-only',
       'approach-only',
       'without-filter',
@@ -40,6 +41,17 @@ describe('the templates', () => {
     expect(blocksIn(layout, 'primary')).toEqual(['threads', 'filter', 'settings']);
     expect(blocksIn(layout, 'main')).toEqual(['approach', 'chat']);
     expect(blocksIn(layout, 'secondary')).toEqual(['sources']);
+  });
+
+  it('give Kunnskapsassistenten’s next look the same blocks, so only the look differs', () => {
+    expect(templates['knowledge-assistant-next']).toEqual(templates['knowledge-assistant']);
+  });
+
+  it('draw the dev boards’ look only for knowledge-assistant-next, and today’s for the rest', () => {
+    expect(templateLook('knowledge-assistant-next')).toBe('next');
+    for (const id of templateIds.filter((one) => one !== 'knowledge-assistant-next'))
+      expect(templateLook(id), id).toBe('current');
+    expect(templateLook(undefined)).toBe('current');
   });
 
   it('put Approach in the secondary panel in «Bare fremgangsmåte»', () => {

@@ -59,6 +59,7 @@ export const nbBuilder = defineNamespace({
   approachLevelDetailed: 'Detaljert',
 
   templateKnowledgeAssistant: 'Kunnskapsassistenten',
+  templateKnowledgeAssistantNext: 'Kunnskapsassistenten, ny utgave',
   templateSourcesOnly: 'Bare kilder',
   templateApproachOnly: 'Bare fremgangsmåte',
   templateWithoutFilter: 'Uten filter',
@@ -138,6 +139,7 @@ export const enBuilder = {
   approachLevelDetailed: 'Detailed',
 
   templateKnowledgeAssistant: 'Knowledge assistant',
+  templateKnowledgeAssistantNext: 'Knowledge assistant, next edition',
   templateSourcesOnly: 'Sources only',
   templateApproachOnly: 'Approach only',
   templateWithoutFilter: 'Without filter',
