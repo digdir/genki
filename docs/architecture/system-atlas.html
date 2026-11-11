@@ -1928,20 +1928,23 @@
             status: 'Library',
             packages: ['@genai/ui-blocks'],
             summary:
-              "Shared React components for assistants, such as Approach, used by the workspace and later the builder's preview.",
+              "Shared React components for assistants, such as Approach and Sources, used by the workspace and later the builder's preview.",
             description:
               "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the builder's preview will draw the draft with the same components. Each component has a page in docs/components.",
             responsibilities: [
               'Draw the components assistants are made from with Designsystemet',
               'Texts in bokmål and English',
               'Accessible status and live updates while the assistant works',
+              "Pair an answer's footnotes with the excerpts they cite, both ways",
               "Every token a block's stylesheet reads can be changed through its own CSS variable",
             ],
             files: [
               'packages/ui-blocks/src/approach/Approach.tsx',
+              'packages/ui-blocks/src/sources/Sources.tsx',
+              'packages/ui-blocks/src/sources/pairing.ts',
               'packages/ui-blocks/src/i18n.ts',
             ],
-            input: 'Steps, counts and state as props',
+            input: 'Steps, sources, footnotes and state as props',
             output: 'Rendered components and callbacks',
             replaces: [],
             edges: [
@@ -1954,7 +1957,7 @@
               },
             ],
             keywords:
-              'ui blocks building blocks components approach fremgangsmåte designsystemet react',
+              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes designsystemet react',
             schemas: [],
           },
           {

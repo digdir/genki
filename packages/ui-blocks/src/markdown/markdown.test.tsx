@@ -1,0 +1,370 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Markdown, blocksOf, visibleText } from './Markdown.js';
+import { findHits } from './textSearch.js';
+
+afterEach(cleanup);
+
+describe('Markdown', () => {
+  it('renders headings, bold, italic, lists and code as elements, never as literal Markdown', () => {
+    const { container } = render(
+      <Markdown text={'# Mål\n\n**viktigst** og *felles*\n\n- a\n- b\n\n```\nkode\n```'} />,
+    );
+    expect(container.textContent).not.toContain('**');
+    expect(screen.getByText('Mål').closest('.uib-markdown-heading')).toBeTruthy();
+    expect(screen.getByText('viktigst').tagName).toBe('STRONG');
+    expect(screen.getByText('felles').tagName).toBe('EM');
+    expect(container.querySelectorAll('ul > li')).toHaveLength(2);
+    expect(container.querySelector('pre > code')?.textContent).toBe('kode');
+  });
+
+  it('shows raw HTML and scripts as text, never as elements', () => {
+    const { container } = render(
+      <Markdown
+        text={
+          '<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<a href="javascript:alert(1)">lenke</a>'
+        }
+      />,
+    );
+    expect(container.querySelector('script, img, a, [onerror]')).toBeNull();
+    expect(container.textContent).toContain('<script>alert(1)</script>');
+  });
+
+  it('links only http and https, in a new tab without opener or referrer', () => {
+    const { container } = render(
+      <Markdown
+        text={'[trygg](https://example.no) [skript](javascript:alert(1)) [data](data:text/html,x)'}
+      />,
+    );
+    const link = screen.getByRole('link', { name: 'trygg' });
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(container.querySelectorAll('a')).toHaveLength(1);
+    expect(container.textContent).toBe('trygg skript data');
+  });
+
+  it('turns [N] into what the frontend draws for it, and leaves it as text otherwise', () => {
+    render(
+      <Markdown
+        text="Svar [1] og [2]."
+        cite={(n, key) => (n === 1 ? <button key={key}>Kilde {n}</button> : undefined)}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Kilde 1' })).toBeTruthy();
+    expect(screen.getByText(/\[2\]/)).toBeTruthy();
+  });
+
+  it('draws a Markdown table with column headers, aligned cells and an empty corner as a plain cell', () => {
+    const { container } = render(
+      <Markdown
+        text={
+          'Før tabellen\n| | 2022 | 2023 |\n|---|---:|:---:|\n| Sykefravær | 5,1 | 4,9 |\n| Ansatte | 120 |\n\nEtter'
+        }
+      />,
+    );
+    const table = screen.getByRole('table');
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((th) => th.textContent),
+    ).toEqual(['2022', '2023']);
+    expect(table.querySelector('thead td')?.textContent).toBe('');
+    expect(
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((tr) => [...tr.children].map((td) => td.textContent)),
+    ).toEqual([
+      ['Sykefravær', '5,1', '4,9'],
+      ['Ansatte', '120', ''],
+    ]);
+    expect(within(table).getByText('5,1').getAttribute('data-align')).toBe('right');
+    expect(within(table).getByText('4,9').getAttribute('data-align')).toBe('center');
+    expect(container.textContent).not.toContain('|');
+    expect(screen.getByText('Før tabellen').tagName).toBe('P');
+    expect(screen.getByText('Etter').tagName).toBe('P');
+  });
+
+  it('keeps a line with pipes as text when no delimiter row follows it', () => {
+    const { container } = render(<Markdown text={'a | b\nc | d'} />);
+    expect(container.querySelector('table')).toBeNull();
+    expect(container.textContent).toContain('a | b');
+  });
+
+  it('escapes HTML and links only http and https inside table cells', () => {
+    const { container } = render(
+      <Markdown
+        text={
+          '| Kilde | Lenke |\n|---|---|\n| <img src=x onerror=alert(1)> | [ok](https://example.no) [nei](javascript:alert(1)) |\n| a \\| b | **fet** |'
+        }
+      />,
+    );
+    expect(container.querySelector('img, script, [onerror]')).toBeNull();
+    expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
+    expect(container.querySelectorAll('a')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'ok' }).getAttribute('rel')).toBe(
+      'noopener noreferrer',
+    );
+    expect(screen.getByText('a | b')).toBeTruthy();
+    expect(screen.getByText('fet').tagName).toBe('STRONG');
+  });
+
+  it('draws sup, sub and br without attributes as elements, and every other tag as text', () => {
+    const { container } = render(
+      <Markdown
+        text={
+          'CO<sub>2</sub> og 10<sup>21</sup><br>neste <sup onclick=alert(1)>x</sup> <b>fet</b> <sup><script>alert(1)</script></sup>'
+        }
+      />,
+    );
+    expect(container.querySelector('sup')?.textContent).toBe('21');
+    expect(container.querySelector('sub')?.textContent).toBe('2');
+    expect(container.querySelectorAll('sup, sub, br')).toHaveLength(3);
+    expect(container.querySelector('script, b, [onclick]')).toBeNull();
+    expect(container.textContent).toContain('<sup onclick=alert(1)>x</sup>');
+    expect(container.textContent).toContain('<b>fet</b>');
+    expect(container.textContent).toContain('<sup><script>alert(1)</script></sup>');
+  });
+
+  it('draws an escaped character as itself, never as markup', () => {
+    const { container } = render(
+      <Markdown text={'\\*ikke kursiv\\* og \\[1\\] og \\_x\\_ og C:\\mappe'} />,
+    );
+    expect(container.textContent).toBe('*ikke kursiv* og [1] og _x_ og C:\\mappe');
+    expect(container.querySelector('em')).toBeNull();
+  });
+
+  it('draws entities as the characters they stand for, never as markup or a link', () => {
+    const { container } = render(
+      <Markdown
+        text={
+          'A &amp; B&nbsp;&#167; 4 &lt;sup&gt;1&lt;/sup&gt; [x](&#106;avascript:alert(1)) `&amp;`'
+        }
+      />,
+    );
+    expect(container.textContent).toBe('A & B\u00a0§ 4 <sup>1</sup> x &amp;');
+    expect(container.querySelector('sup, a')).toBeNull();
+  });
+
+  it('draws underscores and tildes as emphasis only around words', () => {
+    const { container } = render(
+      <Markdown text={'_kursiv_ og __fet__ og ~~strøket~~ men snake_case og a_b_c'} />,
+    );
+    expect(screen.getByText('kursiv').tagName).toBe('EM');
+    expect(screen.getByText('fet').tagName).toBe('STRONG');
+    expect(screen.getByText('strøket').tagName).toBe('DEL');
+    expect(container.textContent).toBe('kursiv og fet og strøket men snake_case og a_b_c');
+  });
+
+  it('draws an image as its alt text and a link to anything but http as its label', () => {
+    const { container } = render(
+      <Markdown text={'![Figur 1](https://example.no/f.png) og [side 4](#page-4-0)'} />,
+    );
+    expect(container.querySelector('img, a')).toBeNull();
+    expect(container.textContent).toBe('Figur 1 og side 4');
+  });
+
+  it('draws an autolink as a link that shows its address, for http and https only', () => {
+    const { container } = render(
+      <Markdown text={'¹⁹ <https://example.no/a?b=1> og <javascript:alert(1)>'} />,
+    );
+    const link = screen.getByRole('link', { name: 'https://example.no/a?b=1' });
+    expect(link.getAttribute('href')).toBe('https://example.no/a?b=1');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(container.querySelectorAll('a')).toHaveLength(1);
+    expect(container.textContent).toBe('¹⁹ https://example.no/a?b=1 og <javascript:alert(1)>');
+  });
+
+  it('draws no link with links off, wherever the link sits: a link as its words, an autolink as its address', () => {
+    const text =
+      '# Om [lenke](https://a.no)\n\nSe <https://b.no/x> og **[fet](https://c.no)**.\n\n- [punkt](https://d.no)\n\n| [celle](https://e.no) | <https://f.no> |\n|---|---|\n| <sup>[1](https://g.no)</sup> | https://h.no |';
+    const words = 'Om lenkeSe https://b.no/x og fet.punktcellehttps://f.no1https://h.no';
+    const off = render(<Markdown text={text} links={false} />).container;
+    expect([off.querySelector('a'), off.textContent]).toEqual([null, words]);
+    cleanup();
+    // The control: the same text with links on draws every http link but the bare address.
+    const on = render(<Markdown text={text} />).container;
+    expect([on.querySelectorAll('a').length, on.textContent]).toEqual([7, words]);
+  });
+
+  it('uses the class the frontend gives it', () => {
+    const { container } = render(<Markdown text="Tekst" className="playground-markdown" />);
+    expect(container.firstElementChild?.className).toBe('playground-markdown');
+  });
+
+  it('reads the words on screen, not the Markdown behind them', () => {
+    const text = 'Vi har en **viktig** tekst om lønn.\n\nNeste avsnitt.';
+    const { container } = render(<Markdown text={text} links={false} />);
+
+    // A newline where the drawing breaks a line, nothing between two leaves of one line.
+    expect(visibleText(text, false).text).toBe('Vi har en viktig tekst om lønn.\nNeste avsnitt.');
+    expect(visibleText(text, false).text.replace(/\n/g, '')).toBe(container.textContent);
+  });
+
+  it('counts its leaves in the order it draws them, so a mark lands where the hit is', () => {
+    // Every kind of markup that puts a plain string in the document.
+    const text = [
+      '# Tittel med **fet**',
+      'Tekst &amp; \\* `kode` ![bilde](x.png) [ord](https://a.no) <https://b.no> [1]',
+      '- punkt <sup>2</sup>',
+      '| a | b |',
+      '|---|---|',
+      '| c | d |',
+      '```',
+      'kode\nblokk',
+      '```',
+    ].join('\n');
+
+    const { text: flat, offsets } = visibleText(text, false);
+    const { container } = render(<Markdown text={text} links={false} />);
+
+    // Same pieces in the same order; newlines go from both, as a fenced block holds real ones.
+    expect(flat.replace(/\n/g, '')).toBe((container.textContent ?? '').replace(/\n/g, ''));
+    // Every offset points at a real place, and they only move forward.
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+    expect(offsets.at(-1)).toBeLessThan(flat.length);
+  });
+
+  it('marks a hit that runs across emphasis as one hit in two places', () => {
+    const text = 'Vi har en **viktig** tekst om lønn.';
+    const { text: flat, offsets } = visibleText(text, false);
+    const hits = findHits([{ id: 'r', text: flat }], 'viktig tekst');
+    const { container } = render(
+      <Markdown
+        text={text}
+        links={false}
+        highlight={{ hits, offsets, current: hits[0], markClassName: 'uib-sources-mark' }}
+      />,
+    );
+
+    const marks = [...container.querySelectorAll('mark')];
+    expect(hits).toHaveLength(1);
+    expect(marks.map((mark) => mark.textContent)).toEqual(['viktig', ' tekst']);
+    expect(marks.map((mark) => mark.getAttribute('data-current'))).toEqual(['true', 'true']);
+    // The bold is still bold: marking a quotation does not flatten it.
+    expect(container.querySelector('strong')?.textContent).toBe('viktig');
+    expect(container.textContent).toBe('Vi har en viktig tekst om lønn.');
+  });
+
+  it('draws no mark at all without hits, and leaves the text as it was', () => {
+    const text = 'Vi har en **viktig** tekst.';
+    const plain = render(<Markdown text={text} links={false} />).container.innerHTML;
+    cleanup();
+    const { container } = render(
+      <Markdown text={text} links={false} highlight={{ hits: [], offsets: [] }} />,
+    );
+    expect(container.innerHTML).toBe(plain);
+  });
+
+  it('splits text into paragraphs, headings, lists and code blocks', () => {
+    expect(blocksOf('## Mål\nLinje en\nlinje to\n\n- a\n  fortsatt\n- b\n```\nkode\n```')).toEqual([
+      { kind: 'heading', text: 'Mål' },
+      { kind: 'paragraph', lines: ['Linje en', 'linje to'] },
+      { kind: 'list', ordered: false, start: 1, items: ['a fortsatt', 'b'] },
+      { kind: 'code', text: 'kode' },
+    ]);
+  });
+});
+
+// The text of the one heading a line is read as, or undefined when it is read as anything else.
+const headingText = (line: string) => {
+  const [block, ...more] = blocksOf(line);
+  return block?.kind === 'heading' && more.length === 0 ? block.text : undefined;
+};
+
+describe('Markdown headings and list items', () => {
+  const text = (line: string) => [{ kind: 'paragraph', lines: [line] }];
+
+  it('reads a heading as up to three spaces, one to six #, at least one space and the text', () => {
+    expect(headingText('# Mål')).toBe('Mål');
+    expect(headingText('###### Seks')).toBe('Seks');
+    expect(headingText('   ## Tre foran')).toBe('Tre foran');
+    expect(headingText('#\tTab\t')).toBe('Tab');
+    expect(headingText('#   ')).toBe('');
+  });
+
+  it('leaves a closing run of # and the spaces around it out of a heading, and keeps a # inside it', () => {
+    expect(headingText('## Tittel ##')).toBe('Tittel');
+    expect(headingText('## Tittel ##   ')).toBe('Tittel');
+    expect(headingText('## Tittel#')).toBe('Tittel');
+    expect(headingText('## Tittel # ## ')).toBe('Tittel #');
+    expect(headingText('# a # b')).toBe('a # b');
+    expect(headingText('# #')).toBe('');
+  });
+
+  it('reads a bullet as -, * or + and at least one space, and keeps what follows as it is', () => {
+    expect(blocksOf('- a\n* b\n+ c\n  -\tinnrykket\n-   d  \n- ')).toEqual([
+      { kind: 'list', ordered: false, start: 1, items: ['a', 'b', 'c', 'innrykket', 'd  ', ''] },
+    ]);
+  });
+
+  it('reads a numbered item as up to nine digits, a . or ) and at least one space', () => {
+    expect(blocksOf('7. sju\n8)\tåtte\n9. ')).toEqual([
+      { kind: 'list', ordered: true, start: 7, items: ['sju', 'åtte', ''] },
+    ]);
+    expect(blocksOf('123456789. ni sifre')).toEqual([
+      { kind: 'list', ordered: true, start: 123456789, items: ['ni sifre'] },
+    ]);
+  });
+
+  it('reads a line that is nearly a heading or an item as text', () => {
+    for (const line of [
+      '#',
+      '#uten mellomrom',
+      '####### Sju',
+      '    # Fire foran',
+      '-',
+      '-a',
+      '1.',
+      '1.a',
+      '1234567890. ti sifre',
+      '# a\u{2029}b',
+      '- a\rb',
+      '1. a\u{2028}b',
+    ])
+      expect(blocksOf(line)).toEqual(text(line));
+  });
+
+  it('reads long runs of tabs, spaces and digits as it reads short ones', () => {
+    const tabs = '\t'.repeat(500);
+    const spaces = ' '.repeat(500);
+    expect(headingText(`# x${tabs}y`)).toBe(`x${tabs}y`);
+    expect(headingText(`#${spaces}x${spaces}#${spaces}`)).toBe('x');
+    expect(blocksOf(`*${tabs}x`)).toEqual([
+      { kind: 'list', ordered: false, start: 1, items: ['x'] },
+    ]);
+    expect(blocksOf(`1.${spaces}x${spaces}`)).toEqual([
+      { kind: 'list', ordered: true, start: 1, items: [`x${spaces}`] },
+    ]);
+    expect(blocksOf(`*${tabs}x\r`)).toEqual(text(`*${tabs}x\r`));
+    expect(blocksOf(`${'9'.repeat(500)}. x`)).toEqual(text(`${'9'.repeat(500)}. x`));
+  });
+});
+
+describe('Markdown headings and list items on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const tabs = '\t'.repeat(100_000);
+
+  it('reads a heading in linear time on a long run of tabs inside it', () => {
+    const line = `# x${tabs}y`;
+    expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
+    expect(headingText(line)).toBe(`x${tabs}y`);
+  });
+
+  it('reads a bullet in linear time on a long run of tabs before a line break', () => {
+    const line = `*${tabs}x\r`;
+    expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
+    expect(blocksOf(line)).toEqual([{ kind: 'paragraph', lines: [line] }]);
+  });
+
+  it('reads a numbered item in linear time on a long run of tabs before a line break', () => {
+    const line = `1.${tabs}x\r`;
+    expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
+    expect(blocksOf(line)).toEqual([{ kind: 'paragraph', lines: [line] }]);
+  });
+});
