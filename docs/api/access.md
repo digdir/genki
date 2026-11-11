@@ -5,6 +5,7 @@ Who and what may call the platform, and what the platform may call: the caller's
 ## Rights
 
 - `GET /tenants/{tenant}/me` returns the caller's own rights in the tenant. Rights are granted in Altinn, not through this API.
+- An API key holds only the rights its scopes grant in its own tenant: `admin` gives all five, `ingest` gives `manage-datasets`. A Maskinporten client holds none: it calls the services it is registered for, and the tenant's routes and `/eval-runs/*`, `/eval-tasks/*` and `/testcase-candidates/*` answer it 403 `urn:genai:problem:client-scope` (ADR 0027).
 - `GET /me` returns the organisations a signed-in person may act for, with names and rights. The apps use it for logins whose token lists no organisations, such as an Entra ID login in a locked environment (ADR 0033). In a locked environment it also has `lockdownReadOnly: true` when the login may only read, so the apps can show the read-only banner.
 - Keys, key policies, clients and Maskinporten clients need `manage-services`. Registering or syncing a tool connection needs `manage-services` or `register-building-blocks`; approving one needs `manage-services`. A tenant secret needs `manage-services` or `register-building-blocks`; changing the hosts of an existing secret needs `manage-services`.
 - Registering building blocks needs `register-building-blocks`; adopting one needs `manage-services`, or `manage-datasets` for data blocks.

@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { Confinement, Principal } from '@genai/contracts';
-import { admittedCredentialScope, INTERNAL_GRANT_PREFIX, testRunnerScope } from './claims.js';
+import {
+  admittedCredentialScope,
+  INTERNAL_GRANT_PREFIX,
+  isApiKeyPrincipal,
+  LEGACY_KEY_ISSUER,
+  testRunnerScope,
+} from './claims.js';
 import { AuthenticationError, type VerifiedIdentity } from './verify.js';
-
-export const LEGACY_KEY_ISSUER = 'urn:genai:legacy-api-key';
 
 export type LegacyKeyScope = 'query' | 'ingest' | 'admin';
 
@@ -192,11 +196,6 @@ export const keyAllows = (
   if (request.agent !== undefined && !granted(grants.agents, request.agent)) return false;
   return request.dataset !== undefined || request.agent !== undefined;
 };
-
-export const isApiKeyPrincipal = (principal: Principal) => principal.issuer === LEGACY_KEY_ISSUER;
-
-export const isTestRunnerKey = (principal: Principal) =>
-  isApiKeyPrincipal(principal) && (principal.scopes?.includes(testRunnerScope) ?? false);
 
 export const isGrantedClient = (principal: Principal) =>
   principal.scopes?.includes(CLIENT_GRANT_SCOPE) ?? false;

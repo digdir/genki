@@ -19,6 +19,9 @@ export const problems = defineNamespace({
   tenantNotRegistered: 'Virksomheten er ikke registrert på plattformen',
   keyScope: 'API-nøkkelen gir ikke tilgang til denne ruten',
   keyScopeDetail: 'Ruter for virksomheter krever en nøkkel med admin-omfang.',
+  clientScope: 'Klienten har ikke tilgang til denne ruten',
+  clientScopeDetail:
+    'En Maskinporten-klient bruker tjenestene den er registrert for. Den har ingen rettigheter i virksomheten.',
   testRunnerScope: 'En testkjørernøkkel kan ikke gjøre dette',
   testRunnerScopeDetail:
     'En testkjørernøkkel leser i egen virksomhet, sjekker definisjoner, gir tilbakemelding, prøver publiserte tjenester den når og smoke-tjenester i prøveområdet og endrer bare definisjoner som begynner med smoke-.',

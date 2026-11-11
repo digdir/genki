@@ -3,7 +3,7 @@ import type { Principal } from '@genai/contracts';
 import { createSigningKey, createTokenVerifier, toOrgNo, type SigningKey } from '@genai/identity';
 import { createLocalJWKSet, SignJWT } from 'jose';
 import type { MaskinportenClientView } from './maskinporten-clients.js';
-import { bootPlatform, digdir, other, readJson as json } from './testkit.js';
+import { bootPlatform, digdir, other, readJson as json, testService } from './testkit.js';
 
 const MP = 'https://maskinporten.test/';
 let key: SigningKey;
@@ -143,6 +143,45 @@ describe('Maskinporten clients per tenant', () => {
     expect(Object.keys(openapi.paths)).toEqual(['/api/tools/call/veileder__default']);
     expect(refused.status).toBe(403);
     expect(chat.status).toBe(403);
+  });
+
+  it('gives a registered client no right in its organisation, whatever services it is bound to', async () => {
+    const { register, asClient, send } = await boot();
+    await register({ clientId: 'alt', name: 'Alt', services: ['*'] });
+    const token = await tokenFor('alt');
+    const reason = 'Klienten prøver å endre oppsettet';
+
+    const refused = [
+      await send(`/tenants/${digdir}/me`, token),
+      await send(`/tenants/${digdir}/definitions`, token),
+      await send(`/tenants/${digdir}/tasks`, token),
+      await send(`/tenants/${digdir}/maskinporten-clients`, token, {
+        body: { clientId: 'ny', name: 'Ny', services: ['*'] },
+        reason,
+      }),
+      await send(`/tenants/${digdir}/services/veileder/batch-runs`, token, { body: {}, reason }),
+      await send(`/tenants/${digdir}/services/veileder/assistant/turns`, token, {
+        body: { message: 'Endre tjenesten' },
+        reason,
+      }),
+      await send('/eval-runs/kjoring-1', token),
+      await send('/eval-tasks/oppgave-1', token),
+      await send('/testcase-candidates/kandidat-1/review', token, { body: {}, reason }),
+    ];
+    const published = await send('/definitions', token, {
+      body: testService('fra-klienten'),
+      reason,
+    });
+
+    for (const response of refused) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:client-scope' });
+    }
+    expect(published.status).toBe(403);
+    expect(await published.json()).toMatchObject({
+      errors: [{ path: 'right', message: 'manage-services' }],
+    });
+    expect((await asClient('alt', '/v1/models')).status).toBe(200);
   });
 
   it('gives a client registered for all services every service of the tenant', async () => {

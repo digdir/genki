@@ -1,6 +1,6 @@
 # 0027 Platform rights
 
-Status: accepted, 2026-10-12 (built; test-runner keys in the locked test environment, ADR 0033, 2026-11-10). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; test-runner keys in the locked test environment, ADR 0033, 2026-11-10; keys and clients get only granted rights, 2026-11-11). Proposed 2026-10-07
 
 ## Decision
 
@@ -19,6 +19,7 @@ Access within a tenant is split into five rights, each an action on the platform
 - **Routes check rights after tenant access.** A route first checks that the principal may act for the tenant at all (404 otherwise), then the right for that action (403 "Du trenger rettigheten «…»").
 - **Invoking a service requires `use-services`.** The playground needs Administrere tjenester or Administrere datasett, because it runs drafts.
 - **Operators** get every right, but reach a tenant's data only through a support session with a reason (0010).
+- **Keys and clients get only the rights they were granted.** A system principal (an API key, a Maskinporten client or a system user) has no right by default; a missing or empty grant means nothing. An API key's scopes are its grant in its own tenant: `admin` gives all five rights and `ingest` gives Administrere datasett. A Maskinporten client's registration grants the services it may call (ADR 0008), never a platform right. Only people, operators and the platform's own principals (issuer `platform` or `urn:genai:worker`) are exempt from this rule, and people get their rights from Altinn as above. `platformRightsOf` in `packages/identity/src/platform-rights.ts` holds the rule.
 
 ## Why
 
@@ -27,6 +28,6 @@ Before this, any Altinn action gave full tenant administration. Agencies need to
 ## Consequences
 
 - The portal shows the person's rights per organisation and hides or disables what they cannot do; the API is still what enforces it.
-- Admin actions check rights too, not only the routes. `adminActionRights` in `apps/api/src/rights.ts` maps every admin action to the right it needs, or to operators only, and `admin.perform` checks it before the handler runs, so a module calling a handler directly gets the same refusal. An action missing from the map needs Administrere tjenester, and a test fails when a registered action is missing. The check applies to people with Altinn actions; operators, support sessions and API keys bound to the tenant keep their access. A test-runner key in the locked test environment (ADR 0033) is the exception: it may only publish, change the lifecycle of, and save or delete the draft of a definition whose id starts with `smoke-`.
+- Admin actions check rights too, not only the routes. `adminActionRights` in `apps/api/src/rights.ts` maps every admin action to the right it needs, or to operators only, and `admin.perform` checks it before the handler runs, so a module calling a handler directly gets the same refusal. An action missing from the map needs Administrere tjenester, and a test fails when a registered action is missing. The check applies to people with Altinn actions and to every API key and Maskinporten client, which hold only their granted rights; operators, support sessions and the platform's own principals keep their access. A test-runner key in the locked test environment (ADR 0033) is the exception: it may only publish, change the lifecycle of, and save or delete the draft of a definition whose id starts with `smoke-`.
 - A person with Altinn actions can only save or attach an API key policy whose scopes stay within their own rights. `admin` needs all five rights and `ingest` needs Administrere datasett.
 - Token counts and cost of a tenant's runs and totals are shown only to people with Se forbruk og kostnad. The person who started a task or a batch run still sees its own numbers.

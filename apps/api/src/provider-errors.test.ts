@@ -78,6 +78,7 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
   leser: employee('leser', ['use-services']),
+  okonomi: employee('okonomi', ['use-services', 'manage-services', 'view-usage']),
   frontend: { ...caller, subject: 'frontend', confinedTo: { tenant: digdir, service: 'reply' } },
 };
 
@@ -351,7 +352,7 @@ describe('the run timeline route', () => {
     const { task } = await ask(booted, await publish(booted, 'example/counted@1'));
 
     const timeline = await readJson<{ inputTokens: number; stats: Record<string, unknown> }>(
-      await timelineOf(booted, task, 'saksbehandling'),
+      await timelineOf(booted, task, 'okonomi'),
     );
 
     expect(timeline.inputTokens).toBe(12);
@@ -376,7 +377,7 @@ describe('the run timeline route', () => {
     expect((await booted.send(`/tenants/${digdir}/tasks`, 'frontend')).status).toBe(401);
   });
 
-  it('GET /tenants/{t}/tasks/{id}/timeline shows an unbound tenant key the question of a run it did not start, as the run list already does', async () => {
+  it('GET /tenants/{t}/tasks/{id}/timeline shows a service manager the question of a run they did not start, as the run list already does', async () => {
     const booted = await boot(() => ({ status: 400, text: tooLong }));
     const task = await failedRun(
       booted,
@@ -384,11 +385,24 @@ describe('the run timeline route', () => {
       people.bruker as Principal,
     );
 
-    const timeline = await timelineOf(booted, task, 'saksbehandling');
-    const runs = await booted.send(`/tenants/${digdir}/tasks`, 'saksbehandling');
+    const timeline = await timelineOf(booted, task, 'forvalter');
+    const runs = await booted.send(`/tenants/${digdir}/tasks`, 'forvalter');
 
     expect(timeline.status).toBe(200);
     expect(await timeline.text()).toContain('Hva er klokka?');
     expect(await runs.text()).toContain('Hva er klokka?');
+  });
+
+  it('GET /tenants/{t}/tasks/{id}/timeline refuses a machine principal without a grant, also for its own run', async () => {
+    const booted = await boot(() => ({ status: 400, text: tooLong }));
+    const reply = await publish(booted, 'example/reply@1');
+    const runs = [
+      await failedRun(booted, reply),
+      await failedRun(booted, reply, people.bruker as Principal),
+    ];
+
+    for (const task of runs)
+      expect((await timelineOf(booted, task, 'saksbehandling')).status).toBe(403);
+    expect((await booted.send(`/tenants/${digdir}/tasks`, 'saksbehandling')).status).toBe(403);
   });
 });

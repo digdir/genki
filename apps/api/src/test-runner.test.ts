@@ -47,7 +47,13 @@ const people: Record<string, Principal> = {
     tenant: digdir,
     scopes: [trustedEntraScope],
   },
-  system: { kind: 'agency-system', issuer: 'test', subject: 'fagsystem', tenant: digdir },
+  system: {
+    kind: 'agency-system',
+    issuer: LEGACY_KEY_ISSUER,
+    subject: 'fagsystem',
+    tenant: digdir,
+    scopes: ['legacy:admin'],
+  },
   user: {
     kind: 'employee',
     issuer: 'test',
