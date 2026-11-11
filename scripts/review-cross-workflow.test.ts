@@ -39,6 +39,18 @@ describe('the cross-model review', () => {
     expect(step('cross')?.env?.DEPLOYMENT).toBe('${{ vars.CROSS_REVIEW_DEPLOYMENT }}');
   });
 
+  it('passes only the two price variables as cost input', () => {
+    const env = step('cross')?.env ?? {};
+    expect(env.CROSS_REVIEW_PRICE_IN_USD).toBe('${{ vars.CROSS_REVIEW_PRICE_IN_USD }}');
+    expect(env.CROSS_REVIEW_PRICE_OUT_USD).toBe('${{ vars.CROSS_REVIEW_PRICE_OUT_USD }}');
+    expect(
+      Object.keys(env)
+        .filter((k) => k.includes('PRICE'))
+        .sort(),
+    ).toEqual(['CROSS_REVIEW_PRICE_IN_USD', 'CROSS_REVIEW_PRICE_OUT_USD']);
+    for (const value of Object.values(env)) expect(value).not.toContain('steps.cross');
+  });
+
   it('runs after the main review, only when it ran, and not on review again', () => {
     expect(job.needs).toBe('review');
     expect(job.if).toContain("needs.review.result != 'skipped'");

@@ -1,7 +1,17 @@
 // Adversarial second review of security-sensitive pull requests by a model from another family.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -311,14 +321,21 @@ export function diskWorkspace(root: string, tracked: string[]): Workspace {
     read: (path) => {
       if (!set.has(path) || path === 'package-lock.json') return null;
       const full = join(base, path);
+      let fd: number | null = null;
       try {
-        const stat = lstatSync(full);
+        fd = openSync(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        const stat = fstatSync(fd);
         if (!stat.isFile() || stat.size > 1_000_000) return null;
-        if (!realpathSync(full).startsWith(base + sep)) return null;
-        const text = readFileSync(full, 'utf8');
+        const real = realpathSync(full);
+        if (!real.startsWith(base + sep)) return null;
+        const onPath = statSync(real);
+        if (onPath.ino !== stat.ino || onPath.dev !== stat.dev) return null;
+        const text = readFileSync(fd, 'utf8');
         return text.includes('\0') ? null : text;
       } catch {
         return null;
+      } finally {
+        if (fd !== null) closeSync(fd);
       }
     },
   };
@@ -482,6 +499,18 @@ export async function runReview(opts: {
   return { output: null, spent, stopped: true };
 }
 
+export function costUsd(
+  spent: Spent,
+  priceIn: string | undefined,
+  priceOut: string | undefined,
+): number | null {
+  const prices = [priceIn, priceOut].map((p) => (p?.trim() ? Number(p) : Number.NaN));
+  const [pin, pout] = prices;
+  if (pin === undefined || pout === undefined || !Number.isFinite(pin) || !Number.isFinite(pout))
+    return null;
+  return (spent.input * pin + spent.output * pout) / 1_000_000;
+}
+
 export function runRecord(input: {
   repo: string;
   pr: number;
@@ -498,6 +527,8 @@ export function runRecord(input: {
   spent: Spent;
   stopped: boolean;
   posted: boolean;
+  priceInUsd?: string | undefined;
+  priceOutUsd?: string | undefined;
 }) {
   return {
     schema: 'digdir.ai-review.cross-run/v1',
@@ -519,6 +550,7 @@ export function runRecord(input: {
       output: input.spent.output,
       cache_read: input.spent.cached,
     },
+    cost_usd: costUsd(input.spent, input.priceInUsd, input.priceOutUsd),
     returned: input.output?.findings.length ?? 0,
     findings: input.findings.map((f) => ({
       severity: f.severity.toLowerCase(),
@@ -696,6 +728,8 @@ async function review() {
     spent: result.spent,
     stopped: result.stopped,
     posted,
+    priceInUsd: process.env.CROSS_REVIEW_PRICE_IN_USD,
+    priceOutUsd: process.env.CROSS_REVIEW_PRICE_OUT_USD,
   });
   writeFileSync('cross-review-run.json', JSON.stringify(record, null, 2));
   const summary = `Cross-model review: ${toPost.length} new, ${findings.length - toPost.length} already found by the first review, ${result.spent.turns} turns, ${result.spent.input} input and ${result.spent.output} output tokens${result.stopped ? ', stopped at the budget' : ''}.\n`;

@@ -1,9 +1,11 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   commentBody,
+  costUsd,
   diskWorkspace,
   isSensitive,
   LIMITS,
@@ -246,6 +248,21 @@ describe('the read-only tools the model gets', () => {
     expect(disk.read('src/a.ts')).toBe('ok');
     expect(disk.read('src/link.ts')).toBeNull();
   });
+
+  it('refuses a tracked file that is not a regular file without blocking on it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cross-'));
+    execFileSync('mkfifo', [join(root, 'pipe')]);
+    expect(diskWorkspace(root, ['pipe']).read('pipe')).toBeNull();
+  });
+
+  it('refuses a tracked file over one megabyte', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cross-'));
+    writeFileSync(join(root, 'big.txt'), 'x'.repeat(1_000_001));
+    writeFileSync(join(root, 'small.txt'), 'x');
+    const disk = diskWorkspace(root, ['big.txt', 'small.txt']);
+    expect(disk.read('big.txt')).toBeNull();
+    expect(disk.read('small.txt')).toBe('x');
+  });
 });
 
 describe('the diff the model sees', () => {
@@ -414,5 +431,17 @@ describe('the run record', () => {
     ]);
     const silent = runRecord({ ...base, arm: 'shadow', posted: false });
     expect(silent.findings.every((f) => !f.posted)).toBe(true);
+  });
+
+  it('computes the cost from the tokens and the per-million prices', () => {
+    const spent = { turns: 1, input: 2_000_000, output: 500_000, cached: 0 };
+    expect(costUsd(spent, '1.25', '10')).toBeCloseTo(7.5);
+  });
+
+  it('records no cost without two numeric prices', () => {
+    const spent = { turns: 1, input: 1000, output: 1000, cached: 0 };
+    expect(costUsd(spent, undefined, '10')).toBeNull();
+    expect(costUsd(spent, '1', '')).toBeNull();
+    expect(costUsd(spent, 'cheap', '10')).toBeNull();
   });
 });

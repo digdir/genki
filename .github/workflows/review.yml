@@ -193,6 +193,8 @@ jobs:
           RESOURCE: ${{ vars.AZURE_REVIEW_FOUNDRY_RESOURCE }}
           ARM: ${{ steps.arm.outputs.arm }}
           STARTED_AT: ${{ steps.arm.outputs.started_at }}
+          CROSS_REVIEW_PRICE_IN_USD: ${{ vars.CROSS_REVIEW_PRICE_IN_USD }}
+          CROSS_REVIEW_PRICE_OUT_USD: ${{ vars.CROSS_REVIEW_PRICE_OUT_USD }}
         run: node "$RUNNER_TEMP/review/review-cross.mts" review
       - name: Update the summary comment
         if: steps.cross.outputs.posted != '' && steps.cross.outputs.posted != '0'

@@ -83,6 +83,7 @@ Most of genki is written and reviewed by Claude, so the two can share blind spot
   1. Deploy a non-Claude model on the review's Foundry resource, for example an OpenAI GPT-5 class reasoning model (the newest full model, not mini, the catalogue offers in the resource's region): `az cognitiveservices account deployment create -g <resource group> -n <resource> --deployment-name <name> --model-format OpenAI --model-name <model> --model-version <version> --sku-name DataZoneStandard --sku-capacity <thousands of tokens per minute>`. Use `GlobalStandard` if the model has no data zone deployment there.
   2. Give the review identity (`AZURE_REVIEW_CLIENT_ID`) the role `Cognitive Services OpenAI User` on the resource, unless it already has `Cognitive Services User` or `Azure AI User` there: `az role assignment create --assignee <client id> --role "Cognitive Services OpenAI User" --scope <resource id>`.
   3. Set the repository variable `CROSS_REVIEW_DEPLOYMENT` to the deployment name. Remove it to turn the review off again.
+  4. Set the repository variables `CROSS_REVIEW_PRICE_IN_USD` and `CROSS_REVIEW_PRICE_OUT_USD` to the deployment's list prices in US dollars per million input and output tokens. The run record then carries `cost_usd`; without both, it is null.
 
 ### Security sweep
 
