@@ -134,6 +134,16 @@
                 <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>.
               </li>
               <li>
+                <code>companion</code>: a second column in the panel's card, towards the main
+                column, as the dev boards draw the filter beside the threads (dev-filter-panel). It
+                has its own <code>title</code>, a <code>subtitle</code> under it, its
+                <code>children</code>, which scroll on their own, and its <code>width</code>; its
+                <code>label</code> names its region. The panel's <code>size</code> counts both
+                columns, and the panel's own column keeps its width less the companion's. The
+                panel's button stands on the companion's row, at the card's edge, and folds both. In
+                a drawer the companion stands under the panel's own column.
+              </li>
+              <li>
                 <code>children</code> and <code>mainPinned</code>: the main column, and what stays
                 at its top. <code>mainTitle</code>: the page's <code>h1</code>, such as the thread's
                 title, pinned at the top of the main column with a line under it; in the cards frame
@@ -710,6 +720,41 @@
                     <td><code>--genai-shell-profile-news-color</code></td>
                     <td><code>--ds-color-base-default</code></td>
                     <td>the dot on «Endringslogg», accent from its <code>data-color</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the companion column: companion background</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-button-inset</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>the companion column: companion button inset</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>the companion column: companion gap</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>the companion column: companion padding inline</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-subtitle-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the companion column: companion subtitle color</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-subtitle-font-size</code></td>
+                    <td><code>--ds-font-size-2</code></td>
+                    <td>the companion column: companion subtitle font size</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-subtitle-line-height</code></td>
+                    <td><code>--ds-line-height-md</code></td>
+                    <td>the companion column: companion subtitle line height</td>
                   </tr>
                 </tbody>
               </table>
