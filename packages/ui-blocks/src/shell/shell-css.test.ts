@@ -42,6 +42,9 @@ const neutralPins = [
   '--genai-shell-divider-color',
   '--genai-shell-drawer-background',
   '--genai-shell-primary-background',
+  // The profile menu's top: the reader's name and organisation, the panel's own words.
+  '--genai-shell-profile-organisation-color',
+  '--genai-shell-profile-who-color',
   '--genai-shell-rail-background',
   '--genai-shell-title-color',
   // The secondary panel's tool tabs are its own chrome, grey as the design draws them.

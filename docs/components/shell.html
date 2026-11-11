@@ -186,6 +186,21 @@
                 ends. The dropdown is Designsystemet's <code>Select</code>. Every tool stays mounted
                 while hidden.
               </li>
+              <li>
+                <code>ShellProfile</code>, for the primary panel's pinned <code>foot</code> and,
+                with <code>compact</code>, its <code>railFoot</code>: the reader as one full-width
+                tertiary, neutral button with an accent avatar (xs, initials) and the
+                <code>name</code>, cut with «…», the whole name in <code>aria-label</code> and
+                <code>title</code>; on a rail, the avatar alone. It opens the profile menu above
+                itself, Designsystemet's <code>Dropdown</code>: the avatar, the name and the
+                <code>organisation</code> at the top; then <code>settings</code> («Innstillinger»),
+                <code>feedback</code> («Gi tilbakemelding»), <code>changelog</code> («Endringslogg»,
+                with a dot when <code>news</code>), <code>about</code> («Om tjenesten») and
+                <code>contact</code> («Kontakt {to}»), with Aksel's icons; a line; and
+                <code>signOut</code> («Logg ut», a link, with <code>onSignOut</code> first). Each
+                entry is an <code>href</code>, an <code>onSelect</code> or both; one the host does
+                not give is not drawn. There is no cog. Nothing is drawn without a name.
+              </li>
             </ul>
             <h2>Related</h2>
             <ul>
@@ -285,10 +300,12 @@
               <code>data-size</code>, and reads every token through its own variable, with the token
               as the fallback. The chrome is pinned to the neutral family on purpose, as
               kunnskapsassistenten's shell: the page, the panels, the cards, the rails, the top row,
-              the drawer, the borders and lines, and the titles stay grey whatever
-              <code>data-color</code> the app sets, because accent belongs to the content and to
-              what can be pressed. The separator's line takes the accent role without a family. The
-              widths are not tokens: the shell sets them from its own sums.
+              the drawer, the borders and lines, the titles and the profile menu's top stay grey
+              whatever <code>data-color</code> the app sets, because accent belongs to the content
+              and to what can be pressed. The avatars and the dot on «Endringslogg» are accent, as
+              the design draws them, by <code>data-color</code> in the markup. The separator's line
+              takes the accent role without a family. The widths are not tokens: the shell sets them
+              from its own sums.
             </p>
             <div class="table-wrap">
               <table>
@@ -612,7 +629,10 @@
                   <tr>
                     <td><code>--genai-shell-divider-color</code></td>
                     <td><code>--ds-color-neutral-surface-tinted</code></td>
-                    <td>the lines under the main card's title and over a card's foot (pinned)</td>
+                    <td>
+                      the lines under the main card's title, over a card's foot and under the
+                      profile menu's top (pinned)
+                    </td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-rail-button-size</code></td>
@@ -620,6 +640,76 @@
                     <td>
                       a card's button and the avatar's on a rail; part of the <code>rail</code>
                     </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-name-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>the name on the profile button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the avatar and the name at the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-padding-block-start</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>above the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-padding-block-end</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the menu's top and its line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-padding-inline</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>beside the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-margin-block-end</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>between the menu's top and its entries</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>the name at the menu's top (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-font-size</code></td>
+                    <td><code>--ds-body-sm-font-size</code></td>
+                    <td>the name at the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the name at the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-organisation-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the organisation under it (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-organisation-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>the organisation under it</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-news-size</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>the dot on «Endringslogg»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-news-radius</code></td>
+                    <td><code>--ds-border-radius-full</code></td>
+                    <td>the dot on «Endringslogg»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-news-color</code></td>
+                    <td><code>--ds-color-base-default</code></td>
+                    <td>the dot on «Endringslogg», accent from its <code>data-color</code></td>
                   </tr>
                 </tbody>
               </table>
