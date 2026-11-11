@@ -114,6 +114,23 @@
                 <code>onShowRead</code> and <code>onExplainMissing</code>: the links «Vis de 17 som
                 er lest» and «Utdyp hva som mangler», shown only when the app can open them.
               </li>
+              <li>
+                <code>summary</code>: <code>totals</code> puts «Leste 44 dokumenter, brukte 4»
+                beside the title once the answer is done, so the folded card says it in one line,
+                and the foot keeps only «Tok 41 sekunder». The card is then the dev boards' bar
+                (dev-filter-panel): tinted, under a hairline, its chevron at the end. Left out, the
+                card is as before.
+              </li>
+              <li>
+                <code>note</code>: after the totals in the head, stronger: «· filteret er endret»,
+                which the host passes only when the answer's filter differs from the previous
+                answer's.
+              </li>
+              <li>
+                <code>scope</code>: at the top of the open card, before the steps, such as the
+                filter's <code>FilterRead</code>: «Leste fra 8 781 dokumenter:» and the chosen
+                values as chips.
+              </li>
             </ul>
             <h3>A step</h3>
             <ul>
@@ -243,6 +260,106 @@
                   <td><code>--genai-approach-footer-font-size</code></td>
                   <td><code>--ds-font-size-2</code></td>
                   <td>the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the totals bar: bar border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the totals bar: bar font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: bar gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-ground</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>the totals bar: bar ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-icon-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the totals bar: bar icon color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the totals bar: bar icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: bar padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-block-end</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the totals bar: bar padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the totals bar: bar padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>the totals bar: bar radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-note-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>the totals bar: note color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-note-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the totals bar: note font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the totals bar: scope border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-margin-block-end</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: scope margin block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-padding-block-end</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: scope padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-subtitle-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the totals bar: subtitle color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-subtitle-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>the totals bar: subtitle font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the totals bar: title font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the totals bar: bar background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-hover-background</code></td>
+                  <td><code>--ds-color-neutral-surface-hover</code></td>
+                  <td>the totals bar: bar hover background</td>
                 </tr>
               </tbody>
             </table>

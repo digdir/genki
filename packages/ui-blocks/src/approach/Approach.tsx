@@ -1,7 +1,7 @@
 import { Card, Details, Link, List } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { RobotIcon } from '@navikt/aksel-icons';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from './i18n.js';
 import { linesOf, type ApproachLine } from './runs.js';
 
@@ -52,6 +52,16 @@ export interface ApproachProps {
   onShowRead?: (stepId: string) => void;
   /** Shows the link to more about what the assistant did not find. */
   onExplainMissing?: (stepId: string) => void;
+  /**
+   * `totals`: once the answer is done, how much was read and used stands beside the title, so the
+   * folded card says it in one line, and the foot keeps only the time. The card is then the dev
+   * boards' bar: tinted, its chevron at the end. Left out, the totals stand in the foot.
+   */
+  summary?: 'totals' | undefined;
+  /** After the totals in the head, stronger, such as «filteret er endret». */
+  note?: string | undefined;
+  /** At the top of the open card, before the steps, such as what the answer read from. */
+  scope?: ReactNode;
 }
 
 const useSeconds = (
@@ -171,6 +181,9 @@ export const Approach = ({
   onOpenChange,
   onShowRead,
   onExplainMissing,
+  summary: summaryPlace,
+  note,
+  scope,
 }: ApproachProps) => {
   const t = useT();
   const [ownOpen, setOwnOpen] = useOwnOpen(working);
@@ -209,14 +222,18 @@ export const Approach = ({
             read: readText,
             used: t('approach.used', { count: used }),
           });
+  // In the head once done, with the totals: the foot then says only how long it took.
+  const inHead = summaryPlace === 'totals' && !working;
   const footer = working
     ? t('approach.workingFor', { count: seconds })
-    : summary === undefined
+    : summary === undefined || inHead
       ? t('approach.tookOnly', { count: seconds })
       : t('approach.footer', { summary, took: t('approach.took', { count: seconds }) });
+  const headSummary = inHead ? summary : undefined;
+  const headNote = inHead ? note : undefined;
 
   return (
-    <div className="uib-approach">
+    <div className="uib-approach" data-summary={summaryPlace}>
       <Card data-color="neutral" variant="default" className="uib-approach-card">
         <Details
           aria-label={t('approach.title')}
@@ -226,10 +243,21 @@ export const Approach = ({
           <Details.Summary>
             <span className="uib-approach-summary">
               <RobotIcon aria-hidden fontSize="18px" />
-              {t('approach.title')}
+              <span className="uib-approach-title">{t('approach.title')}</span>
+              {headSummary || headNote ? (
+                <span className="uib-approach-subtitle">
+                  {headSummary}
+                  {headNote ? (
+                    <span className="uib-approach-note">
+                      {headSummary ? ` · ${headNote}` : headNote}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
             </span>
           </Details.Summary>
-          <Details.Content>
+          <Details.Content className="uib-approach-content">
+            {scope ? <div className="uib-approach-scope">{scope}</div> : null}
             <List.Ordered className="uib-approach-steps">
               {lines.map((line) => {
                 const { step } = line;
