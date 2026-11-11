@@ -984,21 +984,31 @@ describe('the key in lockdown', () => {
         { prefix: key.slice(0, 7), lastFour: key.slice(-4), modelsInLockdown },
       ],
     });
+  const noKeys = http(200, { keys: [] });
 
   it('fails when the key may not use models in lockdown, and says how to fix it', () => {
-    expect(assessKeyAdmission(keys(false), key, true)).toMatchObject({
+    expect(assessKeyAdmission([keys(false)], key, true)).toMatchObject({
       ok: false,
       detail: expect.stringContaining('rotate it from an Entra login'),
     });
-    expect(assessKeyAdmission(keys(true), key, true).ok).toBe(true);
+    expect(assessKeyAdmission([keys(true)], key, true).ok).toBe(true);
   });
 
-  it('passes outside lockdown, and fails when the key is not in its own list', () => {
-    expect(assessKeyAdmission(keys(false), key, false).ok).toBe(true);
-    expect(assessKeyAdmission(http(200, { keys: [] }), key, true).ok).toBe(false);
+  it('passes outside lockdown, and fails when the key is in no key list', () => {
+    expect(assessKeyAdmission([keys(false)], key, false).ok).toBe(true);
+    expect(assessKeyAdmission([noKeys, noKeys], key, true).ok).toBe(false);
   });
 
-  it('is unavailable when the key may not read its key list', () => {
-    expect(assessKeyAdmission(http(403, {}), key, true).unavailable).toBe(true);
+  it('finds a tenant-wide key in the tenant key list when the service list lacks it', () => {
+    expect(assessKeyAdmission([noKeys, keys(true)], key, true).ok).toBe(true);
+    expect(assessKeyAdmission([noKeys, keys(false)], key, true)).toMatchObject({
+      ok: false,
+      detail: expect.stringContaining('rotate it from an Entra login'),
+    });
+  });
+
+  it('is unavailable when the key may not read a key list and is in none it can read', () => {
+    expect(assessKeyAdmission([http(403, {}), noKeys], key, true).unavailable).toBe(true);
+    expect(assessKeyAdmission([http(403, {}), keys(true)], key, true).ok).toBe(true);
   });
 });
