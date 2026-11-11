@@ -26,6 +26,7 @@ const withoutBody = new Set([
   'post /tenants/{tenant}/skills/{id}/fix/{fixId}/apply',
   'delete /tenants/{tenant}/skills/{id}/testcases/{index}',
   'delete /tenants/{tenant}/skills/{id}/share',
+  'delete /tenants/{tenant}/services/{id}/environments/{environment}',
   'put /operator/recipes/shares/{flow}',
   'delete /operator/recipes/shares/{flow}',
 ]);

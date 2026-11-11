@@ -1027,7 +1027,7 @@ describe('AI marking and version pinning', () => {
     expect(tool.status).toBe(503);
   });
 
-  it('documents the marking, the version header and the platform name in the OpenAPI', async () => {
+  it('documents the marking, the version and environment headers and the platform name in the OpenAPI', async () => {
     const { app } = setup();
     const spec = (await (
       await app.request('/api/tools/openapi.json', { headers: { 'x-api-key': 'good' } })
@@ -1048,7 +1048,7 @@ describe('AI marking and version pinning', () => {
     ).json()) as { info: { title: string; description: string } };
     expect(english.info.title).toBe('Generative AI platform for the public sector');
     expect(english.info.description).toMatch(/^Generative AI services for the public sector\./);
-    expect(operation.parameters.map((p) => p.name)).toEqual(['GenAI-Version']);
+    expect(operation.parameters.map((p) => p.name)).toEqual(['GenAI-Version', 'GenAI-Environment']);
     expect(Object.keys(operation.responses['200']?.headers ?? {})).toEqual(
       expect.arrayContaining(['genai-generated-by', 'genai-model', 'genai-service-version']),
     );

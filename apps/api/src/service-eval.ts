@@ -27,6 +27,7 @@ import { modelChoice, type Meter } from './model-choice.js';
 import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
+import { chooseEnvironment } from './service-environments.js';
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter(judgedAgainst).map((m) => m.model);
@@ -56,6 +57,7 @@ export interface ServiceRun extends Leased {
   testSet: string;
   testSetVersion: number;
   version: RunVersion;
+  environment?: string;
   subject?: string;
   variant?: string;
   // The model the run is set to answer with.
@@ -80,6 +82,7 @@ export interface Subject {
   definition: Record<string, unknown>;
   files: Record<string, string>;
   version: RunVersion;
+  environment?: string;
   variant?: string;
 }
 
@@ -166,7 +169,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     tenant: string,
     service: string,
     version: unknown,
-    inline?: { definition?: unknown; files?: unknown },
+    inline?: { definition?: unknown; files?: unknown; environment?: unknown },
   ): Promise<Subject | undefined> => {
     if (version === 'draft') {
       if (isRecord(inline?.definition)) {
@@ -189,7 +192,17 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ? { definition: draft.spec.definition, files: draft.spec.files, version: 'draft' }
         : undefined;
     }
-    if (version === undefined || version === 'published') return published(tenant, service);
+    if (version === undefined || version === 'published') {
+      const requested = typeof inline?.environment === 'string' ? inline.environment : undefined;
+      const environment = await chooseEnvironment(
+        deps.configEntries,
+        { tenant, id: service },
+        requested,
+      );
+      if (!environment.ok) return undefined;
+      const found = await published(tenant, service, environment.version);
+      return found && { ...found, ...(environment.name ? { environment: environment.name } : {}) };
+    }
     return typeof version === 'number' && Number.isInteger(version)
       ? published(tenant, service, version)
       : undefined;
@@ -383,6 +396,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       testSet: set.metadata.id,
       testSetVersion: set.metadata.version,
       version: subject.version,
+      ...(subject.environment ? { environment: subject.environment } : {}),
       subject: publishedSubject(subject.definition, deps.plugins),
       ...(subject.variant ? { variant: subject.variant } : {}),
       ...(model ? { model } : {}),

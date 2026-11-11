@@ -729,6 +729,9 @@ export const createKernel = (options: KernelOptions): Kernel => {
           capability: { id: capability.descriptor.id, version: capability.descriptor.version },
           strategy: { id: strategy.id, version: strategy.version },
           configHash,
+          ...(invokeOptions.environment === undefined
+            ? {}
+            : { environment: invokeOptions.environment }),
         },
         principal: principalRef(principal),
         tenant,

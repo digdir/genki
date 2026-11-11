@@ -90,6 +90,10 @@ export const adminActionRights: Readonly<
 > = {
   'platform.service.publish': 'manage-services',
   'platform.service.lifecycle': 'manage-services',
+  'platform.service.environments.add': 'manage-services',
+  'platform.service.environments.remove': 'manage-services',
+  'platform.service.environments.promote': 'manage-services',
+  'platform.service.environments.rollback': 'manage-services',
   'platform.setting.set': 'manage-services',
   'platform.setting.pin': 'manage-services',
   'platform.tenant.import': 'manage-services',
