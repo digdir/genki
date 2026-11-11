@@ -116,6 +116,14 @@ export const catalogueSettings: PlatformSetting[] = [
     [retrieval('autoFilter.rules')],
   ),
   setting(
+    'retrieval.autoFilter.aliases',
+    z.record(z.string(), z.array(z.string().min(1))),
+    {},
+    'retrieval',
+    'Groups of names that mean the same organisation or value; detection reports the name the dataset stores.',
+    [retrieval('autoFilter.aliases')],
+  ),
+  setting(
     'retrieval.docTitle.fanout',
     positiveInt.max(50),
     3,

@@ -1,7 +1,9 @@
 import type { FacetValue, Hit } from '@genai/port-knowledge';
 import { selectedOptions, type FilterInput } from './filters.js';
 import {
-  containsWord,
+  containsFoldedWord,
+  foldCase,
+  foldNordic,
   intersect,
   metadataMap,
   numbersIn,
@@ -232,26 +234,83 @@ export interface Detection {
 
 export type Detected = Pick<Detection, 'field' | 'values' | 'queries'>;
 
+export type AliasTable = Record<string, string[]>;
+
+interface MatchName {
+  plain: string;
+  nordic?: string;
+  reports: string[];
+}
+
+const matchNames = (
+  facetValues: FacetValue[],
+  minLength: number,
+  aliases: AliasTable,
+): MatchName[] => {
+  const indexed = new Map<string, string>();
+  for (const { value } of facetValues) {
+    const key = foldCase(value);
+    if (key !== '' && !indexed.has(key)) indexed.set(key, value);
+  }
+  const reportsByName = new Map<string, { name: string; reports: Set<string> }>();
+  const add = (name: string, report: string) => {
+    const key = foldCase(name);
+    const entry = reportsByName.get(key) ?? { name, reports: new Set<string>() };
+    entry.reports.add(report);
+    reportsByName.set(key, entry);
+  };
+  for (const [key, value] of indexed) if (key.length >= minLength) add(value, value);
+  for (const [head, rest] of Object.entries(aliases)) {
+    const group = [head, ...rest].map((n) => n.trim()).filter((n) => n !== '');
+    const reports = group.flatMap((n) => indexed.get(foldCase(n)) ?? []);
+    for (const name of group) for (const report of reports) add(name, report);
+  }
+  const entries = [...reportsByName.entries()].map(([plain, { reports }]) => ({
+    plain,
+    folded: foldNordic(plain),
+    reports: [...reports],
+  }));
+  const signatures = new Map<string, Set<string>>();
+  for (const e of entries) {
+    const seen = signatures.get(e.folded) ?? new Set<string>();
+    seen.add(e.reports.join('\u0000'));
+    signatures.set(e.folded, seen);
+  }
+  return entries.map(({ plain, folded, reports }) => ({
+    plain,
+    reports,
+    ...([...plain].length >= 3 && signatures.get(folded)?.size === 1 ? { nordic: folded } : {}),
+  }));
+};
+
 export const detectOrganisations = (
   queries: string[],
   facets: Record<string, FacetValue[]>,
   orgFields: string[],
   minLength: number,
-): Detected[] =>
-  orgFields.flatMap((field) => {
+  aliases: AliasTable = {},
+): Detected[] => {
+  const plain = queries.map(foldCase);
+  const nordic = queries.map(foldNordic);
+  return orgFields.flatMap((field) => {
     const values = new Set<string>();
-    const found = new Set<string>();
-    for (const { value } of facets[field] ?? []) {
-      if (value.length < minLength || values.has(value)) continue;
-      const naming = queries.filter((q) => containsWord(q, value));
+    const found = new Set<number>();
+    for (const name of matchNames(facets[field] ?? [], minLength, aliases)) {
+      const naming = queries.flatMap((_, i) =>
+        containsFoldedWord(plain[i] as string, name.plain) ||
+        (name.nordic !== undefined && containsFoldedWord(nordic[i] as string, name.nordic))
+          ? [i]
+          : [],
+      );
       if (naming.length === 0) continue;
-      values.add(value);
-      for (const q of naming) found.add(q);
+      for (const value of name.reports) values.add(value);
+      for (const i of naming) found.add(i);
     }
     return values.size > 0
-      ? [{ field, values: [...values], queries: queries.filter((q) => found.has(q)) }]
+      ? [{ field, values: [...values], queries: queries.filter((_, i) => found.has(i)) }]
       : [];
   });
+};
 
 export const detectYears = (queries: string[]): string[] => [...queryYears(queries)];
 

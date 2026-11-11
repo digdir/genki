@@ -328,6 +328,7 @@ export const retrieve = async (input: RetrieveInput): Promise<RetrievalResult> =
           facets,
           orgFields,
           config.autoFilter.minValueLength,
+          config.autoFilter.aliases,
         );
         for (const org of orgs) offer('organisation', org.field, org.values, org.queries);
       }
