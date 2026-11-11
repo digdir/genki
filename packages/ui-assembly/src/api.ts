@@ -40,7 +40,16 @@ export interface Turn {
    * What the question was narrowed to, and the collection asked, if any: genki keeps no filter with
    * a turn.
    */
-  scope?: { narrowedTo: readonly string[]; corpus?: string | undefined } | undefined;
+  scope?:
+    | {
+        narrowedTo: readonly string[];
+        corpus?: string | undefined;
+        /** The filter it was asked with, as the question narrowed it (the next look). */
+        selection?: FilterSelection | undefined;
+        /** How many documents that filter read from, counted from the facets. */
+        documents?: number | undefined;
+      }
+    | undefined;
 }
 
 /** A thread in the list, with the service it was made for. */
@@ -405,6 +414,7 @@ export const createGenkiApi = ({
           return {
             id: field.id,
             label: field.label,
+            ...(field.heading ? { heading: field.heading } : {}),
             ...(field.kind ? { kind: field.kind } : {}),
             options,
           };

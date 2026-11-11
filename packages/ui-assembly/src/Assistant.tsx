@@ -13,10 +13,13 @@ import {
   CorpusChoice,
   CorpusLine,
   Documents,
+  DocumentsInScope,
   DocumentView,
   EmptyState,
   ErrorState,
   Filter,
+  FilterNext,
+  FilterRead,
   NotFoundState,
   Settings,
   SettingsLinks,
@@ -31,6 +34,7 @@ import {
   Welcome,
   answerCopy,
   isEmptySelection,
+  sameSelection,
   type AnswerCopied,
   type AnswerFeedbackStatus,
   type ConversationAnswer,
@@ -155,6 +159,17 @@ const approachOf = (a: AssistantState, turnId: string | undefined, t: AssemblyTr
   const busy = turn.answer?.status === 'streaming';
   const steps = stepsOf(approach, busy, t.locale);
   if (steps.length === 0) return null;
+  // The next look says the filter inside «Fremgangsmåte» (dev-filter-panel; «9 · Filtrering» B):
+  // the totals and «filteret er endret» when folded, what the answer read from when open. Only for
+  // a question asked here, since genki keeps no filter with a turn.
+  const next = a.look === 'next';
+  const asked = next ? turn.scope?.selection : undefined;
+  const before = a.turns
+    .slice(0, a.turns.indexOf(turn))
+    .reverse()
+    .find((one) => one.answer && one.scope?.selection);
+  const changed =
+    asked && before?.scope?.selection ? !sameSelection(before.scope.selection, asked) : false;
   return (
     <>
       <Approach
@@ -163,6 +178,15 @@ const approachOf = (a: AssistantState, turnId: string | undefined, t: AssemblyTr
         startedAt={approach.startedAt}
         {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
         {...(turn.answer?.sources ? { used: turn.answer.sources.length } : {})}
+        {...(next ? { summary: 'totals' as const } : {})}
+        {...(changed ? { note: t('filter.changed') } : {})}
+        {...(asked
+          ? {
+              scope: (
+                <FilterRead selection={asked} fields={a.facets} count={turn.scope?.documents} />
+              ),
+            }
+          : {})}
       />
       {a.level === 'detailed' ? (
         // No block draws the detailed level yet: the step frames as genki sent them, for now.
@@ -247,7 +271,10 @@ export const AssistantView = ({
 
   // kunnskapsassistenten's trials, where the profile offers them and the reader turned them on.
   const filtersBeside = a.flags.has('filters-right-panel') && filterZone === 'primary';
-  const twoViews = threadsOn && filterZone === 'primary' && !filtersBeside;
+  // The next look draws the filter as its own panel beside the threads, in their card
+  // (dev-filter-panel; «9 · Filtrering» A), not as a second view of the same panel.
+  const filterPanel = next && threadsOn && filterZone === 'primary' && !filtersBeside;
+  const twoViews = threadsOn && filterZone === 'primary' && !filtersBeside && !filterPanel;
 
   const [atEnd, setAtEnd] = useState(true);
   const start = a.view === 'new' || (a.view === 'ready' && a.turns.length === 0);
@@ -420,6 +447,12 @@ export const AssistantView = ({
                 <VariantPicker variants={a.variants} value={a.model} onChange={a.setModel} />
               ) : undefined
             }
+            // What the next question reads from, under the field, beside the filter's panel.
+            {...(filterPanel
+              ? {
+                  note: <FilterNext selection={a.selection} fields={a.facets} count={a.readFrom} />,
+                }
+              : {})}
             // Docked, the field keeps the rest of the column clear of itself (WCAG 2.4.11) with a
             // scroll margin as tall as it, as kunnskapsassistenten does.
             sticky={!start && !inPanel}
@@ -464,7 +497,10 @@ export const AssistantView = ({
       onChange={a.setSelection}
       failed={a.facetsFailed}
       onRetry={a.retryFacets}
-      thread={a.currentId}
+      // In the next look the filter belongs to the thread and «filteret er endret» says a change
+      // in the answer, so there is no note in the filter about a thread under way.
+      thread={filterPanel ? undefined : a.currentId}
+      {...(filterPanel ? { variant: 'panel' as const, title: false as const } : {})}
       newThreadHref={a.hrefOf()}
       onNewThread={(event) => {
         event.preventDefault();
@@ -483,12 +519,23 @@ export const AssistantView = ({
       }
     >
       {a.option('filter', 'documents') ? (
-        <Documents
-          documents={a.documents}
-          corpus={a.corpus}
-          {...(inStrip ? {} : { corpusLine })}
-          headingLevel={(headingLevel + 1) as 3 | 4}
-        />
+        filterPanel ? (
+          // «Dokumentene som blir med»: the count from the facets. genki lists no documents for a
+          // filter and cannot leave one out, so the box draws no list and no ticks.
+          <DocumentsInScope
+            count={a.readFrom}
+            total={a.collectionSize}
+            corpus={a.corpus}
+            headingLevel={(headingLevel + 1) as 3 | 4}
+          />
+        ) : (
+          <Documents
+            documents={a.documents}
+            corpus={a.corpus}
+            {...(inStrip ? {} : { corpusLine })}
+            headingLevel={(headingLevel + 1) as 3 | 4}
+          />
+        )
       ) : null}
     </Filter>
   );
@@ -635,11 +682,25 @@ export const AssistantView = ({
           };
   } else if (threadsOn) {
     primary = {
-      label: t('builder.threads'),
+      label: filterPanel ? threadsAndFilter : t('builder.threads'),
       ...threadsTitle,
       children: threadList,
       foot,
       ...nextPrimary,
+      // The filter's own panel in the threads' card, 220 + 440 at 1720 as dev-filter-panel draws
+      // it: «Filter», «Gjelder neste spørsmål», and the card's button on its row.
+      ...(filterPanel
+        ? {
+            size: { width: 660, minWidth: 660 },
+            companion: {
+              label: t('assembly.filterForThread'),
+              title: t('builder.filter'),
+              subtitle: t('filter.appliesNext'),
+              width: 440,
+              children: filter(undefined, 2),
+            },
+          }
+        : {}),
     };
   } else if (filterZone === 'primary' && !filtersBeside) {
     primary = {
@@ -921,6 +982,9 @@ export const AssistantView = ({
       {...(next
         ? { frame: 'cards' as const, mainTitle: settingsPage ? undefined : a.threadTitle }
         : {})}
+      // Beside the filter's panel the conversation is 624 wide at 1720 (dev-filter-panel), so both
+      // panels stay open there.
+      {...(filterPanel ? { mainSize: { minWidth: 600 } } : {})}
       mainId={mainId}
       initialLayout={a.shellLayout}
       onLayoutChange={a.onShellLayout}

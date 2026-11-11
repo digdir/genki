@@ -8,6 +8,8 @@ import type { ShellProfileProps } from '@genai/ui-blocks';
 export interface FieldSpec {
   id: string;
   label: string;
+  /** The field's name over its row in the next look's filter, singular: «Dokumenttype». */
+  heading?: string | undefined;
   kind?: 'year' | undefined;
   /** The values are integers on the wire. */
   integer?: boolean | undefined;

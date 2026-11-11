@@ -22,6 +22,8 @@ const nbAssembly = defineNamespace({
   technicalDetails: 'Tekniske detaljer',
   stripChange: 'Endre',
   stripClose: 'Lukk',
+  // The next look's filter panel beside the threads, as dev-filter-panel names its region.
+  filterForThread: 'Filter for tråden',
   approachEmpty: 'Fremgangsmåten vises her når du stiller et spørsmål.',
   approachNotKept:
     'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
@@ -67,6 +69,7 @@ const enAssembly = {
   technicalDetails: 'Technical details',
   stripChange: 'Change',
   stripClose: 'Close',
+  filterForThread: 'The thread’s filter',
   approachEmpty: 'The approach shows here when you ask a question.',
   approachNotKept:
     'The approach is not kept with the answers in the thread. It shows here when you ask a new question.',
