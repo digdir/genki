@@ -6,6 +6,7 @@ import {
   caseView,
   defaultObserve,
   gradeAnswer,
+  judgedAgainst,
   splitsFor,
   type CaseSplit,
   type CaseType,
@@ -27,11 +28,8 @@ import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
-// Embedders and rerankers write no answer to judge.
-const notAnswering = new Set(['embedder', 'reranker']);
-
 export const judgedModels = (byModel: DraftModelUsage[]) =>
-  byModel.filter((m) => !notAnswering.has(m.kind ?? '')).map((m) => m.model);
+  byModel.filter(judgedAgainst).map((m) => m.model);
 
 export const serviceRunKind = 'service-eval-run';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';

@@ -444,6 +444,54 @@ describe('eval runner', () => {
     );
   });
 
+  it("checks the judge's family only against language models the run used", async () => {
+    const others = [
+      { kind: 'embedder', id: 'foundry/text-embedding-3-small', tenant: '991825827' },
+      { kind: 'reranker', id: 'colbert', tenant: '991825827' },
+      { kind: 'transcriber', id: 'foundry/whisper', tenant: '991825827' },
+    ];
+    const mixed: Strategy = {
+      ...answering(),
+      run: async function* (c, input) {
+        for (const ref of others)
+          await (await c.use<{ answer(): Promise<void> }>('model', ref)).answer();
+        yield* answering().run(c, input, {});
+      },
+    };
+    const kernel = kernelWith(
+      [mixed],
+      [
+        {
+          ...answerCapability,
+          grants: [model, ...others].map((ref) => ({ port: 'model', ref })),
+        },
+      ],
+    );
+    const families: Record<string, string> = { 'foundry/gpt-4o': 'openai' };
+    const judging = (family: string): JudgeModel => ({
+      id: `${family}-judge`,
+      family,
+      complete: async () =>
+        '{"scores": {"correctness": 5, "completeness": 5, "language": 5}, "rationale": "Riktig."}',
+    });
+    const run = (family: string) =>
+      runEval({
+        target: kernelTarget(kernel, kari, 'answer'),
+        testSet: setOf(),
+        evaluators: [rubricJudge(judging(family), bundledJudge('answer-quality'))],
+        provenance: { commit: 'abc', data: 'd' },
+        modelFamily: (m) => families[m],
+      });
+
+    expect((await run('anthropic')).provenance.servedModels).toEqual([
+      'colbert',
+      'foundry/gpt-4o',
+      'foundry/text-embedding-3-small',
+      'foundry/whisper',
+    ]);
+    await expect(run('openai')).rejects.toThrow(/same family \(openai\)/);
+  });
+
   it('fails loudly on missing provenance, a run without a served model, and a failing evaluator', async () => {
     const kernel = kernelWith([answering()], [answerCapability]);
     const silent = kernelWith([answering(false)], [answerCapability]);
