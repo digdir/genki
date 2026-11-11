@@ -311,7 +311,10 @@
     "output": {
       "type": "object",
       "properties": {
-        "result": {}
+        "result": {},
+        "text": {
+          "type": "string"
+        }
       },
       "required": ["result"],
       "additionalProperties": false

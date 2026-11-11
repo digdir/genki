@@ -27,6 +27,7 @@ const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
 const tenant = '991825827';
 const modelId = 'foundry-openai/gpt-4o-2m-tps';
+const euModel = 'foundry-openai/gpt-6-luna';
 
 const people: Record<string, Principal> = {
   kari: {
@@ -128,7 +129,12 @@ const boot = async ({
   taskIndex,
 }: { residencyRule?: boolean; taskIndex?: TaskIndex } = {}) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
+  const search = await fakeHttp((body) => ({
+    status: 200,
+    json: Array.isArray(body.searches)
+      ? { results: body.searches.map(() => ({ found: 0, hits: [] })) }
+      : {},
+  }));
   servers.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
@@ -329,6 +335,79 @@ describe('the playground', () => {
     expect(draft.body).toMatchObject({
       text: 'Bokmålssvar.',
       compare: { text: 'Nynorsksvar.' },
+    });
+  });
+
+  it('The portal playground runs a published service whose declared residency is global with an EU model and a global dataset', async () => {
+    const { platform, run } = await boot();
+    const published = service('kudos-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      {
+        ...published,
+        spec: {
+          ...published.spec,
+          strategy: { id: 'rag-single-shot', version: 1, config: { instructions: 'Svar kort.' } },
+          knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+        },
+      },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'kudos-svar', version: 1 }, model: euModel, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ text: 'Bokmålssvar.' });
+  });
+
+  it("tries the chosen model in place of the service's primary, its fallback and the roles that used the primary", async () => {
+    const { platform, run } = await boot({ residencyRule: true });
+    const published = service('med-reserve', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      {
+        ...published,
+        spec: {
+          ...published.spec,
+          model: {
+            primary: modelId,
+            fallback: modelId,
+            roles: { planner: modelId },
+            residency: 'global',
+          },
+        },
+      },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'med-reserve', version: 1 }, model: euModel, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a playground model that runs wider than the residency the service declares', async () => {
+    const { platform, run } = await boot();
+    const published = service('eu-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      { ...published, spec: { ...published.spec, model: { primary: euModel, residency: 'eu' } } },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'eu-svar', version: 1 }, model: modelId, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      errors: [{ message: expect.stringContaining('outside eu') }],
     });
   });
 

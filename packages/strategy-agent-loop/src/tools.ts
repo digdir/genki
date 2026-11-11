@@ -1,4 +1,4 @@
-import { untrustedData } from '@genai/port-model';
+import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import {
   detectInsufficientContext,
@@ -37,6 +37,7 @@ import {
   type FilterField,
   type ReadSource,
   type SearchAttribution,
+  type SearchDetection,
   type SearchType,
   type Workspace,
 } from './workspace.js';
@@ -84,6 +85,7 @@ export interface SearchMade {
   queries: string[];
   filters?: FilterField[];
   fellBack?: boolean;
+  detections?: SearchDetection[];
 }
 
 export interface ToolOutcome {
@@ -211,6 +213,25 @@ export const enforceStrategyQuota = <T extends ChunkSummary>(chunks: T[], quota:
 
 const fixed = (n: number, digits: number) => n.toFixed(digits);
 
+const detectionHint = (d: SearchDetection) => {
+  const names = d.values.map((v) => JSON.stringify(v)).join(', ');
+  const them = d.values.length > 1 ? 'them' : 'it';
+  const what =
+    d.kind === 'year'
+      ? `names the year${d.values.length > 1 ? 's' : ''} ${names}`
+      : d.kind === 'organisation'
+        ? `names ${names}`
+        : `suggests ${d.field} ${names}`;
+  return `The query ${what}; ${d.field} can filter on ${them}.`;
+};
+
+const searchHints = (attribution: SearchAttribution | undefined): string => {
+  const hints = (attribution?.detections ?? []).filter((d) => d.use === 'hint');
+  return hints.length
+    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.`
+    : '';
+};
+
 export const formatSearchMetadataResults = (
   chunks: (ChunkSummary & { titleOverlapBonus?: number })[],
   newCount: number,
@@ -255,6 +276,7 @@ export const formatSearchMetadataResults = (
     (omitted > 0
       ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
       : '') +
+    searchHints(attribution) +
     `\n${untrustedData('search-results', lines.join('\n'))}`
   );
 };
@@ -455,6 +477,9 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       queries: args.data.queries,
       ...(!fellBack && filters?.length ? { filters } : {}),
       ...(fellBack ? { fellBack } : {}),
+      ...(outcome.attribution?.detections?.length
+        ? { detections: outcome.attribution.detections }
+        : {}),
     },
     ...(autoRead.length ? { read: { chunks: retrievalHits(autoRead), auto: true } } : {}),
   };
@@ -646,13 +671,15 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   let text: string;
   try {
     text = stripSourceLists(
-      await env.synthesize(
-        env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
-        generationPromptFor(
-          env.generationPrompt ?? defaultGenerationPrompt,
-          context,
-          args.data.query,
-          env.citeBy,
+      normaliseCitationMarkers(
+        await env.synthesize(
+          env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+          generationPromptFor(
+            env.generationPrompt ?? defaultGenerationPrompt,
+            context,
+            args.data.query,
+            env.citeBy,
+          ),
         ),
       ),
     );

@@ -78,7 +78,7 @@ export const kernelTaskReader = (
   events: async (id) => {
     const events: Event[] = [];
     try {
-      for await (const e of await kernel.events(reader, id)) events.push(e);
+      for await (const e of await kernel.events(reader, id, { audience: 'audit' })) events.push(e);
     } catch (error) {
       if (error instanceof KernelError && error.code === 'not_found') return [];
       throw error;

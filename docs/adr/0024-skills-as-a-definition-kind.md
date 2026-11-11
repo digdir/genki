@@ -1,6 +1,6 @@
 # 0024 Skills as a definition kind
 
-Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built; judge prompt recorded on test runs, 2026-11-10). Proposed 2026-10-07
 
 ## Decision
 
@@ -11,6 +11,7 @@ A skill is a third definition kind, `Skill`, next to `Service` and `StepFlow` (0
 - **Skills reach the model only when pinned.** The skills module adds them to the capability config through `decorateCapability`, at sync and for draft runs. A service without `spec.skills` runs exactly as before.
 - **Agent-loop skills load on demand.** `use_skill` loads the pinned instructions and examples into the agent's conversation and records the skill for the run. Every later synthesis, including forced finalization, retries, citation backfill and empty-answer recovery, receives the loaded skills in its system prompt. Loading a skill again does not duplicate its synthesis instructions; pinned skills that were never loaded are omitted. The `generationPrompt` template keeps its existing placeholders and behavior.
 - **Publishing has four requirements:** a test run on the current draft, a pass rate at or above the test set's threshold (or `skills.defaultPassThreshold`, 0.9), every `must_reject` case rejected, and only published tools.
+- **A test run records its judge.** It names the judge model and the criteria judge prompt with its version, such as `skill-criteria@2`. A run judged with an earlier prompt no longer counts as a run on the current draft, so scores from two prompts are never mixed (ADR 0003).
 - **Sharing goes through Digdir.** A tenant asks to share a published version (`skill-share`, state `pending_digdir`), a Digdir operator approves or rejects it, and other tenants can then pin or copy that version, read-only; other versions stay private.
 - **The exchange format is Agent Skills:** a zip with `SKILL.md` (YAML frontmatter and instructions) and its attachments, for both export and import.
 

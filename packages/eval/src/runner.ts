@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Event, Input, Part, Principal } from '@genai/contracts';
 import type { Kernel } from '@genai/kernel';
-import { EvalError, type EvalContext, type Evaluator } from './evaluators.js';
+import { EvalError, judgedAgainst, type EvalContext, type Evaluator } from './evaluators.js';
 import { defaultObserve, type Observation, type Observe } from './observe.js';
 import type { EvalRun, MetricSummary, Score, Split, TestCase, TestSet } from './schema.js';
 import {
@@ -17,6 +17,7 @@ export interface TargetResult {
   parts: Part[];
   events: Event[];
   servedModels: string[];
+  judgedModels?: string[];
   service?: string;
 }
 
@@ -26,11 +27,13 @@ export interface EvalTarget {
   annotate?(task: string, score: Score): Promise<void>;
 }
 
-const servedModelsOf = (events: Event[]) => [
+const modelsOf = (events: Event[], keep: (model: { kind?: unknown }) => boolean = () => true) => [
   ...new Set(
     events.flatMap((e) => {
-      const model = (e.data as { model?: { id?: unknown } } | undefined)?.model;
-      return e.type === 'kernel.usage' && typeof model?.id === 'string' ? [model.id] : [];
+      const model = (e.data as { model?: { id?: unknown; kind?: unknown } } | undefined)?.model;
+      return e.type === 'kernel.usage' && typeof model?.id === 'string' && keep(model)
+        ? [model.id]
+        : [];
     }),
   ),
 ];
@@ -53,7 +56,8 @@ export const describeTask = async (
     task,
     parts,
     events,
-    servedModels: servedModelsOf(events),
+    servedModels: modelsOf(events),
+    judgedModels: modelsOf(events, judgedAgainst),
     service: `${service.capability.id}@${service.capability.version}#${service.configHash}`,
   };
 };
@@ -169,7 +173,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       if (outcome.service) services.add(outcome.service);
       const observation: Observation = observe(outcome.parts, outcome.events);
       const ctx: EvalContext = {
-        servedModels: outcome.servedModels,
+        servedModels: outcome.judgedModels ?? outcome.servedModels,
         modelFamily: options.modelFamily ?? (() => undefined),
       };
       const scores: Score[] = [];

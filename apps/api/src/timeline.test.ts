@@ -149,6 +149,31 @@ describe('a failed run in the timeline', () => {
     ]);
   });
 
+  it("shows the provider's status as a note when its error body was empty", () => {
+    const provided = [
+      ...events.slice(0, 2),
+      at(
+        3,
+        'kernel.error',
+        {
+          code: 'strategy_error',
+          message: 'step les failed: the model is unavailable',
+          provider: { status: 502 },
+        },
+        'audit',
+      ),
+      at(3, 'kernel.error', { code: 'strategy_error', message: 'the service failed' }),
+    ];
+    const timeline = toTimeline(failed, provided, new Date('2026-10-07T12:32:04.000Z'), undefined, {
+      details: true,
+    });
+
+    expect(timeline.steps.at(-1)?.blocks).toEqual([
+      { kind: 'quote', text: 'step les failed: the model is unavailable' },
+      { kind: 'note', text: 'Leverandøren svarte 502' },
+    ]);
+  });
+
   it('gives others the reason without the error text', () => {
     const timeline = toTimeline(failed, events, new Date('2026-10-07T12:32:04.000Z'));
 

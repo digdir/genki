@@ -38,6 +38,7 @@ import {
   applySpec,
   asServiceDefinition,
   forTenant,
+  keepSharing,
   renamed,
   specChanges,
   specKeysOf,
@@ -989,7 +990,7 @@ export const Builder = ({
     if (v.live && !isNew) {
       try {
         const old = await api.getVersion(tenant, 'Service', id, v.n);
-        replaceWith(asServiceDefinition(old.definition));
+        replaceWith(keepSharing(asServiceDefinition(old.definition), service));
       } catch {
         setFlash(tRef.current('services.rollbackFailed', { n: v.n }));
         return;

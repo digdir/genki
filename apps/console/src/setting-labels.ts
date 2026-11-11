@@ -46,6 +46,11 @@ export const settingLabels: Record<string, { label: PlainKey; cat: PlainKey; des
     cat: 'settings.catSearch',
     desc: 'settings.descRetrievalAutoFilterRules',
   },
+  'retrieval.autoFilter.aliases': {
+    label: 'settings.labelRetrievalAutoFilterAliases',
+    cat: 'settings.catSearch',
+    desc: 'settings.descRetrievalAutoFilterAliases',
+  },
   'retrieval.docTitle.fanout': {
     label: 'settings.labelRetrievalDocTitleFanout',
     cat: 'settings.catSearch',

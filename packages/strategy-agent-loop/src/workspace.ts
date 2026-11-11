@@ -36,12 +36,21 @@ export interface FilterField {
   valueType?: 'string' | 'integer';
 }
 
+export interface SearchDetection {
+  kind: 'organisation' | 'year' | 'rule';
+  field: string;
+  values: string[];
+  queries: string[];
+  use: 'boost' | 'hint' | 'filter';
+}
+
 export interface SearchAttribution {
   phrase?: number;
   metadata?: number;
   content?: number;
   autoFilter?: { field: string; options: string[] };
   autoFilterFallback?: boolean;
+  detections?: SearchDetection[];
   rerankEnabled?: boolean;
   rerankMs?: number;
   rerankError?: string;

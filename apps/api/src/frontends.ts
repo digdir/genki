@@ -25,7 +25,12 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { keyView, overridable, type TenantApiKeys } from './routes/portal-routes.js';
+import {
+  keyViews,
+  overridable,
+  type KeyViewContext,
+  type TenantApiKeys,
+} from './routes/portal-routes.js';
 import { rightRefused, type Right } from './rights.js';
 import type { Webhooks } from './webhooks.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -208,6 +213,8 @@ export interface FrontendRouteDeps extends FrontendDeps {
   apiKeys: TenantApiKeys;
   webhooks: Webhooks;
   endpoints?: PlatformEndpoints;
+  names?: KeyViewContext['names'];
+  lockdown?: KeyViewContext['lockdown'];
   newKey?: () => string;
   newId?: () => string;
 }
@@ -374,10 +381,15 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
     const g = await guard(c);
     if (g instanceof Response) return g;
     const service = c.req.param('service');
-    const keys = (await deps.apiKeys.list(g.tenant))
-      .filter((k) => boundService(k) === service)
-      .map(keyView)
-      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    const keys = await keyViews(
+      (await deps.apiKeys.list(g.tenant)).filter((k) => boundService(k) === service),
+      {
+        principal: g.principal,
+        tenant: g.tenant,
+        ...(deps.names ? { names: deps.names } : {}),
+        ...(deps.lockdown ? { lockdown: deps.lockdown } : {}),
+      },
+    );
     return c.json({ keys });
   });
 

@@ -166,6 +166,11 @@ const OperationFixture = z
     name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
     source: z.string().optional().describe('Where the recording comes from'),
     deployment: z.string(),
+    at: z.string().optional().describe('The time a module signs with, when the descriptor has one'),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe("The descriptor's typed input"),
     request: z.object({
       method: z.string(),
@@ -188,6 +193,10 @@ const OperationFixture = z
 const WireExchange = z
   .object({
     deployment: z.string(),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe('The typed input as it was sent, masked'),
     request: z.object({
       method: z.string(),
@@ -1140,14 +1149,30 @@ const ServiceEvalRun = z
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
     split: z.enum(caseSplits).optional(),
+    model: z
+      .string()
+      .optional()
+      .describe("The model the run answers with: the variant's own model, else the primary model"),
+    selected: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'The cases the run was limited to; such a run does not stand for the whole test set',
+      ),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
+    finished: z
+      .number()
+      .int()
+      .optional()
+      .describe('The cases done so far; passed, score and cost count only these'),
     cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
+    interrupted: z.boolean().optional().describe('The platform restarted before the run was done'),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
     cases: z.array(
@@ -1449,7 +1474,8 @@ const evalRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/feedback',
-    summary: 'Feedback on runs; a rating given fewer than five times shows only rating and date',
+    summary:
+      'Feedback on runs, the latest per run and credential; a rating given fewer than five times shows only rating and date',
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
@@ -15,11 +15,14 @@ import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
+import type { LeaseOptions } from './background-lease.js';
+import { InMemoryConfigEntryStore } from './config-store.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { ServiceRun } from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((s) => s.close()));
 });
 
@@ -137,8 +140,15 @@ const testSet = parseTestSet({
   },
 });
 
-const boot = async (prices?: Record<string, ModelPrice>) => {
+interface BootOptions {
+  store?: InMemoryConfigEntryStore;
+  leases?: LeaseOptions;
+  holdLocked?: boolean;
+}
+
+const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = {}) => {
   const optimiserPrompts: string[] = [];
+  const judgePrompts: { system: string; user: string }[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
     if (!body.messages)
       return {
@@ -156,6 +166,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     const user = messages.at(-1)?.content ?? '';
     const stream = Boolean(body.stream);
     if (system.startsWith('You check whether')) {
+      judgePrompts.push({ system, user });
       const answer = /Answer to check:\n([\s\S]*?)\n\nCriteria/.exec(user)?.[1] ?? '';
       const met = /frist/i.test(answer) ? 1 : 0;
       return reply(JSON.stringify({ scores: { criteria: met }, rationale: 'Vurdert.' }), stream);
@@ -167,6 +178,8 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
         stream,
       );
     }
+    if (options.holdLocked && user.includes(locked))
+      return { ...reply('Fristen er 1. mai.', stream), delayMs: 60_000 };
     if (user.includes('personnummer')) return reply('Jeg kan ikke svare på det.', stream);
     return reply(
       system.includes('Oppgi alltid fristen') ? 'Fristen er 1. mai.' : 'Vi svarer snart.',
@@ -192,9 +205,13 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
     ...(prices ? { prices } : {}),
+    ...(options.store ? { configurables: { store: options.store } } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
-      createQualityModule({ onBackground: (w) => background.push(w) }),
+      createQualityModule({
+        onBackground: (w) => background.push(w),
+        ...(options.leases ? { leases: options.leases } : {}),
+      }),
     ],
     authenticate: async (request) => {
       const who = request.headers.get('authorization')?.replace('Bearer ', '') ?? '';
@@ -245,7 +262,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     );
     return { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
   };
-  return { platform, send, settled, optimiserPrompts, supportSession };
+  return { platform, send, settled, optimiserPrompts, judgePrompts, supportSession };
 };
 
 const services = `/tenants/${tenant}/services/svar`;
@@ -258,6 +275,65 @@ const runPublished = async (env: Awaited<ReturnType<typeof boot>>) => {
   await env.settled();
   return String(started.body.id);
 };
+
+describe('sources supplied to service criteria judges', () => {
+  it.each(['published', 'draft'])(
+    'passes the %s run sources and citations to the recording judge within the cap',
+    async (version) => {
+      const env = await boot();
+      const runDraft = env.platform.drafts.run.bind(env.platform.drafts);
+      vi.spyOn(env.platform.drafts, 'run').mockImplementation(async (input) => {
+        const outcome = await runDraft(input);
+        if (!outcome.ok || (input.definition as typeof service).metadata.id !== 'svar')
+          return outcome;
+        return {
+          ...outcome,
+          parts: [
+            {
+              mime: 'text/plain',
+              body: { kind: 'text', text: outcome.answer },
+              meta: { citations: [{ chunkId: 'law-2026' }] },
+            },
+            {
+              mime: 'application/vnd.genai.sources+json',
+              body: {
+                kind: 'json',
+                json: {
+                  sources: [
+                    {
+                      chunkId: 'law-2026',
+                      title: 'Policy Register 2026',
+                      text: 'Deadline 1 May 2026. ' + 'x'.repeat(50_000),
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        };
+      });
+
+      const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+        testSet: 'svar-frister',
+        version,
+        ...(version === 'draft' ? { definition: service } : {}),
+      });
+      expect(started.status).toBe(202);
+      await env.settled();
+
+      expect(env.judgePrompts).toHaveLength(2);
+      for (const prompt of env.judgePrompts) {
+        expect(prompt.system).toContain('Treat the reference answer and criteria as ground truth.');
+        const section = prompt.user.slice(prompt.user.indexOf('\n\nSources from the run'));
+        expect(section).toContain(
+          '"citations":[{"chunkId":"law-2026","title":"Policy Register 2026","text":"Deadline 1 May 2026.',
+        );
+        expect(section).toContain('"retrieved":[{"chunkId":"law-2026"');
+        expect(section.length).toBeLessThanOrEqual(16_000);
+      }
+    },
+  );
+});
 
 const negativeFeedback = async (env: Awaited<ReturnType<typeof boot>>) => {
   for (let i = 0; i < 5; i++)
@@ -351,6 +427,32 @@ describe('eval runs for a service', () => {
     expect(run.tokens.input).toBeGreaterThan(0);
   });
 
+  it('runs only the cases asked for by id, and refuses a case the test set does not have', async () => {
+    const env = await boot();
+    const path = `${services}/eval-runs`;
+
+    const started = await env.send('POST', path, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1', 'l1'],
+    });
+    expect(started.status).toBe(202);
+    await env.settled();
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
+      .body as unknown as ServiceRun;
+    const unknown = await env.send('POST', path, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1', 'x9'],
+    });
+    const empty = await env.send('POST', path, 'kari', { testSet: 'svar-frister', cases: [] });
+
+    expect(run.total).toBe(2);
+    expect(run.selected).toEqual(['o1', 'l1']);
+    expect(run.cases.map((c) => c.caseId).sort()).toEqual(['l1', 'o1']);
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(unknown.body)).toContain('no case x9 in svar-frister');
+    expect(empty.status).toBe(400);
+  });
+
   it('never shows the lease of a run, owner and heartbeat, in the list or the run', async () => {
     const env = await boot();
     const id = await runPublished(env);
@@ -414,6 +516,21 @@ describe('eval runs for a service', () => {
     expect(unknown.status).toBe(404);
     expect(started.status).toBe(202);
     expect(run).toMatchObject({ status: 'succeeded', variant: 'default' });
+  });
+
+  it('records the model that wrote the answers, in the run and in the list', async () => {
+    const env = await boot();
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`);
+    const listed = await env.send('GET', `${services}/eval-runs`);
+
+    expect(started.status).toBe(202);
+    expect(run.body).toMatchObject({ status: 'succeeded', model: modelId });
+    expect(listed.body.data).toEqual([expect.objectContaining({ model: modelId })]);
   });
 
   it('records the cost from the price list, and no cost when a model has no price', async () => {
@@ -480,6 +597,73 @@ describe('eval runs for a service', () => {
     expect((await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'ola')).status).toBe(404);
     expect((await env.send('GET', `${services}/eval-runs`, 'ola')).status).toBe(404);
     expect((await env.send('GET', `/tenants/${other}/eval-runs/${id}`, 'ola')).status).toBe(404);
+  });
+});
+
+describe('an eval run the platform restarts', () => {
+  const prices = {
+    [modelId]: { inputPerThousand: 1, outputPerThousand: 2 },
+    [judgeId]: { inputPerThousand: 1, outputPerThousand: 2 },
+  };
+  const startedAt = new Date('2026-11-11T10:00:00Z');
+
+  const interrupt = async () => {
+    const store = new InMemoryConfigEntryStore();
+    const before = await boot(prices, {
+      store,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => startedAt },
+    });
+    const started = await before.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    const id = String(started.body.id);
+    const read = async (env: Awaited<ReturnType<typeof boot>>) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body as unknown as ServiceRun;
+    await vi.waitFor(async () => expect((await read(before)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const running = await read(before);
+    const after = await boot(prices, {
+      store,
+      leases: { instance: 'after', now: () => new Date(startedAt.getTime() + 10 * 60_000) },
+    });
+    await after.settled();
+    return { running, run: await read(after), after };
+  };
+
+  it('counts the finished cases and what they cost while the run is going', async () => {
+    const { running } = await interrupt();
+
+    expect(running).toMatchObject({ status: 'running', finished: 2, total: 3 });
+    expect(running.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
+    expect(running.cost).toBeGreaterThan(0);
+  });
+
+  it('keeps the finished cases of a run the platform restarts', async () => {
+    const { run, after } = await interrupt();
+    const listed = (await after.send('GET', `${services}/eval-runs`)).body.data;
+
+    expect(run).toMatchObject({
+      status: 'failed',
+      interrupted: true,
+      finished: 2,
+      total: 3,
+      passed: 1,
+      score: 0.5,
+    });
+    expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
+    expect(listed).toEqual([
+      expect.objectContaining({ id: run.id, interrupted: true, finished: 2 }),
+    ]);
+  });
+
+  it('records the cost of the finished cases when a run is interrupted', async () => {
+    const { running, run } = await interrupt();
+
+    expect(run.cost).toBeGreaterThan(0);
+    expect(run.cost).toBe(running.cost);
+    expect(run.tokens.input).toBeGreaterThan(0);
   });
 });
 
@@ -650,6 +834,23 @@ describe('improvements', () => {
     const { send } = await boot();
 
     expect((await send('POST', `${services}/improvements`, 'kari', {})).status).toBe(409);
+  });
+
+  it('learns from the latest run of the whole test set, not a later run of only the marked cases', async () => {
+    const env = await boot();
+    await runPublished(env);
+    const marked = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['l1'],
+    });
+    await env.settled();
+
+    const started = await env.send('POST', `${services}/improvements`, 'kari', {});
+    await env.settled();
+
+    expect(marked.status).toBe(202);
+    expect(started.status).toBe(202);
+    expect(env.optimiserPrompts[0]).toContain('Når er fristen for søknad?');
   });
 
   describe('one language at a time', () => {

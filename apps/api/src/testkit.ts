@@ -36,6 +36,7 @@ import {
   maskinportenClientsModule,
 } from './maskinporten-clients.js';
 import { onboardingModule } from './onboarding.js';
+import { kernelTaskReader } from './timeline.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 
 export const digdir = '991825827';
@@ -245,6 +246,7 @@ export interface BootOptions {
   mediaOutput?: MediaOutputConfig;
   processorRecords?: ProcessorRecordCheck;
   blobStore?: BlobStore;
+  fakeKey?: string;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -265,7 +267,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     },
     settings,
     prices: {},
-    secrets: envSecrets({ FAKE_KEY: 'k' }),
+    secrets: envSecrets({ FAKE_KEY: options.fakeKey ?? 'k' }),
     definitions: (p, skill, flow) => new InMemoryDefinitionStore(p, undefined, skill, flow),
     configurables: { store: configEntries, scheduleIntervalMs: 0 },
     ...(options.triggerRuns ? { triggerRuns: options.triggerRuns } : {}),
@@ -309,6 +311,11 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      tasks: kernelTaskReader(platform.kernel, {
+        kind: 'operator',
+        issuer: 'platform',
+        subject: 'task-reader',
+      }),
     },
   });
   platform.mount(app, admin);

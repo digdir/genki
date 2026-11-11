@@ -66,7 +66,7 @@ export const skillsLane = {
     gateMustReject: 'All cases that must be rejected are rejected',
     gateTools: 'The tools point to published versions',
     whyNoCases: 'The skill has no test cases.',
-    whyStale: 'The draft has changed since the last run.',
+    whyStale: 'The draft or the judge has changed since the last run.',
     whyNotRun: 'The test set has not been run.',
     whyPassed: '{passed} of {total} passed ({percent} percent).',
     whyUnpublished: 'Not published: {tools}.',
@@ -196,7 +196,7 @@ export const skillsLane = {
     testRun: 'Run the test set',
     testRunning: 'Running {count} test cases',
     testStale:
-      'The draft has changed since the last run. Run the test set again to see the result.',
+      'The draft or the judge has changed since the last run. Run the test set again to see the result.',
     testFailedHeading: { one: '{count} test case failed', other: '{count} test cases failed' },
     testFixAsk: 'Ask the assistant to fix the instructions',
     testEmptyTitle: 'No test cases yet',

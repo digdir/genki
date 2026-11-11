@@ -14,11 +14,11 @@ Both are open to everyone and need no credential.
 
 Send one of these with every call.
 
-| Caller                | Header                                                | Notes                                                                                                                                      |
-| --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| A person              | `Authorization: Bearer <Ansattporten access token>`   | Rights come from Altinn for each organisation (tenant). Add `GenAI-Acting-For: <org number>` to pick the organisation on `/v1` and `/api`. |
-| A system with a key   | `X-API-Key: <key>` (or `Authorization: Bearer <key>`) | Create keys in the portal or with `POST /tenants/{tenant}/api-keys`. A server serving end users adds `X-User-Id: <pseudonymous id>`.       |
-| A system with a token | `Authorization: Bearer <Maskinporten token>`          | Only when Maskinporten is configured and the client is registered with `POST /tenants/{tenant}/maskinporten-clients`.                      |
+| Caller                | Header                                                | Notes                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A person              | `Authorization: Bearer <Ansattporten access token>`   | Rights come from Altinn for each organisation (tenant). Add `GenAI-Acting-For: <org number>` to pick the organisation on `/v1` and `/api`.                                         |
+| A system with a key   | `X-API-Key: <key>` (or `Authorization: Bearer <key>`) | Create keys in the portal or with `POST /tenants/{tenant}/api-keys`. A server serving end users adds `X-User-Id: <pseudonymous id>`.                                               |
+| A system with a token | `Authorization: Bearer <Maskinporten token>`          | Only when Maskinporten is configured and the client is registered with `POST /tenants/{tenant}/maskinporten-clients`. It reaches the registered services, never the tenant routes. |
 
 **In local development** the API runs a mock Ansattporten. Get a token for a test person without the browser flow:
 
@@ -62,6 +62,28 @@ Every change is a platform task, and the audit log is the event log ([ADR 0010](
 A list answers an object with the items in `data`: `{ "data": [...] }`, sometimes with more members beside it (`total`, `next`). No route answers a bare JSON array.
 
 ## API changes
+
+### 2026-11-11: only operators change sharing
+
+- `POST /definitions` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:share-operator-only` when someone other than an operator changes `spec.availableTo` of a service, compared with its published version. A dry run of the import lists the same error with 422. The console route `PUT /operator/shared-services/{tenant}/{id}` is unchanged.
+
+### 2026-11-10: connection settings and signing modules
+
+- `POST` and `PUT /operator/model-endpoints` take `settings` (non-secret values a descriptor reads as `$connection.<name>`) and `keys` (named platform secrets only a module reaches). Only an operator sets them, and a change is audited with its reason. `GET /tenants/{tenant}/catalog` lists a shared connection without `settings` and `keys`.
+- A descriptor module may set `Authorization` when the descriptor's `auth` is `{ signedBy: module }`, reads `host`, `headers`, `header_names`, `header.<name>`, `body_sha256` and `connection.<setting>`, may sign binary, multipart and streamed requests, takes `connection.<key name>` keys and can derive keys with `hmac_sha256_derive`. A fixture may carry `settings`.
+
+### 2026-11-10: polls, retries and uploads in parts from descriptors
+
+- A descriptor's `until` takes `after`, the wait an answer asks for, from a field or a declared header; an error rule takes `retry: true`, which retries its status within the step's `retry`; a step takes `parts: { of, bytes, most }`, which sends a media input in byte ranges and binds the answers as lists (ADR 0049, [operations.md](operations.md)). Descriptors without them load and run as before.
+
+### 2026-11-10: provider errors are kept for the audit, and a non-streamed descriptor step answers with its text
+
+- When a provider answers a model's descriptor call (chat, decide or an operation step, not embeddings) with an error, the run's audit `kernel.error` event carries `provider: { status, body }`: the HTTP status and the first 500 characters of the error body, JSON or plain text, with the connection's key, its named keys, bound secrets and the headers a module signed replaced by `[redacted]`. For a built-in provider (OpenAI, Anthropic) `body` is the SDK's error message. The run timeline shows it to those who manage the service. The caller's `kernel.error` and answer are unchanged.
+- A `call-operation@1` step without `stream` outputs `{ result, text }` when `result` is text or has a text field `text`, so a flow that ends on it answers with that text instead of the JSON of `result`.
+
+### 2026-11-06: a streamed descriptor step answers with its text
+
+- A `call-operation@1` step with `stream: true` now outputs `{ result, text }`, and a flow that ends on it answers with `text` instead of the JSON of `result`. Deltas reach `/v1/chat/completions` only with `genai_stream: "live"`; without it the text comes as one piece.
 
 ### 2026-11-06: any provider API by descriptor
 

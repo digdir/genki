@@ -1,5 +1,10 @@
 import { perThousandView, type Principal } from '@genai/contracts';
-import { allowedHostPattern } from '@genai/port-model';
+import {
+  allowedHostPattern,
+  connectionKeys,
+  connectionSettings,
+  firstIssue,
+} from '@genai/port-model';
 import type { Context } from 'hono';
 import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
@@ -78,6 +83,24 @@ export const endpointProblems = (
       path: 'allowedHosts',
       message: 'a list of at most 20 host names, each with an optional port',
     });
+  if (body.settings !== undefined) {
+    const parsed = connectionSettings.safeParse(body.settings);
+    if (!parsed.success) errors.push(firstIssue(parsed.error, ['settings']));
+  }
+  if (body.keys !== undefined) {
+    const keys = record(body.keys);
+    if (!connectionKeys.safeParse(body.keys).success)
+      errors.push({ path: 'keys', message: 'at most 4 named keys, each a key name' });
+    for (const [name, ref] of Object.entries(keys))
+      if (!platformSecretPattern.test(String(ref)))
+        errors.push({
+          path: `keys.${name}`,
+          message: 'use a platform secret: secret://platform/<name>',
+        });
+    for (const name of Object.keys(record(body.settings)))
+      if (Object.hasOwn(keys, name))
+        errors.push({ path: `keys.${name}`, message: 'a name is a setting or a key, not both' });
+  }
   const auth = record(body.auth);
   if (auth.kind !== 'api-key' && auth.kind !== 'bearer')
     errors.push({ path: 'auth.kind', message: 'api-key or bearer' });
@@ -151,6 +174,8 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
         families: input.families,
         ...(Array.isArray(input.discovery) ? { discovery: input.discovery } : {}),
         ...(Array.isArray(input.allowedHosts) ? { allowedHosts: input.allowedHosts } : {}),
+        ...(input.settings !== undefined ? { settings: input.settings } : {}),
+        ...(input.keys !== undefined ? { keys: input.keys } : {}),
       };
     };
 
@@ -212,6 +237,10 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
           ...(input.allowedHosts === undefined && endpoint.spec.allowedHosts
             ? { allowedHosts: endpoint.spec.allowedHosts }
             : {}),
+          ...(input.settings === undefined && endpoint.spec.settings
+            ? { settings: endpoint.spec.settings }
+            : {}),
+          ...(input.keys === undefined && endpoint.spec.keys ? { keys: endpoint.spec.keys } : {}),
           ...(endpoint.spec.sharing ? { sharing: endpoint.spec.sharing } : {}),
         },
       });

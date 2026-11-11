@@ -355,8 +355,12 @@ export interface ApiKeyView {
   service?: string | null;
   policy?: string | null;
   createdAt: string | null;
+  createdBy?: string | null;
+  createdByName?: string;
+  modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
+  testRunner?: boolean;
 }
 
 export type ClientChannel = 'mcp' | 'openai' | 'rest' | 'conversations' | 'feedback' | 'facets';
@@ -421,6 +425,7 @@ export interface AccessView {
     requirement: { resource: string; action: string; scope?: string };
   }[];
   keys: ApiKeyView[];
+  testRunnerKeys?: boolean;
 }
 
 export interface UsageReport {

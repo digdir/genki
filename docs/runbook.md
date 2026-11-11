@@ -18,7 +18,7 @@ All log alerts read the Container Apps tables in the environment's Log Analytics
 | ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `api-down`       | 1        | Application Insights standard availability test `genai-<env>-api-health`: `GET /health` from West Europe, North Europe and UK West, expecting 200 and a certificate valid for at least 7 days | Two of the three locations fail. The test runs every 15 minutes in test, 5 in prod |
 | `api-errors`     | 2        | `ContainerAppHTTPLogs` for the API: share of responses with status 500 or above. Status 0 (the client went away) does not count                                                               | At least 5 % over 15 minutes, with at least 20 requests                            |
-| `model-provider` | 2        | `model call failed` with `code` `unavailable` or `rate_limited`, from the API and the worker                                                                                                  | At least 5 in 15 minutes                                                           |
+| `model-provider` | 2        | `model call failed` (a chat or embedding call) with `code` `unavailable` or `rate_limited`, from the API and the worker                                                                       | At least 5 in 15 minutes                                                           |
 | `ingestion`      | 3        | `ingestion run failed`, `knowledge job refused`, `knowledge server unreachable`, `knowledge reconciler failed` or `job queue error`, from the API and the worker                              | At least 1 in an hour, checked every 15 minutes                                    |
 | `altinn`         | 2        | `altinn actions failed` (a decision point lookup, including its Maskinporten and Altinn token exchange) and `altinn token not fetched at boot`, from the API                                  | At least 3 in 15 minutes                                                           |
 | `login-keys`     | 1        | `login keys not fetched`: the API could not fetch the signing keys (JWKS) of Ansattporten or Maskinporten                                                                                     | At least 1 in 15 minutes                                                           |
@@ -39,6 +39,8 @@ ContainerAppConsoleLogs
 
 **API down.** Check whether the API answers at all: `curl -i https://api.genki-test.digdir.cloud/health`. Then look at the revision and its replicas (`az containerapp revision list -n genai-test-api -g <resource group> -o table`) and at `ContainerAppSystemLogs` for `ProbeFailed`, `ContainerTerminated` or a failed revision. A `refusing to start` line in the console log names the missing setting. If the last deploy broke it, run the deploy workflow on the previous good commit. A failing certificate check means the managed certificate on the custom domain did not renew.
 
+**Smoke test failed.** After each deploy to genki-test the `smoke` workflow tests the API, the playground, timelines and the portal and console screens, runs in full the check groups the merged pull requests touch, and lets a model review the results. It opens or updates one issue labelled `smoke` with the failing checks, the model's findings and the pull requests since the last green run, marked as suspected. The genki run ids are in the run's job summary, and its `smoke-bundle` artifact holds the answers, timelines and screenshots. What each check means and how to rerun it is in [Smoke tests](smoke-tests.md).
+
 **API error rate.** Group the failures to find the route and the cause:
 
 ```kusto
@@ -52,12 +54,35 @@ ContainerAppHTTPLogs
 
 **Model provider failures.** The lines carry `model`, `code` and `tenant`. `rate_limited` means the deployment's quota (tokens per minute) is used up: see the deployment in Azure AI Foundry and the token alert below. `unavailable` means the provider did not answer or answered 5xx: check the Azure status page and the endpoint setting (`FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`). Services with a fallback model keep answering; others fail until the provider is back.
 
+Each 429 a model connection gets is logged as `model call throttled`, which no alert counts. It names the connection as `endpoint`, the deployment the request named as `model`, the wait the provider asked for as `retryAfterMs` and the `attempt`. Calls through the OpenAI and Anthropic SDKs are tried up to four times; the OpenAI SDK waits as the provider asks, up to 60 seconds, and uses its own backoff for a longer wait. A rerank call is not tried again, so its 429 fails at once. To see how hard a deployment is throttled:
+
+```kusto
+ContainerAppConsoleLogs
+| where ContainerAppName in ('genai-test-api', 'genai-test-worker')
+| where TimeGenerated > ago(1h)
+| extend line = parse_json(Log)
+| where line.msg == 'model call throttled'
+| summarize throttled = count(), waitMs = sum(toint(line.retryAfterMs)) by bin(TimeGenerated, 5m), model = tostring(line.model)
+```
+
 **Ingestion failures.** The message says where to look:
 
 - `ingestion run failed`: the run's `dataset`, `pipeline` and `execution` id are in the line; the run's error is on the run in the console, under the dataset's pipeline.
 - `knowledge job refused`: a job whose run was not admitted, or in lockdown was admitted more than 24 hours ago. Start the run again.
 - `knowledge server unreachable`, `knowledge reconciler failed`: the knowledge server or its network. See [Knowledge server](../infra/README.md#knowledge-server).
 - `job queue error`: pg-boss lost the platform database. Check the Postgres server.
+
+**A slow knowledge run.** Each worker logs `knowledge run progress` once a minute for each run it writes: `stored` documents and their `chunks` in that minute, and `active`, the run's index and fill jobs on that worker as the line is written. A job is active while it embeds and while it waits for its turn to write, since a generation takes one write at a time. `worker started` names the `version`, `knowledgeIndexConcurrency` (how many index jobs, and as many fill jobs, the worker works at once) and `knowledgePoolSize`. Few documents with many jobs active can be throttling or jobs waiting to write: `model call throttled` lines in the same minutes tell them apart.
+
+```kusto
+ContainerAppConsoleLogs
+| where ContainerAppName == 'genai-test-worker'
+| where TimeGenerated > ago(2h)
+| extend line = parse_json(Log)
+| where line.msg == 'knowledge run progress'
+| project TimeGenerated, run = tostring(line.run), dataset = tostring(line.dataset), stored = toint(line.stored), chunks = toint(line.chunks), active = toint(line.active)
+| order by TimeGenerated asc
+```
 
 **Altinn unavailable.** The `error` field says which step failed. Logins still work, but people get no rights from Altinn while it lasts, so they see less than they should. Check the Altinn status (tt02 in test), the Maskinporten client and its key (`altinn-pdp-maskinporten-key` in Key Vault) and the subscription key (`altinn-subscription-key`).
 
