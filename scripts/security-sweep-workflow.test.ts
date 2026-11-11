@@ -86,8 +86,32 @@ describe('the security sweep workflow', () => {
       expect(step.with?.display_report).toBe('false');
     }
     const scripts = job.steps.map((s) => s.run ?? '').join('\n');
-    expect(scripts).not.toMatch(/\$(OUT|PASS_\w+)\b.*GITHUB_STEP_SUMMARY/);
-    expect(scripts).not.toMatch(/(echo|cat|jq).*\$(OUT|PASS_\w+)/);
+    expect(scripts).not.toMatch(/\b(echo|cat|jq|head|tail|printf)\b.*(EXECUTION|sweep-|\.sweep)/);
+    expect(scripts).not.toMatch(/set -\w*x/);
+    expect(scripts.match(/^.*GITHUB_STEP_SUMMARY.*$/gm)).toEqual([
+      'echo "Findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them." >> "$GITHUB_STEP_SUMMARY"',
+    ]);
+  });
+
+  it('keeps model output out of every step env, which the runner prints in the job log', () => {
+    for (const step of job.steps)
+      for (const value of Object.values(step.env ?? {}))
+        expect(String(value)).not.toMatch(/structured_output/);
+    expect(text).not.toMatch(/outputs\.structured_output/);
+  });
+
+  it('never expands an expression inside a run script', () => {
+    for (const step of job.steps) expect(step.run ?? '').not.toContain('${{');
+  });
+
+  it('moves each pass execution file aside so no later step reads a stale one', () => {
+    for (const pass of ['tenancy', 'rights', 'secrets']) {
+      const move = job.steps.find((s) => s.env?.EXECUTION?.includes(`steps.pass_${pass}.`));
+      expect(move?.if).toBe('always()');
+      expect(move?.run).toBe(
+        `mv "$EXECUTION" "$RUNNER_TEMP/sweep-${pass}.json" 2>/dev/null || true`,
+      );
+    }
   });
 
   it('spends nothing unless there is a key to seal the findings to', () => {
@@ -117,8 +141,13 @@ describe('the security sweep workflow', () => {
     expect(uploads[0]?.with?.name).not.toMatch(/^review-run-/);
   });
 
-  it('removes the unsealed candidates from the runner before uploading', () => {
-    expect(job.steps.find((s) => s.id === 'seal')?.run).toContain('rm -rf .sweep');
+  it('removes the unsealed candidates and execution files from the runner before uploading', () => {
+    const seal = job.steps.findIndex((s) => s.id === 'seal');
+    const upload = job.steps.findIndex((s) => s.uses?.startsWith('actions/upload-artifact@'));
+    expect(seal).toBeLessThan(upload);
+    expect(job.steps[seal]?.run).toContain(
+      'rm -rf .sweep "$RUNNER_TEMP"/sweep-*.json "$RUNNER_TEMP/claude-execution-output.json"',
+    );
   });
 });
 

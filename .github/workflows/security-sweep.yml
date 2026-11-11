@@ -63,7 +63,7 @@ jobs:
       - if: always()
         env:
           EXECUTION: ${{ steps.pass_tenancy.outputs.execution_file }}
-        run: cp "$EXECUTION" "$RUNNER_TEMP/sweep-tenancy.json" 2>/dev/null || true
+        run: mv "$EXECUTION" "$RUNNER_TEMP/sweep-tenancy.json" 2>/dev/null || true
       - id: pass_rights
         continue-on-error: true
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
@@ -84,7 +84,7 @@ jobs:
       - if: always()
         env:
           EXECUTION: ${{ steps.pass_rights.outputs.execution_file }}
-        run: cp "$EXECUTION" "$RUNNER_TEMP/sweep-rights.json" 2>/dev/null || true
+        run: mv "$EXECUTION" "$RUNNER_TEMP/sweep-rights.json" 2>/dev/null || true
       - id: pass_secrets
         continue-on-error: true
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
@@ -105,15 +105,11 @@ jobs:
       - if: always()
         env:
           EXECUTION: ${{ steps.pass_secrets.outputs.execution_file }}
-        run: cp "$EXECUTION" "$RUNNER_TEMP/sweep-secrets.json" 2>/dev/null || true
+        run: mv "$EXECUTION" "$RUNNER_TEMP/sweep-secrets.json" 2>/dev/null || true
       - id: merge
         name: Merge the candidates and drop those without file and line evidence
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         shell: bash
-        env:
-          PASS_TENANCY: ${{ steps.pass_tenancy.outputs.structured_output }}
-          PASS_RIGHTS: ${{ steps.pass_rights.outputs.structured_output }}
-          PASS_SECRETS: ${{ steps.pass_secrets.outputs.structured_output }}
         run: node scripts/security-sweep.ts merge >> "$GITHUB_OUTPUT"
       - id: coordinate
         if: ${{ !cancelled() && steps.merge.outputs.count != '' && steps.merge.outputs.count != '0' }}
@@ -141,16 +137,14 @@ jobs:
         if: always() && steps.start.outcome == 'success'
         shell: bash
         env:
-          OUT: ${{ steps.coordinate.outputs.structured_output }}
           COORDINATE_EXECUTION: ${{ steps.coordinate.outputs.execution_file }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           STARTED_AT: ${{ steps.start.outputs.started_at }}
           OUTCOMES: tenancy=${{ steps.pass_tenancy.outcome }} rights=${{ steps.pass_rights.outcome }} secrets=${{ steps.pass_secrets.outcome }} coordinate=${{ steps.coordinate.outcome }}
         run: |
-          EXECUTIONS=$(printf '%s\n' "$RUNNER_TEMP/sweep-tenancy.json" "$RUNNER_TEMP/sweep-rights.json" "$RUNNER_TEMP/sweep-secrets.json" "$COORDINATE_EXECUTION")
-          EXECUTIONS="$EXECUTIONS" node scripts/security-sweep.ts seal
-          rm -rf .sweep
+          node scripts/security-sweep.ts seal
+          rm -rf .sweep "$RUNNER_TEMP"/sweep-*.json "$RUNNER_TEMP/claude-execution-output.json"
           echo "Findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them." >> "$GITHUB_STEP_SUMMARY"
       - if: always() && steps.seal.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

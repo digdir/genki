@@ -1,4 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   confirmedFindings,
@@ -9,6 +13,7 @@ import {
   report,
   runRecord,
   seal,
+  structuredOutput,
   unfinishedSteps,
   type Candidate,
   type Finding,
@@ -166,5 +171,80 @@ describe('the run record', () => {
       turns: 40,
     });
     expect(Object.keys(record)).not.toContain('findings');
+  });
+});
+
+const execution = (output: unknown, over: Record<string, unknown> = {}) => [
+  { type: 'system', subtype: 'init' },
+  { type: 'result', subtype: 'success', is_error: false, structured_output: output, ...over },
+];
+
+describe('reading what the model returned', () => {
+  it('takes the structured output from the result message of the execution file', () => {
+    expect(structuredOutput(execution({ candidates: [candidate()] }))).toEqual({
+      candidates: [candidate()],
+    });
+  });
+
+  it('takes nothing from a run that failed or never reached a result', () => {
+    expect(structuredOutput(execution({ candidates: [] }, { is_error: true }))).toBeNull();
+    expect(
+      structuredOutput(execution({ candidates: [] }, { subtype: 'error_max_turns' })),
+    ).toBeNull();
+    expect(structuredOutput([{ type: 'system', subtype: 'init' }])).toBeNull();
+    expect(structuredOutput(null)).toBeNull();
+  });
+});
+
+describe('the sweep commands in the workflow', () => {
+  const script = join(import.meta.dirname, 'security-sweep.ts');
+  const secret = 'sk-leaked-token-in-evidence';
+  const run = (command: string, cwd: string, env: Record<string, string>) =>
+    spawnSync(process.execPath, [script, command], {
+      cwd,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '', RUNNER_TEMP: cwd, ...env },
+    });
+
+  it('merge reads the passes from their execution files and prints only the count', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-'));
+    const found = candidate({ evidence: `apps/api/src/a.ts:40 logs ${secret}` });
+    writeFileSync(
+      join(dir, 'sweep-tenancy.json'),
+      JSON.stringify(execution({ candidates: [found] })),
+    );
+    writeFileSync(
+      join(dir, 'sweep-secrets.json'),
+      JSON.stringify(execution({ candidates: [found] })),
+    );
+    const merge = run('merge', dir, {});
+    expect(merge.status, merge.stderr).toBe(0);
+    expect(merge.stdout).toBe('count=1\n');
+    expect(merge.stderr).not.toContain(secret);
+    expect(readFileSync(join(dir, '.sweep/candidates.json'), 'utf8')).toContain(secret);
+  });
+
+  it('seal reads the findings from the coordinator execution file and prints none of them', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-'));
+    const coordinator = join(dir, 'claude-execution-output.json');
+    writeFileSync(
+      coordinator,
+      JSON.stringify(
+        execution({ findings: [finding({ evidence: `apps/api/src/a.ts:40 logs ${secret}` })] }),
+      ),
+    );
+    const key = rsa();
+    const sealed = run('seal', dir, {
+      COORDINATE_EXECUTION: coordinator,
+      SWEEP_PUBLIC_KEYS: key.publicKey,
+      SHA: 'a'.repeat(40),
+      OUTCOMES: 'tenancy=success rights=success secrets=success coordinate=success',
+    });
+    expect(sealed.status, sealed.stderr).toBe(0);
+    expect(`${sealed.stdout}${sealed.stderr}`).not.toContain(secret);
+    const file = readFileSync(join(dir, 'security-sweep.sealed.json'), 'utf8');
+    expect(file).not.toContain(secret);
+    expect(open(JSON.parse(file), key.privateKey)).toContain(secret);
+    expect(readFileSync(join(dir, 'security-sweep-run.json'), 'utf8')).not.toContain(secret);
   });
 });

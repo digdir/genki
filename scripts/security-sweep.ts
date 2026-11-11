@@ -12,6 +12,7 @@ import {
   type KeyObject,
 } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PASSES = ['tenancy', 'rights', 'secrets'] as const;
@@ -181,11 +182,20 @@ export function open(sealed: Sealed, privateKeyPem: string): string {
   ]).toString('utf8');
 }
 
-interface ExecutionMessage {
+export interface ExecutionMessage {
   type?: string;
+  subtype?: string;
+  is_error?: boolean;
   total_cost_usd?: number;
   duration_ms?: number;
   num_turns?: number;
+  structured_output?: unknown;
+}
+
+export function structuredOutput<T>(execution: ExecutionMessage[] | null): T | null {
+  const result = execution?.find((m) => m.type === 'result');
+  if (result?.subtype !== 'success' || result.is_error) return null;
+  return (result.structured_output as T | undefined) ?? null;
 }
 
 export function runRecord(input: {
@@ -223,6 +233,7 @@ const parse = <T>(text: string): T | null => {
   }
 };
 const readJson = <T>(path: string): T | null => {
+  if (!path) return null;
   try {
     return parse<T>(readFileSync(path, 'utf8'));
   } catch {
@@ -230,24 +241,29 @@ const readJson = <T>(path: string): T | null => {
   }
 };
 
+const passExecutions = () =>
+  PASSES.map((pass) =>
+    readJson<ExecutionMessage[]>(join(env('RUNNER_TEMP'), `sweep-${pass}.json`)),
+  );
+
 function main(command: string | undefined, args: string[]) {
   if (command === 'keys') {
     publicKeys(env('SWEEP_PUBLIC_KEYS'));
     return;
   }
   if (command === 'merge') {
-    const merged = mergeCandidates({
-      tenancy: parse(env('PASS_TENANCY')),
-      rights: parse(env('PASS_RIGHTS')),
-      secrets: parse(env('PASS_SECRETS')),
-    });
+    const executions = passExecutions();
+    const merged = mergeCandidates(
+      Object.fromEntries(PASSES.map((pass, i) => [pass, structuredOutput(executions[i] ?? null)])),
+    );
     mkdirSync('.sweep', { recursive: true });
     writeFileSync('.sweep/candidates.json', JSON.stringify(merged, null, 2));
     console.log(`count=${merged.length}`);
     return;
   }
   if (command === 'seal') {
-    const findings = confirmedFindings(parse(env('OUT')));
+    const coordinator = readJson<ExecutionMessage[]>(env('COORDINATE_EXECUTION'));
+    const findings = confirmedFindings(structuredOutput(coordinator));
     const runUrl = `${env('GITHUB_SERVER_URL')}/${env('REPO')}/actions/runs/${env('GITHUB_RUN_ID')}`;
     const sealed = seal(
       report(findings, { sha: env('SHA'), runUrl, unfinished: unfinishedSteps(env('OUTCOMES')) }),
@@ -260,10 +276,7 @@ function main(command: string | undefined, args: string[]) {
       runId: env('GITHUB_RUN_ID'),
       model: env('MODEL'),
       startedAt: env('STARTED_AT'),
-      executions: env('EXECUTIONS')
-        .split('\n')
-        .filter(Boolean)
-        .map((path) => readJson<ExecutionMessage[]>(path) ?? []),
+      executions: [...passExecutions(), coordinator].map((e) => e ?? []),
     });
     writeFileSync('security-sweep-run.json', JSON.stringify(record, null, 2));
     return;
