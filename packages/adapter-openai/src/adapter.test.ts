@@ -1124,6 +1124,12 @@ describe('sources people can open', () => {
 
     expect(bundle.sources[0]).toMatchObject({ version: '3', published_at: '2025-01-15' });
   });
+
+  it('leaves published_at out for a source without a publish date', () => {
+    const bundle = citationBundle([{ chunkId: 'c1', text: 'Tekst', url: 'https://x.no/a' }]);
+
+    expect(bundle.sources[0]).not.toHaveProperty('published_at');
+  });
 });
 
 describe('table results', () => {

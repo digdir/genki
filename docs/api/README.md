@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-11: no ingest date as a publish date
+
+- A source without a known publish date has no `published_at` (`publishedAt` in the native and table shapes) on `/v1/chat/completions` and its table cells, in MCP `structuredContent` and in a step flow's document list. It used to carry the date the document was indexed. The field was already optional, so the shape is unchanged.
+
 ### 2026-11-11: only operators change sharing
 
 - `POST /definitions` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:share-operator-only` when someone other than an operator changes `spec.availableTo` of a service, compared with its published version. A dry run of the import lists the same error with 422. The console route `PUT /operator/shared-services/{tenant}/{id}` is unchanged.
