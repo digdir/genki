@@ -247,7 +247,10 @@ export const integrationsArea = {
     address: 'Address (https)',
     secretName: 'Name of the secret (optional)',
     secret: 'The secret',
-    secretHelp: 'Stored in Key Vault and cannot be read out again, only replaced.',
+    secretHelp:
+      'Stored in Key Vault for the address above and cannot be read out again, only replaced.',
+    secretSetElsewhere:
+      'The secret "{name}" is set up for other addresses ({hosts}). Choose another name for the secret.',
     register: 'Register connection',
   },
   integHooks: {

@@ -28,6 +28,7 @@ import {
 } from './snippets';
 import './channels.css';
 import { reasonProblem } from '../../components/ReasonField';
+import { storedSecretHosts } from '../../secret-hosts';
 
 type Flash = { text: string; color: 'success' | 'info' | 'danger' };
 
@@ -351,16 +352,19 @@ export const ServiceChannels = ({
   };
 
   const rollSecret = async (client: ClientView) => {
-    const name = client.definition.spec.webhook?.secret;
-    if (!name) return;
+    const webhook = client.definition.spec.webhook;
+    if (!webhook?.secret) return;
+    const name = webhook.secret;
     setBusy(true);
     try {
       const value = randomSecret();
+      const hosts = await storedSecretHosts(api, tenant, name);
       await api.setSecret(
         tenant,
         name,
         value,
         t('serviceChannels.secretReason', { id: client.definition.metadata.id }),
+        hosts?.length === 0 ? [new URL(webhook.url).origin] : undefined,
       );
       setNewSecret({ name, value });
     } catch (e) {

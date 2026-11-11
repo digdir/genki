@@ -173,6 +173,64 @@ describe('Integrasjoner: utløsere fra API-et', () => {
   });
 });
 
+describe('Integrasjoner: MCP-koblinger fra API-et', () => {
+  const registerServer = async (secretName: string) => {
+    const calls = await live('#/integrations?tab=systems');
+    fireEvent.click(await screen.findByText('Registrer en MCP-server'));
+    const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Saksbehandlerne skal søke i arkivet' },
+    });
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Kort navn (små bokstaver og bindestrek)', 'sak');
+    fill('Adresse (https)', 'https://sak.testetaten.example.no/mcp');
+    fill('Navn på hemmeligheten (valgfritt)', secretName);
+    fill('Hemmeligheten', 'hemmelig-verdi-123');
+    fireEvent.click(within(form).getByRole('button', { name: 'Registrer kobling' }));
+    return calls;
+  };
+
+  it('stores a new secret for the server address before it registers the connection that refers to it', async () => {
+    const calls = await registerServer('sak-token');
+
+    expect(
+      await screen.findByText('Koblingen er registrert. Hent verktøyene for å ta dem i bruk.'),
+    ).toBeTruthy();
+    const writes = calls.filter((c) => c.method === 'PUT' || c.method === 'POST');
+    expect(writes.map((c) => c.method)).toEqual(['PUT', 'POST']);
+    expect(writes[0]?.url).toMatch(/\/secrets\/sak-token$/);
+    expect(writes[0]?.body).toEqual({
+      value: 'hemmelig-verdi-123',
+      allowedHosts: ['https://sak.testetaten.example.no'],
+    });
+    expect(writes[1]?.body).toMatchObject({
+      endpoint: 'https://sak.testetaten.example.no/mcp',
+      auth: { kind: 'bearer', secret: 'secret://tenant/999888777/sak-token' },
+    });
+  });
+
+  it('replaces an existing secret set for the server address and keeps its addresses', async () => {
+    const calls = await registerServer('saks-api');
+
+    expect(
+      await screen.findByText('Koblingen er registrert. Hent verktøyene for å ta dem i bruk.'),
+    ).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')?.body).toEqual({ value: 'hemmelig-verdi-123' });
+  });
+
+  it('refuses a secret name set for other addresses before anything is stored', async () => {
+    const calls = await registerServer('arkiv-nokkel');
+
+    expect(
+      await screen.findByText(
+        'Hemmeligheten «arkiv-nokkel» er satt opp for andre adresser (https://arkiv.testetaten.example.no). Velg et annet navn på hemmeligheten.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT' || c.method === 'POST')).toBe(false);
+  });
+});
+
 describe('schedule names', () => {
   it('names common schedules in plain words and shows anything else as written', () => {
     expect(describeSchedule('0 2 * * *')).toBe('Hver natt kl. 02.00');

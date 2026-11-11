@@ -13,11 +13,16 @@ import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
 import { reasonProblem } from '../../components/ReasonField';
+import { storedSecretHosts } from '../../secret-hosts';
+
+class SecretSetElsewhere extends Error {}
 
 const errorText = (error: unknown, t: T) =>
   error instanceof ApiError
     ? error.problem?.errors?.map((e) => e.message).join(' ') || error.message
-    : t('integConnections.wrong');
+    : error instanceof SecretSetElsewhere
+      ? error.message
+      : t('integConnections.wrong');
 
 const emptyForm = { id: '', name: '', endpoint: '', secretName: '', secretValue: '' };
 
@@ -44,11 +49,28 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
     }
   };
 
+  const storeSecret = async (origin: string) => {
+    const hosts = await storedSecretHosts(api, tenant, form.secretName);
+    if (hosts?.length && !hosts.includes(origin))
+      throw new SecretSetElsewhere(
+        t('integConnections.secretSetElsewhere', {
+          name: form.secretName,
+          hosts: hosts.join(', '),
+        }),
+      );
+    await api.setSecret(
+      tenant,
+      form.secretName,
+      form.secretValue,
+      reason.trim(),
+      hosts?.length === 0 ? [origin] : undefined,
+    );
+  };
+
   const register = () =>
     act(async () => {
       const url = new URL(form.endpoint);
-      if (form.secretName && form.secretValue)
-        await api.setSecret(tenant, form.secretName, form.secretValue, reason.trim());
+      if (form.secretName && form.secretValue) await storeSecret(url.origin);
       await api.registerConnection(
         tenant,
         {

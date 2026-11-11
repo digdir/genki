@@ -115,6 +115,24 @@ describe('channels and frontends for a service', () => {
     expect(within(cards).getByRole('heading', { name: 'Saksbehandlerportalen' })).toBeTruthy();
   });
 
+  it('stores a new webhook secret for the webhook address', async () => {
+    const { calls } = setup('nytt-oppslag');
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    type('Navn', 'Saksvarsler');
+    type('Adresse varslene sendes til', 'https://varsel.testetaten.example.no/krok');
+    fireEvent.click(screen.getByLabelText('En kjøring er ferdig'));
+    type('Begrunnelse', 'Saksbehandlerne skal få varsel');
+    fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
+    expect(await screen.findByText(/Saksvarsler er registrert/)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Lag ny hemmelighet' }));
+
+    expect(await screen.findByLabelText('Ny verdi for nytt-oppslag-varsler')).toBeTruthy();
+    const put = calls.find((c) => c.method === 'PUT' && c.url.includes('/secrets/'));
+    expect(put?.url).toBe('/api/tenants/999888777/secrets/nytt-oppslag-varsler');
+    expect(put?.body).toMatchObject({ allowedHosts: ['https://varsel.testetaten.example.no'] });
+  });
+
   it('refuses an origin with a path', async () => {
     setup();
     fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));

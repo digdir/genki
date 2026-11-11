@@ -244,7 +244,9 @@ export const integrationsArea = {
     address: 'Adresse (https)',
     secretName: 'Navn på hemmeligheten (valgfritt)',
     secret: 'Hemmeligheten',
-    secretHelp: 'Lagres i Key Vault og kan ikke leses ut igjen, bare erstattes.',
+    secretHelp: 'Lagres i Key Vault for adressen over og kan ikke leses ut igjen, bare erstattes.',
+    secretSetElsewhere:
+      'Hemmeligheten «{name}» er satt opp for andre adresser ({hosts}). Velg et annet navn på hemmeligheten.',
     register: 'Registrer kobling',
   }),
   integHooks: defineNamespace({
