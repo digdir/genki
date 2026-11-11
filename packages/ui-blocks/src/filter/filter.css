@@ -328,6 +328,9 @@
   }
 
   .uib-filter-checkbox {
+    --dsc-input-size--toggle: var(--genai-filter-checkbox-size, var(--ds-size-5));
+
+    inline-size: auto;
     align-items: center;
     padding-block: var(--genai-filter-checkbox-padding-block, var(--ds-size-2));
     border-block-end: var(--genai-filter-row-border-width, var(--ds-border-width-default)) solid

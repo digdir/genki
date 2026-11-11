@@ -57,6 +57,13 @@
       var(--ds-color-neutral-surface-tinted)
     );
     --dsc-card-border-radius: var(--genai-approach-bar-radius, var(--ds-border-radius-xl));
+
+    background: var(--genai-approach-bar-ground, var(--ds-color-neutral-background-tinted));
+  }
+
+  /* On the Details itself, which sets its own and would hide the card's. */
+  .uib-approach[data-summary='totals'] .uib-approach-card > .ds-details {
+    --dsc-details-background: transparent;
     --dsc-details-padding: var(--genai-approach-bar-padding-block, var(--ds-size-2))
       var(--genai-approach-bar-padding-inline, var(--ds-size-4));
     --dsc-details-size: auto;
@@ -73,8 +80,6 @@
       --genai-approach-bar-background,
       var(--ds-color-neutral-surface-tinted)
     );
-
-    background: var(--genai-approach-bar-ground, var(--ds-color-neutral-background-tinted));
   }
 
   /* The chevron ends the row, as the design draws it, not before the title. */

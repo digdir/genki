@@ -188,6 +188,12 @@
   }
 
   .uib-documents-scope-search {
+    --dsc-input-size: var(--genai-documents-scope-search-height, var(--ds-size-10));
+    --dsc-input-border-radius: var(
+      --genai-documents-scope-summary-radius,
+      var(--ds-border-radius-lg)
+    );
+
     inline-size: 100%;
   }
 
@@ -198,6 +204,9 @@
   }
 
   .uib-documents-scope-document {
+    --dsc-input-size--toggle: var(--genai-documents-scope-checkbox-size, var(--ds-size-5));
+
+    inline-size: auto;
     align-items: start;
     padding-block: var(--genai-documents-scope-document-padding-block, var(--ds-size-2));
     border-block-end: var(--genai-documents-scope-border-width, var(--ds-border-width-default))

@@ -72,9 +72,9 @@ const row = (name: RegExp) => screen.getByRole('button', { name });
 describe('the panel variant', () => {
   it('draws each field as a row named by its heading and what is chosen, «Alle» when nothing is', () => {
     render(<Host initial={{ type: ['Evaluering', 'Tilsynsrapport'], year: ['2020', '2021'] }} />);
-    expect(row(/^Dokumenttype/).textContent).toBe('DokumenttypeEvaluering, Tilsynsrapport');
-    expect(row(/^Publiseringsår/).textContent).toBe('Publiseringsår2020–2021');
-    expect(row(/^Virksomhet/).textContent).toBe('VirksomhetAlle');
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Evaluering, Tilsynsrapport');
+    expect(row(/^Publiseringsår/).textContent).toBe('Publiseringsår 2020–2021');
+    expect(row(/^Virksomhet/).textContent).toBe('Virksomhet Alle');
   });
 
   it('opens the first row, and one row at a time', () => {
@@ -94,7 +94,7 @@ describe('the panel variant', () => {
     expect(document.body.textContent).not.toContain('ca.');
     fireEvent.click(box);
     expect(seen.at(-1)).toEqual({ type: ['Evaluering'] });
-    expect(row(/^Dokumenttype/).textContent).toBe('DokumenttypeEvaluering');
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Evaluering');
   });
 
   it('opens a field with more values than it ticks to its list, named for screen readers', () => {

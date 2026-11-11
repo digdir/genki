@@ -1,7 +1,7 @@
 // «Dokumentene som blir med», the dev boards' box under the filter (dev-filter-panel; «9 ·
 // Filtrering», choice 7): how many documents the next question reads from, on a neutral ground,
 // and, where the host has them, the documents themselves, each with a tick to leave it out.
-import { Checkbox, Input, Paragraph } from '@digdir/designsystemet-react';
+import { Checkbox, Input } from '@digdir/designsystemet-react';
 import { ChevronDownIcon, ChevronUpIcon } from '@navikt/aksel-icons';
 import { useId, useState } from 'react';
 import { corpusName, type CorpusOption } from '../corpus/Corpus.js';
@@ -86,7 +86,7 @@ export const DocumentsInScope = ({
         >
           <span id={`${id}-title`} className="uib-documents-scope-title">
             {t('documents.inScope')}
-          </span>
+          </span>{' '}
           <span className="uib-documents-scope-fold">
             {open ? t('documents.inScopeHide') : t('documents.inScopeShow')}
             {open ? <ChevronUpIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
@@ -95,20 +95,13 @@ export const DocumentsInScope = ({
       </Heading>
 
       <div id={`${id}-body`} className="uib-documents-scope-body" hidden={!open}>
-        {summary === undefined ? null : (
-          <Paragraph data-size="sm" className="uib-documents-scope-summary">
-            {summary}
-          </Paragraph>
-        )}
+        {summary === undefined ? null : <p className="uib-documents-scope-summary">{summary}</p>}
 
         {listed.length > 0 ? (
           <>
-            <Paragraph data-size="xs" className="uib-documents-scope-hint">
-              {t('documents.inScopeHint')}
-            </Paragraph>
+            <p className="uib-documents-scope-hint">{t('documents.inScopeHint')}</p>
             <Input
               type="search"
-              data-size="sm"
               className="uib-documents-scope-search"
               aria-label={t('documents.inScopeSearch')}
               placeholder={t('documents.inScopeSearchHint')}
@@ -116,9 +109,7 @@ export const DocumentsInScope = ({
               onChange={(event) => setQuery(event.currentTarget.value)}
             />
             {shown.length === 0 ? (
-              <Paragraph data-size="xs" className="uib-documents-scope-hint">
-                {t('documents.inScopeNone')}
-              </Paragraph>
+              <p className="uib-documents-scope-hint">{t('documents.inScopeNone')}</p>
             ) : (
               <ul className="uib-documents-scope-list" aria-labelledby={`${id}-title`}>
                 {shown.map((document) => {
@@ -132,7 +123,6 @@ export const DocumentsInScope = ({
                   return (
                     <li key={document.id}>
                       <Checkbox
-                        data-size="sm"
                         className="uib-documents-scope-document"
                         checked={document.included}
                         readOnly={!onIncludedChange}

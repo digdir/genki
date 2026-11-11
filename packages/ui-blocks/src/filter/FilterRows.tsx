@@ -49,7 +49,6 @@ const Checkboxes = ({
         <Checkbox
           key={option.value}
           className="uib-filter-checkbox"
-          data-size="sm"
           value={option.value}
           checked={selected.includes(option.value)}
           onChange={(event) =>
@@ -138,6 +137,7 @@ export const FilterRows = ({
               >
                 <span className="uib-filter-row-text">
                   <span className="uib-filter-row-name">{field.heading ?? field.label}</span>
+                  {/* A space between the two in the button's name, whatever lays them out. */}{' '}
                   <span className="uib-filter-row-chosen">
                     {chosen.length === 0 ? t('filter.all') : chosen.join(', ')}
                   </span>
