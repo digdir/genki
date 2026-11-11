@@ -567,6 +567,165 @@
     inline-size: 100%;
   }
 
+  /* `tinted`, the dev boards' switcher (dev-verktoy-2): two joined buttons on the host family's
+     tinted ground, as Designsystemet's ToggleGroup draws them, each as wide as its words at least. */
+  .uib-shell-tools-tabs[data-variant='tinted'] {
+    gap: 0;
+    padding: 0;
+    overflow-x: auto;
+    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-default));
+    background: var(--genai-shell-tools-tinted-background, var(--ds-color-surface-tinted));
+  }
+
+  .uib-shell-tools-tabs[data-variant='tinted'] > .uib-shell-tools-tab {
+    display: inline-flex;
+    flex: 1 1 0;
+    gap: var(--genai-shell-tools-tinted-gap, var(--ds-size-2));
+    align-items: center;
+    justify-content: center;
+    min-inline-size: fit-content;
+    min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
+    padding-inline: var(--genai-shell-tools-tinted-padding-inline, var(--ds-size-4));
+    border: var(--genai-shell-border-width, var(--ds-border-width-default)) solid transparent;
+    border-radius: inherit;
+    color: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+    font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
+    font-weight: var(--genai-shell-tools-tinted-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-tabs[data-variant='tinted'] > .uib-shell-tools-tab:hover {
+    background: var(--genai-shell-tools-tinted-hover-background, var(--ds-color-surface-hover));
+  }
+
+  .uib-shell-tools-tabs[data-variant='tinted'] > .uib-shell-tools-tab[aria-selected='true'] {
+    background: var(
+      --genai-shell-tools-tinted-selected-background,
+      var(--ds-color-surface-default)
+    );
+    border-color: var(
+      --genai-shell-tools-tinted-selected-border-color,
+      var(--ds-color-border-default)
+    );
+    box-shadow: none;
+  }
+
+  /* The tool's icon beside its name, in the tabs, the button and the menu. */
+  :is(.uib-shell-tools-tab, .uib-shell-tools-trigger) > svg {
+    flex: none;
+    font-size: var(--genai-shell-tools-icon-size, var(--ds-size-6));
+  }
+
+  .uib-shell-tools-label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Three or more (dev-verktoy-3): a button as wide as the panel, on the tinted ground. */
+  .uib-shell-tools-trigger {
+    --dsc-button-background: var(
+      --genai-shell-tools-tinted-background,
+      var(--ds-color-surface-tinted)
+    );
+    --dsc-button-background--hover: var(
+      --genai-shell-tools-tinted-hover-background,
+      var(--ds-color-surface-hover)
+    );
+    --dsc-button-background--active: var(
+      --genai-shell-tools-tinted-hover-background,
+      var(--ds-color-surface-hover)
+    );
+    --dsc-button-color: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+    --dsc-button-color--hover: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+
+    justify-content: start;
+    gap: var(--genai-shell-tools-tinted-gap, var(--ds-size-2));
+    inline-size: 100%;
+    min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
+    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-default));
+    font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
+    font-weight: var(--genai-shell-tools-tinted-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-trigger[aria-expanded='true'] {
+    --dsc-button-background: var(
+      --genai-shell-tools-tinted-hover-background,
+      var(--ds-color-surface-hover)
+    );
+  }
+
+  .uib-shell-tools-trigger > .uib-shell-tools-chevron {
+    margin-inline-start: auto;
+    font-size: var(--genai-shell-tools-chevron-size, var(--ds-size-6));
+  }
+
+  .uib-shell-tools-trigger[aria-expanded='true'] > .uib-shell-tools-chevron {
+    rotate: 180deg;
+  }
+
+  /* The menu's tools, grey, the one shown on its tinted ground. */
+  .uib-shell-tools-menu :is(a, button) {
+    --dsc-button-color: var(--genai-shell-tools-menu-color, var(--ds-color-text-subtle));
+
+    min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
+    font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
+    font-weight: var(--genai-shell-tools-menu-font-weight, var(--ds-font-weight-regular));
+  }
+
+  .uib-shell-tools-menu :is(a, button)[aria-current='true'] {
+    --dsc-button-background: var(
+      --genai-shell-tools-menu-current-background,
+      var(--ds-color-surface-tinted)
+    );
+
+    font-weight: var(--genai-shell-tools-menu-current-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-menu :is(a, button) > svg {
+    flex: none;
+    font-size: var(--genai-shell-tools-icon-size, var(--ds-size-6));
+  }
+
+  /* ── What a folded panel shows under its button (`rail`), dev-verktoy-4 ── */
+
+  .uib-shell-rail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-rail-gap, var(--ds-size-2));
+    align-items: center;
+    inline-size: 100%;
+  }
+
+  .uib-shell[data-compact] .uib-shell-rail {
+    display: none;
+  }
+
+  /* As big as the panel's own button, the design's 44 in a card. */
+  .uib-shell[data-frame='cards'] .uib-shell-rail :is(a, button) {
+    --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
+  }
+
+  /* The tools card (dev-verktoy-1 to -4): its parts 12 apart, and no line under the switcher. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='secondary'] > .uib-shell-box {
+    gap: var(--genai-shell-tools-card-gap, var(--ds-size-3));
+  }
+
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='secondary'] .uib-shell-pinned {
+    padding-block-end: 0;
+    border-block-end: 0;
+  }
+
+  /* The folded tools card's own button stands apart from the tools' on a ground of its own. */
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side[data-side='secondary'][data-collapsed]
+    .uib-shell-toggle {
+    --dsc-button-background: var(
+      --genai-shell-rail-toggle-background,
+      var(--ds-color-background-tinted)
+    );
+  }
+
   /* ── The reader at the panel's foot, and the profile menu (ShellProfile), dev-navbar ── */
 
   /* One full-width button: the avatar, then the name, cut with «…». */

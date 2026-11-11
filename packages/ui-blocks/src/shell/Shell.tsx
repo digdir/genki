@@ -72,6 +72,11 @@ export interface ShellPanel {
   footPinned?: boolean | undefined;
   /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
   railFoot?: ReactNode;
+  /**
+   * What the folded panel shows under its button, such as one button per tool that opens the
+   * panel on it (dev-verktoy-4). Not in the top row, and not while the panel is a drawer.
+   */
+  rail?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
   size?: Partial<ShellPanelSize> | undefined;
   /** Folded when the page opens, until the reader chooses. Primary open, secondary folded. */
@@ -619,6 +624,9 @@ const Side = ({
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
           {toggleLast && !withCompanion ? toggleButton : null}
         </div>
+        {collapsed && !drawer && panel.rail != null ? (
+          <div className="uib-shell-rail">{panel.rail}</div>
+        ) : null}
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}
         {railed && panel.railFoot != null ? (

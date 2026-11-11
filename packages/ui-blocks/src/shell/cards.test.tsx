@@ -115,3 +115,27 @@ describe('the cards frame', () => {
     expect(document.querySelector('.uib-shell-rail-foot')).toBeNull();
   });
 });
+
+describe('what a folded panel shows under its button, `rail` (dev-verktoy-4)', () => {
+  const rail = (
+    <>
+      <button type="button">Fremgangsmåte</button>
+      <button type="button">Kilder</button>
+    </>
+  );
+
+  it('draws the host’s buttons under the folded panel’s own, in that order', () => {
+    draw({ secondary: { label: 'Verktøypanelet', title: 'Verktøy', rail } });
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
+    const buttons = within(tools)
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent);
+    expect(buttons).toEqual(['Vis verktøypanelet', 'Fremgangsmåte', 'Kilder']);
+  });
+
+  it('draws none of them once the panel is open', () => {
+    draw({ secondary: { label: 'Verktøypanelet', title: 'Verktøy', rail } });
+    fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
+    expect(document.querySelector('.uib-shell-rail')).toBeNull();
+  });
+});

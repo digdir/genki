@@ -121,3 +121,51 @@ describe('the switcher pinned in the panel', () => {
     expect(screen.getByText('Innholdet i Fremgangsmåte')).toBeTruthy();
   });
 });
+
+describe('the tinted switcher, the dev boards’', () => {
+  const withIcon = (one: ShellTool): ShellTool => ({ ...one, icon: <svg data-icon={one.id} /> });
+
+  it('offers two tools as joined buttons with their icons, the tabs pattern kept (dev-verktoy-2)', () => {
+    render(<ShellTools tools={[approach, sources].map(withIcon)} variant="tinted" />);
+    const tablist = screen.getByRole('tablist', { name: 'Verktøy' });
+    expect(tablist.getAttribute('data-variant')).toBe('tinted');
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Fremgangsmåte', 'Kilder']);
+    expect(tabs.map((tab) => tab.querySelector('svg')?.getAttribute('data-icon'))).toEqual([
+      'approach',
+      'sources',
+    ]);
+    fireEvent.click(screen.getByRole('tab', { name: 'Kilder' }));
+    expect(screen.getByRole('tabpanel', { name: 'Kilder' }).closest('[hidden]')).toBeNull();
+  });
+
+  it('offers three or more as a button named by the tool shown, which opens a menu of them (dev-verktoy-3)', () => {
+    const chosen: string[] = [];
+    render(
+      <ShellTools
+        tools={[approach, sources, notes].map(withIcon)}
+        variant="tinted"
+        onChange={(id) => chosen.push(id)}
+      />,
+    );
+    expect(screen.queryByRole('combobox')).toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Fremgangsmåte, velg verktøy' });
+    expect(trigger.textContent).toBe('Fremgangsmåte');
+    const menu = document.querySelector<HTMLElement>('.uib-shell-tools-menu');
+    const entries = [...(menu?.querySelectorAll('button') ?? [])];
+    expect(entries.map((entry) => entry.textContent)).toEqual([
+      'Fremgangsmåte',
+      'Kilder',
+      'Notater',
+    ]);
+    expect(entries.map((entry) => entry.getAttribute('aria-current'))).toEqual([
+      'true',
+      null,
+      null,
+    ]);
+    fireEvent.click(entries[2] as HTMLElement);
+    expect(chosen).toEqual(['notes']);
+    expect(screen.getByRole('button', { name: 'Notater, velg verktøy' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Notater' }).closest('[hidden]')).toBeNull();
+  });
+});
