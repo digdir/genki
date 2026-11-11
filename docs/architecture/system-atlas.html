@@ -4635,6 +4635,7 @@
                     noToolCallRetry: { type: 'boolean' },
                     noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
                     instructionsInAnswer: { type: 'boolean' },
+                    citeBy: { type: 'string', enum: ['document', 'excerpt'] },
                     search: {
                       type: 'object',
                       properties: {

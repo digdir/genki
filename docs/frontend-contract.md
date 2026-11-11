@@ -223,7 +223,7 @@ Shapes:
 
 - `service` is a service id or a model `id`; `agent` and `agent-id` are accepted for headless-rag compatibility.
 - `Conversation` is `{ id, topic, serviceId, agentId, userId, tags, created }`; `agentId` is the same as `serviceId`, kept for compatibility; `created` is milliseconds since 1970.
-- `Message` is `{ id, role, text, created, tags, filterValue, chunks, sources?, task?, attachments?, input? }`. `role` is `user` or `assistant`; system prompts are never returned. On a user message, `input` holds the form values and `attachments` the attached file names. On an assistant message, `sources` are the sources as the answer gave them (`{ index?, title, url?, document_id?, excerpts }`, the same shape and rule as Citations and sources, so `[N]` in `text` is the source with `index: N`), and `task` is the id for feedback. `chunks` (`[{ chunkId, docTitle, docNum, contentMarkdown }]`) is the older per-chunk list, kept for headless-rag clients; use `sources`. Messages stored before `sources` existed have only `chunks`.
+- `Message` is `{ id, role, text, created, tags, filterValue, chunks, sources?, task?, attachments?, input? }`. `role` is `user` or `assistant`; system prompts are never returned. On a user message, `input` holds the form values and `attachments` the attached file names. On an assistant message, `sources` are the sources as the answer gave them (`{ index?, title, url?, document_id?, excerpts }`, the same shape and rule as Citations and sources, so `[N]` in `text` is the source with `index: N`; a turn from a service that cites excerpts stores no `markers` list, ADR 0052), and `task` is the id for feedback. `chunks` (`[{ chunkId, docTitle, docNum, contentMarkdown }]`) is the older per-chunk list, kept for headless-rag clients; use `sources`. Messages stored before `sources` existed have only `chunks`.
 - `PUT` treats `title` and `topic` as the same field. Any other key answers `400 unknown_field`.
 
 ### Who owns a conversation
@@ -279,7 +279,7 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 
 ### Citations and sources
 
-`[N]` in the answer text always refers to the source with `index: N`. Each source is one document:
+`[N]` in the answer text refers to the source with `index: N`, unless the service cites excerpts (below). Each source is one document:
 
 ```json
 {
@@ -298,6 +298,7 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 - `excerpts` holds every retrieved chunk of that document, so a frontend never fetches passage text itself. Per-chunk ids are `excerpts[].chunk_id`.
 - Existing fields (`source`, `document`, `metadata`, `excerpt`) are kept for OpenAI and Open WebUI clients. Note that `document` there is still the list of passage texts, which is why the document id is `document_id`. The top-level `citations` lists only links people can open, so it does not line up with `sources`; resolve `[N]` by `index`, never by position in `citations`.
 - An answer without citations still lists up to 10 retrieved sources, one per document, without `index`.
+- **When the service cites excerpts** (strategy config `citeBy: excerpt`, ADR 0052), each `[N]` leads to one excerpt, and several markers can lead to the same document. The top-level `markers` lists every marker in the answer in order, as `{ marker, chunk_id, document }`, with `marker` written as in the text without brackets. Resolve `[N]` by `markers`, then show the excerpt with that `chunk_id`. A source's `markers` lists the markers that cite its document, each excerpt's `markers` the ones that cite that excerpt, and `index` is the document's lowest marker. Number the markers for the reader as you like. MCP returns the same list as `structuredContent.markers`.
 - No answer: `no_answer: true` and a `notice` text to show instead of the answer.
 
 ### Media in an answer

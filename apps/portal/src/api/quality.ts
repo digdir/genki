@@ -111,6 +111,18 @@ export interface ServiceDraft {
   latestVersion?: number;
 }
 
+export interface ServiceDraftSummary {
+  id: string;
+  name: string | null;
+  purpose: string;
+  outputKind: string;
+  latestVersion: number | null;
+  revision: number;
+  at: string;
+  by: string;
+  byName?: string;
+}
+
 export interface DraftConflict {
   path: string;
   published: unknown;
@@ -151,6 +163,9 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
   const why = (reason: string) => ({ 'change-reason': reason });
 
   const api = {
+    drafts: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data: ServiceDraftSummary[] }>(`${tenantPath(tenant)}/service-drafts`, signal))
+        .data,
     draft: async (tenant: string, id: string, signal?: AbortSignal) => {
       try {
         const draft = await get<Partial<ServiceDraft> | undefined>(

@@ -1,13 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
+import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { createPlatform } from './composition.js';
 import { draftOutdatedType, mergeThreeWay, type DraftConflict } from './service-drafts.js';
 import { trustedEntraScope } from './lockdown.js';
-import { digdir, principals, settingDefinitions } from './testkit.js';
+import { digdir, other, principals, settingDefinitions } from './testkit.js';
 
 const service = {
   apiVersion: 'genai/v1',
@@ -140,7 +141,9 @@ const boot = async (lockdown = false) => {
       }
     ).definition.spec;
   expect((await publish({})).status).toBe(201);
-  return { send, publish, saveDraft, draft, latest, draftPath };
+  const remember = (who: string, name: string) =>
+    actorNames(platform.configEntries).remember(principals[who] as Principal, name);
+  return { send, publish, saveDraft, draft, latest, draftPath, remember };
 };
 
 const specOf = (draft: Record<string, unknown>) => (draft.definition as { spec: Spec }).spec;
@@ -347,6 +350,85 @@ describe('opening a draft with rebase=clean', () => {
 
     expect(opened).toMatchObject({ baseVersion: 1, latestVersion: 2 });
     expect(opened.behind).toBeUndefined();
+  });
+});
+
+describe('the list of service drafts', () => {
+  const listPath = `/tenants/${digdir}/service-drafts`;
+  const saveNew = (
+    send: Awaited<ReturnType<typeof boot>>['send'],
+    id: string,
+    metadata: Record<string, unknown> = {},
+  ) =>
+    send('PUT', `/tenants/${digdir}/services/${id}/draft`, {
+      definition: { ...service, metadata: { ...metadata } },
+      files: {},
+    });
+  const listed = async (send: Awaited<ReturnType<typeof boot>>['send'], as = 'kari') =>
+    (await send('GET', listPath, undefined, as)).body.data as Record<string, unknown>[];
+
+  afterEach(() => vi.useRealTimers());
+
+  it('lists a draft of a service never published, with who saved it last, newest first', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const env = await boot();
+    vi.setSystemTime(new Date('2026-11-03T10:00:00Z'));
+    await env.saveDraft({ purpose: 'Svarer grundig' });
+    vi.setSystemTime(new Date('2026-11-03T11:00:00Z'));
+    expect((await saveNew(env.send, 'utkast-k3x9q2', { name: 'Permisjon' })).status).toBe(200);
+
+    expect(await listed(env.send)).toEqual([
+      {
+        id: 'utkast-k3x9q2',
+        name: 'Permisjon',
+        purpose: 'Svarer kort på spørsmål',
+        outputKind: 'answer',
+        latestVersion: null,
+        revision: 1,
+        at: '2026-11-03T11:00:00.000Z',
+        by: 'employee:test:kari',
+      },
+      expect.objectContaining({ id: 'svar', name: 'Svar', latestVersion: 1 }),
+    ]);
+  });
+
+  it('names who saved the draft last when the platform knows the name', async () => {
+    const env = await boot();
+    await env.remember('kari', 'Kari Nordmann');
+    await saveNew(env.send, 'utkast-k3x9q2', { name: 'Permisjon' });
+
+    expect((await listed(env.send))[0]).toMatchObject({
+      by: 'employee:test:kari',
+      byName: 'Kari Nordmann',
+    });
+  });
+
+  it('gives a draft with no name yet a null name', async () => {
+    const env = await boot();
+    await saveNew(env.send, 'utkast-uten-navn');
+
+    expect((await listed(env.send))[0]).toMatchObject({ id: 'utkast-uten-navn', name: null });
+  });
+
+  it('leaves out a discarded draft', async () => {
+    const env = await boot();
+    await saveNew(env.send, 'utkast-forkastet', { name: 'Forkastet' });
+    await env.send('DELETE', `/tenants/${digdir}/services/utkast-forkastet/draft`, {});
+
+    expect(await listed(env.send)).toEqual([]);
+  });
+
+  it('shows the drafts to any member of the tenant and to nobody outside it', async () => {
+    const env = await boot();
+    await saveNew(env.send, 'utkast-k3x9q2', { name: 'Permisjon' });
+
+    expect((await listed(env.send, 'reader')).map((d) => d.id)).toEqual(['utkast-k3x9q2']);
+    expect((await env.send('GET', listPath, undefined, 'ola')).status).toBe(404);
+    expect(
+      (await env.send('GET', `/tenants/${other}/service-drafts`, undefined, 'ola')).body,
+    ).toEqual({
+      data: [],
+    });
   });
 });
 

@@ -354,17 +354,22 @@ export const runFailedOf = (result: HttpResult, stream: boolean) =>
     parseSse(result.text).frames.some((f) => record(list(f.choices)[0]).finish_reason === 'error'));
 
 export const assessKeyAdmission = (
-  result: HttpResult,
+  results: HttpResult[],
   key: string,
   lockdown: boolean | undefined,
 ): Verdict & { unavailable?: boolean } => {
-  if (result.status === 401 || result.status === 403)
-    return { ok: false, unavailable: true, detail: `the key list answered ${result.status}` };
-  if (result.status !== 200) return { ok: false, detail: `the key list answered ${result.status}` };
-  const own = list(record(json(result.text)).keys)
-    .map(record)
+  const own = results
+    .filter((r) => r.status === 200)
+    .flatMap((r) => list(record(json(r.text)).keys).map(record))
     .find((k) => k.prefix === key.slice(0, 7) && k.lastFour === key.slice(-4));
-  if (!own) return { ok: false, detail: 'the key is not in its service’s key list' };
+  if (!own) {
+    const refused = results.find((r) => r.status === 401 || r.status === 403);
+    if (refused)
+      return { ok: false, unavailable: true, detail: `the key list answered ${refused.status}` };
+    const failed = results.find((r) => r.status !== 200);
+    if (failed) return { ok: false, detail: `the key list answered ${failed.status}` };
+    return { ok: false, detail: 'the key is in neither its service’s key list nor the tenant’s' };
+  }
   if (!lockdown) return { ok: true, detail: 'not in lockdown' };
   return own.modelsInLockdown === true
     ? { ok: true, detail: 'the key may use models in lockdown' }
