@@ -14,6 +14,8 @@ export const nbShell = defineNamespace({
   hidden: 'Skjult',
   // Without a unit, `aria-valuenow` is read as a bare number.
   width: '{width} piksler',
+  // The name of the secondary panel's tabs, and of its dropdown, when it holds more than one tool.
+  tools: 'Verktøy',
 });
 
 export const enShell = {
@@ -25,6 +27,7 @@ export const enShell = {
   resizePanel: 'Resize {panel}',
   hidden: 'Hidden',
   width: '{width} pixels',
+  tools: 'Tools',
 } satisfies Translation<typeof nbShell>;
 
 /** The shell's own catalogue, apart from the shared one, so a host loads only its words. */
