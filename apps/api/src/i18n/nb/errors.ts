@@ -56,6 +56,7 @@ export const catalogErrors = defineNamespace({
   noDataset: 'ingen datasett {dataset}',
   onlyTenantTestSets: 'bare virksomheten eller en operatør endrer testsettene',
   onlyTenantChangesServiceState: 'bare virksomheten endrer tilstanden til tjenestene sine',
+  onlyTenantChangesEnvironments: 'bare virksomheten endrer miljøene til tjenestene sine',
   serviceStateValues: 'tilstanden må være active, paused eller archived',
   indexRequired: 'en indeks er påkrevd',
   datasetExists: 'datasettet {datasetId} finnes',

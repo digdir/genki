@@ -11,6 +11,7 @@ import {
   type ApiKeyStore,
   type KeyPolicy,
   type StoredApiKey,
+  environmentNamePattern,
 } from '@genai/identity';
 import type { TaskErasure } from '@genai/kernel';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
@@ -249,6 +250,7 @@ export const keyView = (key: TenantApiKey) => ({
   name: key.name,
   service: boundService(key) ?? null,
   client: key.clientId ?? null,
+  environments: key.environments ?? [],
   lastUsedAt: key.lastUsedAt ?? null,
   policy: key.policy?.id ?? null,
   rotatedFrom: key.rotatedFrom ?? null,
@@ -311,6 +313,10 @@ const callsPerMinute = (value: unknown): value is number =>
 const strings = (value: unknown) =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v !== '') : [];
 
+const environmentNames = (value: unknown) => [
+  ...new Set(strings(value).filter((v) => environmentNamePattern.test(v))),
+];
+
 export const overridable = (value: unknown) =>
   strings(value).filter((v) => /^([a-z][A-Za-z0-9]*)(\.[A-Za-z0-9]+)*(\.\*)?$/.test(v));
 
@@ -337,6 +343,9 @@ export const portalAdminHandlers = (deps: {
       agents: strings(input.agents),
       ...optional('service', slugOrUndefined(input.service)),
       ...optional('clientId', slugOrUndefined(input.clientId)),
+      ...(environmentNames(input.environments).length && slugOrUndefined(input.service)
+        ? { environments: environmentNames(input.environments) }
+        : {}),
       ...(callsPerMinute(input.callsPerMinute) ? { callsPerMinute: input.callsPerMinute } : {}),
       ...(overridable(input.allowedOverrides).length > 0
         ? { allowedOverrides: overridable(input.allowedOverrides) }
@@ -365,6 +374,7 @@ export const portalAdminHandlers = (deps: {
           agents: key.agents,
           service: key.service ?? null,
           client: key.clientId ?? null,
+          environments: key.environments ?? [],
           allowedOverrides: key.allowedOverrides ?? [],
           callsPerMinute: key.callsPerMinute ?? null,
           expiresAt: key.expiresAt ?? null,
@@ -577,8 +587,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const capabilitiesOf = async (tenant: string) =>
     (await deps.definitions.capabilities()).filter((c) => c.service.tenant === tenant);
 
-  const serviceOf = (caps: CompiledCapability[], capabilityId: string) =>
-    caps.find((c) => c.capability.descriptor.id === capabilityId)?.service.id ?? capabilityId;
+  const serviceOf = (caps: CompiledCapability[], capabilityId: string) => {
+    const unpinned = capabilityId.replace(/@\d+$/, '');
+    return caps.find((c) => c.capability.descriptor.id === unpinned)?.service.id ?? capabilityId;
+  };
+
+  const environmentOf = (t: Task) =>
+    t.service.environment ?? (/@\d+$/.test(t.service.capability.id) ? null : 'prod');
 
   const tasksOf = async (
     tenant: string,
@@ -629,6 +644,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     service: serviceOf(caps, t.service.capability.id),
     capability: t.service.capability.id,
     version: Number(t.service.capability.version) || null,
+    environment: environmentOf(t),
     createdAt: t.createdAt,
     endedAt: t.endedAt ?? null,
   });
@@ -876,12 +892,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     to: Date,
     project?: string,
     preloaded?: Promise<GatewayWindow>,
+    environment?: string,
   ) => {
+    const scoped = project !== undefined || environment !== undefined;
     const withGateway = deps.gatewayUsage !== undefined;
     const gatewayRead =
-      withGateway && project === undefined
-        ? (preloaded ?? gatewayWindow([tenant], from, to))
-        : undefined;
+      withGateway && !scoped ? (preloaded ?? gatewayWindow([tenant], from, to)) : undefined;
     const [all, projectTasks] = await Promise.all([
       deps.definitions.capabilities(),
       deps.projectTasks?.(tenant),
@@ -901,10 +917,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         found.filter(
           (t) =>
             within(t.createdAt) &&
-            (project === undefined || projectOf.get(t.id)?.project === project),
+            (project === undefined || projectOf.get(t.id)?.project === project) &&
+            (environment === undefined || environmentOf(t) === environment),
         ),
       ),
-      project === undefined
+      !scoped
         ? tenantTestRunsSince(tenant, since).then((found) =>
             found.filter((t) => within(t.createdAt)),
           )
@@ -917,6 +934,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const byModel = new Map<string, Tally>();
     const byDataset = new Map<string, Tally>();
     const byProject = new Map<string, Tally>();
+    const byEnvironment = new Map<string, Tally>();
     const dailyService = new Map<string, Map<string, Tally>>();
     const dailyModel = new Map<string, Map<string, Tally>>();
     const runs = new Map<string, number>();
@@ -950,10 +968,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       count('');
       count(`service|${service}`);
       count(`day|${date}|${service}`);
-      const found = everyCap.get(t.service.capability.id);
+      const found = everyCap.get(t.service.capability.id.replace(/@\d+$/, ''));
       const title = found?.serviceName ?? found?.capability.descriptor.title;
       if (title && !titles.has(service)) titles.set(service, title);
       bump(byService, service, tally);
+      const ranIn = environmentOf(t);
+      if (ranIn !== null) {
+        bump(byEnvironment, ranIn, tally);
+        count(`environment|${ranIn}`);
+      }
       const inProject = projectOf.get(t.id);
       if (inProject) {
         bump(byProject, inProject.project, tally);
@@ -982,7 +1005,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       }
     }
     let ingestion = empty();
-    for (const run of project === undefined ? ((await deps.ingestionUsage?.(tenant)) ?? []) : []) {
+    for (const run of scoped ? [] : ((await deps.ingestionUsage?.(tenant)) ?? [])) {
       if (!within(run.at)) continue;
       const tally = tallyOf(run.usage, deps.prices?.[run.model]);
       ingestion = add(ingestion, tally);
@@ -1103,7 +1126,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         usage: { ...r.usage, runs: runs.get(`project|${r.project}`) ?? 0 },
         name: projectNames.get(r.project) ?? r.project,
       })),
+      byEnvironment: rows(byEnvironment, 'environment').map((r) => ({
+        ...r,
+        usage: { ...r.usage, runs: runs.get(`environment|${r.environment}`) ?? 0 },
+      })),
       ...(project === undefined ? {} : { project }),
+      ...(environment === undefined ? {} : { environment }),
       ingestion: { usage: usageView(ingestion), byDataset: rows(byDataset, 'dataset') },
       testing: { usage: usageView(testing), byOrigin: rows(byOrigin, 'origin') },
     };
@@ -1401,7 +1429,17 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const to = now();
     const from = new Date(to.getTime() - (days - 1) * 86_400_000);
     const project = c.req.query('project')?.trim() || undefined;
-    return c.json(await usageOver(g.tenant, new Date(day(from.toISOString())), to, project));
+    const environment = c.req.query('environment')?.trim() || undefined;
+    return c.json(
+      await usageOver(
+        g.tenant,
+        new Date(day(from.toISOString())),
+        to,
+        project,
+        undefined,
+        environment,
+      ),
+    );
   });
 
   app.get('/tenants/:tenant/tasks', async (c) => {
@@ -1410,6 +1448,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const caps = await capabilitiesOf(g.tenant);
     const status = c.req.query('status');
     const service = c.req.query('service');
+    const environment = c.req.query('environment');
     const from = c.req.query('from');
     const to = c.req.query('to');
     const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 500);
@@ -1424,6 +1463,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       .map((t) => taskBase(caps, t))
       .filter((r) => !status || r.status === status)
       .filter((r) => !service || r.service === service)
+      .filter((r) => !environment || r.environment === environment)
       .filter((r) => !from || r.createdAt >= from)
       .filter((r) => !to || r.createdAt <= to)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -258,6 +258,12 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import {
+  allowedEnvironments,
+  chooseEnvironment,
+  serviceEnvironmentsModule,
+  type EnvironmentChoice,
+} from './service-environments.js';
 import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
@@ -327,6 +333,7 @@ export const platformModules: PlatformModuleFactory[] = [
   maskinportenClientsModule,
   triggersModule,
   serviceLifecycleModule,
+  serviceEnvironmentsModule,
   operatorModelsModule,
   operatorOperationsModule,
   operationGovernanceModule,
@@ -575,6 +582,12 @@ const entryOf = (compiled: CompiledCapability, name: string): ModelEntry => {
 
 export interface ResolverHooks {
   pin?(compiled: CompiledCapability, version: number): Promise<CompiledCapability | undefined>;
+  environment?(
+    principal: Principal,
+    compiled: CompiledCapability,
+    requested: string | undefined,
+    version: number | undefined,
+  ): Promise<EnvironmentChoice>;
   fieldOptions?: FieldOptionsLookup;
   paused?(compiled: CompiledCapability): boolean | Promise<boolean>;
   pauseReason?(compiled: CompiledCapability): string | undefined | Promise<string | undefined>;
@@ -755,7 +768,14 @@ export const capabilityResolver = (
           !keyReachesMode(principal, capabilityModes(compiled.capability.descriptor.id, [name]))
           ? { ok: false, code: 'mode_not_authorized', message: `API key cannot use mode: ${name}` }
           : { ok: false, code: 'agent_not_authorized', message: `not authorized for ${name}` };
-      const wanted = options.version;
+      const environment = await hooks.environment?.(
+        principal,
+        compiled,
+        options.environment,
+        options.version,
+      );
+      if (environment && !environment.ok) return environment;
+      const wanted = options.version ?? (environment?.ok ? environment.version : undefined);
       const chosen =
         wanted === undefined || wanted === compiled.service.version
           ? compiled
@@ -764,7 +784,7 @@ export const capabilityResolver = (
         return {
           ok: false,
           code: 'version_not_found',
-          message: `Tjenesten ${compiled.service.id} har ingen publisert versjon ${wanted}.`,
+          message: t('services.environmentNoVersion', { version: wanted ?? '' }),
         };
       if (await hooks.paused?.(chosen))
         return {
@@ -777,6 +797,7 @@ export const capabilityResolver = (
         entry: await withOptions(principal, chosen, {
           ...entryOf(chosen, name),
           version: chosen.service.version,
+          ...(environment?.ok && environment.name ? { environment: environment.name } : {}),
           ...(hooks.datasets ? { datasets: hooks.datasets(chosen) } : {}),
         }),
       };
@@ -1371,6 +1392,14 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const resolver = capabilityResolver(definitions, kernel, {
     pin,
+    environment: async (principal, compiled, requested, version) =>
+      chooseEnvironment(
+        configEntries,
+        compiled.service,
+        requested,
+        await allowedEnvironments(principal, clients),
+        version === undefined ? undefined : { version, latest: compiled.service.version },
+      ),
     fieldOptions: (principal, tenant, from) =>
       facetOptions(knowledge, optionCache, principal, tenant, from),
     paused: async (compiled) =>

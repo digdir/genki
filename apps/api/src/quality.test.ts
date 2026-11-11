@@ -444,6 +444,51 @@ describe('eval runs for a service', () => {
     expect(run.tokens.input).toBeGreaterThan(0);
   });
 
+  it('runs the version prod runs by default, and the version of the environment asked for', async () => {
+    const env = await boot();
+    const added = await env.send(
+      'POST',
+      `${services}/environments`,
+      'kari',
+      { name: 'test' },
+      { 'change-reason': 'Prøver ny instruks på testerne' },
+    );
+    expect(added.status).toBe(201);
+    const republished = await env.platform.definitions.publish(
+      {
+        ...service,
+        spec: {
+          ...service.spec,
+          strategy: { ...service.spec.strategy, config: { instructions: 'Svar langt.' } },
+        },
+      },
+      'kari',
+      'andre',
+    );
+    expect(republished.ok).toBe(true);
+
+    const prod = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1'],
+    });
+    const test = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1'],
+      environment: 'test',
+    });
+    const missing = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      environment: 'staging',
+    });
+    await env.settled();
+    const runOf = async (id: unknown) =>
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(id)}`)).body;
+
+    expect(await runOf(prod.body.id)).toMatchObject({ version: 1, environment: 'prod' });
+    expect(await runOf(test.body.id)).toMatchObject({ version: 2, environment: 'test' });
+    expect(missing.status).toBe(404);
+  });
+
   it('runs only the cases asked for by id, and refuses a case the test set does not have', async () => {
     const env = await boot();
     const path = `${services}/eval-runs`;

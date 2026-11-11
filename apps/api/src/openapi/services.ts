@@ -207,6 +207,10 @@ const EvalRunSummary = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    environment: z
+      .string()
+      .optional()
+      .describe('The service environment the version was taken from, when no version was named'),
     split: z.enum(['locked', 'open']).optional(),
     model: z
       .string()
@@ -274,6 +278,28 @@ const Lifecycle = z
     at: z.string().optional(),
   })
   .openapi('ServiceLifecycle');
+
+const ServiceEnvironments = z
+  .object({
+    environments: z.array(
+      z.object({
+        name: z.string(),
+        version: z.number().int().nullable().describe('The version an unpinned call runs'),
+        followsPublishes: z
+          .boolean()
+          .describe('True when every publish moves the environment to the new version'),
+        previousVersion: z
+          .number()
+          .int()
+          .nullable()
+          .describe('Where a rollback without a version goes'),
+      }),
+    ),
+    latestVersion: z.number().int(),
+  })
+  .openapi('ServiceEnvironments');
+
+const environment = pathParam('environment', 'test');
 
 const RiskConfirmation = z
   .object({ riskClass: z.enum(['limited', 'high']), by: z.string(), at: z.string() })
@@ -832,7 +858,11 @@ const PlaygroundOptions = z
           z.object({
             version: z.number().int(),
             draft: z.boolean(),
-            inUse: z.boolean(),
+            inUse: z.boolean().describe('True for the version prod runs'),
+            environments: z
+              .array(z.string())
+              .optional()
+              .describe('The service environments that run this version'),
             setup: z.object({
               model: z.string(),
               datasets: z.array(z.string()),
@@ -1144,7 +1174,10 @@ export const serviceRoutes: RouteConfig[] = [
           version: z
             .union([z.literal('draft'), z.number().int()])
             .optional()
-            .openapi({ description: 'Defaults to the latest published version' }),
+            .openapi({ description: 'Defaults to the version the environment runs' }),
+          environment: z.string().optional().openapi({
+            description: 'Without a version: the environment whose version to run; prod by default',
+          }),
           split: z.enum(['locked', 'open']).optional(),
           cases: z
             .array(z.string())
@@ -1243,6 +1276,86 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason or invalid state'),
       ...tenantErrors,
       404: problem('No such service'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/environments',
+    summary:
+      'The environments of the service and the version each one runs; prod alone, following every publish, until another is added. Needs use-services',
+    request: { params: z.object({ tenant, id: service }) },
+    responses: {
+      200: json(ServiceEnvironments, 'Environments'),
+      ...tenantErrors,
+      404: problem('No published service'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/environments',
+    summary:
+      'Add an environment that follows every publish; prod stays on the version it runs. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service }),
+      headers: changeReason,
+      body: body(z.object({ name: z.string().describe('Lowercase name such as test') })),
+    },
+    responses: {
+      201: audited(ServiceEnvironments, 'Added'),
+      400: problem('Missing reason, invalid name, prod, or too many environments'),
+      ...tenantErrors,
+      404: problem('No published service'),
+      409: problem('The environment exists'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}',
+    summary:
+      'Remove an environment other than prod. Removing the last one lets prod follow publishes again, so prod must run the latest version first. Needs manage-services; audited',
+    request: { params: z.object({ tenant, id: service, environment }), headers: changeReason },
+    responses: {
+      200: audited(ServiceEnvironments, 'Removed'),
+      400: problem('Missing reason, or prod'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
+      409: problem('prod does not run the latest version'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}/promote',
+    summary:
+      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service, environment }),
+      headers: changeReason,
+      body: body(z.object({ from: z.string().optional() })),
+    },
+    responses: {
+      200: audited(ServiceEnvironments, 'Promoted'),
+      400: problem('Missing reason, or promoting an environment to itself'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
+      409: problem('prod is the only environment'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}/rollback',
+    summary:
+      'Set the environment to an earlier published version, or to the version it ran before its last change, without publishing. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service, environment }),
+      headers: changeReason,
+      body: body(z.object({ version: z.number().int().positive().optional() })),
+    },
+    responses: {
+      200: audited(ServiceEnvironments, 'Rolled back'),
+      400: problem('Missing reason, no such version, or nothing to roll back to'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
+      409: problem('prod is the only environment'),
     },
   }),
   createRoute({

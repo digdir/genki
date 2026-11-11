@@ -71,6 +71,11 @@ const ApiKey = z
     name: z.string(),
     service: z.string().nullable().describe('Set when the key is bound to one service.'),
     client: z.string().nullable(),
+    environments: z
+      .array(z.string())
+      .describe(
+        'Service environments the key may use; empty means any, with prod when no GenAI-Environment is sent.',
+      ),
     lastUsedAt: z.string().nullable(),
     policy: z.string().nullable().describe('Id of the key policy attached to the key.'),
     rotatedFrom: z.string().nullable(),
@@ -1010,6 +1015,13 @@ export const accessRoutes: RouteConfig[] = [
         z.object({
           name: z.string().min(1),
           client: z.string().optional().describe('A client of the same service.'),
+          environments: z
+            .array(z.string())
+            .max(8)
+            .optional()
+            .describe(
+              'Service environments the key may use. A call picks one with GenAI-Environment and gets prod, or the first listed without prod, when it sends none.',
+            ),
           expiresInDays: z.number().positive().optional(),
           allowedOverrides: overrides,
         }),
@@ -1017,7 +1029,9 @@ export const accessRoutes: RouteConfig[] = [
     },
     responses: {
       201: json(NewApiKey, 'Created'),
-      400: problem('Missing reason, no name, or a client of another service'),
+      400: problem(
+        'Missing reason, no name, an invalid environment name, or a client of another service',
+      ),
       401: unauthorized,
       403: forbidden,
       404: problem('No such service, or not a member of this tenant'),

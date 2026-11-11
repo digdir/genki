@@ -44,6 +44,8 @@ OpenAPI: the platform document is served at `/openapi.json`; the per-key tool do
 
 Send `GenAI-Version: <n>` to run a published version of the service, or put `"metadata": { "version": "<n>" }` in the body of `POST /v1/chat/completions`. If both are sent they must name the same version, or the call fails with `400 invalid_version`; a version that was never published is `409 version_not_found`. The response carries `genai-service-version`. Per channel: `/v1/chat/completions` reads the header and `metadata.version`; REST `/api/tools/call/{tool}` and MCP `tools/call` read the header; A2A takes no pin and runs the published version, which its agent card names.
 
+A service can have environments (ADR 0004): `prod`, and others such as `test` that its owner adds. Without a pin, a call runs the version its environment points to. Send `GenAI-Environment: <name>` to choose one; without it the call runs `prod`, or the first environment the key or frontend may use when `prod` is not among them. A key or frontend bound to environments is refused one it may not use with `403 environment_not_authorized`, a name the service does not have is `409 environment_not_found`, and a header that is not a name is `400 invalid_environment`. `GenAI-Version` overrides the environment's version, but a key or frontend bound to environments may pin only a version one of them runs, else `403 environment_not_authorized`. Every channel, A2A included, reads the header, and the response carries `genai-environment`. A server that sends its testers to `test` and everyone else to `prod` uses one key allowed both and sets the header per request.
+
 ## Services and their forms
 
 `GET /v1/models` lists only what the credential may use: a service key sees its own service, a tenant key its tenant's services, a browser token what the person may reach. Each entry is an OpenAI model object (`id`, `object`, `created`, `owned_by`) with these extension fields. Apart from `_chat` and `_pickable`, absent fields are left out, so treat them as optional.
@@ -353,7 +355,7 @@ Frames in order for a live stream with a conversation (each line is `data: <json
 
 Without `genai_stream: "live"` the `sources` frame comes before the text and there is no `retract`. A table service sends one frame with `table` before the text. `genai_steps: true` adds `{"genai_step":{...}}` frames between text frames.
 
-Response headers: `genai-task` (use it for feedback), `genai-conversation`, `genai-service-version`, `genai-model`.
+Response headers: `genai-task` (use it for feedback), `genai-conversation`, `genai-service-version`, `genai-environment`, `genai-model`.
 
 ### Feedback
 

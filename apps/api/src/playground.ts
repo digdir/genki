@@ -39,6 +39,7 @@ import {
 import { modelDisplayNames, modelsForTenant } from './model-access.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import { requireRight, rightLabels, type Right } from './rights.js';
+import { environmentsOf, environmentViews, productionEnvironment } from './service-environments.js';
 
 export type PlaygroundOutput = 'text' | 'fields';
 export type PlaygroundSetupName = 'setup' | 'compareWith';
@@ -175,6 +176,7 @@ export interface PlaygroundServiceVersion {
   version: number;
   draft: boolean;
   inUse: boolean;
+  environments?: string[];
   setup: PlaygroundVersionSetup;
   variants?: PlaygroundVariant[];
   inputFields?: InputField[];
@@ -820,6 +822,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             const versions = await deps.definitions.versions('Service', g.tenant, id);
             const latest = versions.at(-1);
             const latestSpec = record(record(latest?.definition).spec);
+            const pointers = environmentViews(
+              await environmentsOf(deps.configEntries, g.tenant, id),
+              latest?.version,
+            );
             return {
               id,
               name: text(record(latest?.definition.metadata).name) ?? id,
@@ -834,10 +840,14 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                       v.definition,
                     );
                     const variants = variantsIn(v.definition, requestLocale());
+                    const environments = pointers
+                      .filter((p) => p.version === v.version)
+                      .map((p) => p.name);
                     return {
                       version: v.version,
                       draft: false,
-                      inUse: v.version === latest?.version,
+                      inUse: environments.includes(productionEnvironment),
+                      ...(environments.length ? { environments } : {}),
                       setup: versionSetup(v.definition),
                       ...(variants.length ? { variants } : {}),
                       ...(fields.length ? { inputFields: fields } : {}),

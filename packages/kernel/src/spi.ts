@@ -117,6 +117,7 @@ export interface InvokeOptions {
   deadlineMs?: number;
   budget?: Usage;
   maxOutputTokens?: number;
+  environment?: string;
 }
 
 export interface EventsOptions {

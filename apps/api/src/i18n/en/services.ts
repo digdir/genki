@@ -65,4 +65,23 @@ export const services = {
   variantRetrieveOnly: 'Search only',
   boundOutside: 'The API key is bound to the service {service} and cannot use {name}.',
   devLoginUnknownPerson: 'The test person was not found',
+  environmentInvalid:
+    '`GenAI-Environment` must be an environment name of lowercase letters, digits and dashes, such as test.',
+  environmentNotAllowed: 'The key or frontend may not use the environment {environment}.',
+  environmentMissing: 'The service {service} has no environment {environment}.',
+  environmentName:
+    'The environment name must use lowercase letters, digits and dashes and start with a letter.',
+  environmentExists: 'The service already has the environment {environment}.',
+  environmentProdFixed: 'prod always exists and cannot be added or removed.',
+  environmentTooMany: 'A service can have at most {max} environments.',
+  environmentSame: 'An environment cannot be promoted to itself.',
+  environmentNoVersion: 'The service has no published version {version}.',
+  environmentNoEarlier: 'The environment {environment} has no earlier version to roll back to.',
+  environmentProdBehind:
+    'prod runs version {version}, not the latest. Promote or roll back prod to the latest version before you remove the last environment.',
+  environmentNotPublished: 'The service is not published.',
+  environmentOnlyProd:
+    'The service has only prod. Publish an earlier version again instead of promoting or rolling back.',
+  environmentPinNotAllowed:
+    'Version {version} does not run in any environment this key or frontend may use.',
 } satisfies Translation<typeof source>;

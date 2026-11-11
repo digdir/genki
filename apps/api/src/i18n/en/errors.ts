@@ -57,6 +57,7 @@ export const catalogErrors = {
   noDataset: 'no dataset {dataset}',
   onlyTenantTestSets: 'only the tenant or an operator changes its test sets',
   onlyTenantChangesServiceState: 'only the tenant changes the state of its services',
+  onlyTenantChangesEnvironments: 'only the tenant changes the environments of its services',
   serviceStateValues: 'state must be active, paused or archived',
   indexRequired: 'an index is required',
   datasetExists: 'dataset {datasetId} exists',
