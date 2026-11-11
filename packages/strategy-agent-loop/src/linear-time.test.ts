@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normaliseCitationMarkers } from '@genai/port-model';
-import { stripSourceLists } from './citations.js';
+import { dropUnknownMarkers, stripSourceLists } from './citations.js';
 import { stripCodeFences } from './structured.js';
 
 const quickly = (run: () => unknown) => {
@@ -22,6 +22,13 @@ describe('answer cleanup on adversarial input', () => {
     expect(quickly(() => normaliseCitationMarkers('【1†'.repeat(30_000)))).toBeLessThan(1000);
     expect(quickly(() => normaliseCitationMarkers(`【${'1'.repeat(100_000)}`))).toBeLessThan(1000);
     expect(normaliseCitationMarkers('Svar【1†L1-L4】.')).toBe('Svar[1].');
+  });
+
+  it('removes markers that lead to no excerpt in linear time', () => {
+    const index = new Map([[1, 'c1']]);
+    expect(quickly(() => dropUnknownMarkers(' ['.repeat(50_000), index))).toBeLessThan(1000);
+    expect(quickly(() => dropUnknownMarkers(` [${'1'.repeat(100_000)}`, index))).toBeLessThan(1000);
+    expect(dropUnknownMarkers('Svar [1] og [7].', index)).toBe('Svar [1] og.');
   });
 
   it('strips code fences in linear time', () => {

@@ -23,6 +23,11 @@ const nb = {
     label: 'Gi instruksjonene også til svaret',
     help: 'Svaret skrives i et eget kall uten verktøy. Slått på følger det også tjenestens instruksjoner om innhold, kilder og form.',
   },
+  citeBy: {
+    label: 'Hva en fotnote peker på',
+    help: 'Et utdrag gir én fotnote per avsnitt svaret bygger på.',
+    values: { document: 'Et dokument', excerpt: 'Et utdrag' },
+  },
   search: { label: 'Søk' },
   'search.titleOverlapWeight': { label: 'Vekt på treff i tittelen' },
   'search.strategyQuota': { label: 'Treff sikret per søkemåte' },
@@ -64,6 +69,11 @@ const en: Record<keyof typeof nb, LabelText> = {
     label: 'Give the instructions to the answer too',
     help: "The answer is written in a call of its own, without tools. When on, it also follows the service's instructions on content, sources and form.",
   },
+  citeBy: {
+    label: 'What a footnote points to',
+    help: 'An excerpt gives one footnote per passage the answer rests on.',
+    values: { document: 'A document', excerpt: 'An excerpt' },
+  },
   search: { label: 'Search' },
   'search.titleOverlapWeight': { label: 'Weight of matches in the title' },
   'search.strategyQuota': { label: 'Results kept per search method' },
@@ -92,6 +102,7 @@ export const agentLoopSchemaLabels: SchemaLabels = {
     ablate: { 'x-advanced': true, 'x-operator': true },
     evaluatorTemperature: { 'x-advanced': true },
     noToolCallRetry: { 'x-advanced': true },
+    citeBy: { 'x-advanced': true },
   },
   titles: { 'agent-loop': { nb: 'Agent (søker selv)', en: 'Agent (searches by itself)' } },
 };
