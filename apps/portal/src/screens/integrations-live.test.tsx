@@ -28,7 +28,7 @@ interface Call {
   body: unknown;
 }
 
-const live = async (hash: string) => {
+const live = async (hash: string, { secretsFail = false } = {}) => {
   const calls: Call[] = [];
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -39,6 +39,8 @@ const live = async (hash: string) => {
       reason: decodeURIComponent(new Headers(init?.headers).get('change-reason') ?? ''),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
+    if (secretsFail && new URL(url, 'http://test').pathname.endsWith('/secrets'))
+      return new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 });
     return base(input, init);
   };
   const auth = mockAnsattporten(kari);
@@ -174,8 +176,8 @@ describe('Integrasjoner: utløsere fra API-et', () => {
 });
 
 describe('Integrasjoner: MCP-koblinger fra API-et', () => {
-  const registerServer = async (secretName: string) => {
-    const calls = await live('#/integrations?tab=systems');
+  const registerServer = async (secretName: string, options?: { secretsFail: boolean }) => {
+    const calls = await live('#/integrations?tab=systems', options);
     fireEvent.click(await screen.findByText('Registrer en MCP-server'));
     const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
@@ -225,6 +227,17 @@ describe('Integrasjoner: MCP-koblinger fra API-et', () => {
     expect(
       await screen.findByText(
         'Hemmeligheten «arkiv-nokkel» er satt opp for andre adresser (https://arkiv.testetaten.example.no). Velg et annet navn på hemmeligheten.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT' || c.method === 'POST')).toBe(false);
+  });
+
+  it('stores nothing when the addresses of the secret could not be checked', async () => {
+    const calls = await registerServer('saks-api', { secretsFail: true });
+
+    expect(
+      await screen.findByText(
+        'Vi kunne ikke sjekke hvilke adresser hemmeligheten «saks-api» er satt opp for, så ingenting er lagret.',
       ),
     ).toBeTruthy();
     expect(calls.some((c) => c.method === 'PUT' || c.method === 'POST')).toBe(false);

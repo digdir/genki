@@ -13,14 +13,12 @@ import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { ErrorState, Loading } from '../../states';
 import { reasonProblem } from '../../components/ReasonField';
-import { storedSecretHosts } from '../../secret-hosts';
-
-class SecretSetElsewhere extends Error {}
+import { hostsToStore, SecretHostsProblem } from '../../secret-hosts';
 
 const errorText = (error: unknown, t: T) =>
   error instanceof ApiError
     ? error.problem?.errors?.map((e) => e.message).join(' ') || error.message
-    : error instanceof SecretSetElsewhere
+    : error instanceof SecretHostsProblem
       ? error.message
       : t('integConnections.wrong');
 
@@ -50,21 +48,8 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
   };
 
   const storeSecret = async (origin: string) => {
-    const hosts = await storedSecretHosts(api, tenant, form.secretName);
-    if (hosts?.length && !hosts.includes(origin))
-      throw new SecretSetElsewhere(
-        t('integConnections.secretSetElsewhere', {
-          name: form.secretName,
-          hosts: hosts.join(', '),
-        }),
-      );
-    await api.setSecret(
-      tenant,
-      form.secretName,
-      form.secretValue,
-      reason.trim(),
-      hosts?.length === 0 ? [origin] : undefined,
-    );
+    const allowedHosts = await hostsToStore(api, tenant, form.secretName, origin, t);
+    await api.setSecret(tenant, form.secretName, form.secretValue, reason.trim(), allowedHosts);
   };
 
   const register = () =>

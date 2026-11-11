@@ -28,7 +28,7 @@ import {
 } from './snippets';
 import './channels.css';
 import { reasonProblem } from '../../components/ReasonField';
-import { storedSecretHosts } from '../../secret-hosts';
+import { hostsToStore, SecretHostsProblem } from '../../secret-hosts';
 
 type Flash = { text: string; color: 'success' | 'info' | 'danger' };
 
@@ -358,17 +358,17 @@ export const ServiceChannels = ({
     setBusy(true);
     try {
       const value = randomSecret();
-      const hosts = await storedSecretHosts(api, tenant, name);
+      const allowedHosts = await hostsToStore(api, tenant, name, new URL(webhook.url).origin, t);
       await api.setSecret(
         tenant,
         name,
         value,
         t('serviceChannels.secretReason', { id: client.definition.metadata.id }),
-        hosts?.length === 0 ? [new URL(webhook.url).origin] : undefined,
+        allowedHosts,
       );
       setNewSecret({ name, value });
     } catch (e) {
-      notify(problemText(e, t), 'danger');
+      notify(e instanceof SecretHostsProblem ? e.message : problemText(e, t), 'danger');
     } finally {
       setBusy(false);
     }

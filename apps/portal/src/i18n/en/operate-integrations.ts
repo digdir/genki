@@ -249,9 +249,13 @@ export const integrationsArea = {
     secret: 'The secret',
     secretHelp:
       'Stored in Key Vault for the address above and cannot be read out again, only replaced.',
-    secretSetElsewhere:
-      'The secret "{name}" is set up for other addresses ({hosts}). Choose another name for the secret.',
     register: 'Register connection',
+  },
+  secretHosts: {
+    setElsewhere:
+      'The secret "{name}" is set up for other addresses ({hosts}). Choose another name for the secret.',
+    unchecked:
+      'We could not check which addresses the secret "{name}" is set up for, so nothing was stored.',
   },
   integHooks: {
     pointBeforeModel: 'Before model call',
