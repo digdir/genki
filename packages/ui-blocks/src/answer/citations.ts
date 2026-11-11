@@ -24,6 +24,8 @@ export interface AnswerFootnotes {
   marks: ReadonlyMap<string, FootnoteMark>;
   /** How many `[N]` the answer writes, footnotes or not: a stopped answer has these and no sources. */
   written: number;
+  /** Each `[N]` the renderer meets, in order, and whether it is drawn as nothing. */
+  met: readonly { n: number; dropped: boolean }[];
 }
 
 interface Written {
@@ -116,6 +118,7 @@ export const readFootnotes = (
     pairing: pairCitations(sources ?? [], citations),
     marks,
     written: written.filter((w) => w.n < 1000).length,
+    met: written.map((w) => ({ n: w.n, dropped: marks.get(w.key)?.kind === 'dropped' })),
   };
 };
 
