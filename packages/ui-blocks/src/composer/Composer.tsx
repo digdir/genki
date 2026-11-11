@@ -39,6 +39,8 @@ export interface ComposerProps {
   onScrollToBottom?: (() => void) | undefined;
   /** The host's controls beside the send button, such as the variant picker. */
   actions?: ReactNode;
+  /** A line right under the field, docked with it, such as what the next question reads from. */
+  note?: ReactNode;
   /** Ctrl+/ or Cmd+/ anywhere on the page puts the caret in the field. On unless switched off. */
   shortcut?: boolean | undefined;
   /**
@@ -103,6 +105,7 @@ export const Composer = ({
   attachments,
   onScrollToBottom,
   actions,
+  note,
   shortcut = true,
   sticky = false,
   color = 'neutral',
@@ -357,6 +360,8 @@ export const Composer = ({
           )}
         </div>
       </div>
+
+      {note ? <div className="uib-composer-note">{note}</div> : null}
 
       {dragDepth > 0 && !unavailable ? (
         <p aria-hidden="true" className="uib-composer-drop-hint">

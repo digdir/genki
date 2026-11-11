@@ -674,6 +674,153 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   });
 });
 
+describe('the filter in the next look (dev-filter-panel)', () => {
+  const nextLayout = fromTemplate('knowledge-assistant-next').layout;
+  const counted = () => {
+    const fake = fakeApi();
+    fake.api.loadFields = vi.fn(async () => [
+      { id: 'type', label: 'Dokumenttyper', heading: 'Dokumenttype' },
+    ]);
+    fake.api.loadFacets = vi.fn(async () => [
+      {
+        id: 'type',
+        label: 'Dokumenttyper',
+        heading: 'Dokumenttype',
+        options: [
+          { value: 'Årsrapport', count: 3 },
+          { value: 'Tildelingsbrev', count: 2 },
+        ],
+      },
+    ]);
+    return fake;
+  };
+  const drawNext = (api: AssistantApi, layout = nextLayout) =>
+    render(
+      <Assistant
+        api={api}
+        layout={layout}
+        service="ka"
+        tenant="digdir"
+        profile={{
+          assistantName: 'KA',
+          signedInAs: 'Simen Strøm Braaten',
+          // The field each document has one value in, which the filter counts exactly by.
+          corpora: { kudos: { typeField: 'type' } },
+        }}
+        threadInUrl
+      />,
+    );
+  const filterPanel = () => screen.getByRole('region', { name: 'Filter for tråden' });
+  const tick = async (name: RegExp) => {
+    const box = await within(filterPanel()).findByRole('checkbox', { name });
+    await act(async () => {
+      fireEvent.click(box);
+    });
+  };
+  const answers = () => document.querySelectorAll('.uib-answer').length;
+  /** Asks, and waits until the answers on screen are one more. */
+  const askMore = async (question: string) => {
+    const before = answers();
+    const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    fireEvent.change(field, { target: { value: question } });
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Send spørsmålet' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send spørsmålet' }));
+    });
+    await waitFor(() => expect(answers()).toBe(before + 1));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Avbryt/ })).toBeNull());
+  };
+  const note = () => document.querySelector('.uib-filter-next')?.textContent;
+  const bars = () =>
+    [...document.querySelectorAll('.uib-approach summary')].map((summary) => summary.textContent);
+
+  it('draws the filter as its own panel in the threads’ card, for the next question', async () => {
+    drawNext(counted().api);
+    const nav = await screen.findByRole('navigation', { name: 'Tråder og filter' });
+    expect(nav.contains(filterPanel())).toBe(true);
+    expect(within(filterPanel()).getByRole('heading', { level: 2, name: 'Filter' })).toBeTruthy();
+    expect(within(filterPanel()).getByText('Gjelder neste spørsmål')).toBeTruthy();
+    expect(
+      await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Alle' }),
+    ).toBeTruthy();
+    expect(within(filterPanel()).getByRole('checkbox', { name: /^Årsrapport/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Filtrer dokumenter' })).toBeNull();
+    expect(document.querySelector('.uib-documents-scope-summary')?.textContent).toBe(
+      'Assistenten leser fra 5 av 5 dokumenter i Kudos',
+    );
+  });
+
+  it('says under the field how many documents the next question reads from, and its values', async () => {
+    drawNext(counted().api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await waitFor(() =>
+      expect(note()).toBe('Neste spørsmål leser fra 5 dokumenter – endres i filteret til venstre'),
+    );
+    await tick(/^Årsrapport/);
+    await waitFor(() =>
+      expect(note()).toBe(
+        'Neste spørsmål leser fra 3 dokumenter · Årsrapport – endres i filteret til venstre',
+      ),
+    );
+  });
+
+  it('says the filter inside Fremgangsmåte, and «filteret er endret» only when it changed', async () => {
+    const { api, asked } = counted();
+    drawNext(api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    await askMore('Hva er fast?');
+    await waitFor(() => expect(bars()).toEqual(['FremgangsmåteBrukte 1 kilde']));
+    const chips = screen.getByRole('list', {
+      name: 'Filteret dette svaret bygger på',
+      hidden: true,
+    });
+    expect(chips.textContent).toBe('Årsrapport');
+    expect(chips.closest('.uib-approach-scope')?.textContent).toBe(
+      'Leste fra 3 dokumenter:Årsrapport',
+    );
+    await tick(/^Tildelingsbrev/);
+    await askMore('Og i år?');
+    await waitFor(() => expect(bars()).toHaveLength(2));
+    expect(bars()[1]).toBe('FremgangsmåteBrukte 1 kilde · filteret er endret');
+    await askMore('Og neste år?');
+    await waitFor(() => expect(bars()).toHaveLength(3));
+    expect(bars()[2]).toBe('FremgangsmåteBrukte 1 kilde');
+    expect(asked).toHaveLength(3);
+    // Not said again under the answer: the filter is in Fremgangsmåte.
+    expect(screen.queryByText(/Avgrenset til/)).toBeNull();
+  });
+
+  it('brings back a thread’s last filter when the thread is opened again', async () => {
+    drawNext(counted().api);
+    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    await waitFor(() => expect(answers()).toBe(1));
+    await tick(/^Årsrapport/);
+    await askMore('Og i år?');
+    // «Ny tråd» starts with no filter, as kunnskapsassistenten's does.
+    fireEvent.click(screen.getByRole('link', { name: 'Ny tråd' }));
+    expect(within(filterPanel()).getByRole('button', { name: 'Dokumenttype Alle' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('link', { name: 'En gammel tråd' }));
+    await waitFor(() =>
+      expect(
+        within(filterPanel()).getByRole('button', { name: 'Dokumenttype Årsrapport' }),
+      ).toBeTruthy(),
+    );
+  });
+
+  it('leaves «Kunnskapsassistenten»’s filter as it was: a view of the panel, no line under the field', async () => {
+    drawNext(counted().api, fromTemplate('knowledge-assistant').layout);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(screen.queryByRole('region', { name: 'Filter for tråden' })).toBeNull();
+    expect(document.querySelector('.uib-filter-next')).toBeNull();
+    expect(document.querySelector('.uib-filter-rows')).toBeNull();
+  });
+});
+
 describe('Dokumentvisning in the assistant', () => {
   // The stored thread, whose answer cites the excerpt c1 of «Tildelingsbrev 2022».
   const stored = async (layout: AssistantLayout, api = fakeApi().api) => {

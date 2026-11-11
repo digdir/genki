@@ -116,6 +116,20 @@
                 <code>menu</code> pages and «Logg ut». Without a reader, the links stay. The docked
                 field stands on the card's ground. Every other template draws what it drew before.
               </li>
+              <li>
+                <strong>The next look's filter</strong> (dev-filter-panel): its own panel in the
+                threads' card, the shell's <code>companion</code>, titled «Filter» with «Gjelder
+                neste spørsmål», in the filter's <code>panel</code> variant, with «Dokumentene som
+                blir med» counting what the next question reads from. Each field's row is named by
+                its profile <code>heading</code>. The filter belongs to the thread: the filter of
+                each thread's last question asked here is kept in the storage
+                (<code>threadFilters</code>), and opening the thread brings it back; genki keeps no
+                filter with a turn, so a thread asked elsewhere leaves the filter as it is. An
+                answer asked here says its filter inside «Fremgangsmåte», with «· filteret er
+                endret» when it differs from the answer before, and the line under the field says
+                what the next question reads from. The counts are exact, from the facets and the
+                profile's <code>typeField</code>.
+              </li>
             </ul>
           </div>
           <div>

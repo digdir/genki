@@ -19,13 +19,22 @@ import {
   NewThreadLink,
   type NewThreadLinkProps,
 } from './FilterStates.js';
+import { FilterRows } from './FilterRows.js';
 import { useT } from './i18n.js';
 import { chosenValues, sameSelection, valuesWithoutField } from './selection.js';
 import type { FilterField, FilterSelection } from './types.js';
 import { YearRangeField } from './YearRangeField.js';
 
 export type * from './types.js';
-export { isEmptySelection, narrowing } from './selection.js';
+export * from './FilterLines.js';
+export {
+  documentCount,
+  fieldValueLabels,
+  isEmptySelection,
+  narrowing,
+  sameSelection,
+  valueLabels,
+} from './selection.js';
 
 export interface FilterProps {
   /** The filter fields with their facets, in order; undefined while loading, [] for none. */
@@ -63,6 +72,12 @@ export interface FilterProps {
   documents?: ReactNode;
   /** Under a line after the fields, such as the reader's own documents. */
   children?: ReactNode;
+  /**
+   * `fields`, the default: a list with search per field. `panel`, the dev boards' filter beside
+   * the threads: «Fjern alle filtre» over the fields, each a row that opens to a checkbox per value
+   * with its exact count, and `children` under them with no line.
+   */
+  variant?: 'fields' | 'panel' | undefined;
   /** Designsystemet's `data-color` for the block, set only when given. */
   color?: string | undefined;
   className?: string | undefined;
@@ -135,10 +150,12 @@ export const Filter = ({
   pinIn,
   documents,
   children,
+  variant = 'fields',
   color,
   className,
 }: FilterProps) => {
   const t = useT();
+  const panel = variant === 'panel';
   const sub = Math.min(headingLevel + 1, 6) as 3 | 4 | 5 | 6;
   const [announcement, setAnnouncement] = useState('');
   const announce = useCallback(
@@ -219,6 +236,7 @@ export const Filter = ({
       <div
         className={['uib-filter', className].filter(Boolean).join(' ')}
         data-color={color}
+        data-variant={panel ? 'panel' : undefined}
         aria-busy={loading || undefined}
       >
         {headNode === null
@@ -292,7 +310,21 @@ export const Filter = ({
           )}
         </div>
 
+        {!locked && panel && fields && fields.length > 0 ? (
+          <FilterRows
+            ref={firstFieldRef}
+            fields={fields}
+            selection={selection}
+            onChange={change}
+            level={sub}
+            yearPeriods={yearPeriods}
+            compact={compactChips}
+            max={maxValues}
+          />
+        ) : null}
+
         {!locked &&
+          !panel &&
           fields?.map((field, index) => {
             const Field = field.kind === 'year' && yearPeriods ? YearRangeField : FacetField;
             return (
@@ -310,8 +342,8 @@ export const Filter = ({
 
         {children ? (
           <>
-            {/* Above narrows the search; below is about documents. */}
-            <Divider className="uib-filter-divider" />
+            {/* Above narrows the search; below is about documents. The panel's rows end in a line. */}
+            {panel ? null : <Divider className="uib-filter-divider" />}
             <div className="uib-filter-below">{children}</div>
           </>
         ) : null}

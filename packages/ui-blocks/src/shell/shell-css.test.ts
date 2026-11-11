@@ -39,6 +39,9 @@ const neutralPins = [
   '--genai-shell-border-color',
   // The cards frame's grounds and lines, and the titles, grey as the design's dev-navbar draws them.
   '--genai-shell-card-background',
+  // The companion column, on the card's ground, its subtitle grey as the design's (dev-filter-panel).
+  '--genai-shell-companion-background',
+  '--genai-shell-companion-subtitle-color',
   '--genai-shell-divider-color',
   '--genai-shell-drawer-background',
   '--genai-shell-primary-background',
@@ -91,6 +94,8 @@ describe('the Shell styles', () => {
   it('take the widths from the shell’s own sums, never from a host variable', () => {
     const sums = [...new Set(css.match(/--uib-shell-[a-z-]+/g) ?? [])].sort();
     expect(sums).toEqual([
+      // The panel's own column beside a companion: its design width less the companion's.
+      '--uib-shell-lead-width',
       '--uib-shell-main-max-width',
       '--uib-shell-main-min-width',
       '--uib-shell-primary-drawer-width',

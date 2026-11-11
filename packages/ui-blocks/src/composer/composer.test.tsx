@@ -33,6 +33,21 @@ const sendButton = () =>
 const before = (a: Element, b: Element) =>
   Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
+describe('the note under the field', () => {
+  it('stands right under the field, docked with it, only when the host gives one', () => {
+    const { rerender } = draw({ sticky: true });
+    expect(document.querySelector('.uib-composer-note')).toBeNull();
+    rerender(
+      <Controlled sticky note={<p>Neste spørsmål leser fra 8 781 dokumenter</p>} showDisclaimer />,
+    );
+    const note = document.querySelector('.uib-composer-note') as HTMLElement;
+    expect(note.closest('.uib-composer')?.hasAttribute('data-sticky')).toBe(true);
+    expect(note.previousElementSibling?.className).toContain('uib-composer-frame');
+    const disclaimer = document.querySelector('.uib-composer-disclaimer') as HTMLElement;
+    expect(before(note, disclaimer)).toBe(true);
+  });
+});
+
 describe('the question field', () => {
   it('sends with Enter, and keeps Shift+Enter for a new line', () => {
     const { sent } = draw();

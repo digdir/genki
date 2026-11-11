@@ -78,6 +78,29 @@ export interface ShellPanel {
   defaultCollapsed?: boolean | undefined;
   /** The landmark: `nav` for the primary panel and `aside` for the secondary one by default. */
   landmark?: 'nav' | 'aside' | undefined;
+  /**
+   * A second column in the panel's card, towards the main column, with a title of its own and the
+   * panel's button: the design's filter beside the threads (dev-filter-panel). It folds with the
+   * panel, and stands under the panel's own column in a drawer.
+   */
+  companion?: ShellCompanion | undefined;
+}
+
+/** The second column of a panel (`ShellPanel.companion`). */
+export interface ShellCompanion {
+  /** Its region's name, «Filter for tråden». */
+  label: string;
+  /** Its title, alike the panel's, «Filter». */
+  title?: string | undefined;
+  /** A line under the title, «Gjelder neste spørsmål». */
+  subtitle?: ReactNode;
+  /** What it holds. It scrolls on its own. */
+  children?: ReactNode;
+  /**
+   * Its width when the panel has its design width, in CSS pixels. The panel's `size` counts both
+   * columns; the panel's own column keeps the rest, and a narrower panel narrows the companion.
+   */
+  width: number;
 }
 
 /** Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`. */
@@ -394,6 +417,8 @@ const Side = ({
   const collapsed = state.collapsed[side];
   const name = panel.label.toLocaleLowerCase(t.locale === 'nb' ? 'nb-NO' : 'en-GB');
   const contentId = useId();
+  const { companion } = panel;
+  const companionId = useId();
   const Landmark = panel.landmark ?? (side === 'primary' ? 'nav' : 'aside');
   const Icon = side === 'primary' ? SidebarLeftIcon : SidebarRightIcon;
 
@@ -509,7 +534,7 @@ const Side = ({
       placement={side === 'secondary' ? (railed ? 'left' : 'right') : 'top'}
     >
       <Button
-        aria-controls={contentId}
+        aria-controls={companion && !collapsed ? `${contentId} ${companionId}` : contentId}
         aria-expanded={!collapsed}
         aria-label={toggleLabel}
         className={classes('uib-shell-toggle', showsWord && 'uib-shell-hide')}
@@ -534,6 +559,31 @@ const Side = ({
     </Heading>
   ) : null;
 
+  // The companion column takes the panel's button, at the card's edge towards the main column.
+  const companionSection = (button: ReactNode) =>
+    companion ? (
+      <section aria-label={companion.label} className="uib-shell-companion" id={companionId}>
+        <div className="uib-shell-header">
+          <div className="uib-shell-companion-titles">
+            {companion.title ? (
+              <Heading className="uib-shell-title" data-size="xs" level={2}>
+                {companion.title}
+              </Heading>
+            ) : null}
+            {companion.subtitle ? (
+              <p className="uib-shell-companion-subtitle">{companion.subtitle}</p>
+            ) : null}
+          </div>
+          {button}
+        </div>
+        <div className="uib-shell-content">{companion.children}</div>
+      </section>
+    ) : null;
+  const leadWidth = companion
+    ? Math.max((geometry.panels[side]?.width ?? width) - companion.width, 0)
+    : undefined;
+  const withCompanion = companion !== undefined && !railed;
+
   return (
     <Landmark
       aria-label={panel.label}
@@ -553,19 +603,28 @@ const Side = ({
       ref={element}
     >
       {/* The separator is in the landmark but outside this clipping box. */}
-      <div className="uib-shell-box">
+      <div
+        className="uib-shell-box"
+        data-companion={withCompanion || undefined}
+        style={
+          withCompanion
+            ? ({ '--uib-shell-lead-width': `${leadWidth}px` } as CSSProperties)
+            : undefined
+        }
+      >
         {/* Outside the scroller, so the button never scrolls out of sight. */}
         <div className="uib-shell-header">
-          {toggleLast ? null : toggleButton}
+          {toggleLast || withCompanion ? null : toggleButton}
           {railed ? null : title}
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
-          {toggleLast ? toggleButton : null}
+          {toggleLast && !withCompanion ? toggleButton : null}
         </div>
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}
         {railed && panel.railFoot != null ? (
           <div className="uib-shell-rail-foot">{panel.railFoot}</div>
         ) : null}
+        {withCompanion ? companionSection(toggleButton) : null}
       </div>
 
       {/* A native modal dialog, kept mounted so what is in it keeps its state. */}
@@ -586,6 +645,8 @@ const Side = ({
             </div>
             {panelContent}
             {footScrolls ? null : foot}
+            {/* Under the panel's own column: a drawer is one column wide. */}
+            {companionSection(null)}
           </div>
         </Dialog>
       ) : null}

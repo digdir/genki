@@ -624,6 +624,74 @@
     flex: 1 1 auto;
   }
 
+  /* ── A panel's companion column (`companion`), the design's filter beside the threads ── */
+
+  /* The panel's own column keeps its design width; the companion stands over the rest, full height. */
+  .uib-shell-box[data-companion] {
+    position: relative;
+    padding-inline-end: calc(100% - var(--uib-shell-lead-width));
+  }
+
+  .uib-shell-side > .uib-shell-box > .uib-shell-companion,
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-companion {
+    box-sizing: border-box;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-companion-gap, var(--ds-size-3));
+    inline-size: calc(100% - var(--uib-shell-lead-width));
+    padding: 0;
+    background: var(--genai-shell-companion-background, var(--ds-color-neutral-surface-default));
+    border-inline-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  /* Its title on the line of the panel's, the button at the card's edge. */
+  .uib-shell-companion > .uib-shell-header {
+    align-items: start;
+    padding-block-start: var(--genai-shell-card-padding-block, var(--ds-size-4));
+    padding-inline: var(--genai-shell-companion-padding-inline, var(--ds-size-4))
+      var(--genai-shell-companion-button-inset, var(--ds-size-3));
+  }
+
+  .uib-shell-companion-titles {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .uib-shell[data-frame] > .uib-shell-side .uib-shell-companion .uib-shell-title,
+  .uib-shell-companion .uib-shell-title {
+    margin-block-end: 0;
+    padding-inline-start: 0;
+  }
+
+  .uib-shell-companion-subtitle {
+    margin: 0;
+    color: var(--genai-shell-companion-subtitle-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-shell-companion-subtitle-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-shell-companion-subtitle-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-shell-companion > .uib-shell-content {
+    padding-inline: var(--genai-shell-companion-padding-inline, var(--ds-size-4));
+    padding-block-end: var(--genai-shell-card-padding-block, var(--ds-size-4));
+  }
+
+  /* In a drawer, one column: the companion under the panel's own, in the flow. */
+  .uib-shell-drawer .uib-shell-companion {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+    inline-size: 100%;
+    border-block-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+  }
+
   /* Something new in «Endringslogg»: the accent's dot. */
   .uib-shell-profile-news {
     flex: 0 0 auto;

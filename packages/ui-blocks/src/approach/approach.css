@@ -47,4 +47,89 @@
     color: var(--genai-approach-footer-color, var(--ds-color-neutral-text-subtle));
     font-size: var(--genai-approach-footer-font-size, var(--ds-font-size-2));
   }
+
+  /* ── `summary="totals"`: the dev boards' bar (dev-filter-panel), one line when folded ── */
+
+  /* Tinted, under a hairline, its corners those of the design's cards. Grey, as the card is. */
+  .uib-approach[data-summary='totals'] .uib-approach-card {
+    --dsc-card-border-color: var(
+      --genai-approach-bar-border-color,
+      var(--ds-color-neutral-surface-tinted)
+    );
+    --dsc-card-border-radius: var(--genai-approach-bar-radius, var(--ds-border-radius-xl));
+
+    background: var(--genai-approach-bar-ground, var(--ds-color-neutral-background-tinted));
+  }
+
+  /* On the Details itself, which sets its own and would hide the card's. */
+  .uib-approach[data-summary='totals'] .uib-approach-card > .ds-details {
+    --dsc-details-background: transparent;
+    --dsc-details-padding: var(--genai-approach-bar-padding-block, var(--ds-size-2))
+      var(--genai-approach-bar-padding-inline, var(--ds-size-4));
+    --dsc-details-size: auto;
+    --dsc-details-icon-size: var(--genai-approach-bar-icon-size, var(--ds-font-size-3));
+    --dsc-details-summary-background: var(
+      --genai-approach-bar-background,
+      var(--ds-color-neutral-surface-tinted)
+    );
+    --dsc-details-summary-background--hover: var(
+      --genai-approach-bar-hover-background,
+      var(--ds-color-neutral-surface-hover)
+    );
+    --dsc-details-summary-background--open: var(
+      --genai-approach-bar-background,
+      var(--ds-color-neutral-surface-tinted)
+    );
+  }
+
+  /* The chevron ends the row, as the design draws it, not before the title. */
+  .uib-approach[data-summary='totals'] summary::before {
+    order: 1;
+    align-self: center;
+    margin-inline-start: auto;
+    translate: none;
+  }
+
+  .uib-approach[data-summary='totals'] .uib-approach-summary {
+    flex-wrap: wrap;
+    column-gap: var(--genai-approach-bar-gap, var(--ds-size-2));
+    row-gap: 0;
+    font-size: var(--genai-approach-bar-font-size, var(--ds-font-size-2));
+  }
+
+  .uib-approach[data-summary='totals'] .uib-approach-summary > svg {
+    color: var(--genai-approach-bar-icon-color, var(--ds-color-neutral-text-subtle));
+  }
+
+  .uib-approach[data-summary='totals'] .uib-approach-title {
+    font-weight: var(--genai-approach-title-font-weight, var(--ds-font-weight-medium));
+  }
+
+  /* The totals and the note, quieter than the title. */
+  .uib-approach-subtitle {
+    color: var(--genai-approach-subtitle-color, var(--ds-color-neutral-text-subtle));
+    font-weight: var(--genai-approach-subtitle-font-weight, var(--ds-font-weight-regular));
+  }
+
+  /* «· filteret er endret»: stronger than the totals, in the accent's dark text. */
+  .uib-approach-note {
+    color: var(--genai-approach-note-color, var(--ds-color-accent-text-default));
+    font-weight: var(--genai-approach-note-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-approach[data-summary='totals'] .uib-approach-content {
+    margin: 0;
+    padding: var(--genai-approach-bar-padding-block, var(--ds-size-2))
+      var(--genai-approach-bar-padding-inline, var(--ds-size-4))
+      var(--genai-approach-bar-padding-block-end, var(--ds-size-3));
+    font-size: var(--genai-approach-bar-font-size, var(--ds-font-size-2));
+  }
+
+  /* What the answer read from, over the steps, a line between. */
+  .uib-approach-scope {
+    padding-block-end: var(--genai-approach-scope-padding-block-end, var(--ds-size-2));
+    margin-block-end: var(--genai-approach-scope-margin-block-end, var(--ds-size-2));
+    border-block-end: var(--genai-approach-scope-border-width, var(--ds-border-width-default)) solid
+      var(--genai-approach-bar-border-color, var(--ds-color-neutral-surface-tinted));
+  }
 }

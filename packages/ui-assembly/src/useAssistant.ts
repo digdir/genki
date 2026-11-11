@@ -14,6 +14,7 @@
 import {
   answerCitations,
   blockSpec,
+  documentCount,
   factsFromModels,
   isDisplayLevel,
   isEmptySelection,
@@ -21,6 +22,7 @@ import {
   narrowing,
   needMet,
   optionInForce,
+  sameSelection,
   serviceOf,
   settingsOf,
   templateLook,
@@ -165,6 +167,14 @@ const readSelection = (stored: unknown): FilterSelection => {
       (entry): entry is [string, string[]] =>
         Array.isArray(entry[1]) && entry[1].every((value) => typeof value === 'string'),
     ),
+  );
+};
+
+/** Each thread's kept filter (the next look), as `readSelection` reads one. */
+const readThreadFilters = (stored: unknown): Readonly<Record<string, FilterSelection>> => {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
+  return Object.fromEntries(
+    Object.entries(stored).map(([thread, selection]) => [thread, readSelection(selection)]),
   );
 };
 
@@ -552,6 +562,26 @@ export const useAssistant = ({
   );
   // Without Filter, nothing narrows the question: the setup's collection as a whole.
   const selection = filterOn ? chosenSelection : {};
+
+  // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
+  // of each thread's last question asked here is kept, and opening the thread brings it back.
+  // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
+  const look = templateLook(layout.template);
+  const threadFiltersOn = look === 'next' && filterOn;
+  const [threadFilters, setThreadFilters] = useStoredValue(
+    storage,
+    'threadFilters',
+    readThreadFilters,
+  );
+  const keepFilter = (thread: string, asked: FilterSelection) => {
+    if (threadFiltersOn) setThreadFilters({ ...threadFilters, [thread]: asked });
+  };
+  useEffect(() => {
+    if (!threadFiltersOn || !currentId) return;
+    const kept = threadFilters[currentId];
+    if (kept && !sameSelection(kept, chosenSelection)) setSelection(kept);
+    // Only when another thread opens: a change made in the thread stays.
+  }, [currentId, threadFiltersOn]);
   const [facets, setFacets] = useState<FilterField[]>();
   const [baseFacets, setBaseFacets] = useState<FilterField[]>();
   const [facetsFailed, setFacetsFailed] = useState(false);
@@ -711,6 +741,12 @@ export const useAssistant = ({
         : filterOn
           ? filterSet(narrowing(selection, facets), fields ?? [])
           : undefined;
+    // What the filter was, and how many documents it read from, for the answer's «Fremgangsmåte».
+    const askedWith = filterOn && !toDocument ? narrowing(selection, facets) : undefined;
+    const readFrom = askedWith
+      ? documentCount(facets, askedWith, corpusProfile?.typeField)
+      : undefined;
+    if (askedWith && startedIn) keepFilter(startedIn, askedWith);
     const change = (update: (turn: Turn) => Turn) =>
       setTurns((all) => all.map((t) => (t.id === id ? update(t) : t)));
     const update = (patch: (answer: AnswerData) => AnswerData) =>
@@ -731,7 +767,12 @@ export const useAssistant = ({
       askedAt: Date.now(),
       answer: { text: '', status: 'streaming', created: Date.now() },
       ...(approachOn ? { approach: { frames: [], startedAt: Date.now() } } : {}),
-      scope: { narrowedTo, ...(corpusKey ? { corpus: corpusKey } : {}) },
+      scope: {
+        narrowedTo,
+        ...(corpusKey ? { corpus: corpusKey } : {}),
+        ...(askedWith ? { selection: askedWith } : {}),
+        ...(readFrom === undefined ? {} : { documents: readFrom }),
+      },
     };
     setTurns((all) =>
       replaces && all.some((t) => t.id === replaces)
@@ -752,6 +793,7 @@ export const useAssistant = ({
       })) {
         if (!alive.current) break;
         if (event.type === 'conversation' && !startedIn) {
+          if (askedWith) keepFilter(event.conversationId, askedWith);
           ownThread.current = event.conversationId;
           go(event.conversationId, true);
           reloadThreads();
@@ -803,13 +845,15 @@ export const useAssistant = ({
   };
 
   // ── The conversation as the blocks take it ──
+  const filterInApproach = threadFiltersOn && approachOn;
   const conversation = useMemo<ConversationTurn[]>(
     () =>
       turns.flatMap((turn): ConversationTurn[] => {
         const scopeOf = (): { scope?: ConversationScope } => {
           const asked = turn.scope?.corpus ?? threadCorpus;
           const other = asked && asked !== corpusKey ? corpusLabel(asked) : undefined;
-          const narrowedTo = turn.scope?.narrowedTo ?? [];
+          // The next look says the filter inside «Fremgangsmåte», not under the answer.
+          const narrowedTo = filterInApproach ? [] : (turn.scope?.narrowedTo ?? []);
           if (!other && narrowedTo.length === 0) return {};
           return { scope: { narrowedTo, ...(other ? { corpus: other } : {}) } };
         };
@@ -837,7 +881,7 @@ export const useAssistant = ({
         ];
       }),
     // `corpusLabel` reads `corpora` and the profile.
-    [turns, corpusKey, corpora, threadCorpus, footnotes],
+    [turns, corpusKey, corpora, threadCorpus, footnotes, filterInApproach],
   );
 
   const firstQuestion = turns.find((t) => t.question)?.question ?? '';
@@ -989,7 +1033,7 @@ export const useAssistant = ({
     // what is placed
     layout,
     // The template's look: `next` draws the dev boards' frame, titles and profile menu.
-    look: templateLook(layout.template),
+    look,
     facts,
     modelsFailed,
     // From a failed `/v1/models` until the rows come: the failure's region stays drawn while it is
@@ -1019,6 +1063,12 @@ export const useAssistant = ({
     baseFacets,
     facetsFailed,
     retryFacets: () => setFacetsKey((n) => n + 1),
+    // How many documents the next question reads from, and the collection in all, exactly from the
+    // facets; undefined while a count is missing.
+    readFrom: filterOn
+      ? documentCount(facets, narrowing(selection, facets), corpusProfile?.typeField)
+      : undefined,
+    collectionSize: filterOn ? documentCount(baseFacets, {}, corpusProfile?.typeField) : undefined,
     documents,
     // threads
     threads,
