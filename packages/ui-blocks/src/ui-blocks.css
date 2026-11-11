@@ -4,6 +4,7 @@
 @import './answer/answer.css';
 @import './conversation/conversation.css';
 @import './document-view/document-view.css';
+@import './shell/shell.css';
 
 .uib-visually-hidden {
   position: absolute;
