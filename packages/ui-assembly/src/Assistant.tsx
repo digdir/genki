@@ -22,7 +22,12 @@ import {
   FilterRead,
   NotFoundState,
   Settings,
+  SettingsAboutYou,
+  SettingsBeta,
+  SettingsGeneral,
   SettingsLinks,
+  SettingsMenu,
+  SettingsPrivacy,
   Shell,
   ShellProfile,
   ShellTools,
@@ -33,11 +38,15 @@ import {
   VariantPicker,
   Welcome,
   answerCopy,
+  experimentsOn,
   isEmptySelection,
+  isSettingsPageId,
   sameSelection,
+  settingsPageIds,
   type AnswerCopied,
   type AnswerFeedbackStatus,
   type ConversationAnswer,
+  type SettingsPageId,
   type ShellPanel,
   type ShellProfileProps,
   type ShellTool,
@@ -268,6 +277,8 @@ export const AssistantView = ({
   }, [switchedView, primaryView]);
   // The strip in the main column opens the filter under it with «Endre».
   const [stripOpen, setStripOpen] = useState(false);
+  // The next look's «Innstillinger»: the page of it on screen, Generelt from the profile menu.
+  const [settingsView, setSettingsView] = useState<SettingsPageId>('general');
 
   // kunnskapsassistenten's trials, where the profile offers them and the reader turned them on.
   const filtersBeside = a.flags.has('filters-right-panel') && filterZone === 'primary';
@@ -620,7 +631,15 @@ export const AssistantView = ({
           name: a.profile.signedInAs,
           organisation: a.profile.organisation,
           ...(settingsOn
-            ? { settings: { href: a.settingsHref, onSelect: () => a.showSettings() } }
+            ? {
+                settings: {
+                  href: a.settingsHref,
+                  onSelect: () => {
+                    setSettingsView('general');
+                    a.showSettings();
+                  },
+                },
+              }
             : {}),
           ...a.profile.menu,
           signOut: { href: a.hrefOf(), onSignOut: a.signOut },
@@ -715,6 +734,38 @@ export const AssistantView = ({
   } else if (profile) {
     primary = { label: t('builder.settings'), ...nextPrimary };
   }
+
+  // ── The next look's «Innstillinger» (dev-innstillinger-1 to -4): the primary panel turns into
+  // the settings menu, each page stands in the main card, and there is no secondary panel. ──
+  const nextSettings = next && a.page === 'settings' && settingsOn;
+  const experimentRows = (a.profile?.experiments ?? []).map((experiment) => ({
+    ...experiment,
+    on: a.flags.has(experiment.id),
+  }));
+  if (nextSettings)
+    primary = {
+      label: t('builder.settings'),
+      title: t('builder.settings'),
+      children: (
+        <SettingsMenu
+          pages={settingsPageIds.map((id) => ({
+            id,
+            ...(id === 'beta' ? { badge: experimentsOn(experimentRows) } : {}),
+          }))}
+          value={settingsView}
+          onChange={(id) => {
+            if (!isSettingsPageId(id)) return;
+            setSettingsView(id);
+            // On a phone the menu is a drawer over the page: it closes on the reader's choice.
+            a.showSettings();
+          }}
+          backHref={a.hrefOf(a.urlThreads ? a.currentId : undefined)}
+          onBack={a.backToThreads}
+        />
+      ),
+      foot,
+      ...nextPrimary,
+    };
 
   // ── The secondary panel's tools, in the catalogue's order ──
   const sourcesView = (titled: boolean) => (
@@ -883,7 +934,30 @@ export const AssistantView = ({
   // ── The main column ──
   const experiments = a.profile?.experiments ?? [];
   let main: ReactNode;
-  if (a.page === 'settings' && settingsOn) {
+  if (nextSettings) {
+    // Each page draws only what works here: the colour scheme the host keeps, the reader from the
+    // sign-in, and the profile's trials. What genki cannot honour yet is not given, so not drawn.
+    const feedback = a.profile?.menu?.feedback;
+    main =
+      settingsView === 'about-you' ? (
+        <SettingsAboutYou name={a.profile?.signedInAs} organisation={a.profile?.organisation} />
+      ) : settingsView === 'beta' ? (
+        <SettingsBeta
+          experiments={experimentRows}
+          onExperimentChange={a.setFlag}
+          onAllOff={a.flagsOff}
+          feedback={feedback}
+        />
+      ) : settingsView === 'privacy' ? (
+        <SettingsPrivacy />
+      ) : (
+        <SettingsGeneral
+          {...(a.onColorSchemeChange
+            ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
+            : {})}
+        />
+      );
+  } else if (a.page === 'settings' && settingsOn) {
     main = (
       <Settings
         headingLevel={1}
@@ -975,7 +1049,7 @@ export const AssistantView = ({
   return (
     <Shell
       primary={primary}
-      secondary={secondary}
+      secondary={nextSettings ? undefined : secondary}
       request={a.request}
       // The next look: cards, and the thread's title as the page's `h1` over the conversation.
       // «Innstillinger» keeps its own `h1` until it gets its own panels.

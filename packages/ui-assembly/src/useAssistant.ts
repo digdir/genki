@@ -1026,6 +1026,8 @@ export const useAssistant = ({
   );
   const setFlag = (id: string, on: boolean) =>
     setFlagList(on ? [...new Set([...flagList, id])] : flagList.filter((f) => f !== id));
+  /** «Slå av alle»: every trial the profile offers off, in one write. */
+  const flagsOff = () => setFlagList(flagList.filter((id) => !offered.has(id)));
   // Without Innstillinger, the setup's level stands.
   const level = (settingsOn ? chosenLevel : undefined) ?? defaultLevel;
 
@@ -1120,6 +1122,8 @@ export const useAssistant = ({
       setRequest({ action: 'close-drawers' });
     },
     settingsHref,
+    /** «Tilbake til trådene» from «Innstillinger»: the thread on screen, its answer left running. */
+    backToThreads: () => go(currentId),
     hrefOf,
     // the thread on screen
     view,
@@ -1192,6 +1196,7 @@ export const useAssistant = ({
     setLevel,
     flags,
     setFlag,
+    flagsOff,
     threadInUrl,
     colorScheme,
     onColorSchemeChange,

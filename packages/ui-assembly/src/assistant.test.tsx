@@ -641,7 +641,143 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     });
     fireEvent.click(settings);
     expect(location.hash).toBe('#innstillinger');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    // On «Generelt», the settings menu titled «Innstillinger» beside it (dev-innstillinger-0).
+    expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
+  });
+
+  // dev-innstillinger-1 to -4: the primary panel is the settings menu, each page in the main card.
+  describe('«Innstillinger»', () => {
+    const settingsProfile: AssistantProfile = {
+      ...reader,
+      experiments: [
+        { id: 'year-ranges', title: 'Årsfilter med perioder' },
+        { id: 'compact-filter-chips', title: 'Samlede merkelapper i filteret' },
+      ],
+      menu: { feedback: { href: '/tilbakemelding' } },
+    };
+    const kept = new Map<string, unknown>();
+    const storage: AssistantStorage = {
+      read: (key) => kept.get(key),
+      write: (key, value) => void kept.set(key, value),
+      remove: (key) => void kept.delete(key),
+    };
+    const drawSettings = (onColorSchemeChange = vi.fn()) => {
+      history.replaceState(null, '', '/#innstillinger');
+      render(
+        <Assistant
+          api={fakeApi().api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={settingsProfile}
+          storage={storage}
+          threadInUrl
+          colorScheme="dark"
+          onColorSchemeChange={onColorSchemeChange}
+        />,
+      );
+      return onColorSchemeChange;
+    };
+    const settingsNav = () => screen.getByRole('navigation', { name: 'Innstillinger' });
+    const go = (name: RegExp) =>
+      fireEvent.click(within(settingsNav()).getByRole('button', { name }));
+    beforeEach(() => kept.clear());
+
+    it('turns the primary panel into the settings menu, with no secondary panel, and Generelt in the main card', async () => {
+      drawSettings();
+      expect(await screen.findByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
+      const nav = settingsNav();
+      expect(within(nav).getByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
+      expect(within(nav).getByRole('link', { name: 'Tilbake til trådene' })).toBeTruthy();
+      const pages = within(within(nav).getByRole('list', { name: 'Sidene i innstillingene' }));
+      expect(pages.getAllByRole('button').map((page) => page.getAttribute('aria-current'))).toEqual(
+        ['page', null, null, null],
+      );
+      expect(screen.queryByRole('link', { name: 'Ny tråd' })).toBeNull();
+      expect(document.querySelector('.uib-shell-side[data-side="secondary"]')).toBeNull();
+      // The reader stays at the panel's foot.
+      expect(within(nav).getByRole('button', { name: 'Simen Strøm Braaten' })).toBeTruthy();
+    });
+
+    it('draws on «Generelt» only «Utseende», which the host keeps, and hands the choice to it', async () => {
+      const onColorSchemeChange = drawSettings();
+      const group = await screen.findByRole('group', { name: 'Utseende' });
+      expect(within(group).getByRole<HTMLInputElement>('radio', { name: 'Mørkt' }).checked).toBe(
+        true,
+      );
+      fireEvent.click(within(group).getByRole('radio', { name: 'Lyst' }));
+      expect(onColorSchemeChange).toHaveBeenLastCalledWith('light');
+      // What genki cannot honour yet is not drawn, nor the level no board has.
+      for (const missing of ['Språk i svarene', 'Svarlengde', 'Tekststørrelse', 'Svar'])
+        expect(screen.queryByText(missing)).toBeNull();
+      expect(screen.getAllByRole('radio')).toHaveLength(3);
+    });
+
+    it('shows the reader from the sign-in on «Om deg», and says «Personvern og data» has nothing yet', async () => {
+      drawSettings();
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      go(/^Om deg/);
+      expect(screen.getByRole('heading', { level: 1, name: 'Om deg' })).toBeTruthy();
+      expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Navn' }).value).toBe(
+        'Simen Strøm Braaten',
+      );
+      expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Virksomhet' }).readOnly).toBe(
+        true,
+      );
+      go(/^Personvern og data/);
+      expect(screen.getByRole('heading', { level: 1, name: 'Personvern og data' })).toBeTruthy();
+      expect(screen.getByText('Ingen valg her ennå.')).toBeTruthy();
+    });
+
+    it('lists the profile’s trials on «Beta-funksjoner», counts those on in the menu, and turns them all off at once', async () => {
+      kept.set('flags', ['year-ranges', 'compact-filter-chips']);
+      drawSettings();
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      go(/^Beta-funksjoner ?\(2 slått på\)$/);
+      expect(document.querySelector('.uib-settings-count')?.textContent).toContain(
+        '2 av 2 slått på',
+      );
+      expect(screen.getByRole('link', { name: 'Gi tilbakemelding' }).getAttribute('href')).toBe(
+        '/tilbakemelding',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Slå av alle' }));
+      expect(kept.get('flags')).toEqual([]);
+      expect(screen.getAllByRole<HTMLInputElement>('switch').map((one) => one.checked)).toEqual([
+        false,
+        false,
+      ]);
+      expect(within(settingsNav()).getByRole('button', { name: 'Beta-funksjoner' })).toBeTruthy();
+    });
+
+    it('goes back to the thread list and the panels with «Tilbake til trådene»', async () => {
+      drawSettings();
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      fireEvent.click(screen.getByRole('link', { name: 'Tilbake til trådene' }));
+      expect(location.hash).toBe('');
+      expect(await screen.findByRole('link', { name: 'Ny tråd' })).toBeTruthy();
+      expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([
+        'Ny tråd',
+      ]);
+    });
+
+    it('leaves «Kunnskapsassistenten»’s settings page as it was, one page with no menu', async () => {
+      history.replaceState(null, '', '/#innstillinger');
+      render(
+        <Assistant
+          api={fakeApi().api}
+          layout={fromTemplate('knowledge-assistant').layout}
+          service="ka"
+          tenant="digdir"
+          profile={settingsProfile}
+          threadInUrl
+        />,
+      );
+      expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+      expect(screen.getByRole('group', { name: 'Fargemodus' })).toBeTruthy();
+      expect(screen.queryByRole('link', { name: 'Tilbake til trådene' })).toBeNull();
+      expect(document.querySelector('.uib-settings-menu')).toBeNull();
+    });
   });
 
   it('keeps the links in the foot when the host names no reader, so «Innstillinger» stays in reach', async () => {
