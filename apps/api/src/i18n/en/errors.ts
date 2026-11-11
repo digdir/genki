@@ -4,6 +4,8 @@ import type * as source from '../nb/errors.js';
 export const catalogErrors = {
   onlyOperatorsChangeModels: 'only operators change models',
   routeOnlyAction: 'this action runs only from its own route',
+  testRunnerExpiry: 'a test-runner key needs an expiry of 1 to {testRunnerMaxDays} days',
+  testRunnerCallsPerMinute: 'a test-runner key needs a calls-per-minute limit',
   supportMinutes: '1 to {minutes} minutes',
   noModel: 'no model {id}',
   tenantsCannotRegister: 'tenants cannot register {kind}',
