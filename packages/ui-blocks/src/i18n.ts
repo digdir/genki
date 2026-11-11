@@ -1,6 +1,16 @@
 import { defineCatalogue, type Translation } from '@genai/i18n';
-import * as approach from './approach/i18n.js';
+import { defineTranslations } from '@genai/i18n/react';
+import { enBuilder, nbBuilder } from './builder/i18n.js';
 
-/** Every block's words in one catalogue, for a host's own text; each block reads only its own. */
-export const nb = defineCatalogue({ ...approach.nb });
-export const en = { ...approach.en } satisfies Translation<typeof nb>;
+/**
+ * The package's shared catalogue, which holds the builder's words. Each block keeps its own words
+ * apart from it; `catalogues.ts` gathers them all for hosts.
+ */
+export const nb = defineCatalogue({
+  builder: nbBuilder,
+});
+export const en = {
+  builder: enBuilder,
+} satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

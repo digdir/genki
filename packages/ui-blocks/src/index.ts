@@ -16,4 +16,5 @@ export * from './corpus/Corpus.js';
 export * from './documents/Documents.js';
 export * from './settings/index.js';
 export * from './answer-actions/index.js';
+export * from './builder/index.js';
 export { nb as uiBlocksNb, en as uiBlocksEn } from './catalogues.js';
