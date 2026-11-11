@@ -10,6 +10,9 @@
 @import './threads/threads.css';
 @import './composer/composer.css';
 @import './welcome/welcome.css';
+@import './filter/filter.css';
+@import './corpus/corpus.css';
+@import './documents/documents.css';
 
 .uib-visually-hidden {
   position: absolute;

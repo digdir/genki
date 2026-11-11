@@ -6,7 +6,7 @@
     <title>Filter · Components</title>
     <meta
       name="description"
-      content="Lets the user narrow which documents the assistant reads from, for example by document type, organisation and year."
+      content="Lets the user narrow which documents the assistant reads from, by the fields the dataset declares, with the collection and the documents behind the answer."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -22,7 +22,7 @@
         class="component"
         id="filter"
         data-component="filter"
-        data-phase="draft"
+        data-phase="building"
         data-optional="true"
         aria-labelledby="filter-title"
       >
@@ -30,16 +30,17 @@
           <div>
             <h1 id="filter-title">Filter</h1>
             <div class="badges">
-              <span class="badge phase">Draft</span><span class="badge">Optional</span
+              <span class="badge phase">Building</span><span class="badge">Optional</span
               ><span class="badge">Primary sidebar</span>
             </div>
             <p class="summary">
-              Lets the user narrow which documents the assistant reads from, for example by document
-              type, organisation and year.
+              Lets the user narrow which documents the assistant reads from, by the fields the
+              dataset declares, such as document type, organisation and year. With it come the
+              collection being searched and the documents behind the answer.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
-              <dd>«Filter»</dd>
+              <dd>«Filter», «Utvalg» and «Dokumenter og egne dokumenter»</dd>
               <dt>Sits in</dt>
               <dd>Primary sidebar, with the threads</dd>
               <dt>Issue</dt>
@@ -47,6 +48,12 @@
                 <a href="https://github.com/digdir/kunnskapsassistenten/issues/178"
                   >kunnskapsassistenten#178</a
                 >
+              </dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Filter</code>, <code>CorpusChoice</code>, <code>CorpusLine</code>,
+                <code>Documents</code> and <code>OwnDocuments</code> in
+                <code>@genai/ui-blocks</code>
               </dd>
               <dt>Canvas</dt>
               <dd>00-Filter (FI-A2, FI-4c1 to FI-4c3, FI-P1, FI-P3, FI-P4)</dd>
@@ -100,6 +107,52 @@
             </ul>
           </div>
           <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>fields</code>: the dataset's filter fields (<code>/api/datasets/{id}</code>,
+                <code>filters[]</code>) with their facet values (<code>/api/facets</code>), in the
+                order to draw them. Undefined while they load; an empty list says filtering is not
+                available.
+              </li>
+              <li>
+                <code>selection</code> and <code>onChange</code>: what is chosen, per field id. Ask
+                with <code>narrowing(selection, fields)</code>, which leaves out a field where every
+                value is ticked.
+              </li>
+              <li>
+                <code>failed</code> and <code>onRetry</code>: the facets could not be fetched.
+              </li>
+              <li>
+                <code>locked</code>, <code>thread</code> and <code>onNewThread</code>: a thread's
+                lock, and the note when the filter changes in a thread under way. The platform keeps
+                no filter per thread yet, so <code>locked</code> is for a host that keeps one.
+                <code>onNewThread</code> takes a plain click on «Ny tråd»; a click for a new tab
+                follows <code>newThreadHref</code>, the browser's.
+              </li>
+              <li>
+                <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
+                default as in KA. A reader turns them on in the settings, under «Eksperimenter».
+              </li>
+              <li>
+                <code>head</code> and <code>children</code>: the corpus choice over the fields, and
+                the documents under a line after them.
+              </li>
+              <li>
+                <code>pinIn</code>: an element to draw the heading and <code>head</code> in, such as
+                the shell's pinned region from its panel's <code>pinnedRef</code>. They stay in
+                sight while the fields scroll, as kunnskapsassistenten pins them, and keep the
+                filter's live region. <code>null</code> while the element is not there draws no
+                head.
+              </li>
+              <li>
+                <code>documents</code>: the documents behind the answer, over a line before the
+                fields, so they are in sight without scrolling past the fields. KA keeps its list
+                apart from the reader's own documents «so the view can show them above the facets,
+                in sight». KA's filter view today draws them after the fields instead, so the facets
+                keep their full size; a host passes them as <code>children</code> for that order.
+              </li>
+            </ul>
             <h2>Related</h2>
             <ul>
               <li><a href="threads.html">Threads</a>: each thread has its own filter</li>
@@ -137,6 +190,260 @@
               <li>Call it «Filter», not «Avgrensning».</li>
             </ul>
           </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <p>
+              KA's filter panel, made generic: its look, behaviour and wording, with the fields
+              taken from the dataset instead of a fixed list. The blocks draw and report; the host
+              fetches the facets, keeps the selection and starts threads.
+            </p>
+            <p>
+              To make the filter and the collection last, the host stores <code>selection</code> and
+              the collection's key from <code>onChange</code>, and passes them back. KA keeps both
+              in the browser and empties them at «Logg ut». A stored value the facets no longer hold
+              is still shown, under «Avgrenset til», so it can be removed.
+            </p>
+            <ul>
+              <li>
+                <strong>A field per facet:</strong> Designsystemet's <code>Suggestion</code> with
+                chips, «Velg alle» and «Tøm», the count of each value in the list, and the state in
+                the description: «Ingen avgrensning», «3 av 12 valgt», «Alle 12 valgt, altså ingen
+                avgrensning». Chosen values come first when the list opens, and nothing moves while
+                it is open. More than 100 chosen in one field says so, with the way out.
+              </li>
+              <li>
+                <strong>Years as periods</strong> (<code>yearPeriods</code>): a field of kind
+                <code>year</code> takes «2021», «2023–2028» or «23-28», and years in a row show as
+                one chip.
+              </li>
+              <li>
+                <strong>Values no field can show</strong>, under «Avgrenset til», removable one by
+                one or with «Tøm»: when the facets fail or come back without a field a stored filter
+                still holds.
+              </li>
+              <li>
+                <strong>A locked thread</strong> shows what it is limited to, with «Ny tråd». A
+                change in a thread under way shows a note, with «Ny tråd».
+              </li>
+              <li>
+                One live region tells what changed where the combobox says nothing, never twice.
+                Focus never falls to the page when a control removes itself.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Utvalg and documents</h2>
+            <ul>
+              <li>
+                <strong><code>CorpusChoice</code></strong
+                >, «Dokumentsamling»: a select over the collections a service can search, drawn only
+                with more than one. In the filter's <code>head</code> it speaks through the filter's
+                live region; with <code>resetsFilter</code> it says the filter was reset.
+              </li>
+              <li>
+                <strong><code>CorpusLine</code></strong
+                >: «Dokumenter fra Kudos», with the rest behind «Vis mer»: how many documents, which
+                types, biggest first, and which years, counted from the unnarrowed facets. Without
+                counts, the collection's own description. <code>typePlurals</code> names the types
+                in the plural.
+              </li>
+              <li>
+                <strong><code>Documents</code></strong
+                >: the documents behind the answer on screen, five at first, then «Vis flere
+                dokumenter». A title without a public address is text, and the line under it says
+                why. The reader's own uploads are left to <code>OwnDocuments</code>.
+              </li>
+              <li>
+                <strong><code>OwnDocuments</code></strong
+                >, «Dine dokumenter»: a drop zone and the reader's files with progress, size and why
+                one failed. Without <code>onUpload</code> the zone is switched off and says «Kommer
+                snart». Files go up one at a time; a rejected upload does not stop the next, and the
+                same file can be picked again.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The blocks sit in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follow
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and read every token through their own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. The muted text is pinned to neutral on
+              purpose, so it stays grey whatever family the links and chips beside it follow; a
+              failed upload is pinned to danger. The gap between the fields follows the window's
+              height between two tokens, as kunnskapsassistenten's does.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-filter-actions-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between «Velg alle» and «Tøm»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-changed-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in the note about a changed filter</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chips-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the values under «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-empty-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>text when filtering is not available</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-empty-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap when filtering is not available</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap</code></td>
+                  <td><code>3.6dvh</code></td>
+                  <td>
+                    gap between the fields, and around the line: a share of the window's height,
+                    between the floor and the ceiling
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-ceiling</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>the largest gap, on a tall window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-floor</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the smallest gap, on a short window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-head-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>gap between the heading and the corpus choice</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-label-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between a label and its buttons</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-limit-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap under «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-list-margin</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>room left beside a field's list in a narrow window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-list-width</code></td>
+                  <td>26 rem</td>
+                  <td>width of a field's list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-padding-block-end</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>space after the block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-unavailable-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>gap between the empty state and «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-years-hint-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>hint over the years in the year list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>corpus line text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-column-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap before «Vis mer»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-row-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap over the opened detail</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-toggle-padding-block-end</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>«Vis mer»'s target, grown downward</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-error-color</code></td>
+                  <td><code>--ds-color-danger-text-default</code></td>
+                  <td>why an upload failed</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in each section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-heading-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between «Dine dokumenter» and its tag</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-muted-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the count and the lines under the titles</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-own-item-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between a file and «Fjern»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-own-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the reader's files</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-zone-icon-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the upload icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-zone-off-background</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td>the drop zone, switched off</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="wide open-questions">
             <h2>Open questions</h2>
             <ul>
@@ -144,6 +451,10 @@
               <li>
                 The canvas uses a technical label in the filter that must not appear in user-facing
                 text. It needs a replacement before the filter is built.
+              </li>
+              <li>
+                The platform's facets carry no label for a field or a value. A host names the fields
+                for now, and a value is shown as it is stored.
               </li>
             </ul>
           </div>
