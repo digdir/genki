@@ -3,7 +3,14 @@
 // kunnskapsassistenten, as the UI blocks preview draws it; what the preview never drew follows
 // the design's board 3: Filter in the main column as a strip with «Endre», Chat or Fremgangsmåte
 // in the secondary panel, Dokumentvisning in either, and the secondary panel's tool rule.
-import { Button, Details, Heading, Paragraph, SkipLink } from '@digdir/designsystemet-react';
+import {
+  Button,
+  Details,
+  Heading,
+  Paragraph,
+  SkipLink,
+  Tooltip,
+} from '@digdir/designsystemet-react';
 import {
   AnswerActions,
   Approach,
@@ -53,7 +60,7 @@ import {
   type SourceDocument,
   type SourceTarget,
 } from '@genai/ui-blocks';
-import { ArrowLeftIcon, FileTextIcon } from '@navikt/aksel-icons';
+import { ArrowLeftIcon, ChatIcon, FileIcon, FileTextIcon, RobotIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -73,6 +80,21 @@ const cardGround = {
   '--genai-composer-sticky-background':
     'var(--genai-shell-card-background, var(--ds-color-neutral-surface-default))',
 } as CSSProperties;
+
+// The next look's «Kilder» heads are brand3's light blue, the board's (dev-kilder-hoyre), with the
+// titles in the text's own grey, not in brand3's blue.
+const sourcesTool = {
+  '--genai-sources-head-color': 'var(--ds-color-neutral-text-default)',
+} as CSSProperties;
+
+// The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
+// Kilder's page. Notater's pencil waits for the block.
+const toolIcons: Record<string, ReactNode> = {
+  approach: <RobotIcon aria-hidden />,
+  chat: <ChatIcon aria-hidden />,
+  sources: <FileIcon aria-hidden />,
+  'document-view': <FileTextIcon aria-hidden />,
+};
 
 // The modifier to name; the shortcut takes both (kunnskapsassistenten's shortcutModifier.ts).
 const modifier = () =>
@@ -160,14 +182,32 @@ const AnswerRow = ({
   );
 };
 
-/** «Fremgangsmåte» for one turn asked here, at the reader's level. Stored turns carry no steps. */
-const approachOf = (a: AssistantState, turnId: string | undefined, t: AssemblyTranslator) => {
+/**
+ * «Fremgangsmåte» for one turn asked here, at the reader's level. Stored turns carry no steps.
+ * `list` is the next look's tool in the secondary panel (dev-verktoy-1 to -3): the steps alone.
+ */
+const approachOf = (
+  a: AssistantState,
+  turnId: string | undefined,
+  t: AssemblyTranslator,
+  variant: 'card' | 'list' = 'card',
+) => {
   const turn = a.turns.find((one) => one.id === turnId);
   const approach = turn?.approach;
   if (!turn || !approach) return null;
   const busy = turn.answer?.status === 'streaming';
   const steps = stepsOf(approach, busy, t.locale);
   if (steps.length === 0) return null;
+  if (variant === 'list')
+    return (
+      <Approach
+        variant="list"
+        steps={steps}
+        working={busy}
+        startedAt={approach.startedAt}
+        {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
+      />
+    );
   // The next look says the filter inside «Fremgangsmåte» (dev-filter-panel; «9 · Filtrering» B):
   // the totals and «filteret er endret» when folded, what the answer read from when open. Only for
   // a question asked here, since genki keeps no filter with a turn.
@@ -365,6 +405,8 @@ export const AssistantView = ({
           loading={a.view === 'loading'}
           assistantName={name}
           answerColor="neutral"
+          // The next look's answer has no card, under the assistant's name (dev-kilder-hoyre).
+          {...(next ? { answerVariant: 'plain' as const } : {})}
           // The next look names the thread once, in the main card's `h1`.
           {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
@@ -771,7 +813,10 @@ export const AssistantView = ({
     };
 
   // ── The secondary panel's tools, in the catalogue's order ──
-  const sourcesView = (titled: boolean) => (
+  // The next look's «Kilder» tool (dev-kilder-hoyre): its search and caption, the documents' light
+  // blue heads with their titles in the text's grey, and no disclaimer, answer pager or ids, which
+  // the board does not draw. The answer it shows follows the footnote or the latest answer.
+  const sourcesBlock = (titled: boolean) => (
     <Sources
       color="neutral"
       {...(titled ? {} : { title: false })}
@@ -784,14 +829,22 @@ export const AssistantView = ({
       target={a.sourceTarget}
       answerIndex={a.shownIndex}
       answerCount={a.answered.length}
-      onAnswerChange={a.showAnswer}
       onShowUse={a.footnotes ? a.goToUse : undefined}
       onReturn={a.footnotes ? a.returnToAnswer : undefined}
-      disclaimer={a.option('sources', 'disclaimer')}
       search={a.option('sources', 'search')}
-      details
-      // Its title one under the panel's «Verktøy» in the next look.
-      headingLevel={next ? 4 : 3}
+      {...(next
+        ? {
+            variant: 'tool' as const,
+            headerColor: 'brand3',
+            disclaimer: false,
+          }
+        : {
+            onAnswerChange: a.showAnswer,
+            disclaimer: a.option('sources', 'disclaimer'),
+            details: true,
+          })}
+      // The documents one under the panel's «Verktøy» in the next look, Kilder's own title unsaid.
+      headingLevel={3}
       {...(documentOn
         ? {
             excerptActions: ({ source, excerpt }) => (
@@ -818,6 +871,14 @@ export const AssistantView = ({
         : {})}
     />
   );
+  const sourcesView = (titled: boolean) =>
+    next ? (
+      <div className="uia-sources-tool" style={sourcesTool}>
+        {sourcesBlock(titled)}
+      </div>
+    ) : (
+      sourcesBlock(titled)
+    );
   // Escape in the document is its way back. In a drawer, a modal dialog, the browser would also
   // close the drawer and put the focus on the drawer's button, wherever the way back sends it.
   // Not from the question field, where Escape is the field's.
@@ -858,22 +919,45 @@ export const AssistantView = ({
           : t('assembly.approachEmpty')}
     </Paragraph>
   );
-  const approachPanel = approachSteps ?? approachNote;
+  // The next look draws the steps as the tool's list (dev-verktoy-1 to -3), not as the card.
+  const approachPanel =
+    (next ? approachOf(a, a.active?.id, t, 'list') : approachSteps) ?? approachNote;
+  // The next look offers «Fremgangsmåte» as a tool too, beside its bar over each answer: the bar
+  // is dev-filter-panel's, the tool the dev-verktoy boards' (gaps.md row 25).
+  const approachTool = approachZone === 'secondary' || (next && approachZone === 'main');
+  // Each tool's icon, as the dev-verktoy boards draw it, in the switcher and on the folded panel.
+  const icon = (id: string) =>
+    next ? { icon: toolIcons[id] ?? <FileTextIcon aria-hidden /> } : {};
   const tools: ShellTool[] = [
-    ...(approachZone === 'secondary'
-      ? [{ id: 'approach', label: t('builder.approach'), content: approachPanel }]
+    ...(approachTool
+      ? [
+          {
+            id: 'approach',
+            label: t('builder.approach'),
+            content: approachPanel,
+            ...icon('approach'),
+          },
+        ]
       : []),
     ...(chatZone === 'secondary'
-      ? [{ id: 'chat', label: t('builder.chat'), content: chat(true, false) }]
+      ? [{ id: 'chat', label: t('builder.chat'), content: chat(true, false), ...icon('chat') }]
       : []),
     ...(sourcesOn
-      ? [{ id: 'sources', label: t('builder.sources'), content: sourcesView(false) }]
+      ? [
+          {
+            id: 'sources',
+            label: t('builder.sources'),
+            content: sourcesView(false),
+            ...icon('sources'),
+          },
+        ]
       : []),
     ...(a.documentZone === 'secondary'
       ? [
           {
             id: 'document-view',
             label: t('builder.documentView'),
+            ...icon('document-view'),
             content: (
               <div
                 onKeyDownCapture={escapeStaysInDrawer}
@@ -893,19 +977,42 @@ export const AssistantView = ({
       : []),
   ];
   // Kilder alone keeps its own heading, as kunnskapsassistenten draws it; the switcher names the
-  // tools only when there is a choice, or for a tool with no heading of its own.
-  const onlySources = tools.length === 1 && tools[0]?.id === 'sources';
+  // tools only when there is a choice, or for a tool with no heading of its own. In the next look
+  // one tool's name is the panel's title (dev-verktoy-1), so the tool stands alone under it.
+  const onlySources = !next && tools.length === 1 && tools[0]?.id === 'sources';
+  const singleTool = next && tools.length === 1 ? tools[0] : undefined;
   const toolsView = onlySources ? (
     sourcesView(true)
+  ) : singleTool ? (
+    singleTool.content
   ) : tools.length > 0 ? (
     <ShellTools
       tools={tools}
       value={a.tool}
       onChange={a.setTool}
       pinIn={toolsPin}
-      {...(next ? { headingLevel: 3 as const } : {})}
+      {...(next ? { headingLevel: 3 as const, variant: 'tinted' as const } : {})}
     />
   ) : null;
+  // The folded panel in the next look: a button per tool under the panel's own (dev-verktoy-4).
+  const toolsRail = next ? (
+    <>
+      {tools.map((tool) => (
+        <Tooltip key={tool.id} content={tool.label} placement="left">
+          <Button
+            aria-label={tool.label}
+            data-color="neutral"
+            data-size="md"
+            icon
+            onClick={() => a.showTool(tool.id)}
+            variant="tertiary"
+          >
+            {tool.icon}
+          </Button>
+        </Tooltip>
+      ))}
+    </>
+  ) : undefined;
   // `filters-right-panel`: the filter over the tools, drawn first and named first, as
   // kunnskapsassistenten's withFiltersBesideSources.
   const secondary: ShellPanel | undefined =
@@ -913,11 +1020,15 @@ export const AssistantView = ({
       ? {
           // Named after what is in it, as one phrase: «Filter og kilder», «Fremgangsmåte, kilder og
           // dokumentvisning».
-          label: phrase(t, [
-            ...(filtersBeside ? [t('builder.filter')] : []),
-            ...tools.map((tool) => tool.label),
-          ]),
-          ...(onlySources || filtersBeside ? {} : { pinnedRef: setToolsPin }),
+          // The next look's card is «verktøypanelet», whatever it holds: «Skjul verktøypanelet».
+          label:
+            next && !filtersBeside
+              ? t('assembly.toolsPanel')
+              : phrase(t, [
+                  ...(filtersBeside ? [t('builder.filter')] : []),
+                  ...tools.map((tool) => tool.label),
+                ]),
+          ...(onlySources || singleTool || filtersBeside ? {} : { pinnedRef: setToolsPin }),
           children: filtersBeside ? (
             <>
               <section className="uia-stacked">{filter(undefined, 2)}</section>
@@ -929,8 +1040,15 @@ export const AssistantView = ({
           // Folded until it has something to show, as kunnskapsassistenten's Kilder; open from the
           // start when Chat stands here, or there would be nothing to ask in.
           ...(chatZone === 'secondary' ? { defaultCollapsed: false } : {}),
-          // The next look titles the panel «Verktøy», its tools under it, 380 wide.
-          ...(next ? { title: t('shell.tools'), size: { width: 380 } } : {}),
+          // The next look titles the panel by how many tools it has: the tool's name for one
+          // (dev-verktoy-1), else «Verktøy» with the switcher under it; 380 wide.
+          ...(next
+            ? {
+                title: singleTool ? singleTool.label : t('shell.tools'),
+                size: { width: 380 },
+                rail: toolsRail,
+              }
+            : {}),
         }
       : undefined;
 

@@ -1191,6 +1191,11 @@ export const useAssistant = ({
     onShellLayout: (next: ShellLayout) => storage?.write('layout', next),
     tool,
     setTool,
+    /** A tool's own button on the folded panel (dev-verktoy-4): the panel opens on that tool. */
+    showTool: (id: string) => {
+      setTool(id);
+      setRequest({ action: 'open', side: 'secondary' });
+    },
     // settings
     level,
     setLevel,
