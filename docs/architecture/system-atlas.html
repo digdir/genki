@@ -5297,6 +5297,12 @@
                           exclusiveMinimum: 0,
                           maximum: 9007199254740991,
                         },
+                        aliases: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string' },
+                          additionalProperties: { type: 'array', items: { type: 'string' } },
+                        },
                         cacheTtlMs: {
                           default: 300000,
                           type: 'integer',

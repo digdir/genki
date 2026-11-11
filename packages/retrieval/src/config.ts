@@ -51,6 +51,7 @@ export const retrievalConfig = z.strictObject({
       orgFields: z.array(z.string()).default(['orgs_long', 'orgs_short']),
       yearTitleField: z.string().default('title'),
       minValueLength: z.number().int().positive().default(3),
+      aliases: z.record(z.string(), z.array(z.string())).default({}),
       cacheTtlMs: z.number().int().nonnegative().default(300_000),
       rules: z.array(autoFilterRule).default([]),
     })
