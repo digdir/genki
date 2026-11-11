@@ -8,6 +8,8 @@
 @import './states/states.css';
 @import './variant-picker/variant-picker.css';
 @import './threads/threads.css';
+@import './composer/composer.css';
+@import './welcome/welcome.css';
 
 .uib-visually-hidden {
   position: absolute;
