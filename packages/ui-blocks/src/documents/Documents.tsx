@@ -17,6 +17,8 @@ import { hasFiles } from '../dom.js';
 import { useT } from './i18n.js';
 import { fileSize, limitText } from './uploadText.js';
 
+export * from './InScope.js';
+
 /** A document behind the answer on screen, from the answer's `sources[]`. */
 export interface DocumentItem {
   id: string;

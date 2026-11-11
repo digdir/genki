@@ -42,6 +42,12 @@ describe('who is signed in', () => {
     expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
+  it('says who is signed in, with no «Logg ut», when the host gives no sign-out', () => {
+    render(<SignedIn name="Kari Nordmann" />);
+    expect(screen.getByText('Kari Nordmann')).toBeTruthy();
+    expect(screen.queryByText('Logg ut')).toBeNull();
+  });
+
   it('draws nothing when nobody is signed in', () => {
     const { container } = render(<SignedIn signOutHref="/auth/logout" />);
     expect(container.textContent).toBe('');

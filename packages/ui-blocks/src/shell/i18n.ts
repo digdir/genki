@@ -14,6 +14,19 @@ export const nbShell = defineNamespace({
   hidden: 'Skjult',
   // Without a unit, `aria-valuenow` is read as a bare number.
   width: '{width} piksler',
+  // The name of the secondary panel's tabs, and of its dropdown, when it holds more than one tool.
+  tools: 'Verktøy',
+  // The tinted dropdown's button: the tool it shows, then what it does.
+  toolChoice: '{tool}, velg verktøy',
+  // The profile menu's entries, the design's words (dev-navbar), and the dot's words for a screen
+  // reader. `{to}` is whom the reader contacts: «Kontakt Digdir».
+  profileSettings: 'Innstillinger',
+  profileFeedback: 'Gi tilbakemelding',
+  profileChangelog: 'Endringslogg',
+  profileNews: 'Nytt',
+  profileAbout: 'Om tjenesten',
+  profileContact: 'Kontakt {to}',
+  profileSignOut: 'Logg ut',
 });
 
 export const enShell = {
@@ -25,6 +38,15 @@ export const enShell = {
   resizePanel: 'Resize {panel}',
   hidden: 'Hidden',
   width: '{width} pixels',
+  tools: 'Tools',
+  toolChoice: '{tool}, choose a tool',
+  profileSettings: 'Settings',
+  profileFeedback: 'Give feedback',
+  profileChangelog: 'Changelog',
+  profileNews: 'New',
+  profileAbout: 'About the service',
+  profileContact: 'Contact {to}',
+  profileSignOut: 'Sign out',
 } satisfies Translation<typeof nbShell>;
 
 /** The shell's own catalogue, apart from the shared one, so a host loads only its words. */

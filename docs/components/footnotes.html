@@ -162,6 +162,12 @@
                 card, only when given; <code>className</code> is added to the card's own.
               </li>
               <li>
+                <code>variant</code>: <code>plain</code> is the dev boards' answer
+                (dev-kilder-hoyre): no card around it, and «Kilder brukt i svaret» with the count in
+                its bar, «Kilder · 3 brukt i svaret» (dev-filter-panel), the documents numbered,
+                each a link, with no excerpt line under them. <code>card</code>, the default.
+              </li>
+              <li>
                 <code>highlight</code>: search matches to mark in the text, as the conversation's
                 «Søk i svaret» passes them.
               </li>
@@ -392,6 +398,21 @@
                   <td><code>--genai-answer-sources-used-excerpts-hover-color</code></td>
                   <td><code>--ds-color-text-default</code></td>
                   <td>an excerpt's link under the pointer</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-bar-background</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td><code>plain</code>: the bar of «Kilder brukt i svaret», over a plain box</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-count-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td><code>plain</code>: «· 3 brukt i svaret» after «Kilder»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-count-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td><code>plain</code>: the count's weight</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-sources-used-icon-size</code></td>

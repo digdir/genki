@@ -1,7 +1,7 @@
-import { Card, Details, Link, List } from '@digdir/designsystemet-react';
+import { Card, Details, Link, List, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { RobotIcon } from '@navikt/aksel-icons';
-import { useEffect, useRef, useState } from 'react';
+import { CheckmarkIcon, RobotIcon } from '@navikt/aksel-icons';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from './i18n.js';
 import { linesOf, type ApproachLine } from './runs.js';
 
@@ -52,6 +52,23 @@ export interface ApproachProps {
   onShowRead?: (stepId: string) => void;
   /** Shows the link to more about what the assistant did not find. */
   onExplainMissing?: (stepId: string) => void;
+  /**
+   * `totals`: once the answer is done, how much was read and used stands beside the title, so the
+   * folded card says it in one line, and the foot keeps only the time. The card is then the dev
+   * boards' bar: tinted, its chevron at the end. Left out, the totals stand in the foot.
+   */
+  summary?: 'totals' | undefined;
+  /** After the totals in the head, stronger, such as «filteret er endret». */
+  note?: string | undefined;
+  /** At the top of the open card, before the steps, such as what the answer read from. */
+  scope?: ReactNode;
+  /**
+   * `list`: the steps as the dev boards' «Fremgangsmåte» tool (dev-verktoy-1 to -3), with no card
+   * and nothing that folds: «Slik jobbet assistenten med svaret», then each step with a mark, its
+   * title and a line under it, its `description` or the excerpts it read. `card`, the default: the
+   * card above the answer.
+   */
+  variant?: 'card' | 'list' | undefined;
 }
 
 const useSeconds = (
@@ -171,6 +188,10 @@ export const Approach = ({
   onOpenChange,
   onShowRead,
   onExplainMissing,
+  summary: summaryPlace,
+  note,
+  scope,
+  variant = 'card',
 }: ApproachProps) => {
   const t = useT();
   const [ownOpen, setOwnOpen] = useOwnOpen(working);
@@ -209,14 +230,71 @@ export const Approach = ({
             read: readText,
             used: t('approach.used', { count: used }),
           });
+  // In the head once done, with the totals: the foot then says only how long it took.
+  const inHead = summaryPlace === 'totals' && !working;
   const footer = working
     ? t('approach.workingFor', { count: seconds })
-    : summary === undefined
+    : summary === undefined || inHead
       ? t('approach.tookOnly', { count: seconds })
       : t('approach.footer', { summary, took: t('approach.took', { count: seconds }) });
+  const headSummary = inHead ? summary : undefined;
+  const headNote = inHead ? note : undefined;
+  const live = (
+    <p className="uib-visually-hidden" aria-live="polite">
+      {working ? announced : ''}
+    </p>
+  );
+
+  if (variant === 'list')
+    return (
+      <div className="uib-approach" data-variant="list">
+        <p className="uib-approach-caption">{t('approach.caption')}</p>
+        <ol className="uib-approach-list" aria-label={t('approach.title')}>
+          {lines.map((line) => {
+            const { step } = line;
+            // The title stays the step's; what it read goes on the line under it.
+            const detail =
+              step.description ??
+              (line.excerpts > 0
+                ? t('approach.excerptsRead', { count: line.excerpts })
+                : undefined);
+            return (
+              <li
+                key={line.key}
+                data-status={step.status}
+                aria-current={step.status === 'active' ? 'step' : undefined}
+              >
+                <span className="uib-approach-mark" aria-hidden="true">
+                  {step.status === 'done' ? (
+                    <CheckmarkIcon />
+                  ) : step.status === 'active' ? (
+                    <Spinner aria-hidden="true" data-size="2xs" />
+                  ) : null}
+                </span>
+                <span className="uib-approach-entry">
+                  <span className="uib-approach-step-title">
+                    {line.count > 1
+                      ? t('approach.repeated', { title: step.title, count: line.count })
+                      : step.title}
+                    <span className="uib-visually-hidden">
+                      {' '}
+                      {t('approach.hiddenStatus', { status: t(`approach.${step.status}`) })}
+                    </span>
+                  </span>
+                  {detail && step.status !== 'waiting' ? (
+                    <span className="uib-approach-step-line">{detail}</span>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        {live}
+      </div>
+    );
 
   return (
-    <div className="uib-approach">
+    <div className="uib-approach" data-summary={summaryPlace}>
       <Card data-color="neutral" variant="default" className="uib-approach-card">
         <Details
           aria-label={t('approach.title')}
@@ -226,10 +304,21 @@ export const Approach = ({
           <Details.Summary>
             <span className="uib-approach-summary">
               <RobotIcon aria-hidden fontSize="18px" />
-              {t('approach.title')}
+              <span className="uib-approach-title">{t('approach.title')}</span>
+              {headSummary || headNote ? (
+                <span className="uib-approach-subtitle">
+                  {headSummary}
+                  {headNote ? (
+                    <span className="uib-approach-note">
+                      {headSummary ? ` · ${headNote}` : headNote}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
             </span>
           </Details.Summary>
-          <Details.Content>
+          <Details.Content className="uib-approach-content">
+            {scope ? <div className="uib-approach-scope">{scope}</div> : null}
             <List.Ordered className="uib-approach-steps">
               {lines.map((line) => {
                 const { step } = line;
@@ -266,9 +355,7 @@ export const Approach = ({
           </Details.Content>
         </Details>
       </Card>
-      <p className="uib-visually-hidden" aria-live="polite">
-        {working ? announced : ''}
-      </p>
+      {live}
     </div>
   );
 };

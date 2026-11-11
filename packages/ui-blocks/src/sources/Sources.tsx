@@ -37,7 +37,12 @@ import {
 import { SourcesSearch } from './SourcesSearch.js';
 import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } from './types.js';
 
-export type SourcesVariant = 'panel' | 'compact';
+/**
+ * `panel`, kunnskapsassistenten's «Kilder»; `compact`, tighter; `tool`, the dev boards' «Kilder»
+ * tool (dev-kilder-hoyre): the search «Søk i utdragene» with its caption, «Utdrag svaret bygger
+ * på», each excerpt titled by its section where it has one, and its closed text fading out.
+ */
+export type SourcesVariant = 'panel' | 'compact' | 'tool';
 
 /** What became of the answer the sources belong to, or `unasked` before the first question. */
 export type SourcesAnswerStatus =
@@ -270,6 +275,7 @@ export const ExcerptTitle = ({
   section,
   uses,
   back,
+  sectionFirst,
 }: {
   id?: string | undefined;
   level: number;
@@ -279,9 +285,15 @@ export const ExcerptTitle = ({
   section: string | undefined;
   uses: readonly number[];
   back: BackTo | undefined;
+  /**
+   * The section is the title, in the number's place, with the links back after it: the dev
+   * boards' excerpt (dev-kilder-hoyre). Without a section, «Utdrag N» as before.
+   */
+  sectionFirst?: boolean | undefined;
 }) => {
   const t = useT();
   const number = n === undefined ? undefined : t('sources.excerptNumber', { n });
+  const bySection = sectionFirst && section !== undefined;
   return (
     <Heading
       id={id}
@@ -292,9 +304,9 @@ export const ExcerptTitle = ({
       aria-label={number && (section ? `${number}: ${section}` : number)}
     >
       {n === undefined || !number ? null : (
-        <ExcerptNumber n={n} label={number} uses={uses} back={back} />
+        <ExcerptNumber n={n} label={bySection ? section : number} uses={uses} back={back} />
       )}
-      {section ? <span>{section}</span> : null}
+      {section && !(bySection && n !== undefined) ? <span>{section}</span> : null}
       {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
     </Heading>
   );
@@ -561,6 +573,11 @@ type ItemProps = Pick<
   applied: WeakSet<SourceTarget>;
   hits: readonly SearchHit[];
   currentHit: SearchHit | undefined;
+  /**
+   * The `tool` variant: an excerpt is titled by its section where it has one, and a document's
+   * excerpts stand in the card even when the footnotes name only documents, as the board draws.
+   */
+  sectionFirst: boolean;
 };
 
 const SourceItem = ({
@@ -577,6 +594,7 @@ const SourceItem = ({
   applied,
   hits,
   currentHit,
+  sectionFirst,
   details,
   target,
   onSelect,
@@ -637,7 +655,7 @@ const SourceItem = ({
   const excerptName = useExcerptName();
   // A document's passages, which nothing cites alone, behind one button in document mode.
   const passages = (drawn: ReactNode[]) =>
-    byDocument && drawn.length ? (
+    byDocument && drawn.length && !sectionFirst ? (
       <>
         <Button
           type="button"
@@ -815,6 +833,7 @@ const SourceItem = ({
                     section={section}
                     uses={uses}
                     back={excerpt ? backFor(excerpt) : undefined}
+                    sectionFirst={sectionFirst}
                   />
                   <div className="uib-sources-excerpt-controls">
                     <Button
@@ -942,6 +961,7 @@ export const Sources = ({
   const t = useT();
   const titleId = useId();
   const madeId = useId();
+  const captionId = useId();
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(new Set());
   const [openCards, setOpenCards] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [openPassages, setOpenPassages] = useState<ReadonlySet<string>>(new Set());
@@ -1088,15 +1108,22 @@ export const Sources = ({
         {title ?? t('sources.title')}
       </Heading>
     );
-  const named = heading ? { 'aria-labelledby': titleId } : { 'aria-label': t('sources.title') };
+  // The tool's caption names the list it stands over, «Utdrag svaret bygger på».
+  const tool = variant === 'tool';
+  const captioned = tool && !waiting && !empty && Boolean(sources?.length);
+  const named = captioned
+    ? { 'aria-labelledby': captionId }
+    : heading
+      ? { 'aria-labelledby': titleId }
+      : { 'aria-label': t('sources.title') };
   const own = hasOwnDocuments ?? sources?.some(isOwn) ?? false;
-  const searching = (search ?? variant === 'panel') && !empty && Boolean(sources?.length);
+  const searching = (search ?? variant !== 'compact') && !empty && Boolean(sources?.length);
   const describedBy = disclaimer && sources?.length ? (disclaimerId ?? madeId) : undefined;
   return (
     <div className={classes('uib-sources', className)} data-variant={variant} data-color={color}>
       {/* In the page from the first render: a live region announces only a change to it. */}
       {onAnswerChange ? <output className="ds-sr-only">{answerLabel}</output> : null}
-      {heading || searching || stepping ? (
+      {heading || searching || stepping || captioned ? (
         <div className="uib-sources-head">
           {heading}
           {/* Also when this answer has no sources: stepping back is the point. */}
@@ -1116,7 +1143,19 @@ export const Sources = ({
               currentHitIndex={hitIndex}
               onStep={stepToHit}
               describedBy={describedBy}
+              {...(tool
+                ? {
+                    label: t('sources.searchExcerpts'),
+                    placeholder: t('sources.searchExcerpts'),
+                    labelHidden: true,
+                  }
+                : {})}
             />
+          ) : null}
+          {captioned ? (
+            <p id={captionId} className="uib-sources-caption">
+              {t('sources.excerptsCaption')}
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -1169,6 +1208,7 @@ export const Sources = ({
                   applied={applied.current}
                   hits={hits}
                   currentHit={currentHit}
+                  sectionFirst={variant === 'tool'}
                   corpus={corpus}
                   headerColor={headerColor}
                   back={back}

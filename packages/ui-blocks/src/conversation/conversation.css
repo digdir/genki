@@ -59,6 +59,15 @@
     color: var(--genai-conversation-slow-color, var(--ds-color-text-subtle));
   }
 
+  /* `answerVariant="plain"`: who answers, a small strong line over the answer (dev-kilder-hoyre). */
+  .uib-conversation-label {
+    margin: 0 0 var(--genai-conversation-label-spacing, var(--ds-size-1));
+    color: var(--genai-conversation-label-color, var(--ds-color-text-default));
+    font-size: var(--genai-conversation-label-font-size, var(--ds-font-size-2));
+    font-weight: var(--genai-conversation-label-font-weight, var(--ds-font-weight-semibold));
+    line-height: var(--genai-conversation-label-line-height, var(--ds-line-height-md));
+  }
+
   .uib-conversation-scope {
     margin: 0;
     padding-inline: var(--genai-conversation-scope-padding-inline, var(--ds-size-2));

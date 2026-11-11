@@ -114,6 +114,32 @@
                 <code>onShowRead</code> and <code>onExplainMissing</code>: the links «Vis de 17 som
                 er lest» and «Utdyp hva som mangler», shown only when the app can open them.
               </li>
+              <li>
+                <code>summary</code>: <code>totals</code> puts «Leste 44 dokumenter, brukte 4»
+                beside the title once the answer is done, so the folded card says it in one line,
+                and the foot keeps only «Tok 41 sekunder». The card is then the dev boards' bar
+                (dev-filter-panel): tinted, under a hairline, its chevron at the end. Left out, the
+                card is as before.
+              </li>
+              <li>
+                <code>note</code>: after the totals in the head, stronger: «· filteret er endret»,
+                which the host passes only when the answer's filter differs from the previous
+                answer's.
+              </li>
+              <li>
+                <code>scope</code>: at the top of the open card, before the steps, such as the
+                filter's <code>FilterRead</code>: «Leste fra 8 781 dokumenter:» and the chosen
+                values as chips.
+              </li>
+              <li>
+                <code>variant</code>: <code>list</code> draws the steps as the dev boards'
+                «Fremgangsmåte» tool in the secondary panel (dev-verktoy-1 to -3), with no card and
+                nothing that folds: the caption «Slik jobbet assistenten med svaret», then each step
+                with a mark (a check on success's tint when done, a spinner while it works), its
+                title, and a grey line under it: its <code>description</code>, or «Leste 11 utdrag
+                nøye» for the excerpts it read. <code>card</code>, the default, is the card above
+                the answer.
+              </li>
             </ul>
             <h3>A step</h3>
             <ul>
@@ -243,6 +269,201 @@
                   <td><code>--genai-approach-footer-font-size</code></td>
                   <td><code>--ds-font-size-2</code></td>
                   <td>the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the totals bar: bar border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the totals bar: bar font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: bar gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-ground</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>the totals bar: bar ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-icon-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the totals bar: bar icon color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the totals bar: bar icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: bar padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-block-end</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the totals bar: bar padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the totals bar: bar padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>the totals bar: bar radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-note-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>the totals bar: note color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-note-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the totals bar: note font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the totals bar: scope border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-margin-block-end</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: scope margin block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-padding-block-end</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: scope padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the list: between the caption and the steps</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the list: «Slik jobbet assistenten med svaret» (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-item-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the list: between a step's mark and its words</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-item-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the list: above and below a step</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-divider-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the list: the hairline over each step (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the list: a step's round mark</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>the list: the mark's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-background</code></td>
+                  <td><code>--ds-color-success-surface-tinted</code></td>
+                  <td>the list: a done step's mark (pinned to success, the design's green)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-color</code></td>
+                  <td><code>--ds-color-success-text-subtle</code></td>
+                  <td>the list: a done step's check (pinned to success)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the list: the check</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-pending-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the list: a step's mark while it works or waits (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-pending-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the list: the spinner (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-entry-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the list: between a step's title and its line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the list: a step's title (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: the grey line under a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-subtitle-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the totals bar: subtitle color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-subtitle-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>the totals bar: subtitle font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the totals bar: title font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the totals bar: bar background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-hover-background</code></td>
+                  <td><code>--ds-color-neutral-surface-hover</code></td>
+                  <td>the totals bar: bar hover background</td>
                 </tr>
               </tbody>
             </table>

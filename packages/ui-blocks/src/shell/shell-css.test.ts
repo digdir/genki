@@ -37,9 +37,24 @@ const neutralPins = [
   '--genai-shell-background',
   '--genai-shell-bar-background',
   '--genai-shell-border-color',
+  // The cards frame's grounds and lines, and the titles, grey as the design's dev-navbar draws them.
+  '--genai-shell-card-background',
+  // The companion column, on the card's ground, its subtitle grey as the design's (dev-filter-panel).
+  '--genai-shell-companion-background',
+  '--genai-shell-companion-subtitle-color',
+  '--genai-shell-divider-color',
   '--genai-shell-drawer-background',
   '--genai-shell-primary-background',
+  // The profile menu's top: the reader's name and organisation, the panel's own words.
+  '--genai-shell-profile-organisation-color',
+  '--genai-shell-profile-who-color',
   '--genai-shell-rail-background',
+  '--genai-shell-title-color',
+  // The secondary panel's tool tabs are its own chrome, grey as the design draws them.
+  '--genai-shell-tools-tab-color',
+  '--genai-shell-tools-tab-hover-background',
+  '--genai-shell-tools-tab-selected-background',
+  '--genai-shell-tools-tabs-background',
 ];
 
 describe('the Shell styles', () => {
@@ -79,6 +94,8 @@ describe('the Shell styles', () => {
   it('take the widths from the shell’s own sums, never from a host variable', () => {
     const sums = [...new Set(css.match(/--uib-shell-[a-z-]+/g) ?? [])].sort();
     expect(sums).toEqual([
+      // The panel's own column beside a companion: its design width less the companion's.
+      '--uib-shell-lead-width',
       '--uib-shell-main-max-width',
       '--uib-shell-main-min-width',
       '--uib-shell-primary-drawer-width',
@@ -143,6 +160,41 @@ describe('the Shell styles', () => {
     expect(css).toContain(
       '.uib-shell[data-compact] > .uib-shell-side > .uib-shell-box { padding-block: var(--genai-shell-bar-padding-block, var(--ds-size-2)); background: none; border-inline: 0; }',
     );
+  });
+
+  it('draw the cards frame from tokens: 16 from the window, 12 apart, a 44 button, out of the top row', () => {
+    expect(css).toContain(
+      ".uib-shell[data-frame='cards']:not([data-compact]) { box-sizing: border-box; padding: var(--genai-shell-inset, var(--ds-size-4)); }",
+    );
+    expect(css).toContain(
+      ".uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='primary'] { margin-inline-end: var(--genai-shell-gap, var(--ds-size-3)); }",
+    );
+    expect(css).toContain(
+      ".uib-shell[data-frame='cards'] .uib-shell-toggle { --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11)); }",
+    );
+    expect(css).toContain(
+      'border-radius: var(--genai-shell-card-radius, var(--ds-border-radius-xl));',
+    );
+  });
+
+  it('give every title one look, Heading xs on one line, its line as tall as --ds-size-8', () => {
+    const title = /\.uib-shell-title \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(title).toContain(
+      'font-size: var(--genai-shell-title-font-size, var(--ds-heading-xs-font-size))',
+    );
+    expect(title).toContain('line-height: var(--genai-shell-title-line-height, var(--ds-size-8))');
+    expect(title).toContain('white-space: nowrap');
+    expect(title).toContain('text-overflow: ellipsis');
+  });
+
+  it('align the head row of a card to its top, so a title beside a 44 button stays on the others’ line', () => {
+    expect(css).toContain(
+      ".uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header { align-items: start; }",
+    );
+  });
+
+  it('keep what a rail shows at its bottom out of the top row', () => {
+    expect(css).toContain('.uib-shell[data-compact] .uib-shell-rail-foot { display: none; }');
   });
 
   it('are each listed on the component page', () => {

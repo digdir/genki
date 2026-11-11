@@ -50,6 +50,10 @@ export interface ShellGeometry {
   gap: number;
   /** A folded panel's width: the button and the rail's padding and border. */
   rail: number;
+  /** The frame's margin on each side of the row, inside the window: 0 when flush. */
+  inset?: number | undefined;
+  /** A rail keeps the gap beside it too, as a card of its own does; flush, it meets the main column. */
+  railGap?: boolean | undefined;
 }
 
 /** Kunnskapsassistenten's sizes; no ceiling, so a panel can take about half the window. */
@@ -67,6 +71,15 @@ export const defaultGap = 32;
 /** A small icon button, 42, plus 2 × 12 (`--ds-size-3`) padding and a 1 px border. */
 export const defaultRail = 67;
 
+/**
+ * The cards frame's sums, the design's dev-navbar board at the default size mode: 16 from the
+ * window (`--ds-size-4`), 12 between the cards (`--ds-size-3`), and a rail that is a 44 button
+ * (`--ds-size-11`) with 16 on each side.
+ */
+export const cardsInset = 16;
+export const cardsGap = 12;
+export const cardsRail = 76;
+
 /** Kunnskapsassistenten starts with the primary panel open and the secondary one on its rail. */
 export const defaultCollapsed: Record<ShellSide, boolean> = { primary: false, secondary: true };
 
@@ -79,20 +92,31 @@ export const yieldingSide = (geometry: ShellGeometry): ShellSide =>
 
 const present = (geometry: ShellGeometry) => shellSides.filter((side) => geometry.panels[side]);
 
+/** What a rail takes on the row: its width, and the gap beside it where a rail keeps one. */
 const railOf = (geometry: ShellGeometry, side: ShellSide) =>
-  geometry.panels[side] ? geometry.rail : 0;
+  geometry.panels[side] ? geometry.rail + (geometry.railGap ? geometry.gap : 0) : 0;
+
+/** The frame's margins on both sides of the row. */
+const edges = (geometry: ShellGeometry) => 2 * (geometry.inset ?? 0);
+
+/** The row's room in a window: what the frame's margins leave. */
+const roomIn = (geometry: ShellGeometry, viewport: number) => viewport - edges(geometry);
 
 /** Where the layout changes, summed from the sizes: `both` 1440, `drawer` 1139, `compact` 774. */
 export const breakpoints = (geometry: ShellGeometry) => {
   const { primary, secondary } = geometry.panels;
   const { gap, main } = geometry;
+  const edge = edges(geometry);
   return {
     both:
-      primary && secondary ? primary.minWidth + gap + main.minWidth + gap + secondary.minWidth : 0,
+      primary && secondary
+        ? edge + primary.minWidth + gap + main.minWidth + gap + secondary.minWidth
+        : 0,
     drawer: Math.max(
       0,
       ...present(geometry).map(
         (side) =>
+          edge +
           (geometry.panels[side]?.minWidth ?? 0) +
           gap +
           main.minWidth +
@@ -100,7 +124,7 @@ export const breakpoints = (geometry: ShellGeometry) => {
       ),
     ),
     compact: present(geometry).length
-      ? railOf(geometry, 'primary') + main.minWidth + railOf(geometry, 'secondary')
+      ? edge + railOf(geometry, 'primary') + main.minWidth + railOf(geometry, 'secondary')
       : 0,
   };
 };
@@ -137,6 +161,18 @@ export const initialState = (
   return next;
 };
 
+/**
+ * A panel's width within its floor and ceiling as they are now. The host may change a panel's size
+ * while the reader is on the page, as the next look's primary panel does between the threads with
+ * their filter (660) and the settings menu (220): the width asked for before still stands, but is
+ * drawn within the new size.
+ */
+const heldWidth = (geometry: ShellGeometry, state: ShellState, side: ShellSide) => {
+  const size = geometry.panels[side];
+  const width = state.widths[side];
+  return size ? Math.min(Math.max(width, size.minWidth), size.maxWidth) : width;
+};
+
 /** The layout worth storing: a width only when the reader moved it. */
 export const storedLayout = (geometry: ShellGeometry, state: ShellState): ShellLayout => {
   const layout: Required<{ [K in keyof ShellLayout]: NonNullable<ShellLayout[K]> }> = {
@@ -147,8 +183,8 @@ export const storedLayout = (geometry: ShellGeometry, state: ShellState): ShellL
   for (const side of present(geometry)) {
     layout.collapsed[side] = state.collapsed[side];
     layout.dismissed[side] = state.dismissed[side];
-    if (state.widths[side] !== geometry.panels[side]?.width)
-      layout.widths[side] = state.widths[side];
+    const width = heldWidth(geometry, state, side);
+    if (width !== geometry.panels[side]?.width) layout.widths[side] = width;
   }
   return layout;
 };
@@ -189,12 +225,12 @@ export const withWidth = (
 /** What a panel takes up on the row: its rail when folded. */
 const occupied = (geometry: ShellGeometry, state: ShellState, side: ShellSide) => {
   if (!geometry.panels[side]) return 0;
-  return state.collapsed[side] ? geometry.rail : state.widths[side];
+  return state.collapsed[side] ? geometry.rail : heldWidth(geometry, state, side);
 };
 
-/** The gap a panel puts between itself and the main column. A rail has none. */
+/** The gap a panel puts between itself and the main column. A rail has none, unless it keeps one. */
 const gapOf = (geometry: ShellGeometry, state: ShellState, side: ShellSide) =>
-  geometry.panels[side] && !state.collapsed[side] ? geometry.gap : 0;
+  geometry.panels[side] && (!state.collapsed[side] || geometry.railGap) ? geometry.gap : 0;
 
 /** The widths drawn in this window; what gives first is the main column, then any widening. */
 export const fittedWidths = (
@@ -212,7 +248,7 @@ export const fittedWidths = (
     gapOf(geometry, state, 'primary') +
     gapOf(geometry, state, 'secondary') +
     geometry.main.minWidth -
-    viewport;
+    roomIn(geometry, viewport);
 
   const yielding = yieldingSide(geometry);
   const order = [yielding, otherSide(yielding)];
@@ -251,7 +287,7 @@ export const widthRange = (
   const open = withCollapsed(state, side, false);
   const other = otherSide(side);
   const free =
-    viewport -
+    roomIn(geometry, viewport) -
     fittedWidths(geometry, open, viewport)[other] -
     gapOf(geometry, open, other) -
     gapOf(geometry, open, side) -
@@ -289,7 +325,7 @@ export const layoutStyle = (
   const rails = compact
     ? 0
     : present(geometry).reduce((total, side) => total + railOf(geometry, side), 0);
-  const room = Math.max(0, viewport - rails);
+  const room = Math.max(0, roomIn(geometry, viewport) - rails);
   const style: Record<string, string> = {
     '--uib-shell-main-min-width': `${drawer ? Math.min(geometry.main.minWidth, room) : geometry.main.minWidth}px`,
     '--uib-shell-main-max-width': `${geometry.main.maxWidth}px`,

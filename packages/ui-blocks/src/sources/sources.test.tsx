@@ -754,3 +754,46 @@ describe('the catalogue', () => {
     expect(sharedNb).not.toHaveProperty('sources');
   });
 });
+
+describe('the dev boards’ «Kilder» tool, `variant="tool"` (dev-kilder-hoyre)', () => {
+  it('names the search «Søk i utdragene» in the field, and the list «Utdrag svaret bygger på»', () => {
+    draw({ variant: 'tool', title: false, citations: cite('kudos::2021-1') });
+    const field = screen.getByRole('searchbox', { name: 'Søk i utdragene' });
+    expect(field.getAttribute('placeholder')).toBe('Søk i utdragene');
+    expect(document.querySelector('.uib-sources-search label')?.className).toContain('ds-sr-only');
+    expect(screen.getByRole('list', { name: 'Utdrag svaret bygger på' })).toBeTruthy();
+  });
+
+  it('titles a cited excerpt by its section, with its links back, and one without a section «Utdrag N»', () => {
+    draw({
+      variant: 'tool',
+      citations: cite('kudos::2021-1', 'kudos::2021-3'),
+      onShowUse: () => {},
+    });
+    const bySection = screen.getByRole('heading', {
+      name: 'Utdrag 1: Ressursbruk og måloppnåelse',
+    });
+    expect(bySection.querySelector('.uib-sources-excerpt-number')?.textContent).toBe(
+      'Ressursbruk og måloppnåelse',
+    );
+    expect(within(bySection).getByRole('link', { name: '1: fotnote 1 i svaret' })).toBeTruthy();
+    expect(bySection.textContent).not.toContain('Utdrag 1');
+    expect(screen.getByRole('heading', { name: 'Utdrag 2' })).toBeTruthy();
+  });
+
+  it('shows a document’s excerpts in its card when the footnotes name only documents', () => {
+    draw({ variant: 'tool', citations: [{ index: 1 }] });
+    expect(screen.queryByRole('button', { name: /Vis utdrag fra dokumentet/ })).toBeNull();
+    expect(document.querySelector('.uib-sources-passages')).toBeNull();
+    expect(document.querySelectorAll('.uib-sources-excerpt').length).toBe(4);
+  });
+
+  it('leaves the panel as it was without the variant', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    expect(screen.getByRole('searchbox', { name: 'Søk i kildene' })).toBeTruthy();
+    expect(screen.queryByText('Utdrag svaret bygger på')).toBeNull();
+    expect(
+      screen.getByRole('heading', { name: 'Utdrag 1: Ressursbruk og måloppnåelse' }).textContent,
+    ).toContain('Utdrag 1');
+  });
+});

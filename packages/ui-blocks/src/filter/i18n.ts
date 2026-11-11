@@ -61,6 +61,26 @@ export const nbFilter = defineNamespace({
   srOf: 'av',
   srRemove: 'Trykk for å fjerne fra {field}',
   srRemoveAll: 'Trykk for å fjerne alle fra {field}',
+  // The `panel` variant, the dev boards' filter beside the threads.
+  clearAll: 'Fjern alle filtre',
+  clearedAll: 'Alle filtre er fjernet.',
+  all: 'Alle',
+  appliesNext: 'Gjelder neste spørsmål',
+  // The filter in an answer and under the field, its values in the words of the rows.
+  changed: 'filteret er endret',
+  readFrom: { one: 'Leste fra {count} dokument', other: 'Leste fra {count} dokumenter' },
+  readFromNarrowed: {
+    one: 'Leste fra {count} dokument:',
+    other: 'Leste fra {count} dokumenter:',
+  },
+  readFromUncounted: 'Avgrenset til:',
+  inAnswer: 'Filteret dette svaret bygger på',
+  next: {
+    one: 'Neste spørsmål leser fra {count} dokument',
+    other: 'Neste spørsmål leser fra {count} dokumenter',
+  },
+  nextWhere: 'endres i filteret til venstre',
+  nextLine: '{reads} – {where}',
 });
 
 export const enFilter = {
@@ -118,6 +138,21 @@ export const enFilter = {
   srOf: 'of',
   srRemove: 'Press to remove from {field}',
   srRemoveAll: 'Press to remove all from {field}',
+  clearAll: 'Remove all filters',
+  clearedAll: 'All filters are removed.',
+  all: 'All',
+  appliesNext: 'Applies to the next question',
+  changed: 'the filter has changed',
+  readFrom: { one: 'Read from {count} document', other: 'Read from {count} documents' },
+  readFromNarrowed: { one: 'Read from {count} document:', other: 'Read from {count} documents:' },
+  readFromUncounted: 'Limited to:',
+  inAnswer: 'The filter this answer builds on',
+  next: {
+    one: 'The next question reads from {count} document',
+    other: 'The next question reads from {count} documents',
+  },
+  nextWhere: 'change it in the filter on the left',
+  nextLine: '{reads} – {where}',
 } satisfies Translation<typeof nbFilter>;
 
 /** The filter's own catalogue, apart from the shared one, so a host loads only its words. */

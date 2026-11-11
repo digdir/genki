@@ -14,6 +14,14 @@ export interface ColorSchemeToggleProps {
   value?: ColorScheme | undefined;
   /** The reader chose a scheme. The host stores it and sets `data-color-scheme` on its root. */
   onChange: (scheme: ColorScheme) => void;
+  /**
+   * `compact`, the default: «Lys», «Mørk» and «Auto», each with its icon, small. `full`: «Lyst»,
+   * «Mørkt» and «Følg systemet» in words alone, at the text's size, as the settings pages draw it
+   * (the dev-innstillinger-1 board).
+   */
+  look?: 'compact' | 'full' | undefined;
+  /** The `id` of a visible name, such as its row's title; «Fargemodus» names it without one. */
+  labelledBy?: string | undefined;
   className?: string | undefined;
 }
 
@@ -60,13 +68,23 @@ const colored = (color: string | undefined) => (color ? { 'data-color': color } 
 const SectionLevel = createContext<HeadingLevel | 6>(3);
 
 /** Light, dark or the system's, as a `ToggleGroup` with words; it shows the host's value. */
-export const ColorSchemeToggle = ({ value, onChange, className }: ColorSchemeToggleProps) => {
+export const ColorSchemeToggle = ({
+  value,
+  onChange,
+  look = 'compact',
+  labelledBy,
+  className,
+}: ColorSchemeToggleProps) => {
   const t = useT();
+  const full = look === 'full';
   return (
     <ToggleGroup
-      aria-label={t('settings.colorScheme')}
+      {...(labelledBy
+        ? { 'aria-labelledby': labelledBy }
+        : { 'aria-label': t('settings.colorScheme') })}
       className={classes('uib-settings-color-scheme', className)}
-      data-size="sm"
+      // The page's look takes the text's size, as the settings pages' other choices do.
+      {...(full ? {} : { 'data-size': 'sm' })}
       onChange={(chosen) => {
         if (isColorScheme(chosen)) onChange(chosen);
       }}
@@ -75,8 +93,8 @@ export const ColorSchemeToggle = ({ value, onChange, className }: ColorSchemeTog
     >
       {choices.map(({ value: scheme, Icon }) => (
         <ToggleGroup.Item key={scheme} value={scheme}>
-          <Icon aria-hidden />
-          {t(`settings.${scheme}`)}
+          {full ? null : <Icon aria-hidden />}
+          {t(full ? `settings.${scheme}Full` : `settings.${scheme}`)}
         </ToggleGroup.Item>
       ))}
     </ToggleGroup>

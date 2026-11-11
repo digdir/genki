@@ -106,6 +106,12 @@ export interface AnswerProps {
   headingLevel?: 2 | 3 | 4 | undefined;
   /** Designsystemet's `data-color` for the card, set only when given. */
   color?: string | undefined;
+  /**
+   * `plain`, the dev boards' answer (dev-kilder-hoyre): no card around it, and «Kilder brukt i
+   * svaret» with the count in its bar, «Kilder · 3 brukt i svaret», as a numbered list of the
+   * documents. `card`, the default: the answer in a card.
+   */
+  variant?: 'card' | 'plain' | undefined;
   className?: string | undefined;
 }
 
@@ -252,6 +258,7 @@ export const Answer = ({
   assistantName,
   headingLevel = 3,
   color,
+  variant = 'card',
   className,
 }: AnswerProps) => {
   const t = useT();
@@ -417,7 +424,12 @@ export const Answer = ({
   if (empty && !streaming && !aborted && !failed) return null;
 
   return (
-    <Card className={classes('uib-answer', className)} data-color={color}>
+    <Card
+      className={classes('uib-answer', className)}
+      data-color={color}
+      // Not `data-variant`, which is the card's own (`default`, `tinted`).
+      data-plain={variant === 'plain' || undefined}
+    >
       <Card.Block className="uib-answer-body">
         <span className="ds-sr-only">
           {assistantName ? t('answer.said', { name: assistantName }) : t('answer.saidUnnamed')}
@@ -481,6 +493,7 @@ export const Answer = ({
             onOpenExcerpt={onOpenExcerpt}
             links={usedLinks.current}
             excerptLinks={excerptLinks.current}
+            counted={variant === 'plain'}
           />
         ) : null}
         {finished && closingQuestion ? (

@@ -47,7 +47,14 @@ const rangeOf = (value: string): YearRange | undefined =>
   /^\d+$/u.test(value) ? { from: Number(value), to: Number(value) } : rangeFromKey(value);
 
 /** A `year` field with `yearPeriods`: the years with documents, then what the text can be. */
-export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldProps) => {
+export const YearRangeField = ({
+  ref,
+  field,
+  selected,
+  onChange,
+  max,
+  labelHidden = false,
+}: FieldProps) => {
   const t = useT();
   const texts = useComboboxTexts();
   const name = useInSentence()(field.label);
@@ -155,7 +162,7 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
   return (
     <Field className="uib-filter-field uib-filter-years">
       <div className="uib-filter-label-row">
-        <Label>{field.label}</Label>
+        <Label className={labelHidden ? 'ds-sr-only' : undefined}>{field.label}</Label>
 
         <div className="uib-filter-field-actions">
           {!allChosen && total > 0 && (

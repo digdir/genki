@@ -103,6 +103,13 @@
                 navigation panel: «Innstillinger» first, then the app's own pages, such as the pages
                 about the service.
               </li>
+              <li>
+                <strong>The settings pages:</strong> <code>SettingsMenu</code> for the navigation
+                panel, and one page at a time in the main column: <code>SettingsGeneral</code>,
+                <code>SettingsAboutYou</code>, <code>SettingsBeta</code> and
+                <code>SettingsPrivacy</code>, each a <code>SettingsPage</code>. The design's
+                dev-innstillinger boards; see «The settings pages» below.
+              </li>
             </ul>
           </div>
           <div>
@@ -233,6 +240,377 @@
                     <td><code>--genai-settings-section-gap</code></td>
                     <td><code>--ds-size-4</code></td>
                     <td>between a section's heading and its choice</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="wide">
+            <h2>The settings pages</h2>
+            <p>
+              The design's dev-innstillinger boards: the navigation panel turns into the settings
+              menu, and each page stands in a wide main column with no panel beside it. A page draws
+              a row only for what the app can honour, given as a value and its handler together. A
+              choice the app cannot keep is left out, never drawn dead, and a page with nothing to
+              choose says «Ingen valg her ennå.». The info box speaks of what the rows do, so it
+              comes with them, and so does the line under «Om deg».
+            </p>
+            <ul>
+              <li>
+                <code>SettingsMenu</code>: <code>pages</code> (an <code>id</code>, and for an app's
+                own page a <code>title</code> and <code>summary</code>; the block's four,
+                <code>settingsPageIds</code>, have their words), <code>value</code>,
+                <code>onChange</code>, a <code>badge</code> count per page, and «Tilbake til
+                trådene» with <code>backHref</code> and <code>onBack</code>. A named list, not a
+                <code>nav</code>, as <code>SettingsLinks</code>. Each entry is named by its title,
+                with its line as the description.
+              </li>
+              <li>
+                <code>SettingsGeneral</code>: <code>colorScheme</code> («Utseende», through
+                <code>ColorSchemeToggle</code> with <code>look="full"</code>),
+                <code>answerLanguage</code>, <code>answerLength</code>, <code>openWith</code> and
+                <code>textSize</code>, each a <code>SettingsChoice</code>: <code>value</code> and
+                <code>onChange</code>. The info box «Gjelder hele tjenesten.» comes with a choice of
+                the answers' language or length.
+              </li>
+              <li>
+                <code>SettingsAboutYou</code>: <code>name</code> and <code>organisation</code> from
+                the sign-in, locked; <code>role</code>, <code>subjects</code>, <code>note</code>,
+                <code>remember</code> and <code>memories</code> (groups of what the assistant
+                remembers, with <code>onForget</code> and <code>onEdit</code>), which tailor the
+                answers and bring the page's line and box.
+              </li>
+              <li>
+                <code>SettingsBeta</code>: <code>experiments</code> and
+                <code>onExperimentChange</code>, as <code>Settings</code> takes them, «N av M slått
+                på» with «Slå av alle» (<code>onAllOff</code>) while one is on, and «Si hva du
+                synes» with the app's <code>feedback</code> page or action.
+                <code>experimentsOn</code> counts them for the menu's badge.
+              </li>
+              <li>
+                <code>SettingsPrivacy</code>: <code>keepThreads</code> in days,
+                <code>improve</code>, <code>shared</code> threads with «Slutt å dele»,
+                <code>download</code> and <code>clearHistory</code>, and <code>corpus</code> for the
+                box.
+              </li>
+              <li>
+                <code>SettingsPage</code> and <code>SettingsRow</code> for an app's own page: the
+                heading (an <code>h1</code> by default), its <code>lead</code>, its
+                <code>notice</code>, and rows under thin lines.
+              </li>
+            </ul>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Variable</th>
+                    <th scope="col">Default</th>
+                    <th scope="col">Styles</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>--genai-settings-border-width</code></td>
+                    <td><code>--ds-border-width-default</code></td>
+                    <td>the line over each row</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-box-background</code></td>
+                    <td><code>--ds-color-neutral-background-tinted</code></td>
+                    <td>
+                      the quiet ground of the count, «Si hva du synes» and the shared threads,
+                      pinned to neutral
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-box-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>inside «Si hva du synes»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-box-margin-block-start</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>above «Si hva du synes»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-box-padding</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>inside the count and «Si hva du synes»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-box-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>the corners of the quiet boxes</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-count-font-size</code></td>
+                    <td><code>--ds-body-sm-font-size</code></td>
+                    <td>«2 av 5 slått på»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-count-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between the count and «Slå av alle»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-count-strong-font-weight</code></td>
+                    <td><code>--ds-font-weight-semibold</code></td>
+                    <td>the number turned on</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-divider-color</code></td>
+                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td>the line over each row, pinned to neutral, as the shell's dividers</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-memory-group-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>a group's capital heading in «Dette husker assistenten»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-memory-group-font-weight</code></td>
+                    <td><code>--ds-font-weight-semibold</code></td>
+                    <td>the same heading</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-memory-group-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>under the same heading</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-memory-padding-block</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>above and below each thing remembered</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-memory-text-gap</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>between a thing remembered and the line on where it is from</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-back-font-size</code></td>
+                    <td><code>--ds-body-sm-font-size</code></td>
+                    <td>«Tilbake til trådene»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-back-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the same link</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-back-padding-inline</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>beside the same link</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-badge-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between a page's name and its badge</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-current-background</code></td>
+                    <td><code>--ds-color-surface-tinted</code></td>
+                    <td>the page on screen, in the app's <code>data-color</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-current-color</code></td>
+                    <td><code>--ds-color-text-default</code></td>
+                    <td>the same page's words</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-current-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the same page's name</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between «Tilbake til trådene» and the pages</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>a page's name in the menu, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-font-size</code></td>
+                    <td><code>--ds-body-sm-font-size</code></td>
+                    <td>the same name</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-hover-background</code></td>
+                    <td><code>--ds-color-neutral-background-tinted</code></td>
+                    <td>an entry under the pointer, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-inline-size</code></td>
+                    <td><code>100%</code></td>
+                    <td>an entry's width</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-line-height</code></td>
+                    <td><code>--ds-body-sm-line-height</code></td>
+                    <td>an entry's lines</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-padding-block</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>above and below an entry's words</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-padding-inline</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>beside them</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-page-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>an entry's corners</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-pages-gap</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>between the entries</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-summary-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the line under a page's name, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-summary-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>the same line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-summary-font-weight</code></td>
+                    <td><code>--ds-font-weight-regular</code></td>
+                    <td>the same line, under the page on screen too</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-menu-summary-line-height</code></td>
+                    <td><code>--ds-body-xs-line-height</code></td>
+                    <td>the same line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-notice-strong-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the info box's first words</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the page's head and its rows</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-head-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the heading, its line and the info box</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-inline-size</code></td>
+                    <td><code>100%</code></td>
+                    <td>the page's width, up to its ceiling</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-lead-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the line under the heading, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-max-inline-size</code></td>
+                    <td><code>680px</code></td>
+                    <td>the column's width, the boards'</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-padding-block-end</code></td>
+                    <td><code>--ds-size-10</code></td>
+                    <td>the room after the last row</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-padding-block-start</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>the room above the heading</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-page-title-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the page's heading</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-description-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the line under a row's name, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-description-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>the same line, a field's and a switch's too</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-description-line-height</code></td>
+                    <td><code>--ds-body-xs-line-height</code></td>
+                    <td>the same line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-end-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between the words and a button at the row's end</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the words and the control under them</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-padding-block</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>above and below each row</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-title-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>a row's name, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-title-font-size</code></td>
+                    <td><code>--ds-body-sm-font-size</code></td>
+                    <td>the same name, a switch's and a box's too</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-title-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the same name</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-row-title-line-height</code></td>
+                    <td><code>--ds-body-sm-line-height</code></td>
+                    <td>the same name</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-shared-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the shared threads</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-shared-padding-block</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>above and below a shared thread's words</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-shared-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>beside them</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-subjects-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the subject areas and «Legg til»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-switch-gap</code></td>
+                    <td><code>--ds-size-5</code></td>
+                    <td>between a switch's words and the switch</td>
                   </tr>
                 </tbody>
               </table>

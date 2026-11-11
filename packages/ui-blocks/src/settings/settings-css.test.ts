@@ -2,9 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(`${import.meta.dirname}/${path}`, 'utf8');
+// Flattened as the package's lint does, so a `var(` Prettier breaks over lines reads as one.
 const css = read('settings.css')
   .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/\s+/g, ' ');
+  .replace(/\s+/g, ' ')
+  .replace(/\( /g, '(')
+  .replace(/,? \)/g, ')');
 const page = read('../../../../docs/components/settings.html');
 
 /** Every `var(--genai-…, fallback)` in the sheet, with its fallback. */
@@ -49,11 +52,22 @@ describe('the Settings styles', () => {
     expect(css).not.toMatch(/--genai-[a-z-]+\s*:/);
   });
 
-  it('follow the host’s data-color, but for the note, pinned to neutral so it reads as no link', () => {
+  it('pin only to neutral: the note, so it reads as no link, and the pages’ quiet text, lines and ground', () => {
     const family = /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/;
-    expect(uses.filter((use) => family.test(use.fallback)).map((use) => use.whole)).toEqual([
+    const pinned = uses.filter((use) => family.test(use.fallback));
+    expect(pinned.filter((use) => !use.fallback.startsWith('var(--ds-color-neutral-'))).toEqual([]);
+    expect(pinned.map((use) => use.whole)).toContain(
       'var(--genai-settings-note-color, var(--ds-color-neutral-text-subtle))',
-    ]);
+    );
+  });
+
+  it('draw the page on screen in the menu in the host’s data-color, as the boards’ blue', () => {
+    expect(css).toContain(
+      'background: var(--genai-settings-menu-current-background, var(--ds-color-surface-tinted))',
+    );
+    expect(css).toContain(
+      'color: var(--genai-settings-menu-current-color, var(--ds-color-text-default))',
+    );
   });
 
   it('are each listed on the component page', () => {

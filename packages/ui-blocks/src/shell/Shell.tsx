@@ -1,4 +1,4 @@
-import { Button, Dialog, SkipLink, Tooltip } from '@digdir/designsystemet-react';
+import { Button, Dialog, Heading, SkipLink, Tooltip } from '@digdir/designsystemet-react';
 import { SidebarLeftIcon, SidebarRightIcon } from '@navikt/aksel-icons';
 import {
   useCallback,
@@ -16,6 +16,9 @@ import { useMedia, useScrollPadding, useScrollTabStop, useViewportWidth } from '
 import { useT } from './i18n.js';
 import {
   breakpoints,
+  cardsGap,
+  cardsInset,
+  cardsRail,
   clampWidth,
   defaultCollapsed,
   defaultGap,
@@ -50,6 +53,11 @@ import { Separator } from './Separator.js';
 export interface ShellPanel {
   /** The panel's name after what is in it, «Tråder og filter»: the landmark's and its buttons'. */
   label: string;
+  /**
+   * The panel's visible title, an `h2` on its head row, «Tråder» or «Verktøy». Every title the
+   * shell draws looks alike and stands on one line with the main column's (`mainTitle`).
+   */
+  title?: string | undefined;
   /** What the panel holds. It scrolls; the head and a pinned foot stay put. */
   children?: ReactNode;
   /** Controls that belong to the panel, on its head row beside «Skjul». Not on a rail. */
@@ -62,12 +70,42 @@ export interface ShellPanel {
   foot?: ReactNode;
   /** Keep the foot at the panel's bottom instead of at the end of what scrolls. */
   footPinned?: boolean | undefined;
+  /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
+  railFoot?: ReactNode;
+  /**
+   * What the folded panel shows under its button, such as one button per tool that opens the
+   * panel on it (dev-verktoy-4). Not in the top row, and not while the panel is a drawer.
+   */
+  rail?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
   size?: Partial<ShellPanelSize> | undefined;
   /** Folded when the page opens, until the reader chooses. Primary open, secondary folded. */
   defaultCollapsed?: boolean | undefined;
   /** The landmark: `nav` for the primary panel and `aside` for the secondary one by default. */
   landmark?: 'nav' | 'aside' | undefined;
+  /**
+   * A second column in the panel's card, towards the main column, with a title of its own and the
+   * panel's button: the design's filter beside the threads (dev-filter-panel). It folds with the
+   * panel, and stands under the panel's own column in a drawer.
+   */
+  companion?: ShellCompanion | undefined;
+}
+
+/** The second column of a panel (`ShellPanel.companion`). */
+export interface ShellCompanion {
+  /** Its region's name, «Filter for tråden». */
+  label: string;
+  /** Its title, alike the panel's, «Filter». */
+  title?: string | undefined;
+  /** A line under the title, «Gjelder neste spørsmål». */
+  subtitle?: ReactNode;
+  /** What it holds. It scrolls on its own. */
+  children?: ReactNode;
+  /**
+   * Its width when the panel has its design width, in CSS pixels. The panel's `size` counts both
+   * columns; the panel's own column keeps the rest, and a narrower panel narrows the companion.
+   */
+  width: number;
 }
 
 /** Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`. */
@@ -83,6 +121,19 @@ export interface ShellProps {
   children?: ReactNode;
   /** Pinned to the top of the main column while it scrolls. */
   mainPinned?: ReactNode;
+  /**
+   * The page's `h1`, at the top of the main column with a line under it and always in sight, such
+   * as the thread's title. It looks like the panels' titles and stands on one line with them.
+   */
+  mainTitle?: string | undefined;
+  /**
+   * `flush`, the default: the panels meet the window's edges and the main column, divided by lines.
+   * `cards`: each panel and the main column is a card on the page's ground, `inset` from the
+   * window and `gap` apart, a rail too (the design's dev-navbar board).
+   */
+  frame?: 'flush' | 'cards' | undefined;
+  /** The cards frame's margin from the window in CSS pixels, 16. Must match `--genai-shell-inset`. */
+  inset?: number | undefined;
   /** The main column's floor and reading width, 640 and 800 by default. */
   mainSize?: Partial<ShellMainSize> | undefined;
   /** The `id` of `<main>`, the target of «Hopp til hovedinnhold». */
@@ -96,9 +147,9 @@ export interface ShellProps {
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
-  /** The gap beside an open panel in CSS pixels. Must match `--genai-shell-gap`. */
+  /** The gap beside an open panel in CSS pixels, 32, or 12 for cards. Must match `--genai-shell-gap`. */
   gap?: number | undefined;
-  /** A folded panel's width in CSS pixels. Must match the rail's button and padding. */
+  /** A folded panel's width in CSS pixels, 67, or 76 for cards. Must match its button and padding. */
   rail?: number | undefined;
   /** Designsystemet's `data-color` for the shell, set only when given. */
   color?: string | undefined;
@@ -119,6 +170,7 @@ export const Shell = ({
   secondary,
   children,
   mainPinned,
+  mainTitle,
   mainSize,
   mainId = 'main-content',
   initialLayout,
@@ -126,12 +178,18 @@ export const Shell = ({
   request,
   compactBar = true,
   skipLinks,
-  gap = defaultGap,
-  rail = defaultRail,
+  frame = 'flush',
+  inset: givenInset,
+  gap: givenGap,
+  rail: givenRail,
   color,
   className,
 }: ShellProps) => {
   const t = useT();
+  const cards = frame === 'cards';
+  const inset = cards ? (givenInset ?? cardsInset) : 0;
+  const gap = givenGap ?? (cards ? cardsGap : defaultGap);
+  const rail = givenRail ?? (cards ? cardsRail : defaultRail);
   const p = primary ? sized('primary', primary.size) : undefined;
   const s = secondary ? sized('secondary', secondary.size) : undefined;
   const mainMin = mainSize?.minWidth ?? defaultMainSize.minWidth;
@@ -142,6 +200,7 @@ export const Shell = ({
       main: { minWidth: mainMin, maxWidth: mainMax },
       gap,
       rail,
+      ...(cards ? { inset, railGap: true } : {}),
     }),
     // The numbers, not the objects, which are new on every render.
     [
@@ -155,6 +214,8 @@ export const Shell = ({
       mainMax,
       gap,
       rail,
+      cards,
+      inset,
     ],
   );
   const points = breakpoints(geometry);
@@ -163,6 +224,8 @@ export const Shell = ({
   const narrow = useMedia(narrowerThan(points.both));
   const drawer = useMedia(narrowerThan(points.drawer));
   const compact = useMedia(narrowerThan(points.compact)) && compactBar;
+  // In the top row the cards frame has no margins: the row and the main column take the window.
+  const sums = useMemo(() => (compact ? { ...geometry, inset: 0 } : geometry), [compact, geometry]);
 
   const [state, setState] = useState<ShellState>(() =>
     initialState(
@@ -263,15 +326,29 @@ export const Shell = ({
   );
 
   const sideProps = {
-    geometry,
+    geometry: sums,
     state,
     viewport,
     drawer,
+    cards,
     onToggle: (side: ShellSide) => byReader(side, (current) => !current.collapsed[side]),
     onCollapse: (side: ShellSide, collapsed: boolean) => byReader(side, () => collapsed),
     onWidth: (side: ShellSide, width: number) =>
       setState((current) => withWidth(geometry, current, side, width)),
   };
+
+  // First in the region, so nothing reachable ends up under it once pinned. In the cards frame it
+  // spans the main card, its line from edge to edge; flush, it keeps to the reading width.
+  const mainHeadRegion = (
+    <div className="uib-shell-pinned" ref={setMainHead}>
+      {mainTitle ? (
+        <Heading className="uib-shell-title" data-size="xs" level={1}>
+          {mainTitle}
+        </Heading>
+      ) : null}
+      {mainPinned}
+    </div>
+  );
 
   return (
     <>
@@ -281,7 +358,8 @@ export const Shell = ({
         className={classes('uib-shell', className)}
         data-compact={compact || undefined}
         data-drawer={drawer || undefined}
-        style={layoutStyle(geometry, state, viewport, drawer, compact) as CSSProperties}
+        data-frame={cards ? 'cards' : undefined}
+        style={layoutStyle(sums, state, viewport, drawer, compact) as CSSProperties}
         {...colored(color)}
       >
         {primary ? <Side side="primary" panel={primary} {...sideProps} /> : null}
@@ -299,11 +377,9 @@ export const Shell = ({
           ref={setMain}
           tabIndex={mainFocusable ? 0 : undefined}
         >
+          {cards ? mainHeadRegion : null}
           <div className="uib-shell-column">
-            {/* First in the region, so nothing reachable ends up under it once pinned. */}
-            <div className="uib-shell-pinned" ref={setMainHead}>
-              {mainPinned}
-            </div>
+            {cards ? null : mainHeadRegion}
             {children}
           </div>
         </main>
@@ -322,6 +398,8 @@ interface SideProps {
   viewport: number;
   /** Draw an open panel over the main column rather than beside it. */
   drawer: boolean;
+  /** The cards frame: the panel is a card, its button an icon. */
+  cards: boolean;
   onToggle: (side: ShellSide) => void;
   onCollapse: (side: ShellSide, collapsed: boolean) => void;
   onWidth: (side: ShellSide, width: number) => void;
@@ -335,6 +413,7 @@ const Side = ({
   state,
   viewport,
   drawer,
+  cards,
   onToggle,
   onCollapse,
   onWidth,
@@ -343,6 +422,8 @@ const Side = ({
   const collapsed = state.collapsed[side];
   const name = panel.label.toLocaleLowerCase(t.locale === 'nb' ? 'nb-NO' : 'en-GB');
   const contentId = useId();
+  const { companion } = panel;
+  const companionId = useId();
   const Landmark = panel.landmark ?? (side === 'primary' ? 'nav' : 'aside');
   const Icon = side === 'primary' ? SidebarLeftIcon : SidebarRightIcon;
 
@@ -411,8 +492,9 @@ const Side = ({
 
   // A rail on the row, folded or in drawer mode, is not a shut panel: the button is an icon.
   const railed = collapsed || drawer;
-  // Only the word: the whole name does not fit beside the head's controls.
-  const showsWord = side === 'primary' && !railed;
+  // Only the word: the whole name does not fit beside the head's controls. A card's title names
+  // the panel already, so its button is an icon, as the design draws the secondary one.
+  const showsWord = side === 'primary' && !railed && !cards;
   // The button stands at the panel's edge towards the main column.
   const toggleLast = side === 'primary';
   // Must equal the tooltip, which Designsystemet otherwise writes over `aria-label`.
@@ -457,13 +539,14 @@ const Side = ({
       placement={side === 'secondary' ? (railed ? 'left' : 'right') : 'top'}
     >
       <Button
-        aria-controls={contentId}
+        aria-controls={companion && !collapsed ? `${contentId} ${companionId}` : contentId}
         aria-expanded={!collapsed}
         aria-label={toggleLabel}
         className={classes('uib-shell-toggle', showsWord && 'uib-shell-hide')}
         // Pinned to neutral, as kunnskapsassistenten draws it: the panel's own control.
         data-color="neutral"
-        data-size="sm"
+        // A card's button is the design's 44, sized from the default size mode's tokens.
+        data-size={cards ? 'md' : 'sm'}
         icon={!showsWord}
         onClick={() => onToggle(side)}
         ref={toggle}
@@ -474,6 +557,37 @@ const Side = ({
       </Button>
     </Tooltip>
   );
+
+  const title = panel.title ? (
+    <Heading className="uib-shell-title" data-size="xs" level={2}>
+      {panel.title}
+    </Heading>
+  ) : null;
+
+  // The companion column takes the panel's button, at the card's edge towards the main column.
+  const companionSection = (button: ReactNode) =>
+    companion ? (
+      <section aria-label={companion.label} className="uib-shell-companion" id={companionId}>
+        <div className="uib-shell-header">
+          <div className="uib-shell-companion-titles">
+            {companion.title ? (
+              <Heading className="uib-shell-title" data-size="xs" level={2}>
+                {companion.title}
+              </Heading>
+            ) : null}
+            {companion.subtitle ? (
+              <p className="uib-shell-companion-subtitle">{companion.subtitle}</p>
+            ) : null}
+          </div>
+          {button}
+        </div>
+        <div className="uib-shell-content">{companion.children}</div>
+      </section>
+    ) : null;
+  const leadWidth = companion
+    ? Math.max((geometry.panels[side]?.width ?? width) - companion.width, 0)
+    : undefined;
+  const withCompanion = companion !== undefined && !railed;
 
   return (
     <Landmark
@@ -494,15 +608,31 @@ const Side = ({
       ref={element}
     >
       {/* The separator is in the landmark but outside this clipping box. */}
-      <div className="uib-shell-box">
+      <div
+        className="uib-shell-box"
+        data-companion={withCompanion || undefined}
+        style={
+          withCompanion
+            ? ({ '--uib-shell-lead-width': `${leadWidth}px` } as CSSProperties)
+            : undefined
+        }
+      >
         {/* Outside the scroller, so the button never scrolls out of sight. */}
         <div className="uib-shell-header">
-          {toggleLast ? null : toggleButton}
+          {toggleLast || withCompanion ? null : toggleButton}
+          {railed ? null : title}
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
-          {toggleLast ? toggleButton : null}
+          {toggleLast && !withCompanion ? toggleButton : null}
         </div>
+        {collapsed && !drawer && panel.rail != null ? (
+          <div className="uib-shell-rail">{panel.rail}</div>
+        ) : null}
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}
+        {railed && panel.railFoot != null ? (
+          <div className="uib-shell-rail-foot">{panel.railFoot}</div>
+        ) : null}
+        {withCompanion ? companionSection(toggleButton) : null}
       </div>
 
       {/* A native modal dialog, kept mounted so what is in it keeps its state. */}
@@ -518,10 +648,13 @@ const Side = ({
         >
           <div className="uib-shell-box">
             <div className="uib-shell-header">
+              {title}
               <div className="uib-shell-head">{panel.head}</div>
             </div>
             {panelContent}
             {footScrolls ? null : foot}
+            {/* Under the panel's own column: a drawer is one column wide. */}
+            {companionSection(null)}
           </div>
         </Dialog>
       ) : null}

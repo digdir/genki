@@ -2,6 +2,7 @@ import { Field, Label, Link, Paragraph, Select } from '@digdir/designsystemet-re
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import { freshText, useFilterAnnouncer } from '../filter/announce.js';
+import { documentCount } from '../filter/selection.js';
 import type { FilterField } from '../filter/types.js';
 import { useT } from './i18n.js';
 
@@ -48,11 +49,9 @@ export const useCorpusText = ({
   const types = fields?.find((field) => field.id === typeField);
   const years = fields?.find((field) => field.kind === 'year');
 
-  // Summed over one field, as each document has one; undefined when a count is missing.
-  const total = [types, years]
-    .filter((field) => field !== undefined && field.options.length > 0)
-    .find((field) => field?.options.every((option) => option.count !== undefined))
-    ?.options.reduce((sum, option) => sum + (option.count ?? 0), 0);
+  // Summed over one field, as each document has one; undefined when a count is missing. The same
+  // sum as the filter's own count, so the two never disagree.
+  const total = documentCount(fields, {}, typeField);
 
   // Biggest first, so the cut keeps the types that make up the collection.
   const ordered = [...(types?.options ?? [])].sort((a, b) => (b.count ?? 0) - (a.count ?? 0));

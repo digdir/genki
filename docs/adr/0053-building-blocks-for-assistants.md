@@ -1,10 +1,10 @@
 # 0053 Building blocks for assistants
 
-Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10)
+Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11)
 
-Not built yet: the other components from the list (chat, threads, sources, filter, footnotes, projects, notes, document view), the builder's preview drawing the real components, and a playground. All but projects and notes are proposed in open pull requests #403 to #413.
+Not built yet: projects, notes, the builder's preview drawing the real components, and a playground.
 
-Left: how an answer's footnotes and the excerpts they cite are numbered and linked, which depends on how the platform cites (proposed in #283); a layout format, which says which components a service has and where they sit; and a package that fetches, which would turn the stream into props for a host and be the first UI package to depend on `@genai/client`. Each needs its own decision.
+Decided in their own records: how an answer's footnotes cite excerpts (ADR 0052); and the layout format and the package that fetches, `@genai/ui-assembly` (ADR 0054).
 
 ## Decision
 
@@ -40,4 +40,4 @@ The styling rules are Designsystemet's own: its components sit in cascade layers
 - The lint reads a new block's sheet as soon as it is in a folder, and runs in `npm test`. A new block brings its own test that reads its props against its page, as `approach/docs.test.ts` does.
 - The variables and props are public once the package is published: renaming one then breaks a host. Until then they may still change.
 - What a component needs from the platform shows up as gaps. Approach is the first: the stream sends tool calls and agent iterations, but not what the assistant understood, how many documents it read or what it did not find. Those need the step frames in `docs/frontend-contract.md` to carry more, which is a separate change.
-- The layout templates proposed for the builder in #210 and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition, the layout format left above.
+- The layout templates proposed for the builder in #210 and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition: the layout format of ADR 0054.
