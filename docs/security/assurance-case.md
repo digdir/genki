@@ -28,7 +28,7 @@ genki aims to keep each organisation's services, data and secrets apart from eve
 | Actor                                          | What they might try                                                                                               |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Anonymous internet user                        | Reach the API without a credential, or spend model tokens                                                         |
-| A person in one organisation                   | Read or change another organisation's data, or do more in their own than Altinn grants                            |
+| A person in one organisation                   | Read or change another organisation's data, do more in their own than Altinn grants, or raise its limits          |
 | A system with an API key or Maskinporten token | Reach services or tenants outside its key's grants                                                                |
 | A malicious document, web page or tool result  | Inject instructions into a model, exfiltrate data through tool arguments, or make genki fetch an internal address |
 | A malicious tool server an agency registered   | Read another tenant's data, reach genki's network, or capture a secret meant for another host                     |
