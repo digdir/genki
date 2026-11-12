@@ -106,11 +106,16 @@ const readFunctions = (schema: string) => [
      language plpgsql stable security definer set search_path = ${schema}, pg_catalog
      as $$ begin ${platformAccessCheck}
        return query
-         select j.id, j.source_name, j.data,
+         -- A job shared by several organisations shows each only its own part: never who else waits.
+         select j.id, j.source_name,
+                case when p_tenant is null then j.data
+                     when j.data ->> 'tenant' = p_tenant then j.data - 'tenants'
+                     else jsonb_build_object('tenant', p_tenant, 'file', j.data -> 'file') end,
                 coalesce(j.source_output ->> 'message', j.output ->> 'message'), j.created_on
            from ${schema}.job j
           where j.name = p_queue and j.state in ('created', 'retry')
-            and (p_tenant is null or j.data ->> 'tenant' = p_tenant)
+            and (p_tenant is null or j.data ->> 'tenant' = p_tenant
+                 or p_tenant = any(string_to_array(j.data ->> 'tenants', ',')))
           order by j.created_on desc, j.id
           limit p_limit;
      end $$`,
@@ -410,6 +415,25 @@ export class PgBossJobQueue implements JobQueue {
     }
   }
 
+  async serveAlso(
+    queue: QueueDefinition,
+    key: string,
+    tenant: string,
+    options: { transaction?: JobTransaction } = {},
+  ) {
+    await (options.transaction ?? this.#pool).query(
+      `update ${this.#schema}.job
+          set data = jsonb_set(data, '{tenants}', to_jsonb(
+                concat_ws(',', nullif(data ->> 'tenants', ''), $3::text)))
+        where name = $1 and singleton_key = $2 and state in ('created', 'retry', 'active')
+          and data ->> 'tenant' <> $3
+          and not ($3 = any(coalesce(string_to_array(data ->> 'tenants', ','), '{}')))
+          -- Job data keeps keys of at most 128 characters; a longer list is left as it is.
+          and length(concat_ws(',', nullif(data ->> 'tenants', ''), $3::text)) <= 128`,
+      [queue.name, key, tenant],
+    );
+  }
+
   async retime(queues: QueueDefinition[], startAfter: Date) {
     const { rowCount } = await this.#pool.query(
       `update ${this.#schema}.job set start_after = $2
@@ -488,6 +512,16 @@ export class PgBossRunJobs implements RunJobs {
     return Number(rows[0]?.open ?? 0);
   }
 
+  async openKeys(queue: string, keys: string[]): Promise<number> {
+    if (keys.length === 0) return 0;
+    const { rows } = await this.pool.query<{ open: string }>(
+      `select count(*) as open from ${this.schema}.job
+        where name = $1 and state in ('created', 'retry', 'active') and singleton_key = any($2::text[])`,
+      [queue, keys],
+    );
+    return Number(rows[0]?.open ?? 0);
+  }
+
   async deadLetters(run: string): Promise<Record<string, number>> {
     const { rows } = await this.pool.query<{ name: string; dead: string }>(
       `select name, count(*) as dead from ${this.schema}.job
@@ -500,11 +534,12 @@ export class PgBossRunJobs implements RunJobs {
     );
   }
 
-  async cancel(run: string, options: { except?: string[] } = {}): Promise<number> {
+  async cancel(run: string, options: { except?: string[]; keep?: string[] } = {}): Promise<number> {
     const { rows } = await this.pool.query<{ id: string; name: string }>(
       `select id, name from ${this.schema}.job
-        where name = any($1) and state in ('created', 'retry') and data ->> 'run' = $2`,
-      [this.#names(options), run],
+        where name = any($1) and state in ('created', 'retry') and data ->> 'run' = $2
+          and not (coalesce(singleton_key, '') = any($3::text[]))`,
+      [this.#names(options), run, options.keep ?? []],
     );
     for (const row of rows) await this.jobs.cancel(this.#queue(row.name), row.id);
     return rows.length;

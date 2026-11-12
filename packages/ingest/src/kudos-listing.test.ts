@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { ConversionPending, onePage } from './converter.js';
+import { storedConverter } from './stored-converter.js';
 import { planRun, type ListedDocument, type Listing } from './document-records.js';
 import { kudosRateLimiter } from './kudos-rate.js';
 import { kudosClient, kudosProd, type KudosDocument } from './kudos.js';
@@ -7,7 +9,7 @@ import { knowledgeListingOf, pipelineSpec, type KudosAccess } from './pipeline-s
 
 const signal = new AbortController().signal;
 const scope = { tenant: '991825827', dataset: 'digdir/kudos', owner: 'digdir' };
-const converter = { toMarkdown: async () => 'Tekst fra rapporten.' };
+const converter = { convert: async () => onePage('Tekst fra rapporten.') };
 
 const spec = (source: Record<string, unknown>) =>
   pipelineSpec.parse({ name: 'Kudos', source: { kind: 'kudos', ...source } });
@@ -132,11 +134,61 @@ describe('a Kudos listing', () => {
     expect(loaded.url).toBe(`https://kudos.dfo.no/dokument/${uuid(1)}`);
   });
 
-  it('a Kudos file is keyed by its KUDOS uuid with its sha256', async () => {
+  it('a Kudos file is keyed by its KUDOS uuid with its sha256, and converts', async () => {
     const { access } = fakeKudos({ docs: [doc(1)] });
     const [listed] = await all(await listingFor({ types: ['Årsrapport'] }, access));
 
-    expect(listed?.files).toEqual([{ name: 'f1', sha256: doc(1).files?.[0]?.sha256 }]);
+    expect(listed?.files).toEqual([
+      { name: 'f1', sha256: doc(1).files?.[0]?.sha256, converts: true },
+    ]);
+  });
+
+  it('a convert job fetches a Kudos file by the sha256 its record names', async () => {
+    const { access } = fakeKudos({ docs: [doc(1)] });
+    const listing = await listingFor({ types: ['Årsrapport'] }, access);
+    const [listed] = await all(listing);
+    const sha256 = doc(1).files?.[0]?.sha256 as string;
+
+    const file = await listing.file?.(listed?.record ?? {}, sha256);
+    expect(file).toMatchObject({ name: 'f1.pdf', mimetype: 'application/pdf' });
+    expect(sha(file?.bytes ?? new Uint8Array())).toBe(sha256);
+    await expect(listing.file?.(listed?.record ?? {}, 'c'.repeat(64))).rejects.toThrow(
+      /no longer lists the file/,
+    );
+  });
+
+  it("an index job reads a Kudos file's stored conversion without downloading it", async () => {
+    const { access, calls } = fakeKudos({ docs: [doc(1), doc(2)] });
+    const kept = doc(1).files?.[0]?.sha256 as string;
+    const stored = storedConverter(
+      { extensions: ['.pdf'] },
+      {
+        find: async (sha256) =>
+          sha256 === kept
+            ? {
+                sha256,
+                converter: 'text-layer',
+                version: '1',
+                settings: {},
+                derivation: { name: 'text-layer', version: 1 },
+                pages: ['Side en', 'Side to'],
+              }
+            : undefined,
+      },
+      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 } }],
+    );
+    const listing = await knowledgeListingOf(
+      spec({ types: ['Årsrapport'] }),
+      { kudos: access, converter: stored },
+      scope,
+      signal,
+    );
+    const [one, two] = await all(listing);
+
+    const loaded = await listing.load(one?.record ?? {});
+    expect(loaded.files).toEqual([{ name: 'f1.pdf', sha256: kept, pages: ['Side en', 'Side to'] }]);
+    expect(calls.some((c) => c.pathname.endsWith('.pdf'))).toBe(false);
+    await expect(listing.load(two?.record ?? {})).rejects.toBeInstanceOf(ConversionPending);
   });
 
   it('a Kudos listing asks KUDOS by type and publish year, 50 a page', async () => {
@@ -310,7 +362,7 @@ describe('a Kudos listing', () => {
     });
     const listing = await knowledgeListingOf(
       spec({ types: ['Årsrapport'] }),
-      { kudos: access, converter: { toMarkdown: async () => '' } },
+      { kudos: access, converter: { convert: async () => onePage('') } },
       scope,
       signal,
     );

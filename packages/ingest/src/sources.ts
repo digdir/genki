@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import type { BlobStore } from '@genai/port-blob';
 import type { Chunk } from './chunk-document.js';
-import { NoTextLayerError, type DocumentConverter } from './converter.js';
+import {
+  ConversionPending,
+  NoTextLayerError,
+  joinPages,
+  type Conversion,
+  type DocumentConverter,
+} from './converter.js';
 import { readDocument, skipReasonFor, type ReadDocument } from './documents.js';
 import {
   extractTitleFromFileName,
@@ -24,7 +30,7 @@ import {
   type KudosFile,
   type KudosProfile,
 } from './kudos.js';
-import type { IngestSource, SkipReason, SourceDocument } from './pipeline.js';
+import type { IngestSource, SkipReason, SourceDocument, SourceFile } from './pipeline.js';
 import {
   mergeFrontmatter,
   ResponseTooLarge,
@@ -48,15 +54,30 @@ export interface KudosSourceOptions {
 const kudosTexts = async (
   options: KudosSourceOptions,
   doc: ReturnType<typeof fillInKudosFields>,
-): Promise<{ texts: string[]; skip?: SkipReason }> => {
-  const files: { file: KudosFile; bytes: Uint8Array }[] = [];
+): Promise<{ texts: string[]; files: SourceFile[]; skip?: SkipReason }> => {
+  const files: { file: KudosFile; bytes?: Uint8Array; conversion?: Conversion }[] = [];
+  const pending: { name: string; sha256: string }[] = [];
   let skip: SkipReason | undefined;
   let tooLarge = false;
   const limit = options.maxFileBytes;
+  const nameOf = (file: KudosFile) => file.url.split('/').pop() ?? `${doc.id}.pdf`;
   try {
     for (const file of doc.files ?? []) {
       if (limit !== undefined && Number(file.size ?? 0) > limit) {
         tooLarge = true;
+        continue;
+      }
+      // A kept conversion is read by the hash KUDOS lists, so the file is not downloaded (ADR 0042).
+      if (file.sha256 && options.converter.stored) {
+        try {
+          files.push({
+            file,
+            conversion: await options.converter.stored({ name: nameOf(file), sha256: file.sha256 }),
+          });
+        } catch (error) {
+          if (!(error instanceof ConversionPending)) throw error;
+          pending.push(...error.files);
+        }
         continue;
       }
       try {
@@ -67,26 +88,37 @@ const kudosTexts = async (
       }
     }
   } catch (error) {
-    if (error instanceof FileUnreachable) return { texts: [], skip: 'unreachable' };
+    if (error instanceof FileUnreachable) return { texts: [], files: [], skip: 'unreachable' };
     throw error;
   }
+  if (pending.length > 0) throw new ConversionPending(pending);
   const texts: string[] = [];
-  for (const { file, bytes } of files) {
+  const read: SourceFile[] = [];
+  for (const { file, bytes, conversion } of files) {
     try {
-      const text = await options.converter.toMarkdown({
-        name: file.url.split('/').pop() ?? `${doc.id}.pdf`,
-        bytes,
+      const document = {
+        name: nameOf(file),
+        bytes: bytes ?? new Uint8Array(),
         ...(file.mimetype ? { mimetype: file.mimetype } : {}),
+      };
+      const converted = conversion ?? (await options.converter.convert(document));
+      if (converted.pages.every((p) => p.trim() === '')) {
+        skip = 'no_text';
+        continue;
+      }
+      texts.push(joinPages(converted.pages));
+      read.push({
+        name: document.name,
+        ...(file.sha256 ? { sha256: file.sha256 } : {}),
+        pages: converted.pages,
       });
-      if (text.trim() === '') skip = 'no_text';
-      else texts.push(text);
     } catch (error) {
       skip = error instanceof NoTextLayerError ? 'no_text' : 'conversion_failed';
     }
   }
   // A file left out for its size says more than a blank one beside it.
-  if (texts.length === 0 && tooLarge) return { texts, skip: 'too_large' };
-  return texts.length === 0 && skip ? { texts, skip } : { texts };
+  if (texts.length === 0 && tooLarge) return { texts, files: read, skip: 'too_large' };
+  return texts.length === 0 && skip ? { texts, files: read, skip } : { texts, files: read };
 };
 
 export const kudosSource = (options: KudosSourceOptions): IngestSource => ({
@@ -114,6 +146,7 @@ export const kudosSource = (options: KudosSourceOptions): IngestSource => ({
           return {
             ...listed,
             texts: read.texts,
+            files: read.files,
             ...(read.skip ? { name: doc.title ?? doc.id, skip: read.skip } : {}),
           };
         },
@@ -173,6 +206,7 @@ export const websiteSource = (options: WebsiteSourceOptions): IngestSource => ({
         name: entry.loc,
         ...('skip' in read ? { skip: read.skip } : {}),
         texts: [markdown],
+        ...('file' in read && read.file ? { files: [read.file] } : {}),
         location: { key: 'url', value: entry.loc },
         stored: (chunks: Chunk[]) =>
           prepareWebsiteDoc(options.baseUrl, { ...doc, total_chunks: chunks.length }),
@@ -251,6 +285,7 @@ export const folderSource = (options: FolderSourceOptions): IngestSource => ({
         name: makeRelativePath(options.basePath, entry.path),
         ...('skip' in read ? { skip: read.skip } : {}),
         texts: ['text' in read ? read.text : ''],
+        ...('file' in read && read.file ? { files: [read.file] } : {}),
         location: { key: 'path', value: entry.path },
         stored: (chunks: Chunk[]) =>
           prepareFolderDoc(config, { ...doc, total_chunks: chunks.length }),
@@ -302,6 +337,7 @@ export const uploadSource = (options: UploadSourceOptions): IngestSource => ({
         name,
         ...('skip' in read ? { skip: read.skip } : {}),
         texts: ['text' in read ? read.text : ''],
+        ...('file' in read && read.file ? { files: [read.file] } : {}),
         location: { key: 'path', value: name },
         stored: (chunks: Chunk[]) => ({ ...doc, total_chunks: chunks.length }),
         storedChunks: (chunks: Chunk[]) =>

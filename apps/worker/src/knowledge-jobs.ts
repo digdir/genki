@@ -49,6 +49,8 @@ export interface WorkerJobServers<Pool> {
   knowledgeWork?: QueueWork[];
   open: OpenJobQueue<Pool>;
   runJobs: (pool: Pool, jobs: JobQueue, queues: QueueDefinition[]) => RunJobs;
+  /** Wraps the knowledge server's run jobs, so records waiting on a conversion count as open work. */
+  knowledgeRunJobs?: (jobs: RunJobs) => RunJobs;
   onError?: (error: unknown) => void;
 }
 
@@ -84,7 +86,8 @@ export const openWorkerJobs = async <Pool>(
     { worker: knowledgeWriterRole, readers: [knowledgeReaderRole], works: true, ...onError },
   );
   await workQueues(knowledge, servers.knowledgeWork ?? []);
-  runJobs.push(servers.runJobs(servers.knowledge.writer, knowledge, queues));
+  const knowledgeJobs = servers.runJobs(servers.knowledge.writer, knowledge, queues);
+  runJobs.push(servers.knowledgeRunJobs ? servers.knowledgeRunJobs(knowledgeJobs) : knowledgeJobs);
   return { platform, knowledge, runJobs };
 };
 
@@ -182,6 +185,80 @@ export const admittedWork = <T extends JobData & { run: string }>(
     await handler({
       job,
       run,
+      principal: withModelAdmission(system),
+      cancelled: async () => Boolean((await deps.records.find(run.id))?.cancelRequestedAt),
+    });
+  });
+
+/** The waits of a run's records on conversions, as the reconciler counts and cancels them. */
+export interface ConversionWaits {
+  waitKeys(run: string): Promise<string[]>;
+  release(run: string): Promise<string[]>;
+  waitedKeys(): Promise<string[]>;
+}
+
+/**
+ * A run's jobs on the knowledge server with its records' waits (ADR 0042, "Jobs"): a record waiting
+ * on a conversion is open work of its run while that conversion's job is waiting, retrying or
+ * running, and cancelling a run ends its waits but leaves a conversion another run waits on.
+ */
+export const conversionRunJobs = (
+  jobs: RunJobs,
+  waits: ConversionWaits,
+  convertQueue = 'knowledge.convert',
+): RunJobs => ({
+  open: async (run) => {
+    const open = await jobs.open(run);
+    if (open > 0 || !jobs.openKeys) return open;
+    return jobs.openKeys(convertQueue, await waits.waitKeys(run));
+  },
+  deadLetters: (run) => jobs.deadLetters(run),
+  cancel: async (run, options = {}) => {
+    await waits.release(run);
+    return jobs.cancel(run, {
+      ...options,
+      keep: [...(options.keep ?? []), ...(await waits.waitedKeys())],
+    });
+  },
+  redrive: (run) => jobs.redrive(run),
+  runs: () => jobs.runs(),
+  ...(jobs.openKeys ? { openKeys: jobs.openKeys.bind(jobs) } : {}),
+});
+
+/**
+ * Wraps the handler of a convert job (ADR 0042, "Jobs"): the conversion runs while any run with a
+ * record waiting on it, or the run that sent it, is running and admitted, and in lockdown admitted
+ * within 24 hours. Without one, it converts nothing.
+ */
+export const admittedConversion = <T extends JobData & { run: string }>(
+  queue: QueueDefinition<T>,
+  handler: (job: KnowledgeJob<T> & { sender?: IngestionExecution }) => Promise<void>,
+  deps: AdmissionDeps & { waiting(data: T): Promise<string[]> },
+): QueueWork<T> =>
+  queueWork(queue, async (job) => {
+    const now = deps.now?.() ?? new Date();
+    const ids = [...new Set([job.data.run, ...(await deps.waiting(job.data))])];
+    const runs = (await Promise.all(ids.map((id) => deps.records.find(id)))).filter(
+      (r): r is IngestionExecution => r !== undefined,
+    );
+    const running = runs.filter((r) => r.status === 'running' && !r.cancelRequestedAt);
+    const run = running.find((r) => !admissionRefusal(r, now, deps.lockdown));
+    if (!run) {
+      deps.onRefused?.(`${queue.name} ${job.id}: no run waiting on it is running and admitted`);
+      return;
+    }
+    const scope = executionScope(run.dataset);
+    const system: Principal = {
+      kind: 'agency-system',
+      issuer: 'platform',
+      subject: `knowledge-jobs:${run.id}`,
+      tenant: scope === 'platform' ? deps.platformTenant : scope,
+    };
+    const sender = runs.find((r) => r.id === job.data.run);
+    await handler({
+      job,
+      run,
+      ...(sender ? { sender } : {}),
       principal: withModelAdmission(system),
       cancelled: async () => Boolean((await deps.records.find(run.id))?.cancelRequestedAt),
     });

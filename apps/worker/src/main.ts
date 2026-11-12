@@ -44,6 +44,7 @@ import {
   defaultMarkerTimeoutMs,
   InMemoryJobQueue,
   workQueues,
+  type RunJobs,
 } from '@genai/jobs';
 import {
   envSecrets,
@@ -60,7 +61,11 @@ import { createLocalConverter } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
-import { knowledgeHeavyWork, prepareGeneration } from '@genai/providers-pgvector';
+import {
+  knowledgeConversionsOf,
+  knowledgeHeavyWork,
+  prepareGeneration,
+} from '@genai/providers-pgvector';
 import {
   createPostgresStores,
   executionScope,
@@ -90,7 +95,7 @@ import {
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
 import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
-import { openWorkerJobs } from './knowledge-jobs.js';
+import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
@@ -352,7 +357,12 @@ const knowledgeHandlers =
         knowledge: {
           send: (queue, data, options) => openedKnowledge().send(queue, data, options),
           sendAgain: (queue, job, options) => openedKnowledge().sendAgain(queue, job, options),
+          serveAlso: (queue, key, tenant, options) =>
+            openedKnowledge().serveAlso?.(queue, key, tenant, options) ?? Promise.resolve(),
         },
+        // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
+        conversions: knowledgeConversionsOf(knowledgeWriter),
+        converter: createLocalConverter(),
         heavy: heavySettings,
         runs: knowledgeRunRecords,
         pipeline: async (run) =>
@@ -392,12 +402,12 @@ const knowledgeHandlers =
                 ),
             }
           : {}),
-        listingOf: (spec, scope, signal) =>
+        listingOf: (spec, scope, signal, converter) =>
           knowledgeListingOf(
             spec,
             {
               uploads: new FileSystemBlobStore(blobDir),
-              converter: createLocalConverter(),
+              converter: converter ?? createLocalConverter(),
               ...(process.env.INGEST_FOLDER_ROOT
                 ? { folderRoot: process.env.INGEST_FOLDER_ROOT }
                 : {}),
@@ -490,6 +500,12 @@ const workerJobs = db
         : {}),
       open: openJobQueue,
       runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
+      ...(knowledgeWriter
+        ? {
+            knowledgeRunJobs: (jobs: RunJobs) =>
+              conversionRunJobs(jobs, knowledgeConversionsOf(knowledgeWriter)),
+          }
+        : {}),
       onError: jobError,
     })
   : undefined;
