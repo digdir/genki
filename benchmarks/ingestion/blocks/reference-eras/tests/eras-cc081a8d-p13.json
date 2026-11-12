@@ -1,0 +1,213 @@
+{
+ "tests": [
+  {
+   "id": "eras-cc081a8d-p13-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "mulig etter at bypakken er behandlet av Stortinget.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det blir forutsatt sterk kostnadskontroll.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "kollektivprosjekter i byområdet i tråd med målene i pakken",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "8 Fylkeskommunal garanti",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fylkeskommunal garanti",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det samlede garantibeløpet blir 550 mill. kr.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Den fylkeskommunale garantien må godkjennes av Kommunal- og distriktsdepartementet.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Samferdselsdepartementets vurdering",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "eventuell ny bypakke var etablert, senest ved",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "utgangen av 2026. Nå legges det opp til overgang",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det er lagt til grunn toveis bompengeinnkreving i 15 år i 11 bomstasjoner.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "20 mill. kr til reguleringsplanlegging av Risøy bru.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-cc081a8d-p13-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Departementet har merket seg at dersom det oppstår trafikklekkasje til lokalt veinett",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

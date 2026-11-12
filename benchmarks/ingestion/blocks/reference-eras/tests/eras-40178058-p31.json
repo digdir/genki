@@ -1,0 +1,167 @@
+{
+ "tests": [
+  {
+   "id": "eras-40178058-p31-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "3.4.2. Regionalt sjeldne, men ikke rødlistede arter",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vanlig blåfiltlav - Degelia plumbea",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Videre nordover tynnes den gradvis ut og det er kun kjent et fåtall funn nord for Elvegårdselva.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Laven står på lista over Fennoskandiske ansvarsarter (Direktoratet for naturforvaltning 1999b).",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Den ble funnet i lokalitet 4 - Skogen ved Elvegårdsmyran.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Her vokste den meget sparsomt på gammel svartvier.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Olivenlav - Fuscopannaria mediterranea",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dette er derfor første gang arten er registrert i Nordland, og arten er klart regionalt sjelden",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "http://www.nhm.uio.no/botanisk/lav/",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-40178058-p31-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Olivenlav har også en oseanisk utbredelse i Norge",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "indikator for områder med høy naturverdi.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
