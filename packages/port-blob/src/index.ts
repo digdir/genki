@@ -1,4 +1,5 @@
 export * from './blob.js';
+export * from './native-output.js';
 export * from './memory.js';
 export * from './filesystem.js';
 export * from './parts.js';

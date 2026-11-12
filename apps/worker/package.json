@@ -21,6 +21,7 @@
     "@genai/port-knowledge": "0.0.0",
     "@genai/port-usage": "0.0.0",
     "@genai/providers-ai-gateway": "0.0.0",
+    "@genai/providers-azure-blob": "0.0.0",
     "@genai/providers-documents": "0.0.0",
     "@genai/providers-langfuse": "0.0.0",
     "@genai/providers-mcp-client": "0.0.0",
