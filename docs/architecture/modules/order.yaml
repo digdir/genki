@@ -61,6 +61,7 @@
 - providers-pgboss
 - providers-pgvector
 - providers-parquet
+- providers-azure-blob
 - providers-postgres-source
 - azure-foundry
 - typesense-cluster

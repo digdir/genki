@@ -1,0 +1,272 @@
+{
+ "tests": [
+  {
+   "id": "eras-e9bad2e8-p44-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Budget vs actual costs - 1992",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "1.268.823",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Operation",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Budget",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "1.330.558",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "(61.735)",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Operation",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Discrepancies",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "247.000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Administration",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Discrepancies",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "588.000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "551.500",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Balance",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Budget",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "1.056.252",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2.182.685",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Personnel",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Actual",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "504.752",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Additional MFA grant for negotiating delegation",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Budget vs actual costs - 1992",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Additional MFA grant for negotiating delegation",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Total income",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Accounts are approved by certified auditor.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p44-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Accounts are approved by certified auditor.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
