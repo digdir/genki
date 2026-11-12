@@ -40,11 +40,7 @@ export interface Evaluator {
   collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
 }
 
-/**
- * The evaluator a judge in a run's provenance belongs to: a judge that names its version and model,
- * judge:criteria@1+foundry/claude, is the evaluator judge:criteria; any other judge is itself.
- * Labels and calibration are kept per evaluator.
- */
+/** The evaluator of a provenance judge: judge:criteria@2+foundry/claude is judge:criteria. */
 export const evaluatorOfJudge = (judge: string) => /^([^@+]+)@[^+]+\+/.exec(judge)?.[1] ?? judge;
 
 export class EvalError extends Error {

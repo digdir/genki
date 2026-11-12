@@ -129,10 +129,7 @@ export const criteriaJudgePrompt = (criteria: string): JudgePrompt => ({
 
 export const criteriaJudgeId = 'judge:criteria';
 
-/**
- * Scores criteria cases on their criteria. Its model is picked once per run, from another family
- * than the models that wrote the first answer, and is part of its version.
- */
+/** Scores criteria cases, with a model picked once per run from another family. */
 export const criteriaJudge = (
   pick: (writers: string[]) => Promise<JudgeModel | undefined>,
 ): Evaluator => {

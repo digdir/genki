@@ -190,8 +190,8 @@ Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CR
 ### 2026-10-30: case types judged as evaluators
 
 - The `contract` evaluator is version 2: it scores an exact case's text (`exact-text`, 0 when the case has no text) and counts an empty answer as a refusal on a must_reject case.
-- `judge:criteria` scores criteria cases. A run's provenance names it with its version and model, `judge:criteria@1+<model>`; labels and calibration are kept under `judge:criteria`.
-- The eval capability (`platform.eval.run`) takes `avoidAsJudge`, models the run's judges must not share a family with; a portal test run passes the service's own models.
+- `judge:criteria` scores criteria cases. A run's provenance names it with its version and model, `judge:criteria@<version>+<model>`; labels and calibration are kept under `judge:criteria`.
+- The eval capability (`platform.eval.run`) takes `avoidAsJudge`, models the run's judges must not share a family with; a portal test run's judge also avoids the service's own models.
 
 ### 2026-10-30: judges that answer later (evaluator@2)
 

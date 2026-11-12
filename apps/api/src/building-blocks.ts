@@ -17,7 +17,13 @@ import {
   type StepFlowDefinition,
   type ValidationError,
 } from '@genai/definitions';
-import { bundledJudge, type StoredRun } from '@genai/eval';
+import {
+  bundledJudge,
+  criteriaJudgeId,
+  criteriaJudgePrompt,
+  evaluatorOfJudge,
+  type StoredRun,
+} from '@genai/eval';
 import { type SecretResolver, type Strategy } from '@genai/kernel';
 import { residencies, servesModelPort, type Residency } from '@genai/port-model';
 import {
@@ -911,7 +917,8 @@ export const createBuildingBlocksModule =
       }
       const judgeIds = new Set<string>(['answer-quality', 'pairwise-preference']);
       for (const stored of await deps.evalStores.runs.list({ tenant }))
-        for (const judge of stored.run.provenance.judges) judgeIds.add(judge);
+        // One block per evaluator, whichever model judged a run.
+        for (const judge of stored.run.provenance.judges) judgeIds.add(evaluatorOfJudge(judge));
       for (const id of [...judgeIds].sort()) {
         const bundled =
           id === 'answer-quality' || id === 'pairwise-preference' ? bundledJudge(id) : undefined;
@@ -922,7 +929,8 @@ export const createBuildingBlocksModule =
             name: id,
             description: '',
             publisher: digdir,
-            version: bundled?.version ?? '1',
+            version:
+              bundled?.version ?? (id === criteriaJudgeId ? criteriaJudgePrompt('').version : '1'),
             dataLocation: null,
             capabilities: bundled?.criteria.map((c) => c.description) ?? [],
             permissions: [],
@@ -1084,7 +1092,9 @@ export const createBuildingBlocksModule =
         block.kind === 'judge'
           ? new Set(
               runs
-                .filter((r) => r.run.provenance.judges.includes(block.id))
+                .filter((r) =>
+                  r.run.provenance.judges.some((j) => evaluatorOfJudge(j) === block.id),
+                )
                 .map((r) => r.service ?? r.run.capability),
             )
           : new Set<string>();
@@ -1107,7 +1117,7 @@ export const createBuildingBlocksModule =
           block.kind === 'model'
             ? r.run.provenance.servedModels.includes(block.id)
             : block.kind === 'judge'
-              ? r.run.provenance.judges.includes(block.id)
+              ? r.run.provenance.judges.some((j) => evaluatorOfJudge(j) === block.id)
               : users.has(r.service ?? ''),
         ),
       );
