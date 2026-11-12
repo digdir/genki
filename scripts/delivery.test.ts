@@ -11,6 +11,7 @@ import {
   previousDeploy,
   prsInRelease,
   releaseBody,
+  releaseName,
   smokeAlertText,
   smokeOutcomeOf,
   summaryPrompt,
@@ -178,12 +179,37 @@ describe('the release per deploy', () => {
     expect(tagOf(new Date('2026-11-12T23:30:00Z'))).toBe('deploy-2026-11-12-2330');
   });
 
-  it('groups the plain list by area, security first, with the pull request numbers', () => {
+  it('groups the plain list by area under Endringer, security first, with the pull request numbers', () => {
     const body = releaseBody(changelog());
-    expect(body.indexOf('### Sikkerhet og rettigheter')).toBeLessThan(body.indexOf('### Portal'));
-    expect(body).toContain('### Portal\n\n- #10 Add the portal tab');
-    expect(body).toContain(`compare/${base}...${head}`);
-    expect(body).not.toContain('Hva du bør sjekke');
+    expect(body.startsWith('### Endringer\n')).toBe(true);
+    expect(body.indexOf('#### Sikkerhet og rettigheter')).toBeLessThan(body.indexOf('#### Portal'));
+    expect(body).toContain('#### Portal\n\n- #10 Add the portal tab');
+    expect(body).not.toContain('### Nytt');
+  });
+
+  it('ends with the deployed commit, the run and the compare link in small print', () => {
+    const body = releaseBody(changelog());
+    const footer = body.slice(body.lastIndexOf('<sub>'));
+    expect(footer).toContain('`bbbbbbbb`');
+    expect(footer).toContain('2026-11-12 09:05 UTC');
+    expect(footer).toContain('[kjøring](https://github.com/digdir/genki/actions/runs/900)');
+    expect(footer).toContain(`compare/${base}...${head}`);
+    expect(body.lastIndexOf('<sub>')).toBeGreaterThan(body.indexOf('#### Portal'));
+  });
+
+  it('names the release by the model title and the Oslo date in Norwegian', () => {
+    const log = changelog({
+      deployedAt: '2026-11-12T23:30:00.000Z',
+      summary: { title: 'Bare operatører kan endre Digdirs grenser', summary: 'x', highlights: [] },
+    });
+    expect(releaseName(log)).toBe('Bare operatører kan endre Digdirs grenser · 13. november 2026');
+  });
+
+  it('names the release Nytt i genki-test when there is no model title', () => {
+    expect(releaseName(changelog())).toBe('Nytt i genki-test · 12. november 2026');
+    expect(releaseName(changelog({ summary: { title: '', summary: 'x', highlights: [] } }))).toBe(
+      'Nytt i genki-test · 12. november 2026',
+    );
   });
 
   it('records the pull request numbers so the weekly summary can read them back', () => {
@@ -191,11 +217,36 @@ describe('the release per deploy', () => {
     expect(prsInRelease('no marker')).toEqual([]);
   });
 
-  it('adds the model summary and what to check when the model answers', () => {
+  it('opens with the model summary and lists the highlights under Nytt before the changes', () => {
     const body = releaseBody(
-      changelog({ summary: { summary: 'Ny fane.', check: ['Åpne fanen'] } }),
+      changelog({
+        summary: {
+          title: 'Ny fane',
+          summary: 'Portalen har fått en ny fane.',
+          highlights: [{ headline: 'Ny fane i portalen', text: 'Organisasjoner ser bruken sin.' }],
+        },
+      }),
     );
-    expect(body).toContain('### Oppsummering\n\nNy fane.\n\n### Hva du bør sjekke\n\n- Åpne fanen');
+    expect(body).toMatch(
+      /^Portalen har fått en ny fane\.\n\n### Nytt\n\n- \*\*Ny fane i portalen\.\*\* Organisasjoner ser bruken sin\.\n\n### Endringer/,
+    );
+    expect(body).toContain('_Overskriften og teksten over Endringer er skrevet av en modell');
+  });
+
+  it('has no section on what to check', () => {
+    const body = releaseBody(changelog({ summary: { title: 'x', summary: 'y', highlights: [] } }));
+    expect(body).not.toContain('Hva du bør sjekke');
+    expect(body).not.toContain('### Nytt');
+  });
+
+  it('tells the model to describe changes and not to write instructions or internal names', () => {
+    const { system } = summaryPrompt({ prs: [], commits: [] });
+    expect(system).toContain('"title"');
+    expect(system).toContain('"highlights"');
+    expect(system).not.toContain('"check"');
+    expect(system).toContain('Ikke skriv instruksjoner');
+    expect(system).toContain('miljøvariabler, feilkoder, id-er eller filnavn');
+    expect(system).toContain('CI og verktøy i høyst én highlight');
   });
 
   it('falls back to the plain list when the model call fails', async () => {
@@ -214,18 +265,96 @@ describe('the release per deploy', () => {
     expect(log.prs).toHaveLength(3);
   });
 
-  it('keeps at most five points to check and refuses an answer that is not the JSON', () => {
-    expect(
-      parseSummary(`noise {"summary": "Ny fane.", "check": ["a","b","c","d","e","f", 3]} noise`),
-    ).toEqual({ summary: 'Ny fane.', check: ['a', 'b', 'c', 'd', 'e'] });
+  it('leaves tooling pull requests out of the release and the model input but keeps them in the marker', async () => {
+    const tooling: Pr = {
+      number: 12,
+      title: 'Run the smoke review on merge',
+      url: '',
+      body: 'Tooling body',
+      area: 'ci',
+    };
+    const log = changelog({ prs: [...changelog().prs, tooling] });
+    const body = releaseBody(log);
+    expect(body).not.toContain('Run the smoke review');
+    expect(body).not.toContain('CI og verktøy');
+    expect(prsInRelease(body)).toEqual([10, 11, 12]);
+    const { user } = summaryPrompt(log);
+    expect(user).not.toContain('Run the smoke review');
+    expect(user).not.toContain('Tooling body');
+    expect(user).toContain('Add the portal tab');
+  });
+
+  it('releases a deploy of only tooling under the fallback name with a one-line body', async () => {
+    let asked = false;
+    const log = await collectDeploy({
+      api: fakeApi({
+        ...routes,
+        [`/repos/${repo}/compare/${base}...${head}`]: {
+          commits: [{ sha: 'c1'.repeat(20), commit: { message: 'Run CI on merge (#12)' } }],
+        },
+      }),
+      repo,
+      sha: head,
+      runId: 900,
+      runUrl: '',
+      now,
+      complete: async () => {
+        asked = true;
+        return '{"title": "x", "summary": "y"}';
+      },
+    });
+    expect(asked).toBe(false);
+    expect(releaseName(log)).toBe('Nytt i genki-test · 12. november 2026');
+    expect(releaseBody(log)).toBe(
+      'Denne deployen har bare interne endringer.\n\n<!-- delivery-prs: 12 -->',
+    );
+  });
+
+  it('keeps at most five valid highlights and drops a trailing period from the headings', () => {
+    const h = (n: number) => ({ headline: `H${n}.`, text: `T${n}` });
+    const parsed = parseSummary(
+      `noise ${JSON.stringify({
+        title: 'Ny fane.',
+        summary: 'Ny fane.',
+        highlights: [h(1), { headline: 'x' }, 3, null, h(2), h(3), h(4), h(5), h(6)],
+      })} noise`,
+    );
+    expect(parsed).toEqual({
+      title: 'Ny fane',
+      summary: 'Ny fane.',
+      highlights: [1, 2, 3, 4, 5].map((n) => ({ headline: `H${n}`, text: `T${n}` })),
+    });
+  });
+
+  it('caps the title, summary and highlight lengths', () => {
+    const parsed = parseSummary(
+      JSON.stringify({
+        title: 't'.repeat(200),
+        summary: 's'.repeat(2000),
+        highlights: [{ headline: 'h'.repeat(200), text: 'x'.repeat(2000) }],
+      }),
+    );
+    expect(parsed?.title).toHaveLength(80);
+    expect(parsed?.summary).toHaveLength(600);
+    expect(parsed?.highlights[0]?.headline).toHaveLength(80);
+    expect(parsed?.highlights[0]?.text).toHaveLength(300);
+  });
+
+  it('falls back to no model text when the answer is not the JSON or lacks a summary', () => {
     expect(parseSummary('Sure! Here is a summary.')).toBeNull();
     expect(parseSummary('{"summary": 4}')).toBeNull();
+    expect(parseSummary('{"title": "Ny fane", "highlights": []}')).toBeNull();
+    expect(parseSummary('{"summary": "Ny fane.", "title": 7, "highlights": "x"}')).toEqual({
+      title: '',
+      summary: 'Ny fane.',
+      highlights: [],
+    });
   });
 
   it('does not mention anyone from a title in the release', () => {
     const body = releaseBody(
       changelog({
-        prs: [{ number: 5, title: 'Bump @types/node', url: '', body: '', area: 'ci' }],
+        prs: [{ number: 5, title: 'Bump @types/node', url: '', body: '', area: 'api' }],
       }),
     );
     expect(body).toContain('Bump @​types/node');
@@ -411,7 +540,11 @@ describe('untrusted text', () => {
     const log = changelog();
     const body = releaseBody({
       ...log,
-      summary: { summary: '[se her](https://example.com)', check: ['![x](https://e.com/a.png)'] },
+      summary: {
+        title: 'x',
+        summary: '[se her](https://example.com)',
+        highlights: [{ headline: 'Bilde', text: '![x](https://e.com/a.png)' }],
+      },
       prs: [
         {
           number: 10,

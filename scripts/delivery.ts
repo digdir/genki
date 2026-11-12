@@ -82,9 +82,15 @@ export interface Commit {
   headline: string;
 }
 
+export interface Highlight {
+  headline: string;
+  text: string;
+}
+
 export interface Summary {
+  title: string;
   summary: string;
-  check: string[];
+  highlights: Highlight[];
 }
 
 export interface Changelog {
@@ -100,7 +106,7 @@ export interface Changelog {
   summary: Summary | null;
 }
 
-export const limits = { prs: 60, bodyChars: 500, maxTokens: 700 };
+export const limits = { prs: 60, bodyChars: 500, maxTokens: 1200 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -109,6 +115,14 @@ export const tagOf = (at: Date) =>
 
 const timeOf = (at: Date) =>
   `${at.toISOString().slice(0, 10)} ${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())} UTC`;
+
+const osloDate = (at: Date) =>
+  new Intl.DateTimeFormat('nb-NO', {
+    timeZone: 'Europe/Oslo',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(at);
 
 const short = (sha: string) => sha.slice(0, 8);
 
@@ -200,6 +214,8 @@ export const changesBetween = async (
   };
 };
 
+export const publicPrs = (prs: Pr[]) => prs.filter((p) => p.area !== 'ci');
+
 export const grouped = (prs: Pr[]) =>
   areas
     .map((area) => ({ area, prs: prs.filter((p) => p.area === area) }))
@@ -242,11 +258,15 @@ const prData = (prs: Pr[], commits: Commit[] = []) =>
 
 export const summaryPrompt = (log: Pick<Changelog, 'prs' | 'commits'>) => ({
   system: [
-    'Du skriver en kort endringslogg på norsk bokmål for et team som nettopp har deployet genki til testmiljøet genki-test.',
+    'Du skriver en kort nyhetssak på norsk bokmål om hva en ny deploy av genki til testmiljøet genki-test har ført med seg, for kolleger som bruker genki.',
     untrustedNote,
-    'Svar bare med JSON: {"summary": "to eller tre setninger om hva som er endret for brukerne", "check": ["kort punkt om hva teamet bør sjekke i portalen, konsollen eller API-et"]}. Høyst fem punkter i check. Ingen lenker, ingen markdown, ingen omtale av personer.',
+    'Svar bare med JSON: {"title": "kort nyhetsoverskrift for deployen", "summary": "to eller tre setninger i nyhetstone om hva som er endret for dem som bruker genki", "highlights": [{"headline": "kort overskrift", "text": "en eller to setninger om hva som er nytt eller annerledes, og for hvem"}]}.',
+    'title er høyst 80 tegn og slutter ikke med punktum. Høyst fem highlights, det viktigste først. Si hvem endringen gjelder: organisasjoner, operatører, ansatte, de som bygger tjenester, eller teamet.',
+    'Beskriv hva som er endret. Ikke skriv instruksjoner eller oppgaver, som «sjekk», «bekreft», «test» eller «logg inn».',
+    'Ikke nevn navn på miljøvariabler, feilkoder, id-er eller filnavn. Samle endringer i CI og verktøy i høyst én highlight.',
+    'Ingen lenker, ingen markdown, ingen omtale av personer.',
   ].join('\n'),
-  user: `Pull requests i denne deployen:\n${prData(log.prs, log.commits)}`,
+  user: `Pull requests i denne deployen:\n${prData(publicPrs(log.prs), log.commits)}`,
 });
 
 export const weeklyPrompt = (prs: Pr[]) => ({
@@ -276,10 +296,32 @@ const strings = (value: unknown, max: number, chars: number) =>
     .slice(0, max)
     .map((c) => oneLine(c, chars));
 
+const heading = (value: unknown, max: number) => {
+  let text = typeof value === 'string' ? oneLine(value, max) : '';
+  while (text.endsWith('.')) text = text.slice(0, -1).trimEnd();
+  return text;
+};
+
+const highlightsOf = (value: unknown): Highlight[] =>
+  (Array.isArray(value) ? value : [])
+    .map((h: unknown) => {
+      const item = h && typeof h === 'object' ? (h as Record<string, unknown>) : {};
+      return {
+        headline: heading(item.headline, 80),
+        text: typeof item.text === 'string' ? oneLine(item.text, 300) : '',
+      };
+    })
+    .filter((h) => h.headline && h.text)
+    .slice(0, 5);
+
 export const parseSummary = (text: string): Summary | null => {
   const value = jsonIn(text);
   if (typeof value?.summary !== 'string' || !value.summary.trim()) return null;
-  return { summary: oneLine(value.summary, 600), check: strings(value.check, 5, 200) };
+  return {
+    title: heading(value.title, 80),
+    summary: oneLine(value.summary, 600),
+    highlights: highlightsOf(value.highlights),
+  };
 };
 
 export const parseDelivered = (text: string): string[] | null => {
@@ -336,42 +378,61 @@ export const prsInRelease = (body: string): number[] => {
     .map(Number);
 };
 
+export const releaseName = (log: Pick<Changelog, 'deployedAt' | 'summary'>) =>
+  `${quietMentions(log.summary?.title || 'Nytt i genki-test')} · ${osloDate(new Date(log.deployedAt))}`;
+
 export const releaseBody = (log: Changelog) => {
-  const lines = [
-    `Deployet \`${short(log.sha)}\` til genki-test ${timeOf(new Date(log.deployedAt))} ([kjøring](${log.runUrl})).`,
-  ];
-  if (log.previousSha)
-    lines.push(
-      `Endringer siden forrige deploy: [\`${short(log.previousSha)}...${short(log.sha)}\`](https://github.com/${log.repo}/compare/${log.previousSha}...${log.sha}).`,
-    );
-  else lines.push('Fant ikke forrige vellykkede deploy, så listen er tom.');
+  const prs = publicPrs(log.prs);
+  if (log.prs.length && !prs.length && !log.commits.length)
+    return ['Denne deployen har bare interne endringer.', '', prMarker(log.prs)].join('\n');
+  const lines: string[] = [];
   if (log.summary) {
-    lines.push('', '### Oppsummering', '', markdownText(log.summary.summary, 600));
-    if (log.summary.check.length)
+    lines.push(markdownText(log.summary.summary, 600), '');
+    if (log.summary.highlights.length)
       lines.push(
+        '### Nytt',
         '',
-        '### Hva du bør sjekke',
+        ...log.summary.highlights.map(
+          (h) =>
+            `- **${markdownText(h.headline, 80)}${/[!?]$/.test(h.headline) ? '' : '.'}** ${markdownText(h.text, 300)}`,
+        ),
         '',
-        ...log.summary.check.map((c) => `- ${markdownText(c, 200)}`),
       );
-    lines.push('', '_Oppsummeringen er skrevet av en modell ut fra pull requestene under._');
   }
-  for (const group of grouped(log.prs))
+  lines.push('### Endringer');
+  if (!log.previousSha) lines.push('', 'Fant ikke forrige vellykkede deploy, så listen er tom.');
+  else if (!prs.length && !log.commits.length)
+    lines.push('', 'Ingen endringer siden forrige deploy.');
+  for (const group of grouped(prs))
     lines.push(
       '',
-      `### ${areaNames[group.area]}`,
+      `#### ${areaNames[group.area]}`,
       '',
       ...group.prs.map((p) => `- #${p.number} ${markdownText(p.title, 200)}`),
     );
   if (log.commits.length)
     lines.push(
       '',
-      '### Commits uten pull request',
+      '#### Commits uten pull request',
       '',
       ...log.commits.map((c) => `- ${c.sha} ${markdownText(c.headline, 200)}`),
     );
   if (log.more) lines.push('', `Og ${log.more} pull requests til, som ikke er listet.`);
-  lines.push('', prMarker(log.prs));
+  lines.push('', '---', '');
+  if (log.summary)
+    lines.push(
+      '_Overskriften og teksten over Endringer er skrevet av en modell ut fra pull requestene._',
+      '',
+    );
+  const technical = [
+    `Deployet \`${short(log.sha)}\` til genki-test ${timeOf(new Date(log.deployedAt))}`,
+    `[kjøring](${log.runUrl})`,
+  ];
+  if (log.previousSha)
+    technical.push(
+      `[\`${short(log.previousSha)}...${short(log.sha)}\`](https://github.com/${log.repo}/compare/${log.previousSha}...${log.sha})`,
+    );
+  lines.push(`<sub>${technical.join(' · ')}</sub>`, '', prMarker(log.prs));
   return lines.join('\n');
 };
 
@@ -381,7 +442,7 @@ export const createRelease = async (api: Api, log: Changelog) => {
     body: {
       tag_name: log.tag,
       target_commitish: log.sha,
-      name: `Deploy ${timeOf(new Date(log.deployedAt))}`,
+      name: releaseName(log),
       body: releaseBody(log),
       make_latest: 'false',
     },
@@ -419,7 +480,7 @@ export const collectDeploy = async (deps: {
   } catch {
     notice('Could not read the pull requests since the previous deploy.');
   }
-  if (log.prs.length || log.commits.length)
+  if (publicPrs(log.prs).length || log.commits.length)
     log.summary = await ask(deps.complete, summaryPrompt(log), parseSummary);
   return log;
 };
