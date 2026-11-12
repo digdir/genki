@@ -491,6 +491,21 @@ describe('openapi.json for a frontend', () => {
     );
   });
 
+  it("describes each excerpt's own heading as an optional string", async () => {
+    const { request } = await boot();
+    const spec = (await (
+      await request('/openapi.json', undefined, undefined, { key: '' })
+    ).json()) as {
+      components: { schemas: Record<string, { properties: Record<string, unknown> }> };
+    };
+    const excerpts = spec.components.schemas.Source?.properties.excerpts as {
+      items?: { properties?: Record<string, unknown>; required?: string[] };
+    };
+
+    expect(excerpts.items?.properties?.heading).toMatchObject({ type: 'string' });
+    expect(excerpts.items?.required).not.toContain('heading');
+  });
+
   it('gives the rename route a body that names title, topic and tags', async () => {
     const { request } = await boot();
     const spec = (await (

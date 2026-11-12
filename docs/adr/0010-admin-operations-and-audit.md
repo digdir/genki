@@ -1,6 +1,6 @@
 # 0010 Admin operations and audit
 
-Status: accepted, 2026-10-12 (built; lockdown exception for the platform tenant, ADR 0033, 2026-11-03; key creator recorded, 2026-11-10). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; lockdown exception for the platform tenant, ADR 0033, 2026-11-03; key creator recorded, 2026-11-10; limits set by operators, 2026-11-12). Proposed 2026-10-06
 
 ## Decision
 
@@ -9,6 +9,7 @@ Status: accepted, 2026-10-12 (built; lockdown exception for the platform tenant,
 - The audit log is therefore the event log. Every event has an actor: the kernel, a strategy or a principal.
 - The portal, the console, git automation, the builder assistant and the optimiser all change things through the same capabilities.
 - Operators act across tenants only through support sessions with a reason and a time limit. The session appears in the tenant's own log. In the locked test environment an operator also has every right in `PLATFORM_TENANT` without a support session (ADR 0033).
+- The limits Digdir sets for a tenant (settings marked `operatorOnly`, ADR 0006) are changed only in a support session. An operator sets them from the console's support Settings tab; removing one is API-only for now, `DELETE /tenants/{tenant}/settings/{key}` in a support session. The audit entry names the operator with the tenant as `onBehalfOf`. The tenant's own people, keys and clients cannot set, remove, pin or import them.
 
 ## Why
 
