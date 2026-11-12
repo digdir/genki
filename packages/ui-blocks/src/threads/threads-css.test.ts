@@ -35,12 +35,17 @@ const neutralPins = [
   '--genai-threads-signed-in-border-color',
 ];
 
-// The design's rows: dark text, a grey hover and grey group names, as the dev-trader board draws.
+// The design's rows: dark text, a grey hover and grey group names, as the dev-trader board draws;
+// and the band under «Ny tråd», the panel's own colour.
 const navNeutralPins = [
   '--genai-threads-group-title-color',
+  '--genai-threads-new-band-background',
   '--genai-threads-thread-color',
   '--genai-threads-thread-hover-background',
 ];
+
+const ruleFor = (selector: string) =>
+  [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(([, s = '']) => s.trim() === selector)?.[2] ?? '';
 
 describe('the Threads styles', () => {
   it('read the design’s rows through their own rules, which the lint reads too', () => {
@@ -52,6 +57,32 @@ describe('the Threads styles', () => {
     expect(pinnedIn(navUses).sort()).toEqual(navNeutralPins);
     for (const use of navUses.filter((u) => navNeutralPins.includes(u.name ?? '')))
       expect(use.token).toMatch(/^--ds-color-neutral-/);
+  });
+
+  it('keep the design’s «Ny tråd» in view as the list scrolls, on the panel’s colour, as dev-trader does', () => {
+    const top = ruleFor(".uib-threads[data-variant='nav'] > .uib-threads-top");
+    expect(top).toContain('position: sticky');
+    expect(top).toContain('inset-block-start: 0');
+    // The band reaches the gap's height under the button, so no row shows between it and the list.
+    expect(top).toContain('padding-block-end: var(--genai-threads-gap, var(--ds-size-4))');
+    expect(top).toContain(
+      'background: var(--genai-threads-new-band-background, var(--ds-color-neutral-surface-default))',
+    );
+  });
+
+  it('cut a title in the design’s list after one line, so a row stays one line until hovered or focused', () => {
+    expect(ruleFor(".uib-threads[data-variant='nav'] .uib-threads-thread-title")).toContain(
+      '-webkit-line-clamp: var(--genai-threads-title-lines, 1)',
+    );
+  });
+
+  it('stop a row reached by keyboard below the design’s «Ny tråd», not under it (WCAG 2.4.11)', () => {
+    const below = ruleFor(
+      ".uib-threads[data-variant='nav'] :is(a, button, input, [tabindex]):not(.uib-threads-new)",
+    );
+    expect(below).toMatch(
+      /scroll-margin-block-start:\s*calc\(\s*var\(--genai-threads-new-size, var\(--ds-size-11\)\)\s*\+\s*var\(--genai-threads-gap, var\(--ds-size-4\)\)\s*\)/,
+    );
   });
 
   it('tint the design’s open row in the host’s colour family, its text that family’s own', () => {

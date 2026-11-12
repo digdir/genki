@@ -1,0 +1,177 @@
+{
+ "tests": [
+  {
+   "id": "eras-e87e4ace-p2-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Loven gis på denne måten den form den opprinnelig hadde etter vedtakelsen i 1973.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "den form den opprinnelig hadde etter vedtakelsen i 1973",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "At Deres Majestet godkjenner og skriver under",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "At Deres Majestet godkjenner og skriver under et fremlagt utkast til proposisjon til Stortinget",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Stortinget blir innbudt til å gjøre vedtak om lov om endringer i lov av 14. desember 1973 nr. 57",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tilråding fra Finans- og tolldepartementet ligger ved i avtrykk.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "§ 1, første ledd skal lyde:",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "kan det etter bestemmelsene i denne lov ytes kompensasjon for merverdiavgift",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "matvarer til innenlandsk forbruk",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Andre matvarer som Stortinget måtte bestemme",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kompensasjonsbeløpet for hvert vareslag beregnes på grunnlag av omsatte mengder",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e87e4ace-p2-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Loven trer i kraft 1. juli 1994.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

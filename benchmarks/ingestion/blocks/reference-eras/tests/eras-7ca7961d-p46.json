@@ -1,0 +1,274 @@
+{
+ "tests": [
+  {
+   "id": "eras-7ca7961d-p46-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kontroll- og referanseside",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Review and reference page",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Mulighetsstudie om utvikling av nasjonal blokkprøvedatabase",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "20130760-01-R",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "DP 6 – Kvikkleire til etatsprogrammet NIFS v/ Kristian Aunaas (Statens vegvesen)",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Blokkprøve, Grunnboring, database",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Originaldokument",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Revisjonsgrunnlag/Reason for revision",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "0",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "EMP",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Egenkontroll/ Self review av/by:",
+     "max_diffs": 1
+    },
+    "left": {
+     "text": "Originaldokument",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "KST",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Sidemannskontroll/ Colleague review av/by:",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Rev./ Rev.",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "Originaldokument",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Quality assurance according to NS-EN ISO9001",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Originaldokument",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t12",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Originaldokument",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Document approved for release",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p46-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Eivind Magnus Paulsen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

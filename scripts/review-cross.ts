@@ -106,39 +106,46 @@ export const OUTPUT_SCHEMA = {
 export const TOOLS = [
   {
     type: 'function',
-    function: {
-      name: 'read_file',
-      description:
-        'Read a tracked file at the head of the pull request, with line numbers. At most 300 lines per call.',
-      strict: true,
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['path', 'start_line', 'end_line'],
-        properties: {
-          path: { type: 'string' },
-          start_line: { type: ['integer', 'null'] },
-          end_line: { type: ['integer', 'null'] },
-        },
+    name: 'read_file',
+    description:
+      'Read a tracked file at the head of the pull request, with line numbers. At most 300 lines per call.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path', 'start_line', 'end_line'],
+      properties: {
+        path: { type: 'string' },
+        start_line: { type: ['integer', 'null'] },
+        end_line: { type: ['integer', 'null'] },
       },
     },
   },
   {
     type: 'function',
-    function: {
-      name: 'search',
-      description:
-        'Find a literal text (not a pattern) in the tracked files at the head of the pull request. Returns path:line: text, at most 40 matches.',
-      strict: true,
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['text'],
-        properties: { text: { type: 'string' } },
-      },
+    name: 'search',
+    description:
+      'Find a literal text (not a pattern) in the tracked files at the head of the pull request. Returns path:line: text, at most 40 matches.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['text'],
+      properties: { text: { type: 'string' } },
     },
   },
 ];
+
+export const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+
+export type Effort = (typeof EFFORTS)[number];
+
+export function reasoningEffort(value: string | undefined): Effort {
+  const v = value?.trim() || 'medium';
+  const found = EFFORTS.find((e) => e === v);
+  if (!found) throw new Error(`CROSS_REVIEW_REASONING must be one of ${EFFORTS.join(', ')}`);
+  return found;
+}
 
 export function parseDiff(diff: string): Map<string, FileDiff> {
   const files = new Map<string, FileDiff>();
@@ -387,19 +394,23 @@ export function userPrompt(pr: number, diff: string, earlier: Earlier[]) {
 }
 
 export interface Usage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  prompt_tokens_details?: { cached_tokens?: number };
+  input_tokens?: number;
+  output_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number };
+  output_tokens_details?: { reasoning_tokens?: number };
 }
 
-export interface Completion {
-  choices?: {
-    finish_reason?: string;
-    message?: {
-      content?: string | null;
-      tool_calls?: { id: string; function: { name: string; arguments: string } }[];
-    };
-  }[];
+export interface OutputItem {
+  type: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  content?: { type: string; text?: string }[];
+}
+
+export interface ModelResponse {
+  status?: string;
+  output?: OutputItem[];
   usage?: Usage;
 }
 
@@ -408,6 +419,7 @@ export interface Spent {
   input: number;
   output: number;
   cached: number;
+  reasoning: number;
 }
 
 export function mustFinish(spent: Spent, lastPrompt: number, limits = LIMITS) {
@@ -418,75 +430,87 @@ export function mustFinish(spent: Spent, lastPrompt: number, limits = LIMITS) {
   );
 }
 
-type Message = Record<string, unknown>;
+type InputItem = Record<string, unknown>;
+
+const outputText = (res: ModelResponse) =>
+  (res.output ?? [])
+    .filter((item) => item.type === 'message')
+    .flatMap((item) => item.content ?? [])
+    .filter((part) => part.type === 'output_text')
+    .map((part) => part.text ?? '')
+    .join('');
 
 export async function runReview(opts: {
   system: string;
   user: string;
   workspace: Workspace;
-  complete: (body: Record<string, unknown>) => Promise<Completion>;
+  complete: (body: Record<string, unknown>) => Promise<ModelResponse>;
   model: string;
+  reasoning?: Effort;
   limits?: typeof LIMITS;
 }): Promise<{ output: { findings: Finding[] } | null; spent: Spent; stopped: boolean }> {
   const limits = opts.limits ?? LIMITS;
-  const spent: Spent = { turns: 0, input: 0, output: 0, cached: 0 };
-  const messages: Message[] = [
-    { role: 'system', content: opts.system },
-    { role: 'user', content: opts.user },
-  ];
+  const spent: Spent = { turns: 0, input: 0, output: 0, cached: 0, reasoning: 0 };
+  const input: InputItem[] = [{ role: 'user', content: opts.user }];
   let lastPrompt = 0;
   let stopped = false;
   while (spent.turns < limits.turns) {
     const finish = mustFinish(spent, lastPrompt, limits);
     if (finish) {
       stopped = true;
-      messages.push({
-        role: 'user',
-        content: 'Stop investigating now and return your findings.',
-      });
+      input.push({ role: 'user', content: 'Stop investigating now and return your findings.' });
     }
     const res = await opts.complete({
       model: opts.model,
-      messages,
+      instructions: opts.system,
+      input,
       tools: TOOLS,
       tool_choice: finish ? 'none' : 'auto',
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'cross_review', strict: true, schema: OUTPUT_SCHEMA },
+      text: {
+        format: { type: 'json_schema', name: 'cross_review', strict: true, schema: OUTPUT_SCHEMA },
       },
-      max_completion_tokens: Math.max(
+      reasoning: { effort: opts.reasoning ?? 'medium' },
+      max_output_tokens: Math.max(
         1,
         Math.min(limits.outputTokensPerCall, limits.outputTokens - spent.output),
       ),
+      store: false,
     });
     spent.turns++;
-    spent.input += res.usage?.prompt_tokens ?? 0;
-    spent.output += res.usage?.completion_tokens ?? 0;
-    spent.cached += res.usage?.prompt_tokens_details?.cached_tokens ?? 0;
-    lastPrompt = res.usage?.prompt_tokens ?? lastPrompt;
-    const message = res.choices?.[0]?.message;
-    const calls = message?.tool_calls ?? [];
+    spent.input += res.usage?.input_tokens ?? 0;
+    spent.output += res.usage?.output_tokens ?? 0;
+    spent.cached += res.usage?.input_tokens_details?.cached_tokens ?? 0;
+    spent.reasoning += res.usage?.output_tokens_details?.reasoning_tokens ?? 0;
+    lastPrompt = res.usage?.input_tokens ?? lastPrompt;
+    const calls = (res.output ?? []).filter(
+      (item) => item.type === 'function_call' && typeof item.call_id === 'string',
+    );
     if (calls.length && !finish) {
-      messages.push({ role: 'assistant', content: message?.content ?? null, tool_calls: calls });
       for (const call of calls) {
+        input.push({
+          type: 'function_call',
+          call_id: call.call_id,
+          name: call.name ?? '',
+          arguments: call.arguments ?? '',
+        });
         let args: unknown;
         try {
-          args = JSON.parse(call.function.arguments);
+          args = JSON.parse(call.arguments ?? '');
         } catch {
           args = null;
         }
-        const content =
-          call.function.name === 'read_file'
+        const result =
+          call.name === 'read_file'
             ? readFileTool(opts.workspace, args)
-            : call.function.name === 'search'
+            : call.name === 'search'
               ? searchTool(opts.workspace, args)
               : 'Unknown tool.';
-        messages.push({ role: 'tool', tool_call_id: call.id, content });
+        input.push({ type: 'function_call_output', call_id: call.call_id, output: result });
       }
       continue;
     }
     try {
-      const parsed = JSON.parse(message?.content ?? '') as { findings?: unknown };
+      const parsed = JSON.parse(outputText(res)) as { findings?: unknown };
       return {
         output: Array.isArray(parsed.findings) ? { findings: parsed.findings as Finding[] } : null,
         spent,
@@ -549,6 +573,7 @@ export function runRecord(input: {
       input: input.spent.input,
       output: input.spent.output,
       cache_read: input.spent.cached,
+      reasoning: input.spent.reasoning,
     },
     cost_usd: costUsd(input.spent, input.priceInUsd, input.priceOutUsd),
     returned: input.output?.findings.length ?? 0,
@@ -589,10 +614,10 @@ async function earlierFindings(repo: string, pr: number): Promise<Earlier[]> {
   const out: Earlier[] = [];
   let after: string | null = null;
   do {
-    const res = await github('/graphql', {
+    const res = (await github('/graphql', {
       method: 'POST',
       body: JSON.stringify({ query, variables: { o: owner, n: name, pr, after } }),
-    });
+    })) as { data: { repository: { pullRequest: { reviewThreads: unknown } } } };
     const page = res.data.repository.pullRequest.reviewThreads as {
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
       nodes: {
@@ -613,6 +638,51 @@ async function earlierFindings(repo: string, pr: number): Promise<Earlier[]> {
   return out;
 }
 
+const SECRETISH = /[A-Za-z0-9+/_=.-]{32,}/g;
+
+export function foundryError(status: number, body: unknown, secret = ''): string {
+  const error = (body as { error?: Record<string, unknown> } | null)?.error ?? {};
+  const word = (v: unknown) =>
+    typeof v === 'string' ? v.replace(/[^\w.-]/g, '').slice(0, 60) : '';
+  let message = typeof error.message === 'string' ? error.message : '';
+  if (secret) message = message.split(secret).join('[redacted]');
+  message = message
+    .replace(/bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(SECRETISH, '[redacted]')
+    .replace(/\p{Cc}+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (message.length > 300) message = `${message.slice(0, 299)}…`;
+  const type = word(error.type);
+  const param = word(error.param);
+  const code = word(error.code);
+  const head = [
+    `Foundry answered ${status}`,
+    type,
+    param && `param=${param}`,
+    code && `code=${code}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return message ? `${head}: ${message}` : head;
+}
+
+export function responsesClient(base: string, token: string) {
+  return async (body: Record<string, unknown>): Promise<ModelResponse> => {
+    const res = await fetch(`${base}/responses`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!res.ok) {
+      const json: unknown = await res.json().catch(() => null);
+      throw new Error(foundryError(res.status, json, token));
+    }
+    return (await res.json()) as ModelResponse;
+  };
+}
+
 export const foundryToken = () =>
   execFileSync(
     'az',
@@ -631,22 +701,7 @@ export const foundryToken = () =>
 
 function foundryClient(resource: string) {
   const token = foundryToken();
-  return async (body: Record<string, unknown>): Promise<Completion> => {
-    const res = await fetch(`https://${resource}.openai.azure.com/openai/v1/chat/completions`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(300_000),
-    });
-    if (!res.ok) {
-      const code = await res
-        .json()
-        .then((j: { error?: { code?: unknown } }) => String(j.error?.code ?? ''))
-        .catch(() => '');
-      throw new Error(`Foundry answered ${res.status} ${code.replace(/[^\w.-]/g, '')}`);
-    }
-    return res.json() as Promise<Completion>;
-  };
+  return responsesClient(`https://${resource}.openai.azure.com/openai/v1`, token);
 }
 
 function output(pairs: Record<string, string | number>) {
@@ -672,6 +727,7 @@ async function review() {
   const repo = env('REPO');
   const pr = Number(env('PR'));
   const arm = env('ARM') === 'shadow' ? 'shadow' : 'treated';
+  const reasoning = reasoningEffort(process.env.CROSS_REVIEW_REASONING);
   const fromBase = (path: string) => {
     try {
       return git('show', `${base}:${path}`);
@@ -694,6 +750,7 @@ async function review() {
     workspace: diskWorkspace(process.cwd(), tracked),
     complete: foundryClient(resource),
     model,
+    reasoning,
   });
   const findings = select(result.output, diff, earlier);
   const toPost = findings.filter((f) => !f.duplicate);
@@ -735,7 +792,7 @@ async function review() {
     priceOutUsd: process.env.CROSS_REVIEW_PRICE_OUT_USD,
   });
   writeFileSync('cross-review-run.json', JSON.stringify(record, null, 2));
-  const summary = `Cross-model review: ${toPost.length} new, ${findings.length - toPost.length} already found by the first review, ${result.spent.turns} turns, ${result.spent.input} input and ${result.spent.output} output tokens${result.stopped ? ', stopped at the budget' : ''}.\n`;
+  const summary = `Cross-model review: ${toPost.length} new, ${findings.length - toPost.length} already found by the first review, ${result.spent.turns} turns, ${result.spent.input} input and ${result.spent.output} output tokens (${result.spent.reasoning} reasoning)${result.stopped ? ', stopped at the budget' : ''}.\n`;
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   output({ posted: posted ? toPost.length : 0 });
 }
