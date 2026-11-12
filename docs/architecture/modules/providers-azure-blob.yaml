@@ -1,0 +1,31 @@
+id: providers-azure-blob
+plane: providers
+name: Azure Blob conversions
+note: Blob container
+icon: source
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-azure-blob'
+summary: Keeps converters' native output in the Blob container `conversions`.
+description: Implements the conversion container of the Blob port on Azure Blob storage (ADR 0042),
+  with the knowledge worker's managed identity through DefaultAzureCredential and never an account
+  key or SAS token. Without `CONVERSIONS_BLOB_URL` the worker uses a folder under `DATA_DIR`
+  instead. The container keeps earlier versions for 30 days.
+responsibilities:
+  - Write, read, list and delete blobs in the conversions container
+  - Choose Azure or the local folder from the environment
+files:
+  - packages/providers-azure-blob/src/container.ts
+input: Conversion paths and bytes
+output: Stored native output
+replaces: []
+edges:
+  - to: port-blob
+    label: Implements the conversion container
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-azure-blob/src/container.ts
+      imports: '@genai/port-blob'
+keywords: azure blob storage conversions docling native output sha256
