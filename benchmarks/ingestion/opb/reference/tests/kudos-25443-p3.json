@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-25443-p3-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Godkjent referat skal foreligge innen en uke etter etatsstyringsmøtet, og sendes Riksrevisjonen i kopi.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-25443-p3-t02", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Årsrapporten skal være i henhold til krav i Økonomireglementet.", "max_diffs": 2}, "after": {"text": "Nasjonalt klageorgans for helsetjenestens interne styring", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-25443-p3-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Nasjonalt klageorgans for helsetjenestens interne styring", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-25443-p3-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Direktørens/ledelses ansvar og myndighet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-25443-p3-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Direktøren har budsjettdisponeringsmyndighet i henhold til tildelingsbrevet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-25443-p3-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Krav til planlegging, gjennomføring og oppfølging av virksomheten", "max_diffs": 3}, "after": {"text": "Direktøren skal etablere et styringssystem med beskrivelse av roller", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-25443-p3-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Saker som er tatt opp av Riksrevisjonen skal rettes opp så snart det er mulig.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-25443-p3-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Helseklage gis på dette grunnlag fullmakt til å beregne pris på saker fra privat helsetjeneste.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-25443-p3-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Krav til internkontrollen i Nasjonalt klageorgan for helsetjenesten", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-25443-p3-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Den interne kontrollen skal være tilpasset risiko, vesentlighet og egenart.", "max_diffs": 3}}, "settings": {}}
+]}

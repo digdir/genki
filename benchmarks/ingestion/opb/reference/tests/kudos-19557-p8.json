@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-19557-p8-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Målet med regjeringens arbeid er at alle – også samiske språkbrukere – skal kunne ta del i det digitaliserte Norge.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-19557-p8-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Sametingets merknad til det overordnede innholdet i meldingen", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-19557-p8-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "Disse er markert i kursiv.", "max_diffs": 1}, "after": {"text": "Sametingets merknad til det overordnede innholdet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19557-p8-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "For eksempel har regjeringen i de to siste statsbudsjettene satt av 2,4 milliarder kroner til digitaliseringstiltak", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-19557-p8-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "2,4 milliarder kroner", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-19557-p8-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "det må være et samarbeid med regjeringen.", "max_diffs": 1}, "after": {"text": "Det samiske digitale tilbudet utvikles ikke i takt", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19557-p8-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Sametinget mener det er kritikkverdig at samiske navn ikke kan skrives korrekt i alle offentlige registre.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19557-p8-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Digitale plattformer som kommunikasjonskanaler er stadig viktigere", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-19557-p8-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "i dag er det 13 kommuner med i forvaltningsområdet for samisk språk", "max_diffs": 2}}, "settings": {}}
+]}

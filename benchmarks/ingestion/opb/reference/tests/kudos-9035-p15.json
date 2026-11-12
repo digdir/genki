@@ -1,0 +1,197 @@
+{
+ "tests": [
+  {
+   "id": "kudos-9035-p15-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "2.6.2.5 Beslutningsprosesser og rettslige reguleringer",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utsatte barn og unge har krav på likebehandling og at beslutningene som fattes er riktige.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Forskning på beslutningsprosesser i domstolene og på ulike nivåer i forvaltningen som har ansvaret for utsatte barn er mangelvare.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "2.6.2.6 Implementeringsforskning",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vi trenger også å vite mer om sentrale faktorer for å sikre høy implementeringskvalitet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Barn med minoritetsbakgrunn, flyktninger og enslige mindreårige asylsøkere",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "2.6.2.8 Barnets livssituasjon – strukturer og oppvekstforhold",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "mange barn opplever å være pårørende i oppveksten, noe",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "som også kan føre til utenforskap.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "som finnes – og for hvem.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "2.6.2.9 Barn på digitale arenaer",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-9035-p15-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det finnes i dag over 50 chattetjenester der barn og unge kan få hjelp og råd med ulike problemer",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-17869-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Instruks for Rådet for Statistisk sentralbyrå (SSB)", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-17869-p1-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Rådet for SSB oppnevnes av Kongen i statsråd, jf. § 19 statistikkloven.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-17869-p1-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Det vises for øvrig til omtale av Rådets oppgaver i Prop. 72 LS (2018-2019), kapittel 7.4.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-17869-p1-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Rådet skal gi råd i enhver sak det blir forelagt", "max_diffs": 1}, "after": {"text": "Departementet skal be om Rådets synspunkter om krav", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-17869-p1-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "list", "nob", "Latn"],
+  "args": {"before": {"text": "før stillingen utlyses.", "max_diffs": 1}, "after": {"text": "Kapittel 2. Dokumentasjon", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-17869-p1-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "I saker som direkte berører de ansatte skal rådet innhente synspunkter fra de ansatte.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-17869-p1-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Kapittel 3. Innkalling og sakspapirer", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-17869-p1-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Rådet skal møtes så ofte som nødvendig, og minst fire ganger i året.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-17869-p1-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Omforente referater fra Rådets møter skal oversendes Finansdepartementet etter ferdigstilling.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-17869-p1-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Finansdepartementet fastsetter denne instruksen med virkning fra 1. januar 2020.", "max_diffs": 3}}, "settings": {}}
+]}
