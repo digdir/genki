@@ -11,7 +11,7 @@ summary: Keeps converters' native output in the Blob container `conversions`.
 description: Implements the conversion container of the Blob port on Azure Blob storage (ADR 0042),
   with the knowledge worker's managed identity through DefaultAzureCredential and never an account
   key or SAS token. Without `CONVERSIONS_BLOB_URL` the worker uses a folder under `DATA_DIR`
-  instead. The container keeps earlier versions for 30 days.
+  instead. The container deletes an earlier version 30 days after it was written.
 responsibilities:
   - Write, read, list and delete blobs in the conversions container
   - Choose Azure or the local folder from the environment

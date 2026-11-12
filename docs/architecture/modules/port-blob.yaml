@@ -13,12 +13,12 @@ description: Used by batch jobs and the worker. Uploads are keyed by tenant; con
   and on Azure Blob storage through providers-azure-blob.
 responsibilities:
   - Blob store interface
-  - Conversion store keyed by file sha256, converter, version and settings hash
+  - Native output store keyed by file sha256, converter, version and settings hash
   - Folder watch for triggers
   - Zip export
 files:
   - packages/port-blob/src/port.ts
-  - packages/port-blob/src/conversions.ts
+  - packages/port-blob/src/native-output.ts
   - packages/port-blob/src/filesystem.ts
   - packages/port-blob/src/watch.ts
 input: Bytes + path

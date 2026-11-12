@@ -2,10 +2,10 @@ import type { TokenCredential } from '@azure/identity';
 import type { ContainerClient } from '@azure/storage-blob';
 import { join } from 'node:path';
 import {
-  conversionStore,
-  FileSystemConversionContainer,
-  type ConversionContainer,
-  type ConversionStore,
+  nativeOutputStore,
+  FileSystemNativeOutputContainer,
+  type NativeOutputContainer,
+  type NativeOutputStore,
 } from '@genai/port-blob';
 
 type Env = Record<string, string | undefined>;
@@ -15,7 +15,7 @@ export type BlobContainerClient = Pick<
   'getBlockBlobClient' | 'getBlobClient' | 'listBlobsFlat'
 >;
 
-export class AzureConversionContainer implements ConversionContainer {
+export class AzureNativeOutputContainer implements NativeOutputContainer {
   constructor(readonly client: BlobContainerClient) {}
 
   async write(path: string, body: Uint8Array, contentType: string) {
@@ -44,24 +44,31 @@ export class AzureConversionContainer implements ConversionContainer {
   }
 }
 
-export interface ConversionStoreDeps {
-  credentialFor?: (clientId: string | undefined) => TokenCredential | Promise<TokenCredential>;
+export interface NativeOutputStoreDeps {
+  credentialFor?: (clientId: string) => TokenCredential | Promise<TokenCredential>;
   clientFor?: (
     url: string,
     credential: TokenCredential,
   ) => BlobContainerClient | Promise<BlobContainerClient>;
 }
 
-export interface ConversionStoreSetup {
-  store: ConversionStore;
-  container: ConversionContainer;
+export interface NativeOutputStoreSetup {
+  store: NativeOutputStore;
+  container: NativeOutputContainer;
 }
 
-const defaultCredential = async (clientId: string | undefined) => {
+const defaultCredential = async (clientId: string) => {
   const { DefaultAzureCredential } = await import('@azure/identity');
-  return clientId
-    ? new DefaultAzureCredential({ managedIdentityClientId: clientId })
-    : new DefaultAzureCredential();
+  return new DefaultAzureCredential({ managedIdentityClientId: clientId });
+};
+
+// Without it DefaultAzureCredential would fall back to the shared AZURE_CLIENT_ID.
+const workerClientId = (env: Env) => {
+  if (!env.KNOWLEDGE_AZURE_CLIENT_ID)
+    throw new Error(
+      'CONVERSIONS_BLOB_URL needs KNOWLEDGE_AZURE_CLIENT_ID, the knowledge worker identity',
+    );
+  return env.KNOWLEDGE_AZURE_CLIENT_ID;
 };
 
 const defaultClient = async (url: string, credential: TokenCredential) => {
@@ -81,16 +88,16 @@ const containerUrl = (value: string) => {
   return url.toString();
 };
 
-export const conversionStoreFromEnv = async (
+export const nativeOutputStoreFromEnv = async (
   env: Env,
   dataDir: string,
-  { credentialFor = defaultCredential, clientFor = defaultClient }: ConversionStoreDeps = {},
-): Promise<ConversionStoreSetup> => {
+  { credentialFor = defaultCredential, clientFor = defaultClient }: NativeOutputStoreDeps = {},
+): Promise<NativeOutputStoreSetup> => {
   const blobUrl = env.CONVERSIONS_BLOB_URL;
-  const container: ConversionContainer = blobUrl
-    ? new AzureConversionContainer(
-        await clientFor(containerUrl(blobUrl), await credentialFor(env.KNOWLEDGE_AZURE_CLIENT_ID)),
+  const container: NativeOutputContainer = blobUrl
+    ? new AzureNativeOutputContainer(
+        await clientFor(containerUrl(blobUrl), await credentialFor(workerClientId(env))),
       )
-    : new FileSystemConversionContainer(join(dataDir, 'conversions'));
-  return { store: conversionStore(container), container };
+    : new FileSystemNativeOutputContainer(join(dataDir, 'conversions'));
+  return { store: nativeOutputStore(container), container };
 };

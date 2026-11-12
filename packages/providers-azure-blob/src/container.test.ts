@@ -2,13 +2,23 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TokenCredential } from '@azure/identity';
-import { FileSystemConversionContainer } from '@genai/port-blob';
-import { conversionContract } from '@genai/port-blob/contract';
+import { FileSystemNativeOutputContainer } from '@genai/port-blob';
+import { nativeOutputContract } from '@genai/port-blob/contract';
 import { describeContract } from '@genai/plugins/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const identity = vi.hoisted(() => ({ options: [] as unknown[] }));
+vi.mock('@azure/identity', () => ({
+  DefaultAzureCredential: class {
+    constructor(options?: unknown) {
+      identity.options.push(options);
+    }
+    getToken = async () => null;
+  },
+}));
 import {
-  AzureConversionContainer,
-  conversionStoreFromEnv,
+  AzureNativeOutputContainer,
+  nativeOutputStoreFromEnv,
   type BlobContainerClient,
 } from './container.js';
 
@@ -40,14 +50,14 @@ const fakeContainerClient = () => {
   return client as unknown as BlobContainerClient;
 };
 
-describeContract('azure (fake client)', conversionContract, async () => ({
-  subject: new AzureConversionContainer(fakeContainerClient()),
+describeContract('azure (fake client)', nativeOutputContract, async () => ({
+  subject: new AzureNativeOutputContainer(fakeContainerClient()),
 }));
 
 const fakeCredential = (): TokenCredential => ({ getToken: async () => null });
 const blobUrl = 'https://genkitestdata.blob.core.windows.net/conversions';
 
-describe('conversionStoreFromEnv', () => {
+describe('nativeOutputStoreFromEnv', () => {
   const roots: string[] = [];
   afterEach(async () => {
     await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })));
@@ -67,7 +77,7 @@ describe('conversionStoreFromEnv', () => {
         return fakeContainerClient();
       },
     };
-    await conversionStoreFromEnv(
+    await nativeOutputStoreFromEnv(
       {
         CONVERSIONS_BLOB_URL: blobUrl,
         AZURE_CLIENT_ID: 'shared-app',
@@ -85,16 +95,33 @@ describe('conversionStoreFromEnv', () => {
       'http://genkitestdata.blob.core.windows.net/conversions',
     ])
       await expect(
-        conversionStoreFromEnv({ CONVERSIONS_BLOB_URL: url }, '/unused', deps),
+        nativeOutputStoreFromEnv({ CONVERSIONS_BLOB_URL: url }, '/unused', deps),
       ).rejects.toThrow(/CONVERSIONS_BLOB_URL/);
     expect(given).toHaveLength(1);
+
+    await expect(
+      nativeOutputStoreFromEnv(
+        { CONVERSIONS_BLOB_URL: blobUrl, AZURE_CLIENT_ID: 'shared-app' },
+        '/unused',
+        deps,
+      ),
+    ).rejects.toThrow(/KNOWLEDGE_AZURE_CLIENT_ID/);
+    expect(asked).toEqual(['knowledge-worker']);
+
+    identity.options.length = 0;
+    await nativeOutputStoreFromEnv(
+      { CONVERSIONS_BLOB_URL: blobUrl, KNOWLEDGE_AZURE_CLIENT_ID: 'knowledge-worker' },
+      '/unused',
+      { clientFor: () => fakeContainerClient() },
+    );
+    expect(identity.options).toEqual([{ managedIdentityClientId: 'knowledge-worker' }]);
   });
 
-  it('the worker uses the Azure store when CONVERSIONS_BLOB_URL is set and the folder store otherwise', async () => {
+  it('nativeOutputStoreFromEnv picks the Azure store when CONVERSIONS_BLOB_URL is set and the folder store otherwise', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'conversions-env-'));
     roots.push(dataDir);
-    const local = await conversionStoreFromEnv({}, dataDir);
-    expect(local.container).toBeInstanceOf(FileSystemConversionContainer);
+    const local = await nativeOutputStoreFromEnv({}, dataDir);
+    expect(local.container).toBeInstanceOf(FileSystemNativeOutputContainer);
     await local.store.put(
       { sha256: 'c'.repeat(64), converter: 'docling', version: '2.123.1', settings: {} },
       new TextEncoder().encode('{}'),
@@ -102,10 +129,14 @@ describe('conversionStoreFromEnv', () => {
     );
     expect(await readdir(join(dataDir, 'conversions'))).toEqual(['c'.repeat(64)]);
 
-    const azure = await conversionStoreFromEnv({ CONVERSIONS_BLOB_URL: blobUrl }, dataDir, {
-      credentialFor: fakeCredential,
-      clientFor: () => fakeContainerClient(),
-    });
-    expect(azure.container).toBeInstanceOf(AzureConversionContainer);
+    const azure = await nativeOutputStoreFromEnv(
+      { CONVERSIONS_BLOB_URL: blobUrl, KNOWLEDGE_AZURE_CLIENT_ID: 'knowledge-worker' },
+      dataDir,
+      {
+        credentialFor: fakeCredential,
+        clientFor: () => fakeContainerClient(),
+      },
+    );
+    expect(azure.container).toBeInstanceOf(AzureNativeOutputContainer);
   });
 });

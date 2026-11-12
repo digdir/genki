@@ -6,14 +6,14 @@ import { BlobError, checkPath } from './blob.js';
 
 export type Settings = { readonly [key: string]: unknown };
 
-export interface ConversionKey {
+export interface NativeOutputKey {
   sha256: string;
   converter: string;
   version: string;
   settings: Settings;
 }
 
-export interface ConversionMeta {
+export interface NativeOutputMeta {
   converter: string;
   version: string;
   settings: Settings;
@@ -21,7 +21,7 @@ export interface ConversionMeta {
   when: string;
 }
 
-export interface ConversionEntry {
+export interface NativeOutputEntry {
   sha256: string;
   converter: string;
   version: string;
@@ -30,25 +30,25 @@ export interface ConversionEntry {
   metaPath: string;
 }
 
-export interface StoredConversion {
-  entry: ConversionEntry;
+export interface StoredNativeOutput {
+  entry: NativeOutputEntry;
   output: Uint8Array;
-  meta: ConversionMeta;
+  meta: NativeOutputMeta;
 }
 
 /** A blob container with no tenant: paths are the whole key. */
-export interface ConversionContainer {
+export interface NativeOutputContainer {
   write(path: string, body: Uint8Array, contentType: string): Promise<void>;
   read(path: string): Promise<Uint8Array | undefined>;
   list(prefix: string): Promise<string[]>;
   remove(path: string): Promise<boolean>;
 }
 
-export interface ConversionStore {
-  put(key: ConversionKey, output: Uint8Array, pages: number): Promise<ConversionEntry>;
-  get(key: ConversionKey): Promise<StoredConversion | undefined>;
-  list(sha256: string): Promise<ConversionEntry[]>;
-  delete(key: ConversionKey): Promise<boolean>;
+export interface NativeOutputStore {
+  put(key: NativeOutputKey, output: Uint8Array, pages: number): Promise<NativeOutputEntry>;
+  get(key: NativeOutputKey): Promise<StoredNativeOutput | undefined>;
+  list(sha256: string): Promise<NativeOutputEntry[]>;
+  delete(key: NativeOutputKey): Promise<boolean>;
 }
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
@@ -76,7 +76,7 @@ const checkSha256 = (sha256: string) => {
     throw new BlobError('bad_key', 'a file sha256 is 64 lowercase hex characters');
 };
 
-export const conversionEntry = (key: ConversionKey): ConversionEntry => {
+export const nativeOutputEntry = (key: NativeOutputKey): NativeOutputEntry => {
   checkSha256(key.sha256);
   for (const segment of [key.converter, key.version]) {
     if (segment.includes('/')) throw new BlobError('bad_key', `not a path segment: ${segment}`);
@@ -94,7 +94,7 @@ export const conversionEntry = (key: ConversionKey): ConversionEntry => {
   };
 };
 
-const entryFromPath = (path: string): ConversionEntry | undefined => {
+const entryFromPath = (path: string): NativeOutputEntry | undefined => {
   const [sha256, converter, version, file, ...rest] = path.split('/');
   if (rest.length || !sha256 || !converter || !version || !file?.endsWith(outputSuffix)) return;
   const hash = file.slice(0, -outputSuffix.length);
@@ -109,29 +109,30 @@ const entryFromPath = (path: string): ConversionEntry | undefined => {
   };
 };
 
-export const conversionStore = (
-  container: ConversionContainer,
+export const nativeOutputStore = (
+  container: NativeOutputContainer,
   now: () => Date = () => new Date(),
-): ConversionStore => ({
+): NativeOutputStore => ({
   put: async (key, output, pages) => {
-    const entry = conversionEntry(key);
-    const meta: ConversionMeta = {
+    const entry = nativeOutputEntry(key);
+    const meta: NativeOutputMeta = {
       converter: key.converter,
       version: key.version,
       settings: canonical(key.settings) as Settings,
       pages,
       when: now().toISOString(),
     };
-    await container.write(entry.path, gzipSync(output), 'application/gzip');
+    // The meta goes first, so a listed output always has its meta beside it.
     await container.write(
       entry.metaPath,
       new TextEncoder().encode(JSON.stringify(meta)),
       'application/json',
     );
+    await container.write(entry.path, gzipSync(output), 'application/gzip');
     return entry;
   },
   get: async (key) => {
-    const entry = conversionEntry(key);
+    const entry = nativeOutputEntry(key);
     const [zipped, meta] = await Promise.all([
       container.read(entry.path),
       container.read(entry.metaPath),
@@ -140,25 +141,25 @@ export const conversionStore = (
     return {
       entry,
       output: new Uint8Array(gunzipSync(zipped)),
-      meta: JSON.parse(new TextDecoder().decode(meta)) as ConversionMeta,
+      meta: JSON.parse(new TextDecoder().decode(meta)) as NativeOutputMeta,
     };
   },
   list: async (sha256) => {
     checkSha256(sha256);
     return (await container.list(`${sha256}/`))
       .map(entryFromPath)
-      .filter((e): e is ConversionEntry => e !== undefined)
+      .filter((e): e is NativeOutputEntry => e !== undefined)
       .sort((a, b) => a.path.localeCompare(b.path));
   },
   delete: async (key) => {
-    const entry = conversionEntry(key);
+    const entry = nativeOutputEntry(key);
     const removed = await container.remove(entry.path);
     await container.remove(entry.metaPath);
     return removed;
   },
 });
 
-export class InMemoryConversionContainer implements ConversionContainer {
+export class InMemoryNativeOutputContainer implements NativeOutputContainer {
   readonly blobs = new Map<string, { body: Uint8Array; contentType: string }>();
 
   async write(path: string, body: Uint8Array, contentType: string) {
@@ -179,7 +180,7 @@ export class InMemoryConversionContainer implements ConversionContainer {
   }
 }
 
-export class FileSystemConversionContainer implements ConversionContainer {
+export class FileSystemNativeOutputContainer implements NativeOutputContainer {
   constructor(private readonly root: string) {}
 
   #file(path: string) {

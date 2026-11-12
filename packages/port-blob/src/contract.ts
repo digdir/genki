@@ -11,12 +11,12 @@ import {
 import { gunzipSync } from 'node:zlib';
 import { sha256, type BlobStore } from './blob.js';
 import {
-  conversionStore,
-  FileSystemConversionContainer,
-  InMemoryConversionContainer,
+  nativeOutputStore,
+  FileSystemNativeOutputContainer,
+  InMemoryNativeOutputContainer,
   settingsHash,
-  type ConversionContainer,
-} from './conversions.js';
+  type NativeOutputContainer,
+} from './native-output.js';
 import { FileSystemBlobStore } from './filesystem.js';
 import { InMemoryBlobStore } from './memory.js';
 
@@ -122,7 +122,7 @@ export const fileSystemBlobContractTarget = async (): Promise<ContractTarget<Blo
   };
 };
 
-export const conversionContractVersion = 'conversion-container@1';
+export const nativeOutputContractVersion = 'native-output@1';
 
 const fileA = 'a'.repeat(64);
 const fileB = 'b'.repeat(64);
@@ -141,13 +141,13 @@ const freshFile = (letter: string) => {
   );
 };
 
-export const conversionContract: ContractSuite<ConversionContainer> = {
-  contract: conversionContractVersion,
+export const nativeOutputContract: ContractSuite<NativeOutputContainer> = {
+  contract: nativeOutputContractVersion,
   checks: [
     {
       name: "a conversion's native output is written and read back by its converter and file sha256, with no tenant",
       run: async (container) => {
-        const store = conversionStore(container);
+        const store = nativeOutputStore(container);
         const key = { sha256: freshFile('a'), ...docling({ ocr: 'tesseract', lang: 'nor' }) };
         await store.put(key, text('{"pages":[{"text":"Søknad"}]}'), 3);
         const found = await store.get(key);
@@ -162,7 +162,7 @@ export const conversionContract: ContractSuite<ConversionContainer> = {
     {
       name: "listing a file's sha256 finds every native output of it",
       run: async (container) => {
-        const store = conversionStore(container);
+        const store = nativeOutputStore(container);
         const sha256 = freshFile('c');
         await store.put({ sha256, ...docling({ ocr: 'easyocr' }) }, text('{}'), 1);
         await store.put({ sha256, ...docling({ ocr: 'tesseract' }) }, text('{}'), 1);
@@ -190,7 +190,7 @@ export const conversionContract: ContractSuite<ConversionContainer> = {
     {
       name: 'native output is stored gzipped, with its meta.json beside it',
       run: async (container) => {
-        const store = conversionStore(container, () => new Date('2026-11-12T10:00:00Z'));
+        const store = nativeOutputStore(container, () => new Date('2026-11-12T10:00:00Z'));
         const key = { sha256: freshFile('f'), ...docling({ lang: ['no', 'en'], ocr: 'easyocr' }) };
         const entry = await store.put(key, text('{"pages":[]}'), 12);
         const hash = settingsHash(key.settings);
@@ -215,7 +215,7 @@ export const conversionContract: ContractSuite<ConversionContainer> = {
     {
       name: 'a conversion key with a bad sha256 or path segment is refused',
       run: async (container) => {
-        const store = conversionStore(container);
+        const store = nativeOutputStore(container);
         const ok = { sha256: fileA, ...docling({}) };
         await checkFailsWith(
           () => store.put({ ...ok, sha256: 'ABC' }, text('{}'), 1),
@@ -243,18 +243,18 @@ export const conversionContract: ContractSuite<ConversionContainer> = {
   ],
 };
 
-export const memoryConversionContractTarget = async (): Promise<
-  ContractTarget<ConversionContainer>
+export const memoryNativeOutputContractTarget = async (): Promise<
+  ContractTarget<NativeOutputContainer>
 > => ({
-  subject: new InMemoryConversionContainer(),
+  subject: new InMemoryNativeOutputContainer(),
 });
 
-export const fileSystemConversionContractTarget = async (): Promise<
-  ContractTarget<ConversionContainer>
+export const fileSystemNativeOutputContractTarget = async (): Promise<
+  ContractTarget<NativeOutputContainer>
 > => {
   const root = await mkdtemp(join(tmpdir(), 'conversion-contract-'));
   return {
-    subject: new FileSystemConversionContainer(root),
+    subject: new FileSystemNativeOutputContainer(root),
     close: () => rm(root, { recursive: true, force: true }),
   };
 };

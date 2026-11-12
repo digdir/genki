@@ -38,7 +38,7 @@ resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01
 }
 
 // Converters' native output (ADR 0042), keyed by file sha256 with no tenant. Overwritten and deleted
-// blobs stay as earlier versions for 30 days.
+// blobs stay as earlier versions until 30 days after that version was written, not after it was replaced.
 resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   parent: account
   name: 'default'

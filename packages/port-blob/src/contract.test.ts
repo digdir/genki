@@ -1,9 +1,9 @@
 import { describeContract } from '@genai/plugins/testing';
 import {
   blobContract,
-  conversionContract,
-  fileSystemConversionContractTarget,
-  memoryConversionContractTarget,
+  nativeOutputContract,
+  fileSystemNativeOutputContractTarget,
+  memoryNativeOutputContractTarget,
   fileSystemBlobContractTarget,
   memoryBlobContractTarget,
 } from './contract.js';
@@ -12,6 +12,6 @@ describeContract('memory', blobContract, memoryBlobContractTarget);
 
 describeContract('filesystem', blobContract, fileSystemBlobContractTarget);
 
-describeContract('memory', conversionContract, memoryConversionContractTarget);
+describeContract('memory', nativeOutputContract, memoryNativeOutputContractTarget);
 
-describeContract('filesystem', conversionContract, fileSystemConversionContractTarget);
+describeContract('filesystem', nativeOutputContract, fileSystemNativeOutputContractTarget);
