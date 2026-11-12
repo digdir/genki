@@ -87,7 +87,7 @@ const excerptSources = [
   },
 ];
 
-// Each excerpt's own section, as `/v1` sends it when the index gives the chunk a heading.
+// Each excerpt's own section, in the shape the client reads when a response carries one.
 const headedSource = {
   index: 1,
   title: 'Tildelingsbrev',

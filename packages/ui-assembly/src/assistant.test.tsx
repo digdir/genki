@@ -357,7 +357,7 @@ describe('the assistant a layout describes', () => {
     }
   });
 
-  // One document whose two excerpts are from different sections, as `/v1` sends them.
+  // One document whose two excerpts are from different sections, each with its heading.
   const headedSource = {
     index: 1,
     title: 'Tildelingsbrev 2022',
