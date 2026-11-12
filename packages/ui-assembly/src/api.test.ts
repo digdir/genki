@@ -313,3 +313,37 @@ describe('a source from the wire', () => {
     expect(excerpts.map((excerpt) => 'heading' in excerpt)).toEqual([true, false, false]);
   });
 });
+
+// The run feedback is sent on, from `task` on a stored message.
+describe('the run behind an answer', () => {
+  it('is kept from the stored message for a thread opened again', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't1', topic: 'Tråd', tags: [] },
+          messages: [
+            { id: 'm1', role: 'user', text: 'Hva er fast?', created: 1, chunks: [] },
+            { id: 'm2', role: 'assistant', text: 'Svar.', created: 2, chunks: [], task: 'task-7' },
+          ],
+        }),
+      ),
+    );
+    const { turns } = await api().loadThread('t1');
+    expect(turns[0]?.answer?.runId).toBe('task-7');
+  });
+
+  it('is left out of a stored message that names none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't1', topic: 'Tråd', tags: [] },
+          messages: [{ id: 'm2', role: 'assistant', text: 'Svar.', created: 2, chunks: [] }],
+        }),
+      ),
+    );
+    const { turns } = await api().loadThread('t1');
+    expect(turns[0]?.answer).not.toHaveProperty('runId');
+  });
+});

@@ -26,6 +26,8 @@ export interface AnswerData {
   error?: string | undefined;
   /** Why it failed, for the answer block's heading and advice. */
   failure?: AnswerFailure | undefined;
+  /** genki's id for the run that gave the answer (`genai-task`), which feedback is sent on. */
+  runId?: string | undefined;
 }
 
 export interface Turn {
@@ -182,6 +184,8 @@ interface ApiMessage {
   sources?: WireSource[];
   /** The answer's markers, `{ marker, chunk_id, document }`, when the stored turn carries them. */
   markers?: unknown;
+  /** The assistant message's run, the id feedback is sent on. */
+  task?: string;
 }
 
 /** The collection a thread was made in, from its `corpus:` tag. */
@@ -285,29 +289,23 @@ const markersFromSources = (
 };
 
 const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerData => {
-  const stored = storedMarkers(message.markers);
+  const keptMarkers = storedMarkers(message.markers);
+  const stored = {
+    text: message.text,
+    status: 'complete' as const,
+    created: message.created,
+    ...(message.task ? { runId: message.task } : {}),
+  };
   if (message.sources && message.sources.length > 0) {
     const sources = message.sources.map((s, at) => sourceFromWire(s, corpus, at));
-    const markers = stored ?? markersFromSources(message.sources, sources);
-    return {
-      text: message.text,
-      status: 'complete',
-      sources,
-      ...(markers ? { markers } : {}),
-      created: message.created,
-    };
+    const markers = keptMarkers ?? markersFromSources(message.sources, sources);
+    return { ...stored, sources, ...(markers ? { markers } : {}) };
   }
   if (message.chunks.length > 0) {
     const { sources, markers } = fromChunks(message.chunks, corpus);
-    return {
-      text: message.text,
-      status: 'complete',
-      sources,
-      markers: stored ?? markers,
-      created: message.created,
-    };
+    return { ...stored, sources, markers: keptMarkers ?? markers };
   }
-  return { text: message.text, status: 'complete', created: message.created };
+  return stored;
 };
 
 /**

@@ -33,6 +33,7 @@ export interface SourceExcerpt {
   chunk_id: string;
   text: string;
   position?: number;
+  heading?: string;
   markers?: string[];
 }
 
@@ -237,18 +238,19 @@ const excerptsOf = (
       : pool
           .filter((p) => p.document === record.document && p.chunkId !== record.chunkId)
           .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-  return [record, ...siblings].flatMap((r) =>
-    r.text === undefined || r.text.trim() === ''
-      ? []
-      : [
-          {
-            chunk_id: r.chunkId,
-            text: r.text,
-            ...(r.position === undefined ? {} : { position: r.position }),
-            ...markersFor(marked, r.chunkId),
-          },
-        ],
-  );
+  return [record, ...siblings].flatMap((r) => {
+    if (r.text === undefined || r.text.trim() === '') return [];
+    const heading = sourceBreadcrumb(r.headers);
+    return [
+      {
+        chunk_id: r.chunkId,
+        text: r.text,
+        ...(r.position === undefined ? {} : { position: r.position }),
+        ...(heading === undefined ? {} : { heading }),
+        ...markersFor(marked, r.chunkId),
+      },
+    ];
+  });
 };
 
 export const citationBundle = (

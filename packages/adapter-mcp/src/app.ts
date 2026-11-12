@@ -54,10 +54,17 @@ export interface TurnChunk {
   contentMarkdown: string;
 }
 
+export interface TurnMarker {
+  marker: string;
+  chunk_id: string;
+  document: string;
+}
+
 export interface ConversationTurn {
   role: 'user' | 'assistant';
   text: string;
   chunks?: TurnChunk[];
+  markers?: TurnMarker[];
   diagnostics?: unknown;
 }
 
@@ -188,9 +195,21 @@ const datasetScope = (args: Record<string, unknown>, entry: CapabilityEntry) => 
 
 const text = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
+const turnMarkers = (v: unknown): TurnMarker[] =>
+  (Array.isArray(v) ? v : []).flatMap((m) => {
+    if (!isRecord(m)) return [];
+    const marker = text(m.marker);
+    const chunkId = text(m.chunk_id);
+    const document = text(m.document);
+    return marker === undefined || chunkId === undefined || document === undefined
+      ? []
+      : [{ marker, chunk_id: chunkId, document }];
+  });
+
 const assistantTurn = (output: ToolOutput): ConversationTurn => {
   const s = output.structured;
   const chunks = Array.isArray(s.chunks) ? (s.chunks as Record<string, unknown>[]) : [];
+  const markers = turnMarkers(s.markers);
   const attribution = isRecord(s.search_attribution) ? [s.search_attribution] : [];
   return {
     role: 'assistant',
@@ -204,6 +223,7 @@ const assistantTurn = (output: ToolOutput): ConversationTurn => {
         contentMarkdown: text(c.content_markdown) ?? '',
       };
     }),
+    ...(markers.length ? { markers } : {}),
     diagnostics: {
       ...(isRecord(s.execution_metadata) ? { 'execution-metadata': s.execution_metadata } : {}),
       'backend-issues': [],

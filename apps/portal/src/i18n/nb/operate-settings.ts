@@ -177,6 +177,9 @@ const settings = defineNamespace({
   panelPinnedLayer: 'Festet',
   panelNewValue: 'Ny verdi her',
   panelCannotHere: 'Kan ikke settes på dette laget',
+  panelSetByDigdir: 'Digdir setter denne grensen',
+  panelSetByDigdirHelp:
+    'Grensen beskytter kostnaden og kapasiteten på plattformen. Ta kontakt med Digdir hvis dere trenger en annen verdi.',
   panelSecretStored: 'Lagret i Key Vault. Sist erstattet 2. oktober av Jonas Lie.',
   panelSecretNotSet: 'Ikke satt',
   panelNewSecret: 'Ny verdi',
