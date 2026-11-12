@@ -209,13 +209,49 @@ describe('a stored turn', () => {
     expect(message.sources).toEqual(marked);
   });
 
-  it('numbers by position as before when a stored turn has no markers', async () => {
+  it('numbers a stored turn without markers by its own sources, as the live answer did', async () => {
+    const live = await ask({ sources: liveSources });
     const message = await reload({ sources: liveSources, chunks });
+
+    expect(message.sources).toEqual(live.sources);
+    expect(message.sources.map((s) => [s.index, s.title])).toEqual([
+      [1, 'Årsrapport 2025 › Telefon'],
+      [2, 'Tildelingsbrev 2025'],
+    ]);
+  });
+
+  it('reads the sources genki stores, by their index, title and first excerpt', async () => {
+    const stored = liveSources.map((s) => ({
+      index: s.index,
+      title: s.title,
+      url: 'https://example.org/dokument',
+      document_id: s.document_id,
+      excerpts: s.excerpts,
+    }));
+    const message = await reload({ sources: stored, chunks });
+
+    expect(message.sources).toEqual([
+      {
+        title: 'Årsrapport 2025',
+        index: 1,
+        url: 'https://example.org/dokument',
+        excerpt: 'Ventetida gjekk ned.',
+      },
+      {
+        title: 'Tildelingsbrev 2025',
+        index: 2,
+        url: 'https://example.org/dokument',
+        excerpt: 'Bemanninga auka.',
+      },
+    ]);
+  });
+
+  it('numbers a chunks-only stored turn by document, never by chunk position', async () => {
+    const message = await reload({ chunks });
 
     expect(message.sources).toEqual([
       { title: 'Tildelingsbrev 2025', index: 1, excerpt: 'Bemanninga auka.' },
       { title: 'Årsrapport 2025', index: 2, excerpt: 'Ventetida gjekk ned.' },
-      { title: 'Årsrapport 2025', index: 3, excerpt: 'No er ventetida fire minutt.' },
     ]);
   });
 });
