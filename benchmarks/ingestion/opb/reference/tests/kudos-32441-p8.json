@@ -1,0 +1,14 @@
+{"tests": [
+ {"id": "kudos-32441-p8-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Dokumentet er elektronisk signert og har derfor ikke håndskrevne signaturer", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-32441-p8-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "ekspedisjonssjef", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-32441-p8-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "fagdirektør", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-32441-p8-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Riksrevisjonen", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-32441-p8-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "ekspedisjonssjef", "max_diffs": 1}, "after": {"text": "Dokumentet er elektronisk signert", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-32441-p8-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Dokumentet er elektronisk signert", "max_diffs": 1}, "after": {"text": "Riksrevisjonen", "max_diffs": 1}}, "settings": {}}
+]}

@@ -74,12 +74,28 @@ _Avoid_: takedown, purge
 The stop on an ingestion run that would change, take over or delete an unusually large share of its pipeline's documents, until a person approves it.
 _Avoid_: circuit breaker, safety limit
 
+**Native output**:
+What a converter itself returns for one file, such as a `DoclingDocument`, kept in Blob storage under the file's sha256 so its text can be derived again without converting.
+_Avoid_: raw output, JSON dump
+
 **Stored conversion**:
-A converter's text for one file, kept so that no file is converted twice with the same converter, version and settings.
+The text per page derived from one file's conversion, kept so that no file is converted twice by a converter its pipeline keeps: keyed by the file's sha256, the converter, its version and settings, and the derivation and its version.
 _Avoid_: parse, extraction, cache (alone)
 
+**Derivation**:
+How the text the chunker reads is made from a native output, such as `docling-pages`. A new derivation reads the Blob copy and needs no download and no converter call.
+_Avoid_: post-processing, normalisation
+
+**Kept conversion**:
+A stored conversion from a converter a pipeline keeps, such as Docling, which is never converted again unless an upgrade is chosen. One from a converter the pipeline only accepts, such as the text layer, is replaced by a replacement run.
+_Avoid_: final conversion, pinned conversion
+
+**Replacement run**:
+A run a pipeline's run sends for the files whose only conversion is one to be replaced, such as the text layer, converting them again in the night window. It is not the pipeline's open run, so the next run does not wait for it.
+_Avoid_: upgrade, backfill
+
 **Recipe**:
-How documents become searchable: the converter, how text is cut into chunks and which search phrases are made, the embedding model, and how full text is indexed.
+How documents become searchable: the converters accepted and how their text is derived, how text is cut into chunks and which search phrases are made, the embedding model, and how full text is indexed.
 _Avoid_: pipeline, profile, configuration
 
 **Generation**:

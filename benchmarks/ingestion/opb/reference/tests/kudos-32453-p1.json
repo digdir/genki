@@ -1,0 +1,117 @@
+{
+ "tests": [
+  {
+   "id": "kudos-32453-p1-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Menneskerettigheter for personer med utviklingshemming",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-32453-p1-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det handler om å bli hørt og sett",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-32453-p1-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Meld. St. 8 (2022–2023) Melding til Stortinget",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-32453-p1-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Lettlest versjon",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-32453-p1-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Menneskerettigheter for personer med utviklingshemming",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Det handler om å bli hørt og sett",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-32453-p1-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Melding til Stortinget",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Menneskerettigheter for personer",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
