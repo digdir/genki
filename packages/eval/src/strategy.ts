@@ -122,13 +122,13 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       ...(deps.meterAnswers ? { meterAnswers: deps.meterAnswers } : {}),
       signal: ctx.signal,
       ...(slots ? { slots } : {}),
-      onProgress: (done, total, usage, results) =>
+      onProgress: (done, total, usage, result) =>
         notify({
           kind: 'eval.progress',
           done,
           total,
           ...(usage ? { usage } : {}),
-          ...(results ? { results } : {}),
+          ...(result ? { result } : {}),
         }),
       onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {

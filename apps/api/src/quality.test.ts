@@ -1946,5 +1946,18 @@ describe('a test run as the portal shows it', () => {
     expect(progressed(done, { done: 1, total: 2 })).toBe(done);
     expect(waitingForScores(running).status).toBe('waiting-for-scores');
     expect(progressed(running, { done: 1, total: 2 }).progress).toEqual({ done: 1, total: 2 });
+    const finishedCase = (id: string) => ({
+      case: id,
+      split: 'train' as const,
+      repeat: 0,
+      task: `t-${id}`,
+      tags: [],
+      scores: [],
+    });
+    const rank = (r: { case: string }) => ['o1', 'o2', 'l1'].indexOf(r.case);
+    const second = progressed(running, { done: 1, total: 3 }, undefined, finishedCase('o2'), rank);
+    const both = progressed(second, { done: 2, total: 3 }, undefined, finishedCase('o1'), rank);
+    // Each notice brings only the case just finished; the run keeps them in test-set order.
+    expect(both.results.map((r) => r.case)).toEqual(['o1', 'o2']);
   });
 });

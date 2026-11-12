@@ -233,18 +233,28 @@ const finished = (run: EvalRun) => {
   return state !== 'running' && state !== 'waiting-for-scores';
 };
 
-/** Progress from the eval task; a run that has finished keeps what it finished with. */
+/**
+ * Progress from the eval task; a run that has finished keeps what it finished with. The case just
+ * finished joins the ones before it, in the order rank gives (the test set's).
+ */
 export const progressed = (
   run: EvalRun,
   progress: { done: number; total: number },
   usage?: EvalRun['usage'],
-  results?: EvalRun['results'],
+  result?: EvalRun['results'][number],
+  rank: (r: EvalRun['results'][number]) => number = () => 0,
 ): EvalRun => {
   if (finished(run)) return run;
   const rest = { ...run };
   // A case has started, so the run no longer waits in line.
   delete rest.queuePlace;
-  return { ...rest, progress, ...(usage ? { usage } : {}), ...(results ? { results } : {}) };
+  const results = result
+    ? [
+        ...run.results.filter((r) => r.case !== result.case || r.repeat !== result.repeat),
+        result,
+      ].sort((a, b) => rank(a) - rank(b))
+    : run.results;
+  return { ...rest, progress, ...(usage ? { usage } : {}), results };
 };
 
 /** The run's place in line for a case slot, or none once a slot is free. */
@@ -568,6 +578,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       }
     }
     const cases = casesIn(set, split, only);
+    // A finished case takes its place in the test set's order, repeat by repeat.
+    const order = new Map(cases.map((c, i) => [c.id, i]));
+    const rankOf = (r: EvalRun['results'][number]) =>
+      r.repeat * cases.length + (order.get(r.case) ?? cases.length);
     const model = answeringModel(subject);
     const startedAt = leases.now().toISOString();
     const first: EvalRun = {
@@ -643,21 +657,22 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
                   done?: number;
                   total?: number;
                   usage?: unknown;
-                  results?: unknown;
+                  result?: unknown;
                   place?: number;
                 }
               | undefined;
             if (event.type !== 'kernel.notice') continue;
             if (data?.kind === 'eval.progress' && data.done !== undefined) {
               const usage = evalRun.shape.usage.safeParse(data.usage);
-              const results = evalRun.shape.results.safeParse(data.results);
+              const result = evalRun.shape.results.element.safeParse(data.result);
               await lease.update(
                 (run) =>
                   progressed(
                     run,
                     { done: data.done ?? 0, total: data.total ?? 0 },
                     usage.success ? usage.data : undefined,
-                    results.success ? results.data : undefined,
+                    result.success ? result.data : undefined,
+                    rankOf,
                   ),
                 'progress',
               );
