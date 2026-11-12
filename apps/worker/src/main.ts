@@ -57,6 +57,7 @@ import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
+import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 import { createLocalConverter } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
@@ -347,6 +348,15 @@ const knowledgeRunRecords = db
     )
   : undefined;
 const knowledgeProgress = runProgress(log);
+// Converters' native output, in the Blob container CONVERSIONS_BLOB_URL names, or a folder locally (ADR 0042).
+const nativeOutputs = knowledgeWriter
+  ? (
+      await nativeOutputStoreFromEnv(
+        process.env,
+        process.env.DATA_DIR ?? join(root, 'apps', 'api', '.data'),
+      )
+    ).store
+  : undefined;
 const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
@@ -363,6 +373,7 @@ const knowledgeHandlers =
         // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
         converter: createLocalConverter(),
+        ...(nativeOutputs ? { nativeOutputs } : {}),
         heavy: heavySettings,
         runs: knowledgeRunRecords,
         pipeline: async (run) =>

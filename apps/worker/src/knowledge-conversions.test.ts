@@ -18,6 +18,11 @@ import {
   type QueueDefinition,
   type QueueWork,
 } from '@genai/jobs';
+import {
+  InMemoryNativeOutputContainer,
+  nativeOutputEntry,
+  nativeOutputStore,
+} from '@genai/port-blob';
 import type { EmbeddingPort } from '@genai/port-embedding';
 import { conversionKey, type DatasetConfig, type StoredConversions } from '@genai/port-knowledge';
 import { createLocalConverter } from '@genai/providers-documents';
@@ -1074,37 +1079,32 @@ describe('stored conversions', () => {
     ]);
   }, 60_000);
 
-  it('a conversion with native output writes it to the conversion store and keeps its path', async () => {
+  it('a conversion with native output writes it to the native output store and keeps its path', async () => {
     await clearConvertJobs();
-    const put: { key: object; pages: number }[] = [];
+    const container = new InMemoryNativeOutputContainer();
+    const output = encoder.encode('{"schema_name":"DoclingDocument"}');
     const s = await scenario({
       converter: {
         extensions: ['.pdf'],
         convert: async () => ({
           ...onePage('# Rapport\n\nTekst fra konverteringen.'),
-          output: encoder.encode('{"schema_name":"DoclingDocument"}'),
+          output,
         }),
       },
-      nativeOutputs: {
-        put: async (key, _output, pages) => {
-          put.push({ key, pages });
-          return { path: `${key.sha256}/text-layer/1/abc.json.gz` };
-        },
-      },
+      nativeOutputs: nativeOutputStore(container),
     });
     const pdf = pdfBytes([['Med eget format.']]);
     await s.file('med-format.pdf', pdf);
     await ingest(s);
     await drain(s);
 
-    expect(put).toEqual([
-      {
-        key: { sha256: await sha(pdf), converter: 'text-layer', version: '1', settings: {} },
-        pages: 1,
-      },
-    ]);
-    expect((await stored(await sha(pdf)))[0]?.output_path).toBe(
-      `${await sha(pdf)}/text-layer/1/abc.json.gz`,
+    const key = { sha256: await sha(pdf), converter: 'text-layer', version: '1', settings: {} };
+    const path = nativeOutputEntry(key).path;
+    expect((await stored(await sha(pdf)))[0]?.output_path).toBe(path);
+    expect((await nativeOutputStore(container).get(key))?.output).toEqual(output);
+    // The stored conversion's key hashes the settings as the Blob container names them.
+    expect(conversionKey(key)).toBe(
+      `${key.sha256}:text-layer:1:${nativeOutputEntry(key).settingsHash}`,
     );
   }, 60_000);
 });
