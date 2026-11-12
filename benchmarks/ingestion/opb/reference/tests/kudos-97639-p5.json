@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-97639-p5-t01", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "-14,8 %", "max_diffs": 0}, "left_heading": {"text": "Ubetingede dommer", "max_diffs": 0}, "top_heading": {"text": "Endring 2018-2019", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t02", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "kr 1 864 692,00", "max_diffs": 0}, "left_heading": {"text": "Inndragning (beløp)", "max_diffs": 0}, "top_heading": {"text": "2018", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "kr 1 140 052,00", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "table", "nob", "Latn"],
+  "args": {"before": {"text": "Saker til konfliktrådet", "max_diffs": 0}, "after": {"text": "UTVALGTE KRIMINALITETSTYPER", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "UTVALGTE KRIMINALITETSTYPER", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-97639-p5-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "1 243", "max_diffs": 0}, "left_heading": {"text": "Narkotikalovbrudd etter legemiddelloven", "max_diffs": 0}, "top_heading": {"text": "2018", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t07", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "38,2 %", "max_diffs": 0}, "left_heading": {"text": "Grov narkotikaovertredelse", "max_diffs": 0}, "left": {"text": "47", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"before": {"text": "Dopinglovbrudd etter straffeloven", "max_diffs": 1}, "after": {"text": "Seksuell omgang og voldtekt av barn", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-97639-p5-t09", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "63", "max_diffs": 0}, "left_heading": {"text": "Seksuell omgang og voldtekt av barn u/14 år", "max_diffs": 0}, "top_heading": {"text": "2018", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p5-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "-53,5 %", "max_diffs": 0}}, "settings": {}}
+]}

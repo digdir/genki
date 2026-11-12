@@ -1,0 +1,80 @@
+{
+  "pairing": {
+    "ours": 10064,
+    "paired": 9749,
+    "no_kudos_file_with_same_sha256": 147,
+    "ours_multi_file_skipped": 132,
+    "kudos_doc_has_attachments": 157,
+    "matched_file_not_primary_in_kudos": 36,
+    "sha256_in_several_kudos_docs": 16
+  },
+  "kudos_listed": 45902,
+  "strata": {
+    "Evaluering|digital?": {
+      "population": 1310,
+      "sampled": 10
+    },
+    "Evaluering|scan?": {
+      "population": 61,
+      "sampled": 9
+    },
+    "Instruks|digital?": {
+      "population": 281,
+      "sampled": 10
+    },
+    "Instruks|scan?": {
+      "population": 30,
+      "sampled": 9
+    },
+    "Melding til Stortinget|digital?": {
+      "population": 162,
+      "sampled": 10
+    },
+    "Melding til Stortinget|scan?": {
+      "population": 47,
+      "sampled": 9
+    },
+    "Proposisjon til Stortinget|digital?": {
+      "population": 1029,
+      "sampled": 10
+    },
+    "Proposisjon til Stortinget|scan?": {
+      "population": 41,
+      "sampled": 9
+    },
+    "Statusrapport|digital?": {
+      "population": 1422,
+      "sampled": 10
+    },
+    "Statusrapport|scan?": {
+      "population": 225,
+      "sampled": 9
+    },
+    "Strategi/plan|digital?": {
+      "population": 345,
+      "sampled": 10
+    },
+    "Strategi/plan|scan?": {
+      "population": 100,
+      "sampled": 9
+    },
+    "Tildelingsbrev|digital?": {
+      "population": 2435,
+      "sampled": 9
+    },
+    "Tildelingsbrev|scan?": {
+      "population": 867,
+      "sampled": 9
+    },
+    "Årsrapport|digital?": {
+      "population": 1150,
+      "sampled": 9
+    },
+    "Årsrapport|scan?": {
+      "population": 244,
+      "sampled": 9
+    }
+  },
+  "sample_size": 150,
+  "sample_pages_total": 7044
+}
