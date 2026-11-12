@@ -13,6 +13,7 @@ import { PostgresModelClassifications } from './models.js';
 import { PostgresAdminRecords } from './admin-records.js';
 import { PostgresClients } from './clients.js';
 import { PostgresWebhookDeliveries } from './webhook-deliveries.js';
+import { PostgresProviderObjects } from './provider-objects.js';
 import { PostgresTriggerRuns } from './trigger-runs.js';
 import { PostgresConfigEntries } from './config-entries.js';
 import { PostgresConnections } from './connections.js';
@@ -62,6 +63,7 @@ export {
 } from './admin-records.js';
 export { PostgresClients } from './clients.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
+export { PostgresProviderObjects } from './provider-objects.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
 export { PostgresUsageBuckets } from './usage.js';
 export { PostgresLeaderLease } from './leader-lease.js';
@@ -206,6 +208,7 @@ export const createPostgresStores = async (
     clients: new PostgresClients(pool),
     webhookDeliveries: new PostgresWebhookDeliveries(pool),
     triggerRuns: new PostgresTriggerRuns(pool),
+    providerObjects: new PostgresProviderObjects(pool),
     configEntries: new PostgresConfigEntries(pool),
     ingestionExecutions: new PostgresIngestionExecutions(pool),
     rateLimits: new PostgresRateLimiter(pool),

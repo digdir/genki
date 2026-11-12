@@ -253,6 +253,40 @@ describe('workspace api', () => {
     });
   });
 
+  it('keeps the attachments of an answer, and only those the platform serves from a task', async () => {
+    const { fetcher } = recorder(() =>
+      sse(
+        [
+          delta('Her er figuren.'),
+          {
+            attachments: [
+              {
+                id: 'm1',
+                mediaType: 'image/png',
+                bytes: 2048,
+                step: 'figur',
+                url: '/v1/tasks/task-9/media/m1',
+              },
+              { id: 'm2', mediaType: 'image/png', bytes: 1, url: 'https://example.com/x.png' },
+            ],
+          },
+          delta('', 'stop'),
+        ],
+        { 'genai-task': 'task-9' },
+      ),
+    );
+    const reply = await client(fetcher).chat('figur__default', [], () => {});
+    expect(reply.media).toEqual([
+      {
+        id: 'm1',
+        mediaType: 'image/png',
+        bytes: 2048,
+        step: 'figur',
+        url: '/v1/tasks/task-9/media/m1',
+      },
+    ]);
+  });
+
   it('streams chat deltas and returns sources and the task', async () => {
     const { calls, fetcher } = recorder(() =>
       sse(
@@ -311,6 +345,31 @@ describe('workspace api', () => {
       stream: true,
       genai_stream: 'live',
     });
+  });
+
+  it('asks for step frames only when the screen listens, and passes each one on', async () => {
+    const { calls, fetcher } = recorder(() =>
+      sse([
+        { choices: [{ index: 0, delta: {}, finish_reason: null }], genai_step: { tool: 'search' } },
+        delta('Ja.'),
+        delta('', 'stop'),
+      ]),
+    );
+    const steps: unknown[] = [];
+    await client(fetcher).chat(
+      'ka__default',
+      [],
+      () => {},
+      undefined,
+      undefined,
+      undefined,
+      [],
+      (s) => steps.push(s),
+    );
+    await client(fetcher).chat('ka__default', [], () => {});
+    expect(steps).toEqual([{ tool: 'search' }]);
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ genai_steps: true });
+    expect(JSON.parse(String(calls[1]?.init?.body))).not.toHaveProperty('genai_steps');
   });
 
   it('drops a draft the server retracts and keeps only the answer that replaced it', async () => {

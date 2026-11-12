@@ -435,8 +435,11 @@ const settingDefs = {
   retrieval_queryAwareBoost_label: 'Boost hits that resemble the question',
   retrieval_autoFilter_enabled_label: 'Automatic filter',
   retrieval_autoFilter_enabled_desc:
-    'Add filters based on organisation and year names in the question.',
+    'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
   retrieval_autoFilter_rules_label: 'Rules for the automatic filter',
+  retrieval_autoFilter_aliases_label: 'Other names for values',
+  retrieval_autoFilter_aliases_desc:
+    'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
   retrieval_docTitle_fanout_label: 'Text chunks per title hit',
   retrieval_merge_mode_label: 'Way of merging the searches',
   retrieval_merge_rrfK_label: 'Smoothing when merging (RRF k)',
@@ -494,7 +497,8 @@ const settingDefs = {
   batch_approvalLimitNok_label: 'Limit per batch job before approval (kr)',
   planner_prompt_desc: 'Replacement planner prompt. Empty uses the built-in prompt.',
   retrieval_queryAwareBoost_desc: 'Boost results that share words with the question.',
-  retrieval_autoFilter_rules_desc: 'The automatic filter rules, in the order they are tried.',
+  retrieval_autoFilter_rules_desc:
+    'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
   retrieval_docTitle_fanout_desc: 'Chunks read from each document that matches on title.',
   retrieval_merge_mode_desc: 'How results from the different search methods are merged.',
   retrieval_merge_rrfK_desc: 'Constant that smooths the ranking when results are fused (RRF).',

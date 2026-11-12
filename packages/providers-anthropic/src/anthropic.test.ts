@@ -41,7 +41,7 @@ const router = (
 ) =>
   new ModelRouter({
     catalog: {
-      endpoints: { foundry: { protocol: 'anthropic-messages', baseURL: `${url}/anthropic`, auth } },
+      endpoints: { foundry: { families: { anthropic: '' }, baseURL: `${url}/anthropic`, auth } },
       models: [
         {
           id: 'foundry/claude-opus',
@@ -89,6 +89,46 @@ describe('anthropic-messages adapter', () => {
     expect(first.content).toBe('Hei');
     expect(second.content).toBe('Hei');
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false, false]);
+  });
+
+  it('retries without temperature when Anthropic says temperature is an extra input', async () => {
+    const refusal = {
+      type: 'error',
+      error: {
+        type: 'invalid_request_error',
+        message: 'temperature: Extra inputs are not permitted',
+      },
+    };
+    const { url, seen } = await fake((body) =>
+      'temperature' in body
+        ? { status: 400, json: refusal }
+        : { status: 200, json: message([{ type: 'text', text: 'Hei' }]) },
+    );
+    const port = router(url).open({ kind: 'model', id: 'foundry/claude-opus' }, testContext().ctx);
+
+    const answer = await port.chat({
+      messages: [{ role: 'user', content: 'hei' }],
+      temperature: 0,
+    });
+
+    expect(answer.content).toBe('Hei');
+    expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false]);
+  });
+
+  it('keeps temperature when the model refuses a token parameter instead', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 400,
+      json: {
+        type: 'error',
+        error: { type: 'invalid_request_error', message: "Unsupported parameter: 'max_tokens'." },
+      },
+    }));
+    const port = router(url).open({ kind: 'model', id: 'foundry/claude-opus' }, testContext().ctx);
+
+    await expect(
+      port.chat({ messages: [{ role: 'user', content: 'hei' }], temperature: 0 }),
+    ).rejects.toThrow();
+    expect(seen.every((s) => 'temperature' in s.body)).toBe(true);
   });
 
   it('keeps temperature off the wire when the operator marked it unsupported', async () => {
@@ -432,12 +472,12 @@ describe.skipIf(!live)('live anthropic-messages on Azure AI Foundry', () => {
       catalog: {
         endpoints: {
           listing: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: process.env.FOUNDRY_OPENAI_BASE_URL,
             auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/foundry-openai-key' },
           },
           claude: {
-            protocol: 'anthropic-messages',
+            families: { anthropic: '' },
             baseURL: process.env.FOUNDRY_CLAUDE_BASE_URL,
             auth: { kind: 'api-key', secret: 'secret://env/foundry-claude-key' },
             discovery: {

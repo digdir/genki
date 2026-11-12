@@ -12,7 +12,8 @@ datasets:
     name: Kudos
     aliases: [public-sector-knowledge/default, public-sector-knowledge/kudos]
     endpoint: kudos-typesense
-    residency: norway
+    # global, so a switch may embed it with the global models while #131 decides where Kudos may be processed.
+    residency: global
     links: kudos-legacy
     filters:
       type: multiselect
@@ -64,7 +65,7 @@ datasets:
     name: Offentlige nettsider
     aliases: [digdir/default]
     endpoint: kudos-typesense
-    residency: norway
+    residency: global
     options:
       collections:
         docs: website_documents_ab897fbdedfa

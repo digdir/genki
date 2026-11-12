@@ -260,3 +260,48 @@ describe('rerank router', () => {
     ]);
   });
 });
+
+describe('rerankers in the model catalogue (ADR 0048)', () => {
+  const modelStub = (index: number): RerankAdapter => ({
+    ...stub(async () => [{ index, score: 0.9, rank: 1 }]),
+    engine: 'model-stub',
+    api: { id: 'stub/rerank@1', family: 'stub' },
+  });
+  const models = (residency = 'norway') => ({
+    endpoints: {
+      stub: {
+        baseURL: 'https://rerank.example',
+        auth: { kind: 'api-key', secret: 'secret://env/k' },
+        families: { stub: '' },
+      },
+    },
+    models: [
+      { id: 'colbert', endpoint: 'stub', residency, apis: { rerank: 'stub/rerank@1' } },
+      { id: 'luna', endpoint: 'stub', residency, apis: { chat: 'openai/chat-completions@1' } },
+    ],
+  });
+
+  it('a model binding an API for rerank is a reranker and wins over a rerank catalogue entry with the same id', async () => {
+    const r = new RerankRouter({
+      catalog: catalog(),
+      models: models('eu'),
+      adapters: [stub(async () => [{ index: 1, score: 0.9, rank: 1 }]), modelStub(2)],
+      secrets: envSecrets({ K: 'k' }),
+    });
+
+    expect(r.rerankers()).toEqual(['colbert']);
+    expect(r.residency('colbert')).toBe('eu');
+    const ranked = await r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs);
+    expect(ranked.ranking.map((x) => x.index)).toEqual([2]);
+  });
+
+  it('a reranker model on an API without an implementation is a problem', () => {
+    const r = new RerankRouter({
+      catalog: { endpoints: {}, rerankers: [] },
+      adapters: [stub(async () => [])],
+      secrets: envSecrets({ K: 'k' }),
+    });
+
+    expect(r.problems(models()).map((p) => p.path)).toEqual(['models.0.apis.rerank']);
+  });
+});

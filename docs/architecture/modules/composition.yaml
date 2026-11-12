@@ -25,6 +25,12 @@ responsibilities:
   - Keep uploaded operation descriptors as config entries and serve the bundled ones and the uploads as
     one registry, read again at every descriptor call, in the API and the worker (ADR 0047)
   - Apply catalogs, guardrail rules, hooks and skills stored as config entries
+  - Move stored model connections, models, processor records and classifications once to
+    connections with API families and models with API bindings (ADR 0048)
+  - Fold an embedding catalogue and ColBERT rerankers from before ADR 0048 into the model
+    catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit
+  - Log the model connections without a processor record at start, and warn or refuse typed calls
+    on them by GENAI_PROCESSOR_RECORDS
   - Compile published services into capabilities and quarantine invalid ones
   - Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker
   - Keep the config entry store, tenant secret vault and change feed contracts
@@ -32,6 +38,7 @@ files:
   - packages/composition/src/runtime.ts
   - packages/composition/src/block-settings.ts
   - packages/composition/src/catalog-registry.ts
+  - packages/composition/src/prices.ts
   - packages/composition/src/config-store.ts
   - packages/composition/src/hook-runtime.ts
   - packages/composition/src/settings-runtime.ts
@@ -41,6 +48,7 @@ files:
   - packages/composition/src/operation-try.ts
   - packages/composition/src/operation-governance.ts
   - packages/composition/src/operation-descriptors.ts
+  - packages/composition/src/connection-migration.ts
 input: Catalogs, secrets, definition and config stores, policy
 output: A kernel with every strategy registered, and the registries behind it
 replaces: []
@@ -151,7 +159,7 @@ edges:
       file: packages/composition/src/runtime.ts
       imports: '@genai/providers-a2a-client'
   - to: providers-anthropic
-    label: Composes the anthropic-messages adapter
+    label: Composes the Anthropic adapter
     kind: call
     target: call
     witness:
@@ -165,7 +173,7 @@ edges:
       file: packages/composition/src/runtime.ts
       imports: '@genai/providers-colbert'
   - to: providers-openai
-    label: Composes the openai-chat adapter and embeddings
+    label: Composes the OpenAI adapter and embeddings
     kind: call
     target: call
     witness:

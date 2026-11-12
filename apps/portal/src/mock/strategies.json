@@ -212,6 +212,58 @@
       "schema": "/schemas/Strategy.step-flow%401"
     },
     {
+      "id": "live-session",
+      "version": 1,
+      "how": "single",
+      "default": false,
+      "title": {
+        "nb": "Direkte økt",
+        "en": "Live session"
+      },
+      "description": {
+        "nb": "En direkte økt mot en ekstern tjeneste, for eksempel tale til tekst mens noen snakker. Hver melding begge veier går gjennom plattformens vern, og økten er kjøringen.",
+        "en": "A live session with an external service, such as speech to text while someone talks. Every message both ways passes the platform safeguards, and the session is the run."
+      },
+      "pipeline": [
+        {
+          "title": {
+            "nb": "Åpner økten",
+            "en": "Opens the session"
+          },
+          "description": {
+            "nb": "Plattformen kobler til leverandøren med nøkkelen sin, aldri med din.",
+            "en": "The platform connects to the provider with its own key, never yours."
+          }
+        },
+        {
+          "title": {
+            "nb": "Sjekker hver melding",
+            "en": "Checks every message"
+          },
+          "description": {
+            "nb": "Tekst maskeres på vei ut og gjenopprettes på vei inn. Lyd krever at tjenesten har sagt ja til det.",
+            "en": "Text is masked on the way out and restored on the way back. Audio needs the service to have agreed to it."
+          }
+        },
+        {
+          "title": {
+            "nb": "Avslutter og lagrer",
+            "en": "Ends and records"
+          },
+          "description": {
+            "nb": "Økten stopper ved lengste varighet eller når typen settes tilbake til test. Utskrift, forbruk og logg følger kjøringen.",
+            "en": "The session stops at its longest duration or when the kind is set back to test. Transcript, usage and log follow the run."
+          }
+        }
+      ],
+      "newConfig": {},
+      "takes": {
+        "instructions": "no",
+        "examples": "no"
+      },
+      "schema": "/schemas/Strategy.live-session%401"
+    },
+    {
       "id": "remote-agent",
       "version": 1,
       "how": "single",

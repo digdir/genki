@@ -22,6 +22,7 @@ files:
   - packages/providers-postgres/src/tenancy.ts
   - packages/providers-postgres/src/crypto.ts
   - packages/providers-postgres/src/retention.ts
+  - packages/providers-postgres/src/provider-objects.ts
   - packages/providers-postgres/src/job-runs.ts
 input: Store calls
 output: SQL

@@ -24,6 +24,13 @@ describe('booting the API', () => {
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
   });
 
+  it('startup refuses GENAI_MOCK_RIGHTS outside dev mode', () => {
+    expect(bootProblems({ ...real, GENAI_MOCK_RIGHTS: 'true' })).toEqual([
+      expect.stringContaining('GENAI_MOCK_RIGHTS'),
+    ]);
+    expect(bootProblems({ ...dev, ...real, GENAI_MOCK_RIGHTS: 'true' })).toEqual([]);
+  });
+
   it('refuses to start without a database unless dev mode is on', () => {
     const rest = {
       ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER,

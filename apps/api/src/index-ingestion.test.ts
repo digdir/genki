@@ -451,21 +451,21 @@ describe('index ingestion', () => {
       ],
     });
     const pages: Record<string, unknown> = {
-      'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Tildelingsbrev&query=Digitaliseringsdirektoratet':
+      'https://kudos.dfo.no/api/v0/documents?page=1&per_page=50&type=Tildelingsbrev&actor_name=Digitaliseringsdirektoratet&published_year_from=2024&sort=newest':
         {
           data: [
             doc(1, 'Tildelingsbrev', '2025-02-01', 'Digitaliseringsdirektoratet'),
             doc(2, 'Årsrapport', '2025-03-01', 'Digitaliseringsdirektoratet'),
           ],
-          meta: { current_page: 1, last_page: 2 },
+          meta: { current_page: 1, last_page: 2, total: 4 },
         },
-      'https://kudos.dfo.no/api/v0/documents/search?page=2&type=Tildelingsbrev&query=Digitaliseringsdirektoratet':
+      'https://kudos.dfo.no/api/v0/documents?page=2&per_page=50&type=Tildelingsbrev&actor_name=Digitaliseringsdirektoratet&published_year_from=2024&sort=newest':
         {
           data: [
             doc(3, 'Tildelingsbrev', '2020-01-01', 'Digitaliseringsdirektoratet'),
             doc(4, 'Tildelingsbrev', '2025-05-01', 'Skatteetaten'),
           ],
-          meta: { current_page: 2, last_page: 2 },
+          meta: { current_page: 2, last_page: 2, total: 4 },
         },
     };
     const fetched: string[] = [];
@@ -503,9 +503,9 @@ describe('index ingestion', () => {
     const report = await backend.run(jobFor(source), signal);
 
     expect(report).toMatchObject({ stored: 1, failed: [] });
-    expect(fetched.filter((u) => u.includes('/documents/search'))).toEqual([
-      'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Tildelingsbrev&query=Digitaliseringsdirektoratet',
-      'https://kudos.dfo.no/api/v0/documents/search?page=2&type=Tildelingsbrev&query=Digitaliseringsdirektoratet',
+    expect(fetched.filter((u) => u.includes('/api/v0/documents?'))).toEqual([
+      'https://kudos.dfo.no/api/v0/documents?page=1&per_page=50&type=Tildelingsbrev&actor_name=Digitaliseringsdirektoratet&published_year_from=2024&sort=newest',
+      'https://kudos.dfo.no/api/v0/documents?page=2&per_page=50&type=Tildelingsbrev&actor_name=Digitaliseringsdirektoratet&published_year_from=2024&sort=newest',
     ]);
     expect(fetched.filter((u) => u.includes('files.kudos'))).toEqual([
       'https://files.kudos.example/1.pdf',

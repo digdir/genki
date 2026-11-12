@@ -1,0 +1,54 @@
+{
+  "source": "the OpenAI API reference (openai/openai-openapi, openapi.yaml): Create transcription (/audio/transcriptions, multipart, response_format json) and the example transcription object with token usage, text shortened; the audio is a synthetic silent WAV",
+  "deployment": "gpt-transcribe",
+  "input": {
+    "audio": {
+      "mediaType": "audio/wav",
+      "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+    },
+    "language": "nb"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/audio/transcriptions",
+    "body": {
+      "model": "gpt-transcribe",
+      "file": {
+        "mediaType": "audio/wav",
+        "bytes": 44,
+        "sha256": "4f8734c5e13ac599e168cf247a51c1dd0758537ce00bf16d7fed1a3d14d07041"
+      },
+      "language": "nb",
+      "response_format": "json"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "text": "Imagine the wildest idea that you have ever had.",
+      "usage": {
+        "type": "tokens",
+        "input_tokens": 14,
+        "input_token_details": {
+          "text_tokens": 10,
+          "audio_tokens": 4
+        },
+        "output_tokens": 101,
+        "total_tokens": 115
+      }
+    }
+  },
+  "result": {
+    "text": "Imagine the wildest idea that you have ever had.",
+    "usage": {
+      "inputTokens": 14,
+      "outputTokens": 101,
+      "requests": 1
+    }
+  },
+  "usage": {
+    "inputTokens": 14,
+    "outputTokens": 101,
+    "requests": 1
+  }
+}

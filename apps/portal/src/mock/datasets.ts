@@ -1,4 +1,5 @@
 import type {
+  DatasetDeleteResult,
   DatasetDetailView,
   ExecutionView,
   PipelineView,
@@ -60,6 +61,7 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     source: 'upload',
     documents: 6,
     chunks: 48,
+    usedBy: [],
     lastExecution: {
       status: 'succeeded',
       startedAt: '2026-10-07T09:12:00Z',
@@ -87,6 +89,7 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     source: 'website',
     documents: 1240,
     chunks: 9810,
+    usedBy: [{ kind: 'service', tenant: '999888777', id: 'hjelperen', name: 'Hjelperen' }],
     lastExecution: {
       status: 'failed',
       startedAt: '2026-10-08T02:00:00Z',
@@ -298,6 +301,38 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
         if (change.name) dataset.name = change.name;
         if (change.description !== undefined) dataset.description = change.description;
         return json(dataset);
+      }
+      if (method === 'DELETE') {
+        if (dataset.usedBy?.length)
+          return json(
+            {
+              title: 'Conflict',
+              status: 409,
+              errors: dataset.usedBy.map((r) => ({
+                path: 'usedBy',
+                message: `${r.kind} ${r.tenant}/${r.id}`,
+              })),
+            },
+            409,
+          );
+        datasets.splice(datasets.indexOf(dataset), 1);
+        const own = pipelines.get(dataset.fullId) ?? [];
+        const result: DatasetDeleteResult = {
+          deleted: dataset.fullId,
+          removed: {
+            catalogEntry: true,
+            pipelines: own.map((p) => p.id),
+            uploads: (uploads.get(dataset.fullId) ?? []).map((f) => f.name),
+            generations: own.flatMap((p) =>
+              (executions.get(`${dataset.fullId}/${p.id}`) ?? []).map((e) => e.id),
+            ),
+          },
+          kept: { knowledgeRecords: dataset.index?.endpoint === 'knowledge-pg', generations: [] },
+        };
+        pipelines.delete(dataset.fullId);
+        uploads.delete(dataset.fullId);
+        for (const p of own) executions.delete(`${dataset.fullId}/${p.id}`);
+        return json(result);
       }
       return undefined;
     }

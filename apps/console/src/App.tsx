@@ -9,7 +9,7 @@ import { Audit } from './screens/Audit';
 import { Catalog } from './screens/Catalog';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { Diagnostics } from './screens/Diagnostics';
-import { Models } from './screens/Models';
+import { Forward, Models } from './screens/Models';
 import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
@@ -28,6 +28,8 @@ import { Tracing } from './screens/Tracing';
 import { allPages, Shell, type NavBadges } from './Shell';
 import { EmptyState, Loading } from './states';
 import { SupportProvider } from './support';
+
+const apisTab = { tab: 'apis' };
 
 const Atlas = lazy(() => import('./screens/Atlas').then((m) => ({ default: m.Atlas })));
 import type { OperatorSession } from './types';
@@ -227,7 +229,8 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       />
     ),
     '/onboarding': () => <Onboarding api={api} live={live} />,
-    '/models': () => <Models api={api} />,
+    '/models': () => <Models api={api} params={params} />,
+    '/model-operations': () => <Forward to="/models" params={apisTab} />,
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
     '/building-blocks': () => (

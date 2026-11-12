@@ -49,6 +49,17 @@ describe('planRun', () => {
     expect(second.counts.deleted).toBe(1);
   });
 
+  it('an unchanged record takes the earlier ids its listing now carries, without being processed', () => {
+    const plan = planRun([{ ...listed('a'), earlierIds: ['377252'] }], [owned('a')], {
+      complete: true,
+      deletes: 'listed',
+    });
+
+    expect(plan.writes).toEqual([{ kind: 'seen', id: 'a', earlierIds: ['377252'] }]);
+    expect(plan.process).toEqual([]);
+    expect(plan.counts.unchanged).toBe(1);
+  });
+
   it('an incomplete listing deletes nothing', () => {
     const plan = planRun([listed('a')], [owned('a'), owned('b', { missing: 5 })], {
       complete: false,
@@ -239,6 +250,31 @@ describe('planRun', () => {
     );
     expect(plan.counts).toEqual({ new: 1, changed: 1, deleted: 0, unchanged: 1 });
     expect(plan.process).toEqual(['new', 'changed']);
+  });
+});
+
+describe('a pipeline taking over a copied dataset', () => {
+  it('a pipeline that takes over a copied dataset processes each listed document as changed', () => {
+    // Same metadata and files as the copy wrote: the pipeline still writes it again as its own.
+    const plan = planRun([listed('kudos:a')], [owned('kudos:a', { copied: true })], {
+      complete: true,
+      deletes: 'listed',
+    });
+    expect(plan.writes.map((w) => w.kind)).toEqual(['changed']);
+    expect(plan.counts).toEqual({ new: 0, changed: 1, deleted: 0, unchanged: 0 });
+    expect(plan.process).toEqual(['kudos:a']);
+  });
+
+  it('a pipeline that takes over a copied dataset leaves the copied documents it does not list', () => {
+    const copied = owned('kudos:old', { copied: true, missing: 5 });
+    for (let run = 0; run < 3; run++) {
+      const plan = planRun([listed('kudos:a')], [owned('kudos:a'), copied], {
+        complete: true,
+        deletes: 'listed',
+      });
+      expect(plan.writes.filter((w) => 'id' in w && w.id === 'kudos:old')).toEqual([]);
+      expect(plan.counts.deleted).toBe(0);
+    }
   });
 });
 

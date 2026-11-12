@@ -1,0 +1,53 @@
+{
+  "source": "hand-made for binary request bodies, ndjson answers, a query credential and an open unit",
+  "deployment": "reader",
+  "input": {
+    "image": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "language": "nb",
+    "hint": "Et skjema"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/read",
+    "query": {
+      "api-version": "2026-11-01",
+      "language": "nb"
+    },
+    "headers": {
+      "x-hint": "Et skjema"
+    },
+    "body": {
+      "mediaType": "image/png",
+      "bytes": 70,
+      "sha256": "497790947d4666760ce38f3c00e852c71fdb66cae849bae8e9ede352719e1581"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "x-pages": "2"
+    },
+    "body": [
+      {
+        "page": 2,
+        "text": "Side to"
+      },
+      {
+        "page": 1,
+        "text": "Side en",
+        "confidence": 0.9
+      }
+    ]
+  },
+  "result": {
+    "pages": ["Side en", "Side to"],
+    "pageCount": 2
+  },
+  "usage": {
+    "units": {
+      "page": 2
+    },
+    "requests": 1
+  },
+  "dropped": 1
+}
