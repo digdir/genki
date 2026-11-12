@@ -1,0 +1,4 @@
+lingua-language-detector==2.0.2
+PyMuPDF==1.26.5
+RapidFuzz==3.13.0
+spylls==0.1.7
