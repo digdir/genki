@@ -5,6 +5,8 @@ import {
   indexRecord,
   ingestListing,
   pipelineSpec,
+  throttledEmbedder,
+  EmbeddingPauses,
   type ChunkDocumentConfig,
   type CopyListing,
   type DocumentRecords,
@@ -23,7 +25,7 @@ import {
   type QueueWork,
 } from '@genai/jobs';
 import { GenerationBusy } from '@genai/port-knowledge';
-import type { EmbeddingPort } from '@genai/port-embedding';
+import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
 import type { RunProgress } from './run-progress.js';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
@@ -33,6 +35,8 @@ import { admittedWork, type AdmissionDeps } from './knowledge-jobs.js';
 export interface KnowledgeHandlerDeps {
   /** The document records on the knowledge server, as the writer role. */
   records: DocumentRecords;
+  /** The worker's log: an embedder that gives up is logged as `model call failed`. */
+  log?: (msg: string, fields: Record<string, unknown>) => void;
   /** The knowledge server's queue, where index jobs commit with their records. */
   knowledge: Pick<JobQueue, 'send' | 'sendAgain'>;
   /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
@@ -59,7 +63,11 @@ export interface KnowledgeHandlerDeps {
     scope: KnowledgeListingScope,
     signal: AbortSignal,
   ): Promise<Listing>;
-  embedder(dataset: DatasetConfig, ctx: PortContext): EmbeddingPort | undefined;
+  embedder(
+    dataset: DatasetConfig,
+    ctx: PortContext,
+    request?: EmbeddingOpenOptions,
+  ): EmbeddingPort | undefined;
   /**
    * The listing of an engine switch's copy run (#366): the dataset as its current engine holds it,
    * named as the switch decided at its start.
@@ -184,6 +192,7 @@ export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * con
 export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
+  const pauses = new EmbeddingPauses();
   const ingest = admittedWork(
     knowledgeIngestQueue,
     async ({ job, run, cancelled }) => {
@@ -257,9 +266,28 @@ export const knowledgeWork = (
           );
           // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
           const embedding = await deps.records.embedding(job.data.generation);
-          const embedder = embedding
-            ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
+          // Without the SDK's retries: a 429 waits here and pauses this worker's other jobs on the
+          // model, instead of failing the document (#400).
+          const ctx = contextOf(run, principal, tenant, signal);
+          const opened = embedding
+            ? deps.embedder({ ...dataset, embedding }, ctx, { retries: 0 })
             : undefined;
+          const embedder =
+            opened &&
+            throttledEmbedder(opened, {
+              pauses,
+              signal,
+              cancelled,
+              // The runtime leaves these to the job, which logs only the try it gives up.
+              onGaveUp: (error) =>
+                deps.log?.('model call failed', {
+                  task: ctx.task,
+                  tenant: ctx.tenant,
+                  model: embedding?.model,
+                  error: error.name,
+                  code: error.code,
+                }),
+            });
           let chunks = 0;
           let outcome: Awaited<ReturnType<typeof indexRecord>>;
           try {

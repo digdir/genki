@@ -1,3 +1,5 @@
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -7,6 +9,7 @@ import {
   commentBody,
   costUsd,
   diskWorkspace,
+  foundryError,
   isSensitive,
   LIMITS,
   MARKER,
@@ -14,13 +17,16 @@ import {
   orderDiff,
   parseDiff,
   readFileTool,
+  reasoningEffort,
+  responsesClient,
   reviewPayload,
   runRecord,
   runReview,
   searchTool,
   select,
-  type Completion,
   type Finding,
+  type ModelResponse,
+  type OutputItem,
   type Workspace,
 } from './review-cross.ts';
 import { parseFinding } from './review-summary.ts';
@@ -287,32 +293,28 @@ describe('the diff the model sees', () => {
 
 describe('the model loop', () => {
   const reply = (
-    over: Completion['choices'] = [],
-    usage = { prompt_tokens: 1000, completion_tokens: 100 },
-  ) => ({
-    choices: over,
-    usage,
+    output: OutputItem[] = [],
+    usage: ModelResponse['usage'] = { input_tokens: 1000, output_tokens: 100 },
+  ): ModelResponse => ({ status: 'completed', output, usage });
+  const answer = (text: string): OutputItem => ({
+    type: 'message',
+    content: [{ type: 'output_text', text }],
+  });
+  const call = (name: string, args: string, id = 'c1'): OutputItem => ({
+    type: 'function_call',
+    call_id: id,
+    name,
+    arguments: args,
   });
 
   it('runs the tools the model asks for and returns its findings', async () => {
     const bodies: Record<string, unknown>[] = [];
-    const answers: Completion[] = [
+    const answers: ModelResponse[] = [
       reply([
-        {
-          message: {
-            tool_calls: [
-              {
-                id: '1',
-                function: {
-                  name: 'read_file',
-                  arguments: '{"path":"a.ts","start_line":null,"end_line":null}',
-                },
-              },
-            ],
-          },
-        },
+        { type: 'reasoning' },
+        call('read_file', '{"path":"a.ts","start_line":null,"end_line":null}'),
       ]),
-      reply([{ message: { content: JSON.stringify({ findings: [finding()] }) } }]),
+      reply([answer(JSON.stringify({ findings: [finding()] }))]),
     ];
     const out = await runReview({
       system: 's',
@@ -326,8 +328,54 @@ describe('the model loop', () => {
     });
     expect(out.output?.findings).toHaveLength(1);
     expect(out.spent).toMatchObject({ turns: 2, input: 2000, output: 200 });
-    const second = bodies[1]?.messages as { role: string; content: string }[];
-    expect(second.at(-1)).toMatchObject({ role: 'tool', content: 'a.ts lines 1-1 of 1\n1: code' });
+    expect((bodies[1]?.input as unknown[]).slice(-2)).toEqual([
+      {
+        type: 'function_call',
+        call_id: 'c1',
+        name: 'read_file',
+        arguments: '{"path":"a.ts","start_line":null,"end_line":null}',
+      },
+      { type: 'function_call_output', call_id: 'c1', output: 'a.ts lines 1-1 of 1\n1: code' },
+    ]);
+  });
+
+  it('keeps the read tools to tracked files when the model asks for a path outside', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const answers = [
+      reply([call('read_file', '{"path":"../.env","start_line":null,"end_line":null}')]),
+      reply([answer('{"findings":[]}')]),
+    ];
+    await runReview({
+      system: 's',
+      user: 'u',
+      workspace: memory({ 'a.ts': 'code' }),
+      model: 'gpt-x',
+      complete: async (body) => {
+        bodies.push(structuredClone(body));
+        return answers.shift() ?? reply();
+      },
+    });
+    expect((bodies[1]?.input as { output?: string }[]).at(-1)?.output).toBe(
+      'No tracked file at that path.',
+    );
+  });
+
+  it('counts reasoning tokens as output once, since the output tokens already include them', async () => {
+    const out = await runReview({
+      system: 's',
+      user: 'u',
+      workspace: memory({}),
+      model: 'gpt-x',
+      complete: async () =>
+        reply([answer('{"findings":[]}')], {
+          input_tokens: 5000,
+          output_tokens: 900,
+          input_tokens_details: { cached_tokens: 4000 },
+          output_tokens_details: { reasoning_tokens: 700 },
+        }),
+    });
+    expect(out.spent).toEqual({ turns: 1, input: 5000, output: 900, cached: 4000, reasoning: 700 });
+    expect(costUsd(out.spent, '1', '10')).toBeCloseTo(0.014);
   });
 
   it('asks for the findings without tools once the token budget is nearly spent', async () => {
@@ -341,22 +389,8 @@ describe('the model loop', () => {
       complete: async (body) => {
         bodies.push(body);
         return body.tool_choice === 'none'
-          ? reply([{ message: { content: '{"findings":[]}' } }])
-          : reply(
-              [
-                {
-                  message: {
-                    tool_calls: [
-                      { id: '1', function: { name: 'search', arguments: '{"text":"abc"}' } },
-                    ],
-                  },
-                },
-              ],
-              {
-                prompt_tokens: 2000,
-                completion_tokens: 10,
-              },
-            );
+          ? reply([answer('{"findings":[]}')])
+          : reply([call('search', '{"text":"abc"}')], { input_tokens: 2000, output_tokens: 10 });
       },
     });
     expect(bodies.map((b) => b.tool_choice)).toEqual(['auto', 'none']);
@@ -373,13 +407,7 @@ describe('the model loop', () => {
       limits: { ...LIMITS, turns: 3 },
       complete: async () => {
         calls++;
-        return reply([
-          {
-            message: {
-              tool_calls: [{ id: '1', function: { name: 'search', arguments: '{"text":"abc"}' } }],
-            },
-          },
-        ]);
+        return reply([call('search', '{"text":"abc"}')]);
       },
     });
     expect(calls).toBe(3);
@@ -391,15 +419,202 @@ describe('the model loop', () => {
       user: 'u',
       workspace: memory({}),
       model: 'gpt-x',
-      complete: async () => reply([{ message: { content: 'not json' } }]),
+      complete: async () => reply([answer('not json')]),
     });
     expect(out.output).toBeNull();
   });
 
   it('finishes on the last allowed turn or when the next call could pass the budget', () => {
-    expect(mustFinish({ turns: LIMITS.turns - 1, input: 0, output: 0, cached: 0 }, 0)).toBe(true);
-    expect(mustFinish({ turns: 1, input: 450_000, output: 0, cached: 0 }, 50_000)).toBe(true);
-    expect(mustFinish({ turns: 1, input: 10_000, output: 1000, cached: 0 }, 10_000)).toBe(false);
+    const spent = { turns: 1, input: 0, output: 0, cached: 0, reasoning: 0 };
+    expect(mustFinish({ ...spent, turns: LIMITS.turns - 1 }, 0)).toBe(true);
+    expect(mustFinish({ ...spent, input: 450_000 }, 50_000)).toBe(true);
+    expect(mustFinish({ ...spent, input: 10_000, output: 1000 }, 10_000)).toBe(false);
+  });
+
+  it('takes the reasoning effort from the variable, medium by default, and refuses anything else', () => {
+    expect(reasoningEffort(undefined)).toBe('medium');
+    expect(reasoningEffort(' ')).toBe('medium');
+    expect(reasoningEffort('high')).toBe('high');
+    expect(() => reasoningEffort('max; rm -rf')).toThrow(/CROSS_REVIEW_REASONING/);
+  });
+});
+
+describe('the Foundry Responses client', () => {
+  const serve = async (
+    handle: (path: string, body: Record<string, unknown>) => { status: number; json: unknown },
+  ) => {
+    const seen: { path: string; auth: string; body: Record<string, unknown> }[] = [];
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw) as Record<string, unknown>;
+        seen.push({ path: req.url ?? '', auth: req.headers.authorization ?? '', body });
+        const out = handle(req.url ?? '', body);
+        res.writeHead(out.status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(out.json));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    return { base: `http://127.0.0.1:${port}/openai/v1`, seen, close: () => server.close() };
+  };
+
+  it('runs the review on /v1/responses with reasoning set and no Chat Completions fields', async () => {
+    let turn = 0;
+    const fake = await serve(() => {
+      turn++;
+      return {
+        status: 200,
+        json:
+          turn === 1
+            ? {
+                status: 'completed',
+                output: [
+                  { type: 'reasoning', id: 'rs_1', summary: [] },
+                  {
+                    type: 'function_call',
+                    id: 'fc_1',
+                    call_id: 'call_1',
+                    name: 'search',
+                    arguments: '{"text":"gate"}',
+                  },
+                ],
+                usage: {
+                  input_tokens: 1200,
+                  output_tokens: 300,
+                  input_tokens_details: { cached_tokens: 0 },
+                  output_tokens_details: { reasoning_tokens: 250 },
+                },
+              }
+            : {
+                status: 'completed',
+                output: [
+                  {
+                    type: 'message',
+                    role: 'assistant',
+                    content: [
+                      { type: 'output_text', text: JSON.stringify({ findings: [finding()] }) },
+                    ],
+                  },
+                ],
+                usage: {
+                  input_tokens: 1500,
+                  output_tokens: 400,
+                  input_tokens_details: { cached_tokens: 1000 },
+                  output_tokens_details: { reasoning_tokens: 100 },
+                },
+              },
+      };
+    });
+    try {
+      const out = await runReview({
+        system: 'rules',
+        user: 'diff',
+        workspace: memory({ 'a.ts': 'the gate' }),
+        model: 'gpt-x',
+        reasoning: 'high',
+        complete: responsesClient(fake.base, 'tok'),
+      });
+      expect(out.output?.findings).toHaveLength(1);
+      expect(out.spent).toEqual({
+        turns: 2,
+        input: 2700,
+        output: 700,
+        cached: 1000,
+        reasoning: 350,
+      });
+      expect(fake.seen.map((s) => s.path)).toEqual([
+        '/openai/v1/responses',
+        '/openai/v1/responses',
+      ]);
+      expect(fake.seen[0]?.auth).toBe('Bearer tok');
+      for (const { body } of fake.seen) {
+        expect(body).toMatchObject({
+          model: 'gpt-x',
+          instructions: 'rules',
+          reasoning: { effort: 'high' },
+          store: false,
+          text: { format: { type: 'json_schema', name: 'cross_review', strict: true } },
+        });
+        expect(body.max_output_tokens).toBeGreaterThan(0);
+        for (const field of [
+          'messages',
+          'response_format',
+          'max_completion_tokens',
+          'max_tokens',
+          'reasoning_effort',
+        ])
+          expect(body).not.toHaveProperty(field);
+        for (const tool of body.tools as Record<string, unknown>[]) {
+          expect(tool).toMatchObject({ type: 'function', strict: true });
+          expect(tool).not.toHaveProperty('function');
+        }
+      }
+      expect((fake.seen[1]?.body.input as unknown[]).slice(-1)).toEqual([
+        { type: 'function_call_output', call_id: 'call_1', output: 'a.ts:1: the gate' },
+      ]);
+    } finally {
+      fake.close();
+    }
+  });
+
+  it('says in the error what Foundry objected to, not only the status', async () => {
+    const fake = await serve(() => ({
+      status: 400,
+      json: {
+        error: {
+          message:
+            "Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.",
+          type: 'invalid_request_error',
+          param: 'reasoning_effort',
+          code: null,
+        },
+      },
+    }));
+    try {
+      await expect(responsesClient(fake.base, 'tok')({ model: 'gpt-x' })).rejects.toThrow(
+        "Foundry answered 400 invalid_request_error param=reasoning_effort: Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.",
+      );
+    } finally {
+      fake.close();
+    }
+  });
+
+  it('keeps the error to one short line without the token or anything like a key', () => {
+    const token = ['test', 'access', 'token', 'q'.repeat(12)].join('-');
+    const text = foundryError(
+      401,
+      {
+        error: {
+          message: `Token ${token} rejected.\nAuthorization: Bearer abc.def\nkey sk${'A'.repeat(40)} ${'x '.repeat(400)}`,
+          type: 'auth error\n',
+          code: 'Unauthorized',
+        },
+      },
+      token,
+    );
+    expect(text).not.toContain(token);
+    expect(text).not.toContain('abc.def');
+    expect(text).not.toContain('A'.repeat(32));
+    expect(text).not.toMatch(/[\n\r]/);
+    expect(text.length).toBeLessThanOrEqual(400);
+    expect(text).toMatch(
+      /^Foundry answered 401 autherror code=Unauthorized: Token \[redacted\] rejected\./,
+    );
+  });
+
+  it('still names the status when the error body is not JSON', () => {
+    expect(foundryError(502, null)).toBe('Foundry answered 502');
+  });
+
+  it('cleans a long adversarial error message in linear time', () => {
+    const start = performance.now();
+    foundryError(400, {
+      error: { message: `${'a'.repeat(31)} `.repeat(50_000) + 'b'.repeat(200_000) },
+    });
+    foundryError(400, { error: { message: `bearer ${' '.repeat(200_000)}x` } });
+    expect(performance.now() - start).toBeLessThan(500);
   });
 });
 
@@ -420,7 +635,7 @@ describe('the run record', () => {
         { ...finding(), duplicate: false },
         { ...finding({ line: 43 }), duplicate: true },
       ],
-      spent: { turns: 3, input: 10, output: 5, cached: 2 },
+      spent: { turns: 3, input: 10, output: 5, cached: 2, reasoning: 1 },
       stopped: false,
     };
     const treated = runRecord({ ...base, arm: 'treated', posted: true });
@@ -434,12 +649,12 @@ describe('the run record', () => {
   });
 
   it('computes the cost from the tokens and the per-million prices', () => {
-    const spent = { turns: 1, input: 2_000_000, output: 500_000, cached: 0 };
+    const spent = { turns: 1, input: 2_000_000, output: 500_000, cached: 0, reasoning: 0 };
     expect(costUsd(spent, '1.25', '10')).toBeCloseTo(7.5);
   });
 
   it('records no cost without two numeric prices', () => {
-    const spent = { turns: 1, input: 1000, output: 1000, cached: 0 };
+    const spent = { turns: 1, input: 1000, output: 1000, cached: 0, reasoning: 0 };
     expect(costUsd(spent, undefined, '10')).toBeNull();
     expect(costUsd(spent, '1', '')).toBeNull();
     expect(costUsd(spent, 'cheap', '10')).toBeNull();
