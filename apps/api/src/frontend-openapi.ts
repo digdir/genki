@@ -185,6 +185,8 @@ const Source = z
   .passthrough()
   .openapi('Source');
 
+const AnswerMarker = z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() });
+
 const ChatRequest = z
   .object({
     model: z.string(),
@@ -242,7 +244,7 @@ const ChatResponse = z
     citations: z.array(z.string()).optional(),
     sources: z.array(Source).optional(),
     markers: z
-      .array(z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() }))
+      .array(AnswerMarker)
       .optional()
       .describe(
         'Present only when the service cites excerpts: every marker in the answer, in order, with the one excerpt and the document it leads to. `marker` is written as in the text, without brackets (ADR 0052).',
@@ -306,6 +308,12 @@ const StoredMessage = z
       .array(Source)
       .optional()
       .describe('Assistant messages: the sources as the answer gave them, so `[N]` resolves.'),
+    markers: z
+      .array(AnswerMarker)
+      .optional()
+      .describe(
+        'Assistant messages from a service that cites excerpts: the markers as the answer gave them, so `[N]` resolves to one excerpt (ADR 0052). Messages stored before markers were kept have none.',
+      ),
     task: z.string().optional().describe('Assistant messages: the task id to send as feedback.'),
     attachments: z.array(z.string()).optional(),
     input: z.record(z.string(), z.unknown()).optional().describe('User messages: the form values.'),
