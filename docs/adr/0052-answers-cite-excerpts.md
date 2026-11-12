@@ -1,6 +1,6 @@
 # 0052 Answers cite excerpts, not whole documents
 
-Status: proposed, 2026-11-03 (prototype, agent loop only)
+Status: proposed, 2026-11-03 (prototype, agent loop only; `@genai/client` passes the markers on, 2026-11-10)
 
 Left: the `rag` and `step-flow` strategies keep numbering documents, and a stored conversation turn has no top-level `markers` list and no `markers` on its sources.
 
@@ -16,6 +16,7 @@ The agent loop numbers documents for the model: `numberByDocument` gives one `[N
 - **The mapping is in the output.** The answer part's `meta` has `citations: [{ index, chunkId, document }]` and `citeBy: 'excerpt'`.
   - `/v1`: a top-level `markers: [{ marker, chunk_id, document }]` in marker order, with `marker` a string as written in the answer without brackets. `sources[]` stays one per cited document: `index` is its lowest marker, `markers` the markers that cite it, and `excerpts[].markers` the markers that cite each excerpt. The top-level `citations` (links people can open) is unchanged.
   - MCP: the same list as `structuredContent.markers`, declared in the output schema.
+  - `@genai/client`: the same list as `markers` on the answer and on the `sources` stream event, as `{ marker, chunkId, documentId }`, and `markers` on each source and excerpt. The answer has no `markers` when the service cites documents.
 - **Frontends number markers for the reader as they like.** The platform's markers are the numbers in the context; a frontend may show the cited excerpts as 1, 2, 3 in the order the answer first cites them.
 
 ## Why
@@ -50,7 +51,7 @@ Not measured: the whole loop against live retrieval (search, reading, backfill),
 
 ## Consequences
 
-- **Migration note for frontends.** With `citeBy: excerpt`, several markers can lead to one source, and `sources[].index` is only the lowest of them. Resolve `[N]` through `markers` (`/v1`) or `structuredContent.markers` (MCP), never through `index` alone. `docs/frontend-contract.md` says so.
+- **Migration note for frontends.** With `citeBy: excerpt`, several markers can lead to one source, and `sources[].index` is only the lowest of them. Resolve `[N]` through `markers` (`/v1`), `structuredContent.markers` (MCP) or `answer.markers` (`@genai/client`), never through `index` alone. `docs/frontend-contract.md` says so.
 - A service turns it on with one line in its strategy config, after its frontend reads `markers`.
 - Not built: excerpt numbering in the `rag` and `step-flow` strategies, and the `markers` list in stored conversation turns.
-- The tests are `packages/strategy-agent-loop/src/excerpt-citations.test.ts`, `packages/adapter-openai/src/frontend-contract.test.ts` ("when the answer cites excerpts") and `packages/adapter-mcp/src/markers.test.ts`.
+- The tests are `packages/strategy-agent-loop/src/excerpt-citations.test.ts`, `packages/adapter-openai/src/frontend-contract.test.ts` ("when the answer cites excerpts"), `packages/adapter-mcp/src/markers.test.ts` and `packages/client/src/client.test.ts`.

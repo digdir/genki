@@ -414,6 +414,8 @@ await platform.feedback({ taskId: answer.taskId!, rating: 'up' });
 
 `platform.stream(request, { steps: true })` returns an async iterator of `conversation`, `text`, `retract`, `step`, `reasoning`, `sources` and `done` events. Errors are `ApiError` with `status`, `code` and `fieldErrors`. In a browser, pass `token: () => getAnsattportenToken()` instead of `apiKey`.
 
+When the service cites excerpts, the answer and the `sources` event carry `markers` as `{ marker, chunkId, documentId }`, `onSources` gets them as its second argument, and each source and excerpt carries the `markers` that cite it. Then resolve `[N]` through `answer.markers`, not with `sourceFor`.
+
 ## Without the client (curl)
 
 ```sh
