@@ -17,7 +17,14 @@ import {
   type StepFlowDefinition,
   type ValidationError,
 } from '@genai/definitions';
-import { bundledJudge, runState, type StoredRun } from '@genai/eval';
+import {
+  bundledJudge,
+  criteriaJudgeId,
+  criteriaJudgePrompt,
+  evaluatorOfJudge,
+  runState,
+  type StoredRun,
+} from '@genai/eval';
 import { type SecretResolver, type Strategy } from '@genai/kernel';
 import { residencies, servesModelPort, type Residency } from '@genai/port-model';
 import {
@@ -498,11 +505,11 @@ const scoreOf = (stored: StoredRun) => {
     : Math.round((means.reduce((a, b) => a + b, 0) / means.length) * 100);
 };
 
-/** The latest completed run per service and test set: one still running or failed scores nothing. */
+/** The latest completed run of the whole test set per service: no unfinished or marked-case run. */
 const latestRuns = (runs: StoredRun[]) => {
   const latest = new Map<string, StoredRun>();
   for (const stored of runs) {
-    if (runState(stored.run) !== 'completed') continue;
+    if (runState(stored.run) !== 'completed' || stored.run.tested?.selected) continue;
     const key = `${stored.service ?? stored.run.capability}|${stored.run.testSet.id}`;
     const known = latest.get(key);
     if (!known || known.run.endedAt < stored.run.endedAt) latest.set(key, stored);
@@ -913,7 +920,8 @@ export const createBuildingBlocksModule =
       }
       const judgeIds = new Set<string>(['answer-quality', 'pairwise-preference']);
       for (const stored of await deps.evalStores.runs.list({ tenant }))
-        for (const judge of stored.run.provenance.judges) judgeIds.add(judge);
+        // One block per evaluator, whichever model judged a run.
+        for (const judge of stored.run.provenance.judges) judgeIds.add(evaluatorOfJudge(judge));
       for (const id of [...judgeIds].sort()) {
         const bundled =
           id === 'answer-quality' || id === 'pairwise-preference' ? bundledJudge(id) : undefined;
@@ -924,7 +932,8 @@ export const createBuildingBlocksModule =
             name: id,
             description: '',
             publisher: digdir,
-            version: bundled?.version ?? '1',
+            version:
+              bundled?.version ?? (id === criteriaJudgeId ? criteriaJudgePrompt('').version : '1'),
             dataLocation: null,
             capabilities: bundled?.criteria.map((c) => c.description) ?? [],
             permissions: [],
@@ -1086,7 +1095,9 @@ export const createBuildingBlocksModule =
         block.kind === 'judge'
           ? new Set(
               runs
-                .filter((r) => r.run.provenance.judges.includes(block.id))
+                .filter((r) =>
+                  r.run.provenance.judges.some((j) => evaluatorOfJudge(j) === block.id),
+                )
                 .map((r) => r.service ?? r.run.capability),
             )
           : new Set<string>();
@@ -1109,7 +1120,7 @@ export const createBuildingBlocksModule =
           block.kind === 'model'
             ? r.run.provenance.servedModels.includes(block.id)
             : block.kind === 'judge'
-              ? r.run.provenance.judges.includes(block.id)
+              ? r.run.provenance.judges.some((j) => evaluatorOfJudge(j) === block.id)
               : users.has(r.service ?? ''),
         ),
       );
