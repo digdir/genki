@@ -60,24 +60,28 @@ To add a candidate, give it a side in `predict.py` and `common_opb.SIDES`, run `
 
 Other PDF parsers graded against Marker 1.10.2 on the same reference, in [results/parsers.md](results/parsers.md). Each one converts every dataset page on its own, as a one-page PDF, in its own venv, with a script in `parsers/` (`convert_common.py` says what lands in `.data/opb/conversions/<side>/`). `score.py` grades every parser whose conversion is finished, and `report_parsers.py` compares them with Marker 1.10.2 under the decision rule above.
 
-| Side             | Parser and settings                                                                                                                                                          |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `marker-2.1`     | `marker-pdf` 2.1.0 with the #91 service's settings, mode `balanced` (its CUDA default); its OCR model in llama.cpp from Datalab's GGUF (`brew install llama.cpp`)            |
-| `pp-structurev3` | `paddleocr` 3.7.0 PP-StructureV3, defaults, `lang="no"` (PP-OCRv5 detection, the Latin recogniser), CPU                                                                      |
-| `paddleocr-vl`   | PaddleOCR-VL-1.6: layout in paddle on the CPU, the VLM in `mlx_vlm.server` (PaddleOCR's documented Apple Silicon setup)                                                      |
-| `mineru`         | `mineru` 4.1.6, default PDF tier `standard`, OCR mode `auto`, the VLM `MinerU2.5-Pro-2605-1.2B` on its `mlx` engine (official weights), telemetry off, inline images removed |
-| `docling`        | `docling` 2.146.0, default PDF pipeline (text layer, Heron layout, TableFormer accurate, auto OCR: RapidOCR with torch, see `parsers/convert_docling.py`)                    |
-| `docling-no`     | As `docling`, OCR EasyOCR with `lang=["no", "en"]`                                                                                                                           |
-| `docling-tess`   | As `docling`, OCR Tesseract CLI with `lang=["nor"]` (Homebrew `tesseract` 5.5.4 and `tesseract-lang`)                                                                        |
-| `docling-rapid`  | As `docling`, OCR left at auto in the `docling-rapid` venv (the docling venv plus `onnxruntime` 1.31.1), so RapidOCR with onnxruntime and its default models                 |
+| Side                  | Parser and settings                                                                                                                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `marker-2.1`          | `marker-pdf` 2.1.0 with the #91 service's settings, mode `balanced` (its CUDA default); its OCR model in llama.cpp from Datalab's GGUF (`brew install llama.cpp`)                                                      |
+| `pp-structurev3`      | `paddleocr` 3.7.0 PP-StructureV3, defaults, `lang="no"` (PP-OCRv5 detection, the Latin recogniser), CPU                                                                                                                |
+| `paddleocr-vl`        | PaddleOCR-VL-1.6: layout in paddle on the CPU, the VLM in `mlx_vlm.server` (PaddleOCR's documented Apple Silicon setup)                                                                                                |
+| `mineru`              | `mineru` 4.1.6, default PDF tier `standard`, OCR mode `auto`, the VLM `MinerU2.5-Pro-2605-1.2B` on its `mlx` engine (official weights), telemetry off, inline images removed                                           |
+| `docling`             | `docling` 2.146.0, default PDF pipeline (text layer, Heron layout, TableFormer accurate, auto OCR: RapidOCR with torch, see `parsers/convert_docling.py`)                                                              |
+| `docling-no`          | As `docling`, OCR EasyOCR with `lang=["no", "en"]`                                                                                                                                                                     |
+| `docling-tess`        | As `docling`, OCR Tesseract CLI with `lang=["nor"]` (Homebrew `tesseract` 5.5.4 and `tesseract-lang`)                                                                                                                  |
+| `docling-rapid`       | As `docling`, OCR left at auto in the `docling-rapid` venv (the docling venv plus `onnxruntime` 1.31.1), so RapidOCR with onnxruntime and its default models                                                           |
+| `docling-easyocr-en`  | As `docling`, OCR left at auto in the docling venv with `easyocr` 1.7.2 and no `onnxruntime`, so EasyOCR in English: what the blocks benchmark's `docling` side runs                                                   |
+| `mineru-noimg`        | As `mineru`, image analysis off, so no model-made picture descriptions in the text                                                                                                                                     |
+| `marker-1.10.2-pages` | A check, not a candidate: Marker 1.10.2 with the #91 service's settings, one page at a time (`parsers/convert_marker1.py`, in the Marker service's venv), against the `marker` side's whole documents split into pages |
 
 ```sh
 cd benchmarks/ingestion/opb
-for v in marker2 paddle mineru docling; do python3.13 -m venv .data/venvs/$v; done
+for v in marker2 paddle mineru docling docling-rapid; do python3.13 -m venv .data/venvs/$v; done
 .data/venvs/marker2/bin/pip install marker-pdf==2.1.0 mlx-vlm==0.7.10
 .data/venvs/paddle/bin/pip install paddlepaddle==3.3.1 "paddleocr[doc-parser]==3.7.0" mlx-vlm==0.7.11
 .data/venvs/mineru/bin/pip install "mineru[full]==4.1.6" "mineru-vl-utils[mlx]==2.0.8"
-.data/venvs/docling/bin/pip install docling==2.146.0
+.data/venvs/docling/bin/pip install docling==2.146.0 easyocr==1.7.2
+.data/venvs/docling-rapid/bin/pip install docling==2.146.0 easyocr==1.7.2 onnxruntime==1.31.1
 
 mkdir -p "$INGESTION_BENCHMARK_DATA/opb/conversions"
 cp -R "$INGESTION_BENCHMARK_DATA/opb/dataset/pages" "$INGESTION_BENCHMARK_DATA/opb/conversions/pages"
