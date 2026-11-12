@@ -887,6 +887,33 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(menu()?.querySelector('.uib-shell-profile-news')).toBeTruthy();
   });
 
+  it('adds the host’s own entries from the profile’s menu, before «Logg ut»', async () => {
+    const back = vi.fn();
+    drawNext({
+      ...reader,
+      menu: {
+        about: { href: '/om' },
+        extra: [
+          { id: 'old', label: 'Tilbake til gammel versjon', href: '/gammel', onSelect: back },
+        ],
+      },
+    });
+    await opened();
+    expect(entries()).toEqual([
+      'Innstillinger',
+      'Om tjenesten',
+      'Tilbake til gammel versjon',
+      'Logg ut',
+    ]);
+    fireEvent.click(
+      within(menu() as HTMLElement).getByRole('link', {
+        name: 'Tilbake til gammel versjon',
+        hidden: true,
+      }),
+    );
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
   it('opens «Innstillinger» from the menu', async () => {
     drawNext();
     await opened();
