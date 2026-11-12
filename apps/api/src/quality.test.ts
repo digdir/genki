@@ -2641,6 +2641,44 @@ describe('Langfuse judges on a run', () => {
     ]);
   });
 
+  it('keeps a rejected edit of an accepted label rejected until it is edited again', async () => {
+    const { langfuse, fetchLabels, batches, decide, agreement } = await labelled();
+    const annotation = langfuse.annotate(langfuse.traceOf('o1'), { value: false });
+    await fetchLabels();
+    await decide('accept', 'Etikettene er kontrollert');
+    annotation.value = true;
+    annotation.updatedAt = '2026-11-02T11:00:00.000Z';
+    await fetchLabels();
+    await decide('reject', 'Rettingen stemmer ikke');
+
+    await fetchLabels();
+
+    expect(await batches()).toEqual([]);
+    expect(await agreement()).toMatchObject({ n: 1, observed: 0 });
+
+    annotation.updatedAt = '2026-11-02T12:00:00.000Z';
+    await fetchLabels();
+    expect((await batches())[0]?.labels).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'good' }),
+    ]);
+  });
+
+  it('brings labels back for a judge whose rule name has a slash', async () => {
+    const { langfuse, fetchLabels, batches } = await labelled([
+      experimentRule({ name: 'Korrekt/hjelpsom' }),
+    ]);
+    langfuse.annotate(langfuse.traceOf('o1'), { value: true });
+
+    await fetchLabels();
+
+    expect(await batches()).toEqual([
+      expect.objectContaining({
+        name: 'Korrekt/hjelpsom',
+        labels: [expect.objectContaining({ case: 'o1' })],
+      }),
+    ]);
+  });
+
   it('brings an annotation edited in Langfuse back as pending, and stops counting one deleted there', async () => {
     const { langfuse, fetchLabels, batches, decide, agreement } = await labelled();
     const annotation = langfuse.annotate(langfuse.traceOf('o1'), { value: false });

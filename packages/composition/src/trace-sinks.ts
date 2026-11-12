@@ -76,10 +76,7 @@ export const traceSinkAccess =
 
 const nullBody = new Set([101, 204, 205, 304]);
 
-/**
- * A fetch for an exporter that goes through the guard's request: the connection is pinned to the
- * address the guard checked, with its time and size limits, instead of a second DNS lookup.
- */
+/** A fetch pinned to the address the egress guard checked, with its limits. */
 export const pinnedFetch =
   (guard: Pick<EgressGuard, 'request'>, allow: AllowedHost[]): typeof fetch =>
   async (input, init) => {

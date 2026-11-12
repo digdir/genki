@@ -28,7 +28,7 @@ These rules extend the decision above once they are built. All are built except 
   - A failed delete stays pending and is tried again the next night, without holding back the purge in the platform.
   - A delete that keeps failing is reported to operators.
   - Removing a sink connection marks everything sent through it for deletion, and the connection is gone only once every delete is confirmed.
-- **Judge reasons.** A judge's reason may quote the answer, so it follows the case's retention: the nightly purge clears it from stored eval runs when the case's payload expires.
+- **Judge reasons.** A judge's reason may quote the answer, so the eval run does not keep it: it stays only on the case's task, and the nightly purge clears it with the case's payload.
 
 ## Why
 

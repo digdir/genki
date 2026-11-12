@@ -82,7 +82,10 @@ const verdictOf = (score: Score, bounds: SinkAnnotation['bounds']) => {
   return asItCame === undefined ? undefined : String(asItCame);
 };
 
-const nameOf = (judge: string) => judge.slice(judge.lastIndexOf('/') + 1);
+// A rule name may hold a slash; a connection or tenant never does.
+const ruleOf = (evaluator: string) => evaluator.slice(evaluator.indexOf('/') + 1);
+const ruleOfKey = (key: string, tenant: string) =>
+  ruleOf(key.startsWith(`langfuse:${tenant}/`) ? key.slice(`langfuse:${tenant}/`.length) : key);
 
 /**
  * Labels people make in a tenant's trace sink, brought back as pending calibration labels for the
@@ -186,7 +189,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       const score = sent.result.scores.find(
         (s) =>
           isSinkJudge(s.evaluator) &&
-          keyOf(tenant, s.evaluator).endsWith(`/${id}/${nameOf(s.evaluator)}`) &&
+          keyOf(tenant, s.evaluator).endsWith(`/${id}/${ruleOf(s.evaluator)}`) &&
           (s.details?.scoreName ?? sent.scoreNames.get(s.evaluator)) === a.name &&
           (s.details?.dataType ?? sent.dataTypes.get(s.evaluator)) === a.dataType,
       );
@@ -199,12 +202,8 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       const live = (l: SinkLabel) =>
         l.id === a.id && (l.state === 'pending' || l.state === 'accepted');
       if (known.some((l) => live(l) && l.revision === a.revision)) continue;
-      // A rejected label stays rejected until it is edited to something else.
-      const counting = known.some((l) => l.id === a.id && l.state === 'accepted');
-      if (
-        !counting &&
-        known.some((l) => l.id === a.id && l.revision === a.revision && l.state === 'rejected')
-      )
+      // A rejected revision stays rejected; an edit in Langfuse makes a new one.
+      if (known.some((l) => l.id === a.id && l.revision === a.revision && l.state === 'rejected'))
         continue;
       const judge = keyOf(tenant, score.evaluator);
       const judgeLabel = verdictOf(score, a.bounds);
@@ -270,7 +269,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
             tenant,
             connection: first.connection,
             judge: first.judge,
-            name: nameOf(first.judge),
+            name: ruleOfKey(first.judge, tenant),
             labels: labels.map((l) => ({
               id: l.id,
               revision: l.revision,

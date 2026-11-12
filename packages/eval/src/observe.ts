@@ -52,6 +52,7 @@ const asSources = (value: unknown): ObservedSource[] => {
 const besideTheAnswer = new Set([
   'application/vnd.genai.sources+json',
   'application/vnd.genai.retrieval+json',
+  'application/vnd.genai.provenance+json',
 ]);
 
 export const defaultObserve: Observe = (parts, events) => {
@@ -59,7 +60,7 @@ export const defaultObserve: Observe = (parts, events) => {
     .flatMap((p) => (p.body.kind === 'text' ? [p.body.text] : []))
     .join('\n')
     .trim();
-  // Sources and retrieval parts ride beside any answer, so they are never its fields.
+  // Sources, retrieval and the guard's provenance ride beside any answer, never as its fields.
   const json = parts.flatMap((p) =>
     p.body.kind === 'json' && !besideTheAnswer.has(p.mime) ? [p.body.json] : [],
   );
