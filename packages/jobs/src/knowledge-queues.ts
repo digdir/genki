@@ -22,11 +22,14 @@ const dropPayload = z.union([
 ]);
 const convertPayload = z.strictObject({ run: id, tenant, file: sha256 });
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
-/** A `vacuum` that ends an ingestion run names the run, which stays open until the job ends. */
+/**
+ * A `vacuum` or `index` build that ends an ingestion run names the run, which stays open until the
+ * job ends: `index` builds and attaches the run's standalone generation (ADR 0025, ADR 0042).
+ */
 const buildKind = z.enum(['index', 'catch-up', 'vacuum', 'freeze', 'reindex']);
 const buildPayload = z.union([
   z.strictObject({ tenant, generation: id, kind: buildKind }),
-  z.strictObject({ tenant, generation: id, kind: z.literal('vacuum'), run: id }),
+  z.strictObject({ tenant, generation: id, kind: z.enum(['vacuum', 'index']), run: id }),
 ]);
 const nightlyPayload = z.strictObject({});
 

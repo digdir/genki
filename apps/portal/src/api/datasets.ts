@@ -45,8 +45,22 @@ export interface DatasetView {
   nextRunAt: string | null;
 }
 
+export interface DatasetReader {
+  kind: 'service' | 'adoption';
+  tenant: string;
+  id: string;
+  name: string;
+}
+
 export interface DatasetDetailView extends DatasetView {
   skipped?: SkippedDocument[];
+  usedBy?: DatasetReader[];
+}
+
+export interface DatasetDeleteResult {
+  deleted: string;
+  removed: { catalogEntry: true; pipelines: string[]; uploads: string[]; generations: string[] };
+  kept: { knowledgeRecords: boolean; generations: string[] };
 }
 
 export type PipelineSource =
@@ -149,6 +163,8 @@ export const datasetsApi = (ctx: ApiContext) => {
       change: { name: string; description?: string },
       reason: string,
     ) => ctx.request<DatasetView>('PUT', dataset(tenant, id), change, reasonHeader(reason)),
+    remove: (tenant: string, id: string, reason: string) =>
+      ctx.request<DatasetDeleteResult>('DELETE', dataset(tenant, id), {}, reasonHeader(reason)),
     pipelines: async (tenant: string, id: string, signal?: AbortSignal) =>
       (await ctx.get<{ data: PipelineView[] }>(`${dataset(tenant, id)}/pipelines`, signal)).data,
     createPipeline: (

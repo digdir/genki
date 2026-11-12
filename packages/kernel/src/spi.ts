@@ -68,6 +68,7 @@ export interface PortContext {
   provenance?(resource: ResourceProvenance): Promise<void>;
   guards?: readonly PayloadGuard[];
   serviceResidency?: Residency;
+  unmaskedMedia?: readonly string[];
   audit?(record: GateRecord): Promise<void>;
 }
 
@@ -116,6 +117,7 @@ export interface InvokeOptions {
   deadlineMs?: number;
   budget?: Usage;
   maxOutputTokens?: number;
+  environment?: string;
 }
 
 export interface EventsOptions {

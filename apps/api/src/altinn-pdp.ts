@@ -47,12 +47,15 @@ const privateKeyOf = (raw: string): JWK => {
   return key;
 };
 
+export const mockRightsWanted = (env: Record<string, string | undefined>) =>
+  isDevMode(env) && env.GENAI_MOCK_RIGHTS === 'true';
+
 export const altinnPdpFrom = (
   env: Record<string, string | undefined>,
   testData: IdentityTestDataInput,
   fetchFn: typeof fetch = fetch,
 ): AltinnPdpChoice => {
-  if (!env.ALTINN_PDP_URL) {
+  if (!env.ALTINN_PDP_URL || mockRightsWanted(env)) {
     if (!isDevMode(env))
       throw new Error(
         'ALTINN_PDP_URL is not set; the mock Altinn rights run only with GENAI_DEV_MODE=true',

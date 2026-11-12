@@ -9,6 +9,8 @@
 - docs-site
 - admin-mcp
 - schema-forms
+- ui-blocks
+- ui-assembly
 - adapter-mcp
 - adapter-a2a
 - adapter-openai

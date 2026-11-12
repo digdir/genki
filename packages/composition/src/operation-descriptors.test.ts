@@ -14,7 +14,7 @@ operation: classify
 status: review
 summary: A made-up classification API.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -97,11 +97,11 @@ describe('the live descriptor registry', () => {
 
   it('an upload never shadows a bundled descriptor', async () => {
     const { entries, write, upload } = await store();
-    await write(upload, false, 'openai/embed@1');
+    await write(upload, false, 'openai/embeddings@1');
     const registry = liveDescriptors(loadDescriptors(), entries);
     await registry.refresh();
-    expect(registry.get('openai/embed@1')?.status).toBe('typed');
-    expect(registry.list().filter((d) => d.id === 'openai/embed@1')).toHaveLength(1);
+    expect(registry.get('openai/embeddings@1')?.status).toBe('typed');
+    expect(registry.list().filter((d) => d.id === 'openai/embeddings@1')).toHaveLength(1);
   });
 
   it('a stored upload that no longer passes the loader rules is left out', async () => {

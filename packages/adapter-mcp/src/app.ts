@@ -112,6 +112,7 @@ interface CallOutcome {
 }
 
 const versionHeader = 'genai-version';
+const environmentHeader = 'genai-environment';
 const quotaExhaustedCode = -32029;
 
 const readVersion = (value: string | undefined): { version?: number } | { error: string } => {
@@ -122,10 +123,15 @@ const readVersion = (value: string | undefined): { version?: number } | { error:
     : { error: '`GenAI-Version` must be a positive whole number.' };
 };
 
-const generatedHeaders = (models: string[], version?: number): Record<string, string> => ({
+const generatedHeaders = (
+  models: string[],
+  version?: number,
+  environment?: string,
+): Record<string, string> => ({
   'genai-generated-by': 'ai',
   ...(models.length === 1 && models[0] ? { 'genai-model': models[0] } : {}),
   ...(version === undefined ? {} : { 'genai-service-version': String(version) }),
+  ...(environment === undefined ? {} : { [environmentHeader]: environment }),
 });
 
 const outcomeOf = (response: Response, status = 200, headers: Record<string, string> = {}) => ({
@@ -134,7 +140,13 @@ const outcomeOf = (response: Response, status = 200, headers: Record<string, str
   headers,
 });
 
-const resolveStatus: Record<string, number> = { service_paused: 503, version_not_found: 409 };
+const resolveStatus: Record<string, number> = {
+  service_paused: 503,
+  version_not_found: 409,
+  invalid_environment: 400,
+  environment_not_authorized: 403,
+  environment_not_found: 409,
+};
 
 const alphabet = 'useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict';
 
@@ -250,16 +262,16 @@ export const createMcpApp = (options: McpAppOptions) => {
           }),
         );
       }
-      const resolved = await resolver.resolve(
-        principal,
-        name,
-        hooks.version === undefined ? {} : { version: hooks.version },
-      );
+      const environment = hooks.request.headers.get(environmentHeader) ?? undefined;
+      const resolved = await resolver.resolve(principal, name, {
+        ...(hooks.version === undefined ? {} : { version: hooks.version }),
+        ...(environment === undefined ? {} : { environment }),
+      });
       if (!resolved.ok) {
         const status = resolveStatus[resolved.code];
         if (status)
           return outcomeOf(
-            rpcError(id, status === 409 ? -32602 : -32603, resolved.message, {
+            rpcError(id, status === 503 ? -32603 : -32602, resolved.message, {
               code: resolved.code,
             }),
             status,
@@ -348,7 +360,11 @@ export const createMcpApp = (options: McpAppOptions) => {
             mapInput(entry, { ...args, ...values }, query, history),
             !!entry.inputFields?.length,
           ),
-          { thread: conversationId, entryPoint: 'mcp' },
+          {
+            thread: conversationId,
+            entryPoint: 'mcp',
+            ...(entry.environment ? { environment: entry.environment } : {}),
+          },
         );
       } catch (error) {
         if (error instanceof KernelError)
@@ -410,10 +426,11 @@ export const createMcpApp = (options: McpAppOptions) => {
             ai_generated: true,
             ...(models.length === 1 ? { model: models[0] } : {}),
             ...(entry.version === undefined ? {} : { service_version: entry.version }),
+            ...(entry.environment === undefined ? {} : { environment: entry.environment }),
           },
         }),
         200,
-        { ...generatedHeaders(models, entry.version), 'genai-task': run.task },
+        { ...generatedHeaders(models, entry.version, entry.environment), 'genai-task': run.task },
       );
     } catch (error) {
       return outcomeOf(

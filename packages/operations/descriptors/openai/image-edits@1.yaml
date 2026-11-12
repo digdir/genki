@@ -1,0 +1,85 @@
+id: openai/image-edits@1
+operation: edit-image
+status: described
+summary: Image editing with a GPT image model on an OpenAI-compatible endpoint (Create image edit, /images/edits), one image up as a multipart file and the edited PNG back as base64.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    image: { media: image/png }
+    prompt: text
+    size?: { enum: [auto, 1024x1024, 1536x1024, 1024x1536] }
+    quality?: { enum: [auto, low, medium, high] }
+output:
+  object:
+    images: [{ object: { image: { media: image/png }, revisedPrompt?: text } }]
+    usage:
+      object:
+        inputTokens?: { number: { min: 0 } }
+        outputTokens?: { number: { min: 0 } }
+        requests?: { number: { min: 0 } }
+        costMicroNok?: { number: { min: 0 } }
+request:
+  method: POST
+  path: /images/edits
+  encoding: multipart
+  parts:
+    model: $deployment
+    image: $input.image
+    prompt: $input.prompt
+    size: $input.size
+    quality: $input.quality
+    output_format: png
+    n: 1
+response:
+  encoding: json
+wire:
+  request:
+    object:
+      model: plain
+      image: { media: image/png }
+      prompt: text
+      size?: { enum: [auto, 1024x1024, 1536x1024, 1024x1536] }
+      quality?: { enum: [auto, low, medium, high] }
+      output_format: { enum: [png] }
+      n: { number: { integer: true, min: 1, max: 1 } }
+  response:
+    object:
+      created: { number: { integer: true } }
+      data:
+        array:
+          object:
+            b64_json: { media: image/png }
+            revised_prompt?: text
+        min: 1
+      background?: { enum: [transparent, opaque] }
+      output_format?: { enum: [png] }
+      size?: plain
+      quality?: plain
+      usage?:
+        object:
+          input_tokens: { number: { integer: true, min: 0 } }
+          output_tokens: { number: { integer: true, min: 0 } }
+          total_tokens: { number: { integer: true, min: 0 } }
+          input_tokens_details?:
+            object:
+              text_tokens?: { number: { integer: true, min: 0 } }
+              image_tokens?: { number: { integer: true, min: 0 } }
+errors:
+  - { status: 429, kind: rate-limited }
+  - { status: 400, kind: invalid }
+  - { status: 5xx, kind: unavailable }
+checks:
+  - count: { of: $response.data, min: 1, max: 1 }
+result:
+  images:
+    { $each: $response.data, $map: { image: $item.b64_json, revisedPrompt: $item.revised_prompt } }
+  usage: $usage
+usage:
+  input-token: $response.usage.input_tokens
+  output-token: $response.usage.output_tokens
+  request: 1
+stream: none

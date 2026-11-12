@@ -1,6 +1,7 @@
 import type { RunJobs } from '@genai/jobs';
 import type { IngestionExecution } from '@genai/providers-postgres';
 import { describe, expect, it } from 'vitest';
+import { finishRun, type HeavyDeps } from './heavy-work.js';
 import { reconcileKnowledgeRuns, type ReconcilerRecords } from './reconciler.js';
 
 const run: IngestionExecution = {
@@ -139,5 +140,43 @@ describe('the knowledge reconciler', () => {
       lockdown: false,
     });
     expect(jobs).toEqual([{ run: run.id, queue: 'knowledge.build' }]);
+  });
+
+  it('a build that ends without attaching fails its run', async () => {
+    const built = {
+      ...run,
+      generation: 'g-20261104-7f3c2a',
+      report: { stored: 3, skipped: 0, failed: [], buildSent: 1 },
+    };
+    const heavy = {
+      server: { state: async () => 'standalone' },
+      datasets: () => [],
+      threshold: () => 100,
+      window: () => '01:00-06:00',
+    } as unknown as HeavyDeps;
+    const ended: { status: string; error?: string }[] = [];
+    await reconcileKnowledgeRuns({
+      records: {
+        ...records([]),
+        open: async () => [built],
+        find: async () => built,
+        end: async (r, outcome) => {
+          ended.push({
+            status: outcome.status,
+            ...(outcome.error ? { error: outcome.error } : {}),
+          });
+          return { ended: r };
+        },
+      },
+      servers: [server(async () => 0)],
+      lockdown: false,
+      finishing: finishRun(heavy, async () => undefined),
+    });
+    expect(ended).toEqual([
+      {
+        status: 'failed',
+        error: expect.stringContaining('g-20261104-7f3c2a was not built'),
+      },
+    ]);
   });
 });

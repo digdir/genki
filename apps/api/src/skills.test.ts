@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { Principal } from '@genai/contracts';
@@ -11,6 +11,7 @@ import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
+import { appendVersion } from './config-store.js';
 import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform } from './composition.js';
@@ -18,6 +19,7 @@ import type { SkillDetail, SkillPublishResult, SkillTestRun, SkillUsage } from '
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((s) => s.close()));
 });
 
@@ -84,7 +86,7 @@ const reply = (content: string, stream: boolean) =>
         },
       };
 
-const boot = async () => {
+const boot = async (fieldOutput: Record<string, unknown> = { dato: '2026-10-07' }) => {
   const systems: string[] = [];
   const users: string[] = [];
   const blobs = new InMemoryBlobStore();
@@ -113,7 +115,7 @@ const boot = async () => {
       );
     if (system.startsWith('You check whether'))
       return reply(JSON.stringify({ scores: { criteria: 1 }, rationale: 'Oppfyller.' }), stream);
-    if (body.response_format) return reply(JSON.stringify({ dato: '2026-10-07' }), stream);
+    if (body.response_format) return reply(JSON.stringify(fieldOutput), stream);
     if (user.includes('personnummer'))
       return reply(
         system.includes('Avvis') ? 'Jeg kan ikke svare på det.' : 'Personnummeret er 01017012345.',
@@ -134,7 +136,7 @@ const boot = async () => {
   const models = resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog;
   const privateModel = {
     id: `${other}/norsk-7b`,
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'norsk-7b',
     residency: 'norway' as const,
     capabilities: ['stream' as const, 'json-schema' as const],
@@ -477,6 +479,49 @@ describe('skills', () => {
       { id: 'published-tools', met: true },
     ]);
     expect((await send('GET', `${base}/klarsprak`)).body).toMatchObject({ stale: true });
+  });
+
+  const storeRun = async (spec: Record<string, unknown>) => {
+    const run = await createAndTest((await boot()).send);
+    expect(run.judgePrompt).toBe('skill-criteria@2');
+    const { platform, send } = await boot();
+    const created = await send('POST', base, 'kari', { id: 'klarsprak', definition: skill() });
+    expect(created.status).toBe(201);
+    const earlier: Record<string, unknown> = { ...run };
+    delete earlier.judgePrompt;
+    await appendVersion(platform.configEntries, {
+      kind: 'skill-test-run',
+      scope: tenant,
+      id: 'klarsprak',
+      spec: { ...earlier, ...spec },
+      deleted: false,
+      by: 'test',
+      reason: 'a run stored outside the current test',
+    });
+    return send;
+  };
+
+  it.each([
+    ['an earlier criteria judge prompt', { judgePrompt: 'skill-criteria@1' }],
+    ['a judge but no recorded judge prompt', {}],
+  ])('a test run judged with %s no longer counts for the draft', async (_name, spec) => {
+    const send = await storeRun(spec);
+
+    const refused = await send('POST', `${base}/klarsprak/publish`, 'kari', {}, reason);
+
+    expect(refused.status).toBe(422);
+    expect((refused.body as unknown as SkillPublishResult).requirements[0]).toMatchObject({
+      id: 'tested-on-draft',
+      met: false,
+      reason: 'stale',
+    });
+    expect((await send('GET', `${base}/klarsprak`)).body).toMatchObject({ stale: true });
+  });
+
+  it('a test run without a judge still counts for the draft', async () => {
+    const send = await storeRun({ judge: null });
+
+    expect((await send('GET', `${base}/klarsprak`)).body).toMatchObject({ stale: false });
   });
 
   it('publish is refused when a must_reject case passed through', async () => {
@@ -853,6 +898,119 @@ describe('skill test cases and fixes', () => {
     expect(users).toContainEqual(
       expect.stringContaining('Kilde:\nVedtaket gjelder søknad om støtte.'),
     );
+  });
+
+  it('a case context reaches the criteria judge ahead of ten run sources', async () => {
+    const { platform, send, users } = await boot();
+    const runDraft = platform.drafts.run.bind(platform.drafts);
+    vi.spyOn(platform.drafts, 'run').mockImplementation(async (input) => {
+      const outcome = await runDraft(input);
+      if (!outcome.ok) return outcome;
+      const sources = Array.from({ length: 10 }, (_, i) => ({ chunkId: `chunk-${i}`, text: 'x' }));
+      return {
+        ...outcome,
+        parts: [
+          ...outcome.parts,
+          { mime: 'application/vnd.genai.sources+json', body: { kind: 'json', json: { sources } } },
+        ],
+      };
+    });
+    const definition = skill();
+    definition.spec.testset.cases = [
+      {
+        input: 'Skriv om: Vedtaket er fattet.',
+        expected: 'Svaret er skrevet i klarspråk',
+        type: 'criteria',
+        context: 'Vedtaket gjelder søknad om støtte.',
+      } as (typeof definition.spec.testset.cases)[number],
+    ];
+
+    await createAndTest(send, definition);
+
+    const judge = users.find((user) => user.startsWith('Question:'));
+    expect(judge).toContain(
+      '"document":"skill-test-context","text":"Vedtaket gjelder søknad om støtte."',
+    );
+  });
+
+  it('a skill test passes retrieved sources and citations to its criteria judge', async () => {
+    const { platform, send, users } = await boot();
+    const runDraft = platform.drafts.run.bind(platform.drafts);
+    vi.spyOn(platform.drafts, 'run').mockImplementation(async (input) => {
+      const outcome = await runDraft(input);
+      const definition = input.definition as { spec: { purpose: string } };
+      if (!outcome.ok || definition.spec.purpose === 'Modellkall') return outcome;
+      return {
+        ...outcome,
+        parts: [
+          ...outcome.parts,
+          {
+            mime: 'application/vnd.genai.sources+json',
+            body: {
+              kind: 'json',
+              json: {
+                sources: [
+                  { chunkId: 'decision-2026', title: 'Decision 2026', text: 'Support granted.' },
+                ],
+              },
+            },
+          },
+          {
+            mime: 'text/plain',
+            body: { kind: 'text', text: '' },
+            meta: { citations: [{ chunkId: 'decision-2026' }] },
+          },
+        ],
+      };
+    });
+
+    const run = await createAndTest(send);
+
+    expect(run.passed).toBe(3);
+    const judge = users.find((user) => user.startsWith('Question:'));
+    expect(judge).toContain(
+      '"citations":[{"chunkId":"decision-2026","title":"Decision 2026","text":"Support granted."}]',
+    );
+    expect(judge).toContain('"retrieved":[{"chunkId":"decision-2026"');
+  });
+
+  it('does not grade source metadata as field output when the output is missing', async () => {
+    const sources: string[] = [];
+    const { platform, send } = await boot({ sources });
+    const runDraft = platform.drafts.run.bind(platform.drafts);
+    vi.spyOn(platform.drafts, 'run').mockImplementation(async (input) => {
+      const outcome = await runDraft(input);
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) return outcome;
+      return {
+        ...outcome,
+        parts: [
+          {
+            mime: 'application/vnd.genai.sources+json',
+            body: { kind: 'json', json: { sources } },
+          },
+        ],
+      };
+    });
+    const definition = skill();
+    const created = await send('POST', base, 'kari', {
+      id: 'klarsprak',
+      definition: {
+        ...definition,
+        spec: {
+          ...definition.spec,
+          testset: {
+            cases: [{ input: 'List the sources.', expected: { sources }, type: 'fields' }],
+          },
+        },
+      },
+    });
+    expect(created.status).toBe(201);
+
+    const run = await send('POST', `${base}/klarsprak/test-runs`, 'kari', { model: modelId });
+
+    expect(run.status).toBe(200);
+    expect(run.body).toMatchObject({ passed: 0, cases: [{ passed: false, score: 0 }] });
   });
 
   it('deletes a test case from the draft by index', async () => {

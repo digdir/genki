@@ -169,6 +169,71 @@ describe('document records on the knowledge server', () => {
     expect(rows[0]?.last).toBe('5');
   });
 
+  it('a seen record takes the earlier ids its listing carries, without a new change', async () => {
+    const name = 'digdir/earlier-seen';
+    const generation = await freshGeneration(name);
+    await records.apply({ dataset: name, pipeline: 'p1', generation, plan: newDocs('a') }, noSend);
+    const before = await changes(name);
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'p1',
+        generation,
+        plan: plan([{ kind: 'seen', id: 'a', earlierIds: ['377252'] }]),
+      },
+      noSend,
+    );
+
+    const { rows } = await admin.query<{ earlier_ids: string[] }>(
+      `select earlier_ids from src_documents where dataset = $1 and id = 'a'`,
+      [name],
+    );
+    expect(rows[0]?.earlier_ids).toEqual(['377252']);
+    expect(await changes(name)).toEqual(before);
+  });
+
+  it('an earlier id resolves to its document, for 377252', async () => {
+    const name = 'digdir/earlier';
+    const generation = await freshGeneration(name);
+    const uuid = 'de77ffc7-1a57-456a-af49-167e699a4e6e';
+    const kudos: ListedDocument = {
+      id: `kudos:${uuid}`,
+      record: { uuid },
+      metadata: { uuid, title: 'Statusrapport' },
+      files: [{ name: 'f1', sha256: 'aaa' }],
+      earlierIds: ['377252'],
+    };
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'kudos',
+        generation,
+        plan: plan([{ kind: 'new', listed: kudos, metadataHash: 'm' }]),
+      },
+      noSend,
+    );
+    await records.replace(await recordOf(name, kudos.id), generation, {
+      document: doc(kudos.id),
+    });
+
+    // A citation is resolved only inside a dataset the caller may read (ADR 0042).
+    const client = await admin.connect();
+    let rows: { cited: string; status: string; document: string }[];
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.datasets', $1, true)`, [JSON.stringify([name])]);
+      ({ rows } = await client.query<{ cited: string; status: string; document: string }>(
+        `select cited, status, document
+           from kn_resolve_citation($1, $2, array['377252'], array[$3])`,
+        [name, generation, tombstoneHash(name, '377252')],
+      ));
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+    expect(rows).toEqual([{ cited: '377252', status: 'earlier', document: `kudos:${uuid}` }]);
+  });
+
   it('sends the index job of every record to process in the transaction that writes it', async () => {
     const name = 'digdir/sends';
     const generation = await freshGeneration(name);
@@ -192,6 +257,65 @@ describe('document records on the knowledge server', () => {
       ),
     ).rejects.toThrow('the queue refused');
     expect((await changes(name)).map(([id]) => id)).not.toContain('x');
+  });
+
+  it('the writer fills a standalone generation but cannot change its tables', async () => {
+    const name = 'digdir/standalone';
+    const generation = 'g-records-standalone';
+    await prepareGeneration(owner, dataset(name), generation);
+    await records.apply(
+      { dataset: name, pipeline: 'docs', generation, plan: newDocs('a', 'b') },
+      noSend,
+    );
+    await records.replace(await recordOf(name, 'a'), generation, { document: doc('a') });
+    await records.replace(await recordOf(name, 'b'), generation, { document: doc('b') });
+    await records.remove(await recordOf(name, 'b'), generation);
+    const { rows } = await admin.query<{ doc_id: string }>(
+      `select distinct doc_id from ${partitionOf('kn_chunks', generation)} order by doc_id`,
+    );
+    expect(rows.map((r) => r.doc_id)).toEqual(['a']);
+    const writer = worker.pools.writer as pg.Pool;
+    for (const sql of [
+      `alter table ${partitionOf('kn_chunks', generation)} add column extra text`,
+      `drop table ${partitionOf('kn_docs', generation)}`,
+      `create index on ${partitionOf('kn_chunks', generation)} (text)`,
+    ])
+      await expect(writer.query(sql)).rejects.toThrow(/must be owner|permission denied/);
+    await attachGeneration(owner, dataset(name), generation);
+    await records.replace(await recordOf(name, 'a'), generation, { document: doc('a', 'Ny') });
+    const { rows: after } = await admin.query<{ text: string }>(
+      `select text from kn_chunks where generation = $1 and doc_id = 'a' order by position`,
+      [generation],
+    );
+    expect(after.map((r) => r.text)).toEqual(['Ny 0', 'Ny 1']);
+  });
+
+  it("a chunk's page in its metadata is stored as page_from and page_to", async () => {
+    const name = 'digdir/pages';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: '_copy', generation, plan: newDocs('a') },
+      noSend,
+    );
+    const paged = doc('a');
+    const [one, two] = paged.chunks;
+    if (!one || !two) throw new Error('two chunks');
+    await records.replace(await recordOf(name, 'a'), generation, {
+      document: {
+        ...paged,
+        chunks: [
+          { ...one, metadata: { page: 1, pageEnd: 3 } },
+          { ...two, metadata: { page: 3 } },
+        ],
+      },
+    });
+    const { rows } = await admin.query<{ page_from: number | null; page_to: number | null }>(
+      `select page_from, page_to from ${partitionOf('kn_chunks', generation)} order by position`,
+    );
+    expect(rows).toEqual([
+      { page_from: 1, page_to: 3 },
+      { page_from: 3, page_to: 3 },
+    ]);
   });
 
   it('a document is replaced in one transaction', async () => {
@@ -364,6 +488,13 @@ describe('document records on the knowledge server', () => {
     ).toEqual(first);
   });
 
+  it('index jobs that start together all get the chunking the first one kept', async () => {
+    const generation = await freshGeneration('digdir/chunking-together');
+    const settings = Array.from({ length: 16 }, (_, i) => ({ maximumLength: 1000 + i }));
+    const kept = await Promise.all(settings.map((c) => records.chunking(generation, 'docs', c)));
+    expect(new Set(kept.map((c) => JSON.stringify(c))).size).toBe(1);
+  });
+
   it('lists the records a pipeline owns with the change its generation holds', async () => {
     const name = 'digdir/owned';
     const generation = await freshGeneration(name);
@@ -381,5 +512,42 @@ describe('document records on the knowledge server', () => {
     expect(Date.parse(owned[0]?.appliedAt ?? '')).toBeGreaterThan(Date.now() - 60_000);
     expect(owned[1]?.appliedAt).toBeUndefined();
     expect(await records.owned(name, 'other', generation)).toEqual([]);
+  });
+
+  it("a pipeline's records include the copy's, marked copied, until it takes them over", async () => {
+    const name = 'digdir/copied';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: '_copy', generation, plan: newDocs('a', 'b') },
+      noSend,
+    );
+    const before = await records.owned(name, 'kudos', generation);
+    expect(before.map((r) => [r.id, r.copied])).toEqual([
+      ['a', true],
+      ['b', true],
+    ]);
+    expect((await records.owned(name, '_copy', generation)).map((r) => r.copied)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'kudos',
+        generation,
+        plan: plan([{ kind: 'changed', listed: listed('a'), metadataHash: 'm-a2' }], ['a']),
+      },
+      noSend,
+    );
+    const after = await records.owned(name, 'kudos', generation);
+    expect(after.map((r) => [r.id, r.copied])).toEqual([
+      ['b', true],
+      ['a', undefined],
+    ]);
+    const { rows } = await admin.query<{ owners: string[] }>(
+      `select owners from src_documents where dataset = $1 and id = 'a'`,
+      [name],
+    );
+    expect(rows[0]?.owners).toEqual(['kudos']);
   });
 });

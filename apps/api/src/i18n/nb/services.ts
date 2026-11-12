@@ -67,4 +67,23 @@ export const services = defineNamespace({
   variantRetrieveOnly: 'Bare søk',
   boundOutside: 'API-nøkkelen er knyttet til tjenesten {service} og kan ikke bruke {name}.',
   devLoginUnknownPerson: 'Fant ikke testpersonen',
+  environmentInvalid:
+    '`GenAI-Environment` må være et miljønavn med små bokstaver, sifre og bindestrek, for eksempel test.',
+  environmentNotAllowed: 'Nøkkelen eller frontenden har ikke tilgang til miljøet {environment}.',
+  environmentMissing: 'Tjenesten {service} har ikke miljøet {environment}.',
+  environmentName:
+    'Miljønavnet må ha små bokstaver, sifre og bindestrek og begynne med en bokstav.',
+  environmentExists: 'Tjenesten har allerede miljøet {environment}.',
+  environmentProdFixed: 'prod finnes alltid og kan ikke legges til eller fjernes.',
+  environmentTooMany: 'En tjeneste kan ha høyst {max} miljøer.',
+  environmentSame: 'Et miljø kan ikke fremmes til seg selv.',
+  environmentNoVersion: 'Tjenesten har ingen publisert versjon {version}.',
+  environmentNoEarlier: 'Miljøet {environment} har ingen tidligere versjon å rulle tilbake til.',
+  environmentProdBehind:
+    'prod kjører versjon {version}, ikke den nyeste. Fremme eller rull tilbake prod til den nyeste versjonen før du fjerner det siste miljøet.',
+  environmentNotPublished: 'Tjenesten er ikke publisert.',
+  environmentOnlyProd:
+    'Tjenesten har bare prod. Publiser en tidligere versjon på nytt i stedet for å fremme eller rulle tilbake.',
+  environmentPinNotAllowed:
+    'Versjon {version} kjører ikke i noe miljø denne nøkkelen eller frontenden kan bruke.',
 });

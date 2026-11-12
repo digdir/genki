@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { envSecrets, type GateRecord } from '@genai/kernel';
-import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
+import { loadDescriptors } from '@genai/operations';
 import { fixturesFor, type OperationFixture } from '@genai/operations/contract';
 import { EmbeddingRouter } from '@genai/port-embedding';
 import { ModelRouter, type DecisionRequest } from '@genai/port-model';
@@ -18,8 +18,8 @@ afterEach(async () => {
 
 const serve = async (fixture: OperationFixture) => {
   const server = await fakeHttp(() => ({
-    status: fixture.response.status ?? 200,
-    json: fixture.response.body,
+    status: fixture.response?.status ?? 200,
+    json: fixture.response?.body,
   }));
   servers.push(server);
   return server;
@@ -31,7 +31,7 @@ const embedders = (url: string, fixture: OperationFixture, described?: string) =
   new EmbeddingRouter({
     catalog: {
       endpoints: {
-        compatible: { protocol: 'openai-embeddings', baseURL: `${url}/v1`, auth },
+        compatible: { families: { openai: '/v1' }, baseURL: url, auth },
       },
       models: [
         {
@@ -39,16 +39,23 @@ const embedders = (url: string, fixture: OperationFixture, described?: string) =
           endpoint: 'compatible',
           deployment: fixture.deployment,
           residency: 'eu',
-          dimensions: (fixture.result as { vectors: number[][] }).vectors[0]?.length ?? 1,
-          ...(described ? { descriptors: { embed: described } } : {}),
+          apis: { embed: described ?? 'openai/embeddings@1' },
+          embed: {
+            dimensions: (fixture.result as { vectors: number[][] }).vectors[0]?.length ?? 1,
+          },
         },
       ],
     },
-    adapters: [openAiEmbeddings],
+    adapters: described ? [] : [openAiEmbeddings],
     secrets: envSecrets({ TEST_KEY: 'test-key' }),
     descriptors,
     maxRetries: 0,
   });
+
+const withoutBuiltInDecide = {
+  ...openAiChat,
+  apis: openAiChat.apis.filter((a) => a.kind !== 'decide'),
+};
 
 const deciders = (
   url: string,
@@ -59,7 +66,7 @@ const deciders = (
   new ModelRouter({
     catalog: {
       endpoints: {
-        compatible: { protocol: 'openai-chat', baseURL: `${url}/openai/v1`, auth },
+        compatible: { families: { openai: '' }, baseURL: `${url}/openai/v1`, auth },
       },
       models: [
         {
@@ -67,12 +74,11 @@ const deciders = (
           endpoint: 'compatible',
           deployment: fixture.deployment,
           residency: 'eu',
-          operations: ['chat', 'decide'],
-          ...(described ? { descriptors: { decide: described } } : {}),
+          apis: { chat: 'openai/chat-completions@1', decide: described ?? 'openai/decide@1' },
         },
       ],
     },
-    adapters: [openAiChat],
+    adapters: [described ? withoutBuiltInDecide : openAiChat],
     secrets: envSecrets({ TEST_KEY: 'test-key' }),
     descriptors: registry,
     maxRetries: 0,
@@ -122,7 +128,7 @@ describe('descriptors against the hand-written adapters', () => {
       expect(described.seen[0]?.path).toBe(adapter.seen[0]?.path);
       expect(described.seen[0]?.path).toBe('/v1/embeddings');
       expect(described.seen[0]?.body).toEqual(adapter.seen[0]?.body);
-      expect(described.seen[0]?.body).toEqual(fixture.request.body);
+      expect(described.seen[0]?.body).toEqual(fixture.request?.body);
       expect(described.seen[0]?.headers['api-key']).toBe('test-key');
       expect(adapter.seen[0]?.headers['api-key']).toBe('test-key');
       expect(described.result).toEqual(adapter.result);
@@ -148,7 +154,7 @@ describe('descriptors against the hand-written adapters', () => {
       );
     });
 
-  it('the hand-written adapter stays the default path and a catalog opts one operation in', async () => {
+  it('a built-in implementation serves an API that also has a descriptor', async () => {
     const [fixture] = fixturesFor(fixtureDir, 'openai/decide@1');
     if (!fixture) throw new Error('no decide fixture');
     const adapter = await decideOnce(fixture);
@@ -158,21 +164,14 @@ describe('descriptors against the hand-written adapters', () => {
     expect(described.seen[0]?.headers['x-stainless-lang']).toBeUndefined();
   });
 
-  it('a catalog that names an unknown descriptor, or one in review, is refused', () => {
+  it('a catalog that binds decide to an unknown API, or to an API of another kind, is refused', () => {
     const [fixture] = fixturesFor(fixtureDir, 'openai/decide@1');
     if (!fixture) throw new Error('no decide fixture');
     expect(() => deciders('http://127.0.0.1:9', fixture, 'openai/decide@9')).toThrow(
-      /no descriptor openai\/decide@9/,
+      /no API openai\/decide@9/,
     );
-    const decide = descriptors.get('openai/decide@1');
-    if (!decide) throw new Error('no decide descriptor');
-    const inReview: DescriptorRegistry = {
-      get: (id) => (id === decide.id ? { ...decide, status: 'review' } : undefined),
-      list: () => [{ ...decide, status: 'review' }],
-    };
-    expect(() => deciders('http://127.0.0.1:9', fixture, decide.id, inReview)).toThrow(/in review/);
     expect(() => deciders('http://127.0.0.1:9', fixture, 'openai/embed@1')).toThrow(
-      /describes embed, not decide/,
+      /openai\/embed@1 is an API for embed, not decide/,
     );
   });
 });

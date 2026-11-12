@@ -11,7 +11,7 @@ import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing
 import { knowledgeProfiles } from '@genai/port-knowledge';
 import { defaultPgvectorProfiles } from '@genai/providers-pgvector';
 import { createPool } from '@genai/providers-postgres';
-import { createAdmin } from './admin.js';
+import { createAdmin, engineSwitchPublisher } from './admin.js';
 import { loadCatalog } from './catalogs.js';
 import { createPlatform, type PlatformInput } from './composition.js';
 import type { JobRunStore } from './ingestion.js';
@@ -89,7 +89,7 @@ const boot = async (input: Partial<PlatformInput> = {}, { database = true } = {}
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
-  return { platform, call, warnings };
+  return { platform, call, warnings, admin };
 };
 
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
@@ -153,15 +153,15 @@ describe('pluggable search engines over the API', () => {
       return { status: res.status, body: await json<{ spec?: { generation?: string } }>(res) };
     };
 
-    it('a switch from the platform database to the knowledge database is refused in bokmål as written by the worker, not as shared storage', async () => {
+    it('copy from the platform database to the knowledge database is refused in bokmål, since it cannot hand over its documents one by one, not as shared storage', async () => {
       const { call } = await boot({
-        embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
+        embeddingAdapters: [fakeEmbeddingAdapter()],
         catalogs: {
           ...knowledgeCatalogs,
           embeddings: {
             endpoints: {
               fake: {
-                protocol: 'fake-embeddings',
+                protocol: 'fake',
                 baseURL: 'https://embed.invalid',
                 auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
               },
@@ -187,7 +187,7 @@ describe('pluggable search engines over the API', () => {
       const { title } = await json<{ title: string }>(started);
       expect(title).not.toContain('deler lagring');
       // The app's locale middleware puts the refusal into bokmål through the catalogue.
-      expect(translateMessage(title, 'nb')).toBe('kunnskapsdata skrives av bakgrunnstjenesten');
+      expect(translateMessage(title, 'nb')).toContain('kan ikke gi fra seg dokumentene ett og ett');
     });
 
     it('runs of a dataset on connection knowledge run as jobs', async () => {
@@ -323,6 +323,49 @@ describe('pluggable search engines over the API', () => {
       expect(named.status).toBe(400);
       expect(JSON.stringify(named.body)).toContain('engine switch');
     });
+
+    it('the catalog accepts a move onto the knowledge database only from an engine switch', async () => {
+      const { call, platform, admin } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      expect((await publish(call, 'digdir/flyttes', dataset('platform-pg'))).status).toBe(200);
+      const moving = (version: number) => ({
+        kind: 'dataset',
+        id: 'digdir/flyttes',
+        spec: dataset('knowledge-pg', { generation: 'g-20261104-aa11bb' }),
+        scope: 'platform',
+        tenant: digdir,
+        reason: 'Byttet til kunnskapsdatabasen',
+        ifVersion: version,
+        engineSwitch: true,
+      });
+      // An operator who claims to be the switch is still refused.
+      const claimed = await admin.perform(
+        { ...(principals.drift as Principal), tenant: digdir },
+        'platform.catalog.publish',
+        moving(1),
+      );
+      expect(claimed.ok).toBe(false);
+      const moved = await admin.perform(
+        { ...engineSwitchPublisher('platform', digdir), tenant: digdir },
+        'platform.catalog.publish',
+        moving(1),
+      );
+      expect(moved.ok).toBe(true);
+      expect(platform.catalog.get('dataset', 'digdir/flyttes')?.spec).toMatchObject({
+        endpoint: 'knowledge-pg',
+        generation: 'g-20261104-aa11bb',
+      });
+      // Even the switch names the generation it filled.
+      expect((await publish(call, 'digdir/uten', dataset('platform-pg'))).status).toBe(200);
+      const nameless = await admin.perform(
+        { ...engineSwitchPublisher('platform', digdir), tenant: digdir },
+        'platform.catalog.publish',
+        { ...moving(1), id: 'digdir/uten', spec: dataset('knowledge-pg') },
+      );
+      expect(nameless.ok).toBe(false);
+    });
   });
 
   it('a pgvector endpoint needs no baseURL', async () => {
@@ -426,7 +469,7 @@ describe('pluggable search engines over the API', () => {
   });
 
   it('ingestion into a pgvector dataset stores, embeds with a fake embedder and becomes searchable', async () => {
-    const adapter = fakeEmbeddingAdapter('fake-embeddings');
+    const adapter = fakeEmbeddingAdapter();
     const docs = join(folder, 'veiledning');
     await rm(docs, { recursive: true, force: true });
     await mkdir(docs, { recursive: true });
@@ -453,7 +496,7 @@ describe('pluggable search engines over the API', () => {
         embeddings: {
           endpoints: {
             fake: {
-              protocol: 'fake-embeddings',
+              protocol: 'fake',
               baseURL: 'https://embed.invalid',
               auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
             },
@@ -546,10 +589,9 @@ describe('pluggable search engines over the API', () => {
   it('the API starts without embedding configuration', async () => {
     const config = join(import.meta.dirname, '..', 'config', 'local');
     const catalogs = {
-      models: { endpoints: {}, models: [] },
+      models: loadCatalog(config, 'models.yaml', 'models', {}).catalog,
       knowledge: loadCatalog(config, 'knowledge.yaml', 'datasets', {}).catalog,
       rerank: { endpoints: {}, rerankers: [] },
-      embeddings: loadCatalog(config, 'embeddings.yaml', 'models', {}).catalog,
     };
     const withDatabase = await boot({ catalogs });
     expect(withDatabase.platform.embedders.describe()).toEqual([]);

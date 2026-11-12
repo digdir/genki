@@ -148,4 +148,27 @@ describe('background work after a restart', () => {
       expect.objectContaining({ id: 'proposal', status: 'failed', error: restartMessage }),
     ]);
   });
+
+  it('shows a run a restart stopped before runs recorded it as interrupted', async () => {
+    const { entries, get } = await boot();
+    await entries.append({
+      kind: serviceRunKind,
+      scope: tenant,
+      id: 'stopped-earlier',
+      version: 1,
+      spec: {
+        ...run('stopped-earlier', {}, minutesAgo(30)),
+        status: 'failed',
+        error: restartMessage,
+      },
+      deleted: false,
+      by: 'platform:restart',
+      reason: restartMessage,
+      at: minutesAgo(20),
+    });
+
+    const runs = (await get(`/tenants/${tenant}/services/svar/eval-runs`)).data;
+
+    expect(runs.find((r) => r.id === 'stopped-earlier')).toMatchObject({ interrupted: true });
+  });
 });

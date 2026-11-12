@@ -1,0 +1,34 @@
+id: example/describe-image@1
+operation: describe-image
+status: described
+summary: A made-up vision API that takes the picture as a data URL inside a json body.
+api:
+  family: example
+  version: '2026-11-01'
+input:
+  object:
+    picture: { media: image/png }
+    question: text
+output:
+  object:
+    answer: text
+request:
+  method: POST
+  path: /describe
+  body:
+    model: $deployment
+    question: $input.question
+    image: { $dataUrl: $input.picture }
+wire:
+  request:
+    object:
+      model: plain
+      question: text
+      image: { media: image/png }
+  response:
+    object:
+      answer: text
+usage:
+  request: 1
+result:
+  answer: $response.answer

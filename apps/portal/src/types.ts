@@ -70,6 +70,7 @@ export interface TimelineBlock {
   title?: string;
   body?: string;
   sources?: string[];
+  media?: { id: string; mediaType: string; bytes: number }[];
 }
 
 export type TimelineStepState =
@@ -137,6 +138,7 @@ export interface ModelOption {
   family?: string;
   residency: Residency;
   capabilities: string[];
+  operations?: string[];
   price?: ModelPrice | null;
   parameters?: {
     temperature?: { mode: 'unsupported' } | { mode: 'fixed'; value: number | string };
@@ -353,8 +355,12 @@ export interface ApiKeyView {
   service?: string | null;
   policy?: string | null;
   createdAt: string | null;
+  createdBy?: string | null;
+  createdByName?: string;
+  modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
+  testRunner?: boolean;
 }
 
 export type ClientChannel = 'mcp' | 'openai' | 'rest' | 'conversations' | 'feedback' | 'facets';
@@ -419,6 +425,7 @@ export interface AccessView {
     requirement: { resource: string; action: string; scope?: string };
   }[];
   keys: ApiKeyView[];
+  testRunnerKeys?: boolean;
 }
 
 export interface UsageReport {
