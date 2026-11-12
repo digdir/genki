@@ -566,6 +566,21 @@ describe('eval runner', () => {
     ]);
   });
 
+  it('reports each finished case once with its progress, never the cases before it again', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const reported: [number, string | undefined][] = [];
+
+    const run = await runEval({
+      testSet: setOf(),
+      evaluators,
+      provenance: { commit: 'abc', data: 'd' },
+      target: kernelTarget(kernel, kari, 'answer'),
+      onProgress: (done, _total, _usage, result) => reported.push([done, result?.case]),
+    });
+
+    expect(reported).toEqual(run.results.map((r, i) => [i + 1, r.case]));
+  });
+
   it('scores a case no model answered, such as a refusal before the model, and reports usage so far with its progress', async () => {
     const kernel = kernelWith([answering()], [answerCapability]);
     const answer = kernelTarget(kernel, kari, 'answer');
