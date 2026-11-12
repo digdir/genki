@@ -1,0 +1,185 @@
+{
+ "tests": [
+  {
+   "id": "kudos-96452-p54-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Samarbeidet med Universitetet i Bergen om lærarutdanning skal halde fram.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Strategiområde 2: Drive forsking, utviklingsarbeid og innovasjon av høg internasjonal kvalitet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kva må HVL lykkast med og kva kan hindre oss i det?",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Ein må lukkast med å sikre ekstern finansiering, og å drive profesjons- og praksisretta forsking av høg internasjonal kvalitet",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Prioriteringar for å nå mål",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Verksemdsmål 2.1: HVL driv profesjons- og praksisretta forsking",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "HVL må prioritere å utvikle ei meir solid forskarutdanning, og sikre god gjennomstrøyming i ph.d.-programma.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Styret har vedteke ein handlingsplan for internasjonalisering",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det vil i løpet av 2021 bli utarbeidd eigne handlingsplanar for innovasjon og entreprenørskap",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Den samla kompetansen skal byggjast saman med samfunns- og arbeidsliv.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Høgskulen har to tydelege prioriteringar knytt til dette målet.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p54-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "HVL vil aktivt involvere studentane i FoU-arbeidet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

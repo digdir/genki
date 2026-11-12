@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-5200-p6-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Andre ansvarsområder og langsiktige oppgaver", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5200-p6-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Administrasjon", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5200-p6-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Følge opp Digitaliseringsstrategien og rapportere på avvik.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-5200-p6-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Systematisk utvikle og vedlikeholde beredskapsplanverk på grunnlag av ROS, DSBs Krisescenarioer og erfaring fra øvelser og hendelser.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-5200-p6-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Riksantikvaren er autorisert for opp til HEMMELIG.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-5200-p6-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Informere KLD om endringer i sikkerhetsorganisasjonen.", "max_diffs": 2}, "after": {"text": "Opprettholde sertifiseringen av styringssystem for informasjonssikkerhet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-5200-p6-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Følg opp brev fra JD datert 21.11.17", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5200-p6-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "list", "nob", "Latn"],
+  "args": {"before": {"text": "om NSMs nye grunnprinsipper for IKT-sikkerhet", "max_diffs": 1}, "after": {"text": "Natur- og kulturarv, landskap og friluftsliv", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5200-p6-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Riksantikvaren skal legge vekt på å videreføre gode, eksisterende samarbeidsfora", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-5200-p6-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Videreføre arbeidet med register over kulturhistoriske landskap av nasjonal interesse (KULA).", "max_diffs": 3}}, "settings": {}}
+]}

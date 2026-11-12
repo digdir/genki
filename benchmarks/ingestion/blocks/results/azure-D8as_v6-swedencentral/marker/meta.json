@@ -1,0 +1,32 @@
+{
+  "parser": "marker",
+  "version": "1.10.2",
+  "surya": "0.17.1",
+  "settings": {
+    "output_format": "markdown",
+    "languages": "no,en",
+    "disable_image_extraction": true,
+    "paginate_output": true,
+    "page_separator": "___PAGE_SEPARATOR___"
+  },
+  "torch_device": "cpu",
+  "native": "JSONRenderer output of the same document, images left out",
+  "device_requested": "cpu",
+  "load_seconds": 35.4,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 43.2
+  },
+  "torch": "2.14.1+cu130",
+  "cuda_available": false,
+  "machine": {
+    "host_label": "azure-D8as_v6-swedencentral",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "cpus": 8,
+    "memory": "32856616 kB",
+    "gpus": [],
+    "python": "3.13.18"
+  }
+}

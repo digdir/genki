@@ -1,6 +1,6 @@
 # 0003 Evaluation is part of the platform
 
-Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, partly built, 2026-10-30). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; component comparisons partly built, 2026-10-26; amendment accepted with ADR 0040, 2026-10-29, partly built, 2026-10-30). Proposed 2026-10-06
 
 ## Decision
 
@@ -10,6 +10,15 @@ Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-2
 - Scores and feedback are `kernel.score` and `kernel.feedback` events on the task they judge, added with `Kernel.annotate`.
 - Publishing gates live in the service definition. A version with a failing gate cannot be published to production.
 - Every result records the code version, the data, the served model and the judge, so only like is compared with like.
+
+## Component comparisons
+
+A component behind a port (a document converter, an embedding model, a search engine, an index, a reranker) is compared with a candidate for replacing it in a benchmark under `benchmarks/`, with the shared code in `benchmarks/benchlib`:
+
+- Every side is graded on the same items against a reference: the known-right answers. The reference never comes from a side's output.
+- Every run records what it used, as service results do: commit and uncommitted changes, hashes of the code, the reference and the items, each side's settings and the package versions. Runs on different references or items are not compared.
+- Differences are paired, with intervals from resampling whole documents. The verdict is against a margin stated before the candidate runs: "not worse" needs the whole interval above minus the margin, which is stricter than a `no-regression` gate.
+- A change of document converter, embedding model or search engine on a dataset cites a current-vs-candidate result on that dataset's reference. The verdict must be "not worse" or "better"; "inconclusive" needs more items or an acceptance recorded with the change. Review checks this; nothing in the platform enforces it.
 
 ## Accepted with ADR 0040 (partly built)
 
@@ -36,6 +45,8 @@ headless-rag's golden sets, judge and findings are the most valuable thing it ha
 
 The rules accepted with ADR 0040 follow from the same lesson. Calibration has to cover every judge that can block, not only metrics whose name starts with `judge.`, and two agreeing labels are not evidence. A second runner without judges or provenance cannot feed gates or calibration.
 
+Components change more often than services are published, and a service's test set is too small to show a few points lost in text extraction or retrieval. A reference built from a side's output would grade that side against itself. "No significant difference" on a small sample is not evidence that a candidate is as good, so the margin and the whole-interval rule make that evidence explicit.
+
 ## Consequences
 
 - The parity gate, publishing gates and the improvement loop share one mechanism.
@@ -43,4 +54,6 @@ The rules accepted with ADR 0040 follow from the same lesson. Calibration has to
 - The harness fails loudly when anything it needs is missing.
 - With the rules accepted with ADR 0040, the portal's run history shows scores and confidence intervals, not only pass or fail.
 - The calibration rule accepted with ADR 0040 also governs skill publishing (ADR 0024).
+- `benchmarks/README.md` sets the shape of a benchmark folder and its report. Each report rebuilds byte for byte from its committed verdicts and reference, and checks its own instrument with an A/A run and a known loss.
+- Partly built: one benchmark follows the shape so far, and the rule on citing a result is checked in review, not by code. Tests: `refuses_to_compare_records_with_different_references` and `not_worse_needs_the_whole_interval_above_minus_margin` (`benchmarks/benchlib`), `no_reference_test_is_derived_from_a_side_output` (`benchmarks/ingestion/opb`).
 - Not built yet from the amendment: calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions for the platform's own judges (a Langfuse judge's new version takes over its accepted labels, ADR 0040), and re-running the baseline when a judge changes.
