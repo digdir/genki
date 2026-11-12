@@ -45,11 +45,9 @@ const entraGroups = (env: Env) => groupList(env.LOCKDOWN_ENTRA_GROUPS);
 
 const userGroups = (env: Env) => groupList(env.LOCKDOWN_USER_GROUPS);
 
-export const operatorClientIds = (env: Env) =>
-  (env.OPERATOR_CLIENT_IDS ?? '')
-    .split(',')
-    .map((c) => c.trim())
-    .filter(Boolean);
+export const operatorClientIds = (env: Env) => groupList(env.OPERATOR_CLIENT_IDS);
+
+export const employeeClientIds = (env: Env) => groupList(env.EMPLOYEE_CLIENT_IDS);
 
 const entraDomain = (env: Env) => env.LOCKDOWN_ENTRA_EMAIL_DOMAIN?.trim().replace(/^@/, '') ?? '';
 

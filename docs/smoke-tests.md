@@ -157,13 +157,14 @@ The report job gets `issues: write` and `statuses: write`, and no environment.
 
 `smoke.yml` runs on `workflow_run` when `deploy` completes successfully on `main` after a dispatch, and on `workflow_dispatch` from `main` (inputs `tiers`: `free`, `cheap` or `all`; `sha`; `full`: run every group in full; `review`: run the model layer or not). It never runs on `pull_request`, and a `workflow_run` workflow always runs from the default branch's file.
 
-| Job       | Environment    | Permissions                                                                | Does                                                                              |
-| --------- | -------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `smoke`   | `genki-test`   | `contents: read`, `actions: read`, `pull-requests: read`, `statuses: read` | changes and targets, the deterministic suite with the browser, uploads the bundle |
-| `propose` | `smoke-review` | `contents: read`, `id-token: write`                                        | the model proposes extra checks                                                   |
-| `extra`   | `genki-test`   | `contents: read`                                                           | runs the accepted proposals, uploads their results                                |
-| `judge`   | `smoke-review` | `contents: read`, `id-token: write`                                        | the model reviews everything and returns findings                                 |
-| `report`  | none           | `contents: read`, `issues: write`, `statuses: write`                       | status, issue, escaped candidates, counts                                         |
+| Job       | Environment    | Permissions                                                                | Does                                                                                                                   |
+| --------- | -------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `smoke`   | `genki-test`   | `contents: read`, `actions: read`, `pull-requests: read`, `statuses: read` | changes and targets, the deterministic suite with the browser, uploads the bundle                                      |
+| `propose` | `smoke-review` | `contents: read`, `id-token: write`                                        | the model proposes extra checks                                                                                        |
+| `extra`   | `genki-test`   | `contents: read`                                                           | runs the accepted proposals, uploads their results                                                                     |
+| `judge`   | `smoke-review` | `contents: read`, `id-token: write`                                        | the model reviews everything and returns findings                                                                      |
+| `report`  | none           | `contents: read`, `issues: write`, `statuses: write`                       | status, issue, escaped candidates, counts                                                                              |
+| `alert`   | none           | `contents: read`                                                           | posts a red smoke test to Slack, see [Deploy releases and the weekly summary](#deploy-releases-and-the-weekly-summary) |
 
 ## Reporting
 
@@ -176,7 +177,7 @@ The report job gets `issues: write` and `statuses: write`, and no environment.
 
 | Path                               | What                                                                                      |
 | ---------------------------------- | ----------------------------------------------------------------------------------------- |
-| `.github/workflows/smoke.yml`      | Trigger, environments and the five jobs                                                   |
+| `.github/workflows/smoke.yml`      | Trigger, environments and the six jobs                                                    |
 | `scripts/smoke/smoke-service.yaml` | The smoke service definition                                                              |
 | `scripts/smoke/plan.json`          | Models, prices, questions, screens, operator reads, refusal cases, known issues           |
 | `scripts/smoke/groups.json`        | Paths to check groups                                                                     |
@@ -206,6 +207,32 @@ SMOKE_TIERS=free node scripts/smoke/run.ts
 5. Create the environment `smoke-review`, branch `main`, and add a federated credential with the subject `repo:digdir@51157288/genki@1411915404:environment:smoke-review` to the managed identity the AI review uses (`id-genki-review`, client id in `AZURE_REVIEW_CLIENT_ID`). The repository issues subjects with owner and repository ids, as the review's existing `pull_request` credential does. Its role on the Foundry resource already covers `claude-sonnet-5-5`.
 6. Optionally set `SMOKE_MAX_RUNS_PER_DAY`, `SMOKE_REVIEW_MAX_PER_DAY`, `SMOKE_REVIEW_MODEL` and the URLs.
 7. Dispatch `smoke` with `tiers: free` and `review: false`, then `all` with `review: true`.
+
+## Deploy releases and the weekly summary
+
+Issue #482. Every deploy gets a quiet, permanent record on GitHub; Slack hears from genki once a week, and when a smoke test after a deploy is red. The code is `scripts/delivery.ts`.
+
+**A release per deploy.** After `deploy-test` succeeds on `main`, two jobs in `deploy.yml` run with `continue-on-error`, so they never fail the deploy or stop the smoke test.
+
+- `changelog` (environment `smoke-review`, `contents: read`, `actions: read`, `pull-requests: read`, `id-token: write`) finds the head SHA of the previous successful deploy run on `main`, lists the pull requests merged since then (a squash merge's `(#NNN)`, otherwise GitHub's lookup per commit) and groups each by the area most of its files are in: Sikkerhet og rettigheter (any identity, rights, tenancy, audit or secrets path wins), Portal, Konsoll, Arbeidsflate, API og plattform, Worker, CI og verktøy, Dokumentasjon. When the model is set up, it adds a short bokmål summary and at most five points under "Hva du bør sjekke"; without it, or when the call or its JSON fails, the release has the plain list.
+- `release` (no environment, `contents: write`, and read access to rebuild the list if the first job left none) creates the release `deploy-YYYY-MM-DD-HHMM`, the deploy time in UTC, on the deployed SHA. Its body ends with a hidden `<!-- delivery-prs: ... -->` line with the pull request numbers, which the weekly summary reads.
+
+**The weekly summary.** `weekly-summary.yml` runs on Fridays at 13:00 Oslo time, and by hand from the Actions tab. GitHub schedules are in UTC, so it is scheduled at both 11:00 and 12:00 UTC, and the first step lets only the one that is 13:00 in Oslo continue: 12:00 UTC in winter (CET, now) and 11:00 UTC in summer (CEST). A run started by hand always continues. Scheduled runs can start some minutes late.
+
+- `collect` (environment `smoke-review`, `contents: read`, `pull-requests: read`, `id-token: write`) reads the `deploy-*` releases created in the last seven days, and the pull requests they list, grouped by area. When the model is set up, it asks for three to six points under "Levert i genki denne uka", in plain bokmål for colleagues who do not read the code.
+- `post` (`contents: read`, the Slack secrets) posts one message: the points, then the pull requests by area with links, then a link to the releases. If nothing was deployed that week, it posts nothing.
+- There is no "Neste uke" part: the workflow token cannot read the organisation's project board, and a stored token that can is not worth it for this.
+
+**A red smoke test.** The `alert` job in `smoke.yml` runs after a smoke test that a deploy started. When the smoke test failed, or crashed before it wrote a result, it posts one short message with the failing check names and a link to the run. A green or partial run posts nothing, and so does a smoke test started by hand.
+
+**Untrusted text.** Pull request titles and bodies go to the model inside `<untrusted_data>`, with at most 60 pull requests and 500 characters of each body, and each answer is capped at 700 tokens. In Slack and in the release every title, body and model sentence is put on one line, `&`, `<` and `>` are escaped, so text cannot add a Slack link or a `<!channel>`, and in the release `[`, `]` and `\` are escaped too, so text cannot add a Markdown link or image (a bare URL is still linked by GitHub), and an `@` before a name gets a zero-width space, so nobody is mentioned. The release and the message hold only what the pull requests already show in public. The Slack secrets are only in the `post` and `alert` jobs, which cannot sign in to Azure or write to the repository.
+
+To set it up:
+
+1. **Slack with a bot (recommended).** Create a Slack app in the workspace, give its bot the scope `chat:write`, install it, and invite the bot to the channel (`/invite @<app name>`). Add the bot token (`xoxb-...`) as the repository secret `SLACK_BOT_TOKEN` and the channel id (`C...`, from the channel's details) as the repository variable `SLACK_DEPLOY_CHANNEL`.
+2. **Or a webhook.** Add an incoming webhook for the channel as the repository secret `SLACK_DEPLOY_WEBHOOK`. When both are set, the bot is used.
+3. With neither, the jobs skip Slack with a notice. Releases are made either way.
+4. **Model.** Nothing new: both model jobs use the `smoke-review` environment and its federated credential (step 5 under Setting it up) and the `AZURE_REVIEW_*` variables. They call `https://<AZURE_REVIEW_FOUNDRY_RESOURCE>.services.ai.azure.com/anthropic/v1/messages` with `SMOKE_REVIEW_MODEL`, default `claude-sonnet-5-5`. Set the repository variable `DELIVERY_MODEL` to use another deployment on that resource. Without `AZURE_REVIEW_FOUNDRY_RESOURCE` both use the plain list.
 
 ## Decisions
 
