@@ -24,10 +24,7 @@ export interface ExporterDeps {
   tasks: (id: string) => Promise<Task | undefined>;
   fetch?: typeof fetch;
   serviceName?: string;
-  /**
-   * Export eval run cases as experiment items. Only a run's own sink does; the platform-wide
-   * exporter leaves them as ordinary traces, so no tenant's run lands in Digdir's project.
-   */
+  /** Export eval run cases as experiment items: only a run's own sink does. */
   experiments?: boolean;
 }
 
