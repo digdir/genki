@@ -66,6 +66,8 @@ import { useStoredValue, type AssistantStorage } from './storage.js';
 
 export interface AssistantFeedback {
   answerId: string;
+  /** genki's run (`task` in `POST /api/feedback`), when given; see the component page. */
+  runId?: string | undefined;
   rating: 'up' | 'down';
   reasons: readonly string[];
   comment?: string | undefined;
@@ -843,6 +845,7 @@ export const useAssistant = ({
                 noAnswer: event.answer.noAnswer,
                 status: 'complete',
                 created: Date.now(),
+                ...(event.answer.taskId ? { runId: event.answer.taskId } : {}),
               },
               event.answer.markers,
             ),
