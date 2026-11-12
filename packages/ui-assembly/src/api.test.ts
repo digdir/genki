@@ -1,4 +1,5 @@
 import type { StreamEvent } from '@genai/client';
+import { readFootnotes } from '@genai/ui-blocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGenkiApi, sourceFromWire } from './api.js';
 
@@ -20,6 +21,22 @@ const wireMarkers = [
 const markers = [
   { marker: '1', chunkId: 'c1', documentId: '42' },
   { marker: '2', chunkId: 'c2', documentId: '42' },
+];
+
+// A turn answered through MCP has no `sources`: here three chunks from two documents.
+const chunks = [
+  {
+    chunkId: 'c1',
+    docTitle: 'Årsrapport 2020',
+    docNum: 'd20',
+    contentMarkdown: 'Lønn var 153 mill.',
+  },
+  { chunkId: 'c2', docTitle: 'Årsrapport 2020', docNum: 'd20', contentMarkdown: '176 ansatte.' },
+  { chunkId: 'c3', docTitle: 'Årsrapport 2022', docNum: 'd22', contentMarkdown: '169 ansatte.' },
+];
+const chunkMarkers = [
+  { marker: '1', chunk_id: 'c3', document: 'd22' },
+  { marker: '2', chunk_id: 'c1', document: 'd20' },
 ];
 
 const json = (body: unknown) =>
@@ -64,7 +81,7 @@ describe('the excerpt markers a service names', () => {
     expect(done?.type === 'done' && done.answer.markers).toEqual(markers);
   });
 
-  it('reads a stored turn’s markers off its excerpts, which is all a stored turn keeps of them', async () => {
+  it('reads a stored turn’s markers off its excerpts when the turn keeps no list of its own', async () => {
     const { index, title, document_id, excerpts } = wireSource;
     const storedSource = { index, title, document_id, excerpts };
     vi.stubGlobal(
@@ -90,7 +107,7 @@ describe('the excerpt markers a service names', () => {
     expect(turns[0]?.answer?.markers).toEqual(markers);
   });
 
-  const reload = async (sources: unknown[]) => {
+  const reloadTurn = async (turn: Record<string, unknown>) => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -98,13 +115,22 @@ describe('the excerpt markers a service names', () => {
           conversation: { id: 't1', topic: 'Ventetid', tags: [], created: 1 },
           messages: [
             { id: 'q', role: 'user', text: 'Ventetid?', created: 1, chunks: [] },
-            { id: 'a', role: 'assistant', text: 'Ned [1].', created: 2, chunks: [], sources },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: 'Ned [1], kort [2].',
+              created: 2,
+              chunks: [],
+              ...turn,
+            },
           ],
         }),
       ),
     );
     return (await api().loadThread('t1')).turns[0]?.answer;
   };
+
+  const reload = (sources: unknown[]) => reloadTurn({ text: 'Ned [1].', sources });
 
   it('leads a stored marker to the excerpt as drawn, also one without an id of its own', async () => {
     const answer = await reload([
@@ -132,6 +158,83 @@ describe('the excerpt markers a service names', () => {
       },
     ]);
     expect(answer?.markers).toEqual([{ marker: '2', chunkId: 'c2', documentId: '42' }]);
+  });
+
+  it('reads the markers of a stored turn that cites excerpts from the turn’s own list', async () => {
+    const { index, title, document_id } = wireSource;
+    const excerpts = wireSource.excerpts.map(({ chunk_id, text, position }) => ({
+      chunk_id,
+      text,
+      position,
+    }));
+    const answer = await reloadTurn({
+      sources: [{ index, title, document_id, excerpts }],
+      markers: wireMarkers,
+    });
+    expect(answer?.markers).toEqual(markers);
+  });
+
+  it('follows a stored turn’s own markers where its excerpts name others', async () => {
+    const answer = await reloadTurn({
+      sources: [wireSource],
+      markers: [
+        { marker: '1', chunk_id: 'c2', document: '42' },
+        { marker: '2', chunk_id: 'c1', document: '42' },
+      ],
+    });
+    expect(answer?.markers).toEqual([
+      { marker: '1', chunkId: 'c2', documentId: '42' },
+      { marker: '2', chunkId: 'c1', documentId: '42' },
+    ]);
+  });
+
+  it('gives a chunks-only stored turn its stored markers, not positions', async () => {
+    const answer = await reloadTurn({ chunks, markers: chunkMarkers });
+    expect(answer?.markers).toEqual([
+      { marker: '1', chunkId: 'c3', documentId: 'd22' },
+      { marker: '2', chunkId: 'c1', documentId: 'd20' },
+    ]);
+  });
+
+  it('keeps only the stored markers that name their excerpt and document', async () => {
+    const answer = await reloadTurn({
+      chunks,
+      markers: [
+        chunkMarkers[0],
+        { marker: '2', chunk_id: 'c1' },
+        { marker: 3, chunk_id: 'c2', document: 'd20' },
+        { chunk_id: 'c2', document: 'd20' },
+        '4',
+        null,
+      ],
+    });
+    expect(answer?.markers).toEqual([{ marker: '1', chunkId: 'c3', documentId: 'd22' }]);
+  });
+
+  it('counts a chunks-only stored turn by position when none of its markers names an excerpt', async () => {
+    const answer = await reloadTurn({ chunks, markers: [{ marker: '1' }, '2'] });
+    expect(answer?.markers?.map((m) => [m.marker, m.chunkId])).toEqual([
+      ['1', 'c1'],
+      ['2', 'c2'],
+      ['3', 'c3'],
+    ]);
+  });
+
+  it('reads a stored turn without markers as before: a chunks-only turn counts by position', async () => {
+    const answer = await reloadTurn({ chunks });
+    expect(answer?.markers).toEqual([
+      { marker: '1', chunkId: 'c1', documentId: 'd20' },
+      { marker: '2', chunkId: 'c2', documentId: 'd20' },
+      { marker: '3', chunkId: 'c3', documentId: 'd22' },
+    ]);
+  });
+
+  it('pairs each footnote of a reloaded answer with its excerpt', async () => {
+    const answer = await reloadTurn({ chunks, markers: chunkMarkers });
+    const { pairing } = readFootnotes(answer?.text ?? '', answer?.sources, answer?.markers);
+    expect(pairing.mode).toBe('excerpt');
+    expect(pairing.targets).toEqual(['c3', 'c1']);
+    expect(pairing.unpaired).toEqual([]);
   });
 
   it('names no markers for a service that cites documents', async () => {

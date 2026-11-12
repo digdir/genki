@@ -375,6 +375,90 @@ describe('@genai/client requests', () => {
   });
 });
 
+describe('@genai/client stored conversations', () => {
+  const conversation = {
+    id: 'k1',
+    topic: 'Ventetid',
+    serviceId: 's',
+    agentId: 's',
+    userId: 'u',
+    tags: [],
+    created: 1,
+  };
+  const question = {
+    id: 'm1',
+    role: 'user',
+    text: 'Hva?',
+    created: 1,
+    tags: [],
+    filterValue: null,
+    chunks: [],
+  };
+  const stored = (answer: Record<string, unknown>) =>
+    recording(() => Response.json({ conversation, messages: [question, answer] }));
+  const reply = {
+    id: 'm2',
+    role: 'assistant',
+    text: excerptBody.choices[0]?.message.content,
+    created: 2,
+    tags: [],
+    filterValue: null,
+    chunks: [
+      { chunkId: 'c1', docTitle: 'Tildelingsbrev', docNum: 'd1', contentMarkdown: 'Første' },
+    ],
+    task: 't-1',
+  };
+
+  it('reads the markers of a stored turn that cites excerpts', async () => {
+    const { sources, markers } = excerptBody;
+    const { fetchFn } = stored({ ...reply, sources, markers });
+
+    const { messages } = await createClient({
+      baseUrl: 'http://api',
+      fetch: fetchFn,
+    }).conversations.get('k1');
+
+    expect(messages[1]?.markers).toEqual(excerptMarkers);
+    expect(messages[1]?.sources).toEqual(excerptSources);
+  });
+
+  it('reads the sources of a stored turn in the same shape as an answer gives them', async () => {
+    const { fetchFn } = stored({ ...reply, sources: [headedSource] });
+
+    const { messages } = await createClient({
+      baseUrl: 'http://api',
+      fetch: fetchFn,
+    }).conversations.get('k1');
+
+    expect(messages[1]?.sources).toEqual([
+      { index: 1, title: 'Tildelingsbrev', documentId: 'd1', excerpts: headedExcerpts },
+    ]);
+    expect(messages[1]).not.toHaveProperty('markers');
+  });
+
+  it('leaves out stored markers when none of them names its excerpt and document', async () => {
+    const { sources } = excerptBody;
+    const { fetchFn } = stored({ ...reply, sources, markers: [{ marker: '1' }, '2'] });
+
+    const { messages } = await createClient({
+      baseUrl: 'http://api',
+      fetch: fetchFn,
+    }).conversations.get('k1');
+
+    expect(messages[1]).not.toHaveProperty('markers');
+  });
+
+  it('reads a stored turn without sources or markers as before, every field kept', async () => {
+    const { fetchFn } = stored(reply);
+
+    const body = await createClient({ baseUrl: 'http://api', fetch: fetchFn }).conversations.get(
+      'k1',
+    );
+
+    expect(body).toStrictEqual({ conversation, messages: [question, reply] });
+  });
+});
+
 describe('@genai/client streaming', () => {
   const live = [
     frame({ role: 'assistant' }, { conversation_id: 'k1' }),
