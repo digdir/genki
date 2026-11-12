@@ -20,11 +20,11 @@ import {
   type BuilderState,
   type ModelRow,
 } from '@genai/ui-blocks';
-import type { StreamEvent } from '@genai/client';
+import type { AnswerMarker, StreamEvent } from '@genai/client';
 import { InLocale } from '@genai/i18n/react';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HttpError, type AskParams, type AssistantApi } from './api.js';
+import { createGenkiApi, HttpError, type AskParams, type AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile } from './profile.js';
 import { browserStorage, type AssistantStorage } from './storage.js';
@@ -58,7 +58,8 @@ const source = {
   excerpts: [{ chunkId: 'c1', text: 'Rapporteringen skjer hvert år.' }],
 };
 
-const fakeApi = () => {
+// `streamed`: the markers the stream names, from a service that cites excerpts.
+const fakeApi = (streamed?: AnswerMarker[]) => {
   const asked: AskParams[] = [];
   const api: AssistantApi = {
     loadModels: vi.fn(async () => rows),
@@ -103,7 +104,14 @@ const fakeApi = () => {
       yield { type: 'text', text: answer };
       yield {
         type: 'done',
-        answer: { id: 'a1', text: answer, sources: [source], citations: [], noAnswer: false },
+        answer: {
+          id: 'a1',
+          text: answer,
+          sources: [source],
+          citations: [],
+          ...(streamed ? { markers: streamed } : {}),
+          noAnswer: false,
+        },
       };
     },
   };
@@ -146,7 +154,7 @@ const draw = (layout: AssistantLayout, api: AssistantApi, threadInUrl = false) =
     />,
   );
 
-const ask = async (question = 'Hva er fast?') => {
+const send = async (question = 'Hva er fast?') => {
   const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
   // The service's collection must be known before the question can go.
   await waitFor(() => expect(screen.getByRole('button', { name: 'Send spørsmålet' })).toBeTruthy());
@@ -154,6 +162,10 @@ const ask = async (question = 'Hva er fast?') => {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send spørsmålet' }));
   });
+};
+
+const ask = async (question?: string) => {
+  await send(question);
   await screen.findByText(/Rapporteringen er fast/);
 };
 
@@ -215,6 +227,134 @@ describe('the assistant a layout describes', () => {
   it('draws the footnote of a stored answer that cites an excerpt, with Kilder placed', async () => {
     await stored(state('sources-only').layout);
     expect(footnotes()).toHaveLength(1);
+  });
+
+  it('draws the footnote of a streamed answer by the markers the stream names', async () => {
+    draw(
+      state('sources-only').layout,
+      fakeApi([{ marker: '1', chunkId: 'c1', documentId: '42' }]).api,
+    );
+    // The footnote takes the last word with it, so the sentence is no longer one text.
+    await send();
+    await waitFor(() => expect(footnotes()).toHaveLength(1));
+  });
+
+  it('draws the footnote while the answer streams, by the markers the `sources` event names', async () => {
+    let finish = () => {};
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    const { api } = fakeApi();
+    api.ask = async function* (): AsyncGenerator<StreamEvent, void> {
+      yield { type: 'conversation', conversationId: 't-new' };
+      yield { type: 'text', text: answer };
+      yield {
+        type: 'sources',
+        sources: [source],
+        citations: [],
+        markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+      };
+      // No `done` until the test ends: the footnote comes from the `sources` event alone.
+      await finished;
+    };
+    try {
+      draw(state('sources-only').layout, api);
+      await send();
+      await waitFor(() => expect(footnotes()).toHaveLength(1));
+    } finally {
+      finish();
+    }
+  });
+
+  it('keeps no markers from earlier sources once the finished answer names none', async () => {
+    const { api } = fakeApi();
+    const finished = api.ask;
+    api.ask = async function* (params): AsyncGenerator<StreamEvent, void> {
+      yield {
+        type: 'sources',
+        sources: [source],
+        citations: [],
+        markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+      };
+      yield* finished(params);
+    };
+    draw(state('sources-only').layout, api);
+    await send();
+    // Finished: the text is there, however a footnote splits it, and no longer being written.
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('Rapporteringen er fast');
+      expect(document.querySelector('.uib-answer-writing')).toBeNull();
+    });
+    expect(footnotes()).toEqual([]);
+  });
+
+  it('draws no footnote for a streamed answer without markers: `[1]` then names a document', async () => {
+    draw(state('sources-only').layout, fakeApi().api);
+    await ask();
+    // The fake's sources come with the end of the answer.
+    expect((await screen.findAllByText('Tildelingsbrev 2022')).length).toBeGreaterThan(0);
+    expect(footnotes()).toEqual([]);
+  });
+
+  it('pairs each footnote of a streamed answer with its excerpt, from genki’s stream through @genai/client', async () => {
+    // What a service that cites excerpts streams: one document, two excerpts, a marker each.
+    const frames = [
+      { id: 'a1', choices: [{ delta: { content: 'Rapporteringen er fast [1] og årlig [2].' } }] },
+      {
+        id: 'a1',
+        sources: [
+          {
+            index: 1,
+            title: 'Tildelingsbrev 2022',
+            document_id: '42',
+            excerpts: [
+              {
+                chunk_id: 'c1',
+                text: 'Rapporteringen skjer hvert år.',
+                position: 0,
+                markers: ['1'],
+              },
+              { chunk_id: 'c2', text: 'Fristen er 15. mars.', position: 1, markers: ['2'] },
+            ],
+            markers: ['1', '2'],
+          },
+        ],
+        markers: [
+          { marker: '1', chunk_id: 'c1', document: '42' },
+          { marker: '2', chunk_id: 'c2', document: '42' },
+        ],
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/api/conversations')
+          ? Response.json({ conversation: { id: 't1' } })
+          : new Response(
+              [...frames.map((f) => JSON.stringify(f)), '[DONE]']
+                .map((f) => `data: ${f}\n\n`)
+                .join(''),
+              { headers: { 'content-type': 'text/event-stream' } },
+            ),
+      ),
+    );
+    try {
+      const { api } = fakeApi();
+      api.ask = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).ask;
+      draw(state('sources-only').layout, api);
+      await send();
+      await waitFor(() =>
+        expect(footnotes().map((mark) => mark.getAttribute('aria-label')?.slice(0, 9))).toEqual([
+          'Utdrag 1:',
+          'Utdrag 2:',
+        ]),
+      );
+      // Each numbered excerpt in Kilder leads back to its own footnote.
+      const backLinks = [...document.querySelectorAll('a')]
+        .map((link) => link.getAttribute('aria-label') ?? link.textContent ?? '')
+        .filter((name) => /fotnote \d/.test(name));
+      expect(backLinks).toEqual(['1: fotnote 1 i svaret', '1: fotnote 2 i svaret']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('shows no footnotes without Kilder: a footnote never points nowhere', async () => {
