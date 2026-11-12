@@ -1,5 +1,4 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -14,7 +13,7 @@ import {
 import { AzureNativeOutputContainer } from '@genai/providers-azure-blob';
 
 // Copies a Docling export (<prefix>/<sha256>/docling.json + done.json) to the native output container; only reads the export.
-const usage = `npx tsx --conditions=source scripts/upload-docling-export.ts --url <container URL> [--root <dir>] [--auth login|key] [--limit <n>] [--concurrency <n>] [--dry-run]
+const usage = `npx tsx --conditions=source scripts/upload-docling-export.ts --root <export dir> --url <container URL> [--auth login|key] [--limit <n>] [--concurrency <n>] [--dry-run]
 
 --auth login uses your az login (AzureCliCredential) (needs Storage Blob Data Contributor on the container); --auth key reads AZURE_STORAGE_KEY.
 --limit uploads at most n files not yet in the container. Files already there are skipped, so a run can be repeated.`;
@@ -195,7 +194,7 @@ const main = async () => {
   const { values } = parseArgs({
     options: {
       url: { type: 'string' },
-      root: { type: 'string', default: join(homedir(), 'kudos-docling', 'json', 'docling') },
+      root: { type: 'string' },
       auth: { type: 'string', default: 'login' },
       limit: { type: 'string' },
       concurrency: { type: 'string', default: '16' },
@@ -203,7 +202,7 @@ const main = async () => {
       help: { type: 'boolean', default: false },
     },
   });
-  if (values.help || (!values.url && !values['dry-run'])) {
+  if (values.help || !values.root || (!values.url && !values['dry-run'])) {
     console.log(usage);
     process.exit(values.help ? 0 : 1);
   }
@@ -211,7 +210,7 @@ const main = async () => {
   const report = (counts: Counts) =>
     console.log(JSON.stringify({ ...counts, seconds: Math.round((Date.now() - started) / 1000) }));
   const { counts, problems } = await upload({
-    dirs: await listExport(values.root),
+    dirs: await listExport(values.root ?? ''),
     container: values.url
       ? new AzureNativeOutputContainer(containerFor(values.url, values.auth))
       : undefined,
