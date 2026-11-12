@@ -181,6 +181,34 @@ describe('a source from the wire', () => {
   it('leaves a missing title empty, for the blocks to name in the reader’s language', () => {
     expect(sourceFromWire({ excerpts: [] }).title).toBe('');
   });
+
+  it("keeps each excerpt's heading for the Sources block to title it by", () => {
+    const { excerpts } = sourceFromWire({
+      title: 'Tildelingsbrev',
+      document_id: '7',
+      excerpts: [
+        { chunk_id: 'c1', text: 'Først.', heading: '1 Innledning' },
+        { chunk_id: 'c7', text: 'Så.', heading: '3 Styringsparametere › 3.2 Mål' },
+      ],
+    });
+    expect(excerpts.map((excerpt) => excerpt.heading)).toEqual([
+      '1 Innledning',
+      '3 Styringsparametere › 3.2 Mål',
+    ]);
+  });
+
+  it('leaves the heading out when the excerpt has none, or a stored one that is not text', () => {
+    const { excerpts } = sourceFromWire({
+      title: 'Tildelingsbrev',
+      document_id: '7',
+      excerpts: [
+        { chunk_id: 'c1', text: 'Først.', heading: '1 Innledning' },
+        { chunk_id: 'c2', text: 'Så.' },
+        { chunk_id: 'c3', text: 'Til slutt.', heading: 3 as unknown as string },
+      ],
+    });
+    expect(excerpts.map((excerpt) => 'heading' in excerpt)).toEqual([true, false, false]);
+  });
 });
 
 // The run feedback is sent on, from `task` on a stored message.

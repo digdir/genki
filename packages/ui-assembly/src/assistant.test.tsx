@@ -357,6 +357,82 @@ describe('the assistant a layout describes', () => {
     }
   });
 
+  // One document whose two excerpts are from different sections, as `/v1` sends them.
+  const headedSource = {
+    index: 1,
+    title: 'Tildelingsbrev 2022',
+    document_id: '42',
+    excerpts: [
+      { chunk_id: 'c1', text: 'Rapporteringen skjer hvert år.', heading: '1 Innledning' },
+      { chunk_id: 'c2', text: 'Fristen er 15. mars.', heading: '3 Styringsparametere › 3.2 Mål' },
+    ],
+  };
+  const sections = async () => {
+    const kilder = await screen.findByRole('complementary', { name: 'Kilder', hidden: true });
+    await within(kilder).findAllByText('Tildelingsbrev 2022');
+    return ['1 Innledning', '3.2 Mål'].map((s) => within(kilder).queryAllByText(s).length > 0);
+  };
+
+  it("shows each excerpt's heading in Kilder for an answer streamed through @genai/client", async () => {
+    const frames = [
+      { id: 'a1', choices: [{ delta: { content: 'Rapporteringen er fast [1].' } }] },
+      { id: 'a1', sources: [headedSource] },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/api/conversations')
+          ? Response.json({ conversation: { id: 't1' } })
+          : new Response(
+              [...frames.map((f) => JSON.stringify(f)), '[DONE]']
+                .map((f) => `data: ${f}\n\n`)
+                .join(''),
+              { headers: { 'content-type': 'text/event-stream' } },
+            ),
+      ),
+    );
+    try {
+      const { api } = fakeApi();
+      api.ask = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).ask;
+      draw(state('sources-only').layout, api);
+      await send();
+      expect(await sections()).toEqual([true, true]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("shows a stored excerpt's heading after a reload", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't-old', topic: 'En gammel tråd', tags: [], created: 1 },
+          messages: [
+            { id: 'q', role: 'user', text: 'Hva er fast?', created: 1, chunks: [] },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: 'Rapporteringen er fast [1].',
+              created: 2,
+              chunks: [],
+              sources: [headedSource],
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      const { api } = fakeApi();
+      api.loadThread = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).loadThread;
+      history.replaceState(null, '', '/?t=t-old');
+      draw(state('sources-only').layout, api, true);
+      expect(await sections()).toEqual([true, true]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows no footnotes without Kilder: a footnote never points nowhere', async () => {
     await stored(state('without-secondary').layout);
     expect(footnotes()).toEqual([]);
