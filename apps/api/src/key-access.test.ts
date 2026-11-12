@@ -76,9 +76,14 @@ const boot = async (
   const authenticator = createAuthenticator({ apiKeys: keys });
   const settings = new SettingsRegistry(platformSettings);
   if (options.monthlyTokens)
-    settings.setTenant(digdir, 'usage.monthlyTokens', options.monthlyTokens);
+    settings.setTenant(digdir, 'usage.monthlyTokens', options.monthlyTokens, 'operator');
   if (options.tenantCallsPerMinute)
-    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', options.tenantCallsPerMinute);
+    settings.setTenant(
+      digdir,
+      'usage.tenantCallsPerMinute',
+      options.tenantCallsPerMinute,
+      'operator',
+    );
   const used: Task = {
     id: 'brukt',
     service: {
@@ -486,7 +491,7 @@ describe('rate limits and quota', () => {
     const { mcp, settings } = await boot();
     for (let i = 0; i < 3; i++) expect((await mcp('veileder', 'tools/list')).status).toBe(200);
 
-    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', 4);
+    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', 4, 'operator');
 
     expect((await mcp('alle', 'tools/list')).status).toBe(200);
     expect((await mcp('alle', 'tools/list')).status).toBe(429);

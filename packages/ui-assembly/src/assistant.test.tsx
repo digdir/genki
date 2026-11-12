@@ -15,6 +15,7 @@ import {
   placeIn,
   turnOff,
   turnOn,
+  withSetting,
   type AssistantLayout,
   type BuilderState,
   type ModelRow,
@@ -27,7 +28,7 @@ import { createGenkiApi, HttpError, type AskParams, type AssistantApi } from './
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile } from './profile.js';
 import { browserStorage, type AssistantStorage } from './storage.js';
-import { useAssistant } from './useAssistant.js';
+import { useAssistant, type AssistantFeedback } from './useAssistant.js';
 
 // A fake genki: two variants of nothing, one service with a collection that has filter fields,
 // one stored thread, and an answer that cites one excerpt and reports two steps.
@@ -961,6 +962,33 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       'Logg ut',
     ]);
     expect(menu()?.querySelector('.uib-shell-profile-news')).toBeTruthy();
+  });
+
+  it('adds the host’s own entries from the profile’s menu, before «Logg ut»', async () => {
+    const back = vi.fn();
+    drawNext({
+      ...reader,
+      menu: {
+        about: { href: '/om' },
+        extra: [
+          { id: 'old', label: 'Tilbake til gammel versjon', href: '/gammel', onSelect: back },
+        ],
+      },
+    });
+    await opened();
+    expect(entries()).toEqual([
+      'Innstillinger',
+      'Om tjenesten',
+      'Tilbake til gammel versjon',
+      'Logg ut',
+    ]);
+    fireEvent.click(
+      within(menu() as HTMLElement).getByRole('link', {
+        name: 'Tilbake til gammel versjon',
+        hidden: true,
+      }),
+    );
+    expect(back).toHaveBeenCalledTimes(1);
   });
 
   it('opens «Innstillinger» from the menu', async () => {
@@ -1944,6 +1972,89 @@ describe('copying from an answer', () => {
       fireEvent.click(copyLink);
     });
     expect(clipboard).toEqual([new URL('/?t=t-old', location.href).href]);
+  });
+});
+
+// genki takes feedback on a run, so the host is handed the run behind the answer it is on.
+describe('feedback on an answer', () => {
+  const withFeedback = withSetting(state('knowledge-assistant'), 'chat', 'feedback', true).layout;
+  const drawWith = (api: AssistantApi, onFeedback: (feedback: AssistantFeedback) => void) =>
+    render(
+      <Assistant
+        api={api}
+        layout={withFeedback}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA', suggestions: ['Hva er fast?'] }}
+        threadInUrl
+        onFeedback={onFeedback}
+      />,
+    );
+  const rate = async () => {
+    const group = await screen.findByRole('group', { name: 'Tilbakemelding på svaret' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Ja' }));
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: 'Send' }));
+    });
+  };
+  const withRun = (taskId?: string): AssistantApi => {
+    const { api } = fakeApi();
+    return {
+      ...api,
+      ask: async function* (): AsyncGenerator<StreamEvent, void> {
+        yield { type: 'conversation', conversationId: 't-new' };
+        yield { type: 'text', text: answer };
+        yield {
+          type: 'done',
+          answer: {
+            id: 'a1',
+            text: answer,
+            sources: [source],
+            citations: [],
+            noAnswer: false,
+            ...(taskId ? { taskId } : {}),
+          },
+        };
+      },
+    };
+  };
+
+  it('hands the host the run id of an answer asked here, with the rating', async () => {
+    const given: AssistantFeedback[] = [];
+    drawWith(withRun('task-1'), (feedback) => void given.push(feedback));
+    await ask();
+    await rate();
+    expect(given).toEqual([expect.objectContaining({ runId: 'task-1', rating: 'up' })]);
+  });
+
+  it('hands the host the run id of a stored answer in a thread opened again', async () => {
+    const { api } = fakeApi();
+    const stored = await api.loadThread('t-old');
+    const turn = stored.turns[0];
+    if (!turn?.answer) throw new Error('the fake thread has an answer');
+    const given: AssistantFeedback[] = [];
+    history.replaceState(null, '', '/?t=t-old');
+    drawWith(
+      {
+        ...api,
+        loadThread: async () => ({
+          ...stored,
+          turns: [{ ...turn, answer: { ...turn.answer, runId: 'task-old' } }],
+        }),
+      },
+      (feedback) => void given.push(feedback),
+    );
+    await rate();
+    expect(given).toEqual([expect.objectContaining({ answerId: 'm1', runId: 'task-old' })]);
+  });
+
+  it('still offers feedback without a run id, and leaves it out, so the host decides', async () => {
+    const given: AssistantFeedback[] = [];
+    drawWith(withRun(), (feedback) => void given.push(feedback));
+    await ask();
+    await rate();
+    expect(given).toHaveLength(1);
+    expect(given[0]).not.toHaveProperty('runId');
   });
 });
 

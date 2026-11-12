@@ -950,7 +950,9 @@ describe('test-set runs on a shared instance', () => {
 
   it('stops starting cases once the monthly token quota is used up, past only the cases in flight', async () => {
     const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } });
-    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 1).ok).toBe(true);
+    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 1, 'operator').ok).toBe(
+      true,
+    );
     const cases = held(env);
     const id = await start(env);
     await vi.waitFor(() => expect(cases.started).toHaveLength(2));
