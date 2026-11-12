@@ -197,6 +197,25 @@ describe('evaluators', () => {
     expect(values(fields)['fields-match']).toBe(0.5);
   });
 
+  it("counts an empty answer beside the guard's provenance part as a refusal, never as fields", async () => {
+    const contract = contractAssertions();
+    const guarded = defaultObserve(
+      [
+        { mime: 'text/plain', body: { kind: 'text', text: '' } },
+        {
+          mime: 'application/vnd.genai.provenance+json',
+          body: { kind: 'json', json: { aiDisclosure: 'Svaret er laget med KI.' } },
+        },
+      ],
+      [],
+    );
+
+    expect(guarded.fields).toBeUndefined();
+    expect(
+      values(await contract.evaluate(caseOf({ id: 'm', type: 'must_reject' }), guarded, ctx)),
+    ).toMatchObject({ refusal: 1 });
+  });
+
   it('checks the case types a person writes: exact text, which fails without its text, and a refusal that may be no answer at all, but never a structured answer', async () => {
     const contract = contractAssertions();
 

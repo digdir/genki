@@ -1413,6 +1413,49 @@ describe('building-block settings at run time', () => {
     }
   });
 
+  it('lists one judge:criteria block at its prompt version for runs judged by two models', async () => {
+    const { send, runs } = await setup();
+    for (const [id, model] of [
+      ['r1', 'foundry/claude'],
+      ['r2', 'foundry/gpt-4o'],
+    ] as const)
+      await runs.save({
+        tenant: digdir,
+        task: `task-${id}`,
+        service: 'svar',
+        run: {
+          id,
+          testSet: { tenant: digdir, id: 'svar-sett', version: 1 },
+          capability: `${digdir}/svar`,
+          splits: ['validation'],
+          repeats: 1,
+          startedAt: '2026-11-12T10:00:00.000Z',
+          endedAt: '2026-11-12T10:01:00.000Z',
+          provenance: {
+            commit: 'abc',
+            data: 'd1',
+            servedModels: ['m'],
+            judges: [`judge:criteria@2+${model}`],
+            services: [],
+          },
+          results: [],
+          metrics: { 'judge.criteria': { mean: 1, ci: [1, 1], n: 1 } },
+          byTag: {},
+          incomplete: [],
+        },
+      });
+
+    const listed = await json<{ data: BuildingBlock[] }>(await send(`${base}?kind=judge`, 'kari'));
+    const block = await json<BuildingBlock>(
+      await send(`${base}/judge/${encodeURIComponent('judge:criteria')}`, 'kari'),
+    );
+
+    expect(listed.data.map((b) => b.id).filter((id) => id.startsWith('judge:criteria'))).toEqual([
+      'judge:criteria',
+    ]);
+    expect(block.version).toBe('2');
+  });
+
   it('every block setting has an effect: judges have none and a tool gets at most its own timeout', async () => {
     const { send, connections } = await setup();
     await connections.register({
