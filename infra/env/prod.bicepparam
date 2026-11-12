@@ -1,7 +1,7 @@
 using '../main.bicep'
 
 param environmentName = 'prod'
-param location = 'norwayeast'
+param location = 'westeurope'
 param postgresAdminGroupObjectId = readEnvironmentVariable('PG_ADMIN_GROUP_OBJECT_ID')
 param postgresAdminGroupName = readEnvironmentVariable('PG_ADMIN_GROUP_NAME')
 param deployPrincipalId = readEnvironmentVariable('DEPLOY_PRINCIPAL_ID', '')
@@ -19,6 +19,20 @@ param keyVaultPublicNetworkAccess = 'Enabled'
 param addressPrefix = '10.41.0.0/16'
 param appsSubnetPrefix = '10.41.0.0/23'
 param postgresSubnetPrefix = '10.41.2.0/24'
+
+// Prod's own knowledge server (ADR 0042), switched on when genki prod runs. It starts as test's does; the size and
+// standby Kudos needs come later, as a change here. Geo-redundant backup is set only when the server is created.
+// The workflows pass an unset variable as an empty value, which the default does not cover.
+var knowledgeStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', '')
+param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
+param knowledgePostgresSkuName = 'Standard_D2ds_v5'
+param knowledgePostgresSkuTier = 'GeneralPurpose'
+param knowledgePostgresStorageSizeGB = 64
+param knowledgePostgresVCores = 2
+param knowledgePostgresBackupRetentionDays = 7
+param knowledgePostgresGeoRedundantBackup = 'Disabled'
+param knowledgePostgresHighAvailability = 'Disabled'
+param knowledgeAddressPrefix = '10.42.0.0/24'
 
 param keyVaultSecretNames = [
   'content-master-key'
@@ -59,3 +73,7 @@ param hostnames = {
 param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')
 param createDnsZone = true
 param dnsZoneName = 'genki.digdir.cloud'
+
+param alertsEnabled = true
+param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')
+param healthCheckFrequencySeconds = 300

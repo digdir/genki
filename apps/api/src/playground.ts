@@ -39,6 +39,7 @@ import {
 import { modelDisplayNames, modelsForTenant } from './model-access.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import { requireRight, rightLabels, type Right } from './rights.js';
+import { environmentsOf, environmentViews, productionEnvironment } from './service-environments.js';
 
 export type PlaygroundOutput = 'text' | 'fields';
 export type PlaygroundSetupName = 'setup' | 'compareWith';
@@ -165,11 +166,19 @@ export interface PlaygroundVersionSetup {
   output: PlaygroundOutput;
 }
 
+export interface PlaygroundVariant {
+  id: string;
+  title?: string;
+  model?: string;
+}
+
 export interface PlaygroundServiceVersion {
   version: number;
   draft: boolean;
   inUse: boolean;
+  environments?: string[];
   setup: PlaygroundVersionSetup;
+  variants?: PlaygroundVariant[];
   inputFields?: InputField[];
 }
 
@@ -369,6 +378,19 @@ export const questionsIn = (value: unknown, locale: 'nb' | 'en') =>
     return typeof text === 'string' && text ? [text] : [];
   });
 
+const variantsIn = (definition: unknown, locale: 'nb' | 'en'): PlaygroundVariant[] => {
+  const spec = record(record(definition).spec);
+  const list = (Array.isArray(spec.variants) ? spec.variants : []).flatMap((v) => {
+    const entry = typeof v === 'string' ? { id: v } : record(v);
+    const id = text(entry.id);
+    if (!id) return [];
+    const title = text(record(entry.title)[locale]);
+    const model = text(entry.model);
+    return [{ id, ...(title ? { title } : {}), ...(model ? { model } : {}) }];
+  });
+  return list.length > 1 ? list : [];
+};
+
 const toolIds = (value: unknown) =>
   (Array.isArray(value) ? value : []).flatMap((t) => {
     const id = typeof t === 'string' ? t : text(record(t).use);
@@ -513,9 +535,15 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     const refusalOf = (policy: BlockPolicy, definition: unknown) => {
       const spec = record(record(definition).spec);
       const model = record(spec.model);
-      const models = [model.primary, model.fallback, ...Object.values(record(model.roles))].filter(
-        (m): m is string => typeof m === 'string',
+      const variantModels = (Array.isArray(spec.variants) ? spec.variants : []).map(
+        (v) => record(v).model,
       );
+      const models = [
+        model.primary,
+        model.fallback,
+        ...Object.values(record(model.roles)),
+        ...variantModels,
+      ].filter((m): m is string => typeof m === 'string');
       const checks = [
         ...models.map((m) => verdict(policy, 'model', m, modelResidency(m) ?? null)),
         ...datasetIds(spec).map((d) => verdict(policy, 'dataset', d, datasetResidency(d) ?? null)),
@@ -542,11 +570,22 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     const withModel = (definition: Record<string, unknown>, model: string | undefined) => {
       if (!model) return definition;
       const spec = record(definition.spec);
+      const declared = { ...record(spec.model) };
+      delete declared.fallback;
+      const roles = Object.entries(record(declared.roles)).map(([role, id]) => [
+        role,
+        id === declared.primary ? model : id,
+      ]);
       return {
         ...definition,
         spec: {
           ...spec,
-          model: { primary: model, residency: modelResidency(model) ?? 'global' },
+          model: {
+            ...declared,
+            primary: model,
+            residency: declared.residency ?? modelResidency(model) ?? 'global',
+            ...(roles.length ? { roles: Object.fromEntries(roles) } : {}),
+          },
         },
       };
     };
@@ -564,7 +603,13 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           const raw = setup.service.definition;
           if (raw === undefined)
             return { ok: false, path: 'service.definition', message: 'send the draft definition' };
-          const parsed = typeof raw === 'string' ? (parseYaml(raw) as unknown) : raw;
+          let parsed: unknown = raw;
+          if (typeof raw === 'string')
+            try {
+              parsed = parseYaml(raw);
+            } catch (error) {
+              return { ok: false, path: 'service.definition', message: (error as Error).message };
+            }
           return {
             ok: true,
             definition: withModel(record(parsed), setup.model),
@@ -678,7 +723,18 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       };
     };
 
-    const quotaOf = async (tenant: string): Promise<PlaygroundQuota & { exhausted: boolean }> => {
+    const quotaOf = async (
+      tenant: string,
+      fresh = false,
+    ): Promise<PlaygroundQuota & { exhausted: boolean }> => {
+      if (deps.quota) {
+        const used = await deps.quota(tenant, { fresh });
+        return {
+          usedPercent: Math.round((used.usedTokens / used.monthlyTokens) * 1000) / 10,
+          monthlyTokens: used.monthlyTokens,
+          exhausted: used.exhausted,
+        };
+      }
       const now = new Date();
       const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
       let used = 0;
@@ -753,8 +809,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     app.get('/tenants/:tenant/playground/options', async (c) => {
       const g = await guard(c);
       if (g instanceof Response) return g;
-      const policy = await readBlockPolicy(deps.configEntries, g.tenant);
-      const listed = await deps.definitions.list(g.tenant);
+      const [policy, listed, sets, quota] = await Promise.all([
+        readBlockPolicy(deps.configEntries, g.tenant),
+        deps.definitions.list(g.tenant),
+        deps.evalStores.testSets.list(g.tenant),
+        quotaOf(g.tenant),
+      ]);
       const unordered = await Promise.all(
         listed
           .filter((d) => d.kind === 'Service')
@@ -762,6 +822,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             const versions = await deps.definitions.versions('Service', g.tenant, id);
             const latest = versions.at(-1);
             const latestSpec = record(record(latest?.definition).spec);
+            const pointers = environmentViews(
+              await environmentsOf(deps.configEntries, g.tenant, id),
+              latest?.version,
+            );
             return {
               id,
               name: text(record(latest?.definition.metadata).name) ?? id,
@@ -775,11 +839,17 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                       g.tenant,
                       v.definition,
                     );
+                    const variants = variantsIn(v.definition, requestLocale());
+                    const environments = pointers
+                      .filter((p) => p.version === v.version)
+                      .map((p) => p.name);
                     return {
                       version: v.version,
                       draft: false,
-                      inUse: v.version === latest?.version,
+                      inUse: environments.includes(productionEnvironment),
+                      ...(environments.length ? { environments } : {}),
                       setup: versionSetup(v.definition),
+                      ...(variants.length ? { variants } : {}),
                       ...(fields.length ? { inputFields: fields } : {}),
                     };
                   }),
@@ -792,13 +862,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const services = unordered.sort(
         (a, b) => Number(b.chat) - Number(a.chat) || a.name.localeCompare(b.name, 'nb'),
       );
-      const testSets = (await deps.evalStores.testSets.list(g.tenant)).map((set) => ({
+      const testSets = sets.map((set) => ({
         id: set.metadata.id,
         name: set.metadata.name,
         cases: set.spec.cases.length,
         ...(set.spec.service ? { service: set.spec.service } : {}),
       }));
-      const quota = await quotaOf(g.tenant);
       const skills = (
         await Promise.all(
           listed
@@ -923,7 +992,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           files: definition.files,
         });
       }
-      const quota = await quotaOf(g.tenant);
+      const quota = await quotaOf(g.tenant, true);
       if (quota.exhausted) {
         const exhausted: PlaygroundQuotaExhausted = {
           type: 'about:blank',
@@ -1046,7 +1115,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const response: PlaygroundRunResponse = {
         ...first,
         ...(compare ? { compare } : {}),
-        quota: quotaView(await quotaOf(g.tenant)),
+        quota: quotaView(await quotaOf(g.tenant, true)),
       };
       return c.json(response);
     });
@@ -1106,7 +1175,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             );
             if (prepared.uploaded && outcomes.some((o) => !o.ok))
               await deps.blobs.delete({ tenant: g.tenant, path: prepared.uploaded });
-            send('done', { quota: quotaView(await quotaOf(g.tenant)) });
+            send('done', { quota: quotaView(await quotaOf(g.tenant, true)) });
           };
           work()
             .catch((error: unknown) =>

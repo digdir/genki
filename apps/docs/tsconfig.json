@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist/types",
+    "emitDeclarationOnly": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client", "@digdir/designsystemet-react/react-types"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    // Innholdssiden slår opp i egne datafiler med kjente nøkler, så de to strengeste reglene er av her.
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["src"],
+  "references": [{ "path": "../../packages/docs-content" }, { "path": "../../packages/docs-site" }]
+}

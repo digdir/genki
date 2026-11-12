@@ -4,7 +4,7 @@ import type { CatalogItem } from './catalog-registry.js';
 import type { Execution, ExecutionStatus, IngestionService, Pipeline } from './ingestion.js';
 
 export type DatasetSource =
-  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'episerver' | 'none';
+  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'episerver' | 'none';
 
 export type DatasetState =
   'needs-pipeline' | 'configured' | 'running' | 'ready' | 'degraded' | 'external';

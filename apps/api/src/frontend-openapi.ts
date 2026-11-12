@@ -150,13 +150,31 @@ const ModelList = z
 
 const Source = z
   .object({
-    index: z.number().int().optional().describe('The N in `[N]` in the answer text.'),
+    index: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The N in `[N]` in the answer text. When the service cites excerpts, the lowest marker that cites this document; resolve `[N]` through `markers`.',
+      ),
     title: z.string(),
     url: z.string().optional().describe('Present only for an http or https link people can open.'),
     document_id: z.string().optional(),
     excerpts: z.array(
-      z.object({ chunk_id: z.string(), text: z.string(), position: z.number().int().optional() }),
+      z.object({
+        chunk_id: z.string(),
+        text: z.string(),
+        position: z.number().int().optional(),
+        markers: z
+          .array(z.string())
+          .optional()
+          .describe('When the service cites excerpts: the markers that cite this excerpt.'),
+      }),
     ),
+    markers: z
+      .array(z.string())
+      .optional()
+      .describe('When the service cites excerpts: the markers that cite this document.'),
   })
   .passthrough()
   .openapi('Source');
@@ -188,6 +206,18 @@ const ChatRequest = z
   .passthrough()
   .openapi('ChatRequest');
 
+const Attachment = z
+  .object({
+    type: z.string().describe('The top-level media type, such as `image` or `audio`.'),
+    id: z.string(),
+    mediaType: z.string().openapi({ example: 'image/png' }),
+    bytes: z.number().int(),
+    sha256: z.string(),
+    step: z.string().optional().describe('The step in the service that made it.'),
+    url: z.string().openapi({ example: '/v1/tasks/6f1c.../media/0b9e...' }),
+  })
+  .openapi('Attachment');
+
 const ChatResponse = z
   .object({
     id: z.string(),
@@ -205,6 +235,18 @@ const ChatResponse = z
     conversation_id: z.string().optional(),
     citations: z.array(z.string()).optional(),
     sources: z.array(Source).optional(),
+    markers: z
+      .array(z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() }))
+      .optional()
+      .describe(
+        'Present only when the service cites excerpts: every marker in the answer, in order, with the one excerpt and the document it leads to. `marker` is written as in the text, without brackets (ADR 0052).',
+      ),
+    attachments: z
+      .array(Attachment)
+      .optional()
+      .describe(
+        'Media that steps of the run made, each fetched from its `url` with the same credential.',
+      ),
     no_answer: z.boolean().optional(),
     notice: z.string().optional(),
     table: z
@@ -283,6 +325,28 @@ export const frontendRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/v1/sessions',
+    summary: 'Open a live session on a service whose way of working is live-session@1',
+    request: {
+      query: z.object({
+        model: z.string().openapi({ param: { name: 'model', in: 'query' } }),
+      }),
+    },
+    responses: {
+      101: {
+        description:
+          'The connection is upgraded to a WebSocket. Text and binary messages go through the same gate as a chat call; the run is the session. The server closes with 1000 when done, 1001 when cancelled, 4001 at the longest duration, 4002 when the kind is moved back to test and 1011 on an error.',
+      },
+      400: v1Error('missing_model, invalid_version, not_a_live_service'),
+      401: v1Error('Invalid or missing credentials'),
+      403: v1Error('The credential may not reach the service'),
+      404: v1Error('model_not_found, agent_not_found'),
+      426: v1Error('upgrade_required'),
+      503: v1Error('service_paused'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/v1/chat/completions',
     summary: 'Ask a service, whole or streamed',
@@ -303,7 +367,30 @@ export const frontendRoutes: RouteConfig[] = [
       403: v1Error('The credential may not reach the service or dataset'),
       404: v1Error('model_not_found, agent_not_found, conversation_not_found'),
       409: v1Error('version_not_found'),
+      413: v1Error('document_too_large, request_too_large'),
       503: v1Error('service_paused'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/v1/tasks/{task}/media/{id}',
+    summary: 'Fetch media an answer returned in `attachments`',
+    request: {
+      params: z.object({
+        task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
+        id: z.string().openapi({ param: { name: 'id', in: 'path' } }),
+      }),
+    },
+    responses: {
+      200: {
+        description:
+          'The bytes, with the media type as `content-type`. Only a caller that may read the run gets them.',
+        content: {
+          'application/octet-stream': { schema: z.string().openapi({ format: 'binary' }) },
+        },
+      },
+      401: v1Error('Invalid or missing credentials'),
+      404: v1Error('not_found: no such media, or the caller may not read the run'),
     },
   }),
   createRoute({

@@ -67,6 +67,20 @@
           "href": "/schemas/Strategy.step-flow%401"
         },
         {
+          "kind": "Strategy.live-session",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "live-session"
+          },
+          "title": {
+            "nb": "Direkte økt",
+            "en": "Live session"
+          },
+          "href": "/schemas/Strategy.live-session%401"
+        },
+        {
           "kind": "Strategy.remote-agent",
           "version": "1",
           "at": "spec.strategy.config",
@@ -416,11 +430,68 @@
         "noToolCallRetry": {
           "type": "boolean",
           "x-label": {
-            "nb": "Prøv igjen når modellen ikke bruker verktøy",
-            "en": "Try again when the model uses no tool"
+            "nb": "Krev søk før svar",
+            "en": "Require a search before answering"
+          },
+          "x-help": {
+            "nb": "Svarer modellen på et spørsmål uten å søke, bes den søke inntil to ganger. Gjør den det ikke, blir svaret at kildene ikke dekker spørsmålet. Et oppfølgingsspørsmål kan bygge på samtalen og slipper gjennom etter det. Hilsener og spørsmål om hva tjenesten kan hjelpe med besvares som vanlig.",
+            "en": "When the model answers a question without searching, it is asked to search, up to twice. If it still does not, the answer is that the sources do not cover the question. A follow-up may rest on the conversation and passes after that. Greetings and questions about what the service can help with are answered as usual."
           },
           "x-advanced": true,
           "x-widget": "toggle",
+          "x-right": "manage-services"
+        },
+        "noAnswerText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "x-label": {
+            "nb": "Svar når kildene ikke dekker spørsmålet",
+            "en": "Answer when the sources do not cover the question"
+          },
+          "x-help": {
+            "nb": "Erstatter modellens egen formulering når den søkte og ikke fant noe i kildene. Ikke satt lar modellen formulere det selv.",
+            "en": "Replaces the model's own wording when it searched and found nothing in the sources. Not set lets the model put it in its own words."
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        },
+        "instructionsInAnswer": {
+          "type": "boolean",
+          "x-label": {
+            "nb": "Gi instruksjonene også til svaret",
+            "en": "Give the instructions to the answer too"
+          },
+          "x-help": {
+            "nb": "Svaret skrives i et eget kall uten verktøy. Slått på følger det også tjenestens instruksjoner om innhold, kilder og form.",
+            "en": "The answer is written in a call of its own, without tools. When on, it also follows the service's instructions on content, sources and form."
+          },
+          "x-widget": "toggle",
+          "x-right": "manage-services"
+        },
+        "citeBy": {
+          "type": "string",
+          "enum": ["document", "excerpt"],
+          "x-label": {
+            "nb": "Hva en fotnote peker på",
+            "en": "What a footnote points to"
+          },
+          "x-help": {
+            "nb": "Et utdrag gir én fotnote per avsnitt svaret bygger på.",
+            "en": "An excerpt gives one footnote per passage the answer rests on."
+          },
+          "x-enumLabels": {
+            "document": {
+              "nb": "Et dokument",
+              "en": "A document"
+            },
+            "excerpt": {
+              "nb": "Et utdrag",
+              "en": "An excerpt"
+            }
+          },
+          "x-advanced": true,
+          "x-widget": "select",
           "x-right": "manage-services"
         },
         "search": {
@@ -830,6 +901,44 @@
       "x-label": {
         "nb": "Fast stegflyt",
         "en": "Fixed step flow"
+      }
+    },
+    "/schemas/Strategy.live-session%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "descriptor": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$",
+          "x-label": {
+            "nb": "Beskrivelse av direkteøkten",
+            "en": "Live session descriptor"
+          },
+          "x-help": {
+            "nb": "Id-en til en gjennomgått operasjonsbeskrivelse, for eksempel openai/realtime-transcription@1.",
+            "en": "The id of a reviewed operation descriptor, for example openai/realtime-transcription@1."
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Modell",
+            "en": "Model"
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        }
+      },
+      "required": ["descriptor"],
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.live-session@1",
+      "x-label": {
+        "nb": "Direkte økt",
+        "en": "Live session"
       }
     },
     "/schemas/Strategy.remote-agent%401": {

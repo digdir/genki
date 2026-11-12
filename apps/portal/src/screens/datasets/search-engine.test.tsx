@@ -197,6 +197,34 @@ describe('Datasett: søkemotor', () => {
     expect(within(flow).getByText('Bedre', { selector: 'td *' })).toBeTruthy();
   });
 
+  it('activating a switch into the knowledge database shows the refresh, then the new engine', async () => {
+    await renderAt(
+      kudos,
+      fetchWith({ scenario: 'switching', progressStep: 60, refresh: true, failedDocuments: 2 }),
+    );
+    const flow = await switchSection();
+    await waitFor(() => expect(within(flow).getByText('Steg 4 av 5')).toBeTruthy(), {
+      timeout: 4000,
+    });
+    expect(
+      await within(flow).findByText(
+        '2 dokumenter kunne ikke leses inn. De leses inn på nytt før byttet tas i bruk.',
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(flow).getByRole('button', { name: 'Neste' }));
+    fireEvent.change(within(flow).getByRole('textbox', { name: /Begrunnelse/ }), {
+      target: { value: 'Flytter til kunnskapsdatabasen' },
+    });
+    fireEvent.click(within(flow).getByRole('button', { name: 'Ta i bruk' }));
+    expect(
+      await within(flow).findByText(/Leser inn det som er endret i kilden siden overføringen/),
+    ).toBeTruthy();
+    expect(within(flow).queryByRole('button', { name: 'Ta i bruk' })).toBeNull();
+    expect(await screen.findByText(/søker nå i/, {}, { timeout: 4000 })).toBeTruthy();
+  });
+
   it('a failed transfer offers Prøv igjen and Avbryt byttet, and the block explains it', async () => {
     await openKudos({ scenario: 'failed' });
     const flow = await switchSection();

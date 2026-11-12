@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   checkInputFields,
   fieldsQuery,
@@ -71,6 +72,13 @@ export interface McpConversations {
   append(request: Request, conversationId: string, turn: ConversationTurn): Promise<void>;
 }
 
+export interface QuotaRefusal {
+  type: string;
+  title: string;
+  detail: string;
+  retryAfterSeconds: number;
+}
+
 export interface McpAppOptions {
   kernel: Kernel;
   resolver: CapabilityResolver;
@@ -92,6 +100,7 @@ export interface McpAppOptions {
   heartbeatMs?: number;
   overridePolicy?: OverridePolicy;
   modelsOf?: (task: string) => Promise<string[]>;
+  quotaExhausted?: (principal: Principal) => Promise<QuotaRefusal | undefined>;
 }
 
 type Response = JsonRpcResult | JsonRpcError;
@@ -103,6 +112,8 @@ interface CallOutcome {
 }
 
 const versionHeader = 'genai-version';
+const environmentHeader = 'genai-environment';
+const quotaExhaustedCode = -32029;
 
 const readVersion = (value: string | undefined): { version?: number } | { error: string } => {
   if (value === undefined || value.trim() === '') return {};
@@ -112,10 +123,15 @@ const readVersion = (value: string | undefined): { version?: number } | { error:
     : { error: '`GenAI-Version` must be a positive whole number.' };
 };
 
-const generatedHeaders = (models: string[], version?: number): Record<string, string> => ({
+const generatedHeaders = (
+  models: string[],
+  version?: number,
+  environment?: string,
+): Record<string, string> => ({
   'genai-generated-by': 'ai',
   ...(models.length === 1 && models[0] ? { 'genai-model': models[0] } : {}),
   ...(version === undefined ? {} : { 'genai-service-version': String(version) }),
+  ...(environment === undefined ? {} : { [environmentHeader]: environment }),
 });
 
 const outcomeOf = (response: Response, status = 200, headers: Record<string, string> = {}) => ({
@@ -124,7 +140,13 @@ const outcomeOf = (response: Response, status = 200, headers: Record<string, str
   headers,
 });
 
-const resolveStatus: Record<string, number> = { service_paused: 503, version_not_found: 409 };
+const resolveStatus: Record<string, number> = {
+  service_paused: 503,
+  version_not_found: 409,
+  invalid_environment: 400,
+  environment_not_authorized: 403,
+  environment_not_found: 409,
+};
 
 const alphabet = 'useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict';
 
@@ -240,16 +262,16 @@ export const createMcpApp = (options: McpAppOptions) => {
           }),
         );
       }
-      const resolved = await resolver.resolve(
-        principal,
-        name,
-        hooks.version === undefined ? {} : { version: hooks.version },
-      );
+      const environment = hooks.request.headers.get(environmentHeader) ?? undefined;
+      const resolved = await resolver.resolve(principal, name, {
+        ...(hooks.version === undefined ? {} : { version: hooks.version }),
+        ...(environment === undefined ? {} : { environment }),
+      });
       if (!resolved.ok) {
         const status = resolveStatus[resolved.code];
         if (status)
           return outcomeOf(
-            rpcError(id, status === 409 ? -32602 : -32603, resolved.message, {
+            rpcError(id, status === 503 ? -32603 : -32602, resolved.message, {
               code: resolved.code,
             }),
             status,
@@ -338,7 +360,11 @@ export const createMcpApp = (options: McpAppOptions) => {
             mapInput(entry, { ...args, ...values }, query, history),
             !!entry.inputFields?.length,
           ),
-          { thread: conversationId, entryPoint: 'mcp' },
+          {
+            thread: conversationId,
+            entryPoint: 'mcp',
+            ...(entry.environment ? { environment: entry.environment } : {}),
+          },
         );
       } catch (error) {
         if (error instanceof KernelError)
@@ -400,10 +426,11 @@ export const createMcpApp = (options: McpAppOptions) => {
             ai_generated: true,
             ...(models.length === 1 ? { model: models[0] } : {}),
             ...(entry.version === undefined ? {} : { service_version: entry.version }),
+            ...(entry.environment === undefined ? {} : { environment: entry.environment }),
           },
         }),
         200,
-        { ...generatedHeaders(models, entry.version), 'genai-task': run.task },
+        { ...generatedHeaders(models, entry.version, entry.environment), 'genai-task': run.task },
       );
     } catch (error) {
       return outcomeOf(
@@ -495,11 +522,16 @@ export const createMcpApp = (options: McpAppOptions) => {
   app.get(path, notAllowed);
   app.delete(path, notAllowed);
 
+  app.use(
+    path,
+    bodyLimit({
+      maxSize: maxBody,
+      onError: (c) => json(c, 413, parseError(`Request body exceeds ${maxBody} bytes`)),
+    }),
+  );
   app.post(path, async (c) => {
     const principal = c.get('principal' as never) as Principal;
     const text = await c.req.text();
-    if (Buffer.byteLength(text) > maxBody)
-      return json(c, 413, parseError(`Request body exceeds ${maxBody} bytes`));
     if (text.trim() === '') return json(c, 400, parseError('Empty request body'));
     let body: unknown;
     try {
@@ -574,6 +606,18 @@ export const createMcpApp = (options: McpAppOptions) => {
         const pinned = readVersion(c.req.header(versionHeader));
         if ('error' in pinned)
           return json(c, 400, invalidParams(id, pinned.error, { code: 'invalid_version' }));
+        const refusal = await options.quotaExhausted?.(principal);
+        if (refusal)
+          return json(
+            c,
+            429,
+            rpcError(id, quotaExhaustedCode, refusal.title, {
+              type: refusal.type,
+              status: 429,
+              detail: refusal.detail,
+            }),
+            { 'Retry-After': String(refusal.retryAfterSeconds) },
+          );
         const meta = isRecord(params._meta) ? params._meta : {};
         const token = meta.progressToken ?? meta.progress_token;
         if (token !== undefined && token !== null)

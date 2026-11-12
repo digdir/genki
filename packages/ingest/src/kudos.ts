@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { processKudosLimiter, type KudosRateLimiter } from './kudos-rate.js';
 
 export interface KudosProfile {
   name: 'prod' | 'preprod';
@@ -13,7 +14,7 @@ const retryDelaysMs = [1000, 3000, 7000, 60000];
 export const kudosProd: KudosProfile = {
   name: 'prod',
   baseUrl: 'https://kudos.dfo.no',
-  listPath: '/api/v0/documents/search',
+  listPath: '/api/v0/documents',
   documentPath: '/api/v0/documents',
   retryDelaysMs,
 };
@@ -24,6 +25,8 @@ export interface KudosOrganisation {
 }
 
 export interface KudosFile {
+  /** KUDOS's id for the file; a document's files are keyed by it. */
+  uuid?: string;
   url: string;
   sha256?: string;
   size?: number;
@@ -56,15 +59,26 @@ export interface KudosPage {
   meta: { current_page: number; last_page: number; total?: number };
 }
 
+/** One listing of `/documents`: a type, an actor and publish years, in one order. */
 export interface KudosSearch {
   type?: string;
-  query?: string;
+  /** Any registered name of an owner, recipient or publisher, case-insensitive. */
+  actorName?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  sort?: 'newest' | 'oldest';
 }
 
+/** The most `/documents` returns a page. */
+export const kudosPageSize = 50;
+
 const searchParams = (n: number, search: KudosSearch) => {
-  const params = new URLSearchParams({ page: String(n) });
+  const params = new URLSearchParams({ page: String(n), per_page: String(kudosPageSize) });
   if (search.type) params.set('type', search.type);
-  if (search.query) params.set('query', search.query);
+  if (search.actorName) params.set('actor_name', search.actorName);
+  if (search.yearFrom !== undefined) params.set('published_year_from', String(search.yearFrom));
+  if (search.yearTo !== undefined) params.set('published_year_to', String(search.yearTo));
+  if (search.sort) params.set('sort', search.sort);
   return params.toString();
 };
 
@@ -86,25 +100,64 @@ export class KudosPageFailed extends Error {
   }
 }
 
+/** KUDOS has no document with this UUID (HTTP 404). */
+export class KudosNotFound extends Error {
+  override readonly name = 'KudosNotFound';
+}
+
 export interface KudosClientOptions {
   profile: KudosProfile;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  /** Every request waits its turn here; by default the one limiter of this process. */
+  limiter?: KudosRateLimiter;
+  now?: () => number;
 }
+
+/** A 429 waits this long when KUDOS gives no `Retry-After`. */
+const defaultRetryAfterMs = 60_000;
+/** 429s in a row before a request gives up. */
+const maxRateLimited = 10;
+
+/** `Retry-After` in seconds or as an HTTP date, in milliseconds from now. */
+export const retryAfterMs = (value: string | null, now = Date.now()) => {
+  if (!value) return defaultRetryAfterMs;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? defaultRetryAfterMs : Math.max(0, at - now);
+};
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export const kudosClient = (options: KudosClientOptions) => {
   const send = options.fetch ?? fetch;
   const sleep = options.sleep ?? pause;
+  const limiter = options.limiter ?? processKudosLimiter;
+  const now = options.now ?? Date.now;
+  /** One request under the limits; a 429 waits as `Retry-After` asks without using a retry. */
+  const send1 = async (url: string) => {
+    for (let limited = 0; ; limited++) {
+      await limiter.take();
+      const response = await send(url, { headers: { accept: 'application/json' } });
+      if (response.status !== 429 || limited >= maxRateLimited) return response;
+      await response.body?.cancel();
+      limiter.pause(retryAfterMs(response.headers.get('retry-after'), now()));
+    }
+  };
   const getJson = async <T>(url: string): Promise<T> => {
     let lastError: unknown;
     for (const delay of [...options.profile.retryDelaysMs, undefined]) {
       try {
-        const response = await send(url, { headers: { accept: 'application/json' } });
+        const response = await send1(url);
+        if (response.status === 404) {
+          await response.body?.cancel();
+          throw new KudosNotFound(`Kudos has no document at ${url}`);
+        }
         if (!response.ok) throw new Error(`Kudos answered HTTP ${response.status} for ${url}`);
         return (await response.json()) as T;
       } catch (error) {
+        if (error instanceof KudosNotFound) throw error;
         lastError = error;
         if (delay === undefined) break;
         await sleep(delay);
@@ -132,6 +185,26 @@ export const kudosClient = (options: KudosClientOptions) => {
       }
     },
 
+    /** One search, page by page; `total()` is its `meta.total` once a page has come back. */
+    listing(search: KudosSearch, startingPage = 1) {
+      let total: number | undefined;
+      const read = (n: number) => this.page(n, search);
+      const documents = async function* (): AsyncIterable<KudosDocument> {
+        for (let n = startingPage; ; n += 1) {
+          let page: KudosPage;
+          try {
+            page = await read(n);
+          } catch (error) {
+            throw new KudosPageFailed(options.profile.name, n, error);
+          }
+          total = page.meta.total === undefined ? undefined : Number(page.meta.total);
+          yield* page.data;
+          if (page.meta.last_page <= page.meta.current_page) return;
+        }
+      };
+      return { documents: documents(), total: () => total };
+    },
+
     document: (id: number | string) =>
       getJson<KudosDocument>(`${options.profile.baseUrl}${options.profile.documentPath}/${id}`),
   };
@@ -150,10 +223,13 @@ export const concernedYears = (doc: KudosDocument): number[] => {
   return [];
 };
 
-export const kudosDocumentId = (doc: KudosDocument) => String(doc.id ?? doc.uuid);
+/** A document's id names its source and its id there (ADR 0042): `kudos:<uuid>`. */
+export const kudosDocumentId = (doc: KudosDocument) =>
+  doc.uuid ? `kudos:${doc.uuid}` : String(doc.id);
 
-export const kudosPublicUrl = (id: string | number, profile: KudosProfile = kudosProd) =>
-  `${profile.baseUrl}/dokument/${encodeURIComponent(String(id))}`;
+/** The document's page on Kudos, by its UUID. */
+export const kudosPublicUrl = (doc: KudosDocument, profile: KudosProfile = kudosProd) =>
+  `${profile.baseUrl}/dokument/${encodeURIComponent(String(doc.uuid ?? doc.id))}`;
 
 export const fillInKudosFields = (doc: KudosDocument) => ({
   ...doc,

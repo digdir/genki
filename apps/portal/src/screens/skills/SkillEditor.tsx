@@ -1,3 +1,4 @@
+import { DownloadIcon, PlayIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -47,8 +48,6 @@ import { UsageTab } from './UsageTab';
 import { VersionsTab } from './VersionsTab';
 import { YamlTab } from './YamlTab';
 
-const playIcon = 'M7 5l12 7-12 7z';
-const exportIcon = 'M12 4v11M8 11l4 4 4-4M5 15v4h14v-4';
 const saveDelay = 400;
 
 type Notify = (text: string, at?: string | null, color?: 'success' | 'danger') => void;
@@ -142,7 +141,12 @@ const Editor = ({
   const nothing = detail.status === 'published' && changes.length === 0;
   const cases = definition.spec.testset.cases;
   const fresh =
-    !!run && !pending && run.revision === revision && run.total === cases.length && !running;
+    !!run &&
+    !run.stale &&
+    !pending &&
+    run.revision === revision &&
+    run.total === cases.length &&
+    !running;
   const threshold = definition.spec.testset.passThreshold ?? detail.passThreshold;
   const failures = fresh && run ? run.total - run.passed : 0;
   const publisher = publisherName(detail.publisher, tenantName);
@@ -425,11 +429,11 @@ const Editor = ({
             aria-describedby={canTry ? undefined : `${id}-try-hint`}
             onClick={() => canTry && setTryOpen((o) => !o)}
           >
-            <Icon d={playIcon} />
+            <Icon icon={PlayIcon} />
             {t('skills.try')}
           </Button>
           <Button variant="secondary" onClick={() => void exportPackage()}>
-            <Icon d={exportIcon} />
+            <Icon icon={DownloadIcon} />
             {t('skills.exportPackage')}
           </Button>
           {canEdit ? (

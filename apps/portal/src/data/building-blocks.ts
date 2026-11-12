@@ -224,6 +224,11 @@ export const defaultAuthFor = (type: RegistrationType): RegistrationAuth['kind']
 
 export const exampleSecretNames = ['arkiv-nokkel', 'saks-api'];
 
+export const exampleSecretHosts: Record<string, string[]> = {
+  'arkiv-nokkel': ['https://arkiv.testetaten.example.no'],
+  'saks-api': ['https://sak.testetaten.example.no'],
+};
+
 export const mcpContractTests = [
   'Oppsettet er gyldig',
   'Svarer på tools/list',

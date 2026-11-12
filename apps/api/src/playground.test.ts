@@ -15,6 +15,7 @@ import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
 import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
+import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
 
 const servers: FakeServer[] = [];
@@ -26,6 +27,7 @@ const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
 const tenant = '991825827';
 const modelId = 'foundry-openai/gpt-4o-2m-tps';
+const euModel = 'foundry-openai/gpt-6-luna';
 
 const people: Record<string, Principal> = {
   kari: {
@@ -122,9 +124,17 @@ const openPolicy = {
   reason: 'Alle modeller er tillatt i testene',
 };
 
-const boot = async ({ residencyRule = false } = {}) => {
+const boot = async ({
+  residencyRule = false,
+  taskIndex,
+}: { residencyRule?: boolean; taskIndex?: TaskIndex } = {}) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
+  const search = await fakeHttp((body) => ({
+    status: 200,
+    json: Array.isArray(body.searches)
+      ? { results: body.searches.map(() => ({ found: 0, hits: [] })) }
+      : {},
+  }));
   servers.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
@@ -144,6 +154,7 @@ const boot = async ({ residencyRule = false } = {}) => {
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     settings,
+    ...(taskIndex ? { taskIndex } : {}),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {
       const principal = people[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -221,6 +232,24 @@ describe('the playground', () => {
     });
   });
 
+  it('refuses a draft whose variant uses a not-allowed model, even when the service model is allowed', async () => {
+    const { run } = await boot({ residencyRule: true });
+    const draft = service('svar', 'Svar på bokmål.');
+    draft.spec.model.primary = 'local/echo';
+    const definition = {
+      ...draft,
+      spec: { ...draft.spec, variants: [{ id: 'default', model: modelId }] },
+    };
+
+    const refused = await run({
+      setup: { service: { id: 'svar', version: 'draft', definition }, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ policy: { block: modelId } });
+  });
+
   it('compare returns two results with their own cost', async () => {
     const { run } = await boot();
 
@@ -270,18 +299,21 @@ describe('the playground', () => {
     expect(await platform.definitions.list(tenant)).toEqual([]);
   });
 
-  it('playground runs are excluded from service statistics', async () => {
+  it('playground runs count as testing in usage, never as a service run', async () => {
     const { call, run } = await boot();
 
     const res = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
     const usage = (await call(`/tenants/${tenant}/usage`)).body as {
       totals: { inputTokens: number };
       byService: unknown[];
+      testing: { usage: { inputTokens: number }; byOrigin: { origin: string }[] };
     };
     const tasks = (await call(`/tenants/${tenant}/tasks`)).body as { data: unknown[] };
 
     expect(res.status).toBe(200);
-    expect(usage.totals.inputTokens).toBe(0);
+    expect(usage.totals.inputTokens).toBe(usage.testing.usage.inputTokens);
+    expect(usage.testing.usage.inputTokens).toBeGreaterThan(0);
+    expect(usage.testing.byOrigin.map((o) => o.origin)).toEqual(['playground']);
     expect(usage.byService).toEqual([]);
     expect(tasks.data).toEqual([]);
   });
@@ -304,6 +336,96 @@ describe('the playground', () => {
       text: 'Bokmålssvar.',
       compare: { text: 'Nynorsksvar.' },
     });
+  });
+
+  it('The portal playground runs a published service whose declared residency is global with an EU model and a global dataset', async () => {
+    const { platform, run } = await boot();
+    const published = service('kudos-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      {
+        ...published,
+        spec: {
+          ...published.spec,
+          strategy: { id: 'rag-single-shot', version: 1, config: { instructions: 'Svar kort.' } },
+          knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+        },
+      },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'kudos-svar', version: 1 }, model: euModel, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ text: 'Bokmålssvar.' });
+  });
+
+  it("tries the chosen model in place of the service's primary, its fallback and the roles that used the primary", async () => {
+    const { platform, run } = await boot({ residencyRule: true });
+    const published = service('med-reserve', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      {
+        ...published,
+        spec: {
+          ...published.spec,
+          model: {
+            primary: modelId,
+            fallback: modelId,
+            roles: { planner: modelId },
+            residency: 'global',
+          },
+        },
+      },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'med-reserve', version: 1 }, model: euModel, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a playground model that runs wider than the residency the service declares', async () => {
+    const { platform, run } = await boot();
+    const published = service('eu-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      { ...published, spec: { ...published.spec, model: { primary: euModel, residency: 'eu' } } },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'eu-svar', version: 1 }, model: modelId, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      errors: [{ message: expect.stringContaining('outside eu') }],
+    });
+  });
+
+  it('a service draft with broken YAML is refused with 422 naming the definition', async () => {
+    const { run } = await boot();
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 'draft', definition: 'kind: Service\nspec: [unclosed' },
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.errors).toEqual([
+      { path: 'setup.service.definition', message: expect.stringMatching(/line \d+/) },
+    ]);
   });
 
   it('the playground is refused when the setting turns it off', async () => {
@@ -349,6 +471,33 @@ describe('the playground', () => {
     ]);
   });
 
+  it('lists the variants of a version with their title and model, and none for a single variant', async () => {
+    const { platform, call } = await boot();
+    const plain = service('aaa-plain', 'Svar kort.');
+    const varied = service('bbb-varied', 'Svar kort.');
+    Object.assign(varied.spec, {
+      variants: [
+        'default',
+        { id: 'rask', title: { nb: 'Rask', en: 'Fast' }, model: modelId },
+        { id: 'kort', chat: false },
+      ],
+    });
+    await platform.definitions.publish(plain, 'test', 'første');
+    const published = await platform.definitions.publish(varied, 'test', 'første');
+    expect(published.ok ? [] : published.errors).toEqual([]);
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const versionsOf = (id: string) => options.services.find((s) => s.id === id)?.versions;
+
+    expect(versionsOf('bbb-varied')?.[0]?.variants).toEqual([
+      { id: 'default' },
+      { id: 'rask', title: 'Rask', model: modelId },
+      { id: 'kort' },
+    ]);
+    expect(versionsOf('aaa-plain')?.[0]).not.toHaveProperty('variants');
+  });
+
   it('gives each sample question in the language the caller reads, and keeps a plain question as written', async () => {
     const { platform, app } = await boot();
     const chat = service('zzz-chat', 'Svar kort.');
@@ -391,6 +540,7 @@ describe('the playground', () => {
             version: 2,
             draft: false,
             inUse: true,
+            environments: ['prod'],
             setup: expect.objectContaining({ model: modelId }),
           },
           {
@@ -407,6 +557,31 @@ describe('the playground', () => {
     ]);
     expect(options.blocks.every((b) => typeof b.name === 'string')).toBe(true);
     expect(options.quota).toEqual({ usedPercent: 0, monthlyTokens: 50_000_000 });
+  });
+
+  it('marks the version prod runs as in use and names the environments of each version', async () => {
+    const { platform, app, call } = await boot();
+    await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');
+    const added = await app.request(`/tenants/${tenant}/services/svar/environments`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer kari',
+        'change-reason': 'Prøver bokmål på testerne',
+      },
+      body: JSON.stringify({ name: 'test' }),
+    });
+    expect(added.status).toBe(201);
+    await platform.definitions.publish(service('svar', 'Svar på bokmål.'), 'test', 'andre');
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const versions = options.services.find((s) => s.id === 'svar')?.versions ?? [];
+
+    expect(versions.map((v) => [v.version, v.inUse, v.environments])).toEqual([
+      [2, false, ['test']],
+      [1, true, ['prod']],
+    ]);
   });
 
   it('an uploaded file is stored in the tenant blob store and read by the run', async () => {
@@ -467,6 +642,31 @@ describe('the playground', () => {
     expect(model.seen.length).toBe(before);
     expect(await blobs.list(tenant, 'playground/')).toEqual([]);
     expect(options.quota.usedPercent).toBeGreaterThanOrEqual(100);
+  });
+
+  it('options and runs read the monthly quota from one usage query, never task by task', async () => {
+    const sums: string[] = [];
+    const { call, run } = await boot({
+      taskIndex: {
+        all: async () => {
+          throw new Error('the playground must not read every task to find the quota');
+        },
+        running: async () => [],
+        tokensUsed: async (owner) => {
+          sums.push(owner);
+          return 25_000_000;
+        },
+      },
+    });
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const answer = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+
+    expect(options.quota).toEqual({ usedPercent: 50, monthlyTokens: 50_000_000 });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toMatchObject({ quota: { usedPercent: 50 } });
+    expect(sums).toEqual([tenant, tenant, tenant]);
   });
 
   it('a playground answer saved as a test case keeps the chosen test set and origin', async () => {

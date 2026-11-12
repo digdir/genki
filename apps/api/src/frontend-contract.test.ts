@@ -58,7 +58,7 @@ const boot = async () => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: model.url,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -449,6 +449,27 @@ describe('openapi.json for a frontend', () => {
     expect(Object.keys(spec.components.schemas.StoredMessage?.properties ?? {})).toEqual(
       expect.arrayContaining(['text', 'chunks', 'task', 'input']),
     );
+  });
+
+  it('describes the markers of a service that cites excerpts, and a source index as only the lowest of them', async () => {
+    const { request } = await boot();
+    const spec = (await (
+      await request('/openapi.json', undefined, undefined, { key: '' })
+    ).json()) as {
+      components: { schemas: Record<string, { properties: Record<string, unknown> }> };
+    };
+    const response = spec.components.schemas.ChatResponse?.properties ?? {};
+    const source = spec.components.schemas.Source?.properties ?? {};
+    const excerpt = (source.excerpts as { items?: { properties?: Record<string, unknown> } })?.items
+      ?.properties;
+
+    expect(response.markers).toMatchObject({
+      type: 'array',
+      items: { required: ['marker', 'chunk_id', 'document'] },
+    });
+    expect(source.markers).toMatchObject({ type: 'array', items: { type: 'string' } });
+    expect(excerpt?.markers).toMatchObject({ type: 'array', items: { type: 'string' } });
+    expect((source.index as { description?: string }).description).toContain('`markers`');
   });
 
   it('gives the rename route a body that names title, topic and tags', async () => {

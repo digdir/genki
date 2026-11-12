@@ -1,6 +1,6 @@
-import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import { secretRefPattern } from '@genai/kernel';
+import { secretRefPattern, withoutTrailingSlashes } from '@genai/kernel';
+import { currentApiId, type DescriptorRegistry } from '@genai/operations';
 import type { EmbeddingAdapter } from './adapter.js';
 import { residencies } from './port.js';
 
@@ -13,95 +13,134 @@ const auth = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('token-provider'), provider: id }),
 ]);
 
-const endpoint = z.strictObject({
-  protocol: id,
+const connection = z.object({
   baseURL: z.url({ protocol: /^https?$/ }),
   auth,
-  options: z.record(z.string(), z.unknown()).default({}),
+  families: z.record(z.string(), z.string()),
+  settings: z.record(z.string(), z.string()).optional(),
+  keys: z.record(z.string(), secret).optional(),
 });
 
-const model = z.strictObject({
+/** An embedding model in the model catalogue, as the embedding port reads it. */
+export const embeddingModel = z.object({
   id,
   endpoint: id,
   deployment: z.string().min(1),
   residency: z.enum(residencies),
-  dimensions: z.number().int().positive(),
-  maxBatch: z.number().int().positive().optional(),
+  tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
+  apis: z.object({ embed: z.string() }),
+  embed: z.strictObject({
+    dimensions: z.number().int().positive(),
+    maxBatch: z.number().int().positive().optional(),
+  }),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 
-export const embeddingCatalog = z.strictObject({
-  endpoints: z.record(id, endpoint),
-  models: z.array(model).default([]),
-});
+export type EmbeddingConnectionSpec = z.infer<typeof connection>;
 
-export type EmbeddingCatalog = z.infer<typeof embeddingCatalog>;
-export type CatalogEmbedder = EmbeddingCatalog['models'][number];
-export type CatalogEmbeddingEndpoint = EmbeddingCatalog['endpoints'][string];
+export interface CatalogEmbedder {
+  id: string;
+  endpoint: string;
+  deployment: string;
+  residency: (typeof residencies)[number];
+  dimensions: number;
+  maxBatch?: number;
+  tenants?: string[];
+  api: string;
+  family: string;
+  baseURL: string;
+  options: Record<string, unknown>;
+}
 
-export type EmbeddingCatalogResult =
-  | { ok: true; catalog: EmbeddingCatalog }
+export interface EmbedderCatalog {
+  connections: Record<string, EmbeddingConnectionSpec>;
+  embedders: CatalogEmbedder[];
+}
+
+export type EmbedderCatalogResult =
+  | { ok: true; catalog: EmbedderCatalog }
   | { ok: false; errors: { path: string; message: string }[] };
+
+const record = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const familyURL = (baseURL: string, base: string) =>
+  /^https?:\/\//.test(base)
+    ? withoutTrailingSlashes(base)
+    : withoutTrailingSlashes(`${withoutTrailingSlashes(baseURL)}${base}`);
 
 const pathOf = (base: (string | number)[], issue: { path: PropertyKey[] }) =>
   [...base, ...issue.path].map(String).join('.');
 
-export const parseEmbeddingCatalog = (
-  input: unknown,
-  adapters: EmbeddingAdapter[],
-): EmbeddingCatalogResult => {
-  const parsed = embeddingCatalog.safeParse(input);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      errors: parsed.error.issues.map((i) => ({ path: pathOf([], i), message: i.message })),
-    };
-  }
-  const catalog = parsed.data;
+/** The embedders of a model catalogue: its models that bind an API for `embed` (ADR 0048). */
+export const parseEmbedders = (
+  modelCatalog: unknown,
+  adapters: readonly EmbeddingAdapter[],
+  descriptors?: DescriptorRegistry,
+): EmbedderCatalogResult => {
+  const catalog = record(modelCatalog);
+  const endpoints = record(catalog.endpoints);
+  const models = Array.isArray(catalog.models) ? catalog.models : [];
   const errors: { path: string; message: string }[] = [];
-  const byProtocol = new Map(adapters.map((a) => [a.protocol, a]));
-
-  for (const [name, e] of Object.entries(catalog.endpoints)) {
-    const adapter = byProtocol.get(e.protocol);
-    if (!adapter) {
-      errors.push({ path: `endpoints.${name}.protocol`, message: `no adapter for ${e.protocol}` });
-      continue;
+  const connections: Record<string, EmbeddingConnectionSpec> = {};
+  const embedders: CatalogEmbedder[] = [];
+  models.forEach((raw, index) => {
+    if (typeof record(record(raw).apis).embed !== 'string') return;
+    const at = ['models', index];
+    const parsed = embeddingModel.safeParse(raw);
+    if (!parsed.success) {
+      for (const i of parsed.error.issues) errors.push({ path: pathOf(at, i), message: i.message });
+      return;
     }
-    const options = adapter.endpointOptions.safeParse(e.options);
-    if (!options.success) {
-      for (const i of options.error.issues)
-        errors.push({ path: pathOf(['endpoints', name, 'options'], i), message: i.message });
+    const m = parsed.data;
+    const api = currentApiId(m.apis.embed);
+    const adapter = adapters.find((a) => a.api.id === api);
+    const descriptor = adapter ? undefined : descriptors?.get(api);
+    const family = adapter?.api.family ?? descriptor?.api.family;
+    if (!adapter && (descriptor?.status !== 'typed' || descriptor.operation !== 'embed')) {
+      errors.push({
+        path: `models.${index}.apis.embed`,
+        message: `no built-in implementation or typed embed descriptor ${api}`,
+      });
+      return;
     }
-  }
-
-  catalog.models.forEach((m, index) => {
-    if (catalog.models.findIndex((other) => other.id === m.id) !== index)
-      errors.push({ path: `models.${index}.id`, message: `duplicate embedder ${m.id}` });
-    const e = catalog.endpoints[m.endpoint];
-    if (!e) {
+    const spec = connection.safeParse(endpoints[m.endpoint]);
+    if (!spec.success) {
       errors.push({ path: `models.${index}.endpoint`, message: `unknown endpoint ${m.endpoint}` });
       return;
     }
-    const options = byProtocol.get(e.protocol)?.modelOptions.safeParse(m.options);
+    const base = spec.data.families[family as string];
+    if (base === undefined) {
+      errors.push({
+        path: `models.${index}.apis.embed`,
+        message: `the connection does not offer the ${family} family ${api} needs`,
+      });
+      return;
+    }
+    const options = adapter?.modelOptions.safeParse(m.options);
     if (options && !options.success) {
       for (const i of options.error.issues)
-        errors.push({ path: pathOf(['models', index, 'options'], i), message: i.message });
+        errors.push({ path: pathOf([...at, 'options'], i), message: i.message });
+      return;
     }
+    connections[m.endpoint] = spec.data;
+    embedders.push({
+      id: m.id,
+      endpoint: m.endpoint,
+      deployment: m.deployment,
+      residency: m.residency,
+      dimensions: m.embed.dimensions,
+      ...(m.embed.maxBatch === undefined ? {} : { maxBatch: m.embed.maxBatch }),
+      ...(m.tenants ? { tenants: m.tenants } : {}),
+      api,
+      family: family as string,
+      baseURL: familyURL(spec.data.baseURL, base),
+      options: m.options,
+    });
   });
-
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, catalog };
-};
-
-export const parseEmbeddingCatalogYaml = (
-  text: string,
-  adapters: EmbeddingAdapter[],
-): EmbeddingCatalogResult => {
-  try {
-    return parseEmbeddingCatalog(parseYaml(text), adapters);
-  } catch (error) {
-    return {
-      ok: false,
-      errors: [{ path: '', message: `not valid YAML: ${(error as Error).message}` }],
-    };
-  }
+  return errors.length > 0
+    ? { ok: false, errors }
+    : { ok: true, catalog: { connections, embedders } };
 };

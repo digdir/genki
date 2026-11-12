@@ -1,5 +1,12 @@
+import { withModelAdmission } from '@genai/composition';
 import type { Evaluator } from '@genai/eval';
-import { envSecrets, secretRefPattern, type PortContext, type SecretResolver } from '@genai/kernel';
+import {
+  envSecrets,
+  secretRefPattern,
+  type Gate,
+  type PortContext,
+  type SecretResolver,
+} from '@genai/kernel';
 import {
   declaredHosts,
   declaredSecrets,
@@ -10,6 +17,7 @@ import {
   type PluginRegistration,
   type PluginRegistry,
 } from '@genai/plugins';
+import { familyOfProtocol } from '@genai/operations';
 import { KnowledgeRouter, type KnowledgeAdapter } from '@genai/port-knowledge';
 import {
   capabilities as modelCapabilities,
@@ -29,6 +37,7 @@ import {
   InMemoryConnections,
   McpToolSource,
   tenantSecretPattern,
+  toolSyncDeadlineMs,
   type EgressOptions,
 } from '@genai/providers-mcp-client';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
@@ -190,12 +199,20 @@ export interface ExternalTargetOptions {
   secrets: SecretResolver;
   egress?: EgressOptions;
   tenant: string;
+  gate: Gate;
 }
 
-const contextFor = (tenant: string, signal: AbortSignal): PortContext => ({
+const pluginVerificationSubject = 'plugin-verification';
+
+const contextFor = (tenant: string, plugin: string, signal: AbortSignal): PortContext => ({
   tenant,
-  principal: { kind: 'operator', issuer: 'platform', subject: 'contract-tests', tenant },
-  task: 'contract',
+  principal: withModelAdmission({
+    kind: 'agency-system',
+    issuer: 'platform',
+    subject: pluginVerificationSubject,
+    tenant,
+  }),
+  task: `${pluginVerificationSubject}:${plugin}`,
   signal,
   meter: async () => undefined,
 });
@@ -207,8 +224,20 @@ const catalogAuth = (endpoint: ExternalEndpoint) =>
       : { kind: 'api-key', secret: endpoint.auth.secret }
     : { kind: 'bearer', secret: 'secret://env/no-key' };
 
+const pluginChatApis: Readonly<Record<string, string>> = {
+  'openai-chat': 'openai/chat-completions@1',
+  'anthropic-messages': 'anthropic/messages@1',
+};
+
+const pluginChatApi = (protocol: string) => {
+  const id = pluginChatApis[protocol];
+  return id ? { id, family: familyOfProtocol(protocol) } : undefined;
+};
+
 export const externalProtocols = (options: ExternalTargetOptions) => ({
-  model: options.models.map((a) => a.protocol),
+  model: Object.keys(pluginChatApis).filter((p) =>
+    options.models.some((a) => a.apis.some((api) => api.id === pluginChatApis[p])),
+  ),
   rerank: options.rerank.map((a) => a.engine),
   knowledge: (options.knowledge ?? [])
     .filter((a) => a.engine === 'http-search' || a.engine === 'mcp')
@@ -266,9 +295,15 @@ export const externalTarget =
     const secrets: SecretResolver = endpoint.auth
       ? declaredSecrets(manifest, options.secrets)
       : envSecrets({ NO_KEY: 'none' });
+    const egress = new EgressGuard(options.egress ?? {}).fetch(
+      manifestAllow(manifest, endpoint.baseURL),
+    );
+    const gate: Gate = { ...options.gate, egress: () => egress };
+    const contextOf = (signal: AbortSignal) => contextFor(options.tenant, manifest.id, signal);
     if (manifest.kind === 'model') {
-      const adapter = options.models.find((a) => a.protocol === endpoint.protocol);
-      if (!adapter) return undefined;
+      const chat = pluginChatApi(endpoint.protocol);
+      const adapter = options.models.find((a) => a.apis.some((api) => api.id === chat?.id));
+      if (!adapter || !chat) return undefined;
       const declared = manifest.capabilities.filter((c): c is Capability =>
         (modelCapabilities as readonly string[]).includes(c),
       );
@@ -280,9 +315,9 @@ export const externalTarget =
               catalog: {
                 endpoints: {
                   external: {
-                    protocol: adapter.protocol,
                     baseURL: endpoint.baseURL,
                     auth: catalogAuth(endpoint),
+                    families: { [chat.family]: '' },
                   },
                 },
                 models: [
@@ -292,16 +327,18 @@ export const externalTarget =
                     deployment: endpoint.deployment ?? manifest.id,
                     residency: manifest.dataLocation ?? 'global',
                     capabilities,
+                    apis: { chat: chat.id },
                   },
                 ],
               },
               adapters: [adapter],
               secrets,
+              gate,
               maxRetries: 0,
               timeoutMs: 30_000,
             });
             const metered: ReturnType<ModelContractSubject['open']>['metered'] = [];
-            const ctx = contextFor(options.tenant, signal);
+            const ctx = contextOf(signal);
             ctx.meter = async (usage, model) => {
               metered.push({ usage, ...(model ? { model } : {}) });
             };
@@ -336,11 +373,9 @@ export const externalTarget =
               },
               adapters: [adapter],
               secrets,
+              gate,
               timeoutMs: 30_000,
-            }).open(
-              { kind: 'reranker', id: 'contract/reranker' },
-              contextFor(options.tenant, signal),
-            ),
+            }).open({ kind: 'reranker', id: 'contract/reranker' }, contextOf(signal)),
         } satisfies RerankContractSubject,
       });
     }
@@ -371,7 +406,7 @@ export const externalTarget =
           tools: [],
           pending: [],
         });
-        await source.sync(options.tenant, 'ekstern');
+        await source.sync(options.tenant, 'ekstern', AbortSignal.timeout(toolSyncDeadlineMs));
         const pinned = (await registry.get(options.tenant, 'ekstern'))?.tools ?? [];
         const name = endpoint.example
           ? `ekstern.${endpoint.example.tool}`
@@ -409,10 +444,7 @@ export const externalTarget =
         subject: {
           query: endpoint.query ?? 'test',
           open: (signal = new AbortController().signal) =>
-            router.open(
-              { kind: 'dataset', id: 'contract/search' },
-              contextFor(options.tenant, signal),
-            ),
+            router.open({ kind: 'dataset', id: 'contract/search' }, contextOf(signal)),
         } satisfies SearchEndpointSubject,
       });
     }
@@ -505,16 +537,17 @@ export const pluginCatalogEntries = (entries: ConfigEntry<unknown>[]): ConfigEnt
     if (endpointProblems(manifest, endpoint).length > 0) return [];
     const auth = catalogAuth(endpoint);
     const residency = manifest.dataLocation ?? 'global';
+    const chat = pluginChatApi(endpoint.protocol);
     if (manifest.kind === 'model')
       return [
         derivedEntry(entry, 'model-endpoint', manifest.id, {
-          protocol: endpoint.protocol,
           baseURL: endpoint.baseURL,
           auth,
-          ...(endpoint.options ? { options: endpoint.options } : {}),
+          families: { [chat?.family ?? familyOfProtocol(endpoint.protocol)]: '' },
         }),
         derivedEntry(entry, 'model', manifest.id, {
           endpoint: manifest.id,
+          ...(chat ? { apis: { chat: chat.id } } : {}),
           deployment: endpoint.deployment ?? manifest.id,
           residency,
           capabilities: manifest.capabilities.filter((c) =>

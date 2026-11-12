@@ -691,6 +691,38 @@ describe('tenant secrets and registration', () => {
     expect(secondToken.seen).toHaveLength(1);
   });
 
+  it('gives up after one new session when a server keeps answering 404', async () => {
+    let requests = 0;
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        requests += 1;
+        res.writeHead(404, { 'mcp-session-id': 'gone' });
+        res.end();
+      });
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as AddressInfo).port;
+    const registry = new InMemoryConnections();
+    await registry.save({
+      connection: {
+        id: 'borte',
+        tenant: TENANT,
+        name: 'Borte',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+      },
+      tools: [],
+      pending: [],
+    });
+    const source = new McpToolSource({ registry, secrets, guard: testGuard() });
+
+    await expect(source.sync(TENANT, 'borte', AbortSignal.timeout(5000))).rejects.toThrow();
+    expect(requests).toBeLessThan(10);
+  });
+
   it('turns remote tool names into valid tool references', () => {
     expect(toolSlug('Search Cases')).toBe('search-cases');
     expect(toolSlug('__get.case_v2')).toBe('get.case_v2');

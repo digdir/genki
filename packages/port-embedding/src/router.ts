@@ -1,29 +1,45 @@
-import type { Ref } from '@genai/contracts';
+import { pricedUsage, type Ref, type UnitPrices } from '@genai/contracts';
 import {
+  createGate,
   credentialFor,
+  embedShape,
+  type Credential,
+  type Gate,
+  type GatePayload,
+  type GateRefusal,
+  type GateTarget,
   type PortContext,
   type PortProvider,
   type SecretResolver,
   type TokenProviders,
 } from '@genai/kernel';
-import type { EmbeddingAdapter, EmbeddingConnection, EmbeddingModelConfig } from './adapter.js';
-import { parseEmbeddingCatalog, type CatalogEmbedder } from './catalog.js';
 import {
-  EmbeddingError,
-  residencyAllows,
-  type EmbeddingPort,
-  type EmbedResult,
-  type Residency,
-} from './port.js';
+  describedSend,
+  type DescribedEndpoint,
+  type Descriptor,
+  type DescriptorRegistry,
+} from '@genai/operations';
+import {
+  embeddingErrorFromStatus,
+  type EmbeddingAdapter,
+  type EmbeddingConnection,
+  type EmbeddingModelConfig,
+} from './adapter.js';
+import { parseEmbedders, type CatalogEmbedder } from './catalog.js';
+import { EmbeddingError, type EmbeddingPort, type EmbedResult, type Residency } from './port.js';
 
 export interface EmbeddingRouterOptions {
+  /** The model catalogue; its models that bind `embed` are the embedders. */
   catalog: unknown;
   adapters: EmbeddingAdapter[];
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  priceOf?: (id: string) => UnitPrices | undefined;
   maxResidency?: Residency;
   maxRetries?: number;
   timeoutMs?: number;
+  gate?: Gate;
+  descriptors?: DescriptorRegistry;
 }
 
 export interface EmbeddingOpenOptions {
@@ -42,8 +58,20 @@ export interface EmbedderDescription {
 interface Route {
   model: CatalogEmbedder;
   config: EmbeddingModelConfig;
-  connection: EmbeddingConnection;
+  connection?: EmbeddingConnection;
+  described?: { descriptor: Descriptor; endpoint: DescribedEndpoint };
 }
+
+const refusalCodes: Record<GateRefusal, EmbeddingError['code']> = {
+  admission: 'unauthorized',
+  disabled: 'bad_request',
+  'not-shared': 'bad_request',
+  residency: 'residency',
+  maturity: 'bad_request',
+  processor: 'bad_request',
+  media: 'bad_request',
+  shape: 'bad_request',
+};
 
 const batches = <T>(items: T[], size: number | undefined): T[][] => {
   if (!size || items.length <= size) return [items];
@@ -54,51 +82,98 @@ const batches = <T>(items: T[], size: number | undefined): T[][] => {
 
 export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
   readonly #routes = new Map<string, Route>();
+  readonly #gate: Gate;
 
   constructor(private readonly options: EmbeddingRouterOptions) {
+    this.#gate = options.gate ?? createGate();
     this.reload(options.catalog);
   }
 
+  /** What keeps the embedders of a model catalogue from running. */
+  problems(catalog: unknown): { path: string; message: string }[] {
+    const result = parseEmbedders(catalog, this.options.adapters, this.options.descriptors);
+    return result.ok ? [] : result.errors;
+  }
+
   reload(catalog: unknown) {
-    const result = parseEmbeddingCatalog(catalog, this.options.adapters);
+    const options = this.options;
+    const result = parseEmbedders(catalog, options.adapters, options.descriptors);
     if (!result.ok) {
       throw new Error(
-        `invalid embedding catalog: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
+        `invalid embedding models: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
       );
     }
-    const options = this.options;
-    const adapters = new Map(options.adapters.map((a) => [a.protocol, a]));
-    const connections = new Map<string, EmbeddingConnection>();
-    for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
-      const adapter = adapters.get(endpoint.protocol) as EmbeddingAdapter;
-      connections.set(
+    const credentials = new Map<string, Credential>();
+    const extras = new Map<string, Pick<DescribedEndpoint, 'settings' | 'keys'>>();
+    for (const [name, spec] of Object.entries(result.catalog.connections)) {
+      credentials.set(
         name,
-        adapter.connect({
-          baseURL: endpoint.baseURL,
-          credential: credentialFor(
-            endpoint.auth,
-            options.secrets,
-            options.tokenProviders,
-            endpoint.baseURL,
-          ),
-          options: adapter.endpointOptions.parse(endpoint.options),
-          maxRetries: options.maxRetries ?? 3,
-          timeoutMs: options.timeoutMs ?? 60_000,
-        }),
+        credentialFor(spec.auth, options.secrets, options.tokenProviders, spec.baseURL),
       );
+      extras.set(name, {
+        ...(spec.settings ? { settings: spec.settings } : {}),
+        ...(spec.keys
+          ? {
+              keys: Object.fromEntries(
+                Object.entries(spec.keys).map(([key, ref]) => {
+                  const named = credentialFor(
+                    { kind: 'api-key', secret: ref },
+                    options.secrets,
+                    options.tokenProviders,
+                    spec.baseURL,
+                  );
+                  return [key, named.kind === 'api-key' ? named.key : named.token];
+                }),
+              ),
+            }
+          : {}),
+      });
     }
+    const timeoutMs = options.timeoutMs ?? 60_000;
+    const connections = new Map<string, EmbeddingConnection>();
     const routes = new Map<string, Route>();
-    for (const model of result.catalog.models) {
-      const endpoint = result.catalog.endpoints[model.endpoint];
-      const adapter = adapters.get(endpoint?.protocol ?? '') as EmbeddingAdapter;
+    for (const model of result.catalog.embedders) {
+      const credential = credentials.get(model.endpoint) as Credential;
+      const fetch = this.#gate.egress(model.endpoint);
+      const adapter = options.adapters.find((a) => a.api.id === model.api);
+      const key = `${model.endpoint}\u0000${model.api}`;
+      if (adapter && !connections.has(key))
+        connections.set(
+          key,
+          adapter.connect({
+            baseURL: model.baseURL,
+            credential,
+            maxRetries: options.maxRetries ?? 3,
+            timeoutMs,
+            fetch,
+          }),
+        );
+      const descriptor = adapter ? undefined : options.descriptors?.get(model.api);
       routes.set(model.id, {
         model,
         config: {
           deployment: model.deployment,
           dimensions: model.dimensions,
-          options: adapter.modelOptions.parse(model.options),
+          options: adapter ? adapter.modelOptions.parse(model.options) : {},
         },
-        connection: connections.get(model.endpoint) as EmbeddingConnection,
+        ...(adapter ? { connection: connections.get(key) as EmbeddingConnection } : {}),
+        ...(descriptor
+          ? {
+              described: {
+                descriptor,
+                endpoint: {
+                  baseURL: model.baseURL,
+                  credential,
+                  fetch,
+                  timeoutMs,
+                  ...(options.descriptors?.module
+                    ? { modules: (sha: string) => options.descriptors?.module?.(sha) }
+                    : {}),
+                  ...extras.get(model.endpoint),
+                },
+              },
+            }
+          : {}),
       });
     }
     this.#routes.clear();
@@ -121,17 +196,45 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
   open(ref: Ref, ctx: PortContext, request: EmbeddingOpenOptions = {}): EmbeddingPort {
     const route = this.#routes.get(ref.id);
     if (!route) throw new EmbeddingError('bad_request', `no embedder ${ref.id} in the catalog`);
-    const { model, config, connection } = route;
-    for (const max of [this.options.maxResidency, request.maxResidency]) {
-      if (max && !residencyAllows(max, model.residency))
-        throw new EmbeddingError('residency', `embedder ${model.id} runs outside ${max}`);
-    }
+    const { model, config, connection, described } = route;
     const embedderRef: Ref = { kind: 'embedder', id: model.id };
+    const target: GateTarget = {
+      port: 'embedding',
+      operation: 'embed',
+      model: embedderRef,
+      endpoint: model.endpoint,
+      residency: model.residency,
+      admission: 'open',
+      ...(model.tenants ? { tenants: model.tenants } : {}),
+      tenant: ref.tenant ?? ctx.tenant,
+      ...(this.options.maxResidency ? { routerResidency: this.options.maxResidency } : {}),
+      ...(request.maxResidency ? { requestResidency: request.maxResidency } : {}),
+      refuse: (refusal, message) => new EmbeddingError(refusalCodes[refusal], message),
+    };
+    const payload: GatePayload<EmbedResult> = {
+      shape: embedShape,
+      usage: (result) =>
+        pricedUsage(
+          { inputTokens: result.usage.inputTokens, requests: 1 },
+          this.options.priceOf?.(model.id),
+        ),
+    };
 
-    const call = async (texts: string[]): Promise<EmbedResult> => {
+    const send = async (texts: string[], dropped: (n: number) => void): Promise<EmbedResult> => {
       let result: EmbedResult;
       try {
-        result = await connection.embed(config, texts, ctx.signal);
+        if (described) {
+          const answer = await describedSend<EmbedResult>(
+            described.descriptor,
+            described.endpoint,
+            config.deployment,
+            texts,
+            { signal: ctx.signal, fail: embeddingErrorFromStatus },
+          );
+          dropped(answer.dropped);
+          result = answer.result;
+        } else if (connection) result = await connection.embed(config, texts, ctx.signal);
+        else throw new EmbeddingError('unavailable', `${model.api} has no implementation`);
       } catch (error) {
         if (error instanceof EmbeddingError) throw error;
         if (ctx.signal.aborted) throw new EmbeddingError('cancelled', 'the request was cancelled');
@@ -151,8 +254,16 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           'invalid_response',
           `embedder ${model.id} returned a vector of ${result.vectors[wrong]?.length} dimensions, expected ${model.dimensions}`,
         );
-      await ctx.meter({ inputTokens: result.usage.inputTokens, requests: 1 }, embedderRef);
       return result;
+    };
+    const call = (texts: string[]) => {
+      let dropped = 0;
+      const gated = described ? { ...target, descriptor: described.descriptor.id } : target;
+      return this.#gate.call(ctx, gated, { ...payload, dropped: () => dropped }, texts, (sent) =>
+        send(sent, (n) => {
+          dropped = n;
+        }),
+      );
     };
 
     return {

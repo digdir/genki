@@ -384,6 +384,11 @@ export const blockPath = (block: Pick<CatalogItem, 'kind' | 'id'>, rest = '') =>
 export const blockHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
   `#/building-blocks${blockPath(block)}`;
 
+export const flowEditorHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
+  block.kind === 'step_flow' && !block.id.includes('@')
+    ? `#/step-flows/${encodeURIComponent(block.id)}`
+    : undefined;
+
 export const changeOf = (result: BlockChangeResult): LoggedChange | undefined =>
   result.block.changedBy;
 
@@ -449,7 +454,7 @@ export const buildingBlocksApi = (ctx: ApiContext) => {
     contractTest: (tenant: string, input: RegistrationInput) =>
       ctx.request<ContractTestReport>('POST', at(tenant, '/contract-tests'), input),
     manifestPreview: (tenant: string, input: RegistrationInput) =>
-      ctx.request<ManifestPreview>('POST', at(tenant, '/manifest-preview'), input),
+      (ctx.query ?? ctx.request)<ManifestPreview>('POST', at(tenant, '/manifest-preview'), input),
     register: (tenant: string, input: RegistrationInput, reason: string) =>
       ctx.request<RegistrationResult>('POST', at(tenant), input, reasonHeader(reason)),
     proposalsPath: proposalsAt,

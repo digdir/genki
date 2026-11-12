@@ -10,6 +10,8 @@ import {
   excerptOf,
   splitMessages,
   AnswerTracker,
+  bodyLimits,
+  documentLimits,
   type CapabilityResolver,
   type OpenAiAdapterOptions,
   type ModelEntry,
@@ -1025,7 +1027,7 @@ describe('AI marking and version pinning', () => {
     expect(tool.status).toBe(503);
   });
 
-  it('documents the marking, the version header and the platform name in the OpenAPI', async () => {
+  it('documents the marking, the version and environment headers and the platform name in the OpenAPI', async () => {
     const { app } = setup();
     const spec = (await (
       await app.request('/api/tools/openapi.json', { headers: { 'x-api-key': 'good' } })
@@ -1046,7 +1048,7 @@ describe('AI marking and version pinning', () => {
     ).json()) as { info: { title: string; description: string } };
     expect(english.info.title).toBe('Generative AI platform for the public sector');
     expect(english.info.description).toMatch(/^Generative AI services for the public sector\./);
-    expect(operation.parameters.map((p) => p.name)).toEqual(['GenAI-Version']);
+    expect(operation.parameters.map((p) => p.name)).toEqual(['GenAI-Version', 'GenAI-Environment']);
     expect(Object.keys(operation.responses['200']?.headers ?? {})).toEqual(
       expect.arrayContaining(['genai-generated-by', 'genai-model', 'genai-service-version']),
     );
@@ -1121,6 +1123,12 @@ describe('sources people can open', () => {
     ]);
 
     expect(bundle.sources[0]).toMatchObject({ version: '3', published_at: '2025-01-15' });
+  });
+
+  it('leaves published_at out for a source without a publish date', () => {
+    const bundle = citationBundle([{ chunkId: 'c1', text: 'Tekst', url: 'https://x.no/a' }]);
+
+    expect(bundle.sources[0]).not.toHaveProperty('published_at');
   });
 });
 
@@ -1206,5 +1214,42 @@ describe('table results', () => {
         published_at: '2025',
       },
     ]);
+  });
+});
+
+const streamOf = (bytes: number) =>
+  new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let sent = 0; sent < bytes; sent += 64 * 1024)
+        controller.enqueue(new Uint8Array(Math.min(64 * 1024, bytes - sent)).fill(32));
+      controller.close();
+    },
+  });
+
+describe('request body limits', () => {
+  it('answers 413 when a chat body streams in past the limit', async () => {
+    const { app } = setup();
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: 'Bearer good', 'content-type': 'application/json' },
+      body: streamOf(bodyLimits.chat + 1),
+      duplex: 'half',
+    } as RequestInit);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: { code: 'request_too_large' } });
+  });
+
+  it('answers 413 when a tool call body is over the limit', async () => {
+    const { post } = setup();
+    const res = await post('/api/tools/call/kunnskapsassistenten__default', {
+      query: 'x'.repeat(bodyLimits.tools),
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ status: 413, code: 'request_too_large' });
+  });
+
+  it('leaves room for the largest set of documents a chat request may carry', () => {
+    const encoded = Math.ceil((documentLimits.maxBytes * documentLimits.maxCount * 4) / 3);
+    expect(bodyLimits.chat).toBeGreaterThan(encoded);
   });
 });

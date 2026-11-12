@@ -33,9 +33,19 @@ import {
   type TaskIndex,
   type TenantDirectoryStore,
 } from './extensions.js';
-import { InMemoryExecutionStore, type Execution, type ExecutionStore } from './ingestion.js';
+import {
+  InMemoryExecutionStore,
+  staleRunMessage,
+  type Execution,
+  type ExecutionStore,
+} from './ingestion.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
-import { InMemoryTenantApiKeys, registerPortalRoutes } from './routes/portal-routes.js';
+import {
+  InMemoryTenantApiKeys,
+  registerPortalRoutes,
+  type TenantApiKeys,
+} from './routes/portal-routes.js';
+import { postgresTenantKeys } from './tenant-keys.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 
 interface Stores {
@@ -45,6 +55,7 @@ interface Stores {
   taskIndex: TaskIndex;
   log: EventLog;
   configEntries: ConfigEntryStore;
+  apiKeys: TenantApiKeys;
 }
 
 interface Backend {
@@ -65,6 +76,7 @@ const memory = (): Backend => {
     taskIndex: tracker,
     log: tracker.log,
     configEntries: new InMemoryConfigEntryStore(),
+    apiKeys: new InMemoryTenantApiKeys(),
   };
   return { name: 'memory', stores: () => stores, reopen: async () => stores };
 };
@@ -85,9 +97,10 @@ const openPostgres = async (): Promise<Stores> => {
     directory: postgresTenantDirectory(db.tenants),
     executions: db.ingestionExecutions,
     tasks: db.tasks,
-    taskIndex: postgresTaskIndex(db.tasks),
+    taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
     log: db.log,
     configEntries: db.configEntries,
+    apiKeys: postgresTenantKeys(db.apiKeys),
   };
 };
 
@@ -162,7 +175,7 @@ const record = async (stores: Stores, t: Task) => {
 
 const operator: Principal = { kind: 'operator', issuer: 'test', subject: 'ola' };
 
-const portal = (stores: Stores) => {
+const portal = (stores: Stores, tenant = ORG_A) => {
   const app = new Hono();
   registerPortalRoutes(app, {
     admin: {} as Admin,
@@ -170,7 +183,7 @@ const portal = (stores: Stores) => {
       kind: 'employee',
       issuer: 'test',
       subject: 'kari',
-      tenant: ORG_A,
+      tenant,
     }),
     definitions: {
       capabilities: async () => [],
@@ -178,7 +191,10 @@ const portal = (stores: Stores) => {
     } as unknown as DefinitionStore,
     tasks: (tenant) => stores.taskIndex.all(tenant),
     task: async (id) => (await stores.tasks.get(id))?.task,
-    apiKeys: new InMemoryTenantApiKeys(),
+    events: (id) => stores.log.read(id, 0, () => false),
+    ...(stores.taskIndex.envelopes ? { taskEnvelopes: stores.taskIndex.envelopes } : {}),
+    ...(stores.taskIndex.usageEvents ? { usageEvents: stores.taskIndex.usageEvents } : {}),
+    apiKeys: stores.apiKeys,
     connections: new InMemoryConnections(),
     requirementFor: () => ({ resource: 'urn:altinn:resource:test', action: 'read' }),
   });
@@ -190,13 +206,14 @@ const people: Record<string, Principal> = {
   operator,
 };
 
-const platformOn = async (configEntries: ConfigEntryStore) => {
+const platformOn = async (configEntries: ConfigEntryStore, executions?: ExecutionStore) => {
   const platform = await createPlatform({
+    ...(executions ? { ingestionExecutions: executions } : {}),
     catalogs: {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: 'http://127.0.0.1:9/v1',
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -303,6 +320,93 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     ]);
   });
 
+  it('a run another instance is still working on is not marked failed when an instance starts', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const working = execution(`${name}-working`, new Date(now - 7 * 3_600_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    await executions.save(working);
+    await executions.beat(working, new Date(now - 10_000).toISOString());
+
+    const reopened = await backend().reopen();
+    await platformOn(reopened.configEntries, reopened.executions);
+
+    expect((await reopened.executions.get(working.id))?.status).toBe('running');
+  });
+
+  it('a run whose instance stopped is marked failed once its heartbeat is two minutes old', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const startedAt = new Date(now - 3_600_000).toISOString();
+    const stopped = execution(`${name}-stopped`, startedAt, { pipeline: 'restart' });
+    const beating = execution(`${name}-beating`, startedAt, { pipeline: 'restart' });
+    await executions.save(stopped);
+    await executions.save(beating);
+    await executions.beat(stopped, new Date(now - 121_000).toISOString());
+    await executions.beat(beating, new Date(now - 110_000).toISOString());
+
+    await platformOn(backend().stores().configEntries, executions);
+
+    expect(await executions.get(stopped.id)).toMatchObject({
+      status: 'failed',
+      endedAt: expect.any(String),
+      error: staleRunMessage,
+    });
+    expect((await executions.get(beating.id))?.status).toBe('running');
+  });
+
+  it('a run without a heartbeat is marked failed two minutes after it started', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const old = execution(`${name}-unbeaten`, new Date(now - 121_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    const young = execution(`${name}-young`, new Date(now - 110_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    await executions.save(old);
+    await executions.save(young);
+
+    await platformOn(backend().stores().configEntries, executions);
+
+    expect(await executions.get(old.id)).toMatchObject({
+      status: 'failed',
+      error: staleRunMessage,
+    });
+    expect((await executions.get(young.id))?.status).toBe('running');
+  });
+
+  it('a heartbeat after a run has ended leaves its end state alone', async () => {
+    const { executions } = backend().stores();
+    const run = execution(`${name}-ended`, '2026-10-07T08:00:00.000Z', { pipeline: 'restart' });
+    await executions.save(run);
+    await executions.save({ ...run, status: 'succeeded', endedAt: '2026-10-07T08:05:00.000Z' });
+
+    await executions.beat(run, '2026-10-07T08:05:01.000Z');
+
+    expect(await executions.get(run.id)).toMatchObject({
+      status: 'succeeded',
+      endedAt: '2026-10-07T08:05:00.000Z',
+    });
+  });
+
+  it('does not mark a run this process holds as stale', async () => {
+    const { executions } = backend().stores();
+    const held = execution(`${name}-held`, '2026-10-06T01:00:00.000Z', { pipeline: 'restart' });
+    await executions.save(held);
+
+    const changed = await executions.failStale({
+      heartbeatBefore: '2026-10-06T02:00:00.000Z',
+      except: [held.id],
+      endedAt: '2026-10-07T08:00:00.000Z',
+      error: staleRunMessage,
+    });
+
+    expect(changed).toBe(0);
+    expect((await executions.get(held.id))?.status).toBe('running');
+  });
+
   it("shows a tenant's runs in the portal after a restart", async () => {
     const stores = backend().stores();
     await record(stores, task(`${name}-a1`, ORG_A, '2026-10-07T08:00:00.000Z'));
@@ -313,6 +417,79 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
 
     expect(response.status).toBe(200);
     expect(body.data.map((t) => [t.id, t.status])).toEqual([[`${name}-a1`, 'completed']]);
+  });
+
+  const storeKey = async (id: string, digest: string, createdBy?: string) =>
+    backend()
+      .stores()
+      .apiKeys.add({
+        id: `${name}-${id}`,
+        name: id,
+        digest: digest.repeat(64),
+        tenant: ORG_A,
+        scopes: ['query'],
+        datasets: [],
+        agents: [],
+        service: 'klarsprak',
+        prefix: 'gp_abcd',
+        lastFour: 'wxyz',
+        createdAt: '2026-11-03T10:00:00.000Z',
+        ...(createdBy ? { createdBy } : {}),
+      });
+  const listedKey = async (id: string) => {
+    const response = await portal(backend().stores()).request(`/tenants/${ORG_A}/access`);
+    const body = (await response.json()) as { keys: Record<string, unknown>[] };
+    return body.keys.find((k) => k.id === `${name}-${id}`);
+  };
+
+  it("a key's list entry says when it was created", async () => {
+    await storeKey('when', name === 'memory' ? '1' : '2');
+
+    expect(await listedKey('when')).toMatchObject({ createdAt: '2026-11-03T10:00:00.000Z' });
+  });
+
+  it("a key's list entry shows the start and end of the key", async () => {
+    await storeKey('ends', name === 'memory' ? '7' : '8');
+
+    expect(await listedKey('ends')).toMatchObject({ prefix: 'gp_abcd', lastFour: 'wxyz' });
+  });
+
+  it("a key's list entry says who created it, and nobody for a key stored without it", async () => {
+    await storeKey('who', name === 'memory' ? '3' : '4', 'employee:test:kari');
+    await storeKey('old', name === 'memory' ? '5' : '6');
+
+    expect(await listedKey('who')).toMatchObject({ createdBy: 'employee:test:kari' });
+    expect(await listedKey('old')).toMatchObject({ createdBy: null });
+  });
+
+  it("adds up a tenant's usage per model the same way after a restart", async () => {
+    const stores = backend().stores();
+    const org = name === 'memory' ? '310000011' : '310000012';
+    const run = task(`${name}-u1`, org, new Date(Date.now() - 86_400_000).toISOString());
+    await record(stores, run);
+    await stores.log.append(
+      {
+        type: 'kernel.usage',
+        v: 1,
+        task: run.id,
+        ts: run.createdAt,
+        data: { usage: { inputTokens: 70, outputTokens: 5 }, model: { kind: 'model', id: 'm' } },
+        actor: 'kernel',
+      },
+      { tenant: org, key: `task:${run.id}` },
+    );
+
+    const response = await portal(await backend().reopen(), org).request(
+      `/tenants/${org}/usage?days=366`,
+    );
+    const body = (await response.json()) as {
+      totals: { runs: number; inputTokens: number };
+      byModel: { model: string }[];
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.totals).toMatchObject({ runs: 1, inputTokens: 70 });
+    expect(body.byModel.map((m) => m.model)).toEqual(['m']);
   });
 
   it('keeps a building-block adoption across a restart', async () => {
@@ -453,5 +630,25 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     expect(await reopened.latest({ kind, scope: ORG_A })).toEqual([
       { ...entry(kind, ORG_A, id, second, 'Andre versjon'), version: 2 },
     ]);
+  });
+});
+
+describe('the postgres task index and the monthly quota', () => {
+  it('sums the tokens of this month in the store and leaves builder assistant turns out, as the quota does', async () => {
+    const stores = await postgresBackend.reopen();
+    const quotaOrg = '444555777';
+    const assistant: Task = {
+      ...task('quota-assistant', quotaOrg, '2026-10-10T08:00:00.000Z'),
+      service: {
+        capability: { id: 'platform/draft/assistant/0f3a9c2e7b1d4e65', version: '1' },
+        strategy: { id: 'builder-assistant', version: '1' },
+        configHash: 'h',
+      },
+    };
+    await record(stores, task('quota-now', quotaOrg, '2026-10-09T08:00:00.000Z'));
+    await record(stores, task('quota-before', quotaOrg, '2026-09-29T08:00:00.000Z'));
+    await record(stores, assistant);
+
+    expect(await stores.taskIndex.tokensUsed?.(quotaOrg, '2026-10-01T00:00:00.000Z')).toBe(120);
   });
 });

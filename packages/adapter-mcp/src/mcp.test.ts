@@ -461,6 +461,25 @@ describe('transport', () => {
       error: { code: -32601, message: 'Method not found', data: { method: 'ping' } },
     });
   });
+  it('answers 413 when a body streams in past the size limit', async () => {
+    const chunk = new Uint8Array(1024).fill(32);
+    const res = typed(
+      await setup({ maxBodyBytes: 4096 }).app.request('/api/mcp', {
+        method: 'POST',
+        headers: { 'x-api-key': 'good' },
+        body: new ReadableStream({
+          start(controller) {
+            for (let i = 0; i < 5; i += 1) controller.enqueue(chunk);
+            controller.close();
+          },
+        }),
+        duplex: 'half',
+      } as RequestInit),
+    );
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).error.code).toBe(-32700);
+  });
 });
 
 describe('discovery', () => {
@@ -957,6 +976,18 @@ describe('retrieval details in structuredContent', () => {
 
     expect(text).toBe('Klar tekst.');
     expect(structuredContent(structured, 'c1')).toEqual({ conversation_id: 'c1', fields });
+  });
+
+  it('gives a chunk published_at only when its source has a publish date', () => {
+    const sources = [{ chunkId: 'c1', publishedAt: '2025-01-15' }, { chunkId: 'c2' }];
+    const { structured } = defaultOutput([
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources } } },
+    ]);
+
+    expect(structuredContent(structured, 'c1').chunks).toEqual([
+      { chunk_id: 'c1', published_at: '2025-01-15' },
+      { chunk_id: 'c2' },
+    ]);
   });
 
   it('keeps filters the strategy already reported in its sources part', () => {

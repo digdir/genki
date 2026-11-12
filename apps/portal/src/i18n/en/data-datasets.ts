@@ -25,6 +25,7 @@ const datasets = {
   sourceUnknown: 'Unknown source',
   sourceFolder: 'Folder on the server',
   sourceDatabase: 'Database',
+  sourceParquet: 'Parquet',
   sourceNone: 'No source yet',
   sourceSharedWithYou: '{source}, shared with you',
   sharedBy: 'Shared by {owner}',
@@ -81,9 +82,9 @@ const datasets = {
   residencyGlobalLabel: 'Globally, including outside the EU/EEA',
   residencyUnknown: 'Not specified',
   usableNorway:
-    'The dataset can be used by all services, including those that require data to stay in Norway.',
+    'The dataset can be used by all services, including those that only allow processing in Norway.',
   usableEu:
-    'The dataset can be used by services that allow processing in the EU/EEA or globally, but not by services that require data to stay in Norway.',
+    'The dataset can be used by services that allow processing in the EU/EEA or globally, but not by services that only allow processing in Norway.',
   usableGlobal: 'The dataset can therefore only be used by services that allow global processing.',
   usableUnknown:
     'Where the dataset is processed is not specified. It can therefore only be used by services that allow global processing.',
@@ -221,6 +222,24 @@ const datasets = {
   sharedIngestions:
     'The dataset is shared with you. The ingestions are controlled by the organisation that owns it.',
   sharedWithYou: 'The dataset is shared with you. You can search it, but not change the source.',
+  deleteTitle: 'Delete the dataset',
+  deleteIntro:
+    'Deleting removes the dataset from the catalogue with its sources, the uploaded files and the content in the search engine. The ingestion history and the audit log are kept.',
+  deleteBlocked:
+    'The dataset cannot be deleted while services use it. Remove it from the services first.',
+  deleteDataset: 'Delete dataset',
+  deleteConfirmText: 'Delete "{name}"? This cannot be undone.',
+  deleteConfirm: 'Delete',
+  deleteFailed: 'The dataset was not deleted. {problem}',
+  deletedTitle: '{name} is deleted',
+  deletedRemoved:
+    'The catalogue entry, {pipelines} sources, {uploads} uploaded files and {generations} generations in the search engine are removed.',
+  deletedKeptRecords:
+    'The documents and partitions on the knowledge server stay until the drop job is built (issue 250). The name cannot be used again before then.',
+  deletedKeptGenerations:
+    'The search engine refused to remove {count} generations: {list}. Tell the platform team.',
+  deletedNothingKept: 'Nothing was left in the search engine.',
+  readerAdoption: 'Building block at {tenant}',
   filesUploaded: 'The files are uploaded. Press "Ingest now" to make them searchable.',
   stepChooseSource: 'Choose source',
   stepSetUp: 'Set up {source}',
@@ -237,7 +256,7 @@ const datasets = {
   liveChoiceUploadDesc: 'Documents you have yourself: PDF, Word, text, Markdown or HTML.',
   choiceUploadExample: 'For example consultation responses or internal guides.',
   integrationsHint:
-    'Publishing systems, archives and other line-of-business systems are connected under <link>Integrations</link>. They then appear here as sources.',
+    'Publishing systems, archives and other line-of-business systems are connected under <link>Systems in developer tools</link>. They then appear here as sources.',
   nameOfDataset: 'Name of the dataset',
   reportsFrom: 'Reports from',
   allOrgs: 'All organisations',
@@ -465,6 +484,11 @@ export const searchEngine = {
   swFirstNow: 'First match now:',
   swFirstWith: 'First match with {engine}:',
   swNotFound: 'Not found among the first 5',
+  swFailedDocuments:
+    '{count} documents could not be read in. They are read in again before the switch is adopted.',
+  swRefreshing:
+    'Reading in what changed in the source since the transfer. Then {engine} is adopted.',
+  swRefreshFailed: 'The ingestion before the switch stopped: {message}. Try adopting it again.',
   swAdoptHeading: 'Adopt {engine}',
   swRetained:
     '{engine} is kept for {days} days <undecided/>, so you can go back without ingesting again.',

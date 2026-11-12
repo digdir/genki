@@ -1,11 +1,14 @@
 import { secretRefPattern, type Credential } from '@genai/kernel';
 import { z } from 'zod';
 import type {
+  CitationResolution,
   DocumentPage,
   DocumentsRequest,
+  ExportedDocument,
   FacetValue,
   FieldFilter,
   FilterValue,
+  FilterValueType,
   Hit,
   KnowledgeCapability,
   Residency,
@@ -38,6 +41,11 @@ export interface DatasetConfig<O = unknown> {
   filters: Record<string, FieldFilter>;
   options: O;
   embedding?: DatasetEmbedding;
+  valueTypes?: Record<string, FilterValueType>;
+  /** The generation the catalog names as active, for engines that keep generations by name. */
+  generation?: string;
+  /** The datasets the router allowed this read, set by the router only after its tenant and residency checks. */
+  allowed?: string[];
 }
 
 export interface DatasetDraft {
@@ -72,6 +80,11 @@ export interface KnowledgeConnection<D = unknown> {
     request: DocumentsRequest,
     signal: AbortSignal,
   ): Promise<DocumentPage>;
+  resolveCitations?(
+    dataset: DatasetConfig<D>,
+    ids: string[],
+    signal: AbortSignal,
+  ): Promise<CitationResolution[]>;
   export?: KnowledgeExport<D>;
   served?(dataset: DatasetConfig<D>, signal: AbortSignal): Promise<ServedIndex>;
 }
@@ -79,12 +92,20 @@ export interface KnowledgeConnection<D = unknown> {
 export interface ServedIndex {
   generation?: string;
   collections?: string[];
+  /** The generation's data version on the server that answered the last read made with this same dataset config. */
+  dataVersion?: number;
 }
 
 export interface KnowledgeExport<D = unknown> {
   vectors: boolean;
   documents(dataset: DatasetConfig<D>, signal: AbortSignal): AsyncIterable<IndexDocument>;
   count(dataset: DatasetConfig<D>, cap: number, signal: AbortSignal): Promise<number>;
+  list?(dataset: DatasetConfig<D>, signal: AbortSignal): AsyncIterable<ExportedDocument>;
+  document?(
+    dataset: DatasetConfig<D>,
+    id: string,
+    signal: AbortSignal,
+  ): Promise<IndexDocument | undefined>;
 }
 
 export interface KnowledgeAdapter<E = unknown, D = unknown> {

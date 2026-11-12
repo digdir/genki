@@ -63,6 +63,8 @@ export const playgroundUi = {
     modelSilentWithin:
       '{model} did not respond within 60 seconds. There is nothing wrong with the setup. Try again in a moment. {notStored}',
     refused: '{model} cannot be used in this setup.',
+    invalidSetup: 'The run was refused: {reason} {notStored}',
+    setupNotRunnable: 'something in the “{section}” part does not fit this setup.',
     quotaUsedUp: 'The quota for the month is used up. {notStored}',
     setupLabel: 'Setup {key}',
     setupSessionNote: 'Changes here do not affect anything that is published.',
@@ -105,6 +107,7 @@ export const playgroundUi = {
       'Here you see searches, sources, model calls and tokens when you send a question.',
     sourceCite: 'Source {n}: {title}',
     detailChunk: 'Text chunk',
+    detailVersion: 'Version',
     detailHeaders: 'Headings',
     detailDocument: 'Document',
     detailPosition: 'Position',
@@ -122,7 +125,10 @@ export const playgroundUi = {
     sources: 'Sources',
     sourceDetails: 'Details about {title}',
     excerpt: 'Excerpt',
-    sourceVersion: 'version {version}',
+    sourceExcerpt: 'Excerpt from {title}',
+    sourceText: 'Text from {title}',
+    sourcePublished: 'Published {date}',
+    untitledSource: 'Untitled source',
     searchNote: 'Search note:',
     searchNoteText: {
       one: '{count} document was skipped in the search. See the run for which one and why.',
@@ -157,6 +163,8 @@ export const playgroundUi = {
     kindOwn: 'A setup of your own',
     service: 'Service',
     versionLabel: 'Version',
+    variantLabel: 'Variant',
+    variantDefault: 'Default',
     versionHelp:
       'Uses the model, datasets, skills and building blocks in {version}. You can change the model here without changing the service.',
     model: 'Model',
