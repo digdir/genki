@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-97639-p6-t01", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "9,84 %", "max_diffs": 0}, "left_heading": {"text": "Reaksjonsprosent", "max_diffs": 0}, "top_heading": {"text": "2018", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t02", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "21 682", "max_diffs": 0}, "left_heading": {"text": "Kontrollerte førere", "max_diffs": 0}, "top_heading": {"text": "2018", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "29 024", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "300,0 %", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "-55,8 %", "max_diffs": 0}, "left_heading": {"text": "Grove tyveri fra bolig", "max_diffs": 0}, "top_heading": {"text": "Endring 2018-2019", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "100,0 %", "max_diffs": 0}, "left_heading": {"text": "Ran", "max_diffs": 0}, "left": {"text": "10", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"before": {"text": "Drepte i trafikken", "max_diffs": 0}, "after": {"text": "Grovt tyveri fra person på offentlig sted", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t08", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "304", "max_diffs": 0}, "left_heading": {"text": "Familievold", "max_diffs": 0}, "top_heading": {"text": "2018", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t09", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "1,8 %", "max_diffs": 0}, "left_heading": {"text": "Voldssaker med særskilt saksbehandlingsfrist", "max_diffs": 0}, "top_heading": {"text": "Endring 2018-2019", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97639-p6-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"before": {"text": "Grovt tyveri fra person på offentlig sted", "max_diffs": 0}, "after": {"text": "Voldssaker med særskilt", "max_diffs": 0}}, "settings": {}}
+]}
