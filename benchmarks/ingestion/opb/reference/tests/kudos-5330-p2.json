@@ -1,0 +1,16 @@
+{"tests": [
+ {"id": "kudos-5330-p2-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Innhold", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5330-p2-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Regnskapsføring og økonomisystem", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5330-p2-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Rapportering til statsregnskapet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5330-p2-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Virksomhetens ledelse", "max_diffs": 0}, "after": {"text": "Oppdragsbrev", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5330-p2-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Kontroll og resultatoppfølging", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5330-p2-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Evalueringer", "max_diffs": 0}, "after": {"text": "Særskilte krav", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-5330-p2-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Forvaltning av tilskudd og lån", "max_diffs": 1}}, "settings": {}}
+]}

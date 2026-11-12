@@ -1,0 +1,189 @@
+{
+ "tests": [
+  {
+   "id": "kudos-8562-p3-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "evalueringer gjennomføres ved behov",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nemndene har ikke instruksjonsrett overfor Klagenemndssekretariatet vedrørende sekretariatets mål og prioriteringer overfor øvrige nemnder.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Styringsdialogen",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "virksomhetens øvrige rapporter i løpet av året, herunder risikovurderinger",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "departementenes tilbakemelding om rapporteringen",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "departementets referater fra møter med virksomheten",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Antall planlagte etatsstyringsmøter og alle rapporteringskrav skal framgå av tildelingsbrevet.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Virksomhetens myndighet og ansvar",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Klagenemndssekretariatet skal være et velfungerende og effektivt sekretariat",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "er bevilgningsfinansiert, kontrolleres av Riksrevisjonen og er underlagt det statlige bevilgningsreglementet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Krav til den interne styringen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-8562-p3-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "sørge for planlegging, gjennomføring og oppfølging av oppgavene, inklusiv resultat- og regnskapsrapportering",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
