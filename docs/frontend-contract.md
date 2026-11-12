@@ -416,7 +416,7 @@ await platform.feedback({ taskId: answer.taskId!, rating: 'up' });
 
 When the service cites excerpts, the answer and the `sources` event carry `markers` as `{ marker, chunkId, documentId }`, `onSources` gets them as its second argument, and each source and excerpt carries the `markers` that cite it. Then resolve `[N]` through `answer.markers`, not with `sourceFor`.
 
-An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` does not send it yet.
+An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` sends it when the index gives the chunk a heading (see Citations and sources).
 
 ## Without the client (curl)
 
