@@ -104,4 +104,8 @@ export const supportAccess = {
   endFailed: 'Could not end the support access. Try again shortly.',
   endListed: 'End',
   endListedFor: 'End the support access to {tenant}',
+  searchSettings: 'Search settings',
+  searchSettingsHelp: 'Search by name, key or description.',
+  noSettingMatch: 'No settings match the search.',
+  lockedBy: 'Locked: {reason}',
 } satisfies Translation<typeof source>;
