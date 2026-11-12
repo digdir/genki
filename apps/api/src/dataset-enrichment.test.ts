@@ -70,9 +70,14 @@ const boot = async (
   const enrichment = memoryEnrichmentWriter();
   const settings = new SettingsRegistry(platformSettings);
   if (options.monthlyTokens)
-    settings.setTenant(digdir, 'usage.monthlyTokens', options.monthlyTokens);
+    settings.setTenant(digdir, 'usage.monthlyTokens', options.monthlyTokens, 'operator');
   if (options.tenantCallsPerMinute)
-    settings.setTenant(digdir, 'usage.tenantCallsPerMinute', options.tenantCallsPerMinute);
+    settings.setTenant(
+      digdir,
+      'usage.tenantCallsPerMinute',
+      options.tenantCallsPerMinute,
+      'operator',
+    );
   const platform = await createPlatform({
     settings,
     catalogs: {

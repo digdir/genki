@@ -33,6 +33,7 @@ const chunks: SourceRecord[] = [
     position: 4,
   },
 ];
+let pool = chunks;
 
 const seen: { history?: unknown; overrides?: unknown } = {};
 
@@ -60,7 +61,7 @@ const strategy: Strategy = {
     yield { type: 'kernel.part.delta', data: { text: reply.answer } };
     const parts: Part[] = [
       { ...textPart(reply.answer), meta: reply.meta },
-      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: chunks } } },
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: pool } } },
     ];
     yield { type: 'kernel.result', data: parts };
   },
@@ -362,6 +363,65 @@ describe('/v1 frontend contract: sources', () => {
       const text = await (await setup().ask({ stream: true })).text();
 
       expect(text).toContain(`"markers":${JSON.stringify(markers)}`);
+    });
+  });
+
+  describe('when the chunks carry section headings', () => {
+    afterEach(() => {
+      pool = chunks;
+    });
+    const headed: SourceRecord[] = [
+      { ...chunks[0], chunkId: 'c1', headers: ['# **1 Innledning**'] },
+      { ...chunks[1], chunkId: 'c2' },
+      { ...chunks[2], chunkId: 'c1b', headers: ['## **3 Styringsparametere**', '3.2 Mål'] },
+    ];
+    type Headed = Omit<Source, 'excerpts'> & {
+      metadata: { name?: string }[];
+      excerpts: { chunk_id: string; text: string; heading?: string }[];
+    };
+    const answer = async () => {
+      pool = headed;
+      return ((await (await setup().ask({})).json()) as { sources: Headed[] }).sources;
+    };
+
+    it("gives each excerpt its own heading, not the first excerpt's", async () => {
+      const sources = await answer();
+
+      expect(sources[0]?.excerpts.map((e) => [e.chunk_id, e.heading])).toEqual([
+        ['c1', '1 Innledning'],
+        ['c1b', '3 Styringsparametere › 3.2 Mål'],
+      ]);
+    });
+
+    it('writes the heading as the document breadcrumb is written, plain levels joined by ›', async () => {
+      const [first] = await answer();
+
+      expect(first?.excerpts[1]?.heading).toBe('3 Styringsparametere › 3.2 Mål');
+      expect(first?.metadata[0]?.name).toBe(`Tildelingsbrev › ${first?.excerpts[0]?.heading}`);
+    });
+
+    it('leaves the heading out when the chunk has no headers', async () => {
+      const sources = await answer();
+
+      expect(sources[1]?.excerpts).toHaveLength(1);
+      expect(sources[1]?.excerpts[0]).not.toHaveProperty('heading');
+    });
+
+    it("keeps the document breadcrumb as it was, the first excerpt's under the title", async () => {
+      const sources = await answer();
+
+      expect(sources[0]?.metadata).toEqual([
+        { source: 'c1', chunk_id: 'c1', name: 'Tildelingsbrev › 1 Innledning' },
+      ]);
+      expect(sources[1]?.metadata).toEqual([{ source: 'c2', chunk_id: 'c2' }]);
+    });
+
+    it('sends each excerpt its heading when the answer is streamed', async () => {
+      pool = headed;
+      const text = await (await setup().ask({ stream: true })).text();
+
+      expect(text).toContain('"heading":"1 Innledning"');
+      expect(text).toContain('"heading":"3 Styringsparametere › 3.2 Mål"');
     });
   });
 });
