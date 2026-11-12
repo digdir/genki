@@ -28,7 +28,7 @@ const nbAssembly = defineNamespace({
   toolsPanel: 'Verktøypanelet',
   approachEmpty: 'Fremgangsmåten vises her når du stiller et spørsmål.',
   approachNotKept:
-    'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
+    'Fremgangsmåten ble ikke lagret med dette svaret. Den vises her når du stiller et nytt spørsmål.',
   approachWaiting: 'Venter på det første steget …',
   noChatTitle: 'Legg Chat i innholdet for å prøve assistenten.',
   noChat: 'Uten Chat er det ingen samtale å prøve.',
@@ -75,7 +75,7 @@ const enAssembly = {
   toolsPanel: 'Tool panel',
   approachEmpty: 'The approach shows here when you ask a question.',
   approachNotKept:
-    'The approach is not kept with the answers in the thread. It shows here when you ask a new question.',
+    'The approach was not kept with this answer. It shows here when you ask a new question.',
   approachWaiting: 'Waiting for the first step …',
   noChatTitle: 'Put Chat in the content to try the assistant.',
   noChat: 'Without Chat there is no conversation to try.',

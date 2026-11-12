@@ -2342,11 +2342,11 @@ describe('the page around the blocks', () => {
     ).toBeTruthy();
   });
 
-  it('says in Fremgangsmåte’s panel that the steps were not kept, for a stored answer without them', async () => {
+  it('says in Fremgangsmåte’s panel that the steps were not kept with this answer, for a stored answer without them', async () => {
     await openStored(turnOn(state('approach-only'), 'sources').layout);
     expect(
       screen.getByText(
-        'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
+        'Fremgangsmåten ble ikke lagret med dette svaret. Den vises her når du stiller et nytt spørsmål.',
       ),
     ).toBeTruthy();
   });
