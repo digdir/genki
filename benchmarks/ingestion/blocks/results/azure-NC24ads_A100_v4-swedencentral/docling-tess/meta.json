@@ -10,9 +10,7 @@
     "do_ocr": true,
     "ocr": "TesseractCliOcrOptions",
     "ocr_engine": "Tesseract CLI, Norwegian",
-    "ocr_lang": [
-      "nor"
-    ],
+    "ocr_lang": ["nor"],
     "table_mode": "accurate",
     "accelerator": {
       "device": "cuda",
@@ -40,9 +38,7 @@
     "cpu": "AMD EPYC 7V13 64-Core Processor",
     "cpus": 24,
     "memory": "226755524 kB",
-    "gpus": [
-      "NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"
-    ],
+    "gpus": ["NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"],
     "python": "3.13.18"
   }
 }

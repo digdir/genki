@@ -35,9 +35,7 @@
     "cpu": "AMD EPYC 7V12 64-Core Processor",
     "cpus": 4,
     "memory": "28733524 kB",
-    "gpus": [
-      "Tesla T4, 16384 MiB, 580.178.04"
-    ],
+    "gpus": ["Tesla T4, 16384 MiB, 580.178.04"],
     "python": "3.13.18"
   }
 }

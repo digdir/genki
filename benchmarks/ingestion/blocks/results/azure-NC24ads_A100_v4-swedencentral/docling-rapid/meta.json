@@ -37,9 +37,7 @@
     "cpu": "AMD EPYC 7V13 64-Core Processor",
     "cpus": 24,
     "memory": "226755524 kB",
-    "gpus": [
-      "NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"
-    ],
+    "gpus": ["NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"],
     "python": "3.13.18"
   }
 }

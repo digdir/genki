@@ -76,22 +76,22 @@ layer). Not a result, but it shows what the page tests could not:
 
 ## Files
 
-| File | What it does |
-| --- | --- |
-| `documents.json` | The 15 documents |
-| `fetch.py` | Downloads or copies the PDFs, checked by sha256 |
-| `convert/convert_{docling,mineru,marker}.py`, `convert/common.py` | Whole-document conversion, native output kept |
-| `docker/Dockerfile.*` | One image per parser, pinned to the versions the page tests ran |
-| `normalise.py`, `test_normalise.py` | Native output to blocks (`python3 -m unittest test_normalise`) |
-| `compare.py` | `structure.md`: blocks, headings, levels, lists, tables, furniture, æøå, seconds per page |
-| `run.sh` | All of it on one host |
-| `headings_vs_outline.py` | Heading quality against the PDFs' own outlines (`results/headings-vs-outline.md`) |
-| `page_tests.py`, `page_tests_extract.py` | The opb page tests on the Azure runs: pages cut from whole documents, graded with the opb scorer (`results/page-tests-azure.md`) |
-| `eras_tests.py`, `reference-eras/` | Page tests for the era test set (`results/eras-test-set.json`), opb's method and scorer, a set of its own (`reference-eras/README.md`) |
-| `results/README.md` | The Azure run of 11 Nov 2026: configs, fixes, results |
-| `results/run2.md` | Run 2 (11 Nov 2026): Marker 1.10.2 (T4, reference) against six Docling + Tesseract variants on 39 documents, throughput, cost, heading levels |
-| `documents-run2.json` | Run 2's 39 documents (`DOCUMENTS=documents-run2.json ./run.sh ...`) |
-| `throughput.sh`, `throughput.py` | Docling + Tesseract with N containers at once on one CPU host (`results/<host>/throughput.md`) |
-| `page_tests_run2.py` | Run 2 graded on the opb and era page tests, each on its own (`results/page-tests-run2.md`) |
-| `heading_levels.py` | Prototype: heading levels after conversion (outline, then section numbers, then text size) |
-| `eras_sample.py` | 50 random documents per era of the KUDOS listing (back before 2000), every page classified; `results/eras.md` (page kinds per era), `results/eras-sample.json`, `results/eras-test-set.json` (24 hard and easy documents) |
+| File                                                              | What it does                                                                                                                                                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documents.json`                                                  | The 15 documents                                                                                                                                                                                                          |
+| `fetch.py`                                                        | Downloads or copies the PDFs, checked by sha256                                                                                                                                                                           |
+| `convert/convert_{docling,mineru,marker}.py`, `convert/common.py` | Whole-document conversion, native output kept                                                                                                                                                                             |
+| `docker/Dockerfile.*`                                             | One image per parser, pinned to the versions the page tests ran                                                                                                                                                           |
+| `normalise.py`, `test_normalise.py`                               | Native output to blocks (`python3 -m unittest test_normalise`)                                                                                                                                                            |
+| `compare.py`                                                      | `structure.md`: blocks, headings, levels, lists, tables, furniture, æøå, seconds per page                                                                                                                                 |
+| `run.sh`                                                          | All of it on one host                                                                                                                                                                                                     |
+| `headings_vs_outline.py`                                          | Heading quality against the PDFs' own outlines (`results/headings-vs-outline.md`)                                                                                                                                         |
+| `page_tests.py`, `page_tests_extract.py`                          | The opb page tests on the Azure runs: pages cut from whole documents, graded with the opb scorer (`results/page-tests-azure.md`)                                                                                          |
+| `eras_tests.py`, `reference-eras/`                                | Page tests for the era test set (`results/eras-test-set.json`), opb's method and scorer, a set of its own (`reference-eras/README.md`)                                                                                    |
+| `results/README.md`                                               | The Azure run of 11 Nov 2026: configs, fixes, results                                                                                                                                                                     |
+| `results/run2.md`                                                 | Run 2 (11 Nov 2026): Marker 1.10.2 (T4, reference) against six Docling + Tesseract variants on 39 documents, throughput, cost, heading levels                                                                             |
+| `documents-run2.json`                                             | Run 2's 39 documents (`DOCUMENTS=documents-run2.json ./run.sh ...`)                                                                                                                                                       |
+| `throughput.sh`, `throughput.py`                                  | Docling + Tesseract with N containers at once on one CPU host (`results/<host>/throughput.md`)                                                                                                                            |
+| `page_tests_run2.py`                                              | Run 2 graded on the opb and era page tests, each on its own (`results/page-tests-run2.md`)                                                                                                                                |
+| `heading_levels.py`                                               | Prototype: heading levels after conversion (outline, then section numbers, then text size)                                                                                                                                |
+| `eras_sample.py`                                                  | 50 random documents per era of the KUDOS listing (back before 2000), every page classified; `results/eras.md` (page kinds per era), `results/eras-sample.json`, `results/eras-test-set.json` (24 hard and easy documents) |

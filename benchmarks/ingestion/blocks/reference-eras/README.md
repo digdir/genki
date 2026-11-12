@@ -27,15 +27,15 @@ The documents aren't in our index, so they have no doc_num. A page id is `eras-<
 681 present and order tests; table tests are the 200 table_cell tests. One drawn page, `eras-8a1cc78e-p6`,
 has no tests: it was classed image-only but shows only scan speckle.
 
-| Slice | Pages with tests | Documents | Text tests | Table tests (pages, documents) |
-| --- | --- | --- | --- | --- |
-| Digital | 54 | 19 | 485 | 124 (24, 8) |
-| Scan + text layer | 11 | 4 | 103 | 35 (7, 2) |
-| Image-only | 12 | 5 | 93 | 41 (4, 1) |
-| Before 2000 | 17 | 6 | 148 | 35 (7, 2) |
-| 2000-2009 | 23 | 6 | 221 | 43 (8, 3) |
-| 2010-2019 | 16 | 6 | 138 | 33 (8, 3) |
-| 2020 on | 20 | 6 | 174 | 89 (12, 3) |
+| Slice             | Pages with tests | Documents | Text tests | Table tests (pages, documents) |
+| ----------------- | ---------------- | --------- | ---------- | ------------------------------ |
+| Digital           | 54               | 19        | 485        | 124 (24, 8)                    |
+| Scan + text layer | 11               | 4         | 103        | 35 (7, 2)                      |
+| Image-only        | 12               | 5         | 93         | 41 (4, 1)                      |
+| Before 2000       | 17               | 6         | 148        | 35 (7, 2)                      |
+| 2000-2009         | 23               | 6         | 221        | 43 (8, 3)                      |
+| 2010-2019         | 16               | 6         | 138        | 33 (8, 3)                      |
+| 2020 on           | 20               | 6         | 174        | 89 (12, 3)                     |
 
 `eras_tests.py counts` prints this table again.
 

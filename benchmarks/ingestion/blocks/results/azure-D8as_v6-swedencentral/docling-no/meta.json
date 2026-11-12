@@ -9,10 +9,7 @@
     "pipeline": "default PdfPipelineOptions",
     "do_ocr": true,
     "ocr": "EasyOcrOptions",
-    "ocr_lang": [
-      "no",
-      "en"
-    ],
+    "ocr_lang": ["no", "en"],
     "table_mode": "accurate",
     "accelerator": {
       "device": "cpu",

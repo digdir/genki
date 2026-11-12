@@ -60,16 +60,16 @@ To add a candidate, give it a side in `predict.py` and `common_opb.SIDES`, run `
 
 Other PDF parsers graded against Marker 1.10.2 on the same reference, in [results/parsers.md](results/parsers.md). Each one converts every dataset page on its own, as a one-page PDF, in its own venv, with a script in `parsers/` (`convert_common.py` says what lands in `.data/opb/conversions/<side>/`). `score.py` grades every parser whose conversion is finished, and `report_parsers.py` compares them with Marker 1.10.2 under the decision rule above.
 
-| Side             | Parser and settings                                                                                                                                                         |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Side             | Parser and settings                                                                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `marker-2.1`     | `marker-pdf` 2.1.0 with the #91 service's settings, mode `balanced` (its CUDA default); its OCR model in llama.cpp from Datalab's GGUF (`brew install llama.cpp`)            |
-| `pp-structurev3` | `paddleocr` 3.7.0 PP-StructureV3, defaults, `lang="no"` (PP-OCRv5 detection, the Latin recogniser), CPU                                                                     |
+| `pp-structurev3` | `paddleocr` 3.7.0 PP-StructureV3, defaults, `lang="no"` (PP-OCRv5 detection, the Latin recogniser), CPU                                                                      |
 | `paddleocr-vl`   | PaddleOCR-VL-1.6: layout in paddle on the CPU, the VLM in `mlx_vlm.server` (PaddleOCR's documented Apple Silicon setup)                                                      |
 | `mineru`         | `mineru` 4.1.6, default PDF tier `standard`, OCR mode `auto`, the VLM `MinerU2.5-Pro-2605-1.2B` on its `mlx` engine (official weights), telemetry off, inline images removed |
-| `docling`        | `docling` 2.146.0, default PDF pipeline (text layer, Heron layout, TableFormer accurate, auto OCR: RapidOCR with torch, see `parsers/convert_docling.py`) |
-| `docling-no`     | As `docling`, OCR EasyOCR with `lang=["no", "en"]`                                                                                                                          |
-| `docling-tess`   | As `docling`, OCR Tesseract CLI with `lang=["nor"]` (Homebrew `tesseract` 5.5.4 and `tesseract-lang`)                                                                     |
-| `docling-rapid`  | As `docling`, OCR left at auto in the `docling-rapid` venv (the docling venv plus `onnxruntime` 1.31.1), so RapidOCR with onnxruntime and its default models               |
+| `docling`        | `docling` 2.146.0, default PDF pipeline (text layer, Heron layout, TableFormer accurate, auto OCR: RapidOCR with torch, see `parsers/convert_docling.py`)                    |
+| `docling-no`     | As `docling`, OCR EasyOCR with `lang=["no", "en"]`                                                                                                                           |
+| `docling-tess`   | As `docling`, OCR Tesseract CLI with `lang=["nor"]` (Homebrew `tesseract` 5.5.4 and `tesseract-lang`)                                                                        |
+| `docling-rapid`  | As `docling`, OCR left at auto in the `docling-rapid` venv (the docling venv plus `onnxruntime` 1.31.1), so RapidOCR with onnxruntime and its default models                 |
 
 ```sh
 cd benchmarks/ingestion/opb
@@ -92,13 +92,13 @@ The converters read a copy of the page PDFs, because `score.py` rebuilds the dat
 
 Checked 4 November 2026. A licence can rule a parser out whatever its score.
 
-| Parser                            | Code                                       | Model weights                                                                                                    | What could limit our use                                                                                                                                                                                                                   |
-| --------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Marker 1.10.2                     | GPL-3.0-or-later (package metadata)        | Modified AI Pubs Open RAIL-M (`MODEL_LICENSE` at tag `v1.10.2`)                                                  | Not free above USD 2M of revenue or funding except for personal use or research; revenue and funding are not defined. Share-alike on the output (section 8). Hosting for third parties counts as distribution                              |
-| Marker 2.1.0                      | Apache-2.0                                 | The same licence at USD 5M (`MODEL_LICENSE` at tag `v2.1.0`); `surya-ocr-2.5` is tagged `openrail` on Hugging Face | As Marker 1.10.2                                                                                                                                                                                                                           |
-| PaddleOCR 3.7.0                   | Apache-2.0                                 | Apache-2.0 for every model checked on Hugging Face, PaddleOCR-VL-1.6 and its base ERNIE-4.5-0.3B among them      | Notices only                                                                                                                                                                                                                               |
-| MinerU 4.1.6                      | MinerU Open Source License (Apache-2.0 with extra terms) | `MinerU2.5-Pro-2605-1.2B` and `MinerU-4_models_torch` Apache-2.0; macOS's default llama.cpp engine loads a GGUF copy from another account with no licence tag | Online services to third parties must say MinerU is used, or the licence ends; a commercial licence above 100M monthly users or USD 20M monthly revenue; telemetry on by default |
-| Docling 2.146.0                   | MIT                                        | `docling-layout-heron` Apache-2.0; `docling-models` Apache-2.0 and CDLA-Permissive-2.0                           | Notices only                                                                                                                                                                                                                               |
+| Parser          | Code                                                     | Model weights                                                                                                                                                 | What could limit our use                                                                                                                                                                                      |
+| --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Marker 1.10.2   | GPL-3.0-or-later (package metadata)                      | Modified AI Pubs Open RAIL-M (`MODEL_LICENSE` at tag `v1.10.2`)                                                                                               | Not free above USD 2M of revenue or funding except for personal use or research; revenue and funding are not defined. Share-alike on the output (section 8). Hosting for third parties counts as distribution |
+| Marker 2.1.0    | Apache-2.0                                               | The same licence at USD 5M (`MODEL_LICENSE` at tag `v2.1.0`); `surya-ocr-2.5` is tagged `openrail` on Hugging Face                                            | As Marker 1.10.2                                                                                                                                                                                              |
+| PaddleOCR 3.7.0 | Apache-2.0                                               | Apache-2.0 for every model checked on Hugging Face, PaddleOCR-VL-1.6 and its base ERNIE-4.5-0.3B among them                                                   | Notices only                                                                                                                                                                                                  |
+| MinerU 4.1.6    | MinerU Open Source License (Apache-2.0 with extra terms) | `MinerU2.5-Pro-2605-1.2B` and `MinerU-4_models_torch` Apache-2.0; macOS's default llama.cpp engine loads a GGUF copy from another account with no licence tag | Online services to third parties must say MinerU is used, or the licence ends; a commercial licence above 100M monthly users or USD 20M monthly revenue; telemetry on by default                              |
+| Docling 2.146.0 | MIT                                                      | `docling-layout-heron` Apache-2.0; `docling-models` Apache-2.0 and CDLA-Permissive-2.0                                                                        | Notices only                                                                                                                                                                                                  |
 
 ## Settings
 
@@ -109,19 +109,19 @@ Checked 4 November 2026. A licence can rule a parser out whatever its score.
 
 ## Files
 
-| File                                                  | Holds                                                                                      |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `reference/pages.json`                                | The 221 pages with tests and 6 without, why each was drawn and its kind                    |
-| `reference/tests/<page_id>.json`                      | The reference, one file per page                                                           |
-| `reference/review-log.jsonl`                          | Every verdict of the blind check, with the test before and after                           |
-| `reference/canary/`                                   | The test of the blind check: the batch, which tests were broken, the reader's verdicts     |
-| `results/sides/<side>/verdicts.jsonl`                 | One line per test: pass or fail, and why                                                   |
-| `results/sides/<side>/record.json`                    | What the run used: commit, code, reference and items hashes, side settings, scorer         |
-| `results/coverage.json`                               | Whole-sample counts, no reference: pages where Marker keeps no text, scans each side reads |
-| `results/report.md`, `report.json`, `differences.csv` | The report, its data, and every difference as a row                                        |
-| `results/parsers.md`, `parsers.json`, `parsers-differences.csv` | The other parsers against Marker 1.10.2 (issue 337)                              |
-| `parsers/`                                            | One converter script per parser, and `run_all.sh`                                          |
-| `.data/opb/` (in `benchmarks/ingestion`)              | Page images, the scoring tool's dataset, each side's text per page and its grading         |
+| File                                                            | Holds                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `reference/pages.json`                                          | The 221 pages with tests and 6 without, why each was drawn and its kind                    |
+| `reference/tests/<page_id>.json`                                | The reference, one file per page                                                           |
+| `reference/review-log.jsonl`                                    | Every verdict of the blind check, with the test before and after                           |
+| `reference/canary/`                                             | The test of the blind check: the batch, which tests were broken, the reader's verdicts     |
+| `results/sides/<side>/verdicts.jsonl`                           | One line per test: pass or fail, and why                                                   |
+| `results/sides/<side>/record.json`                              | What the run used: commit, code, reference and items hashes, side settings, scorer         |
+| `results/coverage.json`                                         | Whole-sample counts, no reference: pages where Marker keeps no text, scans each side reads |
+| `results/report.md`, `report.json`, `differences.csv`           | The report, its data, and every difference as a row                                        |
+| `results/parsers.md`, `parsers.json`, `parsers-differences.csv` | The other parsers against Marker 1.10.2 (issue 337)                                        |
+| `parsers/`                                                      | One converter script per parser, and `run_all.sh`                                          |
+| `.data/opb/` (in `benchmarks/ingestion`)                        | Page images, the scoring tool's dataset, each side's text per page and its grading         |
 
 ## Limits
 

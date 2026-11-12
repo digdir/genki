@@ -11,9 +11,7 @@
     "do_ocr": true,
     "ocr": "TesseractCliOcrOptions",
     "ocr_engine": "Tesseract CLI",
-    "ocr_lang": [
-      "nor"
-    ],
+    "ocr_lang": ["nor"],
     "replace_broken_text_layer": true,
     "tessdata": "system (Debian tesseract-ocr-nor)",
     "table_cell_matching": true,
