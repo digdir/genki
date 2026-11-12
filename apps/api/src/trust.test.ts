@@ -40,7 +40,7 @@ const boot = async (traces?: { content: boolean; residency?: 'norway' | 'eu' | '
   const platform = await createPlatform({
     catalogs: {
       models: {
-        endpoints: { test: { protocol: 'openai-chat', baseURL: `${model.url}/v1`, auth } },
+        endpoints: { test: { families: { openai: '' }, baseURL: `${model.url}/v1`, auth } },
         models: [
           {
             id: 'test/chat',

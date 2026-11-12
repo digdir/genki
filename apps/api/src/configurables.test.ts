@@ -101,7 +101,7 @@ export const boot = async (
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -213,7 +213,7 @@ describe('model, price and endpoint catalog over the API', () => {
   it('lets an operator add a model endpoint and model, versions and audits it, and refuses others', async () => {
     const { call, platform, admin } = await boot();
     const endpoint = {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modeller.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/other-key' },
     };
@@ -336,7 +336,7 @@ describe('model, price and endpoint catalog over the API', () => {
     await first.call('/operator/catalog/model-endpoint/norsk', 'drift', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
         auth: { kind: 'api-key', secret: 'secret://env/other-key' },
       },
@@ -504,7 +504,7 @@ describe('tenant catalog entries', () => {
     await call(`/tenants/${digdir}/catalog/model-endpoint/egen`, 'kari', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://llm.testetaten.example.no/v1',
         auth: { kind: 'api-key', secret: `secret://tenant/${digdir}/llm-key` },
       },

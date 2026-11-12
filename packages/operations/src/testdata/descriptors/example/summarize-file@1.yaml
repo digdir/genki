@@ -1,0 +1,68 @@
+id: example/summarize-file@1
+operation: summarize-file
+status: described
+summary: A made-up API that stores a text file at the provider, runs a summary on it and deletes the file.
+api:
+  family: example
+  version: '2026-11-01'
+input:
+  object:
+    document: { media: text/plain }
+    filename?: plain
+output:
+  object:
+    summary: text
+resources:
+  - { id: upload.file, delete: remove_file, longestSeconds: 3600 }
+steps:
+  - name: upload
+    request:
+      method: POST
+      path: /files
+      encoding: multipart
+      parts:
+        purpose: summaries
+        file: $input.document
+      filenames:
+        file: $input.filename
+    wire:
+      request:
+        object:
+          purpose: { enum: [summaries] }
+          file: { media: text/plain }
+      filenames:
+        object:
+          file?: plain
+      response:
+        object:
+          id: plain
+    bind:
+      file: { from: $response.id, class: { issued: '^file-[a-z0-9]+$' } }
+  - name: run
+    request:
+      method: POST
+      path: /summaries
+      body:
+        model: $deployment
+        file_id: $steps.upload.file
+    wire:
+      request:
+        object:
+          model: plain
+          file_id: { issued: '^file-[a-z0-9]+$' }
+      response:
+        object:
+          text: text
+    usage:
+      request: 1
+finally:
+  - name: remove_file
+    request:
+      method: DELETE
+      path: /files/{steps.upload.file}
+    wire:
+      response:
+        object:
+          deleted: boolean
+result:
+  summary: $response.text

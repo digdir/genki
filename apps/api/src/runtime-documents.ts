@@ -23,6 +23,20 @@ export const runtimeDocumentTypes = (spec: unknown): string[] => {
   ];
 };
 
+export const runtimeMediaTypes = (spec: unknown): string[] => {
+  const accepts = (spec as { input?: { accepts?: unknown } } | undefined)?.input?.accepts;
+  return Array.isArray(accepts)
+    ? [
+        ...new Set(
+          accepts.filter(
+            (a): a is string =>
+              typeof a === 'string' && (a.startsWith('audio/') || a.startsWith('image/')),
+          ),
+        ),
+      ]
+    : [];
+};
+
 const safeName = (name: string) =>
   name
     .slice(name.lastIndexOf('/') + 1)
@@ -64,7 +78,9 @@ export const runtimeDocumentStore = (blobs: BlobStore): RuntimeDocumentStore => 
           d.mediaType,
         );
         const part = readablePart(info, d.body);
-        return { ...part, meta: { ...part.meta, [attachedMeta]: true } };
+        return part.body.kind === 'text'
+          ? { ...part, meta: { ...part.meta, [attachedMeta]: true } }
+          : part;
       }),
     );
   },

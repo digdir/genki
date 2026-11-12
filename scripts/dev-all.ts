@@ -67,6 +67,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
   const ports = devPorts(env);
   const api = `http://localhost:${ports.api}`;
   const custom = ports.api !== defaultPorts.api;
+  const devMode = !env.GENAI_DEV_MODE || env.GENAI_DEV_MODE === 'true';
   const apiEnv = custom
     ? {
         GENAI_API_PORT: String(ports.api),
@@ -85,7 +86,12 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
             port: modelPort,
             command: process.execPath,
             args: ['scripts/local-model.ts'],
-            env: { LOCAL_MODEL_PORT: String(modelPort) },
+            env: {
+              LOCAL_MODEL_PORT: String(modelPort),
+              ...(env.LOCAL_MODEL_RESPONSES
+                ? { LOCAL_MODEL_RESPONSES: env.LOCAL_MODEL_RESPONSES }
+                : {}),
+            },
           },
         ]
       : []),
@@ -94,7 +100,11 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
       port: ports.api,
       ...npmCommand(['run', 'dev', '--workspace', 'apps/api']),
       env: {
-        ...unlessSet(env, { GENAI_DEV_MODE: 'true' }),
+        ...unlessSet(env, {
+          GENAI_DEV_MODE: 'true',
+          ...(devMode ? { GENAI_ENV: 'test' } : {}),
+          ...(devMode && !env.ANSATTPORTEN_ISSUER ? { GENAI_MOCK_RIGHTS: 'true' } : {}),
+        }),
         ...(custom ? { PORT: String(ports.api) } : {}),
       },
     },
@@ -107,6 +117,16 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
   ];
 };
 
+// Same rule as the mock login in packages/identity/src/mock-ansattporten.ts.
+const withoutLoopbackPort = (uri: string) =>
+  URL.canParse(uri)
+    ? uri.replace(/^(http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]))(?::\d+)?(?=[/?#]|$)/, '$1')
+    : uri;
+
+export const mockAcceptsRedirect = (registered: readonly string[], uri: string): boolean =>
+  registered.includes(uri) ||
+  registered.map(withoutLoopbackPort).includes(withoutLoopbackPort(uri));
+
 export const missingCallbacks = (identityYaml: string, processes: DevProcess[]): string[] => {
   const clients =
     (parseYaml(identityYaml) as { clients?: { clientId: string; redirectUris?: string[] }[] })
@@ -114,7 +134,7 @@ export const missingCallbacks = (identityYaml: string, processes: DevProcess[]):
   return processes.flatMap((p) => {
     const client = clients.find((c) => c.clientId === `local-${p.name}`);
     const callback = `http://localhost:${p.port}/callback`;
-    return client && !client.redirectUris?.includes(callback)
+    return client && !mockAcceptsRedirect(client.redirectUris ?? [], callback)
       ? [`${client.clientId} ${callback}`]
       : [];
   });

@@ -114,7 +114,7 @@ const boot = async (lockdown: boolean) => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -277,6 +277,19 @@ describe('lockdown', () => {
     expect(JSON.stringify(await res.json())).toContain('Hei.');
   });
 
+  it('lets a trusted Entra login create an organisation-wide key in its own organisation, though it is an operator', async () => {
+    const { chat, send } = await boot(true);
+
+    const created = await send(`/tenants/${digdir}/api-keys`, 'entra', {
+      body: { name: 'KA test', agents: ['klarsprak'] },
+      reason,
+    });
+    const { key } = await json<{ key: string }>(created);
+
+    expect(created.status).toBe(201);
+    expect((await chat(key)).status).toBe(200);
+  });
+
   it('keeps a key admitted after an Entra user rotates it', async () => {
     const { chat, createKey, send } = await boot(true);
     const { apiKey } = await createKey('entra');
@@ -353,6 +366,40 @@ describe('lockdown', () => {
     expect(JSON.stringify(await other.json())).not.toContain('Hei.');
     expect([401, 403]).toContain(ingested.status);
     expect(ingestion.jobs).toHaveLength(0);
+  });
+
+  it('shows on each key in lockdown whether it may use models there', async () => {
+    const { createKey, keys, send } = await boot(true);
+    const { apiKey } = await createKey('entra');
+    await keys.add({
+      id: 'eldre',
+      name: 'Eldre nøkkel',
+      digest: apiKeyDigest('gp_from-before'),
+      tenant: digdir,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'klarsprak',
+    });
+
+    const listed = await json<{ keys: { id: string; modelsInLockdown?: boolean }[] }>(
+      await send(`/tenants/${digdir}/services/klarsprak/api-keys`, 'entra'),
+    );
+    const admitted = Object.fromEntries(listed.keys.map((k) => [k.id, k.modelsInLockdown]));
+
+    expect(admitted).toEqual({ [apiKey.id]: true, eldre: false, 'ka-backend': true });
+  });
+
+  it('says nothing about models on keys when the environment is not locked', async () => {
+    const { createKey, send } = await boot(false);
+    await createKey('kari');
+
+    const listed = await json<{ keys: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/access`, 'kari'),
+    );
+
+    expect(listed.keys.length).toBeGreaterThan(0);
+    for (const key of listed.keys) expect(key).not.toHaveProperty('modelsInLockdown');
   });
 
   it('cannot set the admission through the request body', async () => {
@@ -519,12 +566,26 @@ describe('lockdown', () => {
 
     expect(started).toMatchObject({ ok: false, errors: [{ path: 'principal' }] });
     expect(ingestion.jobs).toHaveLength(0);
+
+    // An engine switch's runs into the knowledge database start from activation as well.
+    const person: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
+    expect(
+      await platform.ingestion.startSwitchRun({
+        pipeline,
+        generation: 'g-20261104-aa11bb',
+        engineSwitch: 'sider:1',
+        by: 'kari',
+        principal: person,
+      }),
+    ).toMatchObject({ ok: false, message: expect.stringContaining('the environment is locked') });
   });
 
   it.each([
     `/tenants/${digdir}/datasets/sider/engine-switches`,
     `/tenants/${digdir}/datasets/sider/engine-switches/1/retry`,
+    `/tenants/${digdir}/datasets/sider/engine-switches/1/activate`,
     `/operator/datasets/sider/engine-switches`,
+    `/operator/datasets/sider/engine-switches/1/activate`,
     `/tenants/${digdir}/datasets/sider/enrichment/hypothetical-questions/apply`,
     `/tenants/${digdir}/connectors/kobling/sync`,
   ])('refuses new embeddings for a person in lockdown (%s)', async (path) => {
@@ -536,7 +597,11 @@ describe('lockdown', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(await json(res)).toMatchObject({ type: lockedEnvironmentType });
+    // Refused as ingestion, not only as a change to configuration.
+    expect(await json(res)).toMatchObject({
+      type: lockedEnvironmentType,
+      title: expect.stringMatching(/innlesing|ingestion/),
+    });
     expect(model.seen).toHaveLength(0);
   });
 

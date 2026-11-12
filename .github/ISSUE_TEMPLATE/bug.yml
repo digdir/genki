@@ -4,7 +4,7 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Do not report security vulnerabilities here; follow SECURITY.md. Leave out secrets and personal data.
+      value: Do not report security vulnerabilities here; follow docs/security/README.md. Leave out secrets and personal data.
   - type: textarea
     id: what
     attributes:

@@ -70,6 +70,8 @@ export const portalGateRuns = async (
         r.service === service &&
         r.subject === subject &&
         r.status === 'succeeded' &&
+        // A run of a few marked cases does not show how the whole test set does.
+        !r.selected &&
         sets.includes(r.testSet),
     )
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));

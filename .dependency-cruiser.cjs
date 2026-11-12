@@ -26,9 +26,12 @@ module.exports = {
     {
       name: 'no-code-execution-in-the-platform',
       comment:
-        'ADR 0043: code a model, user or tenant writes runs in agentctl, never in the platform',
+        'ADR 0043: code a model, user or tenant writes runs in agentctl, never in the platform; the one exception is the sandboxed WebAssembly module of ADR 0049',
       severity: 'error',
-      from: { path: '^(apps/(api|worker)|packages)/', pathNot: '\\.test(-utils)?\\.ts$' },
+      from: {
+        path: '^(apps/(api|worker)|packages)/',
+        pathNot: ['\\.test(-utils)?\\.ts$', '^packages/operations/src/module\\.ts$'],
+      },
       to: { path: '^(node:)?(child_process|vm|worker_threads)$' },
     },
     {
