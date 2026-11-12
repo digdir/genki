@@ -6,17 +6,18 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 
 ## What gets created (one resource group per environment)
 
-| Resource                                   | Notes                                                                                                                                       |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                 |
-| Container Apps environment                 | The five container apps below, the shared `data` volume, managed certificates                                                               |
-| Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                            |
-| Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                              |
-| Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                |
-| Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                  |
-| Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                 |
-| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and six alert rules, see the [runbook](../docs/runbook.md#alerts) |
-| DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                    |
+| Resource                                   | Notes                                                                                                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                       |
+| Container Apps environment                 | The five container apps below, the shared `data` volume, managed certificates                                                                                     |
+| Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                  |
+| Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                    |
+| Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                      |
+| Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                        |
+| Blob container `conversions`               | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes |
+| Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                       |
+| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and six alert rules, see the [runbook](../docs/runbook.md#alerts)                       |
+| DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                          |
 
 From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
 
@@ -71,7 +72,7 @@ Each environment has a knowledge server of its own (ADR 0042), set up as its pla
 
 ### Stages
 
-`KNOWLEDGE_SERVER_STAGE`, a GitHub variable read by `infra.yml` and `deploy.yml`, set on the environment or, without access to environment settings, as a repository variable (then prod's environment needs `none` set, since a repository variable reaches every environment and an environment's own value wins): `none` (the default, and what an unset variable means: nothing of the knowledge server), `server` (the network, the server, the identities and the job), `apps` (also the API and worker settings: `KNOWLEDGE_PGHOST`, `KNOWLEDGE_PGDATABASE`, `KNOWLEDGE_READ_PGHOST` on the same server, each app's own `KNOWLEDGE_PGUSER` and `KNOWLEDGE_AZURE_CLIENT_ID`, and the worker's `KNOWLEDGE_VCORES` and its readiness probe on `/readyz`). The worker stops at start while it has no login, so `apps` waits until the job has set up the database.
+`KNOWLEDGE_SERVER_STAGE`, a GitHub variable read by `infra.yml` and `deploy.yml`, set on the environment or, without access to environment settings, as a repository variable (then prod's environment needs `none` set, since a repository variable reaches every environment and an environment's own value wins): `none` (the default, and what an unset variable means: nothing of the knowledge server), `server` (the network, the server, the identities, the job, and Storage Blob Data Contributor on the container `conversions` for the knowledge worker identity), `apps` (also the API and worker settings: `KNOWLEDGE_PGHOST`, `KNOWLEDGE_PGDATABASE`, `KNOWLEDGE_READ_PGHOST` on the same server, each app's own `KNOWLEDGE_PGUSER` and `KNOWLEDGE_AZURE_CLIENT_ID`, and the worker's `KNOWLEDGE_VCORES`, `CONVERSIONS_BLOB_URL` and its readiness probe on `/readyz`). The worker stops at start while it has no login, so `apps` waits until the job has set up the database.
 
 Per environment, test first. The steps infra cannot do run in the `knowledge-server` workflow (`.github/workflows/knowledge-server.yml`), as the deploy identity, so they need GitHub access only:
 
@@ -214,7 +215,7 @@ The decision point needs, per environment, the Altinn resource, a Maskinporten c
    - issuer `https://token.actions.githubusercontent.com`
    - subject `repo:digdir/genki:environment:test`, and the ID form `repo:digdir@51157288/genki@1411915404:environment:test` (the organisation uses ID-based OIDC subjects)
    - audience `api://AzureADTokenExchange`
-3. **Roles for the deploy identity** on the resource group: `Contributor`, plus `Role Based Access Control Administrator` limited to the roles AcrPull, AcrPush and Key Vault Secrets User (the template assigns those).
+3. **Roles for the deploy identity** on the resource group: `Contributor`, plus `Role Based Access Control Administrator` limited to the roles AcrPull, AcrPush, Key Vault Secrets User and Storage Blob Data Contributor (the template assigns those; the last on the container `conversions` for the knowledge worker identity, with stage `server` or `apps`). An environment set up before Storage Blob Data Contributor was added needs its condition widened with `ba92f5b4-2d11-453d-a403-e96b0029c9fe` in both of its role lists (`az role assignment update`) before the next `infra.yml` or `deploy.yml`, since both deploy `main.bicep`.
 4. **Entra group for database admins**, e.g. `genai-test-pg-admins`, with the people who may administer Postgres.
 5. **GitHub environment `test`** with these variables (none are secrets), plus the settings in the table above:
 
@@ -291,7 +292,7 @@ The deploy workflow builds the images once and pushes them to the test registry.
    - `repo:digdir/genki:environment:prod`
    - `repo:digdir@51157288/genki@1411915404:environment:prod` (the ID form the organisation uses)
 2. **Roles for the prod deploy identity**:
-   - on `rg-genki-prod-weu`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush and Key Vault Secrets User
+   - on `rg-genki-prod-weu`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush, Key Vault Secrets User and Storage Blob Data Contributor
    - on the test registry: `Container Registry Data Importer and Data Reader` (the role Azure documents for `az acr import` between registries in one tenant; `AcrPull` is the older equivalent for registries without repository permissions)
 3. **Entra group** `genai-prod-pg-admins`, with the people who may administer prod's Postgres.
 4. **GitHub environment `prod`** with required reviewers, and these variables:
@@ -340,6 +341,6 @@ Still open:
 
 - Postgres: set `appIdentityIsPostgresAdmin` to false, give the app identity its own role with `pgaadauth_create_principal`, run by a member of the admin group, and run migrations from a separate identity, so the running app cannot change the schema. Prod starts with the app identity as Postgres admin, as test does.
 - Key Vault: a private endpoint, then `keyVaultPublicNetworkAccess = 'Disabled'`. The template has no private endpoint yet, so prod keeps the vault public (RBAC only); disabling it now would cut the apps off from their secrets.
-- Storage: a private endpoint for the file share, or Azure Blob storage behind the blob port.
+- Storage: a private endpoint for the file share and the container `conversions`, and uploads on Blob storage behind the blob port. The file share mount needs the account key, so shared-key access stays on and the key also opens the container (ADR 0042, Open).
 - Ingress: Application Gateway with WAF in front.
 - Postgres high availability: `postgresHighAvailability` (`SameZone` or `ZoneRedundant`) exists but prod leaves it `Disabled` for now. It can be turned on later on a General Purpose server.

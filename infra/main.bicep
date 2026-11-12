@@ -326,6 +326,7 @@ module storage 'modules/storage.bicep' = {
     name: take('${namePrefix}${environmentName}data${suffix}', 24)
     location: location
     tags: allTags
+    conversionsWriterPrincipalId: knowledgeOn ? knowledgeWorkerIdentity!.properties.principalId : ''
   }
 }
 
@@ -387,6 +388,7 @@ module apps 'modules/containerapps.bicep' = {
           host: knowledgeHost
           database: knowledgeDatabaseName
           vcores: knowledgePostgresVCores
+          conversionsUrl: storage.outputs.conversionsUrl
           api: {
             id: knowledgeApiIdentity!.id
             clientId: knowledgeApiIdentity!.properties.clientId

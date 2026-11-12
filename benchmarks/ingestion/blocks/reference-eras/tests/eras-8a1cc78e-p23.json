@@ -1,0 +1,326 @@
+{
+ "tests": [
+  {
+   "id": "eras-8a1cc78e-p23-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Mens det har vært vanlig at lønnsspredningen er blitt større i perioder",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "De fleste lavtlønnnsbransjer ser derimot i en viss grad ut til å ha bedret sin relative stilling fra 1978 til 1979.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Enkelte lavtlønnsbransjer har imidlertid tapt eller vunnet terreng over flere år",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "en relativ nedgang på 1 prosentenhet",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "De aller fleste endringene i det relative lønnsnivået",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Bransjevis oversikt over det relative lønnsnivå",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "som i tidligere år som gjengitt i tabell 2 e.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Bransjevis oversikt over det relative lønnsnivå",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Voksne menn i industrien = 100",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Kjøttindustri",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "111",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Bergverk",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1976 3. kv.",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "77",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Hermetikkfabrikker",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "81",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "95",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "79",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Hermetikkfabrikker",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1979 3. kv.",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "80",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t11",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "104",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Trevarefabrikker og snekkerier",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "98",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "93",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t12",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "97",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Papirindustri",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1965 3. kv.",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "93",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "111",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p23-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Sjokolade- og dropsfabrikker",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
