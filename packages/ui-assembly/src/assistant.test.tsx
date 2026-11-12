@@ -482,6 +482,48 @@ describe('the assistant a layout describes', () => {
     }
   });
 
+  it('draws no footnote of a reloaded chunks-only answer without markers at the excerpt in its place', async () => {
+    const chunk = (chunkId: string, docTitle: string, docNum: string) => ({
+      chunkId,
+      docTitle,
+      docNum,
+      contentMarkdown: `${docTitle}.`,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't-old', topic: 'Ansatte', tags: [], created: 1 },
+          messages: [
+            { id: 'q', role: 'user', text: 'Hvor mange ansatte?', created: 1, chunks: [] },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: 'I 2020 var lønnen 153 mill. [1], i 2022 var det 169 ansatte [2].',
+              created: 2,
+              chunks: [
+                chunk('c1', 'Årsrapport 2020', 'd20'),
+                chunk('c2', 'Årsrapport 2020', 'd20'),
+                chunk('c3', 'Årsrapport 2022', 'd22'),
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      const { api } = fakeApi();
+      api.loadThread = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).loadThread;
+      history.replaceState(null, '', '/?t=t-old');
+      draw(state('sources-only').layout, api, true);
+      const kilder = await screen.findByRole('complementary', { name: 'Kilder', hidden: true });
+      await within(kilder).findAllByText('Årsrapport 2022');
+      expect(footnotes()).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows no footnotes without Kilder: a footnote never points nowhere', async () => {
     await stored(state('without-secondary').layout);
     expect(footnotes()).toEqual([]);
