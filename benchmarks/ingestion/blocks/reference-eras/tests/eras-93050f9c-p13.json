@@ -1,0 +1,173 @@
+{
+ "tests": [
+  {
+   "id": "eras-93050f9c-p13-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Investeringsstrategiene",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Finansdepartementet har over tid utviklet en investeringsstrategi",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Bred spredning av investeringene",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Departementet viser i brev 15. juni til at banken har oppdatert strategiplanen for Norges Bank Investment Management for perioden 2021-2022.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En begrenset ramme for avvik fra referanseindeksen (aktiv forvaltning)",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tilbakevekting av aksjeandelen",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Kostnadseffektiv forvaltning",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Norges Banks strategi for 2021-2022 bygger på departementets investeringsstrategi og bankens forrige strategiplan.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Unntakene er strategiske allokeringer til eiendom, unotert infrastruktur for fornybar energi og rentepapirer utstedt av fremvoksende markeder.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vi må regne med at enkeltstrategier i noen perioder bidrar positivt, mens de i andre perioder bidrar negativt.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p13-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "ikke lenger en separat del av bankens investeringsprosess.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Departementet ber Norges Bank gjøre rede for forventede bidrag",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

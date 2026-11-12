@@ -192,8 +192,28 @@
     gap: var(--genai-threads-gap, var(--ds-size-4));
   }
 
+  /* «Ny tråd» stays in view while the list scrolls under it, as on the dev-trader board. The band
+     reaches the gap's height under the button, so no row shows between the two; above the row's
+     menu and its whole-title box. Pinned to neutral, as the shell's card behind it is. */
+  .uib-threads[data-variant='nav'] > .uib-threads-top {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 5;
+    inline-size: 100%;
+    margin-block-end: calc(-1 * var(--genai-threads-gap, var(--ds-size-4)));
+    padding-block-end: var(--genai-threads-gap, var(--ds-size-4));
+    background: var(--genai-threads-new-band-background, var(--ds-color-neutral-surface-default));
+  }
+
+  /* What scrolls under it stops below it when reached by keyboard (WCAG 2.4.11). */
+  .uib-threads[data-variant='nav'] :is(a, button, input, [tabindex]):not(.uib-threads-new) {
+    scroll-margin-block-start: calc(
+      var(--genai-threads-new-size, var(--ds-size-11)) + var(--genai-threads-gap, var(--ds-size-4))
+    );
+  }
+
   /* «Ny tråd» across the panel, the board's 44 high, with the rows' corners. */
-  .uib-threads[data-variant='nav'] > .uib-threads-new {
+  .uib-threads[data-variant='nav'] .uib-threads-new {
     --dsc-button-size: var(--genai-threads-new-size, var(--ds-size-11));
     --dsc-button-border-radius: var(
       --genai-threads-thread-border-radius,
@@ -246,11 +266,11 @@
     background: none;
   }
 
-  /* Up to two lines, then «…»; the box shows the rest. */
+  /* One line, then «…», so a long list stays calm; the box shows the rest on hover or focus. */
   .uib-threads[data-variant='nav'] .uib-threads-thread-title {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: var(--genai-threads-title-lines, 2);
+    -webkit-line-clamp: var(--genai-threads-title-lines, 1);
     white-space: normal;
     overflow-wrap: anywhere;
   }

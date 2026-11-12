@@ -2697,6 +2697,7 @@
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
+              'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
@@ -5664,8 +5665,10 @@
                 'Document records on the knowledge database':
                   "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
               },
+              "Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)",
             ],
             files: [
+              'packages/ingest/src/throttled-embedder.ts',
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
@@ -8941,6 +8944,7 @@
               'Embedding models from the model catalogue, by API id',
               'Dimension checks and batching',
               "Calls through the kernel gate, which applies the endpoint's egress guard",
+              "A 429's requested wait on the error (retryAfterMs), and the SDK's retries per opened embedder",
             ],
             files: [
               'packages/port-embedding/src/port.ts',
@@ -9079,10 +9083,16 @@
             summary:
               'Stores input and output files, with memory and filesystem implementations and folder watching.',
             description:
-              'Used by batch jobs and the worker; Azure Blob comes later behind the same port.',
-            responsibilities: ['Blob store interface', 'Folder watch for triggers', 'Zip export'],
+              "Used by batch jobs and the worker. Uploads are keyed by tenant; converters' native output has a store of its own, keyed by file sha256 with no tenant (ADR 0042), on a folder locally and on Azure Blob storage through providers-azure-blob.",
+            responsibilities: [
+              'Blob store interface',
+              'Native output store keyed by file sha256, converter, version and settings hash',
+              'Folder watch for triggers',
+              'Zip export',
+            ],
             files: [
               'packages/port-blob/src/port.ts',
+              'packages/port-blob/src/native-output.ts',
               'packages/port-blob/src/filesystem.ts',
               'packages/port-blob/src/watch.ts',
             ],
@@ -10301,6 +10311,41 @@
               },
             ],
             keywords: 'parquet hugging face open data file reader hyparquet',
+            schemas: [],
+          },
+          {
+            id: 'providers-azure-blob',
+            plane: 'providers',
+            name: 'Azure Blob conversions',
+            note: 'Blob container',
+            icon: 'source',
+            color: '#8fa8b3',
+            status: 'Provider',
+            packages: ['@genai/providers-azure-blob'],
+            summary: "Keeps converters' native output in the Blob container `conversions`.",
+            description:
+              "Implements the native output container of the Blob port on Azure Blob storage (ADR 0042), with the knowledge worker's managed identity through DefaultAzureCredential and never an account key or SAS token. Without `CONVERSIONS_BLOB_URL` the worker uses a folder under `DATA_DIR` instead. The container deletes an earlier version 30 days after it was written.",
+            responsibilities: [
+              'Write, read, list and delete blobs in the conversions container',
+              'Choose Azure or the local folder from the environment',
+            ],
+            files: ['packages/providers-azure-blob/src/container.ts'],
+            input: 'Conversion paths and bytes',
+            output: 'Stored native output',
+            replaces: [],
+            edges: [
+              {
+                to: 'port-blob',
+                label: 'Implements the native output container',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-azure-blob/src/container.ts',
+                  imports: '@genai/port-blob',
+                },
+              },
+            ],
+            keywords: 'azure blob storage conversions docling native output sha256',
             schemas: [],
           },
           {

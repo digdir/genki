@@ -1,0 +1,16 @@
+# MinerU 4.1.6, standard tier, with its VLM on vLLM (mineru[full] installs vLLM on Linux). Needs a CUDA GPU.
+# Python 3.12 for vLLM's wheels; the page tests ran 3.13 on a Mac with the mlx engine and the same weights.
+# build-essential: Triton compiles its launcher with the C compiler at run time.
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 build-essential \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir "mineru[full]==4.1.6" "mineru-vl-utils[vllm]==2.0.8"
+# vLLM's FlashInfer sampler (used on the A100, not on the T4) compiles its kernels on first use, and pip's CUDA
+# compiler (13.5) doesn't match the CUDA 13.0 headers. FlashInfer's prebuilt kernels for this version and CUDA 13.0
+# skip the compile.
+RUN pip install --no-cache-dir --index-url https://flashinfer.ai/whl/cu130 "flashinfer-jit-cache==0.6.18.post1+cu130"
+COPY documents.json /app/documents.json
+COPY convert/ /app/convert/
+WORKDIR /app/convert
+ENV PYTHONUNBUFFERED=1 MINERU_TELEMETRY_DISABLED=1 MINERU_MODEL_SOURCE=huggingface
+ENTRYPOINT ["python", "convert_mineru.py"]
