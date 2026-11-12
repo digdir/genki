@@ -1,0 +1,4 @@
+{"tests": [
+ {"id": "kudos-19256-p8-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Figur 1.1", "max_diffs": 0}}, "settings": {}}
+]}

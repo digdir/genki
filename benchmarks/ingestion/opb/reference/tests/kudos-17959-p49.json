@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-17959-p49-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "26.04.2021", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-17959-p49-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "2020/00501-5", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-17959-p49-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "NIDAROS DOMKIRKES RESTAURERINGSARBEIDER", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-17959-p49-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Revisjon av årsregnskapet for Nidaros domkirkes restaureringsarbeider 2020", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-17959-p49-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Vedlagt følger revisjonsberetningen for Nidaros domkirkes restaureringsarbeiders årsregnskap for 2020.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-17959-p49-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Riksrevisjonen har revidert virksomhetens regnskap i samsvar med lov og instruks om Riksrevisjonen og internasjonale standarder for offentlig revisjon.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-17959-p49-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "internasjonale standarder for offentlig revisjon.", "max_diffs": 1}, "after": {"text": "Offentliggjøring av revisjonsberetning", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-17959-p49-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "revisjonsberetningen omfattes ikke av bestemmelsen om utsatt offentlighet i lov om Riksrevisjonen § 18 2. ledd.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-17959-p49-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Bestemmelser om økonomistyring i staten punkt 2.3.3", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-17959-p49-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Brevet er godkjent og ekspedert digitalt.", "max_diffs": 1}}, "settings": {}}
+]}

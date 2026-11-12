@@ -1,0 +1,189 @@
+{
+ "tests": [
+  {
+   "id": "kudos-31205-p18-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "VEDLEGG",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det nasjonale beredskapsapparatet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Politidirektoratet har det overordnede ansvaret for å gjennomføre regjeringens politikk",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nivå 2: Det operasjonelle nivå – aktuelle direktorater, etater og tilsyn som har viktige beredskapsoppgaver",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Nivå 1: Det politiske og strategiske nivå",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Nivå 3: Det taktiske nivå",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nærhetsprinsippet innebærer at kriser skal organisatorisk håndteres på lavest mulig nivå.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Ny bistandsinstruks ble satt i kraft 1.september 2017.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Meld. St. 10 (2016–2017) Risiko i et trygt samfunn — Samfunnssikkerhet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Justis- og beredskapsdepartementet; Hovedinstruks for politidirektøren, 16.1.2018",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31205-p18-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "antas å medføre politisk oppmerksomhet eller større medieomtale.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Politidirektoratet; PBS 1 Retningslinjer for politiets beredskap",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
