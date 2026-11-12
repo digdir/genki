@@ -4,7 +4,17 @@ import {
   type FlowStep,
   type StepFlowDefinition,
 } from '@genai/definitions';
-import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
+import {
+  mediaAttachments,
+  mediaIdOf,
+  mediaPart,
+  mediaRefKind,
+  mediaRefsIn,
+  type Emitted,
+  type InvocationContext,
+  type MediaRef,
+  type Strategy,
+} from '@genai/kernel';
 import { languageInstructionsConfig, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import { isPause, type BlockRegistry, type FlowRuntimeConfig } from './blocks.js';
@@ -76,6 +86,23 @@ class Paused extends Error {}
 
 class BudgetExceeded extends Error {}
 
+const fileRefs = (input: Input): MediaRef[] =>
+  (input.parts ?? []).flatMap((p) => {
+    const ref = p.body.kind === 'blob' ? p.body.ref : undefined;
+    const meta = p.meta ?? {};
+    if (ref?.kind !== 'blob' || !ref.tenant || typeof meta.sha256 !== 'string') return [];
+    return [
+      {
+        kind: mediaRefKind,
+        mediaType: p.mime.split(';')[0]?.trim().toLowerCase() ?? p.mime,
+        bytes: typeof meta.size === 'number' ? meta.size : 0,
+        sha256: meta.sha256,
+        tenant: ref.tenant,
+        path: ref.id,
+      },
+    ];
+  });
+
 const inputScope = (input: Input): Record<string, unknown> => {
   const data =
     typeof input.data === 'object' && input.data !== null && !Array.isArray(input.data)
@@ -86,13 +113,23 @@ const inputScope = (input: Input): Record<string, unknown> => {
     .join('\n')
     .trim();
   const query = typeof data.query === 'string' && data.query.trim() ? data.query : text;
+  const files = fileRefs(input);
   return {
     ...data,
+    ...(files.length > 0 ? { files } : {}),
     query,
     text,
     history: Array.isArray(data.history) ? data.history : [],
     parts: input.parts ?? [],
   };
+};
+
+const withQuestion = (scope: Record<string, unknown>, declared: Record<string, unknown> = {}) => {
+  const names = Object.keys(declared);
+  const only = names.length === 1 ? names[0] : undefined;
+  if (only === undefined || !scope.query) return scope;
+  const given = scope[only];
+  return given === undefined || given === '' ? { ...scope, [only]: scope.query } : scope;
 };
 
 export const resultParts = (value: unknown): Part[] => {
@@ -110,6 +147,14 @@ export const resultParts = (value: unknown): Part[] => {
   )
     return (value as { parts: Part[] }).parts;
   return [{ mime: 'application/json', body: { kind: 'json', json: value } }];
+};
+
+const withMedia = (parts: Part[], progress: Progress): Part[] => {
+  const returned = new Set(mediaAttachments(parts).map((a) => `${a.tenant}/${a.path}`));
+  const made = mediaRefsIn(Object.values(progress.done).map((r) => r.output)).filter(
+    (ref) => !returned.has(`${ref.tenant}/${ref.path}`),
+  );
+  return made.length ? [...parts, ...made.map(mediaPart)] : parts;
 };
 
 const matches = (when: unknown, value: unknown) =>
@@ -209,7 +254,8 @@ class Runner {
     frame.steps[step.id] = record;
     this.progress.done[key] = record;
     await this.save();
-    yield this.notice(step, key, action, record.status, Date.now() - started);
+    const media = step.block ? mediaRefsIn(record.output) : [];
+    yield this.notice(step, key, action, record.status, Date.now() - started, media);
     return record.output;
   }
 
@@ -219,6 +265,7 @@ class Runner {
     action: string,
     status: string,
     ms?: number,
+    media: MediaRef[] = [],
   ): Emitted {
     return {
       type: 'kernel.notice',
@@ -230,6 +277,15 @@ class Runner {
         ...(step.block ? { block: step.block } : {}),
         status,
         ...(ms === undefined ? {} : { ms }),
+        ...(media.length
+          ? {
+              media: media.map((m) => ({
+                id: mediaIdOf(m.path),
+                mediaType: m.mediaType,
+                bytes: m.bytes,
+              })),
+            }
+          : {}),
       },
     };
   }
@@ -443,7 +499,7 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
     );
     const frame: Frame = {
       steps: {},
-      input: inputScope(input),
+      input: withQuestion(inputScope(input), flow.spec.input),
       vars: { ...strategy.vars },
       flows: [strategy.flow],
     };
@@ -458,7 +514,7 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
             steps: frame.steps,
           })
         : last;
-      yield { type: 'kernel.result', data: resultParts(value) };
+      yield { type: 'kernel.result', data: withMedia(resultParts(value), progress) };
     } catch (error) {
       if (error instanceof Paused) return;
       throw error;

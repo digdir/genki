@@ -1,0 +1,149 @@
+{
+  "groups": {
+    "platform": "Health, version, OpenAPI, the service list, and the portal and console answer",
+    "models": "Every model the smoke service reaches, with the service's own parameters, streamed and not",
+    "runs": "Agent and retrieve-only questions, citations, sources and streamed steps",
+    "retrieval": "Facets, auto-filter detection and the sources a search returns",
+    "timeline": "Run timelines with provider details, detection tags and token stats",
+    "playground": "The portal playground on a published service, with other models and their residency",
+    "definitions": "Definition validation and the refusals people see",
+    "portal": "Every portal screen in a browser, and the errors it shows",
+    "console": "Every console screen in a browser and the operator read routes",
+    "access": "Login, lockdown, keys, sessions and what each credential reaches",
+    "feedback": "Feedback on a run",
+    "language": "Error messages and screens in the language asked for"
+  },
+  "docs": ["docs/", "*.md", "LICENSE", ".github/ISSUE_TEMPLATE/"],
+  "rules": [
+    {
+      "group": "platform",
+      "paths": [
+        "apps/api/src/openapi/",
+        "apps/api/src/app.ts",
+        "apps/api/src/main.ts",
+        "apps/api/src/http.ts"
+      ]
+    },
+    {
+      "group": "models",
+      "paths": [
+        "packages/port-model/",
+        "packages/providers-anthropic/",
+        "packages/providers-openai/",
+        "packages/providers-ai-gateway/",
+        "apps/api/config/",
+        "apps/api/src/model-access.ts",
+        "apps/api/src/model-choice.ts",
+        "apps/api/src/model-matrix.ts",
+        "apps/api/src/residency.ts"
+      ]
+    },
+    {
+      "group": "runs",
+      "paths": [
+        "packages/kernel/",
+        "packages/composition/",
+        "packages/strategy-",
+        "packages/adapter-openai/",
+        "packages/guardrails/",
+        "packages/hooks/",
+        "packages/port-tools/",
+        "packages/conversations/",
+        "apps/api/src/composition.ts",
+        "apps/api/src/run-steps.ts"
+      ]
+    },
+    {
+      "group": "retrieval",
+      "paths": [
+        "packages/retrieval/",
+        "packages/port-knowledge/",
+        "packages/port-embedding/",
+        "packages/port-rerank/",
+        "packages/providers-colbert/",
+        "packages/providers-typesense/",
+        "packages/providers-pgvector/",
+        "apps/api/src/external-search.ts",
+        "apps/api/src/knowledge-endpoints.ts"
+      ]
+    },
+    {
+      "group": "timeline",
+      "paths": [
+        "apps/api/src/timeline.ts",
+        "apps/api/src/run-steps.ts",
+        "apps/api/src/platform.ts",
+        "apps/api/src/failures.ts",
+        "apps/portal/src/components/playground/RunView.tsx",
+        "apps/portal/src/screens/log/",
+        "apps/portal/src/screens/service/LogSection.tsx"
+      ]
+    },
+    {
+      "group": "playground",
+      "paths": [
+        "apps/api/src/playground.ts",
+        "apps/api/src/residency.ts",
+        "apps/api/src/draft-runner.ts",
+        "apps/portal/src/components/playground/",
+        "apps/portal/src/api/playground"
+      ]
+    },
+    {
+      "group": "definitions",
+      "paths": [
+        "packages/definitions/",
+        "apps/api/src/definitions.ts",
+        "apps/api/src/service-schema.ts",
+        "apps/api/src/problem-responses.ts",
+        "apps/api/src/service-lifecycle.ts",
+        "apps/api/src/definition-",
+        "apps/api/src/service-drafts.ts"
+      ]
+    },
+    {
+      "group": "portal",
+      "paths": ["apps/portal/", "packages/i18n/", "packages/schema-forms/"]
+    },
+    {
+      "group": "console",
+      "paths": [
+        "apps/console/",
+        "apps/api/src/operator",
+        "apps/api/src/operators.ts",
+        "apps/api/src/admin.ts"
+      ]
+    },
+    {
+      "group": "access",
+      "paths": [
+        "packages/identity/",
+        "apps/api/src/lockdown.ts",
+        "apps/api/src/tenant-gate.ts",
+        "apps/api/src/access.ts",
+        "apps/api/src/rights.ts",
+        "apps/api/src/maskinporten-clients.ts",
+        "apps/api/src/session-upgrade.ts",
+        "apps/api/src/login-issuers.ts",
+        "apps/api/src/routes/",
+        "apps/portal/src/auth",
+        "apps/console/src/auth.ts",
+        "infra/"
+      ]
+    },
+    {
+      "group": "feedback",
+      "paths": ["apps/api/src/quality.ts", "apps/api/src/result-reviews.ts"]
+    },
+    {
+      "group": "language",
+      "paths": [
+        "packages/i18n/",
+        "apps/api/src/i18n/",
+        "apps/portal/src/i18n/",
+        "apps/console/src/i18n/"
+      ]
+    }
+  ],
+  "ignore": ["scripts/smoke/", ".github/workflows/smoke.yml"]
+}

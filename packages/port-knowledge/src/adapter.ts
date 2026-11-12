@@ -4,6 +4,7 @@ import type {
   CitationResolution,
   DocumentPage,
   DocumentsRequest,
+  ExportedDocument,
   FacetValue,
   FieldFilter,
   FilterValue,
@@ -99,6 +100,12 @@ export interface KnowledgeExport<D = unknown> {
   vectors: boolean;
   documents(dataset: DatasetConfig<D>, signal: AbortSignal): AsyncIterable<IndexDocument>;
   count(dataset: DatasetConfig<D>, cap: number, signal: AbortSignal): Promise<number>;
+  list?(dataset: DatasetConfig<D>, signal: AbortSignal): AsyncIterable<ExportedDocument>;
+  document?(
+    dataset: DatasetConfig<D>,
+    id: string,
+    signal: AbortSignal,
+  ): Promise<IndexDocument | undefined>;
 }
 
 export interface KnowledgeAdapter<E = unknown, D = unknown> {

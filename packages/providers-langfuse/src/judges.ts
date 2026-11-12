@@ -740,9 +740,8 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
           : undefined;
       out.push({
         id: a.id,
-        // 4.4.0 keeps updatedAt when someone edits an annotation in the UI (4.72.0 changes it), so
-        // the label is in it.
-        revision: `${a.updatedAt ?? a.timestamp ?? ''}|${label ?? ''}`,
+        // Langfuse changes updatedAt on every edit.
+        revision: a.updatedAt ?? a.timestamp ?? '',
         trace,
         name: a.name,
         dataType: a.dataType ?? '',

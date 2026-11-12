@@ -77,6 +77,7 @@ const plugins: PluginSchemas = {
     ['mcp-client@1', z.strictObject({ connection: z.string() })],
     ['digdir.klarsprak@2.3', z.strictObject({})],
     ['saker.sok@1', z.strictObject({})],
+    ['github.search_issues@1', z.strictObject({})],
   ]),
   guardrails: new Map<string, z.ZodType>([
     ['pii-before-model', z.strictObject({ categories: z.array(z.string()).min(1) })],
@@ -171,6 +172,10 @@ describe('service definitions', () => {
     expect(errorsOf(withSpec({ tools: ['digdir.klarsprak'] })).map((e) => e.path)).toEqual([
       'spec.tools[0]',
     ]);
+  });
+
+  it('accepts a connected tool whose name has an underscore, as MCP and OpenAPI tools often do', () => {
+    expect(errorsOf(withSpec({ tools: ['github.search_issues@1'] }))).toEqual([]);
   });
 
   it("validates each guardrail's settings with its own schema", () => {
@@ -570,6 +575,99 @@ describe('service definitions', () => {
         variant: 'arsrapport-forst',
       },
     ]);
+  });
+
+  it('a variant can fix a retrieval filter, which only that variant carries into its knowledge config', () => {
+    const filters = { fields: [{ field: 'orgs_short', 'selected-options': ['DIGDIR'] }] };
+    const result = validateService(
+      withSpec({ variants: [{ id: 'default' }, { id: 'digdir', filters }] }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+
+    const [service, variant] = toCapabilities(result.definition, 1);
+    const knowledge = (c: typeof service) =>
+      (c?.capability.config as { knowledge: { filters?: unknown } }).knowledge;
+
+    expect(knowledge(service).filters).toBeUndefined();
+    expect(knowledge(variant).filters).toEqual(filters);
+  });
+
+  it('refuses a variant filter without fields or options, or of an unknown type', () => {
+    for (const filters of [
+      { fields: [] },
+      { fields: [{ field: 'orgs_short', 'selected-options': [] }] },
+      { fields: [{ field: 'orgs_short', type: 'range', 'selected-options': ['x'] }] },
+    ]) {
+      const result = validateService(withSpec({ variants: [{ id: 'default', filters }] }), plugins);
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it('refuses a variant filter on a service without datasets', () => {
+    const filters = { fields: [{ field: 'orgs_short', 'selected-options': ['DIGDIR'] }] };
+    const result = validateService(
+      withSpec({ knowledge: { datasets: [] }, variants: [{ id: 'default', filters }] }),
+      plugins,
+    );
+    expect(!result.ok && result.errors).toContainEqual({
+      path: 'spec.variants[0].filters',
+      message: 'a filter needs a dataset to search',
+    });
+  });
+
+  it('refuses a variant filter on a field none of the datasets declares, when the catalog is known', () => {
+    const filters = (field: string) => ({ fields: [{ field, 'selected-options': ['x'] }] });
+    const declared = {
+      ...plugins,
+      datasetFilters: (dataset: string) =>
+        dataset === 'digdir/kudos' ? { orgs_short: 'multiselect' } : undefined,
+    };
+    const check = (field: string) =>
+      validateService(
+        withSpec({ variants: [{ id: 'default', filters: filters(field) }] }),
+        declared,
+      );
+
+    expect(check('orgs_short').ok).toBe(true);
+    const refused = check('produkt');
+    expect(!refused.ok && refused.errors).toContainEqual({
+      path: 'spec.variants[0].filters.fields[0].field',
+      message: 'no dataset of this service declares the filter field produkt',
+    });
+  });
+
+  it('refuses a variant filter whose type the declared field cannot run, and ignores inherited keys', () => {
+    const declared = {
+      ...plugins,
+      datasetFilters: (dataset: string) =>
+        dataset === 'digdir/kudos' ? { orgs_short: 'multiselect', title: 'text' } : undefined,
+    };
+    const check = (field: string, type?: string) =>
+      validateService(
+        withSpec({
+          variants: [
+            {
+              id: 'default',
+              filters: {
+                fields: [{ field, ...(type ? { type } : {}), 'selected-options': ['x'] }],
+              },
+            },
+          ],
+        }),
+        declared,
+      );
+
+    expect(check('orgs_short', 'not-in-set').ok).toBe(true);
+    expect(check('title', 'contains').ok).toBe(true);
+    const refused = check('orgs_short', 'contains');
+    expect(!refused.ok && refused.errors).toContainEqual({
+      path: 'spec.variants[0].filters.fields[0].type',
+      message:
+        'the filter field orgs_short is not a text field, so it cannot be filtered as contains',
+    });
+    expect(check('title').ok).toBe(false);
+    expect(check('constructor').ok).toBe(false);
   });
 
   it("a variant without its own way of working uses the service's", () => {

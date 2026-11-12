@@ -17,6 +17,7 @@ import {
   type PluginRegistration,
   type PluginRegistry,
 } from '@genai/plugins';
+import { familyOfProtocol } from '@genai/operations';
 import { KnowledgeRouter, type KnowledgeAdapter } from '@genai/port-knowledge';
 import {
   capabilities as modelCapabilities,
@@ -224,8 +225,20 @@ const catalogAuth = (endpoint: ExternalEndpoint) =>
       : { kind: 'api-key', secret: endpoint.auth.secret }
     : { kind: 'bearer', secret: 'secret://env/no-key' };
 
+const pluginChatApis: Readonly<Record<string, string>> = {
+  'openai-chat': 'openai/chat-completions@1',
+  'anthropic-messages': 'anthropic/messages@1',
+};
+
+const pluginChatApi = (protocol: string) => {
+  const id = pluginChatApis[protocol];
+  return id ? { id, family: familyOfProtocol(protocol) } : undefined;
+};
+
 export const externalProtocols = (options: ExternalTargetOptions) => ({
-  model: options.models.map((a) => a.protocol),
+  model: Object.keys(pluginChatApis).filter((p) =>
+    options.models.some((a) => a.apis.some((api) => api.id === pluginChatApis[p])),
+  ),
   rerank: options.rerank.map((a) => a.engine),
   knowledge: (options.knowledge ?? [])
     .filter((a) => a.engine === 'http-search' || a.engine === 'mcp')
@@ -289,8 +302,9 @@ export const externalTarget =
     const gate: Gate = { ...options.gate, egress: () => egress };
     const contextOf = (signal: AbortSignal) => contextFor(options.tenant, manifest.id, signal);
     if (manifest.kind === 'model') {
-      const adapter = options.models.find((a) => a.protocol === endpoint.protocol);
-      if (!adapter) return undefined;
+      const chat = pluginChatApi(endpoint.protocol);
+      const adapter = options.models.find((a) => a.apis.some((api) => api.id === chat?.id));
+      if (!adapter || !chat) return undefined;
       const declared = manifest.capabilities.filter((c): c is Capability =>
         (modelCapabilities as readonly string[]).includes(c),
       );
@@ -302,9 +316,9 @@ export const externalTarget =
               catalog: {
                 endpoints: {
                   external: {
-                    protocol: adapter.protocol,
                     baseURL: endpoint.baseURL,
                     auth: catalogAuth(endpoint),
+                    families: { [chat.family]: '' },
                   },
                 },
                 models: [
@@ -314,6 +328,7 @@ export const externalTarget =
                     deployment: endpoint.deployment ?? manifest.id,
                     residency: manifest.dataLocation ?? 'global',
                     capabilities,
+                    apis: { chat: chat.id },
                   },
                 ],
               },
@@ -526,16 +541,17 @@ export const pluginCatalogEntries = (entries: ConfigEntry<unknown>[]): ConfigEnt
     if (endpointProblems(manifest, endpoint).length > 0) return [];
     const auth = catalogAuth(endpoint);
     const residency = manifest.dataLocation ?? 'global';
+    const chat = pluginChatApi(endpoint.protocol);
     if (manifest.kind === 'model')
       return [
         derivedEntry(entry, 'model-endpoint', manifest.id, {
-          protocol: endpoint.protocol,
           baseURL: endpoint.baseURL,
           auth,
-          ...(endpoint.options ? { options: endpoint.options } : {}),
+          families: { [chat?.family ?? familyOfProtocol(endpoint.protocol)]: '' },
         }),
         derivedEntry(entry, 'model', manifest.id, {
           endpoint: manifest.id,
+          ...(chat ? { apis: { chat: chat.id } } : {}),
           deployment: endpoint.deployment ?? manifest.id,
           residency,
           capabilities: manifest.capabilities.filter((c) =>

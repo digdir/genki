@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { retrievalConfig } from './config.js';
 import {
   capPerDocument,
-  detectOrgFilter,
+  detectOrganisations,
   detectYears,
   fileDigestsOf,
   isNumericFactQuery,
@@ -154,32 +154,61 @@ describe('diversity and duplicate files', () => {
 describe('auto-filter detection', () => {
   const facets = {
     orgs_long: [
-      { value: 'Digitaliseringsdirektoratet', count: 40 },
+      { value: 'Datatilsynet', count: 40 },
       { value: 'IT', count: 3 },
     ],
-    orgs_short: [{ value: 'Digdir', count: 50 }],
+    orgs_short: [
+      { value: 'NAV', count: 50 },
+      { value: 'DFØ', count: 20 },
+    ],
   };
+  const fields = ['orgs_long', 'orgs_short'];
 
-  it('prefers long organisation names, skips values under three characters, and finds years', () => {
-    expect(
-      detectOrgFilter(
-        ['Hva gjør Digitaliseringsdirektoratet og Digdir?'],
-        facets,
-        ['orgs_long', 'orgs_short'],
-        3,
-      ),
-    ).toEqual({
-      field: 'orgs_long',
-      values: ['Digitaliseringsdirektoratet'],
-    });
-    expect(detectOrgFilter(['IT i DIGDIR'], facets, ['orgs_long', 'orgs_short'], 3)).toEqual({
-      field: 'orgs_short',
-      values: ['Digdir'],
-    });
-    expect(
-      detectOrgFilter(['ingen treff'], facets, ['orgs_long', 'orgs_short'], 3),
-    ).toBeUndefined();
-    expect(detectYears(['årsrapport 2021', 'og 2022'])).toEqual(['2021', '2022']);
+  it('a question naming two organisations detects both', () => {
+    expect(detectOrganisations(['Datatilsynet og NAV'], facets, fields, 3)).toEqual([
+      { field: 'orgs_long', values: ['Datatilsynet'], queries: ['Datatilsynet og NAV'] },
+      { field: 'orgs_short', values: ['NAV'], queries: ['Datatilsynet og NAV'] },
+    ]);
+  });
+
+  it('a genitive organisation name is detected', () => {
+    const query = 'Datatilsynets arbeid ifølge DFØs evaluering';
+    expect(detectOrganisations([query], facets, fields, 3)).toEqual([
+      { field: 'orgs_long', values: ['Datatilsynet'], queries: [query] },
+      { field: 'orgs_short', values: ['DFØ'], queries: [query] },
+    ]);
+  });
+
+  it('lower-case æøå match their capitals', () => {
+    expect(detectOrganisations(['hva sier dfø'], facets, fields, 3)).toEqual([
+      { field: 'orgs_short', values: ['DFØ'], queries: ['hva sier dfø'] },
+    ]);
+  });
+
+  it('records only the queries that name the organisation', () => {
+    expect(detectOrganisations(['NAV i 2022', 'årsrapport'], facets, fields, 3)).toEqual([
+      { field: 'orgs_short', values: ['NAV'], queries: ['NAV i 2022'] },
+    ]);
+  });
+
+  it('skips facet values shorter than the minimum length', () => {
+    expect(detectOrganisations(['IT i staten'], facets, fields, 3)).toEqual([]);
+  });
+
+  it('an amount is not read as a year', () => {
+    expect(detectYears(['Kostnad på 2000 kroner i 2023'])).toEqual(['2023']);
+  });
+
+  it('an amount does not lift a title that contains the same number', () => {
+    const [ranked] = prioritize(
+      [chunk('c', { title: 'Rapport 2000' })],
+      ['Kostnad på 2000 kroner'],
+      {},
+      [],
+      defaults.boostWeights,
+      false,
+    );
+    expect(ranked?.retrievalBoosts?.year).toBe(0);
   });
 });
 

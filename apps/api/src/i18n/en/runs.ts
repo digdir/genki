@@ -50,6 +50,7 @@ export const runs = {
   stepTitle: 'Step "{step}"{block}',
   doneWithSkipped: { one: 'Done, {count} item skipped', other: 'Done, {count} items skipped' },
   runFailed: 'The run failed',
+  providerAnswered: 'The provider answered {status}',
   started: 'Started',
   received: 'The task was received',
   message: 'Message',

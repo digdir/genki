@@ -1,3 +1,5 @@
+import type { Server } from 'node:http';
+import { attachSessionUpgrade } from './session-upgrade.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -31,14 +33,16 @@ import {
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
 import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
+import { evalSlotLimitsFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
-import type { ModelPrice } from './draft-runner.js';
+import type { PriceSpec } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
@@ -49,6 +53,7 @@ import {
   defaultPlatformTenant,
   environmentTierOf,
   openKnowledgePools,
+  processorRecordCheckOf,
   ownedByPlatformTenant,
   platformTenantFrom,
 } from '@genai/composition';
@@ -104,9 +109,17 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
       queue = undefined;
       throw error;
     }));
-  return new PostgresJobRuns(runtimePool, {
-    send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
-  });
+  return {
+    runs: new PostgresJobRuns(runtimePool, {
+      send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+    }),
+    // A generation an engine switch left on the knowledge server is dropped by the worker (ADR 0025).
+    drop: async (input: { tenant: string; dataset: string; generation: string }) => {
+      await (
+        await started()
+      ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
+    },
+  };
 };
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
@@ -383,7 +396,7 @@ const settings = new SettingsRegistry(platformSettings);
 if (db) await settings.attach(db.settings);
 const pricesFile = join(configDir, 'prices.yaml');
 const prices = existsSync(pricesFile)
-  ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, ModelPrice> })
+  ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, PriceSpec> })
       .models ?? {})
   : {};
 const tenantKeys: TenantApiKeys = db ? postgresTenantKeys(db.apiKeys) : memoryKeys;
@@ -429,6 +442,8 @@ const environmentTier = environmentTierOf(process.env);
 if (environmentTier === 'test')
   log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
 
+const processorRecords = processorRecordCheckOf(process.env);
+
 const platform = await createPlatform({
   platformTenant,
   appVersion: version,
@@ -439,6 +454,7 @@ const platform = await createPlatform({
   },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
+  processorRecords,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
@@ -466,7 +482,7 @@ const platform = await createPlatform({
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
     // The platform adds every dataset on `connection: knowledge` (createPlatform).
-    ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
+    ...(db ? { jobRuns: { runsAsJobs: () => false, ...knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT
@@ -541,6 +557,7 @@ const platform = await createPlatform({
         conversations: db.conversations,
         threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
+        providerObjects: db.providerObjects,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
         evalStores: db.eval,
@@ -562,6 +579,7 @@ const platform = await createPlatform({
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
+  evalSlots: evalSlotLimitsFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });
@@ -732,6 +750,7 @@ if (mock) {
   });
 }
 
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });
+attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);

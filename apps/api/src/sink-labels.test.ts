@@ -30,7 +30,7 @@ const runOf = (tenant: string, id: string, version = 1): StoredRun =>
               state: 'scored',
               applicable: true,
               value: 1,
-              details: { dataType: 'BOOLEAN' },
+              details: { dataType: 'BOOLEAN', scoreName: rule },
             },
           ],
         },

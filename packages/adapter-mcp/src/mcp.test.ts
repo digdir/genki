@@ -978,6 +978,18 @@ describe('retrieval details in structuredContent', () => {
     expect(structuredContent(structured, 'c1')).toEqual({ conversation_id: 'c1', fields });
   });
 
+  it('gives a chunk published_at only when its source has a publish date', () => {
+    const sources = [{ chunkId: 'c1', publishedAt: '2025-01-15' }, { chunkId: 'c2' }];
+    const { structured } = defaultOutput([
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources } } },
+    ]);
+
+    expect(structuredContent(structured, 'c1').chunks).toEqual([
+      { chunk_id: 'c1', published_at: '2025-01-15' },
+      { chunk_id: 'c2' },
+    ]);
+  });
+
   it('keeps filters the strategy already reported in its sources part', () => {
     const own = [{ filter: { fields: [] }, source: 'explicit' }];
     const { structured } = defaultOutput([

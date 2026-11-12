@@ -209,6 +209,7 @@ export const BlockList = ({
             </Heading>
             <span className="bb-meta">{t(g.description)}</span>
             {g.kind === 'skill' ? <a href="#/skills">{t('blocks.goToSkills')}</a> : null}
+            {g.kind === 'step_flow' ? <a href="#/step-flows">{t('blocks.goToStepFlows')}</a> : null}
           </div>
           <ul className="bb-grid">
             {g.items.map((b) => (

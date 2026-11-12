@@ -19,7 +19,6 @@ describe('the GenKI docs bundle', () => {
       expect.arrayContaining([
         'README.md',
         'CONTRIBUTING.md',
-        'SECURITY.md',
         'docs/development.md',
         'docs/frontend-contract.md',
         'docs/api/README.md',

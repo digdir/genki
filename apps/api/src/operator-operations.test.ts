@@ -11,7 +11,7 @@ operation: classify
 status: review
 summary: A made-up classification API, to try a new kind.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -74,7 +74,7 @@ const boot = async (environmentTier?: 'test' | 'production', lockdown = false) =
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${server.url}/v1`,
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },

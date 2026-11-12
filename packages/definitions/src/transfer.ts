@@ -39,7 +39,10 @@ export interface ImportOptions {
   onConflict: 'skip' | 'overwrite';
   actor: string;
   reason: string;
-  check?: (definition: unknown, files: PromptFiles) => ValidationError[];
+  check?: (
+    definition: unknown,
+    files: PromptFiles,
+  ) => ValidationError[] | Promise<ValidationError[]>;
   prepare?: (definition: unknown) => unknown;
 }
 
@@ -174,7 +177,10 @@ export const importTenant = async (
     const action = plan.find((p) => p.target === target)?.action;
     if (options.check && (action === 'create' || action === 'update'))
       errors.push(
-        ...options.check(definition, files).map((e) => ({ ...e, path: `${target}.${e.path}` })),
+        ...(await options.check(definition, files)).map((e) => ({
+          ...e,
+          path: `${target}.${e.path}`,
+        })),
       );
   }
   for (const [key, version] of Object.entries(bundle.settings.pins)) {
