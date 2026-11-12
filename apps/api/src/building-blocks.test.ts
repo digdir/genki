@@ -372,6 +372,55 @@ describe('building blocks API', () => {
     ]);
   });
 
+  it('never scores a block by a run limited to marked cases', async () => {
+    const { send, runs } = await setup();
+    const evalRun = (id: string, endedAt: string, extra: Partial<EvalRun>): EvalRun => ({
+      id,
+      testSet: { tenant: digdir, id: 'klarsprak-sett', version: 1 },
+      capability: `${digdir}/klarsprak/default`,
+      splits: ['validation'],
+      repeats: 1,
+      startedAt: endedAt,
+      endedAt,
+      provenance: {
+        commit: 'abc',
+        data: 'd',
+        servedModels: ['foundry/gpt-4o'],
+        judges: [],
+        services: [],
+      },
+      results: [],
+      metrics: { 'exact-text': { mean: 0.9, ci: [0.8, 1], n: 10 } },
+      byTag: {},
+      incomplete: [],
+      status: 'completed',
+      ...extra,
+    });
+    await runs.save({
+      run: evalRun('hele', '2026-10-01T10:00:00Z', {}),
+      tenant: digdir,
+      task: 't1',
+      service: 'klarsprak',
+    });
+    await runs.save({
+      run: evalRun('merket', '2026-10-02T10:00:00Z', {
+        metrics: { 'exact-text': { mean: 0.2, ci: [0.2, 0.2], n: 1 } },
+        tested: { version: 1, selected: ['c1'] },
+      }),
+      tenant: digdir,
+      task: 't2',
+      service: 'klarsprak',
+    });
+
+    const list = await json<{ data: { id: string; scores: { run: string; score: number }[] }[] }>(
+      await send(base, 'kari'),
+    );
+
+    expect(list.data.find((b) => b.id === 'foundry/gpt-4o')?.scores).toEqual([
+      expect.objectContaining({ run: 'hele', score: 90 }),
+    ]);
+  });
+
   it('adopting needs a reason and records Endret av', async () => {
     const { send, admin } = await setup();
     const path = `${base}/model/${enc('azure/gpt-41')}/adopt`;
@@ -1362,6 +1411,49 @@ describe('building-block settings at run time', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('lists one judge:criteria block at its prompt version for runs judged by two models', async () => {
+    const { send, runs } = await setup();
+    for (const [id, model] of [
+      ['r1', 'foundry/claude'],
+      ['r2', 'foundry/gpt-4o'],
+    ] as const)
+      await runs.save({
+        tenant: digdir,
+        task: `task-${id}`,
+        service: 'svar',
+        run: {
+          id,
+          testSet: { tenant: digdir, id: 'svar-sett', version: 1 },
+          capability: `${digdir}/svar`,
+          splits: ['validation'],
+          repeats: 1,
+          startedAt: '2026-11-12T10:00:00.000Z',
+          endedAt: '2026-11-12T10:01:00.000Z',
+          provenance: {
+            commit: 'abc',
+            data: 'd1',
+            servedModels: ['m'],
+            judges: [`judge:criteria@2+${model}`],
+            services: [],
+          },
+          results: [],
+          metrics: { 'judge.criteria': { mean: 1, ci: [1, 1], n: 1 } },
+          byTag: {},
+          incomplete: [],
+        },
+      });
+
+    const listed = await json<{ data: BuildingBlock[] }>(await send(`${base}?kind=judge`, 'kari'));
+    const block = await json<BuildingBlock>(
+      await send(`${base}/judge/${encodeURIComponent('judge:criteria')}`, 'kari'),
+    );
+
+    expect(listed.data.map((b) => b.id).filter((id) => id.startsWith('judge:criteria'))).toEqual([
+      'judge:criteria',
+    ]);
+    expect(block.version).toBe('2');
   });
 
   it('every block setting has an effect: judges have none and a tool gets at most its own timeout', async () => {
