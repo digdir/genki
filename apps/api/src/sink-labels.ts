@@ -181,14 +181,13 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       seen.add(a.id);
       const sent = traces.get(a.trace);
       if (!sent || sharedNames.has(a.name)) continue;
-      // The judge on this connection whose scores have the label's name and type: the name the
-      // sink gave them, or the judge's own for a run that did not record one.
+      // The judge on this connection whose scores have the label's name and type, as the sink
+      // named them.
       const score = sent.result.scores.find(
         (s) =>
           isSinkJudge(s.evaluator) &&
           keyOf(tenant, s.evaluator).endsWith(`/${id}/${nameOf(s.evaluator)}`) &&
-          (s.details?.scoreName ?? sent.scoreNames.get(s.evaluator) ?? nameOf(s.evaluator)) ===
-            a.name &&
+          (s.details?.scoreName ?? sent.scoreNames.get(s.evaluator)) === a.name &&
           (s.details?.dataType ?? sent.dataTypes.get(s.evaluator)) === a.dataType,
       );
       if (!score) continue;
@@ -196,8 +195,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       for (const older of known)
         if (older.id === a.id && older.revision !== a.revision && older.state === 'pending')
           changed.push({ ...older, state: 'replaced' });
-      // Compared with the label as it stands, not its history: Langfuse keeps updatedAt on an
-      // edit, so editing back to an earlier value gives a revision seen before.
+      // A revision seen before is no news: Langfuse changes updatedAt on every edit.
       const live = (l: SinkLabel) =>
         l.id === a.id && (l.state === 'pending' || l.state === 'accepted');
       if (known.some((l) => live(l) && l.revision === a.revision)) continue;

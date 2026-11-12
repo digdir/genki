@@ -1130,7 +1130,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     { id: 'oppsett-3', name: 'hjelpsomhet', dataType: 'BOOLEAN' },
     { id: 'oppsett-4', name: numericScore, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
     { id: 'oppsett-5', name: numericScore, dataType: 'NUMERIC' },
-    // Named after the rule, as 4.4.0 named its scores.
+    // Named after the rule, not the evaluator that names the scores.
     { id: 'oppsett-6', name: judgeRule, dataType: 'BOOLEAN' },
   ];
   /** A person's annotation on a case's trace, as Langfuse's UI writes it with a score config. */
@@ -1525,7 +1525,7 @@ describe('Langfuse judges on a run', () => {
 
   it('shows a connection whose Langfuse judges cannot be read as one refused judge block, which cannot be taken in use', async () => {
     const { env, langfuse } = await judged();
-    // Langfuse 4.4.0 has no v2 evaluation API.
+    // A Langfuse without the v2 evaluation API, such as 4.4.0.
     langfuse.hooks.evaluationDown = 404;
 
     const listed = await env.send('GET', `/tenants/${tenant}/building-blocks?kind=judge`);
@@ -2044,29 +2044,10 @@ describe('Langfuse judges on a run', () => {
   it("matches an annotation to a judge by its evaluator's name and type, not the rule's name", async () => {
     const { langfuse, fetchLabels, batches } = await labelled();
     const o1 = langfuse.traceOf('o1');
-    // A score config named after the rule, as 4.4.0 named the scores: no label.
+    // A score config named after the rule: no label.
     langfuse.annotate(o1, { configId: 'oppsett-6', value: true });
-    // Named after the evaluator, as 4.72.0 names them: the judge's label.
+    // Named after the evaluator, as Langfuse names the scores: the judge's label.
     langfuse.annotate(o1, { configId: 'oppsett-1', value: false });
-
-    expect((await fetchLabels()).status).toBe(200);
-
-    expect((await batches()).flatMap((b) => b.labels)).toEqual([
-      expect.objectContaining({ case: 'o1', humanLabel: 'bad' }),
-    ]);
-  });
-
-  it("matches a label by the judge's rule name on a run whose scores did not record their name, as 4.4.0 named them", async () => {
-    const { env, langfuse, run, fetchLabels, batches } = await labelled();
-    const stored = await env.platform.evalStores.runs.get(run);
-    if (!stored) throw new Error('the run was not stored');
-    // A run scored before scores recorded the name Langfuse gave them.
-    for (const r of stored.run.results)
-      for (const sc of r.scores) if (sc.details) delete sc.details.scoreName;
-    await env.platform.evalStores.runs.save(stored);
-    const o1 = langfuse.traceOf('o1');
-    langfuse.annotate(o1, { configId: 'oppsett-6', value: false });
-    langfuse.annotate(o1, { configId: 'oppsett-1', value: true });
 
     expect((await fetchLabels()).status).toBe(200);
 
@@ -2198,8 +2179,9 @@ describe('Langfuse judges on a run', () => {
     await fetchLabels();
     expect(await batches()).toEqual([]);
 
-    // Langfuse 4.4.0 keeps updatedAt when an annotation is edited in its UI.
+    // Langfuse changes updatedAt on every edit.
     annotation.value = true;
+    annotation.updatedAt = '2026-11-02T11:00:00.000Z';
     await fetchLabels();
 
     expect((await batches())[0]?.labels).toEqual([
@@ -2209,6 +2191,7 @@ describe('Langfuse judges on a run', () => {
     // Accepted, then edited back to the rejected value: that is an edit too, and comes back.
     await decide('accept', 'Rettingen er kontrollert');
     annotation.value = false;
+    annotation.updatedAt = '2026-11-02T12:00:00.000Z';
     await fetchLabels();
     expect((await batches())[0]?.labels).toEqual([
       expect.objectContaining({ case: 'o1', humanLabel: 'bad' }),
@@ -2222,8 +2205,9 @@ describe('Langfuse judges on a run', () => {
     await decide('accept', 'Etikettene er kontrollert');
     expect(await agreement()).toMatchObject({ n: 1, observed: 0 });
 
-    // Langfuse 4.4.0 keeps updatedAt when an annotation is edited in its UI.
+    // Langfuse changes updatedAt on every edit.
     annotation.value = true;
+    annotation.updatedAt = '2026-11-02T11:00:00.000Z';
     await fetchLabels();
 
     // The accepted Nei counts until the edit is accepted.
