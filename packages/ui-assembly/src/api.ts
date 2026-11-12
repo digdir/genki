@@ -26,6 +26,8 @@ export interface AnswerData {
   error?: string | undefined;
   /** Why it failed, for the answer block's heading and advice. */
   failure?: AnswerFailure | undefined;
+  /** genki's id for the run that gave the answer (`genai-task`), which feedback is sent on. */
+  runId?: string | undefined;
 }
 
 export interface Turn {
@@ -171,6 +173,8 @@ interface ApiMessage {
   created: number;
   chunks: ApiChunk[];
   sources?: WireSource[];
+  /** The assistant message's run, the id feedback is sent on. */
+  task?: string;
 }
 
 /** The collection a thread was made in, from its `corpus:` tag. */
@@ -235,18 +239,16 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile) => {
 };
 
 const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerData => {
+  const stored = {
+    text: message.text,
+    status: 'complete' as const,
+    created: message.created,
+    ...(message.task ? { runId: message.task } : {}),
+  };
   if (message.sources && message.sources.length > 0)
-    return {
-      text: message.text,
-      status: 'complete',
-      sources: message.sources.map((s, at) => sourceFromWire(s, corpus, at)),
-      created: message.created,
-    };
-  if (message.chunks.length > 0) {
-    const { sources, markers } = fromChunks(message.chunks, corpus);
-    return { text: message.text, status: 'complete', sources, markers, created: message.created };
-  }
-  return { text: message.text, status: 'complete', created: message.created };
+    return { ...stored, sources: message.sources.map((s, at) => sourceFromWire(s, corpus, at)) };
+  if (message.chunks.length > 0) return { ...stored, ...fromChunks(message.chunks, corpus) };
+  return stored;
 };
 
 /**
