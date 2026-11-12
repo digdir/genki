@@ -1,0 +1,114 @@
+{
+ "tests": [
+  {
+   "id": "kudos-31321-p1-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Veikart for regulering av mikromobilitet",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31321-p1-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Myndighet og regelverk",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31321-p1-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "6. oktober 2022",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31321-p1-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "6. oktober 2022",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "Veikart for regulering av mikromobilitet",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31321-p1-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nr. 868",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-31321-p1-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Jon Opseth, Statens vegvesen",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

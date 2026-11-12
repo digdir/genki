@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-5200-p5-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Direktoratet skal også bidra til å utvikle kunnskap om hvordan riktig arealbruk, bevaring, transformasjon og gjenbruk kan bidra til å nå klimamålene.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-5200-p5-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Riksantikvaren skal bidra til økt kunnskap om verdien og betydningen av kulturminner og kulturmiljøer", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-5200-p5-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Det skal legges vekt på bruk av ny teknologi, så som satellitt- og laserdata og geofysiske metoder", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-5200-p5-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Internasjonalt klima- og miljøarbeid", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-5200-p5-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "kostnadseffektive løsninger i kartlegging- og overvåkingsarbeidet", "max_diffs": 2}, "after": {"text": "Internasjonalt klima- og miljøarbeid", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-5200-p5-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Norges medlemskap i Unescos verdensarvkomité 2017-2021.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-5200-p5-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Følge opp Haagkonvensjonen nasjonalt og internasjonalt, herunder følge opp arbeidet med implementering av konvensjonen mot andre sektorer.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-5200-p5-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Delta i internasjonalt samarbeid på globalt, europeisk og nordisk nivå, herunder Unesco, Iccrom, EU/EØS, Europarådet og Nordisk Ministerråd.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-5200-p5-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Gjennom rollen som program- og prosjektpartner under EØS-midlene", "max_diffs": 2}, "after": {"text": "Lede og bidra til gjennomføring av prosjektene for kulturmiljøvern", "max_diffs": 2}}, "settings": {}}
+]}

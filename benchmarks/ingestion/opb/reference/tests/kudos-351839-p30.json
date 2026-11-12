@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-351839-p30-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Figur 3-3 Andel respondenter som har brukt informasjon fra Riksrevisjonens rapporter som grunnlag for ulike aktiviteter.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-351839-p30-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["figure", "nob", "Latn"],
+  "args": {"content": {"text": "Deltakelse i det offentlige ordskiftet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-351839-p30-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"before": {"text": "Kilde: Agenda Kaupangs spørreundersøkelse til stortingsrepresentantene", "max_diffs": 2}, "after": {"text": "viser at de aller fleste av respondentene hadde brukt informasjon", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-351839-p30-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Som helhet tyder det på at Riksrevisjonens rapporter bidro med et nyttig kunnskapsgrunnlag for en rekke ulike aktiviteter", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-351839-p30-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I spørreundersøkelsen svarer 66 prosent av stortingsrepresentantene som svarte at de bruker rapportene i sammenheng med politikkutvikling.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-351839-p30-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "De riktige og viktige sakene", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-351839-p30-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "De riktige og viktige sakene", "max_diffs": 1}, "after": {"text": "Riksrevisjonen skal bidra til forbedring i forvaltningen.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-351839-p30-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Allikevel er det relevant for Riksrevisjonen å se til Stortinget som én av mange ulike kilder til informasjon", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-351839-p30-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["footnote", "nob", "Latn"],
+  "args": {"content": {"text": "LOV-2004-05-07-21 lov om Riksrevisjonen § 1, andre ledd.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-351839-p30-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["footnote", "nob", "Latn"],
+  "args": {"before": {"text": "hvilke temaer som oppfattes som viktige.", "max_diffs": 1}, "after": {"text": "lov om Riksrevisjonen § 1, andre ledd.", "max_diffs": 1}}, "settings": {}}
+]}

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-414790-p11-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Småbarnstillegg: 696 kroner per måned.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-414790-p11-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Kap 2530 Foreldrepenger", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-414790-p11-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Post 71 Engangsstønad ved fødsel og adopsjon", "max_diffs": 1}, "after": {"text": "Stortinget har vedtatt å øke satsen for engangsstønaden", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-414790-p11-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Fra 1. januar 2023 er satsen 92 648 kroner per barn.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-414790-p11-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Oppdrag og øvrige saker", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-414790-p11-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Oppdrag og øvrige saker", "max_diffs": 1}, "after": {"text": "Direktoratet må påregne å bistå i oppfølgingen", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-414790-p11-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Vi viser også til dialog der oppdraget er spesifisert, og tidsplan for når informasjonen om ungdomsgarantien kan tas i bruk", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-414790-p11-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Ekspertutvalg for gjennomgang av allmennlegetjenesten", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-414790-p11-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "skjønnsmessig fastsettelse av sykepengegrunnlaget for arbeidstakere og frilansere (§8-30)", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-414790-p11-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Vi kommer tilbake til en konkret bestilling i eget brev.", "max_diffs": 2}, "after": {"text": "Det vises til endringer i tilsagnsfullmakter.", "max_diffs": 2}}, "settings": {}}
+]}

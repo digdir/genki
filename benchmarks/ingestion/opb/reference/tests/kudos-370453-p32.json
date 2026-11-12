@@ -1,0 +1,191 @@
+{
+ "tests": [
+  {
+   "id": "kudos-370453-p32-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dypdykk - eksempler på vårt arbeid",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fjellro i Drammensmarka bevares for fremtiden",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fjellro er en unik hytte fra 1930-tallet, restaurert for å bevare sin autentiske sjarm.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Arbeidet har inkludert utskifting av bunnsviller, restaurering av vinduer og dører, og legging av nytt tak.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "En balansegang mellom bruk og bevaring",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "men om å ta vare på en livsstil og tradisjon",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "men om å ta vare på en livsstil og tradisjon",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Fellesføringer i tildelingsbrev",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Systematisk og helhetlig arbeid for å redusere klimagassutslipp, naturfotavtrykk og energibruk",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fra 2023 har vi systematisk registrert klima- og miljøeffekter i søknadsbehandlingen",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "transportalternativer som sykkel eller gange til arbeid.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Kulturminnefondet har også vurdert eller gjennomført tiltak",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-370453-p32-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I våre anskaffelser prioriteres miljøkrav i innkjøpsprosesser der dette er mulig",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
