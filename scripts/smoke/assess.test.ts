@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { playgroundRun, publishedVersionOf } from './browser.ts';
 import {
   assessCompletion,
   assessFacets,
@@ -1010,5 +1011,35 @@ describe('the key in lockdown', () => {
   it('is unavailable when the key may not read a key list and is in none it can read', () => {
     expect(assessKeyAdmission([http(403, {}), noKeys], key, true).unavailable).toBe(true);
     expect(assessKeyAdmission([http(403, {}), keys(true)], key, true).ok).toBe(true);
+  });
+});
+
+describe('the playground version', () => {
+  it('picks the newest published version, never the draft', () => {
+    expect(publishedVersionOf(['draft', '2', '10', '3'])).toBe('10');
+  });
+
+  it('picks nothing when only a draft exists', () => {
+    expect(publishedVersionOf(['draft'])).toBeUndefined();
+  });
+
+  it('selects the published version before sending the question', async () => {
+    const calls: string[] = [];
+    const picker = {
+      locator: () => ({ evaluateAll: async () => ['draft', '4'] }),
+      selectOption: async (v: string) => void calls.push(`select ${v}`),
+    };
+    const form = {
+      locator: () => ({ fill: async () => void calls.push('fill') }),
+      getByRole: () => ({ click: async () => void calls.push('send') }),
+    };
+    const page = {
+      locator: (q: string) =>
+        q.startsWith('select') ? { first: () => picker } : { filter: () => ({ last: () => form }) },
+      waitForResponse: async () => undefined,
+      waitForTimeout: async () => undefined,
+    };
+    await playgroundRun('q')(page as never);
+    expect(calls).toEqual(['select 4', 'fill', 'send']);
   });
 });
