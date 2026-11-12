@@ -1,0 +1,36 @@
+{
+  "benchmark": "ingestion",
+  "code": "80bb5741eda5ab3847f63519ef1ccdc0166513c3397ec8674c6d1ca736d8ea55",
+  "git": {
+    "commit": "59b1a619ef733cb62e52aa15135393a696bac212",
+    "dirty": true
+  },
+  "items": "fdb8490309030b06682ebfbc68ca0fedb2d800abe02262e92c420f9a9f25b057",
+  "packages": {
+    "PyMuPDF": "1.26.5",
+    "RapidFuzz": "3.13.0",
+    "lingua-language-detector": "2.0.2",
+    "spylls": "0.1.7"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "python": "3.9.6",
+  "reference": null,
+  "schema": 1,
+  "settings": {
+    "dictionaries": "https://raw.githubusercontent.com/LibreOffice/dictionaries/32b006a2c22a4ac7e8ed3f03346f7b3d85a970a4/no",
+    "lang_min": 0.75,
+    "shingle_min": 0.8
+  },
+  "side": "kudos and ours",
+  "side_settings": {
+    "kudos": {
+      "source": "https://kudos.dfo.no/api/v0/documents/{uuid}/contents",
+      "text": "dd4fd1334a9e0d632a5322264ee466622f3178a4e74fd7fd26b22b7264990b76"
+    },
+    "ours": {
+      "chunks": "ec7babe6a5e4126676140bc40c4dd23b9a135456ea611e82e834d5df9d1e6ee6",
+      "source": "Typesense KUDOS_preprod_v4_chunks_ab897fbdedfa, chunks rebuilt into pages"
+    }
+  },
+  "time": "2026-10-26T12:45:30+00:00"
+}
