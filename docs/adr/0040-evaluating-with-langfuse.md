@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (not built; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built: `evaluator@2` and its contract suite, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -114,8 +114,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 
 ## Consequences
 
-- Not built. Building it needs:
-  - `evaluator@2` and its contract suite, and the `waiting for scores` state in `EvalRun`
+- Partly built. Built: `evaluator@2` and its contract suite; while a run waits for its scores, `GET /eval-tasks/{task}` answers `waiting-for-scores` on the instance running it. Not built yet:
   - the tenant connections through the egress path, with their residency checked when a run starts
   - refusing service definitions whose gates use a Langfuse judge's metric
   - the kernel change that records the evaluation context beside the input, and readers that leave it out

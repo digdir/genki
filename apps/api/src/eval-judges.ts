@@ -2,10 +2,7 @@ import type { Principal } from '@genai/contracts';
 import { criteriaJudge, criteriaJudgeId, type Evaluator } from '@genai/eval';
 import type { ModelChoice } from './model-choice.js';
 
-/**
- * The judges an eval run gets for itself: their models are picked for the run's tenant, from
- * another family than the models that wrote the answer, and their calls are charged there.
- */
+/** Judges made per eval run, with models picked and charged for the run's tenant. */
 export const runJudges =
   (choice: () => ModelChoice) =>
   (principal: Principal, run: { avoid: string[] } = { avoid: [] }): Map<string, Evaluator> => {
