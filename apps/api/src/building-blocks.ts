@@ -498,11 +498,11 @@ const scoreOf = (stored: StoredRun) => {
     : Math.round((means.reduce((a, b) => a + b, 0) / means.length) * 100);
 };
 
-/** The latest completed run per service and test set: one still running or failed scores nothing. */
+/** The latest completed run of the whole test set per service: no unfinished or marked-case run. */
 const latestRuns = (runs: StoredRun[]) => {
   const latest = new Map<string, StoredRun>();
   for (const stored of runs) {
-    if (runState(stored.run) !== 'completed') continue;
+    if (runState(stored.run) !== 'completed' || stored.run.tested?.selected) continue;
     const key = `${stored.service ?? stored.run.capability}|${stored.run.testSet.id}`;
     const known = latest.get(key);
     if (!known || known.run.endedAt < stored.run.endedAt) latest.set(key, stored);
