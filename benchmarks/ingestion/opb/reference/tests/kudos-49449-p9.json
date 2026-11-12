@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-49449-p9-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Redoksforhold i grunnen kan karakteriseres ved å måle redoks sensitive komponenter i jord og porevann", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-49449-p9-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Syre og løselige salter medfører korrosjon av metalloverflater.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-49449-p9-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Innstallering og plassering av Miljøbrønner MB5, M6 og MB10.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-49449-p9-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "framskynde korrosjon av metallgjenstander og forvitring av bein.", "max_diffs": 2}, "after": {"text": "Innstallering og plassering av Miljøbrønner", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-49449-p9-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Filterør som ble benyttet var PEHD 63mm/58mmx 1000mm 0,3mm slisse.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-49449-p9-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Miljøbrønn MB6 (gammel brønn)", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-49449-p9-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Miljøbrønn MB6 (gammel brønn)", "max_diffs": 1}, "after": {"text": "Overvåket i 2010-2011 før byggearbeidet startet.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-49449-p9-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "4,53 moh.", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-49449-p9-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Grunnvannets temperatur i denne undersøkelsen ble beregnet til middels 13,9 °C.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-49449-p9-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Denne brønnen er derfor ikke overvåket videre etter at nytt bygg er etablert.", "max_diffs": 3}}, "settings": {}}
+]}

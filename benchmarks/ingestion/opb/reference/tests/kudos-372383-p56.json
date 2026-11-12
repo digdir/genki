@@ -1,0 +1,46 @@
+{
+ "tests": [
+  {
+   "id": "kudos-372383-p56-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Foto: Alf Magnussen",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-372383-p56-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Foto: Alf Magnussen",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "Island Chieftain",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

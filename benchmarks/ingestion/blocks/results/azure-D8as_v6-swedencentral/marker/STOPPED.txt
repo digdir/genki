@@ -1,0 +1,1 @@
+2026-11-11T11:09:35Z stopped by hand (Kent: CPU Marker too slow on image-only scans, ~350 s/page)

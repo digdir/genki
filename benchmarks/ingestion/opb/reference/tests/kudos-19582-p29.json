@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-19582-p29-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nno", "Latn"],
+  "args": {"content": {"text": "til lov om endringar i utlendingslova", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19582-p29-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "I lov 15. mai 208 nr. 35 om utlendingers adgang til riket og deres opphold her gjerast følgjande endringar:", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19582-p29-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nno", "Latn"],
+  "args": {"before": {"text": "til lov om endringar i utlendingslova", "max_diffs": 1}, "after": {"text": "I lov 15. mai 208 nr. 35 om utlendingers adgang", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19582-p29-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Forsettlig eller uaktsomt overtrer de bestemmelsene som er angitt i det følgende, eller forbud, påbud eller vilkår gitt i medhold av disse bestemmelsene", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-19582-p29-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "§ 100 b første ledd annet punktum", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19582-p29-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "§ 130 første ledd, jf. § 105", "max_diffs": 1}, "after": {"text": "§ 108 tredje ledd bokstav e og ny bokstav f skal lyde:", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19582-p29-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Dersom utlendingen ikke har lovlig opphold i et Schengenland, straffes overtredelsen bare med bot", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19582-p29-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "er utvist som følge av ilagt fengselsstraff, forvaring eller særreaksjon etter andre bestemmelser enn annet ledd", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19582-p29-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nno", "Latn"],
+  "args": {"content": {"text": "Lova gjeld frå den tida Kongen avgjer.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19582-p29-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nno", "Latn"],
+  "args": {"before": {"text": "§ 55 annet ledd ved ikke å forlate riket.", "max_diffs": 1}, "after": {"text": "Departementet kan gje nærare overgangsreglar.", "max_diffs": 1}}, "settings": {}}
+]}

@@ -1,0 +1,10 @@
+{"tests": [
+ {"id": "kudos-47954-p19-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "I sone 2 er det fortsatt rester av slåttemarkstruktur med dominans av lavvokste gras og urter.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-47954-p19-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Figur 10", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-47954-p19-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "17.6.2020", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-47954-p19-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"before": {"text": "med dominans av lavvokste gras og urter", "max_diffs": 1}, "after": {"text": "Alle foto K. Ekelund", "max_diffs": 1}}, "settings": {}}
+]}
