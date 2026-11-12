@@ -16,7 +16,7 @@ Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-2
 
 ## Accepted with ADR 0040 (partly built)
 
-These rules extend the decision above once they are built. All are built except deletes in a sink after an erasure other than the nightly purge:
+These rules extend the decision above once they are built. All are built except three: deletes in a sink after an erasure other than the nightly purge, sending only the fields a judge maps, and keeping judge reasons out of stored eval runs:
 
 - **When a sink honours erasure.** It does when the platform can delete a task's trace and every trace the sink made from it, such as a judge's execution trace, and when its operator keeps the raw files it ingests for at most 7 days, the shortest retention class.
   - For a sink a tenant runs itself, the tenant's declaration that both hold is enough.
