@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import { createVault, piiCategories } from '@genai/guardrails';
 import type {
@@ -10,6 +10,7 @@ import type {
   PolicyDecisionPoint,
   Strategy,
 } from '@genai/kernel';
+import type { WireExchange } from '@genai/operations';
 import type { OperationPort } from '@genai/port-model';
 import { withModelAdmission } from './lockdown.js';
 
@@ -61,7 +62,26 @@ interface TryConfig {
   model: string;
 }
 
-export const operationTryStrategy = (tier: EnvironmentTier): Strategy<TryConfig> => ({
+/** The digest a try keeps of its exchange, so a fixture recorded later can be held to it. */
+export const exchangeDigest = (exchange: WireExchange) =>
+  createHash('sha256').update(JSON.stringify(exchange)).digest('hex');
+
+export interface TryRecord {
+  descriptor: string;
+  model: string;
+  result: unknown;
+  exchange: { sha256: string } | null;
+}
+
+export const isTryCapability = (id: string) => id.startsWith(capabilityPrefix);
+
+/** Exchanges seen by a try, handed from the strategy to the runner by capability id. */
+export type TryExchanges = Map<string, WireExchange>;
+
+export const operationTryStrategy = (
+  tier: EnvironmentTier,
+  exchanges?: TryExchanges,
+): Strategy<TryConfig> => ({
   id: operationTryStrategyId,
   version: '1',
   requires: { kernel: 1, ports: ['operation'], features: [] },
@@ -78,10 +98,22 @@ export const operationTryStrategy = (tier: EnvironmentTier): Strategy<TryConfig>
       { kind: 'model', id: config.model },
       { guards: [maskEverything()] },
     );
-    const result = await port.call(config.descriptor, data.input);
+    let exchange: WireExchange | undefined;
+    const result = await port.call(config.descriptor, data.input, {
+      observe: (e) => {
+        exchange = e;
+      },
+    });
+    if (exchange) exchanges?.set(ctx.capability.id, exchange);
+    const record: TryRecord = {
+      descriptor: config.descriptor,
+      model: config.model,
+      result,
+      exchange: exchange ? { sha256: exchangeDigest(exchange) } : null,
+    };
     yield {
       type: 'kernel.result',
-      data: [{ mime: 'application/json', body: { kind: 'json', json: result as never } }],
+      data: [{ mime: 'application/json', body: { kind: 'json', json: record as never } }],
     };
   },
 });
@@ -110,7 +142,8 @@ export interface OperationTry {
 }
 
 export type OperationTryOutcome =
-  { task: string; ok: true; result: unknown } | { task?: string; ok: false; error: unknown };
+  | { task: string; ok: true; result: unknown; exchange?: WireExchange }
+  | { task?: string; ok: false; error: unknown };
 
 export interface OperationTryDeps {
   kernel: () => Kernel;
@@ -118,6 +151,7 @@ export interface OperationTryDeps {
   platformTenant: string;
   tier: EnvironmentTier;
   admits?: (principal: Principal) => boolean;
+  exchanges?: TryExchanges;
 }
 
 /** Runs one raw descriptor call as a kernel task of its own, granted only the chosen model. */
@@ -157,13 +191,21 @@ export const operationTryRunner =
       try {
         const parts = await run.result;
         const body = parts[0]?.body;
-        return { task: run.task, ok: true, result: body?.kind === 'json' ? body.json : undefined };
+        const record = (body?.kind === 'json' ? body.json : undefined) as TryRecord | undefined;
+        const exchange = deps.exchanges?.get(id);
+        return {
+          task: run.task,
+          ok: true,
+          result: record?.result,
+          ...(exchange ? { exchange } : {}),
+        };
       } catch (error) {
         return { task: run.task, ok: false, error };
       }
     } catch (error) {
       return { ok: false, error };
     } finally {
+      deps.exchanges?.delete(id);
       deps.registry.replace((c) => c.descriptor.id === id, []);
     }
   };

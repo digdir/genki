@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
-import { isApiKeyPrincipal } from '@genai/identity';
+import { isApiKeyPrincipal, isTestRunnerKey } from '@genai/identity';
 import { tenantAccess, type Access } from './access.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
@@ -22,6 +22,7 @@ import { problem, type Authenticator } from './http.js';
 import { withChangeReasons, withTags, withUndocumentedRoutes } from './openapi-routes.js';
 import { registerPlatformRoutes, type PlatformApiOptions } from './platform.js';
 import { registerReference } from './reference/index.js';
+import { refuseOutsideTestRunnerScope } from './test-runner.js';
 import { requestTiming, type RequestTimingOptions } from './request-timing.js';
 import type { ServiceDrafts } from './service-drafts.js';
 import { kernelTaskReader, type TaskReader } from './timeline.js';
@@ -66,7 +67,9 @@ export type PlatformOptions = Authentication & {
 const withoutApiKeys = (caller: Caller): Authenticator => ({
   authenticate: async (request) => {
     const principal = await caller(request);
-    return principal && !isApiKeyPrincipal(principal) ? principal : undefined;
+    return principal && (!isApiKeyPrincipal(principal) || isTestRunnerKey(principal))
+      ? principal
+      : undefined;
   },
 });
 
@@ -127,6 +130,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     if (options.platform.loginRefusal)
       app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
+    app.use('*', refuseOutsideTestRunnerScope(caller));
     app.use('*', requireChangeReason(caller));
     const admin =
       options.platform.admin ??

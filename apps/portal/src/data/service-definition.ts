@@ -111,6 +111,7 @@ export interface ServiceSpec {
     primary: string;
     fallback?: string;
     roles?: Record<string, string>;
+    operations?: Record<string, string>;
     residency?: string;
   };
   guardrails?: Record<string, unknown>;
@@ -141,6 +142,14 @@ const tree = (v: unknown): Tree =>
 
 const withoutUndefined = <T extends object>(o: T): T =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+
+export const keepSharing = (
+  next: ServiceDefinition,
+  current: ServiceDefinition,
+): ServiceDefinition => ({
+  ...next,
+  spec: withoutUndefined({ ...next.spec, availableTo: current.spec.availableTo }) as ServiceSpec,
+});
 
 export const asServiceDefinition = (raw: Record<string, unknown>): ServiceDefinition => {
   const metadata = tree(raw.metadata);

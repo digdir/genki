@@ -3,7 +3,13 @@ import type { ModelDescription } from '@genai/port-model';
 import { modelDisplayNames, modelsForTenant } from './model-access.js';
 
 const model = (id: string, enabled = true) =>
-  ({ id, enabled, residency: 'eu', capabilities: [] }) as unknown as ModelDescription;
+  ({
+    id,
+    enabled,
+    residency: 'eu',
+    capabilities: [],
+    operations: ['chat'],
+  }) as unknown as ModelDescription;
 
 const items: Record<string, { scope: string; spec: Record<string, unknown> }> = {
   'egen-modell': { scope: '991825827', spec: {} },

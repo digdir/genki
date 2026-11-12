@@ -5,7 +5,7 @@ description: Write or update the title and description of a genki pull request o
 
 # Writing PR descriptions
 
-`.github/pull_request_template.md` is the shape: keep its three headings (What and why, How it was tested, Checklist) and replace its comments. For tone, read one recent PR first: `gh pr view 80` (a fix with tests) or `gh pr view 82` (docs only).
+`.github/pull_request_template.md` is the shape: keep its headings (What and why, Risk, Undo, How it was tested, Checklist) and replace its comments. For tone, read one recent PR first: `gh pr view 80` (a fix with tests) or `gh pr view 82` (docs only).
 
 ## Title
 

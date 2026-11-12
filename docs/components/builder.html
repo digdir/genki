@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>App builder catalogue · Components</title>
+    <meta
+      name="description"
+      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the templates; the layout rules; and the service facts the needs are checked against."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> /
+          <span aria-current="page">App builder catalogue</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="builder"
+        data-component="builder"
+        data-phase="building"
+        data-optional="false"
+        aria-labelledby="builder-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="builder-title">App builder catalogue</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Data, no UI</span
+              ><span class="badge">The builder only</span>
+            </div>
+            <p class="summary">
+              The blocks the app builder offers, at the canvas's grain: where each may stand, in
+              what order, what it needs from the service, and the options a service owner may set.
+              With them, the templates, the rules a layout must keep, and the service facts the
+              needs are checked against. It draws nothing: the builder page does.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Byggeklosser» and «Maler»</dd>
+              <dt>Sits in</dt>
+              <dd>The app builder, not in an assistant</dd>
+              <dt>Code</dt>
+              <dd>
+                <code>blockCatalogue</code>, <code>templates</code>, the layout rules and
+                <code>factsFromModels</code> in <code>packages/ui-blocks/src/builder</code>
+              </dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/167"
+                  >kunnskapsassistenten#167</a
+                >
+              </dd>
+              <dt>Canvas</dt>
+              <dd>03-builder, board 3; Dokumentasjon, SP10 and SP8</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="6" y="12" width="44" height="100" rx="8" />
+            <rect class="s-accent-soft" x="12" y="20" width="32" height="8" rx="4" />
+            <rect class="s-bar" x="12" y="36" width="32" height="5" rx="2.5" />
+            <rect class="s-soft" x="12" y="46" width="32" height="12" rx="4" />
+            <rect class="s-soft" x="12" y="64" width="32" height="12" rx="4" />
+            <rect class="s-accent" x="53" y="44" width="2" height="24" rx="1" />
+            <rect class="s-panel" x="58" y="12" width="96" height="100" rx="8" />
+            <rect class="s-soft" x="64" y="24" width="20" height="70" rx="4" />
+            <rect class="s-soft" x="88" y="24" width="40" height="70" rx="4" />
+            <rect class="s-soft" x="132" y="24" width="16" height="70" rx="4" />
+            <rect class="s-accent-soft" x="91" y="30" width="34" height="10" rx="3" />
+            <rect class="s-bar" x="91" y="46" width="34" height="10" rx="3" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>A builder offers blocks to turn on, place and set, as the canvas's board 3.</li>
+              <li>A host checks a stored layout before it draws it (V2-0006).</li>
+              <li>A host needs to know which blocks a service can back.</li>
+            </ul>
+            <h2>What it holds</h2>
+            <ul>
+              <li>
+                <strong>The blocks</strong>, <code>blockCatalogue</code>: nine, each made of the
+                package's smaller blocks (its members). Seven are built; Prosjekter and Notater are
+                marked «kommer».
+              </li>
+              <li>
+                <strong>The templates</strong>, <code>templates</code> and
+                <code>fromTemplate</code>: the canvas's eight, in its order.
+              </li>
+              <li>
+                <strong>The layout</strong>, <code>AssistantLayout</code>: the blocks per zone, each
+                with only the options that differ from the default. What the builder edits, and what
+                a frontend definition could store.
+              </li>
+              <li>
+                <strong>The facts</strong>, <code>factsFromModels</code>: what a service can back,
+                read from its <code>/v1/models</code> row.
+              </li>
+              <li>
+                <strong>The words</strong>, in the catalogue's <code>builder</code> namespace: every
+                block's name and help, every option, template and zone, and a reason for every need,
+                in bokmål and English.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="shell.html">Shell</a>: its three places are the zones</li>
+              <li>
+                <a href="chat.html">Chat</a>: one block here, eleven of the package's; Fotnoter is
+                its option
+              </li>
+              <li>
+                <a href="sources.html">Sources</a> and
+                <a href="document-view.html">Document view</a>: what Fotnoter needs, either one
+              </li>
+              <li>
+                <a href="approach.html">Approach</a> and <a href="filter.html">Filter</a>: blocks
+                that may stand in two places
+              </li>
+              <li>
+                <a href="projects.html">Projects</a> and <a href="notes.html">Notes</a>: not built
+              </li>
+            </ul>
+            <h2>The secondary panel's tools</h2>
+            <p>
+              <code>toolMode</code> is the shell's rule, re-exported here: one tool gives a heading,
+              two give tabs, three or more a dropdown. The builder writes it on the right zone, «To
+              verktøy – faner».
+            </p>
+          </div>
+          <div class="wide">
+            <h2>The blocks</h2>
+            <p>
+              The zones are the shell's: <code>primary</code> «Venstre panel»,
+              <code>main</code> «Innhold» and <code>secondary</code> «Høyre panel». A block's first
+              zone is where it stands when it is turned on. A lower order comes first in the zone,
+              so the order in a zone is the catalogue's, whatever order the blocks were turned on
+              in.
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Block</th>
+                    <th scope="col">Zones, default first (order)</th>
+                    <th scope="col">Members</th>
+                    <th scope="col">Needs</th>
+                    <th scope="col">Options</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row"><code>projects</code> <small>«Prosjekter», kommer</small></th>
+                    <td>primary (0)</td>
+                    <td>none</td>
+                    <td><code>genki:projects</code></td>
+                    <td>none</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>threads</code> <small>«Tråder»</small></th>
+                    <td>primary (1)</td>
+                    <td><code>Threads</code>, <code>SignedIn</code></td>
+                    <td><code>channel:conversations</code></td>
+                    <td>none</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>settings</code> <small>«Innstillinger»</small></th>
+                    <td>primary (3), in the panel's foot</td>
+                    <td><code>SettingsLinks</code>, <code>Settings</code></td>
+                    <td>none</td>
+                    <td>none</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>chat</code> <small>«Chat»</small></th>
+                    <td>main (2), secondary (1)</td>
+                    <td>
+                      <code>Conversation</code>, <code>Answer</code>, <code>Composer</code>,
+                      <code>ComposerDisclaimer</code>, <code>Welcome</code>,
+                      <code>Suggestions</code>, <code>AnswerActions</code>,
+                      <code>VariantPicker</code>, <code>EmptyState</code>, <code>ErrorState</code>,
+                      <code>NotFoundState</code>
+                    </td>
+                    <td><code>service:chat</code></td>
+                    <td>
+                      <code>footnotes</code> (needs <code>component:sources|document-view</code>),
+                      <code>suggestions</code>, <code>followUps</code>, <code>disclaimer</code>,
+                      <code>copy</code>, <code>feedback</code> (off; needs
+                      <code>channel:feedback</code>), <code>variantPicker</code> (needs
+                      <code>service:variants</code>), <code>attachments</code> (kommer; needs
+                      <code>service:documents</code>)
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>filter</code> <small>«Filter»</small></th>
+                    <td>primary (2), main (1)</td>
+                    <td>
+                      <code>Filter</code>, <code>CorpusChoice</code>, <code>CorpusLine</code>,
+                      <code>Documents</code>
+                    </td>
+                    <td><code>service:filter-fields</code>, <code>channel:facets</code></td>
+                    <td><code>corpus</code>, <code>documents</code></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>approach</code> <small>«Fremgangsmåte»</small></th>
+                    <td>main (0), secondary (0)</td>
+                    <td><code>Approach</code></td>
+                    <td><code>service:steps</code></td>
+                    <td><code>level</code>: <code>standard</code> or <code>detailed</code></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>sources</code> <small>«Kilder»</small></th>
+                    <td>secondary (2)</td>
+                    <td><code>Sources</code></td>
+                    <td><code>service:datasets|documents</code></td>
+                    <td><code>disclaimer</code>, <code>search</code></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>document-view</code> <small>«Dokumentvisning»</small></th>
+                    <td>secondary (3), main (4)</td>
+                    <td><code>DocumentView</code></td>
+                    <td><code>service:datasets|documents</code></td>
+                    <td>none</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>notes</code> <small>«Notater», kommer</small></th>
+                    <td>secondary (4)</td>
+                    <td>none</td>
+                    <td>none</td>
+                    <td>none</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <h3>The need words</h3>
+            <p>
+              From the kits file's words. Each has a reason the builder shows beside a block it
+              cannot offer, from <code>needKey</code>, and every one is used by a block or an
+              option.
+            </p>
+            <ul>
+              <li>
+                <code>service:*</code> is read from the service's row: <code>chat</code> «Tjenesten
+                svarer ikke i en chat.», <code>datasets|documents</code>, <code>documents</code>,
+                <code>filter-fields</code>, <code>steps</code> and <code>variants</code>.
+              </li>
+              <li>
+                <code>channel:*</code> is a channel the host gives the client:
+                <code>conversations</code>, <code>facets</code> and <code>feedback</code>.
+              </li>
+              <li>
+                <code>component:sources|document-view</code> is about the layout: Kilder or
+                Dokumentvisning must be placed too.
+              </li>
+              <li><code>genki:projects</code> is something genki does not have yet.</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>The templates</h2>
+            <p>
+              The canvas's eight, in its order. A template lists the blocks the design puts in each
+              zone, also those not built: the builder shows them marked «kommer», and
+              <code>fromTemplate</code> leaves them out, with the blocks the service cannot back.
+              Choosing one replaces the layout. «Kunnskapsassistenten» has Innstillinger and no
+              Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
+              After it, <code>knowledge-assistant-next</code> has the same blocks in the look of the
+              «_Ready for dev» boards, built there step by step: <code>templateLook</code> says
+              <code>next</code> for it and <code>current</code> for every other template, and the
+              assembly draws the new look only for <code>next</code>, so the others draw what they
+              draw today.
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Template</th>
+                    <th scope="col">primary</th>
+                    <th scope="col">main</th>
+                    <th scope="col">secondary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">
+                      <code>knowledge-assistant</code> <small>«Kunnskapsassistenten»</small>
+                    </th>
+                    <td>threads, filter, settings</td>
+                    <td>approach, chat</td>
+                    <td>sources, notes</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>knowledge-assistant-next</code>
+                      <small>«Kunnskapsassistenten, ny utgave»</small>
+                    </th>
+                    <td>threads, filter, settings</td>
+                    <td>approach, chat</td>
+                    <td>sources, notes</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>sources-only</code> <small>«Bare kilder»</small></th>
+                    <td>threads, filter</td>
+                    <td>chat</td>
+                    <td>sources</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>approach-only</code> <small>«Bare fremgangsmåte»</small>
+                    </th>
+                    <td>threads</td>
+                    <td>chat</td>
+                    <td>approach</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>without-filter</code> <small>«Uten filter»</small></th>
+                    <td>threads</td>
+                    <td>approach, chat</td>
+                    <td>sources, document-view</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>with-projects</code> <small>«Med prosjekter»</small></th>
+                    <td>projects, threads</td>
+                    <td>approach, chat</td>
+                    <td>sources, document-view</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>without-secondary</code> <small>«Uten høyre sidepanel»</small>
+                    </th>
+                    <td>threads, filter</td>
+                    <td>approach, chat</td>
+                    <td>none</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>without-primary</code> <small>«Uten venstre sidepanel»</small>
+                    </th>
+                    <td>none</td>
+                    <td>approach, chat</td>
+                    <td>sources, document-view</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>chat-only</code> <small>«Bare chat»</small></th>
+                    <td>none</td>
+                    <td>approach, chat</td>
+                    <td>none</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="wide">
+            <h2>The layout and its rules</h2>
+            <ul>
+              <li>
+                <code>AssistantLayout</code> is <code>{ version: 1, template?, zones }</code>, with
+                each zone a list of <code>{ block, settings? }</code>.
+                <code>defaultLayout</code> has every built block in its default zone.
+                <code>normalised</code> sorts each zone into the catalogue's order and drops what
+                the catalogue does not hold. <code>isAssistantLayout</code> checks the shape only.
+              </li>
+              <li>
+                <code>BuilderState</code> adds the builder's screen state: <code>chosen</code>,
+                where a movable block goes when it is turned on again, and <code>held</code>, the
+                blocks a change of service turned off.
+              </li>
+              <li>
+                <code>turnOn</code>, <code>turnOff</code>, <code>moveTo</code> and
+                <code>placeIn</code> keep a block in one zone at a time, and refuse a zone it may
+                not stand in. <code>withSetting</code> keeps only what differs from the default;
+                <code>settingsOf</code> fills the defaults in.
+              </li>
+              <li>
+                <code>fitService</code> fits a layout to another service: it turns off and holds the
+                blocks the service cannot back, and puts back, where they stood and as they were
+                set, those an earlier service turned off once one can back them. A block turned off
+                by hand stays off.
+              </li>
+              <li>
+                <code>optionInForce</code>: an option is in force when it is on, its blocks are
+                placed and its needs are met. Fotnoter is off while both Kilder and Dokumentvisning
+                are, whatever the switch says.
+              </li>
+              <li>
+                <code>layoutProblems</code> lists every rule a layout breaks, by name:
+                <code>unknown-block</code>, <code>zone-not-allowed</code>,
+                <code>placed-twice</code>, <code>not-built</code>, <code>missing-partner</code> and
+                <code>needs-unmet</code>. An option left at its default asks nothing.
+              </li>
+              <li>
+                <code>settingsSchema</code> gives a block's options as a JSON Schema (2020-12), with
+                ADR 0030's <code>x-label</code> and <code>x-widget</code>.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>The service facts</h2>
+            <ul>
+              <li>
+                <code>factsFromModels(rows, service, given)</code> reads the service's rows in
+                <code>/v1/models</code>: <code>_chat</code>, the <code>_datasets</code> with their
+                multiselect fields, <code>_documents</code>, and the
+                <code>_pickable</code> variants, of the service or of a family the host names.
+                <code>servicesIn</code> lists each service once.
+              </li>
+              <li>
+                The channels come from the host. Whether a service reports steps is not in the row:
+                until an answer says it brought none, Fremgangsmåte is offered.
+              </li>
+              <li>
+                <code>offerOf</code> and <code>optionOfferOf</code> say whether the builder may turn
+                a block or an option on, whether it is coming, and the needs that are not met, for
+                the reason beside it. <code>needMet</code> answers one need.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                The canvas works at a coarser grain than the package: its «Chat» is eleven of our
+                blocks, and their choices are Chat's options.
+              </li>
+              <li>
+                Fotnoter is an option of Chat that needs Kilder or Dokumentvisning, not a block of
+                its own: V2-0010 pairs every footnote with an excerpt, so a footnote never stands
+                where neither shows it.
+              </li>
+              <li>
+                A block the service cannot back is shown off and disabled, with the reason. Turning
+                it off for good on a change of service lost the reader's layout; holding it and
+                putting it back does not.
+              </li>
+              <li>
+                No block imports the catalogue, and a test keeps it so: a host that draws one block
+                takes no builder along.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Where a layout is stored. V2-0006 proposes a frontend definition in genki; until
+                then the builder keeps it in the browser.
+              </li>
+              <li>
+                The names of the builder's two views, «Oppsett» and «Prøv assistenten», are the
+                canvas's, which marks them as open.
+              </li>
+              <li>Prosjekter needs genki to store projects; Notater is not built.</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="states.html" rel="prev"><small>Previous</small>States</a>
+      </nav>
+    </main>
+  </body>
+</html>

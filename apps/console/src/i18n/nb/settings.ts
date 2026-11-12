@@ -21,8 +21,9 @@ export const settings = defineNamespace({
   labelRetrievalQueryAwareBoost: 'Løft treff som ligner spørsmålet',
   labelRetrievalAutoFilterEnabled: 'Automatisk filter',
   descRetrievalAutoFilterEnabled:
-    'Legg til filter ut fra virksomhets- og årstall-navn i spørsmålet.',
+    'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   labelRetrievalAutoFilterRules: 'Regler for automatisk filter',
+  labelRetrievalAutoFilterAliases: 'Andre navn på verdier',
   labelRetrievalDocTitleFanout: 'Tekstbiter per titteltreff',
   labelRetrievalMergeMode: 'Måte å flette søkene på',
   labelRetrievalMergeRrfK: 'Utjevning ved fletting (RRF k)',
@@ -234,7 +235,10 @@ export const settings = defineNamespace({
   emptyText: 'Plattformen har ingen innstillinger med standardverdi ennå.',
   descPlannerPrompt: 'Eget oppdrag til planleggeren. Tomt bruker det innebygde.',
   descRetrievalQueryAwareBoost: 'Løfter treff som overlapper med spørsmålet.',
-  descRetrievalAutoFilterRules: 'Reglene for automatisk filtrering, i rekkefølge.',
+  descRetrievalAutoFilterAliases:
+    'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+  descRetrievalAutoFilterRules:
+    'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
   descRetrievalDocTitleFanout: 'Antall utdrag som leses per dokument som treffer på tittel.',
   descRetrievalMergeMode: 'Hvordan resultatene fra søkestrategiene slås sammen.',
   descRetrievalMergeRrfK: 'Glattingskonstanten når resultatene slås sammen med rangfusjon.',

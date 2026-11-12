@@ -234,7 +234,7 @@ const boot = async (candidateKnowsDeadlines: boolean, withTestSet = true, lockdo
     `/operator/models/${candidate}`,
     'operator',
     {
-      endpoint: 'foundry-openai',
+      endpoint: 'foundry',
       deployment: 'kandidat',
       family: 'kandidat',
       residency: 'global',

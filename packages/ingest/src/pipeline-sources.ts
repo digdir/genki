@@ -19,22 +19,27 @@ import {
   websiteSkipReasonFor,
 } from './documents.js';
 import { episerverPages, episerverSource, filterEpiserverPages } from './episerver.js';
-import { findFolderFiles, pathToDoc, type FolderEntry } from './folder.js';
+import { findFolderFiles, type FolderEntry } from './folder.js';
 import {
   displayNames,
   fetchKudosFile,
   fillInKudosFields,
+  KudosNotFound,
   kudosClient,
+  retryAfterMs,
   kudosProfiles,
   type KudosDocument,
   type KudosProfile,
   type KudosSearch,
 } from './kudos.js';
+import { kudosEarlierIds } from './kudos-earlier-ids.js';
+import { processKudosLimiter, type KudosRateLimiter } from './kudos-rate.js';
 import type { DeclaredPhraseArchive } from './phrases.js';
 import { huggingFaceSource, parquetMapping, parquetTableName } from './parquet.js';
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
 import type { IngestSource, SkippedDocument } from './pipeline.js';
 import {
+  folderDocumentId,
   folderSource,
   kudosSource,
   uploadDocumentId,
@@ -103,8 +108,15 @@ export const pipelineSpec = z.strictObject({
       profile: z.enum(['prod', 'preprod']).default('prod'),
       startingPage: z.number().int().positive().default(1),
       types: z.array(z.string().min(1)).default([]),
-      since: z.iso.date().optional(),
+      since: z.iso.date().optional().describe('The first publish date listed'),
+      until: z.iso.date().optional().describe('The last publish date listed'),
       orgs: z.array(z.string().min(1)).optional(),
+      documents: z
+        .array(z.guid('a KUDOS document is named by its UUID'))
+        .min(1)
+        .max(1000)
+        .optional()
+        .describe('KUDOS UUIDs: the pipeline lists only these documents'),
     }),
     z.strictObject({
       kind: z.literal('episerver'),
@@ -183,16 +195,77 @@ export type ParquetSourceSpec = Extract<PipelineSpec['source'], { kind: 'parquet
 type DatabaseSpec = Extract<PipelineSpec['source'], { kind: 'database' }>;
 
 export const unboundedKudos = (spec: { source?: unknown }) => {
-  const source = (spec.source ?? {}) as { kind?: unknown; types?: unknown; since?: unknown };
+  const source = (spec.source ?? {}) as {
+    kind?: unknown;
+    types?: unknown;
+    since?: unknown;
+    documents?: unknown;
+  };
   return (
     source.kind === 'kudos' &&
     !(Array.isArray(source.types) && source.types.length > 0) &&
-    !source.since
+    !source.since &&
+    !(Array.isArray(source.documents) && source.documents.length > 0)
   );
 };
 
 export const unboundedKudosMessage =
   'En innlesing fra Kudos må avgrenses med dokumenttyper eller en startdato, ellers leses hele arkivet inn.';
+
+type KudosSourceSpec = Extract<PipelineSpec['source'], { kind: 'kudos' }>;
+
+const lost = (before: string[] | undefined, after: string[] | undefined) => {
+  if (!before || before.length === 0) return after && after.length > 0 ? [] : undefined;
+  if (!after || after.length === 0) return undefined;
+  const kept = new Set(after.map((v) => v.toLowerCase()));
+  const gone = before.filter((v) => !kept.has(v.toLowerCase()));
+  return gone.length > 0 ? gone : undefined;
+};
+
+const losing = (what: string, gone: string[]) =>
+  gone.length > 0 ? `${what} mister ${gone.join(', ')}` : `${what} avgrenses`;
+
+/**
+ * Why a change to a Kudos pipeline narrows its slice, or undefined when every document the
+ * previous version listed is still listed. A slice only grows: the next two complete listings
+ * would delete what fell out (ADR 0042, "Ingestion runs"), so a narrower slice is its own pipeline.
+ */
+export const kudosNarrowing = (
+  before: KudosSourceSpec,
+  after: KudosSourceSpec,
+): { path: string; message: string } | undefined => {
+  const refuse = (field: string, change: string) => ({
+    path: `spec.source.${field}`,
+    message: `Et utvalg fra Kudos kan bare utvides: ${change}. Det som faller utenfor, ville blitt slettet etter to fullstendige innlesinger. Lag en ny innlesing for et smalere utvalg.`,
+  });
+  // Another KUDOS instance lists other documents: everything listed so far would be deleted.
+  if (after.profile !== before.profile)
+    return refuse('profile', `kilden flyttes fra ${before.profile} til ${after.profile}`);
+  if (after.since && (!before.since || after.since > before.since))
+    return refuse(
+      'since',
+      before.since
+        ? `startdatoen flyttes fra ${before.since} til ${after.since}`
+        : `en startdato settes (${after.since})`,
+    );
+  if (after.until && (!before.until || after.until < before.until))
+    return refuse(
+      'until',
+      before.until
+        ? `sluttdatoen flyttes fra ${before.until} til ${after.until}`
+        : `en sluttdato settes (${after.until})`,
+    );
+  const fields: [keyof KudosSourceSpec & ('documents' | 'types' | 'orgs'), string][] = [
+    ['documents', 'dokumentene'],
+    ['types', 'dokumenttypene'],
+    ['orgs', 'virksomhetene'],
+  ];
+  for (const [field, what] of fields) {
+    const gone = lost(before[field], after[field]);
+    if (gone) return refuse(field, losing(what, gone));
+  }
+  return undefined;
+};
 
 export interface SourceEstimate {
   documents: number;
@@ -204,6 +277,10 @@ export interface KudosAccess {
   profiles?: Partial<Record<KudosProfile['name'], KudosProfile>>;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  /** Every KUDOS request, file downloads included; by default the one limiter of this process. */
+  limiter?: KudosRateLimiter;
+  /** The earlier ids each document's record keeps, by `kudos:` id. */
+  earlierIds?: ReadonlyMap<string, string[]>;
 }
 
 export interface DatabaseAccess {
@@ -359,40 +436,144 @@ export interface KudosFilter {
   startingPage?: number | undefined;
   types?: string[] | undefined;
   since?: string | undefined;
+  until?: string | undefined;
   orgs?: string[] | undefined;
+  documents?: string[] | undefined;
 }
 
 const kudosMatcher = (filter: KudosFilter) => {
   const orgs = filter.orgs && filter.orgs.length > 0 ? lowered(filter.orgs) : undefined;
   const types = filter.types && filter.types.length > 0 ? lowered(filter.types) : undefined;
-  return (doc: KudosDocument) =>
-    (!types || types.has(String(doc.type).toLowerCase())) &&
-    (!filter.since || (doc.publish_date ?? '') >= filter.since) &&
-    (!orgs || kudosOrgNames(doc).some((name) => orgs.has(name.toLowerCase())));
+  return (doc: KudosDocument) => {
+    const published = String(doc.publish_date ?? '').slice(0, 10);
+    return (
+      (!types || types.has(String(doc.type).toLowerCase())) &&
+      (!filter.since || published >= filter.since) &&
+      (!filter.until || published <= filter.until) &&
+      (!orgs || kudosOrgNames(doc).some((name) => orgs.has(name.toLowerCase())))
+    );
+  };
 };
 
+const yearOf = (date: string | undefined) => (date ? Number(date.slice(0, 4)) : undefined);
+
+/** One `/documents` listing per type and org, narrowed to the publish years of since and until. */
 const kudosSearches = (filter: KudosFilter): KudosSearch[] => {
   const types = filter.types && filter.types.length > 0 ? filter.types : [undefined];
-  const queries = filter.orgs && filter.orgs.length > 0 ? filter.orgs : [undefined];
+  const orgs = filter.orgs && filter.orgs.length > 0 ? filter.orgs : [undefined];
+  const yearFrom = yearOf(filter.since);
+  const yearTo = yearOf(filter.until);
   return types.flatMap((type) =>
-    queries.map((query) => ({ ...(type ? { type } : {}), ...(query ? { query } : {}) })),
+    orgs.map((actorName) => ({
+      ...(type ? { type } : {}),
+      ...(actorName ? { actorName } : {}),
+      ...(yearFrom === undefined ? {} : { yearFrom }),
+      ...(yearTo === undefined ? {} : { yearTo }),
+    })),
   );
 };
 
-const kudosDocuments = async function* (
-  client: ReturnType<typeof kudosClientFor>,
-  filter: KudosFilter,
-) {
+/**
+ * Passes over one search before its listing counts as incomplete. KUDOS orders documents that share
+ * a publish date differently from one request to the next, so one pass repeats some and skips
+ * others; a pass in the other order finds what the first skipped (measured 2026-11-04).
+ */
+export const kudosListingPasses = 3;
+
+const passOrder = (pass: number): 'newest' | 'oldest' => (pass % 2 === 0 ? 'newest' : 'oldest');
+
+/**
+ * Lists a Kudos pipeline's documents once each. The listing is complete when every page came back
+ * and each search's distinct UUIDs reach its `meta.total`, counted before the exact dates are
+ * checked; a search that comes back short is walked again in the other order. Named documents are
+ * read one by one, and one KUDOS no longer has is simply not listed.
+ */
+export const kudosListing = (client: ReturnType<typeof kudosClientFor>, filter: KudosFilter) => {
   const matches = kudosMatcher(filter);
-  for (const search of kudosSearches(filter))
-    for await (const doc of client.documents(filter.startingPage ?? 1, search))
-      if (matches(doc)) yield doc;
+  let complete = false;
+  const documents = async function* (): AsyncIterable<KudosDocument> {
+    complete = false;
+    const yielded = new Set<string>();
+    const fresh = (doc: KudosDocument) => {
+      const key = String(doc.uuid ?? doc.id);
+      if (yielded.has(key)) return false;
+      yielded.add(key);
+      return matches(doc);
+    };
+    if (filter.documents && filter.documents.length > 0) {
+      for (const uuid of filter.documents) {
+        let doc: KudosDocument;
+        try {
+          doc = await client.document(uuid);
+        } catch (error) {
+          if (error instanceof KudosNotFound) continue;
+          throw error;
+        }
+        if (fresh(doc)) yield doc;
+      }
+      complete = true;
+      return;
+    }
+    // A listing from a later page never sees the pages before it: one pass, never complete.
+    const startingPage = filter.startingPage ?? 1;
+    const passes = startingPage > 1 ? 1 : kudosListingPasses;
+    let whole = startingPage <= 1;
+    for (const search of kudosSearches(filter)) {
+      const seen = new Set<string>();
+      let reached = false;
+      for (let pass = 0; pass < passes && !reached; pass++) {
+        const listed = client.listing({ ...search, sort: passOrder(pass) }, startingPage);
+        for await (const doc of listed.documents) {
+          seen.add(String(doc.uuid ?? doc.id));
+          if (fresh(doc)) yield doc;
+        }
+        const total = listed.total();
+        // Without a total nothing says the search came back whole, and no pass can.
+        if (total === undefined) break;
+        reached = seen.size >= total;
+      }
+      if (!reached) whole = false;
+    }
+    complete = whole;
+  };
+  return { documents, complete: () => complete };
 };
+
+/** 429s in a row a file download waits out before it fails. */
+const maxDownloadRateLimited = 5;
+
+/** Downloads one Kudos file under the limiter; a 429 waits as long as `Retry-After` asks. */
+const kudosDownload = async (
+  limiter: KudosRateLimiter,
+  download: () => Promise<Uint8Array>,
+): Promise<Uint8Array> => {
+  for (let limited = 0; ; limited++) {
+    await limiter.take();
+    try {
+      return await download();
+    } catch (error) {
+      if (
+        !(error instanceof HttpStatusError) ||
+        error.status !== 429 ||
+        limited >= maxDownloadRateLimited
+      )
+        throw error;
+      limiter.pause(retryAfterMs(error.retryAfter ?? null));
+    }
+  }
+};
+
+const kudosDocuments = (client: ReturnType<typeof kudosClientFor>, filter: KudosFilter) =>
+  kudosListing(client, filter).documents();
 
 export const estimateKudos = async (
   access: KudosAccess,
   filter: KudosFilter,
 ): Promise<SourceEstimate> => {
+  if (filter.documents && filter.documents.length > 0) {
+    const count = filter.documents.length;
+    return { documents: count, exact: true, basis: { listed: count, sampled: 0, matching: 0 } };
+  }
   const client = kudosClientFor(access, filter.profile);
   const matches = kudosMatcher(filter);
   let listed = 0;
@@ -426,6 +607,7 @@ export const kudosClientFor = (access: KudosAccess = {}, name?: KudosProfile['na
     profile: kudosProfileFor(access, name),
     ...(access.fetch ? { fetch: access.fetch } : {}),
     ...(access.sleep ? { sleep: access.sleep } : {}),
+    ...(access.limiter ? { limiter: access.limiter } : {}),
   });
 
 /** Lists the pipeline's source and returns it as an ingest source that fetches each document. */
@@ -531,17 +713,20 @@ export const sourceOf = async (
   return kudosSource({
     documents: kudosDocuments(kudosClientFor(kudos, source.profile), source),
     profile: kudosProfileFor(kudos, source.profile),
+    maxFileBytes: maxDocumentBytes,
     fetchFile: (file) =>
-      fetchKudosFile(
-        file,
-        async (url) =>
-          (
-            await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-              ...options.web,
-              signal,
-              ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-            })
-          ).bytes,
+      fetchKudosFile(file, (url) =>
+        kudosDownload(
+          kudos.limiter ?? processKudosLimiter,
+          async () =>
+            (
+              await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
+                ...options.web,
+                signal,
+                ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
+              })
+            ).bytes,
+        ),
       ),
     converter,
   });
@@ -554,6 +739,16 @@ export const knowledgeSourceRefusal = (kind: PipelineSpec['source']['kind']) =>
   (knowledgeSourceKinds as readonly string[]).includes(kind)
     ? undefined
     : `a source of kind ${kind} cannot fill a dataset on the knowledge database yet`;
+
+/**
+ * Whom a knowledge listing lists for: `tenant` reads uploads and connections, `owner` (`platform`
+ * or the organisation number, as the dataset's scope) names folder documents.
+ */
+export interface KnowledgeListingScope {
+  tenant: string;
+  dataset: string;
+  owner: string;
+}
 
 /**
  * Lists a pipeline's source for a run on the knowledge database without fetching what it can
@@ -594,7 +789,7 @@ const listingOf = (
 export const knowledgeListingOf = async (
   spec: PipelineSpec,
   options: IngestSourceOptions,
-  scope: { tenant: string; dataset: string },
+  scope: KnowledgeListingScope,
   signal: AbortSignal,
 ): Promise<Listing> => {
   const source = spec.source;
@@ -670,6 +865,9 @@ export const knowledgeListingOf = async (
     const root = inside(options.folderRoot ?? '', source.path);
     if (!options.folderRoot || !root) throw new Error('the folder is not allowed');
     const name = (path: string) => relative(root, path).split(sep).join('/');
+    const fromRoot = resolve(options.folderRoot);
+    const idOf = (path: string) =>
+      folderDocumentId(scope.owner, relative(fromRoot, path).split(sep).join('/'));
     const list = async () =>
       (await findFolderFiles(root, 'all')).filter((e) =>
         selected(name(e.path), source.include, source.exclude),
@@ -683,13 +881,14 @@ export const knowledgeListingOf = async (
         ...(source.titleFrom ? { titleFrom: source.titleFrom } : {}),
         ...(source.extensions ? { extensions: source.extensions } : {}),
         ...(converter ? { converter } : {}),
+        documentId: idOf,
       });
     return listingOf(
       'listed',
       async function* () {
         for (const entry of await list())
           yield {
-            id: pathToDoc(entry).id,
+            id: idOf(entry.path),
             record: { path: entry.path, lastmod: entry.lastmod },
             metadata: { path: name(entry.path) },
             files: [{ name: name(entry.path), sha256: sha256Of(await readFile(entry.path)) }],
@@ -745,38 +944,48 @@ export const knowledgeListingOf = async (
   };
   const client = kudosClientFor(kudos, source.profile);
   const profile = kudosProfileFor(kudos, source.profile);
-  return listingOf(
-    'listed',
-    async function* () {
-      for await (const raw of kudosDocuments(client, source)) {
+  const limiter = kudos.limiter ?? processKudosLimiter;
+  const listing = kudosListing(client, source);
+  return {
+    deletes: 'listed',
+    documents: async function* () {
+      for await (const raw of listing.documents()) {
         const { files, ...metadata } = raw;
+        const id = fillInKudosFields(raw).id;
+        const earlierIds = (kudos.earlierIds ?? kudosEarlierIds()).get(id);
         yield {
-          id: fillInKudosFields(raw).id,
+          id,
           record: { ...raw },
           metadata,
           files: (files ?? []).map((f) => ({
-            name: f.url,
+            name: f.uuid ?? f.url,
             ...(f.sha256 ? { sha256: f.sha256 } : {}),
           })),
+          ...(earlierIds && earlierIds.length > 0 ? { earlierIds } : {}),
         };
       }
     },
-    async (record) => {
+    // Every page came back and every search reached its total (a listing from a later page never does).
+    complete: listing.complete,
+    load: async (record) => {
       const doc = await firstDocument(
         kudosSource({
           documents: [record as KudosDocument],
           profile,
+          maxFileBytes: maxDocumentBytes,
           fetchFile: (file) =>
-            fetchKudosFile(
-              file,
-              async (url) =>
-                (
-                  await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-                    ...options.web,
-                    signal,
-                    ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-                  })
-                ).bytes,
+            fetchKudosFile(file, (url) =>
+              kudosDownload(
+                limiter,
+                async () =>
+                  (
+                    await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
+                      ...options.web,
+                      signal,
+                      ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
+                    })
+                  ).bytes,
+              ),
             ),
           converter,
         }),
@@ -784,7 +993,5 @@ export const knowledgeListingOf = async (
       );
       return doc.prepare ? doc.prepare() : doc;
     },
-    // A listing that starts after page 1 does not see the documents before it.
-    (source.startingPage ?? 1) <= 1,
-  );
+  };
 };

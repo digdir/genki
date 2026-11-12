@@ -212,7 +212,8 @@ const latestBySet = async (
   const found = new Map<string, EvalRun>();
   for (const testSet of testSets) {
     const latest = (await runs.list({ tenant, service, subject, testSet })).find(
-      (s) => runState(s.run) === 'completed',
+      // A run of a few marked cases does not show how the whole test set does.
+      (s) => runState(s.run) === 'completed' && !s.run.tested?.selected,
     );
     if (latest) found.set(testSet, latest.run);
   }

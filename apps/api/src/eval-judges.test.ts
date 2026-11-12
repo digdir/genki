@@ -53,7 +53,7 @@ describe('judges an eval run gets for itself', () => {
       ['pickJudge', '991825827', ['foundry/gpt-4o', 'foundry/gpt-4o-mini']],
       ['judgeModel', 'kari', '991825827', 'foundry/claude-sonnet', 'builder'],
     ]);
-    expect(criteria?.judge).toBe('judge:criteria@1+foundry/claude-sonnet');
+    expect(criteria?.judge).toBe('judge:criteria@2+foundry/claude-sonnet');
     expect(scores).toMatchObject([{ state: 'scored', value: 1, reason: 'Fristen er nevnt.' }]);
     expect(criteria?.usage?.()).toEqual({ inputTokens: 12, outputTokens: 3, costMicroNok: 40 });
   });

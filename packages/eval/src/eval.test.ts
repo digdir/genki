@@ -594,6 +594,54 @@ describe('eval runner', () => {
     ]);
   });
 
+  it("checks the judge's family only against language models the run used", async () => {
+    const others = [
+      { kind: 'embedder', id: 'foundry/text-embedding-3-small', tenant: '991825827' },
+      { kind: 'reranker', id: 'colbert', tenant: '991825827' },
+      { kind: 'transcriber', id: 'foundry/whisper', tenant: '991825827' },
+    ];
+    const mixed: Strategy = {
+      ...answering(),
+      run: async function* (c, input) {
+        for (const ref of others)
+          await (await c.use<{ answer(): Promise<void> }>('model', ref)).answer();
+        yield* answering().run(c, input, {});
+      },
+    };
+    const kernel = kernelWith(
+      [mixed],
+      [
+        {
+          ...answerCapability,
+          grants: [model, ...others].map((ref) => ({ port: 'model', ref })),
+        },
+      ],
+    );
+    const families: Record<string, string> = { 'foundry/gpt-4o': 'openai' };
+    const judging = (family: string): JudgeModel => ({
+      id: `${family}-judge`,
+      family,
+      complete: async () =>
+        '{"scores": {"correctness": 5, "completeness": 5, "language": 5}, "rationale": "Riktig."}',
+    });
+    const run = (family: string) =>
+      runEval({
+        target: kernelTarget(kernel, kari, 'answer'),
+        testSet: setOf(),
+        evaluators: [rubricJudge(judging(family), bundledJudge('answer-quality'))],
+        provenance: { commit: 'abc', data: 'd' },
+        modelFamily: (m) => families[m],
+      });
+
+    expect((await run('anthropic')).provenance.servedModels).toEqual([
+      'colbert',
+      'foundry/gpt-4o',
+      'foundry/text-embedding-3-small',
+      'foundry/whisper',
+    ]);
+    await expect(run('openai')).rejects.toThrow(/same family \(openai\)/);
+  });
+
   it('fails loudly on missing provenance, a run without a served model, and a failing evaluator', async () => {
     const kernel = kernelWith([answering()], [answerCapability]);
     const silent = kernelWith([answering(false)], [answerCapability]);
@@ -1117,7 +1165,7 @@ describe('the criteria judge', () => {
     expect(scores).toEqual([
       {
         evaluator: 'judge:criteria',
-        version: '1+foundry/claude-sonnet',
+        version: '2+foundry/claude-sonnet',
         metric: 'judge.criteria',
         value: 1,
         applicable: true,
@@ -1125,8 +1173,41 @@ describe('the criteria judge', () => {
         reason: 'Fristen er nevnt.',
       },
     ]);
-    expect(judge.judge).toBe('judge:criteria@1+foundry/claude-sonnet');
+    expect(judge.judge).toBe('judge:criteria@2+foundry/claude-sonnet');
     expect(picked).toEqual([['foundry/gpt-4o']]);
+  });
+
+  it('gives the judge the sources the answer cited and the run retrieved, within the cap', async () => {
+    const asked: string[] = [];
+    const judge = criteriaJudge(async () => ({
+      ...claude,
+      complete: async (messages) => {
+        asked.push(messages[1]?.content ?? '');
+        return '{"scores": {"criteria": 1}, "rationale": "Fristen er nevnt."}';
+      },
+    }));
+    const retrieved = {
+      chunkId: 'law-2026',
+      title: 'Policy Register 2026',
+      text: 'Deadline 1 May 2026. ' + 'x'.repeat(50_000),
+    };
+
+    await judge.evaluate(
+      criteriaCase,
+      observation({
+        answer: '1. mai',
+        citations: [{ chunkId: 'law-2026' }],
+        retrieved: [retrieved],
+      }),
+      ctx,
+    );
+
+    const section = (asked[0] ?? '').slice((asked[0] ?? '').indexOf('\n\nSources from the run'));
+    expect(section).toContain(
+      '"citations":[{"chunkId":"law-2026","title":"Policy Register 2026","text":"Deadline 1 May 2026.',
+    );
+    expect(section).toContain('"retrieved":[{"chunkId":"law-2026"');
+    expect(section.length).toBeLessThanOrEqual(16_000);
   });
 
   it('judges a fields-only answer on its fields, and scores an empty answer 0 without asking the model', async () => {
@@ -1229,7 +1310,7 @@ describe('the criteria judge', () => {
       modelFamily: ctx.modelFamily,
     });
 
-    expect(run.provenance.judges).toEqual(['judge:criteria@1+foundry/claude-sonnet']);
+    expect(run.provenance.judges).toEqual(['judge:criteria@2+foundry/claude-sonnet']);
     expect(run.metrics['judge.criteria']).toMatchObject({ mean: 1, n: 2 });
   });
 });
@@ -1700,7 +1781,7 @@ describe('platform.eval.run', () => {
     const second = await evaluate();
 
     expect(picks).toEqual(['kari', 'kari']);
-    expect(first?.provenance.judges).toEqual(['judge:criteria@1+foundry/claude-sonnet']);
+    expect(first?.provenance.judges).toEqual(['judge:criteria@2+foundry/claude-sonnet']);
     expect(second?.metrics['judge.criteria']?.mean).toBe(1);
   });
 });

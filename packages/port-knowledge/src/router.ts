@@ -177,6 +177,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
       description?: string;
       aliases: string[];
       valueTypes?: Record<string, FilterValueType>;
+      filters: Record<string, unknown>;
     }
   > {
     return new Map(
@@ -185,6 +186,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
         {
           residency: dataset.residency,
           aliases: dataset.aliases,
+          filters: dataset.filters,
           ...(dataset.tenants ? { tenants: dataset.tenants } : {}),
           ...(dataset.name ? { name: dataset.name } : {}),
           ...(dataset.description ? { description: dataset.description } : {}),
@@ -430,6 +432,24 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
               vectors: exporter.vectors,
               documents: () => exporter.documents(config, ctx.signal),
               count: (cap: number) => guard(() => exporter.count(config, cap, ctx.signal)),
+              ...(exporter.list
+                ? {
+                    list: () =>
+                      (exporter.list as NonNullable<typeof exporter.list>)(config, ctx.signal),
+                  }
+                : {}),
+              ...(exporter.document
+                ? {
+                    document: (id: string) =>
+                      guard(() =>
+                        (exporter.document as NonNullable<typeof exporter.document>)(
+                          config,
+                          id,
+                          ctx.signal,
+                        ),
+                      ),
+                  }
+                : {}),
             },
           }
         : {}),

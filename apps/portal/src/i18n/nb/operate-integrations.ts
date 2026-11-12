@@ -244,8 +244,14 @@ export const integrationsArea = {
     address: 'Adresse (https)',
     secretName: 'Navn på hemmeligheten (valgfritt)',
     secret: 'Hemmeligheten',
-    secretHelp: 'Lagres i Key Vault og kan ikke leses ut igjen, bare erstattes.',
+    secretHelp: 'Lagres i Key Vault for adressen over og kan ikke leses ut igjen, bare erstattes.',
     register: 'Registrer kobling',
+  }),
+  secretHosts: defineNamespace({
+    setElsewhere:
+      'Hemmeligheten «{name}» er satt opp for andre adresser ({hosts}). Velg et annet navn på hemmeligheten.',
+    unchecked:
+      'Vi kunne ikke sjekke hvilke adresser hemmeligheten «{name}» er satt opp for, så ingenting er lagret.',
   }),
   integHooks: defineNamespace({
     pointBeforeModel: 'Før modellkall',
@@ -362,6 +368,10 @@ export const integrationsArea = {
     createdToday: 'i dag av deg',
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
+    createdBy: '{date} av {who}',
+    modelsAllowed: 'Kan bruke modeller i det låste miljøet',
+    modelsRefused:
+      'Kan ikke bruke modeller i det låste miljøet: laget av en innlogging som ikke er sluppet inn. Roter den mens du er logget inn med Entra ID.',
     nameProblem: 'Gi nøkkelen et navn.',
     selectionProblem: 'Velg minst én tjeneste eller ett datasett, eller velg «Alle».',
     rateProblem: 'Skriv et helt tall fra 1 til 6 000.',
@@ -391,6 +401,10 @@ export const integrationsArea = {
     datasets: 'Datasett',
     rate: 'Kall per minutt',
     rateHelp: 'Fra 1 til 6 000.',
+    testRunner: 'Testkjører for røyktester',
+    testRunnerHelp:
+      'Nøkkelen kan lese alt i virksomheten og plattformoppsettet i driftsoversiktene, prøve tjenester i prøveområdet når den gjelder alle tjenester, og opprette og arkivere definisjoner som begynner med smoke-. Den utløper etter 90 dager. Bare i dette låste testmiljøet.',
+    testRunnerTag: 'Testkjører',
     createKey: 'Lag nøkkel',
     none: 'Ingen API-nøkler ennå',
     noneText: 'Lag en nøkkel for systemer som ikke kan bruke Maskinporten.',

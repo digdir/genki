@@ -27,6 +27,7 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
+import { Attachments, mediaUrl, type LoadMedia } from '../../components/Attachments';
 import { Icon, type IconComponent } from '../../components/Icon';
 import { useFormat } from '@genai/i18n/react';
 import { approvalDetails } from '../../data/log';
@@ -84,7 +85,12 @@ const stateTags = {
   retried: ['steps.stateRetried', 'info'],
 } as const;
 
-const Block = ({ block }: { block: TimelineBlock }) => {
+export interface StepMedia {
+  task: string;
+  load: LoadMedia;
+}
+
+const Block = ({ block, media }: { block: TimelineBlock; media?: StepMedia | undefined }) => {
   const t = useT();
   const body = (() => {
     switch (block.kind) {
@@ -184,6 +190,12 @@ const Block = ({ block }: { block: TimelineBlock }) => {
     <div className="log-block">
       {block.label ? <span className="log-block-label">{block.label}</span> : null}
       {body}
+      {media && block.media?.length ? (
+        <Attachments
+          items={block.media.map((m) => ({ ...m, url: mediaUrl(media.task, m.id) }))}
+          load={media.load}
+        />
+      ) : null}
     </div>
   );
 };
@@ -237,6 +249,7 @@ export const Steps = ({
   approval = noApproval,
   label,
   idPrefix = '',
+  media,
 }: {
   steps: TimelineStep[];
   isOpen: (step: TimelineStep, index: number) => boolean;
@@ -244,6 +257,7 @@ export const Steps = ({
   approval?: ApprovalProps;
   label?: string;
   idPrefix?: string;
+  media?: StepMedia | undefined;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -336,7 +350,7 @@ export const Steps = ({
                       <p className="log-raw">{step.description ?? t('logSteps.unknownText')}</p>
                     )}
                     {step.blocks.map((b, k) => (
-                      <Block key={`${b.kind}-${k}`} block={b} />
+                      <Block key={`${b.kind}-${k}`} block={b} media={media} />
                     ))}
                     {step.raw === undefined ? null : (
                       <RawData id={`${idPrefix}${step.id}-raw`} raw={step.raw} />

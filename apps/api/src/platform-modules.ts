@@ -17,7 +17,7 @@ import type { Capability as KernelCapability, Kernel, TaskStore } from '@genai/k
 import type { TriggerRunStore } from '@genai/jobs';
 import type { BlobStore } from '@genai/port-blob';
 import type { IndexWriterRouter, KnowledgeRouter } from '@genai/port-knowledge';
-import type { ModelRouter, Residency } from '@genai/port-model';
+import type { ModelRouter, ProcessorRecordCheck, Residency } from '@genai/port-model';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import type { Env, Hono, Schema } from 'hono';
 import type { Access } from './access.js';
@@ -27,6 +27,7 @@ import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
 import type { ApiLog } from './failure-log.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
+import type { EvalSlots } from './eval-slots.js';
 import type { TaskIndex } from './extensions.js';
 import type { IngestSourceConfig } from './index-ingestion.js';
 import type { IngestionService } from './ingestion.js';
@@ -71,12 +72,14 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   evalCapability?: string;
   /** The platform's own version, recorded as the commit of the eval runs it starts. */
   appVersion?: string;
+  evalSlots?: EvalSlots;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
   operations?: {
     tier: EnvironmentTier;
     descriptors: LiveDescriptorRegistry;
     governance: OperationGovernanceStore;
+    processorRecords?: ProcessorRecordCheck;
     try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
   };
   enrichmentTask?: TrackedWork;

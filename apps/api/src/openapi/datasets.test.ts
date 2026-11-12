@@ -151,7 +151,7 @@ describe('dataset, knowledge and catalogue API reference', () => {
     const put = await send('/operator/catalog/model-endpoint/norsk', 'drift', {
       method: 'PUT',
       body: {
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://modeller.example.no/v1',
         auth: { kind: 'api-key', secret: 'secret://env/other-key' },
       },
@@ -363,7 +363,7 @@ describe('dataset, knowledge and catalogue API reference', () => {
     const added = await send('/operator/model-endpoints', 'drift', {
       body: {
         id: 'sigma2',
-        protocol: 'openai-chat',
+        families: { openai: '' },
         baseURL: 'https://llm.sigma2.test/v1',
         auth: { kind: 'bearer', secret: 'secret://platform/sigma2-key' },
       },

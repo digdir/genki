@@ -81,7 +81,7 @@ export const openAiChatFixture: ModelContractFixture = {
 export const openAiResponsesFixture: ModelContractFixture = {
   adapter: openAiChat,
   basePath: '/v1',
-  modelOptions: { api: 'responses' },
+  api: 'openai/responses@1',
   reply: (scenario, body, path) => {
     if (path !== '/v1/responses' || body.store !== false || 'previous_response_id' in body)
       return failure(400);
@@ -155,7 +155,6 @@ export const openAiPlugins: PluginRegistration[] = [
       configSchema: {
         type: 'object',
         properties: {
-          api: { type: 'string', enum: ['chat-completions', 'responses'] },
           tokenParam: { type: 'string', enum: ['max_tokens', 'max_completion_tokens'] },
         },
       },
