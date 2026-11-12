@@ -2724,6 +2724,16 @@
             replaces: [],
             edges: [
               {
+                to: 'providers-azure-blob',
+                label: "Writes converters' native output to the Blob container",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/main.ts',
+                  imports: '@genai/providers-azure-blob',
+                },
+              },
+              {
                 to: 'port-usage',
                 label: 'Polls usage sources into usage buckets',
                 kind: 'call',
