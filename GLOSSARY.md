@@ -79,7 +79,7 @@ What a converter itself returns for one file, such as a `DoclingDocument`, kept 
 _Avoid_: raw output, JSON dump
 
 **Stored conversion**:
-The text per page derived from one file's conversion, kept so that no file is converted twice: keyed by the file's sha256, the converter, its version and settings, and the derivation and its version.
+The text per page derived from one file's conversion, kept so that no file is converted twice by a converter its pipeline keeps: keyed by the file's sha256, the converter, its version and settings, and the derivation and its version.
 _Avoid_: parse, extraction, cache (alone)
 
 **Derivation**:
