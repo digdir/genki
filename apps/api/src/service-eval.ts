@@ -850,8 +850,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         );
       }
     }
-    // Every sent run names its test set's dataset, made again if it was deleted in Langfuse. Asked
-    // only once the run's own checks pass, so a refused run writes nothing to the project.
+    // Looked up only after the run's checks pass, so a refused run writes nothing (ADR 0040).
     const dataset = sink
       ? await datasets.ensure(tenant, sink, service, set.metadata.id).catch((error: unknown) => {
           prepared.release();
