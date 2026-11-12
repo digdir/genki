@@ -446,6 +446,16 @@ describe('drawers, below 1139', () => {
     expect([folded(primary()), folded(secondary())]).toEqual([true, false]);
   });
 
+  it('opens nothing more, out of drawer mode where only one fits, beside a drawer the reader opened', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    fireEvent.click(button('Vis kilder'));
+    resizeTo(1300);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, false]);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
   it('has no separator: a drawer has no edge to share', () => {
     draw({}, 1000);
     fireEvent.click(button('Vis tråder og filter'));

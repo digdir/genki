@@ -274,6 +274,8 @@ export const Shell = ({
     setState((current) => {
       if (drawer) return shellSides.reduce(withWindowFold, current);
       if (!narrow) return shellSides.reduce(withWindowRoom, current);
+      // A drawer the reader left open keeps the one place; the other waits for a wider window.
+      if (!current.collapsed[otherSide(keep)]) return current;
       const kept = withWindowRoom(current, keep);
       return kept.collapsed[keep] ? withWindowRoom(kept, otherSide(keep)) : kept;
     });
