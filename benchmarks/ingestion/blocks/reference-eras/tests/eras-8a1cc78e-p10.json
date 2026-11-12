@@ -1,0 +1,356 @@
+{
+ "tests": [
+  {
+   "id": "eras-8a1cc78e-p10-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "Disponibel realinntekt for Norge. Prosentvis endring fra foregående år.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "Nettonasjonalproduktet i utvinning og rørtransport av råolje og naturgass var negativt i 1974.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "FAKTORINNTEKT. LØNN. DRIFTSRESULTAT I ULIKE NÆRINGSGRUPPER",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "heading",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "before": {
+     "text": "Endringer i renter og stønader",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "FAKTORINNTEKT. LØNN. DRIFTSRESULTAT",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "Pris- og inntektsstoppen fra september 1978 og ut året 1979 reduserte pris- og kostnadsveksten.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "before": {
+     "text": "den samlede faktorinntekten er blitt tilsvarende redusert.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "i prosent av samlet faktorinntekt var 64,4 prosent i 1979.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "Det må imidlertid igjen understrekes at i 1970 var oljeinntektene uten betydning for inntektsopptjeningen",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "Fra 1974 til 1975 økte lønnskostnadene regnet pr. årsverk med hele 18,2 prosent.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "cell": {
+     "text": "2,7",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Disponibel realinntekt for Norge",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1976",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "cell": {
+     "text": "4,7",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1976",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "4,4",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "2,9",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t11",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "cell": {
+     "text": "3,7",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1978",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "1,8",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t12",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "cell": {
+     "text": "1,4",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Endringer i bytteforholdet m.v.",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1979",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "—1,4",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t13",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "cell": {
+     "text": "—1,1",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1977",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "—0,8",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "—1,4",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "—1,6",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "4,7",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p10-t15",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn",
+    "degraded"
+   ],
+   "args": {
+    "content": {
+     "text": "3,7",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
