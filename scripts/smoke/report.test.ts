@@ -4,6 +4,7 @@ import { suspectRange, type HistoryNode } from './changes.ts';
 import {
   assess,
   commitStatus,
+  failureLine,
   greenBody,
   issueAction,
   issueBody,
@@ -347,5 +348,17 @@ describe('a smoke job without a result', () => {
     expect(commitStatus(report)).toBe('failure');
     expect(issueAction(report, undefined)).toBe('open');
     expect(report.runUrl).toBe('https://run');
+  });
+});
+
+describe('the failure line', () => {
+  it('names the outcome and the failing check ids', () => {
+    expect(failureLine(report())).toBe('smoke outcome fail: model:foundry-claude/claude-haiku-5-5');
+  });
+
+  it('says so when no check is recorded as failed', () => {
+    expect(failureLine(report({ checks: [] }))).toBe(
+      'smoke outcome fail: no failing check recorded',
+    );
   });
 });

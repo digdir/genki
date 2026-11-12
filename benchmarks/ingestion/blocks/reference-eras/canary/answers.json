@@ -1,0 +1,72 @@
+{
+ "eras-63ec8679-p4-c00": {
+  "corrupt": true,
+  "how": "changed a digit",
+  "from": "eras-63ec8679-p4-t06"
+ },
+ "eras-34783e9d-p61-c01": {
+  "corrupt": true,
+  "how": "swapped before and after",
+  "from": "eras-34783e9d-p61-t06"
+ },
+ "eras-cc081a8d-p13-c02": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-cc081a8d-p13-t02"
+ },
+ "eras-d17a8877-p36-c03": {
+  "corrupt": true,
+  "how": "dropped a word",
+  "from": "eras-d17a8877-p36-t06"
+ },
+ "eras-7ca7961d-p48-c04": {
+  "corrupt": true,
+  "how": "changed a digit",
+  "from": "eras-7ca7961d-p48-t01"
+ },
+ "eras-810ca2af-p1-c05": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-810ca2af-p1-t03"
+ },
+ "eras-e87e4ace-p2-c06": {
+  "corrupt": true,
+  "how": "swapped before and after",
+  "from": "eras-e87e4ace-p2-t05"
+ },
+ "eras-36e2d1d0-p10-c07": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-36e2d1d0-p10-t06"
+ },
+ "eras-8a1cc78e-p29-c08": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-8a1cc78e-p29-t05"
+ },
+ "eras-7ca7961d-p41-c09": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-7ca7961d-p41-t01"
+ },
+ "eras-e87e4ace-p1-c10": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-e87e4ace-p1-t05"
+ },
+ "eras-c083beda-p4-c11": {
+  "corrupt": true,
+  "how": "dropped a word",
+  "from": "eras-c083beda-p4-t04"
+ },
+ "eras-504fb542-p8-c12": {
+  "corrupt": true,
+  "how": "top_heading: swapped two letters",
+  "from": "eras-504fb542-p8-t08"
+ },
+ "eras-36e2d1d0-p10-c13": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "eras-36e2d1d0-p10-t08"
+ }
+}
