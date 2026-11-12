@@ -29,10 +29,7 @@ export interface ExporterDeps {
    * sent: a sink records them first, so nothing it sent goes unrecorded. False drops the batch.
    */
   beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>;
-  /**
-   * Export eval run cases as experiment items. Only a run's own sink does; the platform-wide
-   * exporter leaves them as ordinary traces, so no tenant's run lands in Digdir's project.
-   */
+  /** Export eval run cases as experiment items: only a run's own sink does. */
   experiments?: boolean;
   /** The Langfuse dataset of the run's test set: every experiment span names it (ADR 0040). */
   dataset?: string;

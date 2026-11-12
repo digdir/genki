@@ -57,10 +57,7 @@ export interface ExperimentRouter {
   observe(event: Event, scope: ContentScope): void;
 }
 
-/**
- * Sends the tasks that answer an eval run's cases, and the tasks under them, to the exporter
- * opened for that run. Nothing else reaches it, so one tenant's run never reaches another's sink.
- */
+/** Sends only a run's own case tasks to the exporter opened for that run. */
 export const createExperimentRouter = (): ExperimentRouter => {
   const exporters = new Map<string, TraceExporter>();
   const tenantOf = new Map<string, string>();
