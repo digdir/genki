@@ -44,6 +44,8 @@ resource blobs 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
   name: 'default'
   properties: {
     isVersioningEnabled: true
+    // Off: a withdrawal must erase a file's earlier versions at once (ADR 0042).
+    deleteRetentionPolicy: { enabled: false }
   }
 }
 

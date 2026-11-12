@@ -213,7 +213,7 @@ export const nativeOutputContract: ContractSuite<NativeOutputContainer> = {
       },
     },
     {
-      name: 'a conversion key with a bad sha256 or path segment is refused',
+      name: 'a native output key with a bad sha256 or path segment is refused',
       run: async (container) => {
         const store = nativeOutputStore(container);
         const ok = { sha256: fileA, ...docling({}) };

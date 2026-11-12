@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 
-// Writes, reads back and deletes one probe conversion in the conversions store the worker uses
+// Writes, reads back and deletes one probe native output in the store the worker uses
 // (CONVERSIONS_BLOB_URL in Azure, a folder under DATA_DIR locally). Run on the worker:
 // az containerapp exec -n <worker app> -g <group> --command "node scripts/conversions-check.ts"
 const dataDir = process.env.DATA_DIR ?? join(process.cwd(), 'apps', 'api', '.data');

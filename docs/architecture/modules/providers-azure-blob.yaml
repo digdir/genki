@@ -8,7 +8,8 @@ status: Provider
 packages:
   - '@genai/providers-azure-blob'
 summary: Keeps converters' native output in the Blob container `conversions`.
-description: Implements the conversion container of the Blob port on Azure Blob storage (ADR 0042),
+description:
+  Implements the native output container of the Blob port on Azure Blob storage (ADR 0042),
   with the knowledge worker's managed identity through DefaultAzureCredential and never an account
   key or SAS token. Without `CONVERSIONS_BLOB_URL` the worker uses a folder under `DATA_DIR`
   instead. The container deletes an earlier version 30 days after it was written.
@@ -22,7 +23,7 @@ output: Stored native output
 replaces: []
 edges:
   - to: port-blob
-    label: Implements the conversion container
+    label: Implements the native output container
     kind: call
     target: call
     witness:
