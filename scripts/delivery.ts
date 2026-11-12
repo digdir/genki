@@ -217,6 +217,9 @@ export const escapeText = (text: string, max = 300) =>
     oneLine(text, max).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
   );
 
+export const markdownText = (text: string, max = 300) =>
+  escapeText(text, max).replace(/[\\[\]]/g, '\\$&');
+
 const fenceData = (text: string) => text.replace(/<(?=\/?untrusted_data)/gi, '&lt;');
 
 const untrustedNote =
@@ -343,13 +346,13 @@ export const releaseBody = (log: Changelog) => {
     );
   else lines.push('Fant ikke forrige vellykkede deploy, så listen er tom.');
   if (log.summary) {
-    lines.push('', '### Oppsummering', '', escapeText(log.summary.summary, 600));
+    lines.push('', '### Oppsummering', '', markdownText(log.summary.summary, 600));
     if (log.summary.check.length)
       lines.push(
         '',
         '### Hva du bør sjekke',
         '',
-        ...log.summary.check.map((c) => `- ${escapeText(c, 200)}`),
+        ...log.summary.check.map((c) => `- ${markdownText(c, 200)}`),
       );
     lines.push('', '_Oppsummeringen er skrevet av en modell ut fra pull requestene under._');
   }
@@ -358,14 +361,14 @@ export const releaseBody = (log: Changelog) => {
       '',
       `### ${areaNames[group.area]}`,
       '',
-      ...group.prs.map((p) => `- #${p.number} ${escapeText(p.title, 200)}`),
+      ...group.prs.map((p) => `- #${p.number} ${markdownText(p.title, 200)}`),
     );
   if (log.commits.length)
     lines.push(
       '',
       '### Commits uten pull request',
       '',
-      ...log.commits.map((c) => `- ${c.sha} ${escapeText(c.headline, 200)}`),
+      ...log.commits.map((c) => `- ${c.sha} ${markdownText(c.headline, 200)}`),
     );
   if (log.more) lines.push('', `Og ${log.more} pull requests til, som ikke er listet.`);
   lines.push('', prMarker(log.prs));
@@ -454,6 +457,7 @@ export interface Week {
   to: string;
   releases: { tag: string; url: string }[];
   prs: Pr[];
+  more: number;
   delivered: string[] | null;
 }
 
@@ -495,6 +499,7 @@ export const collectWeek = async (deps: {
     to: to.toISOString(),
     releases: releases.map((r) => ({ tag: r.tag_name, url: r.html_url })),
     prs,
+    more: Math.max(0, numbers.length - limits.prs),
     delivered: prs.length ? await ask(deps.complete, weeklyPrompt(prs), parseDelivered) : null,
   };
 };
@@ -517,13 +522,15 @@ export const weeklyText = (week: Week): string | null => {
   if (week.delivered) lines.push('', ...week.delivered.map((d) => `• ${escapeText(d, 250)}`));
   let listed = 0;
   for (const group of grouped(week.prs)) {
+    if (listed >= maxListed) break;
     lines.push('', `*${areaNames[group.area]}*`);
     for (const pr of group.prs) {
       if (listed++ >= maxListed) break;
       lines.push(`• <${pr.url}|#${pr.number}> ${escapeText(pr.title, 200)}`);
     }
   }
-  if (week.prs.length > maxListed) lines.push('', `… og ${week.prs.length - maxListed} til.`);
+  const rest = Math.max(0, week.prs.length - maxListed) + week.more;
+  if (rest > 0) lines.push('', `… og ${rest} til.`);
   lines.push('', `<https://github.com/${week.repo}/releases|Alle deployer som releaser på GitHub>`);
   return lines.join('\n');
 };

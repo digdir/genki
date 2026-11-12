@@ -19,6 +19,7 @@ import {
   weeklyPrompt,
   weeklyText,
   type Changelog,
+  type Pr,
   type Post,
   type Week,
 } from './delivery.ts';
@@ -334,6 +335,7 @@ describe('the weekly window', () => {
       to: '2026-11-13T12:00:00Z',
       releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
       prs: changelog().prs,
+      more: 0,
       delivered: ['Portalen har en ny fane.', 'Rettighetssjekken er rettet.'],
     };
     const text = weeklyText(week) ?? '';
@@ -397,11 +399,73 @@ describe('untrusted text', () => {
             area: 'ci',
           },
         ],
+        more: 0,
         delivered: ['<!channel> <@U123>'],
       }) ?? '';
     expect(text).not.toContain('<!');
     expect(text).not.toContain('<@');
     expect(text).toContain('@​types/node');
+  });
+
+  it('renders Markdown link and image syntax in titles and model text as text in the release', () => {
+    const log = changelog();
+    const body = releaseBody({
+      ...log,
+      summary: { summary: '[se her](https://example.com)', check: ['![x](https://e.com/a.png)'] },
+      prs: [
+        {
+          number: 10,
+          url: '',
+          body: '',
+          area: 'portal',
+          title: '[se her](https://example.com) \\[x]',
+        },
+      ],
+    });
+    expect(body).toContain('\\[se her\\](https://example.com)');
+    expect(body).toContain('!\\[x\\](https://e.com/a.png)');
+    expect(body).toContain('\\\\\\[x\\]');
+  });
+
+  it('prints no area heading without items after the 50 pull request cap', () => {
+    const pr = (number: number, area: Pr['area']): Pr => ({
+      number,
+      title: `PR ${number}`,
+      url: `https://github.com/digdir/genki/pull/${number}`,
+      body: '',
+      area,
+    });
+    const prs = [
+      ...Array.from({ length: 25 }, (_, i) => pr(i + 1, 'security')),
+      ...Array.from({ length: 25 }, (_, i) => pr(i + 100, 'portal')),
+      ...Array.from({ length: 5 }, (_, i) => pr(i + 200, 'ci')),
+    ];
+    const text =
+      weeklyText({
+        repo,
+        from: '2026-11-06T12:00:00Z',
+        to: '2026-11-13T12:00:00Z',
+        releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
+        prs,
+        more: 0,
+        delivered: null,
+      }) ?? '';
+    expect(text).not.toContain('*CI og verktøy*');
+    expect(text).toContain('… og 5 til.');
+  });
+
+  it('counts pull requests beyond the collection limit in the weekly message', () => {
+    const text =
+      weeklyText({
+        repo,
+        from: '2026-11-06T12:00:00Z',
+        to: '2026-11-13T12:00:00Z',
+        releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
+        prs: changelog().prs,
+        more: 7,
+        delivered: null,
+      }) ?? '';
+    expect(text).toContain('… og 7 til.');
   });
 
   it('is escaped in linear time on a long adversarial title', () => {
