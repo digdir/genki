@@ -117,14 +117,14 @@ export interface RunEvalOptions {
   /** Cancels the run, including its wait for scores. */
   signal?: AbortSignal;
   /**
-   * After each case, with what the run has used so far when answers are metered, and the cases
-   * finished so far in test-set order, so a run that stops keeps them.
+   * After each case, with what the run has used so far when answers are metered, and the case
+   * just finished, so a run that stops keeps the cases it finished. Each case is reported once.
    */
   onProgress?: (
     done: number,
     total: number,
     usage?: EvalRun['usage'],
-    results?: EvalRun['results'],
+    result?: EvalRun['results'][number],
   ) => void;
   /** Case slots: up to perRun cases at a time, each started once acquire grants a slot. */
   slots?: { perRun: number; acquire: () => Promise<() => void> };
@@ -379,6 +379,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   ).flat();
   const done: (EvalRun['results'][number] | undefined)[] = Array.from({ length: work.length });
   const finished = () => done.filter((r): r is EvalRun['results'][number] => r !== undefined);
+  let finishedCount = 0;
   const runCase = async (index: number) => {
     const { c, repeat } = work[index] as { c: TestCase; repeat: number };
     options.signal?.throwIfAborted();
@@ -430,8 +431,8 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       ...(c.language ? { language: c.language } : {}),
       scores,
     };
-    const sofar = finished();
-    options.onProgress?.(sofar.length, total, usageSoFar(), sofar);
+    finishedCount += 1;
+    options.onProgress?.(finishedCount, total, usageSoFar(), done[index]);
   };
   let next = 0;
   let stop: { error: unknown } | undefined;
