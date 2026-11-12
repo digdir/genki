@@ -1,4 +1,5 @@
-import { sameSource, type Observation } from './observe.js';
+import { untrustedData } from '@genai/port-model';
+import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
 import type { Score, TestCase, UsageSummary } from './schema.js';
 
@@ -8,6 +9,9 @@ export interface EvalContext {
   /** Aborts when the eval run is cancelled. */
   signal?: AbortSignal;
 }
+
+export const judgedAgainst = (model: { kind?: unknown }) =>
+  model.kind === undefined || model.kind === 'model';
 
 export interface PendingScore {
   case: string;
@@ -244,6 +248,38 @@ const assertOtherFamily = (judge: JudgeModel, ctx: EvalContext) => {
 const criteriaText = (prompt: JudgePrompt) =>
   prompt.criteria.map((c) => `- ${c.id}: ${c.description}`).join('\n');
 
+// Bound the entire serialized section, including escaped text and metadata.
+const judgeSources = (observation: Observation): string => {
+  const heading = '\n\nSources from the run (excerpts; may be truncated):\n';
+  const sources: { citations: ObservedSource[]; retrieved: ObservedSource[] } = {
+    citations: [],
+    retrieved: [],
+  };
+  for (const kind of ['citations', 'retrieved'] as const) {
+    for (const source of observation[kind].slice(0, 10)) {
+      const evidence =
+        observation.retrieved.find((r) => sameSource(source, r) && r.text !== undefined) ??
+        observation.retrieved.find((r) => sameSource(source, r));
+      const enriched = { ...evidence, ...source };
+      const bounded: ObservedSource = {
+        ...(enriched.position === undefined ? {} : { position: enriched.position }),
+      };
+      for (const field of ['chunkId', 'document', 'url', 'title', 'text'] as const) {
+        const value = enriched[field];
+        if (value !== undefined) bounded[field] = value.slice(0, field === 'text' ? 2000 : 512);
+      }
+      sources[kind].push(bounded);
+      if (heading.length + untrustedData('sources', JSON.stringify(sources)).length > 16_000) {
+        sources[kind].pop();
+        break;
+      }
+    }
+  }
+  return sources.citations.length || sources.retrieved.length
+    ? heading + untrustedData('sources', JSON.stringify(sources))
+    : '';
+};
+
 export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator => {
   const self: Evaluator = {
     id: `judge:${prompt.id}`,
@@ -269,6 +305,7 @@ export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator =
             question,
             answer: answerText(o),
             criteria: criteriaText(prompt),
+            sources: judgeSources(o),
             min: String(prompt.scale.min),
             max: String(prompt.scale.max),
             ...(c.expected.referenceAnswer === undefined

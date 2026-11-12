@@ -1,0 +1,1681 @@
+{
+  "source": "genki-test, service kunnskapsassistenten__default version 4, dataset kudos, by POST /v1/chat/completions with genai_conversation false",
+  "capturedOn": "2026-11-06",
+  "genki": "04b1fc7b1172f59e636033ca22244ed168ae6cdd",
+  "note": "Real answers as genki-test sent them, trimmed to what the answer block reads: the text, and each source without its excerpt text. The service cites documents, so there are no markers.",
+  "answers": [
+    {
+      "id": "q01-sykefravaer",
+      "question": "Hva sier årsrapportene om sykefravær og arbeidsmiljø i statlige virksomheter?",
+      "answer": "Årsrapportene gir ulike typer informasjon, og dekker ikke alle statlige virksomheter på samme måte.\n\n- **NAV** oppgir et totalt sykefravær på **8,5 prosent i 2022**. Det var **1,9 prosentpoeng høyere** enn året før og **0,9 prosent høyere enn i 2019**. NAV peker på koronarelaterte forhold som en mulig forklaring på det høye nasjonale sykefraværet. [2]  \n- NAV arbeider med «tett og tidlig» oppfølging av sykmeldte og har egen rutine for ansatte som har vært sykmeldt i mer enn 52 uker. NAV mener også at et godt arbeidsmiljø kan bidra til lavere sykefravær. [2]  \n- Hybrid arbeidshverdag har gjort det lettere å tilrettelegge for ansatte med sykdom, men kan gjøre det vanskeligere for ledere å oppdage psykososiale utfordringer hos ansatte som jobber mye hjemmefra. [2]  \n- **Arbeidstilsynet** beskriver arbeidsmiljøet i Norge generelt som stabilt godt, og viser til at 94 prosent av yrkesaktive i Norge er fornøyde med arbeidsforholdene sine. Samtidig understreker rapporten at deler av arbeidslivet har store arbeidsmiljøutfordringer. [3]  \n- Arbeidstilsynet anslår at én av fem sykefraværsdager, om lag fem millioner arbeidsdager årlig, kan være arbeidsrelatert. Arbeidsrelatert sykdom, skade, sykefravær og uførhet er estimert til å koste samfunnet rundt 75 milliarder kroner i året. [3]  \n- **Politiets årsrapport** omtaler arbeidsmiljø gjennom arbeid med mangfold, rekruttering, kompetanse, ledelse og arbeidsmiljø. Rapporten oppgir derimot ikke tall for sykefravær. Politiet la vekt på en plan for mangfold, dialog og tillit, med særlig oppmerksomhet på minoriteter. [1]  \n\nTallene kan ikke brukes som ett samlet mål for statlige virksomheter: NAVs tall gjelder NAV i 2022, mens Arbeidstilsynets omtale gjelder arbeidslivet i Norge generelt og rapporterer anslag for arbeidsrelatert sykefravær. [2][3]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Politiet 2021",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Politiet%202021",
+          "document_id": "26523",
+          "excerpts": [
+            {
+              "chunk_id": "7270957c3a63",
+              "position": 72
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Årsrapport NAV 2022",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20NAV%202022",
+          "document_id": "33265",
+          "excerpts": [
+            {
+              "chunk_id": "b81d4478206b",
+              "position": 155
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Årsrapport Arbeidstilsynet 2021",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Arbeidstilsynet%202021",
+          "document_id": "25849",
+          "excerpts": [
+            {
+              "chunk_id": "bfd8a7b57ee5",
+              "position": 18
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q02-ssb-arsverk",
+      "question": "Hvor mange årsverk hadde Statistisk sentralbyrå i 2023?",
+      "answer": "SSB hadde **771 utførte årsverk** i 2023, eksklusive intervjuere. Inkludert intervjuere var det **821 utførte årsverk totalt**. [1]\n\nKilden oppgir også **838 avtalte årsverk** i 2023. Dette er en annen måling enn utførte årsverk. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Statistisk sentralbyrå 2023",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Statistisk%20sentralbyr%C3%A5%202023",
+          "document_id": "126699",
+          "excerpts": [
+            {
+              "chunk_id": "8820e94adee0",
+              "position": 109
+            },
+            {
+              "chunk_id": "36044a256736",
+              "position": 6
+            },
+            {
+              "chunk_id": "270e166233d3",
+              "position": 8
+            },
+            {
+              "chunk_id": "ae5bf51aba8f",
+              "position": 10
+            },
+            {
+              "chunk_id": "3f383e9dbc32",
+              "position": 60
+            },
+            {
+              "chunk_id": "0acd26babc22",
+              "position": 79
+            },
+            {
+              "chunk_id": "897f212757f5",
+              "position": 88
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q03-lanekassen-driftsutgifter",
+      "question": "Hva var Lånekassens driftsutgifter i 2022, og hvordan utviklet de seg fra året før?",
+      "answer": "Lånekassens **driftsutgifter på post 01** var **414 982 867 kroner** i 2022, altså om lag **415 millioner kroner**. [1]\n\nDette var lavere enn i 2021, da posten «Driftsutgifter post 01» var **429 702 000 kroner**. [2] Nedgangen var dermed om lag **14,7 millioner kroner**, eller cirka **3,4 prosent**.",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Lånekassen 2022",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20L%C3%A5nekassen%202022",
+          "document_id": "32574",
+          "excerpts": [
+            {
+              "chunk_id": "414abc441b40",
+              "position": 5
+            },
+            {
+              "chunk_id": "56e0173d7460",
+              "position": 1
+            },
+            {
+              "chunk_id": "5dcb2ab0bc6f",
+              "position": 102
+            },
+            {
+              "chunk_id": "d3c04b21370b",
+              "position": 104
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Årsrapport Lånekassen 2021",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20L%C3%A5nekassen%202021",
+          "document_id": "32584",
+          "excerpts": [
+            {
+              "chunk_id": "8541a588d12b",
+              "position": 75
+            },
+            {
+              "chunk_id": "213d25b6f954",
+              "position": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q04-politiet-likestilling",
+      "question": "Hvordan rapporterer Politidirektoratet om likestilling og diskriminering i årsrapporten for 2021?",
+      "answer": "I det oppgitte utdraget av årsrapporten for 2021 framgår det ikke hvordan Politidirektoratet rapporterer om likestilling og diskriminering. Innholdsfortegnelsen viser at rapporten har et kapittel om «Arbeidsmiljø, sykefravær og ledelse», men utdraget inneholder ikke selve teksten fra dette kapitlet eller en egen redegjørelse om likestilling og diskriminering. [1]\n\nDet er derfor ikke mulig å fastslå, ut fra kilden som er lagt ved, hvilke tiltak, tall eller vurderinger Politidirektoratet rapporterte om på dette området.",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Politiet 2021",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Politiet%202021",
+          "document_id": "26523",
+          "excerpts": [
+            {
+              "chunk_id": "cea035ba770e",
+              "position": 0
+            },
+            {
+              "chunk_id": "d132b4a1128b",
+              "position": 1
+            },
+            {
+              "chunk_id": "92d61e545fa3",
+              "position": 2
+            },
+            {
+              "chunk_id": "f400500c383a",
+              "position": 15
+            },
+            {
+              "chunk_id": "fba5467461f6",
+              "position": 16
+            },
+            {
+              "chunk_id": "ad2bff8b602c",
+              "position": 17
+            },
+            {
+              "chunk_id": "2f25a830e9af",
+              "position": 18
+            },
+            {
+              "chunk_id": "47ddf808b02d",
+              "position": 19
+            },
+            {
+              "chunk_id": "95bd90a7c9a1",
+              "position": 20
+            },
+            {
+              "chunk_id": "43d3d86b3277",
+              "position": 30
+            },
+            {
+              "chunk_id": "e48fbaf7e9c8",
+              "position": 31
+            },
+            {
+              "chunk_id": "05d1bf38f4e1",
+              "position": 32
+            },
+            {
+              "chunk_id": "e3c2b1ceb59d",
+              "position": 40
+            },
+            {
+              "chunk_id": "65eb1a3e4c26",
+              "position": 41
+            },
+            {
+              "chunk_id": "626b784611eb",
+              "position": 42
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q05-kartverket-ledelseskommentar",
+      "question": "Hva skriver Kartverket i ledelseskommentaren til årsregnskapet?",
+      "answer": "Kartverket skriver i ledelseskommentaren til årsregnskapet blant annet dette:\n\n- Kartverket er et bruttobudsjettert forvaltningsorgan under Kommunal- og distriktsdepartementet. Virksomheten samler inn, bearbeider og deler geografisk informasjon, og har blant annet ansvar for tinglysing, matrikkel og nasjonal geodatakoordinering. [1]\n- Løyvingsregnskapet for 2024 viser utgiftsrammer, inntektskrav, fullmakter og regnskapsførte beløp. Kartverket hadde et netto mindreforbruk på nesten 45,4 millioner kroner på kapittel/post 595.01 og 595.21, sett sammen med inntektene på 3595.02 og 3595.03. Av dette gjaldt 15,4 millioner kroner forsinket lønnskompensasjon for lønnsoppgjøret i 2024. [1]\n- Mindreforbruket skyldtes blant annet periodiseringer og forsinkelser i prosjekter med øremerkede midler, egenregistreringsprosjektet og satsingen Nautilus. [1]\n- På kapittel/post 595.30, Geodesiobservatoriet i Ny-Ålesund, var mindreforbruket 8,2 millioner kroner. Årsaken var forsinkelser i arbeidet med gangbaner, ombygging på Rabben og annen infrastruktur. Arbeidet fortsetter i 2025. [1]\n- Gebyrinntektene fra tinglysing ble 11,3 millioner kroner høyere enn inntektskravet. Salgsinntektene ble 5 millioner kroner høyere, mens samfinansiering fikk en mindreinntekt på 33,6 millioner kroner. Kartverket knytter denne mindreinntekten særlig til periodeforskyvninger og endrede priser i samfinansierte prosjekter. [1]\n- Driftsutgiftene som ble rapportert til løyvingsregnskapet, var 1,361 milliarder kroner. Kartverket opplyser at konsulentbruken økte, særlig fordi virksomheten ikke hadde nok nødvendig kompetanse til å gjennomføre flere prosjekter innen fristene uten ekstern bistand. [1]\n- De samlede investeringene var 103,1 millioner kroner, 21,6 millioner kroner mer enn i 2023. Økningen kom særlig fra utvikling av matrikkel og tinglysing samt investeringer i geoinfrastrukturen. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Kartverket 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Kartverket%202024",
+          "document_id": "363420",
+          "excerpts": [
+            {
+              "chunk_id": "dce5f2a5e074",
+              "position": 68
+            },
+            {
+              "chunk_id": "f296a664808f",
+              "position": 47
+            },
+            {
+              "chunk_id": "60b7035234c5",
+              "position": 48
+            },
+            {
+              "chunk_id": "c4a756facc54",
+              "position": 49
+            },
+            {
+              "chunk_id": "508916612e52",
+              "position": 50
+            },
+            {
+              "chunk_id": "7b6196066476",
+              "position": 51
+            },
+            {
+              "chunk_id": "53d8aadc2280",
+              "position": 52
+            },
+            {
+              "chunk_id": "9e05e1a77b2a",
+              "position": 58
+            },
+            {
+              "chunk_id": "21df9a5e2d9d",
+              "position": 59
+            },
+            {
+              "chunk_id": "e5819d4f79a5",
+              "position": 60
+            },
+            {
+              "chunk_id": "12d7ee030e11",
+              "position": 69
+            },
+            {
+              "chunk_id": "3c9c5520f450",
+              "position": 70
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q06-nav-avvik",
+      "question": "Hvilke vesentlige avvik fra planlagt måloppnåelse rapporterte Arbeids- og velferdsdirektoratet for 2024?",
+      "answer": "Det vedlagte utdraget har ikke en egen, eksplisitt oversikt over «vesentlige avvik fra planlagt måloppnåelse». Det beskriver likevel flere områder der resultatene eller gjennomføringen var svakere enn ønsket:\n\n- **Saksbehandling og restanser:** Saksbehandlingstid, restansemengde og liggetid for restanser økte i 2024, selv om Nav økte antall årsverk og behandlet flere saker. [1]\n- **Sykepenger:** Området var under stort press. Flere søknader, forsinkelser i nytt saksbehandlingsverktøy og arbeid i både gammelt og nytt system bidro til fortsatt lange saksbehandlingstider i en del saker. [1]\n- **Økonomisk sosialhjelp og Nav-kontorene:** Høyere levekostnader førte til at langt flere søkte økonomisk sosialhjelp. Dette økte presset på Nav-kontorene. [1]\n- **Helserelaterte ytelser:** Høyt og langvarig sykefravær bidro til vekst i mottakere av arbeidsavklaringspenger og uføretrygd. Ved utgangen av 2024 mottok 158 539 personer arbeidsavklaringspenger, og 373 000 mottok uføretrygd. [1]\n- **Flere med behov for oppfølging:** Antallet personer registrert med nedsatt arbeidsevne økte med 14 600 fra desember 2023 til desember 2024. Om lag 17 prosent av veksten kom blant personer fra Ukraina. [1]\n\nSamtidig rapporterte direktoratet forbedringer på enkelte områder, blant annet behandling av klager og anker, svartid på telefon mot slutten av året og brukertilfredshet. Disse forholdene er derfor ikke avvik i negativ retning. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Arbeids- og velferdsdirektoratet 2024 - med riksrevisjonsberetning",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Arbeids-%20og%20velferdsdirektoratet%202024%20-%20med%20riksrevisjonsberetning",
+          "document_id": "390321",
+          "excerpts": [
+            {
+              "chunk_id": "8880cfd8e811",
+              "position": 0
+            },
+            {
+              "chunk_id": "d5d755511bb5",
+              "position": 1
+            },
+            {
+              "chunk_id": "a35f1a00258b",
+              "position": 2
+            },
+            {
+              "chunk_id": "64ad1de4a9af",
+              "position": 141
+            },
+            {
+              "chunk_id": "bbba0111587d",
+              "position": 142
+            },
+            {
+              "chunk_id": "0385b5d9a48f",
+              "position": 143
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q07-skatteetaten-styringsparametere",
+      "question": "Hvilke styringsparametere har Skatteetaten i tildelingsbrevet for 2024?",
+      "answer": "Utdraget oppgir ikke selve listen over **styringsparametere** for 2024. Det sier bare at hvert hovedmål har effektindikatorer, styringsparametere og forklaringsvariabler, og at Skatteetaten selv skal fastsette et konkret resultatmål for hver styringsparameter. [1]\n\nDe tre **hovedmålene** som er oppgitt – men som ikke er det samme som styringsparametere – er:  \n- «Skatte- og opplysningspliktige etterlever skatte- og avgiftsreglene»  \n- «Skatteetaten sikrer brukerne tilgang til registerdata og informasjon med god kvalitet»  \n- «Samfunnet har tillit til Skatteetaten» [1]\n\nFor å kunne oppgi de konkrete styringsparameterne må man ha den delen av tildelingsbrevet der de omtales under hvert hovedmål. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Tildelingsbrev 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%202024",
+          "document_id": "90462",
+          "excerpts": [
+            {
+              "chunk_id": "31fb7d6ac3ac",
+              "position": 3
+            },
+            {
+              "chunk_id": "94babb3d6197",
+              "position": 4
+            },
+            {
+              "chunk_id": "c97339a192ed",
+              "position": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q08-digdir-post01",
+      "question": "Hvor mye ble bevilget til Digitaliseringsdirektoratet på post 01 i tildelingsbrevet for 2025?",
+      "answer": "Det ble bevilget **172 923 000 kroner** til **post 01 Driftsutgifter** for Digitaliseringsdirektoratet i 2025. Beløpet er oppgitt i tusen kroner i tildelingsbrevet. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Tildelingsbrev Digitaliseringsdirektoratet 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%20Digitaliseringsdirektoratet%202025",
+          "document_id": "330296",
+          "excerpts": [
+            {
+              "chunk_id": "8bebd1cc3b39",
+              "position": 17
+            },
+            {
+              "chunk_id": "cb4e14d05c1e",
+              "position": 18
+            },
+            {
+              "chunk_id": "67327ae8e649",
+              "position": 19
+            },
+            {
+              "chunk_id": "1dc4fb800ad8",
+              "position": 20
+            },
+            {
+              "chunk_id": "40049208c4e8",
+              "position": 21
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q09-mattilsynet-rapportering",
+      "question": "Hvilke rapporteringskrav stiller departementet til Mattilsynet i tildelingsbrevet for 2023?",
+      "answer": "Departementet stiller følgende rapporteringskrav i tildelingsbrevet:\n\n- Mattilsynet skal arbeide for positiv utvikling i ansettelser av personer med funksjonsnedsettelse og/eller fravær fra arbeid, utdanning eller opplæring. Det konkrete ambisjonsnivået skal virksomheten, i samarbeid med de tillitsvalgte, definere ut fra egenart og størrelse. [2]\n- Mattilsynet skal arbeide for å redusere konsulentbruken der interne ressurser og kompetanse kan benyttes. Tjenester fra kommunikasjonsbransjen skal som hovedregel ikke brukes, utover informasjons- og holdningskampanjer. [2]\n- Erstatningsutbetalinger over kapittel 471, post 71 må oppfylle vilkårene i rundskriv G-01/2017. Justis- og beredskapsdepartementet skal varsles i tråd med rundskrivet, og Landbruks- og matdepartementet (LMD) skal varsles om utbetalinger som overstiger 250 000 kroner. Slike utbetalinger bør også kort omtales i Mattilsynets årsrapport. [2]\n\nKildeteksten bruker ikke uttrykket «rapporteringskrav» som en egen samlet overskrift. Det tydeligste eksplisitte kravet om rapportering i utdraget er derfor omtale av relevante erstatningsutbetalinger i årsrapporten; de øvrige punktene er styringskrav og forventninger som det naturlig må kunne redegjøres for. [2]",
+      "sources": [
+        {
+          "index": 2,
+          "title": "Tildelingsbrev Mattilsynet 2023",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%20Mattilsynet%202023",
+          "document_id": "103358",
+          "excerpts": [
+            {
+              "chunk_id": "7f5b3b6eb087",
+              "position": 12
+            },
+            {
+              "chunk_id": "0c9609d21956",
+              "position": 13
+            },
+            {
+              "chunk_id": "273de169a3a9",
+              "position": 14
+            },
+            {
+              "chunk_id": "848deffb098b",
+              "position": 15
+            },
+            {
+              "chunk_id": "c158c44d875d",
+              "position": 16
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q10-vegvesen-styringskalender",
+      "question": "Hvilke frister står i styringskalenderen for Statens vegvesen for 2022?",
+      "answer": "Styringskalenderen for Statens vegvesen i 2022 oppgir følgende frister og tidspunkter:  \n\n- **Januar:** Etatsstyringsmøte med statsråden – **31. januar kl. 09.30–11.00**. [1]  \n- **Februar:** Forklaringer til statsregnskapet 2021 – **14. februar**; innspill til tilleggsbevilgninger og omprioriteringer i statsbudsjettet 2022 (RNB) til SD – **medio februar**. [1]  \n- **Mars:** Årsrapport for 2021 til SD – **15. mars**; etatsstyringsmøte om årsrapporten – **30. mars kl. 12–14**. [1]  \n- **April/mai:** Foreløpige budsjettrammer 2023 fra SD, v.1 – **medio april**; frist for publisering av årsrapport – **1. mai**; rammefordelingsforslag til SD – **primo mai**; foreløpige budsjettrammer 2023 fra SD, v.2 – **månedsskiftet mai/juni**. [1]  \n- **Juni:** Tertialrapport 1 for 2022 til SD – **15. juni**; overordnet risikovurdering til SD – **10. juni**; rapport om samfunnssikkerhet – **10. juni**; etatsstyringsmøte – **22. juni kl. 10–14**; kontaktmøte om samfunnssikkerhet – **medio juni**; foreløpig oversikt over bevilgningsendringer høsten 2022 – **medio juni**. [1]  \n- **September:** Innspill til nysalderingen av statsbudsjettet 2022 til SD – **september/oktober**. [1]  \n- **Oktober:** Tertialrapport 2 for 2022 til SD – **10. oktober**; etatsstyringsmøte – **21. oktober kl. 10–12**; Regjeringen fremmer Prop. 1 (2022–2023) for Stortinget – **primo oktober**. [1]  \n- **November:** Utkast til tildelingsbrev 2023 fra SD – **medio november**; kontaktmøte om samfunnssikkerhet – **medio desember**. Sistnevnte står under raden «November», men datoen i kilden er altså **medio desember**. [1]  \n- **Desember:** Grunnlagsmateriale til statsbudsjettet 2024 til SD – **primo desember**; tildelingsbrev 2023 fra SD – **ultimo desember**. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Tildelingsbrev Statens vegvesen 2022",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%20Statens%20vegvesen%202022",
+          "document_id": "27514",
+          "excerpts": [
+            {
+              "chunk_id": "8e2920b087ef",
+              "position": 52
+            },
+            {
+              "chunk_id": "ec1222f4591d",
+              "position": 53
+            },
+            {
+              "chunk_id": "b12a2cd2152a",
+              "position": 54
+            },
+            {
+              "chunk_id": "f3a81d5b6a7e",
+              "position": 55
+            },
+            {
+              "chunk_id": "675cec681907",
+              "position": 56
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q11-helsedir-fullmakter",
+      "question": "Hvilke budsjettfullmakter gis Helsedirektoratet i tildelingsbrevet?",
+      "answer": "Tildelingsbrevet gir Helsedirektoratet følgende budsjettfullmakter:\n\n- **Fullmakt til å inngå leieavtaler (unntatt husleieavtaler) og avtaler om kjøp av tjenester utover budsjettåret.** Fullmakten er delegert fra departementet og gjelder på vilkårene i punkt 2.3 i rundskriv **R-110/2023 Fullmakter i henhold til bevilgningsreglementet**. [1]\n\n- **Fullmakt til å foreta bestillinger utover gitte bevilgninger**, jf. Prop. 1 S (2024–2025). For **kapittel 710 Vaksiner mv.** kan samlet ramme for nye bestillinger og gammelt ansvar ikke overstige:\n  - post 21 **Spesielle driftsutgifter**: **173,1 mill. kroner** [1]\n  - post 23 **Vaksinasjonsprogram for voksne og risikogrupper**: **675 mill. kroner** [1]\n\nFor post 22, **Salgs- og beredskapsprodukter m.m.**, står det «-» i tabellen. Kilden oppgir dermed ingen beløpsramme for denne posten. [1]\n\nHusleieavtaler omfattes ikke av den førstnevnte delegerte fullmakten; for slike avtaler viser brevet til Kommunal- og distriktsdepartementets instruks om bygge- og leiesaker i statlig sivil sektor. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Tildelingsbrev Helsedirektoratet 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%20Helsedirektoratet%202025",
+          "document_id": "344418",
+          "excerpts": [
+            {
+              "chunk_id": "2fc02e21996f",
+              "position": 87
+            },
+            {
+              "chunk_id": "c68068ee2a6d",
+              "position": 88
+            },
+            {
+              "chunk_id": "03abaedfcf8a",
+              "position": 89
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q12-status-forsinkelser",
+      "question": "Hva sier statusrapportene om forsinkelser og kostnadsøkninger i digitaliseringsprosjekter?",
+      "answer": "Statusrapportene peker på at forsinkelser er en sentral utfordring i digitaliseringsprosjekter. I den nasjonale e-helseporteføljen oppgir over halvparten av prosjektene gul status, og to tredeler gult risikonivå. Viktige årsaker er manglende ressurser, manglende finansiering, forsinkelser og forsinkelser i prosjekter de er avhengige av. [2]\n\nRapportene beskriver også risiko for kostnadsoverskridelser, altså at kostnadene blir høyere enn planlagt. For SFM er risikoen vurdert som rød: høyere omfang og kompleksitet enn antatt kan gi både forsinkelser, kostnadsoverskridelser og en lang stabiliseringsfase. [3]\n\nDet finnes også konkrete eksempler på forsinkelsesrisiko: Oppstarten av utprøving av PLL var forsinket, og lav prioritet hos enkelte EPJ-leverandører kunne forsinke programmet. [3]\n\nKildene oppgir ikke ett samlet tall for faktiske kostnadsøkninger. De omtaler først og fremst **risiko for kostnadsoverskridelser** i enkelte prosjekter, samt finansieringsmangel som en generell årsak til utfordringer. [2][3]",
+      "sources": [
+        {
+          "index": 2,
+          "title": "Nasjonal e-helseportefølje",
+          "url": "https://kudos.dfo.no/dokumenter?query=Nasjonal%20e-helseportef%C3%B8lje",
+          "document_id": "65415",
+          "excerpts": [
+            {
+              "chunk_id": "865ca10f3964",
+              "position": 6
+            },
+            {
+              "chunk_id": "1aeead787950",
+              "position": 18
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Nasjonal e-helseportefølje",
+          "url": "https://kudos.dfo.no/dokumenter?query=Nasjonal%20e-helseportef%C3%B8lje",
+          "document_id": "65458",
+          "excerpts": [
+            {
+              "chunk_id": "9108e6105f32",
+              "position": 395
+            },
+            {
+              "chunk_id": "ed8e7c8fde15",
+              "position": 386
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q13-status-risiko-2025",
+      "question": "Hvilke risikoer er rapportert i statusrapportene for 2025?",
+      "answer": "Statusrapportene for 2025 omtaler risikoer på flere områder:\n\n- **Forsknings- og høyere utdanningssektoren:** Det vurderes som **middels til høy risiko** at virksomheter ikke klarer å håndtere alvorlige hendelser på grunn av manglende helhetlig styring. Eksempler er sammensatte trusler, alvorlige tilsiktede handlinger (PLIVO) og alvorlige utilsiktede hendelser som naturhendelser. [1]\n- Sektoren har fortsatt **høy risiko for løsepengevirusangrep**, blant annet fordi sårbarheter i tilgangsstyring i skytjenester kan utnyttes. Mulige følger er driftsstans, datatap, oppryddingskostnader, kompromittert skjermingsverdig informasjon, personvernavvik og omdømmetap. [1]\n- Det vurderes som **middels risiko** for hendelser og brudd forårsaket av utilsiktede menneskelige eller tekniske feil og uhell. Slike hendelser anses som svært sannsynlige, men konsekvensene vurderes vanligvis som relativt begrensede. [1]\n- Det vurderes også som **middels risiko** at sektoren ikke klarer å beskytte viktige verdier, blant annet verdier underlagt sikkerhetsloven eller eksportkontroll, fysisk infrastruktur, objekter og forskningsresultater. Risikoen knyttes til mangelfull oversikt over verdiene og fare for blant annet sabotasje, innsidevirksomhet og uautorisert tilgang. [1]\n- Den geopolitiske situasjonen kan dessuten føre til en nedkjøling av internasjonalt kunnskapssamarbeid og påvirke fremtidig forsknings- og utdanningsarbeid. [1]\n\n- **Politi:** Rapporten omtaler risiko for kriminalitet og risiko for vold, i forbindelse med utvikling og bruk av risikovurderingsverktøy for å identifisere personer med høy risiko. Den angir ikke et samlet risikonivå for disse risikoene i det utdraget som er oppgitt. [2]\n\n- **Finansiell stabilitet:** Det er **økt risiko for uro og tilbakeslag** som kan svekke finansiell stabilitet, blant annet som følge av usikkerhet om handelsregimet, svakere vekstutsikter internasjonalt og geopolitiske spenninger. [3][4]\n- Sårbarheter som høy gjeld hos bankenes låntakere kan forsterke problemene. Bankene kan også rammes av vanskeligere finansieringsforhold og tap ved internasjonale forstyrrelser. [3][4]\n- Samtidig er Norges Banks vurdering at det norske finansielle systemet er robust, med banker som har kapital- og likviditetsbuffere til å tåle betydelige tap og markedsuro. [4]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Tilstands- og risikovurdering 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tilstands-%20og%20risikovurdering%202025",
+          "document_id": "405045",
+          "excerpts": [
+            {
+              "chunk_id": "a89e6e519b68",
+              "position": 32
+            },
+            {
+              "chunk_id": "3ddbf4fb871a",
+              "position": 3
+            },
+            {
+              "chunk_id": "da6c4d9ae677",
+              "position": 52
+            },
+            {
+              "chunk_id": "0fa620e0b4e6",
+              "position": 53
+            },
+            {
+              "chunk_id": "a4d94bd686fc",
+              "position": 54
+            },
+            {
+              "chunk_id": "3b1bd94749c8",
+              "position": 55
+            },
+            {
+              "chunk_id": "9793766c9eea",
+              "position": 56
+            },
+            {
+              "chunk_id": "e6fc98f8cb12",
+              "position": 57
+            },
+            {
+              "chunk_id": "f5fad5b8643b",
+              "position": 58
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Politiets 1. tertialrapport 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Politiets%201.%20tertialrapport%202025",
+          "document_id": "390521",
+          "excerpts": [
+            {
+              "chunk_id": "3011e62a7e3a",
+              "position": 12
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Finansiell stabilitet 2025 – 1. halvår",
+          "url": "https://kudos.dfo.no/dokumenter?query=Finansiell%20stabilitet%202025%20%E2%80%93%201.%20halv%C3%A5r",
+          "document_id": "377922",
+          "excerpts": [
+            {
+              "chunk_id": "931138b5fe7c",
+              "position": 12
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "title": "Finansiell stabilitet 2025 – 1. halvår",
+          "url": "https://kudos.dfo.no/dokumenter?query=Finansiell%20stabilitet%202025%20%E2%80%93%201.%20halv%C3%A5r",
+          "document_id": "374339",
+          "excerpts": [
+            {
+              "chunk_id": "b53fab8b74e3",
+              "position": 6
+            },
+            {
+              "chunk_id": "b93378abc865",
+              "position": 7
+            },
+            {
+              "chunk_id": "93165999d5d2",
+              "position": 8
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q14-evaluering-medfinansiering",
+      "question": "Hva fant evalueringen av medfinansieringsordningen for digitaliseringsprosjekter?",
+      "answer": "Evalueringen fant at medfinansieringsordningen i økende grad oppleves som mindre relevant, og at den favoriserer større virksomheter i færre sektorer enn tidligere. [1]\n\nDigitaliseringsdirektoratet forvalter i hovedsak ordningen godt, og søkerne er tilfredse med informasjon og bistand. Evalueringen peker likevel på behov for enklere søknadsprosess og mindre komplekse kontrollrutiner. Den anbefaler også tiltak når direktoratet behandler egne søknader, for å unngå habilitetsutfordringer og svekket tillit. [1]\n\nKravet om budsjettkutt gjør at færre virksomheter søker. Evalueringen vurderer at budsjettkuttene gir lav gevinst sammenlignet med andre gevinster i prosjektene, og at kravet kan føre til at samfunnsøkonomisk lønnsomme digitaliseringsprosjekter ikke blir gjennomført. [1]\n\nDet var fortsatt for tidlig å fastslå om prosjektene faktisk oppnår de planlagte gevinstene, siden mange ikke var avsluttet. Respondentene var likevel optimistiske, men om lag halvparten hadde ennå ikke målt gevinstene. [1]\n\nTil slutt fant evalueringen at ordningen i for liten grad støtter smidig utvikling, mindre prosjekter og innovasjon. Den anbefaler derfor å justere vilkår, økonomiske rammer og krav til gevinstrealisering. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Evaluering av medfinansieringsordningen",
+          "url": "https://kudos.dfo.no/dokumenter?query=Evaluering%20av%20medfinansieringsordningen",
+          "document_id": "351536",
+          "excerpts": [
+            {
+              "chunk_id": "b0ffeed516fa",
+              "position": 4
+            },
+            {
+              "chunk_id": "e18b2e1557ba",
+              "position": 5
+            },
+            {
+              "chunk_id": "116efcac813d",
+              "position": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q15-evaluering-kultur",
+      "question": "Hvilke anbefalinger gir evalueringer av tilskuddsordninger på kulturfeltet?",
+      "answer": "Evalueringene gir anbefalinger på flere deler av kulturfeltet. Kildene dekker særlig **Frifond** og statlige **tilskuddsordninger på filmområdet**, så anbefalingene må forstås innenfor disse ulike ordningene.\n\n### Frifond\nEvalueringen anbefaler i hovedsak å beholde dagens forvaltningsmodell, der paraplyorganisasjonene fordeler midler til sentralledd. [1] Samtidig foreslås en sterkere dreining mot **prosjekt- og aktivitetsstøtte**, særlig i *Frifond Organisasjon*, slik at en større andel av midlene til lokalledd gis etter søknad og vurderes ut fra bidraget til lokal aktivitet og deltakelse. [1]\n\nAndre sentrale anbefalinger er å:\n\n- gi tydeligere føringer til sentralleddene om at tildelingspraksisen skal vektlegge lokal aktivitet og deltakelse, eventuelt med krav om at en viss andel av midlene deles ut som prosjektmidler. [1]\n- styrke rapporteringen om hva prosjektmidler brukes til, og om tiltakets betydning for lokal aktivitet og deltakelse, uten å gjøre rapporteringsbyrden urimelig stor. [1]\n- vurdere økt administrasjonsandel til sentralledd dersom de får større ansvar for søknadsbasert prosjektforvaltning. [1]\n- vurdere hvordan driftstøtte til lokale lag kan ivaretas dersom Frifond rendyrkes som prosjektstøtte; statlig grunnstøtte og medlemskontingent nevnes som mulige alternativer. [1]\n- avklare om stiftelser skal kunne få støtte, samt Frifonds forhold til uorganisert idrett og skytterlag. Ett foreslått alternativ er en særskilt ordning, «Frifond Idrett». [1]\n- være forsiktig med direkte tildeling til fylkesledd, ettersom Frifonds formål er lokal aktivitet og direkte støtte til lokalledd. [1]\n- informere kommunene bedre om ordningen, særlig kommunale kulturkonsulenter, slik at de kan veilede lokale søkere. [1]\n- videreføre arbeidet med å nå minoriteter og bistå i organisasjonsutvikling. [1]\n- styrke kunnskapen om resultater gjennom blant annet årsmeldinger, eksempler på tiltak, utvalg av lokallag for nærmere oppfølging og eventuelt et enkelt nettbasert rapporteringsskjema. [1]\n\n### Filmområdet\nEvalueringen av filmtilskuddene anbefaler at virkemiddelapparatet blir mer fleksibelt og bedre tilpasset endrede markeder, distribusjonsformer og publikumsvaner. [3] Den anbefaler særlig å redusere detaljert segmentering i potter og formater, slik at Norsk filminstitutt (NFI) kan tilpasse støtten bedre og håndtere formater som faller utenfor faste kategorier. [3]\n\nViktige anbefalinger på filmområdet er å:\n\n- legge større vekt på støtte i **utviklingsfasen**, både ved å støtte flere prosjekter og ved å øke tilskuddet per prosjekt; dette skal gi mer utprøving, bedre utviklede prosjekter og styrket talent- og kompetanseutvikling. [3]\n- vurdere lavere støtteintensitet i **produksjonsfasen** for serier, fordi markedet og bransjen i økende grad kan finansiere deler av slike prosjekter selv. [3]\n- styrke internasjonalisering, inkludert kompetanse og innsats rettet mot internasjonale markeder. [3]\n- beholde etterhåndstilskudd som et viktig virkemiddel, men sette en grense for hvor stor andel av totalrammen ordningen kan bruke; når grensen nås, anbefales lavere sats beregnet som andel av markedsinntektene. [3]\n- videreføre insentivordningen, men med sterkere vekt på norske produksjoner med tung internasjonal satsing og internasjonalt nedslagsfelt. [3]\n- vri lanseringstilskudd mer mot lansering i utlandet, samtidig som tilskudd til norsk lansering i større grad prioriterer mindre prosjekter og distributører. [3]\n- konsentrere regionale filmtilskudd om sentrale miljøer innenfor hver region, for å bygge levedyktige regionale bransjemiljøer. [3]\n- vurdere hvert prosjekt opp mot ett tydelig hovedmål, mens balansen mellom kunstnerisk kvalitet, bredde, publikum og økonomi ivaretas på porteføljenivå. [3]\n- forbedre NFIs registrering og analyse av intern ressursbruk, slik at kostnadseffektiviteten kan vurderes bedre. [3]\n\nEn annen evaluering av regionale filmsentre og filmfond anbefaler, dersom organiseringen endres, å revurdere fordelingsnøklene i samarbeid mellom filmsentrene/fondene og NFI. [2] Den understreker dessuten at kommuner og fylkeskommuner normalt bør finansiere driften av virksomheter de selv eier. [2] Dersom en større omorganisering ikke gjennomføres, anbefales i stedet en videreføring av dagens situasjon, men med oppheving av begrensninger på filmsentrenes tilskudd til utvikling og produksjon av spillefilm og dramaserier. [2]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Evaluering av Frifond",
+          "url": "https://kudos.dfo.no/dokumenter?query=Evaluering%20av%20Frifond",
+          "document_id": "15567",
+          "excerpts": [
+            {
+              "chunk_id": "9a4331e3bc8b",
+              "position": 99
+            },
+            {
+              "chunk_id": "3f051dc0079f",
+              "position": 100
+            },
+            {
+              "chunk_id": "45c2fdcded60",
+              "position": 101
+            },
+            {
+              "chunk_id": "6c49ab5ce55e",
+              "position": 102
+            },
+            {
+              "chunk_id": "a84f90a7d886",
+              "position": 103
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Evaluering av regionale filmsentre og filmfond",
+          "url": "https://kudos.dfo.no/dokumenter?query=Evaluering%20av%20regionale%20filmsentre%20og%20%20filmfond",
+          "document_id": "22164",
+          "excerpts": [
+            {
+              "chunk_id": "65cb55b86f7d",
+              "position": 94
+            },
+            {
+              "chunk_id": "895b0d646cd3",
+              "position": 86
+            },
+            {
+              "chunk_id": "8e8781595d33",
+              "position": 87
+            },
+            {
+              "chunk_id": "631f331611ac",
+              "position": 88
+            },
+            {
+              "chunk_id": "b53dcbc8023e",
+              "position": 95
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Evaluering av tilskuddsordninger på filmområdet",
+          "url": "https://kudos.dfo.no/dokumenter?query=Evaluering%20av%20tilskuddsordninger%20p%C3%A5%20filmomr%C3%A5det",
+          "document_id": "5497",
+          "excerpts": [
+            {
+              "chunk_id": "76c86f681705",
+              "position": 2
+            },
+            {
+              "chunk_id": "8abf29f59f01",
+              "position": 3
+            },
+            {
+              "chunk_id": "a71872716671",
+              "position": 4
+            },
+            {
+              "chunk_id": "64407c632cf3",
+              "position": 5
+            },
+            {
+              "chunk_id": "afd9cda5c867",
+              "position": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q16-digital-veiledning",
+      "question": "Hva sier evalueringene om digital veiledning?",
+      "answer": "Evalueringene peker samlet på at digital veiledning kan fungere som et supplement, men at fysiske møter normalt gir best effekt. [1]\n\nKoronapandemien førte til flere digitale møter, særlig i pulje 2. Noen opplevde forsinkelser i oppstarten og at det tok lengre tid å bli kjent med veilederne og bli enige om utfordringer og mål. Enkelte tjenester fikk derfor forlenget veiledningsperiode. [1]\n\nFysiske møter anses som særlig viktige når kommunen og veilederne skal arbeide med grunnleggende og krevende utfordringer. De gjør det lettere å bygge tillit, forstå interne uenigheter og observere gruppedynamikk. Digitale møter kan gjøre det lettere for deltakere å trekke seg unna, og vanskeligere for veilederne å oppdage og håndtere spenninger i tjenesten eller mellom barnevern- og kommuneledelsen. [1][2]\n\nSamtidig viser evalueringen at noen mente digitale møter fungerte godt. Digitale, kortere samtaler kunne gi lav terskel for kontakt mellom de planlagte samlingene, særlig mellom veileder, barnevernleder og eventuelt teamledere. [2]\n\nI pulje 3 rapporterte ingen tjenester at de hadde gjennomført digitale møter. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Følgeevaluering av kompetansesatsingen for det kommunale barnevernet 2018-2024. Tredje statusmåling og sluttevaluering for tiltakene veiledningsteam, læringsnettverk og dialogmøter.",
+          "url": "https://kudos.dfo.no/dokumenter?query=F%C3%B8lgeevaluering%20av%20kompetansesatsingen%20for%20det%20kommunale%20barnevernet%202018-2024.%20Tredje%20statusm%C3%A5ling%20og%20sluttevaluering%20for%20tiltakene%20veiledningsteam%2C%20l%C3%A6ringsnettverk%20og%20dialogm%C3%B8ter.",
+          "document_id": "357482",
+          "excerpts": [
+            {
+              "chunk_id": "2cdd443b50ce",
+              "position": 0
+            },
+            {
+              "chunk_id": "77d8feda7cd3",
+              "position": 1
+            },
+            {
+              "chunk_id": "eac1da19850f",
+              "position": 2
+            },
+            {
+              "chunk_id": "ed14f67a2697",
+              "position": 3
+            },
+            {
+              "chunk_id": "4696e9796814",
+              "position": 4
+            },
+            {
+              "chunk_id": "ffab0a958d79",
+              "position": 58
+            },
+            {
+              "chunk_id": "c9625d2495e8",
+              "position": 59
+            },
+            {
+              "chunk_id": "9a009981e28e",
+              "position": 60
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Følgeevaluering av kompetansesatsingen for det kommunale barnevernet 2018-2024. Andre statusmåling for tiltakene veiledningsteam, læringsnettverk og dialogmøter",
+          "url": "https://kudos.dfo.no/dokumenter?query=F%C3%B8lgeevaluering%20av%20kompetansesatsingen%20for%20det%20kommunale%20barnevernet%202018-2024.%20Andre%20statusm%C3%A5ling%20for%20tiltakene%20veiledningsteam%2C%20l%C3%A6ringsnettverk%20og%20dialogm%C3%B8ter",
+          "document_id": "357393",
+          "excerpts": [
+            {
+              "chunk_id": "2f970935b290",
+              "position": 43
+            },
+            {
+              "chunk_id": "5961ff418883",
+              "position": 44
+            },
+            {
+              "chunk_id": "4d290c4e833e",
+              "position": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q17-politireformen-metode",
+      "question": "Hvilken metode ble brukt i evalueringen av politireformen?",
+      "answer": "DFØ brukte en følgeevaluering av nærpolitireformen. Evalueringen startet i 2016 og ble fulgt opp med årlige statusrapporter fram til sluttrapporten i 2022. [1]\n\nDatagrunnlaget besto blant annet av intervjuer, spørreundersøkelser til kommuner og ledere på nivå 2 i politiet, politiets medarbeiderundersøkelser, UiBs oppfølging av nullpunktsmålingen fra 2016 og medieovervåkning. [1]\n\nRapporten understreker at det er vanskelig å skille endringer som skyldes selve reformen, fra endringer som skyldes andre forhold, som kriminalitetsutvikling, teknologi og nye krav. Derfor vurderte DFØ samlet endringer, resultater og effekter i politiet, også når årsaken ikke kunne fastslås sikkert. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Evaluering av nærpolitireformen",
+          "url": "https://kudos.dfo.no/dokumenter?query=Evaluering%20av%20n%C3%A6rpolitireformen",
+          "document_id": "33378",
+          "excerpts": [
+            {
+              "chunk_id": "6d3f1dcbc8f2",
+              "position": 0
+            },
+            {
+              "chunk_id": "c67fd42c096a",
+              "position": 1
+            },
+            {
+              "chunk_id": "3bb27cbada54",
+              "position": 2
+            },
+            {
+              "chunk_id": "bb9b475ea171",
+              "position": 3
+            },
+            {
+              "chunk_id": "3dc294803c22",
+              "position": 4
+            },
+            {
+              "chunk_id": "256b376cdc09",
+              "position": 5
+            },
+            {
+              "chunk_id": "e55f6155d5a5",
+              "position": 17
+            },
+            {
+              "chunk_id": "2eb84115beaa",
+              "position": 18
+            },
+            {
+              "chunk_id": "931c0bcb3a7b",
+              "position": 19
+            },
+            {
+              "chunk_id": "d01841ac9388",
+              "position": 20
+            },
+            {
+              "chunk_id": "8d9c5adac207",
+              "position": 21
+            },
+            {
+              "chunk_id": "d0305184591a",
+              "position": 70
+            },
+            {
+              "chunk_id": "538eed2d1c11",
+              "position": 71
+            },
+            {
+              "chunk_id": "b0247efb99cc",
+              "position": 72
+            },
+            {
+              "chunk_id": "6be9970f1621",
+              "position": 73
+            },
+            {
+              "chunk_id": "fa81d42c52d2",
+              "position": 74
+            },
+            {
+              "chunk_id": "271b2407e2ac",
+              "position": 75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q18-prop-studiestotte",
+      "question": "Hva foreslår regjeringen om studiestøtte i Prop. 1 S for Kunnskapsdepartementet?",
+      "answer": "I det tilgjengelige utdraget fra Prop. 1 S (2025–2026) foreslår regjeringen at Kunnskapsdepartementet i 2026 kan gi Statens lånekasse for utdanning fullmakt til å inntektsføre utestående midler mot Konverteringsfondet når lån blir gjort om til stipend. Midlene skal også føres mot Lånekassens mellomværende med statskassen. Mellomværet skal utliknes i neste periode når oppgjøret kommer fra Konverteringsfondet. [1]\n\nUtdraget oppgir ikke konkrete forslag til satser, beløp eller endringer i studiestøtten. Det beskriver en budsjett- og regnskapsfullmakt knyttet til omgjøring av lån til stipend. [1]\n\nKilde [2] gjelder derimot budsjettet for 2025, ikke forslaget for 2026. Den ga blant annet fullmakt til å gi utdanningsstøtte og gjøre om lån til stipend for første halvår 2026 etter fastsatte satser, men dette er ikke et forslag i Prop. 1 S (2025–2026). [2]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Prop. 1 S (2025–2026)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2025%E2%80%932026)",
+          "document_id": "416661",
+          "excerpts": [
+            {
+              "chunk_id": "28af90ad3d00",
+              "position": 568
+            },
+            {
+              "chunk_id": "9267734d435d",
+              "position": 58
+            },
+            {
+              "chunk_id": "a4617acb650e",
+              "position": 576
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Prop. 1 S (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2024%E2%80%932025)",
+          "document_id": "157396",
+          "excerpts": [
+            {
+              "chunk_id": "583f5c76179b",
+              "position": 559
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q19-prop-kap-poster",
+      "question": "Hvordan er bevilgningen på et kapittel fordelt på postene i budsjettproposisjonen for 2024? Vis gjerne en tabell.",
+      "answer": "Spørsmålet oppgir ikke hvilket kapittel det gjelder. Kildene viser derfor ikke én samlet fordeling av bevilgningen på postene for ett bestemt kapittel i budsjettproposisjonen for 2024.\n\nDette er postopplysninger som framgår av kildene:\n\n| Kapittel / kilde | Post | Opplysning for 2024 |\n|---|---:|---|\n| Kap. 1482 | Post 73 | Bevilgningen var 4 100,9 mill. kroner i saldert budsjett 2024, beregnet som 4 108,8 mill. kroner for 2025 minus økningen på 7,9 mill. kroner. Kilden opplyser også at posten ble styrket med 1 mrd. kroner i 2024 sammenlignet med 2023. [2] |\n| Ikke oppgitt i utdraget | Post 01 | Foreslått økt med 1,8 mill. kroner som følge av lønnsoppgjøret i 2024. [1] |\n| Ikke oppgitt i utdraget | Post 01 | Foreslått økt med 0,6 mill. kroner som følge av lønnsoppgjøret i 2024. Dette er trolig en annen post enn den over, siden beløpet og sammenhengen er ulike. [1] |\n| Ikke oppgitt i utdraget | Post 21 | Foreslått økt med 0,5 mill. kroner til administrative utgifter ved tildeling av Kim Frieles minnepris. [1] |\n| Ikke oppgitt i utdraget | Post 02 | Foreslått redusert med 2 mill. kroner fordi Arkivverkets oppdragsvirksomhet ble lavere enn budsjettert. Det vises til tilsvarende reduksjon på kap. 329 eller kap. 334, post 21, men utdraget er uklart om hvilket kapittel som gjelder. [1] |\n| Kap. 1420 | Post 23 | Foreslått økt tilsvarende 13,1 mill. kroner, knyttet til Miljødirektoratets internasjonale oppdrag. Inntektssiden omtales i samme kilde, men kapittelnummeret for denne framgår ikke av utdraget. [3] |\n| Kap. 1420 | Post 01 | Foreslått økt tilsvarende 4,6 mill. kroner, finansiert av betaling fra Biodiversa+ for prosjekter Miljødirektoratet utfører. [3] |\n\nKildene inneholder også post 71 for mediestøtte, men dette er et budsjettforslag for 2025. Saldert budsjett for 2024 var 490,030 mill. kroner, fordelt på produksjonstilskudd 424,445 mill. kroner, innovasjon og utvikling 22,825 mill. kroner og tilskudd til samiske aviser 42,760 mill. kroner. Dette er en fordeling *innenfor post 71*, ikke en fordeling av et helt kapittel på poster. [5]\n\nOppgi gjerne kapittelnummeret eller hvilken budsjettproposisjon du mener, så kan jeg sette opp en full tabell med kapittelets poster.",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Prop. 25 S (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%2025%20S%20(2024%E2%80%932025)",
+          "document_id": "239319",
+          "excerpts": [
+            {
+              "chunk_id": "eb9e3c6472d5",
+              "position": 10
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Prop. 1 S (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2024%E2%80%932025)",
+          "document_id": "157402",
+          "excerpts": [
+            {
+              "chunk_id": "727172af18f6",
+              "position": 426
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Prop. 16 S (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%2016%20S%20(2024%E2%80%932025)",
+          "document_id": "239290",
+          "excerpts": [
+            {
+              "chunk_id": "21220ea14182",
+              "position": 17
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "title": "Prop. 1 S (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2024%E2%80%932025)",
+          "document_id": "157390",
+          "excerpts": [
+            {
+              "chunk_id": "c2c287e90463",
+              "position": 239
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q20-prop-jernbane",
+      "question": "Hva sier proposisjonene om investeringer i jernbane?",
+      "answer": "Proposisjonene beskriver investeringer i jernbane som tiltak for å øke kapasiteten, korte ned reisetiden, gi flere avganger og gjøre jernbanen sikrere og mer driftssikker. De omfatter både store utbygginger, nytt signalsystem (ERTMS), elektrifisering, stasjoner og mindre tiltak. [1][4][5]\n\nI budsjettforslaget for 2026 foreslås det **8 741,5 mill. kroner** til post 73, *Kjøp av infrastrukturtjenester – investeringer*. Dette er 2,4 mrd. kroner lavere enn i saldert budsjett for 2025. Samtidig legges det opp til totalt **11,0 mrd. kroner til planlegging og investeringer**, inkludert jernbanedelen av Fellesprosjektet Vossebanen/E16 Arna–Stanghelle. Bane NOR skal dessuten finansiere om lag 1,7 mrd. kroner av investeringsaktiviteten ved å bruke produksjonsgjeld til staten knyttet til forsinkede prosjekter. [1]\n\nFor 2026 prioriterer regjeringen drift, vedlikehold og fornying høyere enn oppstart av nye store prosjekter. Samtidig skal allerede igangsatte prosjekter fullføres, og det skal planlegges videre for blant annet kapasitet for godstransport Oslo–Trondheim, lokal- og regiontog på Østlandet, elektrifisering Stjørdal–Steinkjer, nye fjerntog, Østfoldbanen, Jærbanen og ny rikstunnel. Det åpnes også for å starte enkelte tiltak, blant annet ny Hamar stasjon. [1]\n\nStore investeringer som er omtalt, gjelder blant annet InterCity-utbyggingene mot Tønsberg, Moss og Hamar, ERTMS, elektrifisering av Trønder- og Meråkerbanen og tiltak på Vossebanen. ERTMS er et nytt digitalt signal- og trafikkstyringssystem. Det skal gi en mer stabil, sikker og robust jernbane, men er komplekst fordi det krever arbeid både i infrastrukturen, på togene og i programvaren. Det er anslått brukt om lag 1 mrd. kroner på ERTMS i 2026. [1][2][4]\n\nProposisjonene peker også på at investeringer kan brukes til mindre, strategisk viktige tiltak. Dette gjelder blant annet stasjoner og knutepunkt, kapasitetsøkning, sikkerhetstiltak som sikring eller fjerning av planoverganger, rassikring, støytiltak og tiltak for natur og vannkvalitet. [3][4][5]\n\nFlere proposisjoner viser imidlertid lavere faktisk investeringsforbruk enn planlagt. I 2023 var investeringene samlet om lag 2,3 mrd. kroner lavere enn anslaget, særlig på grunn av forsinkelser i ERTMS, krevende grunnforhold i Moss og utsatt oppstart på Dovrebanen. [2] Også i 2024 var forbruket lavere enn planlagt for de fleste investeringstiltakene, blant annet ERTMS og prosjekter på Østfold-, Dovre- og Vestfoldbanen. Samtidig ble mer penger enn planlagt brukt på drift, vedlikehold og fornying. [1]\n\nDe viktigste risikoene er økte byggekostnader, usikre grunnforhold, mangel på råvarer og fagressurser, begrenset konkurranse i leverandørmarkedet, krevende planarbeid i byer og tettsteder og forsinkelser i ERTMS. Forsinkelser i ERTMS kan også påvirke andre jernbaneprosjekter. [1][2][4]\n\nProposisjonene sier dessuten at flere planlagte effektpakker har blitt mindre lønnsomme, særlig fordi kostnadsanslagene har økt, flere tiltak er tatt inn i pakkene og forutsetningene i analysene er endret. *Flere tog på Vossebanen* er et unntak og har fått høyere netto nåverdi, altså beregnet samfunnsøkonomisk nytte. [1][2]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Prop. 1 S (2025–2026)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2025%E2%80%932026)",
+          "document_id": "416659",
+          "excerpts": [
+            {
+              "chunk_id": "0902798ba424",
+              "position": 313
+            },
+            {
+              "chunk_id": "45bc8246a6ac",
+              "position": 246
+            },
+            {
+              "chunk_id": "43979c7aabba",
+              "position": 280
+            },
+            {
+              "chunk_id": "06a268adffeb",
+              "position": 329
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Prop. 1 S (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2024%E2%80%932025)",
+          "document_id": "157399",
+          "excerpts": [
+            {
+              "chunk_id": "44e36c68dc8c",
+              "position": 266
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Prop. 1 S (2023–2024)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2023%E2%80%932024)",
+          "document_id": "47355",
+          "excerpts": [
+            {
+              "chunk_id": "c2d09641bae5",
+              "position": 339
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "title": "Prop. 1 S (2021–2022)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2021%E2%80%932022)",
+          "document_id": "19418",
+          "excerpts": [
+            {
+              "chunk_id": "bc0bcf6b5b3e",
+              "position": 309
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "title": "Prop. 1 S (2022–2023)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Prop.%201%20S%20(2022%E2%80%932023)",
+          "document_id": "30943",
+          "excerpts": [
+            {
+              "chunk_id": "f00f29292202",
+              "position": 317
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q21-strategi-digitalisering",
+      "question": "Hva er hovedmålene i strategien for digitalisering av offentlig sektor?",
+      "answer": "Strategiens overordnede mål er at Norge skal bli verdens mest digitaliserte land innen 2030. Digitaliseringen skal gi innbyggerne en enklere og tryggere hverdag, styrke næringslivets konkurransekraft og forbedre offentlig sektor. [1]\n\nFor offentlig sektor peker strategien særlig på disse forutsetningene:\n\n- forsterke styring og samordning i offentlig sektor  \n- sørge for sikker og fremtidsrettet digital infrastruktur  \n- styrke sikkerhet, beredskap og kriminalitetsbekjempelse  \n- sikre godt og ivaretatt personvern  \n- sikre fremtidsrettet digital kompetanse. [1]\n\nI tillegg skal innsatsen styrkes innen datadeling, kunstig intelligens, grønn og digital omstilling, innovativt næringsliv, samt tillit, inkludering og hensynet til barn og unge. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Fremtidens digitale Norge -",
+          "url": "https://kudos.dfo.no/dokumenter?query=Fremtidens%20digitale%20Norge%20-%20%0D%0ANasjonal%20digitaliseringsstrategi%202024%E2%80%932030",
+          "document_id": "139028",
+          "excerpts": [
+            {
+              "chunk_id": "3cbc142e47f1",
+              "position": 2
+            },
+            {
+              "chunk_id": "5c070cbf0b2f",
+              "position": 3
+            },
+            {
+              "chunk_id": "f300c312b22f",
+              "position": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q22-plan-arbeidslivskriminalitet",
+      "question": "Hvilke tiltak inneholder strategien mot arbeidslivskriminalitet?",
+      "answer": "Strategien inneholder 43 tiltak, samlet under sju hovedområder: [1]\n\n1. **Samarbeid med partene i arbeidslivet** – blant annet trepartssamarbeid mot arbeidslivskriminalitet, innsats for organisert arbeidsliv, samarbeid mot svart økonomi, treparts bransjesamarbeid og tiltak i bygge- og anleggsnæringen. [1]  \n2. **Gjøre markedet mindre for kriminelle aktører** – for eksempel eBevis, kontroll av seriøse leverandører, godkjenningsordninger, seriøsitetskrav i offentlige anskaffelser og samarbeid i samferdselssektoren. [1]  \n3. **Informasjon og kunnskap** – målrettet informasjon til utenlandske arbeidstakere og arbeidsgivere, veiledning i landbruket, bistand til ofre for tvangsarbeid, norskopplæring, kunnskapsinnhenting og evaluering av innsatsen. [1]  \n4. **Effektivt kontrollsamarbeid** – videreutvikling av tverretatlig samarbeid, bedre informasjonsdeling, innsats i vei- og transportsektoren og styrket kontroll av byggkvalitet. [1]  \n5. **Sanksjoner og oppfølging** – blant annet straff for lønnstyveri og «stråmannsvirksomhet», håndheving av ulovlig innleie, krav om lønnsutbetaling via bank, høyere strafferammer, inndragning og konkursopplysninger. [1]  \n6. **Bedre registerordninger og identitetsforvaltning** – bedre kvalitet i offentlige registre og bedre identitetsforvaltning. [1]  \n7. **Internasjonalt samarbeid** – gjennomføring av endringsdirektivet til utsendingsdirektivet, samarbeid på europeisk nivå og forsterket samarbeid mellom kontrollmyndigheter. [1]  \n\nStrategien vektlegger særlig samarbeid mellom myndigheter, arbeidsgiver- og arbeidstakerorganisasjoner, både gjennom trepartssamarbeid og innsats i utsatte bransjer. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Strategi mot arbeidslivskriminalitet (2021–)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Strategi%20mot%20arbeidslivskriminalitet%20(2021%E2%80%93)",
+          "document_id": "15657",
+          "excerpts": [
+            {
+              "chunk_id": "70d7e298acc4",
+              "position": 1
+            },
+            {
+              "chunk_id": "6f3d6146fbdd",
+              "position": 26
+            },
+            {
+              "chunk_id": "3c0acaeb07ec",
+              "position": 27
+            },
+            {
+              "chunk_id": "5c69f0c9d68e",
+              "position": 28
+            },
+            {
+              "chunk_id": "b4d22b025e95",
+              "position": 29
+            },
+            {
+              "chunk_id": "3df5441cc9ce",
+              "position": 30
+            },
+            {
+              "chunk_id": "609c428e6698",
+              "position": 50
+            },
+            {
+              "chunk_id": "d64a349c0b08",
+              "position": 71
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q23-instruks-internkontroll",
+      "question": "Hva sier virksomhetsinstruksen om ansvar for internkontroll og risikostyring?",
+      "answer": "Virksomhetsinstruksen sier at NVEs ledelse har ansvar for å innrette systemer og rutiner for internkontroll og sikre at nødvendige kontrolloppgaver blir utført. Risikovurderinger skal være grunnlaget for dette arbeidet. [1]\n\nRisikostyring skal inngå i et samlet rammeverk for styring og kontroll og være integrert i mål- og resultatstyringen. NVE skal beskrive høy risiko for måloppnåelse, gjennomføre risikoreduserende tiltak og følge dem opp systematisk. [1]\n\nHvis NVE avdekker vesentlige svakheter, feil eller mangler i kritiske prosesser eller aktiviteter, skal etaten rapportere dette umiddelbart til departementet. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Hovedinstruks for Norges vassdrags- og energidirektorat 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Hovedinstruks%20for%20Norges%20vassdrags-%20og%20energidirektorat%202025",
+          "document_id": "343358",
+          "excerpts": [
+            {
+              "chunk_id": "9ba94843376d",
+              "position": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q24-instruks-styret",
+      "question": "Hvilke oppgaver har styret etter instruksen for Norges forskningsråd?",
+      "answer": "Styret er Norges forskningsråds øverste organ og har ansvaret for den samlede virksomheten, herunder at Forskningsrådet når målene som er satt for virksomheten. [1]\n\nEtter instruksen skal styret særlig:\n\n- følge opp faglige og budsjettmessige føringer i departementenes tildelingsbrev. [1]\n- fastsette hovedregler for økonomiforvaltningen, i tråd med gjeldende regelverk og anvisninger fra Kunnskapsdepartementet. [1]\n- sørge for at økonomiforvaltningen regulerer ansvarsforhold og delegering av myndighet. [1]\n\nKilden presiserer også at «styrets oppgaver er fastsatt i vedtektene». Instruksen gir dermed ikke en uttømmende opplisting av styrets oppgaver; vedtektene er den angitte hovedkilden for disse. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Virksomhets- og økonomiinstruks",
+          "url": "https://kudos.dfo.no/dokumenter?query=Virksomhets-%20og%20%C3%B8konomiinstruks",
+          "document_id": "90486",
+          "excerpts": [
+            {
+              "chunk_id": "6a055ab3b3df",
+              "position": 3
+            },
+            {
+              "chunk_id": "d82a9ceb14cd",
+              "position": 4
+            },
+            {
+              "chunk_id": "6c48ba2ef3a5",
+              "position": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q25-melding-ki",
+      "question": "Hva sier meldingene til Stortinget om kunstig intelligens i offentlig sektor?",
+      "answer": "Meldingene til Stortinget beskriver kunstig intelligens (KI) som et viktig virkemiddel for å fornye offentlig sektor. KI kan gi ny kunnskap fra store datamengder, forbedre tjenester, automatisere enkelte oppgaver og gjøre oppfølging og beslutninger mer kunnskapsbaserte. [1][5][6]\n\nSamtidig understreker meldingene at KI må brukes trygt, lovlig og ansvarlig:\n\n- Offentlig sektor skal legge til rette for økt bruk av KI, blant annet gjennom tilgang til data, gode språkressurser, regnekraft, rask kommunikasjon og regelverk som støtter digitalisering. [1][4]\n- Deling av data er en sentral forutsetning, men må skje innenfor regelverket og med vern av personopplysninger. [1][2][5]\n- KI kan utfordre krav til åpenhet, forklarbarhet, innsyn, begrunnelse, likebehandling og rettssikkerhet, særlig når systemer brukes i saksbehandling eller som beslutningsstøtte. [2][5]\n- Den nasjonale KI-strategien bygger på sju prinsipper: menneskelig selvbestemmelse og kontroll, sikkerhet og teknisk robusthet, personvern, gjennomsiktighet, inkludering og likebehandling, nytte for samfunn og miljø, samt ansvarlighet. [3]\n- Offentlige virksomheter trenger mer digital kompetanse. Regjeringen har blant annet oppfordret virksomhetene til å bruke det norske nettkurset *Elements of AI* og varslet en strategi for digital kompetanse i offentlig sektor. [1][5]\n- Digital sikkerhet er grunnleggende, fordi mer komplekse og sammenkoblede systemer kan gi nye sårbarheter og risiko for datainnbrudd, digitale angrep og feil. [4][5]\n\nMeldingene viser også konkrete eksempler. UDI har automatisert behandlingen av noen søknader om norsk statsborgerskap der regelverket åpner for det. [6] NAV-området beskrives som særlig krevende fordi etaten behandler store mengder, også sensitive, personopplysninger og fatter vedtak med stor betydning for den enkelte. Derfor vil departementet og Arbeids- og velferdsdirektoratet tydeliggjøre handlingsrommet for bruk av personopplysninger til analyse, kunnskapsutvikling og maskinlæring. [2]\n\nI helse- og omsorgstjenesten vektlegger meldingene kvalitetssikring og validering, altså testing og dokumentasjon av at en KI-løsning er god nok til formålet. Helsedirektoratet har fått i oppdrag å lede arbeid med prioriterte tiltak for trygg innføring av KI. [3]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Meld. St. 30 (2019–2020)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%2030%20(2019%E2%80%932020)",
+          "document_id": "19549",
+          "excerpts": [
+            {
+              "chunk_id": "417a5e22e0d7",
+              "position": 95
+            },
+            {
+              "chunk_id": "db184c91b48e",
+              "position": 89
+            },
+            {
+              "chunk_id": "20a325e830d5",
+              "position": 129
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Meld. St. 33 (2023–2024)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%2033%20(2023%E2%80%932024)",
+          "document_id": "107673",
+          "excerpts": [
+            {
+              "chunk_id": "c611e9e1f689",
+              "position": 205
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Meld. St. 9 (2023–2024)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%209%20(2023%E2%80%932024)",
+          "document_id": "80096",
+          "excerpts": [
+            {
+              "chunk_id": "139206115d0c",
+              "position": 279
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "title": "Meld. St. 5 (2020–2021)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%205%20(2020%E2%80%932021)",
+          "document_id": "19564",
+          "excerpts": [
+            {
+              "chunk_id": "2f8bfb6f7d2f",
+              "position": 43
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "title": "Meld. St. 31 (2019–2020)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%2031%20(2019%E2%80%932020)",
+          "document_id": "19557",
+          "excerpts": [
+            {
+              "chunk_id": "31e5d95482fc",
+              "position": 8
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "title": "Meld. St. 22 (2020–2021)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%2022%20(2020%E2%80%932021)",
+          "document_id": "19240",
+          "excerpts": [
+            {
+              "chunk_id": "cb7291ada798",
+              "position": 127
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q26-melding-klima",
+      "question": "Hvilke mål for utslipp av klimagasser beskrives i meldingene til Stortinget?",
+      "answer": "Meldingene beskriver flere klimamål, med ulike tidspunkter og virkeområder:\n\n- **2030-målet under Parisavtalen:** Norge skal redusere klimagassutslippene med **minst 55 prosent fra 1990-nivå**. Målet er lovfestet i klimaloven og skal oppfylles gjennom utslippskutt i Norge og samarbeid med EU; dersom dette ikke er nok, kan artikkel 6-kvoter utenfor EØS brukes. [1][2]\n\n- **2035-målet under Parisavtalen:** Norge har meldt inn et mål om å redusere utslippene med **minst 70–75 prosent fra 1990-nivå** i perioden 2031–2035. Regjeringen planlegger at dette hovedsakelig skal nås gjennom nasjonale tiltak og samarbeid med EU, eventuelt supplert med kjøp av utslippsreduksjoner utenfor EU/EØS. [1][2]\n\n- **2050-målet / lavutslippssamfunnet:** Norge skal være et lavutslippssamfunn i 2050, med utslippsreduksjoner på **90–95 prosent sammenlignet med 1990**. Ved vurderingen av måloppnåelse skal det tas hensyn til effekten av norsk deltakelse i EUs kvotesystem. [1][3]\n\n- **Tidligere omstillingsmål for 2030:** Regjeringen hadde også et mål om å kutte **55 prosent i hele norsk økonomi**, uavhengig av samarbeidet med EU. Dette var et nasjonalt *omstillingsmål*, og er ikke det samme som Paris-målet, selv om prosenttallet var det samme. Klimameldingen fra 2025 opplyser at regjeringen rydder i målstrukturen og ikke viderefører dette som et eget nasjonalt delmål. [1][5]\n\nI tillegg beskrives konkrete EU-relaterte forpliktelser som bidrar til 2030-målet:\n\n- I **EU ETS** skal de omfattede sektorene samlet redusere utslippene med **62 prosent fra 2005 til 2030**. [2]\n- Under **innsatsfordelingen** har Norge for perioden 2021–2030 forpliktet seg til **40 prosent reduksjon fra 2005**; ved videre deltakelse i revidert EU-regelverk legger regjeringen til grunn et trolig mål på **50 prosent reduksjon i 2030**. [2]\n- For **skog og annen arealbruk (LULUCF)** er forpliktelsen at rapporterte utslipp fra sektoren ikke skal overstige rapportert opptak i perioden 2021–2030. [2]\n\nDermed er **55 prosent fra 1990 i 2030**, **70–75 prosent fra 1990 i 2035** og **90–95 prosent fra 1990 i 2050** de sentrale overordnede norske utslippsmålene i meldingene. [1][2][3]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Meld. St. 25 (2024–2025)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%2025%20(2024%E2%80%932025)",
+          "document_id": "359756",
+          "excerpts": [
+            {
+              "chunk_id": "8ca0bb1d3216",
+              "position": 1
+            },
+            {
+              "chunk_id": "1091e5fb931e",
+              "position": 11
+            },
+            {
+              "chunk_id": "95880ae827b7",
+              "position": 16
+            },
+            {
+              "chunk_id": "6ffccb1687cc",
+              "position": 28
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Meld. St. 1 (2025–2026)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%201%20(2025%E2%80%932026)",
+          "document_id": "416649",
+          "excerpts": [
+            {
+              "chunk_id": "bd50e887c2c8",
+              "position": 98
+            },
+            {
+              "chunk_id": "befa4eb9b18b",
+              "position": 96
+            },
+            {
+              "chunk_id": "f8206afb9bfc",
+              "position": 100
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Meld. St. 2 (2023–2024)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%202%20(2023%E2%80%932024)",
+          "document_id": "90138",
+          "excerpts": [
+            {
+              "chunk_id": "d6efa3d47e30",
+              "position": 44
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "title": "Meld. St. 18 (2022–2023)",
+          "url": "https://kudos.dfo.no/dokumenter?query=Meld.%20St.%2018%20(2022%E2%80%932023)",
+          "document_id": "32977",
+          "excerpts": [
+            {
+              "chunk_id": "48a4781ba146",
+              "position": 82
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q27-bronnoysund-2019",
+      "question": "Hva var Brønnøysundregistrenes viktigste resultater i 2019?",
+      "answer": "Brønnøysundregistrenes viktigste resultater i 2019 var blant annet:\n\n- Etaten vurderte samlet måloppnåelse og ressursbruk som tilfredsstillende, og unngikk store sikkerhetsbrudd. [1]\n- Brukertilfredsheten var 76 prosent i den årlige brukerundersøkelsen. [1]\n- Næringslivet leverte om lag 20 millioner enkeltskjemaer via Altinn. Dette ga en beregnet årlig tidsbesparelse på 3–5 milliarder kroner. [1]\n- Saksvolumet for registreringer var 2 718 633, og 93,8 prosent av registreringene var elektroniske. Tallene gjelder Foretaks-, Enhets-, Løsøre- og Regnskapsregisteret. [1]\n- Internettjenestene hadde 959 472 292 oppslag. [1]\n- Altinn hadde 17 961 189 transaksjoner inn og 51 872 880 transaksjoner ut. [1]\n- Brukerundersøkelsene viste i hovedsak god brukertilfredshet og høy score sammenlignet med andre offentlige aktører. [1]\n\nSamtidig peker rapporten på at knapphet på ressurser og større saksmengde ga lengre saksbehandlingstid og ventetid på telefon. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Brønnøysundregistrene 2019",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Br%C3%B8nn%C3%B8ysundregistrene%202019",
+          "document_id": "15543",
+          "excerpts": [
+            {
+              "chunk_id": "68ce4df5b138",
+              "position": 12
+            },
+            {
+              "chunk_id": "700c8e9213d5",
+              "position": 13
+            },
+            {
+              "chunk_id": "c680fef4e215",
+              "position": 14
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q28-arkivverket-2026",
+      "question": "Hva skal Arkivverket prioritere i 2026?",
+      "answer": "Kildene i Kudos dekker ikke dette for 2026. Det finnes ikke et relevant tildelingsbrev eller annet styringsdokument for Arkivverket i det tilgjengelige 2026-materialet.",
+      "sources": []
+    },
+    {
+      "id": "q29-udi-2016",
+      "question": "Hvordan beskrev UDI saksbehandlingstidene i 2016?",
+      "answer": "Kilden omtaler ikke UDI eller saksbehandlingstider. Den handler om Statens vegvesens utbyggingsprosjekter og byggekostnader i 2016. Derfor kan spørsmålet ikke besvares ut fra det oppgitte materialet. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Samledokumentasjon 2016",
+          "url": "https://kudos.dfo.no/dokumenter?query=Samledokumentasjon%202016",
+          "document_id": "13413",
+          "excerpts": [
+            {
+              "chunk_id": "e98e8ee18b4c",
+              "position": 0
+            },
+            {
+              "chunk_id": "2c6aaea3f942",
+              "position": 1
+            },
+            {
+              "chunk_id": "cdfaf43eabdb",
+              "position": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q30-datatilsynet-direktor",
+      "question": "Hvem leder Datatilsynet?",
+      "answer": "Datatilsynet ledes av direktøren for Datatilsynet, som er tilsynets øverste leder. [2]",
+      "sources": [
+        {
+          "index": 2,
+          "title": "Hovudinstruks for Datatilsynet 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Hovudinstruks%20for%20Datatilsynet%202025",
+          "document_id": "330070",
+          "excerpts": [
+            {
+              "chunk_id": "0e4504504e8c",
+              "position": 8
+            },
+            {
+              "chunk_id": "798dc5e59f1f",
+              "position": 19
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q31-nkom-samfunnsoppdrag",
+      "question": "Hva er Nasjonal kommunikasjonsmyndighets samfunnsoppdrag?",
+      "answer": "Nasjonal kommunikasjonsmyndighets samfunnsoppdrag er ikke uttrykkelig definert i de oppgitte utdragene. Årsrapporten opplyser likevel at oppdraget hovedsakelig faller under bærekraftsmål 9, «Industri, innovasjon og infrastruktur». [2]\n\nNkom arbeider også strategisk med bærekraftsmål 11, 12, 13 og 17. I tillegg er bærekraftsmål 7, «ren energi», en vesentlig innsatsfaktor i ekom-sektoren, mens mål 3, 5 og 8 også er relevante for Nkoms virksomhet. [2]",
+      "sources": [
+        {
+          "index": 2,
+          "title": "Årsrapport Nasjonal kommunikasjonsmyndighet 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Nasjonal%20kommunikasjonsmyndighet%202024",
+          "document_id": "370449",
+          "excerpts": [
+            {
+              "chunk_id": "03ced4eb845d",
+              "position": 58
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q32-brukertilfredshet",
+      "question": "Sammenlign hvordan Skatteetaten og NAV rapporterer om brukertilfredshet.",
+      "answer": "Skatteetaten og NAV rapporterer begge om brukernes vurderinger, men de bruker ulike mål og legger vekt på litt ulike deler av brukeropplevelsen. Derfor kan tallene ikke tolkes som helt direkte sammenlignbare. [1][2][3]\n\n- **Skatteetaten** måler blant annet det overordnede «inntrykket» av etaten. I 2024 hadde 82 prosent av personer og 78 prosent av bedrifter et svært eller ganske godt inntrykk av Skatteetaten. [1]  \n- Skatteetaten måler også «fornøyd med Skatteetatens saksbehandling». Her var andelen 60 prosent for personer og 61 prosent for bedrifter i 2024. Dette er et snevrere mål enn det generelle inntrykket. [1]  \n- Etaten rapporterer dessuten særskilt om korrekt og profesjonell behandling av henvendelser, og om hvor enkelt det er å få ønskede opplysninger. For personer var tallene henholdsvis 71 og 66 prosent; for bedrifter 74 og 61 prosent. [1]\n\n- **NAV** rapporterer «helhetlig tilfredshet med Nav». Dette er den nærmeste betegnelsen til generell brukertilfredshet i kildene. I 2024 var den 78 prosent, opp fra 76 prosent i 2023. [2]  \n- NAV skiller dette fra «tillit til Nav», som var 74 prosent, og fra opplevd tilgjengelighet, som var 63 prosent. [2]  \n- NAV rapporterer også om konkrete deler av tjenesten: 76 prosent var fornøyde med veiledningen fra Nav-kontorene, 75 prosent med søknadsprosessen og 65 prosent med ventetiden på søknadsbehandlingen. [3]\n\n**Hovedforskjellen** er at Skatteetaten presenterer resultater separat for **personer og bedrifter**, og skiller tydelig mellom generelt inntrykk, saksbehandling og kontakt med etaten. NAVs 78 prosent gjelder derimot **Nav-brukeres helhetlige tilfredshet med Nav**. [1][2] Skatteetatens 82 prosent for personer gjelder «inntrykk», ikke «fornøyd med saksbehandling», og bør derfor ikke uten videre sammenlignes direkte med NAVs 78 prosent for helhetlig tilfredshet. [1][2]\n\nBegge etatene peker på tilgjengelighet som et forbedringsområde. Skatteetaten rapporterer om lang ventetid på telefon, få som kommer gjennom og restanser på skriftlige henvendelser. [1] NAV rapporterer at tilgjengeligheten har økt til 63 prosent, men fortsatt er utfordrende, særlig for sårbare brukere og personer med digitale, språklige eller helsemessige utfordringer. [2]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Skatteetatens årsrapport 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=Skatteetatens%20%C3%A5rsrapport%202024",
+          "document_id": "365840",
+          "excerpts": [
+            {
+              "chunk_id": "787df58f562d",
+              "position": 68
+            },
+            {
+              "chunk_id": "f2eb41a764ef",
+              "position": 3
+            },
+            {
+              "chunk_id": "2ac7d96679fc",
+              "position": 72
+            },
+            {
+              "chunk_id": "152fbafad387",
+              "position": 197
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Årsrapport Arbeids- og velferdsdirektoratet 2024 - med riksrevisjonsberetning",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Arbeids-%20og%20velferdsdirektoratet%202024%20-%20med%20riksrevisjonsberetning",
+          "document_id": "390321",
+          "excerpts": [
+            {
+              "chunk_id": "56a4577f6b72",
+              "position": 16
+            },
+            {
+              "chunk_id": "13ac8ffab436",
+              "position": 91
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Slik opplever brukerne Nav : Navs personbrukerundersøkelse 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=Slik%20opplever%20brukerne%20Nav%20%3A%20Navs%20personbrukerunders%C3%B8kelse%202024",
+          "document_id": "368329",
+          "excerpts": [
+            {
+              "chunk_id": "80ef233fa27a",
+              "position": 17
+            },
+            {
+              "chunk_id": "b26632bdee94",
+              "position": 12
+            },
+            {
+              "chunk_id": "b5bf40b23ce8",
+              "position": 20
+            },
+            {
+              "chunk_id": "4b46725a7af1",
+              "position": 28
+            },
+            {
+              "chunk_id": "4260df17b9dc",
+              "position": 44
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q33-it-prosjekter-budsjett",
+      "question": "Hva er de vanligste årsakene til at statlige IT-prosjekter går over budsjett?",
+      "answer": "Kilden gjelder særlig BRsys-prosjektet, ikke alle statlige IT-prosjekter. Den peker likevel på flere vanlige årsaker til budsjettoverskridelser:\n\n- For optimistiske grunnestimater for kostnader og tidsbruk. [1]  \n- Undervurdering av prosjektets kompleksitet. [1]  \n- For lav gjennomføringsevne i virksomheten, blant annet mangel på nødvendig kompetanse og bemanning. [1]  \n- Svak eierstyring over lengre perioder. Eierstyring er departementets og virksomhetens oppfølging av prosjektet. [1]  \n- Forsinkelser og lavere produksjon enn planlagt. I BRsys lå både SPI og CPI i gjennomsnitt rundt 0,6, mot 1 når arbeidet følger planen. [1]  \n- Mange samtidige forbedringstiltak. Det gjorde det vanskelig å vite hvilke tiltak som virket, og tiltak kunne også motvirke hverandre. [1]  \n\nKilden understreker at dette ikke er én enkel forklaring. Budsjettoverskridelser oppstår ofte gjennom et samspill mellom flere forhold, som også kan endre seg over tid. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Et digitaliseringssprang i skrittvis fart - Evaluering av Brønnøysundregistrenes BRsys-prosjekt",
+          "url": "https://kudos.dfo.no/dokumenter?query=Et%20digitaliseringssprang%20i%20skrittvis%20fart%20-%20Evaluering%20av%20Br%C3%B8nn%C3%B8ysundregistrenes%20BRsys-prosjekt",
+          "document_id": "326722",
+          "excerpts": [
+            {
+              "chunk_id": "813a3c06ad22",
+              "position": 23
+            },
+            {
+              "chunk_id": "a277f9e838e4",
+              "position": 24
+            },
+            {
+              "chunk_id": "eaf2d1818db2",
+              "position": 25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q34-miljodir-nokkeltall",
+      "question": "Vis nøkkeltallene fra årsregnskapet til Miljødirektoratet for 2022 i en tabell.",
+      "answer": "Her er nøkkeltallene for Miljødirektoratet i 2022. Tabellen bruker betegnelsene fra årsrapporten. [1]\n\n| Nøkkeltall | 2022 |\n|---|---:|\n| Antall årsverk | 696 |\n| Samlet tildeling post 01–99* | 8 296 321 000 kr |\n| Utnyttelsesgrad post 01–29* | 96 % |\n| Utnyttelsesgrad post 30–99* | 92 % |\n| Driftsutgifter | 1 713 261 955 kr |\n| Lønnsandel av driftsutgifter*** | 37 % |\n| Lønnsandel kap. 1420 post 01*** | 73 % |\n| Lønnsutgifter per årsverk*** | 914 045 kr |\n| Samlede inntekter post 01–09** | 148 280 856 kr |\n\n\\* Tallene inkluderer samtlige tildelinger og mottatte belastningsfullmakter. [1]  \n\\** Inntektene inkluderer også høstbare viltressurser (kap. 4141 post 01) og kjemikaliekontroll (kap. 3640 post 04). [1]  \n\\*** Ny beregningsmodell for pensjonspremie gjør at økningen i lønnsutgifter ikke samsvarer med lønnsveksten. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport for Miljødirektoratet for 2022 M-2513",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20for%20Milj%C3%B8direktoratet%20for%202022%20M-2513",
+          "document_id": "51768",
+          "excerpts": [
+            {
+              "chunk_id": "6bc9ccd662cf",
+              "position": 5
+            },
+            {
+              "chunk_id": "092e0d27c641",
+              "position": 69
+            },
+            {
+              "chunk_id": "ee23fb784e98",
+              "position": 99
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q35-statsbygg-pensjon",
+      "question": "Hva står det i notene til årsregnskapet om pensjonskostnader i Statsbygg?",
+      "answer": "I note 2 «Lønnskostnader» står pensjonskostnader oppført med **71 732 702 kroner i 2024**, mot **73 467 770 kroner i 2023**. Dette er posten som er kalt «Pensjonskostnader» i tabellen. [1]\n\nNotene forklarer også at Statsbygg følger SRS 25 «Ytelser til ansatte». Statsbygg balansefører ikke netto pensjonsforpliktelser for ordningen i Statens pensjonskasse (SPK). Virksomheten kostnadsfører i stedet arbeidsgiverandelen av pensjonspremien som pensjonskostnad, som om SPK-ordningen var en innskuddsplan. [1]\n\nStatsbygg har en hendelsesbasert pensjonsordning og betaler en virksomhetsspesifikk arbeidsgiverandel som del av pensjonspremien. Medlemsandelen er fortsatt to prosent av lønnsgrunnlaget. [1]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Statsbygg 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Statsbygg%202024",
+          "document_id": "414669",
+          "excerpts": [
+            {
+              "chunk_id": "6b768acff377",
+              "position": 90
+            },
+            {
+              "chunk_id": "a9b8f2b3a96c",
+              "position": 88
+            },
+            {
+              "chunk_id": "9c53248b04d6",
+              "position": 99
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q36-dsb-klima-en",
+      "question": "What does DSB say about climate adaptation and risk?",
+      "answer": "DSB says that **climate adaptation (klimatilpasning)** is a central part of its mission to prevent unwanted events and reduce their probability and consequences. It treats climate change as a growing societal-security issue because it brings more frequent and more intense extreme weather and natural hazards, including floods, landslides and forest fires. [1][6]\n\nOn **climate risk and natural hazards (klimarisiko og naturfare)**, DSB’s role is to act as a driver and coordinating actor. It develops a systematic evidence base by collecting, analysing, sharing and interpreting data, including through the annual *Kommuneundersøkelsen*, contact with *Statsforvalteren* (the central government’s regional representative), risk and vulnerability analyses, evaluations and international work. This knowledge is intended for prevention, preparedness and crisis management. [2][3][4]\n\nDSB also stresses that prevention alone is not sufficient: events previously only modelled by climate science are now occurring, and stronger climate change and more extreme natural events will increasingly challenge emergency preparedness. [2][4] Its 2025 assignment letter therefore says that DSB must incorporate climate adaptation into preventive work. [6]\n\nAt local level, DSB reports progress: municipalities use knowledge of risk and vulnerability more actively in planning. However, resources for societal security and preparedness are under pressure, and 31% of municipalities’ comprehensive risk and vulnerability analyses (*helhetlig ROS*) were more than four years old in the 2024 survey. [1]\n\nDSB also highlights cross-sector coordination through *Naturfareforum*, a forum intended to strengthen cooperation among agencies and sector authorities on natural hazards. A 2023 exercise using the extreme-weather event Embla as its scenario indicated that such an event would challenge most sectors. [2][4]",
+      "sources": [
+        {
+          "index": 1,
+          "title": "Årsrapport Direktoratet for samfunnssikkerhet og beredskap 2024",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Direktoratet%20for%20samfunnssikkerhet%20og%20beredskap%202024",
+          "document_id": "370416",
+          "excerpts": [
+            {
+              "chunk_id": "b20e91de380e",
+              "position": 39
+            },
+            {
+              "chunk_id": "2631d663349d",
+              "position": 40
+            },
+            {
+              "chunk_id": "165e0d8d796c",
+              "position": 60
+            },
+            {
+              "chunk_id": "bc8a65bb1616",
+              "position": 93
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "title": "Årsrapport DSB 2022",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20DSB%202022",
+          "document_id": "33157",
+          "excerpts": [
+            {
+              "chunk_id": "67c484737511",
+              "position": 16
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "title": "Årsrapport Direktoratet for samfunnssikkerhet og beredskap 2021",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20Direktoratet%20for%20samfunnssikkerhet%20og%20beredskap%202021",
+          "document_id": "27424",
+          "excerpts": [
+            {
+              "chunk_id": "d1c8593b3ff5",
+              "position": 13
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "title": "Årsrapport DSB 2023",
+          "url": "https://kudos.dfo.no/dokumenter?query=%C3%85rsrapport%20DSB%202023",
+          "document_id": "88891",
+          "excerpts": [
+            {
+              "chunk_id": "f1155b1a260b",
+              "position": 35
+            },
+            {
+              "chunk_id": "bf2eddbb7036",
+              "position": 30
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "title": "Tildelingsbrev Direktoratet for samfunnssikkerhet og beredskap 2025",
+          "url": "https://kudos.dfo.no/dokumenter?query=Tildelingsbrev%20Direktoratet%20for%20samfunnssikkerhet%20og%20beredskap%202025",
+          "document_id": "330084",
+          "excerpts": [
+            {
+              "chunk_id": "5d1b7587e14b",
+              "position": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "q37-fiskesuppe",
+      "question": "Hva er oppskriften på fiskesuppe?",
+      "answer": "Kildene i Kudos dekker ikke dette. Kudos inneholder hovedsakelig offentlige dokumenter som evalueringer, årsrapporter og tildelingsbrev.",
+      "sources": []
+    }
+  ]
+}

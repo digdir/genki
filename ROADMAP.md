@@ -55,4 +55,4 @@ More kinds of services and step blocks ([#45](https://github.com/digdir/genki/is
 - **Be an archive.** The agency's case system is the archive. genki exports a task with its provenance ([ADR 0011](docs/adr/0011-retention-erasure-and-archiving.md)).
 - **Store data outside the EU/EEA, or handle classified information** (proposed in [ADR 0045](docs/adr/0045-data-stays-in-the-eu-eea.md)).
 - **Pass through model features that keep data at the provider,** such as realtime sessions, provider-side files, stored responses or hosted agents, without an ADR of their own ([ADR 0047](docs/adr/0047-one-governed-path-for-model-operations.md)).
-- **Support old versions.** Until production, only `main` is supported, with no backports ([SECURITY.md](SECURITY.md)).
+- **Support old versions.** Until production, only `main` is supported, with no backports ([docs/security](docs/security/README.md)).

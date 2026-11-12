@@ -42,11 +42,15 @@ export interface EvalRun {
   status: 'running' | 'waiting-for-scores' | 'completed' | 'failed' | 'interrupted' | (string & {});
   testSet: string;
   version: RunVersion;
+  model?: string;
+  selected?: string[];
   startedAt: string;
   endedAt?: string | null;
   score?: number | null;
   passed?: number | null;
   total?: number | null;
+  finished?: number;
+  queuePlace?: number;
   cost?: number | null;
   metrics?: Record<string, MetricSummary>;
   incomplete?: {
@@ -131,6 +135,18 @@ export interface ServiceDraft {
   latestVersion?: number;
 }
 
+export interface ServiceDraftSummary {
+  id: string;
+  name: string | null;
+  purpose: string;
+  outputKind: string;
+  latestVersion: number | null;
+  revision: number;
+  at: string;
+  by: string;
+  byName?: string;
+}
+
 export interface DraftConflict {
   path: string;
   published: unknown;
@@ -171,6 +187,9 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
   const why = (reason: string) => ({ 'change-reason': reason });
 
   const api = {
+    drafts: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data: ServiceDraftSummary[] }>(`${tenantPath(tenant)}/service-drafts`, signal))
+        .data,
     draft: async (tenant: string, id: string, signal?: AbortSignal) => {
       try {
         const draft = await get<Partial<ServiceDraft> | undefined>(
@@ -268,7 +287,13 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     startRun: (
       tenant: string,
       id: string,
-      body: { testSet: string; version?: RunVersion; trace?: boolean },
+      body: {
+        testSet: string;
+        version?: RunVersion;
+        split?: CaseSplit;
+        cases?: string[];
+        trace?: boolean;
+      },
       reason: string,
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>

@@ -26,7 +26,6 @@ import {
 } from '@genai/port-model';
 import { z } from 'zod';
 
-const endpointOptions = z.strictObject({});
 const modelOptions = z.strictObject({
   defaultMaxTokens: z.number().int().positive().default(4096),
 });
@@ -163,7 +162,8 @@ const toModelError = (error: unknown): ModelError => {
   if (error instanceof ModelError) return error;
   if (error instanceof APIUserAbortError)
     return new ModelError('cancelled', 'the request was cancelled');
-  if (error instanceof APIError) return errorFromStatus(error.status, error.message);
+  if (error instanceof APIError)
+    return errorFromStatus(error.status, error.message, undefined, error.message);
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
 
@@ -178,10 +178,17 @@ const toBlock = (b: StreamBlock): ContentBlockParam =>
     ? { type: 'tool_use', id: b.id, name: b.name, input: parseArguments(b.json) }
     : b;
 
-export const anthropicMessages: ModelAdapter<z.infer<typeof endpointOptions>, ModelOptions> = {
-  protocol: 'anthropic-messages',
-  endpointOptions,
-  modelOptions,
+export const anthropicMessages: ModelAdapter<ModelOptions> = {
+  apis: [
+    {
+      id: 'anthropic/messages@1',
+      kind: 'chat',
+      family: 'anthropic',
+      modelOptions,
+      units: ['input-token', 'output-token', 'cached-input-token', 'request'],
+      default: true,
+    },
+  ],
   continuation: messagesContinuation,
 
   connect(endpoint: EndpointConfig) {
@@ -214,7 +221,8 @@ export const anthropicMessages: ModelAdapter<z.infer<typeof endpointOptions>, Mo
         };
       } catch (error) {
         const rejected =
-          error instanceof APIError && rejectedParameter(error.status, error.message);
+          error instanceof APIError &&
+          rejectedParameter(error.status, error.message) === 'temperature';
         if (request.temperature === undefined || !rejected) throw error;
         noTemperature.add(model.deployment);
         return { response: await send(params(model, request, true)), dropped: ['temperature'] };

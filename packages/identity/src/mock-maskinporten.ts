@@ -15,6 +15,8 @@ export interface MockMaskinportenOptions {
 
 const JWT_BEARER = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 
+type AssertionClaims = { scope?: unknown; authorization_details?: unknown };
+
 export const createMockMaskinporten = (options: MockMaskinportenOptions) => {
   const data = identityTestData.parse(options.testData);
   const lifetime = options.tokenLifetimeSeconds ?? 120;
@@ -44,10 +46,10 @@ export const createMockMaskinporten = (options: MockMaskinportenOptions) => {
     const client = data.systems.find((s) => s.clientId === unverified.iss);
     if (!client) return c.json({ error: 'invalid_client' }, 400);
 
-    let claims: { scope?: unknown; authorization_details?: unknown };
+    let claims: AssertionClaims;
     try {
       const key = await importJWK(client.publicKey as JWK, 'RS256');
-      ({ payload: claims } = await jwtVerify(form.assertion, key, {
+      ({ payload: claims } = await jwtVerify<AssertionClaims>(form.assertion, key, {
         issuer: client.clientId,
         audience: options.issuer,
         maxTokenAge: 120,

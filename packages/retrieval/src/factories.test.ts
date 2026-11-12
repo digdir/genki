@@ -198,17 +198,28 @@ describe('agent retrieval factory', () => {
     expect(s.calls).toEqual(['fetch:c3,c1', 'range:d1:0-1']);
   });
 
-  it('carries the Kudos publish date, an ingestion date and the document version into the chunks', async () => {
-    const s = stub([], { ...dated, c2: { ingested_at: '2026-10-01T08:00:00.000Z' } });
+  it('carries the Kudos publish date and the document version into the chunks', async () => {
+    const s = stub([], dated);
     const agent = createAgentRetrieval({ knowledge: s.knowledge });
 
     const read = await agent.read(['c1', 'c2', 'c3'], signal);
 
     expect(read.map((c) => [c.chunkId, c.publishedAt, c.version])).toEqual([
       ['c1', '2023-01-15', undefined],
-      ['c2', '2026-10-01T08:00:00.000Z', undefined],
+      ['c2', undefined, undefined],
       ['c3', '2025-01-01T00:00:00.000Z', 'v2'],
     ]);
+  });
+
+  it('never gives the ingestion date as the publish date of an undated chunk', async () => {
+    const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const [read] = await agent.read(['c1'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read).not.toHaveProperty('publishedAt');
+    expect(found.chunks.find((c) => c.chunkId === 'c1')).not.toHaveProperty('publishedAt');
   });
 
   it('lists filter fields with headless type names, and caps facet values', async () => {
@@ -301,6 +312,15 @@ describe('agent retrieval factory', () => {
 });
 
 describe('rag retrieval factory', () => {
+  it('gives an undated chunk no publish date, even when it has an ingestion date', async () => {
+    const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
+    const rag = createRagRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const result = await rag.retrieve(['årsverk'], {}, signal);
+
+    expect(result.chunks.find((c) => c.chunkId === 'c1')).not.toHaveProperty('publishedAt');
+  });
+
   it('retrieves full chunks, fetching content the metadata-only pipeline left out', async () => {
     const s = stub();
     const rag = createRagRetrieval({ knowledge: s.knowledge, config: metadataOnly });
@@ -506,6 +526,24 @@ describe('documents for step flows', () => {
       { limit: 250, offset: 0 },
       { limit: 150, offset: 250 },
     ]);
+  });
+
+  it('lists an undated document without a publish date, even when it has an ingestion date', async () => {
+    const undated = { ingested_at: '2026-10-01T08:00:00.000Z' };
+    const searched = port({
+      search: async () => ({
+        hits: [{ id: 'u-0', score: 0, text: '', document: 'u', fields: undated }],
+      }),
+    });
+    const listing = port({
+      documents: async () => ({ documents: [{ id: 'u', fields: undated }] }),
+    });
+
+    const fromSearch = await listDocuments(searched.knowledge, { limit: 5 }, undefined, signal);
+    const fromListing = await listDocuments(listing.knowledge, { limit: 5 }, undefined, signal);
+
+    expect(fromSearch[0]).not.toHaveProperty('publishedAt');
+    expect(fromListing[0]).not.toHaveProperty('publishedAt');
   });
 
   it('reads a whole document in windows the port accepts', async () => {

@@ -1,4 +1,4 @@
-import type { Usage } from '@genai/contracts';
+import type { ProviderFailure, Usage } from '@genai/contracts';
 import type { ParameterRules, TunableParameter } from './parameters.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -58,12 +58,6 @@ export const builtInOperations = ['chat', 'decide'] as const;
 export type BuiltInOperation = (typeof builtInOperations)[number];
 export type Operation = string;
 export const operationKindPattern = /^[a-z][a-z0-9-]*$/;
-export const defaultOperations: Operation[] = ['chat'];
-
-/** The operation kinds a catalogue may list: the built-in kinds and every kind a registered descriptor defines. */
-export const operationKinds = (descriptors?: { list(): { operation: string }[] }): string[] => [
-  ...new Set([...builtInOperations, ...(descriptors?.list().map((d) => d.operation) ?? [])]),
-];
 
 export interface ModelInfo {
   id: string;
@@ -95,6 +89,7 @@ export class ModelError extends Error {
   constructor(
     readonly code: ModelErrorCode,
     message: string,
+    readonly provider?: ProviderFailure,
   ) {
     super(message);
     this.name = 'ModelError';

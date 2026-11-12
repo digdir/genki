@@ -3,6 +3,7 @@ import type { Event, Input, Part, Principal } from '@genai/contracts';
 import type { Kernel } from '@genai/kernel';
 import {
   EvalError,
+  judgedAgainst,
   type CollectedScore,
   type EvalContext,
   type Evaluator,
@@ -32,8 +33,7 @@ export interface TargetResult {
   parts: Part[];
   events: Event[];
   servedModels: string[];
-  /** The served models that wrote the answer; judges are checked against these alone. */
-  writers?: string[];
+  judgedModels?: string[];
   service?: string;
 }
 
@@ -48,14 +48,13 @@ export interface EvalTarget {
   annotate?(task: string, score: Score): Promise<void>;
 }
 
-const searchingKinds = new Set(['embedder']);
-
-const servedModelsOf = (events: Event[], writing = false) => [
+const modelsOf = (events: Event[], keep: (model: { kind?: unknown }) => boolean = () => true) => [
   ...new Set(
     events.flatMap((e) => {
       const model = (e.data as { model?: { id?: unknown; kind?: unknown } } | undefined)?.model;
-      if (e.type !== 'kernel.usage' || typeof model?.id !== 'string') return [];
-      return writing && searchingKinds.has(String(model.kind)) ? [] : [model.id];
+      return e.type === 'kernel.usage' && typeof model?.id === 'string' && keep(model)
+        ? [model.id]
+        : [];
     }),
   ),
 ];
@@ -78,8 +77,8 @@ export const describeTask = async (
     task,
     parts,
     events,
-    servedModels: servedModelsOf(events),
-    writers: servedModelsOf(events, true),
+    servedModels: modelsOf(events),
+    judgedModels: modelsOf(events, judgedAgainst),
     service: `${service.capability.id}@${service.capability.version}#${service.configHash}`,
   };
 };
@@ -122,8 +121,18 @@ export interface RunEvalOptions {
   meterAnswers?: (events: Event[]) => UsageSummary;
   /** Cancels the run, including its wait for scores. */
   signal?: AbortSignal;
-  /** After each case, with what the run has used so far when answers are metered. */
-  onProgress?: (done: number, total: number, usage?: EvalRun['usage']) => void;
+  /**
+   * After each case, with what the run has used so far when answers are metered, and the cases
+   * finished so far in test-set order, so a run that stops keeps them.
+   */
+  onProgress?: (
+    done: number,
+    total: number,
+    usage?: EvalRun['usage'],
+    results?: EvalRun['results'],
+  ) => void;
+  /** Case slots: up to perRun cases at a time, each started once acquire grants a slot. */
+  slots?: { perRun: number; acquire: () => Promise<() => void> };
   onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
 }
@@ -370,58 +379,85 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     };
   };
   let lastSent = now();
-  for (let repeat = 0; repeat < repeats; repeat++) {
-    for (const c of cases) {
+  const work = Array.from({ length: repeats }, (_, repeat) =>
+    cases.map((c) => ({ c, repeat })),
+  ).flat();
+  const done: (EvalRun['results'][number] | undefined)[] = Array.from({ length: work.length });
+  const finished = () => done.filter((r): r is EvalRun['results'][number] => r !== undefined);
+  const runCase = async (index: number) => {
+    const { c, repeat } = work[index] as { c: TestCase; repeat: number };
+    options.signal?.throwIfAborted();
+    let outcome: TargetResult;
+    try {
+      outcome = await target.invoke(inputOf(c), { case: c, repeat });
+    } catch (error) {
+      throw new EvalError(
+        `case ${c.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    // A case may reach no model, as when a guardrail refuses before it; the run must reach one.
+    outcome.servedModels.forEach((m) => servedModels.add(m));
+    if (outcome.service) services.add(outcome.service);
+    if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
+    const observation: Observation = observe(outcome.parts, outcome.events);
+    const ctx: EvalContext = {
+      servedModels: outcome.judgedModels ?? outcome.servedModels,
+      modelFamily: options.modelFamily ?? (() => undefined),
+      ...(options.signal ? { signal: options.signal } : {}),
+    };
+    const scores: Score[] = [];
+    // The latest case sent to the judges, also when cases run side by side.
+    const sent = now();
+    if (sent > lastSent) lastSent = sent;
+    for (const evaluator of evaluators) {
       options.signal?.throwIfAborted();
-      let outcome: TargetResult;
+      let answered: Score[];
       try {
-        outcome = await target.invoke(inputOf(c), { case: c, repeat });
+        answered = await evaluator.evaluate(c, observation, ctx);
       } catch (error) {
         throw new EvalError(
-          `case ${c.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+          `evaluator ${evaluator.id} failed on case ${c.id}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      // A case may reach no model, as when a guardrail refuses before it; the run must reach one.
-      outcome.servedModels.forEach((m) => servedModels.add(m));
-      if (outcome.service) services.add(outcome.service);
-      if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
-      const observation: Observation = observe(outcome.parts, outcome.events);
-      const ctx: EvalContext = {
-        servedModels: outcome.writers ?? outcome.servedModels,
-        modelFamily: options.modelFamily ?? (() => undefined),
-        ...(options.signal ? { signal: options.signal } : {}),
-      };
-      const scores: Score[] = [];
-      lastSent = now();
-      for (const evaluator of evaluators) {
-        options.signal?.throwIfAborted();
-        let answered: Score[];
-        try {
-          answered = await evaluator.evaluate(c, observation, ctx);
-        } catch (error) {
-          throw new EvalError(
-            `evaluator ${evaluator.id} failed on case ${c.id}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-        if (!evaluator.collect && answered.some((s) => s.state === 'pending'))
-          throw new EvalError(
-            `evaluator ${evaluator.id} answered pending on case ${c.id} but cannot be collected`,
-          );
-        scores.push(...answered);
-      }
-      for (const s of scores) if (s.state !== 'pending') await annotate(outcome.task, s);
-      results.push({
-        case: c.id,
-        split: c.split,
-        repeat,
-        task: outcome.task,
-        tags: c.tags,
-        ...(c.language ? { language: c.language } : {}),
-        scores,
-      });
-      options.onProgress?.(results.length, total, usageSoFar());
+      if (!evaluator.collect && answered.some((s) => s.state === 'pending'))
+        throw new EvalError(
+          `evaluator ${evaluator.id} answered pending on case ${c.id} but cannot be collected`,
+        );
+      scores.push(...answered);
     }
-  }
+    for (const s of scores) if (s.state !== 'pending') await annotate(outcome.task, s);
+    done[index] = {
+      case: c.id,
+      split: c.split,
+      repeat,
+      task: outcome.task,
+      tags: c.tags,
+      ...(c.language ? { language: c.language } : {}),
+      scores,
+    };
+    const sofar = finished();
+    options.onProgress?.(sofar.length, total, usageSoFar(), sofar);
+  };
+  let next = 0;
+  let stop: { error: unknown } | undefined;
+  const worker = async () => {
+    while (!stop && next < work.length) {
+      const release = options.slots ? await options.slots.acquire() : () => undefined;
+      try {
+        if (stop || next >= work.length) return;
+        await runCase(next++);
+      } catch (error) {
+        stop ??= { error };
+      } finally {
+        release();
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(options.slots?.perRun ?? 1, work.length)) }, worker),
+  );
+  if (stop) throw stop.error;
+  results.push(...finished());
   if (servedModels.size === 0) throw new EvalError('the run recorded no served model');
   await collectPending(results, evaluators, {
     lastSent,

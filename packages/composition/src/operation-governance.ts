@@ -1,7 +1,12 @@
 import type { EnvironmentTier, Maturity } from '@genai/kernel';
-import type { OperationGovernance } from '@genai/port-model';
+import type { OperationGovernance, ProcessorRecordCheck } from '@genai/port-model';
 import { z } from 'zod';
 import { platformScope, type ConfigEntry, type ConfigEntryStore } from './config-store.js';
+
+/** `GENAI_PROCESSOR_RECORDS=enforce` refuses real data on typed calls to a connection without a processor record. */
+export const processorRecordCheckOf = (
+  env: Record<string, string | undefined>,
+): ProcessorRecordCheck => (env.GENAI_PROCESSOR_RECORDS === 'enforce' ? 'enforce' : 'warn');
 
 export const maturityEntryKind = 'operation-maturity';
 export const processorRecordKind = 'processor-record';
@@ -45,6 +50,15 @@ export const ProcessorRecordSpec = z.strictObject({
     days: z.number().int().min(0).max(3650),
     note: text(1000).optional(),
   }),
+  providerState: z
+    .strictObject({
+      allowed: z.boolean(),
+      retention: z.strictObject({
+        days: z.number().int().min(0).max(3650),
+        note: text(1000),
+      }),
+    })
+    .optional(),
 });
 
 export type ProcessorRecord = z.infer<typeof ProcessorRecordSpec>;
@@ -82,6 +96,8 @@ export const operationGovernance = (
       ),
     processorRecord,
     processorRecorded: async (endpoint) => (await processorRecord(endpoint)) !== undefined,
+    providerStateAllowed: async (endpoint) =>
+      (await processorRecord(endpoint))?.spec.providerState?.allowed === true,
     processorRecords: async () =>
       (await store.latest({ kind: processorRecordKind, scope: platformScope })).filter(
         (e) => !e.deleted,

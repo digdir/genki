@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { describe, expect, it } from 'vitest';
+import { documentId } from './ids.js';
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
+import { toIndexDocument } from './index-writer.js';
 import {
   knowledgeListingOf,
   pipelineSpec,
@@ -12,7 +14,7 @@ import {
 } from './pipeline-sources.js';
 
 const signal = new AbortController().signal;
-const scope = { tenant: '991825827', dataset: '991825827/docs' };
+const scope = { tenant: '991825827', dataset: '991825827/docs', owner: '991825827' };
 
 const spec = (source: Record<string, unknown>) => pipelineSpec.parse({ name: 'Docs', source });
 
@@ -77,6 +79,28 @@ describe('knowledge listings', () => {
     expect(loaded.texts.join('')).toContain('Side a.');
   });
 
+  it('a Markdown page on the knowledge database keeps its frontmatter title, product and language', async () => {
+    const pages = {
+      'https://www.example.no/sitemap.xml': sitemap([
+        { loc: 'https://www.example.no/docs/kom_i_gang.md', lastmod: '2026-10-30' },
+      ]),
+      'https://www.example.no/docs/kom_i_gang.md':
+        '---\ntitle: Kom i gang\nproduct: Maskinporten\nlang: nb\n---\n\nTekst.\n',
+    };
+    const listing = await knowledgeListingOf(
+      spec({ kind: 'website', sitemap: 'https://www.example.no/sitemap.xml' }),
+      { web: site(pages, []) },
+      scope,
+      signal,
+    );
+    const loaded = await listing.load(first(await all(listing)).record);
+
+    const indexed = toIndexDocument(loaded.docNum, loaded.stored([]), [], []);
+
+    expect(indexed.title).toBe('Kom i gang');
+    expect(indexed.fields).toMatchObject({ product: 'Maskinporten', language: 'nb' });
+  });
+
   it('a page that answers 404 when its index job loads it is gone', async () => {
     const pages = {
       'https://www.example.no/sitemap.xml': sitemap([
@@ -126,7 +150,7 @@ describe('knowledge listings', () => {
         return new Response(
           JSON.stringify({
             data: [{ id: page, uuid: `u-${page}`, type: 'Årsrapport', title: `Rapport ${page}` }],
-            meta: { current_page: page, last_page: 4 },
+            meta: { current_page: page, last_page: 4, total: 4 },
           }),
         );
       }) as typeof fetch,
@@ -168,6 +192,89 @@ describe('knowledge listings', () => {
       { name: 'a.md', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) },
     ]);
     expect((await listing.load(first(docs).record)).texts.join('')).toContain('Innhold a.');
+  });
+
+  it("a folder document's id is folder: with its owner and a hash of its path from the folder root", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'listing-'));
+    await mkdir(join(root, 'docs', 'adr'), { recursive: true });
+    await writeFile(join(root, 'docs', 'adr', '0042.md'), '# ADR\n\nInnhold.');
+    const platform = await knowledgeListingOf(
+      spec({ kind: 'folder', path: '.' }),
+      { folderRoot: root },
+      { tenant: '991825827', dataset: 'digdir/genki-docs', owner: 'platform' },
+      signal,
+    );
+    const [doc] = await all(platform);
+    expect(doc?.id).toBe(`folder:platform/${documentId('docs/adr/0042.md')}`);
+    const loaded = await platform.load(first([doc]).record);
+    expect(loaded.key).toBe(doc?.id);
+    expect(loaded.docNum).toBe(doc?.id);
+
+    const tenant = await knowledgeListingOf(
+      spec({ kind: 'folder', path: 'docs' }),
+      { folderRoot: root },
+      scope,
+      signal,
+    );
+    expect((await all(tenant)).map((d) => d.id)).toEqual([
+      `folder:991825827/${documentId('docs/adr/0042.md')}`,
+    ]);
+  });
+
+  it("a folder document's id names no path", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'listing-'));
+    await mkdir(join(root, 'handbok'));
+    await writeFile(join(root, 'handbok', 'permisjon-ola-nordmann.md'), '# Permisjon\n\nInnhold.');
+    const [doc] = await all(
+      await knowledgeListingOf(
+        spec({ kind: 'folder', path: 'handbok' }),
+        { folderRoot: root },
+        scope,
+        signal,
+      ),
+    );
+    expect(doc?.id).toMatch(/^folder:991825827\/[0-9a-f]+$/);
+    expect(doc?.id).not.toContain('ola');
+  });
+
+  it('two folder pipelines over one file give it the same id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'listing-'));
+    await mkdir(join(root, 'docs', 'adr'), { recursive: true });
+    await writeFile(join(root, 'docs', 'adr', '0042.md'), '# ADR\n\nInnhold.');
+    const idsOf = async (path: string) =>
+      (
+        await all(
+          await knowledgeListingOf(
+            spec({ kind: 'folder', path }),
+            { folderRoot: root },
+            scope,
+            signal,
+          ),
+        )
+      ).map((d) => d.id);
+    expect(await idsOf('.')).toEqual(await idsOf('docs/adr'));
+  });
+
+  it('a folder document keeps its id when the folder root moves', async () => {
+    const ids = async () => {
+      const root = await mkdtemp(join(tmpdir(), 'listing-'));
+      await mkdir(join(root, 'docs'));
+      await writeFile(join(root, 'docs', 'a.md'), '# A\n\nInnhold a.');
+      const listing = await knowledgeListingOf(
+        spec({ kind: 'folder', path: 'docs' }),
+        { folderRoot: root },
+        scope,
+        signal,
+      );
+      const doc = first(await all(listing));
+      const loaded = await listing.load(doc.record);
+      const { id, doc_num, path } = loaded.stored?.([]) ?? {};
+      return { id: doc.id, docNum: loaded.docNum, stored: { id, doc_num, path } };
+    };
+    const [laptop, test] = [await ids(), await ids()];
+    expect(laptop.id).toBe(test.id);
+    expect(laptop.docNum).toBe(test.docNum);
+    expect(laptop.stored).toEqual(test.stored);
   });
 
   it('an upload listing gives the blob store hash without reading the file', async () => {

@@ -19,7 +19,7 @@ import {
   type StepFlowDefinition,
   type ValidationError,
 } from '@genai/definitions';
-import { maturities, residencyAllows } from '@genai/kernel';
+import { maturities, mediaTypeCovers, mediaTypesOf, residencyAllows } from '@genai/kernel';
 import type { DescriptorRegistry } from '@genai/operations';
 import { builtInOperations, type ModelDescription } from '@genai/port-model';
 import { callOperationModel, callOperationRef } from '@genai/strategy-step-flow';
@@ -45,7 +45,7 @@ const problem = (c: Context, status: Status, errors: ValidationError[] = []) =>
     'content-type': 'application/problem+json',
   });
 
-const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
+export const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
   steps.flatMap((s) => [
     s,
     ...stepsIn(s.repeat?.steps ?? []),
@@ -116,6 +116,12 @@ export const describedStepProblems = async (
         refuse(
           'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
         );
+      const consented = service.spec.riskConfirmation?.unmaskedInput ?? [];
+      for (const mediaType of mediaTypesOf(descriptor.input))
+        if (!consented.some((c) => mediaTypeCovers(c.mediaType, mediaType)))
+          refuse(
+            `${id} takes ${mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${mediaType} with a reason`,
+          );
       if (!('pii-before-model' in service.spec.guardrails))
         refuse(
           'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
@@ -138,6 +144,13 @@ export const describedStepProblems = async (
         refuse(`there is no model ${modelId} in the catalogue`);
         continue;
       }
+      const bound = model.apis[descriptor.operation];
+      if (bound !== id)
+        refuse(
+          bound
+            ? `the model ${modelId} binds ${bound} for ${descriptor.operation}, not ${id}`
+            : `the model ${modelId} binds no API for ${descriptor.operation}`,
+        );
       if (!residencyAllows(service.spec.model.residency, model.residency))
         refuse(
           `the model ${modelId} runs in ${model.residency}, outside ${service.spec.model.residency}`,
@@ -152,16 +165,16 @@ export const describedStepProblems = async (
   return problems;
 };
 
+const builtInKinds: readonly string[] = [...builtInOperations, 'embed', 'rerank'];
+
 const maturityView = (state: MaturityState, descriptors: DescriptorRegistry) => ({
   ...state,
-  builtIn: (builtInOperations as readonly string[]).includes(state.kind),
-  ...((builtInOperations as readonly string[]).includes(state.kind)
-    ? { typed: 'production' as const }
-    : {}),
+  builtIn: builtInKinds.includes(state.kind),
+  ...(builtInKinds.includes(state.kind) ? { typed: 'production' as const } : {}),
   descriptors: descriptors
     .list()
     .filter((d) => d.operation === state.kind)
-    .map((d) => ({ id: d.id, status: d.status })),
+    .map((d) => ({ id: d.id, status: d.status, family: d.api.family })),
 });
 
 const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | undefined) => ({
@@ -171,6 +184,7 @@ const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | u
         agreement: entry.spec.agreement,
         subProcessors: entry.spec.subProcessors,
         retention: entry.spec.retention,
+        ...(entry.spec.providerState ? { providerState: entry.spec.providerState } : {}),
       }
     : null,
   ...(entry ? { by: entry.by, at: entry.at } : {}),
@@ -234,7 +248,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       const { governance, descriptors } = guard.operations;
       await descriptors.refresh();
       const kinds = new Set([
-        ...builtInOperations,
+        ...builtInKinds,
         ...descriptors.list().map((d) => d.operation),
         ...(await governance.maturities()).map((m) => m.kind),
       ]);
@@ -309,6 +323,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       ]);
       return c.json({
         data: [...endpoints].sort().map((e) => processorView(e, records.get(e))),
+        typedCalls: guard.operations.processorRecords ?? 'warn',
       });
     });
 

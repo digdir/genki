@@ -9,6 +9,7 @@ import {
   type ChatRequest,
   type ChatResult,
   type DeploymentConfig,
+  type BuiltInApi,
   type DiscoverySource,
   type EndpointConfig,
   type FinishReason,
@@ -38,12 +39,48 @@ const withoutTrailingSlashes = (url: string) => {
 
 const cached = (tokens: number | undefined) => (tokens ? { cachedInputTokens: tokens } : {});
 
-const endpointOptions = z.strictObject({});
-const modelOptions = z.strictObject({
-  api: z.enum(['chat-completions', 'responses']).optional(),
+const chatCompletionsOptions = z.strictObject({
   tokenParam: z.enum(['max_tokens', 'max_completion_tokens']).default('max_completion_tokens'),
 });
-type ModelOptions = z.infer<typeof modelOptions>;
+type ModelOptions = z.infer<typeof chatCompletionsOptions>;
+
+export const openAiApis = {
+  chatCompletions: 'openai/chat-completions@1',
+  responses: 'openai/responses@1',
+  decide: 'openai/decide@1',
+} as const;
+
+const tokenUnits: BuiltInApi['units'] = [
+  'input-token',
+  'output-token',
+  'cached-input-token',
+  'request',
+];
+
+const apis: BuiltInApi[] = [
+  {
+    id: openAiApis.chatCompletions,
+    kind: 'chat',
+    family: 'openai',
+    modelOptions: chatCompletionsOptions,
+    units: tokenUnits,
+    default: true,
+  },
+  {
+    id: openAiApis.responses,
+    kind: 'chat',
+    family: 'openai',
+    modelOptions: z.strictObject({}),
+    units: tokenUnits,
+  },
+  {
+    id: openAiApis.decide,
+    kind: 'decide',
+    family: 'openai',
+    modelOptions: z.strictObject({}),
+    units: tokenUnits,
+  },
+];
 
 const finishReasons: Record<string, FinishReason> = {
   stop: 'stop',
@@ -75,17 +112,35 @@ const toOpenAi = (m: ChatMessage): ChatCompletionMessageParam => {
 const rejectsTemperature = (error: unknown) =>
   error instanceof APIError && rejectedParameter(error.status, error.message) === 'temperature';
 
+type TokenParam = ModelOptions['tokenParam'];
+
+const refusedTokenParam = (error: unknown) => {
+  if (!(error instanceof APIError)) return undefined;
+  const rejected = rejectedParameter(error.status, error.message, error.param);
+  return rejected === 'temperature' ? undefined : rejected;
+};
+
+interface Adjustments {
+  fixedTemperature: boolean;
+  tokenParam?: TokenParam;
+}
+
 const params = (
-  model: DeploymentConfig<ModelOptions>,
+  model: DeploymentConfig<Partial<ModelOptions>>,
   request: ChatRequest,
-  fixedTemperature = false,
+  adjust: Adjustments = { fixedTemperature: false },
 ): ChatCompletionCreateParamsBase => ({
   model: model.deployment,
   messages: request.messages.map(toOpenAi),
-  ...(request.temperature === undefined || fixedTemperature
+  ...(request.temperature === undefined || adjust.fixedTemperature
     ? {}
     : { temperature: request.temperature }),
-  ...(request.maxTokens === undefined ? {} : { [model.options.tokenParam]: request.maxTokens }),
+  ...(request.maxTokens === undefined
+    ? {}
+    : {
+        [adjust.tokenParam ?? model.options.tokenParam ?? 'max_completion_tokens']:
+          request.maxTokens,
+      }),
   ...(request.reasoning ? { reasoning_effort: request.reasoning } : {}),
   ...(request.tools?.length
     ? {
@@ -115,15 +170,13 @@ const toModelError = (error: unknown, signal: AbortSignal): ModelError => {
   if (error instanceof ModelError) return error;
   if (error instanceof APIError) {
     const code = (error.error as { code?: string } | undefined)?.code ?? error.code ?? undefined;
-    return errorFromStatus(error.status, error.message, code);
+    return errorFromStatus(error.status, error.message, code, error.message);
   }
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
 
-export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOptions> = {
-  protocol: 'openai-chat',
-  endpointOptions,
-  modelOptions,
+export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
+  apis,
   continuation: responsesContinuation,
 
   connect(endpoint: EndpointConfig) {
@@ -141,30 +194,46 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
     });
 
     const fixedTemperature = new Set<string>();
+    const tokenParams = new Map<string, TokenParam>();
     const learnedResponses = new Set<string>();
-    const apiFor = (model: DeploymentConfig<ModelOptions>) =>
-      model.options.api ??
-      (learnedResponses.has(model.deployment) ? 'responses' : 'chat-completions');
+    const configured = (model: DeploymentConfig) => model.api === openAiApis.responses;
+    const apiFor = (model: DeploymentConfig) =>
+      configured(model) || learnedResponses.has(model.deployment)
+        ? 'responses'
+        : 'chat-completions';
     const create = async <T>(
-      model: DeploymentConfig<ModelOptions>,
+      model: DeploymentConfig<Partial<ModelOptions>>,
       request: ChatRequest,
-      send: (api: 'chat-completions' | 'responses', omitTemperature: boolean) => Promise<T>,
+      send: (
+        api: 'chat-completions' | 'responses',
+        omitTemperature: boolean,
+        tokenParam: TokenParam | undefined,
+      ) => Promise<T>,
     ): Promise<{ response: T; dropped: TunableParameter[] }> => {
       for (;;) {
         const api = apiFor(model);
         const key = `${api}/${model.deployment}`;
         const omit = fixedTemperature.has(key);
+        const tokenParam = tokenParams.get(key);
         try {
           return {
-            response: await send(api, omit),
+            response: await send(api, omit, tokenParam),
             dropped: request.temperature !== undefined && omit ? ['temperature'] : [],
           };
         } catch (error) {
+          const current = model.options.tokenParam ?? 'max_completion_tokens';
           if (request.temperature !== undefined && !omit && rejectsTemperature(error)) {
             fixedTemperature.add(key);
           } else if (
             api === 'chat-completions' &&
-            model.options.api === undefined &&
+            !tokenParam &&
+            request.maxTokens !== undefined &&
+            refusedTokenParam(error) === current
+          ) {
+            tokenParams.set(key, current === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens');
+          } else if (
+            api === 'chat-completions' &&
+            !configured(model) &&
             request.tools?.length &&
             error instanceof APIError &&
             error.status === 400 &&
@@ -181,7 +250,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
     return {
       describe: (model) => ({
         api: apiFor(model),
-        source: model.options.api
+        source: configured(model)
           ? 'configured'
           : learnedResponses.has(model.deployment)
             ? 'learned'
@@ -189,24 +258,34 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
       }),
       chat: async (model, request, signal): Promise<ChatResult> => {
         try {
-          const { response: result, dropped } = await create(model, request, async (api, omit) => {
-            if (api === 'responses') {
+          const { response: result, dropped } = await create(
+            model,
+            request,
+            async (api, omit, tokenParam) => {
+              if (api === 'responses') {
+                return {
+                  api,
+                  response: await client.responses.create(
+                    { ...responsesParams(model, request, omit), stream: false },
+                    { signal },
+                  ),
+                } as const;
+              }
               return {
                 api,
-                response: await client.responses.create(
-                  { ...responsesParams(model, request, omit), stream: false },
+                response: await client.chat.completions.create(
+                  {
+                    ...params(model, request, {
+                      fixedTemperature: omit,
+                      ...(tokenParam ? { tokenParam } : {}),
+                    }),
+                    stream: false,
+                  },
                   { signal },
                 ),
               } as const;
-            }
-            return {
-              api,
-              response: await client.chat.completions.create(
-                { ...params(model, request, omit), stream: false },
-                { signal },
-              ),
-            } as const;
-          });
+            },
+          );
           if (result.api === 'responses')
             return {
               ...responsesResult(result.response),
@@ -256,7 +335,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
         const calls = new Map<number, ToolCall>();
         const dropped: TunableParameter[] = [];
         try {
-          const opened = await create(model, request, async (api, omit) => {
+          const opened = await create(model, request, async (api, omit, tokenParam) => {
             if (api === 'responses')
               return {
                 api,
@@ -269,7 +348,10 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
               api,
               stream: await client.chat.completions.create(
                 {
-                  ...params(model, request, omit),
+                  ...params(model, request, {
+                    fixedTemperature: omit,
+                    ...(tokenParam ? { tokenParam } : {}),
+                  }),
                   stream: true,
                   stream_options: { include_usage: true },
                 },
@@ -360,4 +442,4 @@ export const azureDeployments: DiscoverySource = {
   },
 };
 
-export { openAiEmbeddings } from './embeddings.js';
+export { openAiEmbeddings, openAiEmbeddingsApi } from './embeddings.js';
