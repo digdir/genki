@@ -6,6 +6,9 @@ kudos-joined  the same, but a document whose pieces don't match its page count g
               text for each of its pages: the best KUDOS can do if page numbers didn't matter
 marker        Marker 1.10.2's markdown for the page (the pilot's stored conversion, as genki chunks
               it), converted to HTML by the tool's own markdown converter
+<parser>      another parser's markdown for the page, converted on its own as a one-page PDF by
+              parsers/ (issue 337), through the same converter; null where the parser failed. Only
+              parsers whose conversion is finished (common_opb.parsers_done)
 
 KUDOS's plain text goes in a <pre>, which the tool reads as plain text.
 """
@@ -15,7 +18,8 @@ import json
 import pymupdf
 from omni_parse_bench import markdown
 
-from common_opb import DATASET, RUNS, kudos_pages, marker_pages, pages, pdf_path, sample
+from common_opb import (DATASET, RUNS, kudos_pages, marker_pages, pages, parser_page, parsers_done, pdf_path,
+                        sample)
 
 
 def page_count(doc_num):
@@ -30,7 +34,8 @@ def plain(text):
 def main():
     docs = sample()
     in_dataset = {p.stem for p in (DATASET / "gold").glob("*.json")}
-    outputs = {"kudos": {}, "kudos-joined": {}, "marker": {}}
+    parsers = parsers_done()
+    outputs = {"kudos": {}, "kudos-joined": {}, "marker": {}, **{side: {} for side in parsers}}
     for p in pages():
         if p["page_id"] not in in_dataset:
             continue
@@ -44,6 +49,9 @@ def main():
         if len(mp) != n:
             raise SystemExit(f'{p["doc_num"]}: Marker has {len(mp)} pages, the PDF {n}')
         outputs["marker"][p["page_id"]] = markdown.to_html(mp[p["page"] - 1])
+        for side in parsers:
+            text = parser_page(side, p["page_id"])
+            outputs[side][p["page_id"]] = None if text is None else markdown.to_html(text)
     for side, preds in outputs.items():
         out = RUNS / side / "predictions"
         out.mkdir(parents=True, exist_ok=True)

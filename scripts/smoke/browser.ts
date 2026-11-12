@@ -22,6 +22,30 @@ const settle = 30_000;
 export const screenFile = (app: string, path: string) =>
   `${app}-${path.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'home'}`;
 
+export const publishedVersionOf = (values: string[]) =>
+  values
+    .filter((v) => /^\d+$/.test(v))
+    .sort((a, b) => Number(b) - Number(a))
+    .at(0);
+
+export const playgroundRun = (question: string) => async (page: Page) => {
+  const picker = page.locator('select[id$="-ver"]').first();
+  const published = publishedVersionOf(
+    await picker.locator('option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value)),
+  );
+  if (published) await picker.selectOption(published);
+  const form = page
+    .locator('form')
+    .filter({ has: page.locator('textarea') })
+    .last();
+  await form.locator('textarea').fill(question);
+  await form.getByRole('button', { name: 'Send' }).click();
+  await page
+    .waitForResponse((r) => r.url().includes('/playground/runs'), { timeout: 150_000 })
+    .catch(() => undefined);
+  await page.waitForTimeout(2_000);
+};
+
 export const sessionFor = (
   app: 'portal' | 'console',
   token: string,
@@ -158,18 +182,7 @@ export const openBrowser = async (target: BrowserTarget) => {
     }
   };
 
-  const runPlayground = (question: string) => async (page: Page) => {
-    const form = page
-      .locator('form')
-      .filter({ has: page.locator('textarea') })
-      .last();
-    await form.locator('textarea').fill(question);
-    await form.getByRole('button', { name: 'Send' }).click();
-    await page
-      .waitForResponse((r) => r.url().includes('/playground/runs'), { timeout: 150_000 })
-      .catch(() => undefined);
-    await page.waitForTimeout(2_000);
-  };
+  const runPlayground = playgroundRun;
 
   return { visit, runPlayground, close: () => browser.close() };
 };

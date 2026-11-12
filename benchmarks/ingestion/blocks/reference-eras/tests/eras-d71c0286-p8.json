@@ -1,0 +1,270 @@
+{
+ "tests": [
+  {
+   "id": "eras-d71c0286-p8-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Returnees so far this year by destination",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "161",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Poland",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "28",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "66",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Romania",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Expulsion",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "77",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "56",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "United Kingdom",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Refused stay or entry",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "1",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "91",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Germany",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Dublin",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "14",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "437",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Total",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Expulsion",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "1454",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "1454",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "118",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Returnees so far this year by destination",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Trinidad and Tobago",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "1454",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "By destination we mean the country the person is returned to",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d71c0286-p8-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "By destination we mean the country the person is returned to, not necessarily the person's country of origin (or country of nationality).",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
