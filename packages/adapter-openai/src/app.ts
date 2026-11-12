@@ -1254,12 +1254,12 @@ export const datasetOf = (d: ServiceDataset) => ({
   filters: d.filters.map((f) => ({ field: f.field, kinds: f.kinds, 'value-type': f.valueType })),
 });
 
-// The first frames in the order sent, up to the first that would pass either limit.
+// The first frames in order, until one would take the list past 200 frames or 64 KiB of JSON.
 const storedStepsOf = (sent: readonly StoredStep[]): StoredStep[] => {
   const kept: StoredStep[] = [];
-  let bytes = 0;
+  let bytes = 1;
   for (const step of sent.slice(0, maxStoredSteps)) {
-    bytes += Buffer.byteLength(JSON.stringify(step));
+    bytes += Buffer.byteLength(JSON.stringify(step)) + 1;
     if (bytes > maxStoredStepBytes) break;
     kept.push(step);
   }

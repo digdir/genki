@@ -614,8 +614,7 @@ describe('/v1 frontend contract: steps of a stored turn', () => {
     ).text();
     const steps = stored.get('conv-1')?.[1]?.steps ?? [];
     const sent = sentSteps(text);
-    const bytes = (frames: unknown[]) =>
-      frames.reduce<number>((sum, f) => sum + Buffer.byteLength(JSON.stringify(f)), 0);
+    const bytes = (frames: unknown[]) => Buffer.byteLength(JSON.stringify(frames));
 
     expect(steps.length).toBeGreaterThan(1);
     expect(steps).toEqual(sent.slice(0, steps.length));
