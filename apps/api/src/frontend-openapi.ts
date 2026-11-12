@@ -150,13 +150,31 @@ const ModelList = z
 
 const Source = z
   .object({
-    index: z.number().int().optional().describe('The N in `[N]` in the answer text.'),
+    index: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The N in `[N]` in the answer text. When the service cites excerpts, the lowest marker that cites this document; resolve `[N]` through `markers`.',
+      ),
     title: z.string(),
     url: z.string().optional().describe('Present only for an http or https link people can open.'),
     document_id: z.string().optional(),
     excerpts: z.array(
-      z.object({ chunk_id: z.string(), text: z.string(), position: z.number().int().optional() }),
+      z.object({
+        chunk_id: z.string(),
+        text: z.string(),
+        position: z.number().int().optional(),
+        markers: z
+          .array(z.string())
+          .optional()
+          .describe('When the service cites excerpts: the markers that cite this excerpt.'),
+      }),
     ),
+    markers: z
+      .array(z.string())
+      .optional()
+      .describe('When the service cites excerpts: the markers that cite this document.'),
   })
   .passthrough()
   .openapi('Source');
@@ -217,6 +235,12 @@ const ChatResponse = z
     conversation_id: z.string().optional(),
     citations: z.array(z.string()).optional(),
     sources: z.array(Source).optional(),
+    markers: z
+      .array(z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() }))
+      .optional()
+      .describe(
+        'Present only when the service cites excerpts: every marker in the answer, in order, with the one excerpt and the document it leads to. `marker` is written as in the text, without brackets (ADR 0052).',
+      ),
     attachments: z
       .array(Attachment)
       .optional()

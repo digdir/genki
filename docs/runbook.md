@@ -39,6 +39,8 @@ ContainerAppConsoleLogs
 
 **API down.** Check whether the API answers at all: `curl -i https://api.genki-test.digdir.cloud/health`. Then look at the revision and its replicas (`az containerapp revision list -n genai-test-api -g <resource group> -o table`) and at `ContainerAppSystemLogs` for `ProbeFailed`, `ContainerTerminated` or a failed revision. A `refusing to start` line in the console log names the missing setting. If the last deploy broke it, run the deploy workflow on the previous good commit. A failing certificate check means the managed certificate on the custom domain did not renew.
 
+**Smoke test failed.** After each deploy to genki-test the `smoke` workflow tests the API, the playground, timelines and the portal and console screens, runs in full the check groups the merged pull requests touch, and lets a model review the results. It opens or updates one issue labelled `smoke` with the failing checks, the model's findings and the pull requests since the last green run, marked as suspected. The genki run ids are in the run's job summary, and its `smoke-bundle` artifact holds the answers, timelines and screenshots. What each check means and how to rerun it is in [Smoke tests](smoke-tests.md).
+
 **API error rate.** Group the failures to find the route and the cause:
 
 ```kusto
@@ -52,7 +54,7 @@ ContainerAppHTTPLogs
 
 **Model provider failures.** The lines carry `model`, `code` and `tenant`. `rate_limited` means the deployment's quota (tokens per minute) is used up: see the deployment in Azure AI Foundry and the token alert below. `unavailable` means the provider did not answer or answered 5xx: check the Azure status page and the endpoint setting (`FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`). Services with a fallback model keep answering; others fail until the provider is back.
 
-Each 429 a model connection gets is logged as `model call throttled`, which no alert counts. It names the connection as `endpoint`, the deployment the request named as `model`, the wait the provider asked for as `retryAfterMs` and the `attempt`. Calls through the OpenAI and Anthropic SDKs are tried up to four times; the OpenAI SDK waits as the provider asks, up to 60 seconds, and uses its own backoff for a longer wait. A rerank call is not tried again, so its 429 fails at once. To see how hard a deployment is throttled:
+Each 429 a model connection gets is logged as `model call throttled`, which no alert counts. It names the connection as `endpoint`, the deployment the request named as `model`, the wait the provider asked for as `retryAfterMs` and the `attempt`. Calls through the OpenAI and Anthropic SDKs are tried up to four times; the OpenAI SDK waits as the provider asks, up to 60 seconds, and uses its own backoff for a longer wait. A rerank call is not tried again, so its 429 fails at once. Knowledge index and fill jobs are the exception: they embed without the SDK's retries, wait as long as the provider asks, and pause the worker's other jobs on the model meanwhile, for up to 20 minutes a try (ADR 0042). Their 429s are logged as `model call throttled` with `attempt` 1, since each wait is the job's own. A 429 or 5xx they retry is not logged as `model call failed`; a job that gives up logs it once, with its code. A throttled knowledge run gets slower, not failed documents; many `model call throttled` lines with a low `stored` in `knowledge run progress` mean the deployment's quota sets the pace. To see how hard a deployment is throttled:
 
 ```kusto
 ContainerAppConsoleLogs

@@ -1,0 +1,14 @@
+{"tests": [
+ {"id": "kudos-383128-p4-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"],
+  "args": {"content": {"text": "Norwegian Ministry of Trade, Industry and Fisheries", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-383128-p4-t02", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"],
+  "args": {"before": {"text": "Published by:", "max_diffs": 1}, "after": {"text": "Additional copies may be ordered from:", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-383128-p4-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"],
+  "args": {"content": {"text": "Telephone: + 47 22 24 00 00", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-383128-p4-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"],
+  "args": {"content": {"text": "www.government.no", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-383128-p4-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"],
+  "args": {"content": {"text": "Aibel, Framo, Hydro, Kongsberg Defence & Aerospace, and Lerøy Seafood", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-383128-p4-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"],
+  "args": {"content": {"text": "Print: Norwegian Government Security and Service Organisation 06/2024 – Impression 200", "max_diffs": 3}}, "settings": {}}
+]}

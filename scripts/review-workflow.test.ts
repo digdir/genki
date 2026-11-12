@@ -31,6 +31,9 @@ const workflow = parse(text) as {
       steps: {
         id?: string;
         name?: string;
+        if?: string;
+        'continue-on-error'?: boolean;
+        env?: Record<string, string>;
         uses?: string;
         run?: string;
         with?: Record<string, string>;
@@ -251,6 +254,41 @@ describe('one round per pull request', () => {
   it('never caps findings to hold some back for a later round', () => {
     expect(rules).not.toMatch(/at most (three|\d) Nits/);
     expect(rules).toContain('Report every finding in one review');
+  });
+});
+
+describe('the size note', () => {
+  const measure = review.steps.find((s) => s.id === 'size');
+  const post = review.steps.find((s) => s.name === 'Suggest splitting a large pull request');
+  const index = (s: unknown) => review.steps.indexOf(s as (typeof review.steps)[number]);
+
+  it('measures the pull request with a script from the base branch, before the model runs', () => {
+    expect(measure?.run).toContain('git show "$BASE:scripts/review-size.ts"');
+    expect(measure?.run).toContain('node "$RUNNER_TEMP/review/review-size.mts"');
+    expect(index(measure)).toBeLessThan(index(action()));
+    expect(index(post)).toBeLessThan(index(action()));
+  });
+
+  it('posts the note only for a large pull request outside the silent group', () => {
+    expect(post?.if).toBe(
+      "steps.arm.outputs.arm == 'treated' && steps.size.outputs.oversized == 'true'",
+    );
+  });
+
+  it('never fails the review when measuring or posting the note fails', () => {
+    expect(measure?.['continue-on-error']).toBe(true);
+    expect(post?.['continue-on-error']).toBe(true);
+  });
+
+  it('posts the note as a pull request comment, never as a review or a review thread', () => {
+    const script = readFileSync(join(import.meta.dirname, 'review-size.ts'), 'utf8');
+    expect(script).toContain('/issues/${pr}/comments');
+    expect(script).not.toMatch(/\/pulls\/[^`]*\/(reviews|comments)/);
+  });
+
+  it('records whether the pull request was large, next to the findings', () => {
+    const record = review.steps.find((s) => s.name === 'Record the run for the dashboard');
+    expect(record?.env?.OVERSIZED).toBe('${{ steps.size.outputs.oversized }}');
   });
 });
 

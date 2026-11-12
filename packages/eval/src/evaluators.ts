@@ -8,6 +8,9 @@ export interface EvalContext {
   modelFamily(model: string): string | undefined;
 }
 
+export const judgedAgainst = (model: { kind?: unknown }) =>
+  model.kind === undefined || model.kind === 'model';
+
 export interface Evaluator {
   id: string;
   version: string;

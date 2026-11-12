@@ -108,6 +108,36 @@ describe('an agent and the auto-filter', () => {
     expect(found.attribution?.autoFilter).toBeUndefined();
   });
 
+  it("an agent's hint names the indexed value when the query uses an owner's alias", async () => {
+    const agent = createAgentRetrieval({
+      knowledge: kudos().port,
+      config: {
+        ...config,
+        autoFilter: { aliases: { 'Direktoratet for økonomistyring': ['DFO'] } },
+      },
+      facetCache: new FacetCache(),
+    });
+
+    const found = await agent.search(['Hva sier DFO om tilsynet?'], {}, signal);
+
+    expect(found.attribution?.detections).toEqual([
+      {
+        kind: 'organisation',
+        field: 'orgs_long',
+        values: ['Direktoratet for økonomistyring'],
+        queries: ['Hva sier DFO om tilsynet?'],
+        use: 'hint',
+      },
+      {
+        kind: 'organisation',
+        field: 'orgs_short',
+        values: ['DFØ'],
+        queries: ['Hva sier DFO om tilsynet?'],
+        use: 'hint',
+      },
+    ]);
+  });
+
   it('an agent gets no hint on a field its search already filters', async () => {
     const agent = createAgentRetrieval({
       knowledge: kudos().port,

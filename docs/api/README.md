@@ -14,11 +14,11 @@ Both are open to everyone and need no credential.
 
 Send one of these with every call.
 
-| Caller                | Header                                                | Notes                                                                                                                                      |
-| --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| A person              | `Authorization: Bearer <Ansattporten access token>`   | Rights come from Altinn for each organisation (tenant). Add `GenAI-Acting-For: <org number>` to pick the organisation on `/v1` and `/api`. |
-| A system with a key   | `X-API-Key: <key>` (or `Authorization: Bearer <key>`) | Create keys in the portal or with `POST /tenants/{tenant}/api-keys`. A server serving end users adds `X-User-Id: <pseudonymous id>`.       |
-| A system with a token | `Authorization: Bearer <Maskinporten token>`          | Only when Maskinporten is configured and the client is registered with `POST /tenants/{tenant}/maskinporten-clients`.                      |
+| Caller                | Header                                                | Notes                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A person              | `Authorization: Bearer <Ansattporten access token>`   | Rights come from Altinn for each organisation (tenant). Add `GenAI-Acting-For: <org number>` to pick the organisation on `/v1` and `/api`.                                         |
+| A system with a key   | `X-API-Key: <key>` (or `Authorization: Bearer <key>`) | Create keys in the portal or with `POST /tenants/{tenant}/api-keys`. A server serving end users adds `X-User-Id: <pseudonymous id>`.                                               |
+| A system with a token | `Authorization: Bearer <Maskinporten token>`          | Only when Maskinporten is configured and the client is registered with `POST /tenants/{tenant}/maskinporten-clients`. It reaches the registered services, never the tenant routes. |
 
 **In local development** the API runs a mock Ansattporten. Get a token for a test person without the browser flow:
 
@@ -62,6 +62,14 @@ Every change is a platform task, and the audit log is the event log ([ADR 0010](
 A list answers an object with the items in `data`: `{ "data": [...] }`, sometimes with more members beside it (`total`, `next`). No route answers a bare JSON array.
 
 ## API changes
+
+### 2026-11-11: no ingest date as a publish date
+
+- A source without a known publish date has no `published_at` (`publishedAt` in the native and table shapes) on `/v1/chat/completions` and its table cells, in MCP `structuredContent` and in a step flow's document list. It used to carry the date the document was indexed. The field was already optional, so the shape is unchanged.
+
+### 2026-11-11: only operators change sharing
+
+- `POST /definitions` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:share-operator-only` when someone other than an operator changes `spec.availableTo` of a service, compared with its published version. A dry run of the import lists the same error with 422. The console route `PUT /operator/shared-services/{tenant}/{id}` is unchanged.
 
 ### 2026-11-10: connection settings and signing modules
 

@@ -20,6 +20,16 @@ export const problems = {
   tenantNotRegistered: 'The organisation is not registered on the platform',
   keyScope: 'The API key does not reach this route',
   keyScopeDetail: 'Tenant routes need a key with the admin scope.',
+  clientScope: 'The client does not reach this route',
+  clientScopeDetail:
+    'A Maskinporten client uses the services it is registered for. It holds no rights in the organisation.',
+  testRunnerScope: 'A test-runner key cannot do this',
+  testRunnerScopeDetail:
+    'A test-runner key reads in its own organisation, checks definitions, gives feedback, tries published services it reaches and smoke- services in the playground, and changes only definitions whose id starts with smoke-.',
+  testRunnerRefused: 'The key cannot get test-runner access',
+  testRunnerEnvironmentDetail:
+    'Test-runner access can only be given in a locked test environment (GENAI_LOCKDOWN=true and GENAI_ENV=test).',
+  testRunnerCreatorDetail: 'Only operators who log in with Entra ID can give test-runner access.',
   tenantNotRegisteredDetail: 'Organisation {tenant} has not been registered by Digdir.',
   modelsLocked:
     'The environment is locked: only registered clients and Entra ID logins may use models here',
@@ -79,6 +89,7 @@ export const problems = {
   reasonMinimum: 'The reason must have at least {minimum} characters.',
   version: 'version {version}',
   operatorsOnly: 'operators only',
+  testRunnerOnlySmoke: 'test-runner keys only change smoke- definitions',
   onlyOperatorsDoThis: 'only operators do this',
   invalidInputTitle: 'Invalid input',
   lowercaseDashes: 'lowercase letters, digits and dashes',
@@ -114,6 +125,9 @@ export const problems = {
   datasetInUseTitle: 'The dataset is in use',
   datasetRunOpenTitle: 'An ingestion of the dataset is running',
   datasetDeleting: 'A delete of the dataset is already going',
+  shareOperatorOnly:
+    'Only platform operators change who the service is shared with. Keep spec.availableTo as it is in the published version.',
+  shareOperatorOnlyTitle: 'Only operators change sharing',
   uploadRequestTooLarge:
     'The request is larger than {size} MB. Send the files in several requests.',
   status400: 'The request cannot be read',

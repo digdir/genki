@@ -1,0 +1,20 @@
+{"tests": [
+ {"id": "kudos-12278-p3-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "INNHOLD", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-12278-p3-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Nye utfordringer og muligheter for norske eksportbedrifter", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-12278-p3-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Tiltak for å legge til rette for verdiskapende norsk eksport", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-12278-p3-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Målrettet satsing på næringslivsprosjekter ved utenriksstasjonene", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-12278-p3-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Tilgang til kapital og kompetanse gjennom Invest In Norway", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-12278-p3-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Ny statusrapportering for grønn eksport og videreføring av arbeidet med grønn konkurransekraft", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-12278-p3-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Situasjonen i global handel", "max_diffs": 1}, "after": {"text": "Norsk eksport og de viktigste markedene", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-12278-p3-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Senket minimumskrav for garantister bak eksportfinansiering", "max_diffs": 2}, "after": {"text": "Sikre tilgang på kortsiktig kredittforsikring", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-12278-p3-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Enklere og mer fleksibel flyt av varer og tjenester", "max_diffs": 2}, "after": {"text": "Økt satsing på kunst- og kultureksport", "max_diffs": 2}}, "settings": {}}
+]}

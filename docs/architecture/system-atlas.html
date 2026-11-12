@@ -1524,6 +1524,16 @@
                 witness: { file: 'apps/workspace/src/App.tsx', imports: '@genai/i18n' },
               },
               {
+                to: 'ui-blocks',
+                label: 'Draws the approach above an answer',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/workspace/src/Conversation.tsx',
+                  imports: '@genai/ui-blocks',
+                },
+              },
+              {
                 to: 'adapter-openai',
                 label: 'Chat completions and model list',
                 kind: 'http',
@@ -1906,6 +1916,109 @@
               },
             ],
             keywords: 'schema forms json schema react renderer designsystemet',
+            schemas: [],
+          },
+          {
+            id: 'ui-blocks',
+            plane: 'consumers',
+            name: 'UI building blocks',
+            note: 'The components assistants are made from',
+            icon: 'chat',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/ui-blocks'],
+            summary:
+              "Shared React components for assistants, such as Approach, Sources and Filter, used by the workspace and later the builder's preview.",
+            description:
+              "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the builder's preview will draw the draft with the same components. Each component has a page in docs/components.",
+            responsibilities: [
+              'Draw the components assistants are made from with Designsystemet',
+              'Texts in bokmål and English',
+              'Accessible status and live updates while the assistant works',
+              "Pair an answer's footnotes with the excerpts they cite, both ways",
+              "Narrow the documents by the dataset's facets, and show the collection and its documents",
+              "Every token a block's stylesheet reads can be changed through its own CSS variable",
+            ],
+            files: [
+              'packages/ui-blocks/src/approach/Approach.tsx',
+              'packages/ui-blocks/src/sources/Sources.tsx',
+              'packages/ui-blocks/src/sources/pairing.ts',
+              'packages/ui-blocks/src/document-view/DocumentView.tsx',
+              'packages/ui-blocks/src/filter/Filter.tsx',
+              'packages/ui-blocks/src/corpus/Corpus.tsx',
+              'packages/ui-blocks/src/documents/Documents.tsx',
+              'packages/ui-blocks/src/i18n.ts',
+            ],
+            input: 'Steps, sources, footnotes, counts, facets, documents and state as props',
+            output: 'Rendered components and callbacks',
+            replaces: [],
+            edges: [
+              {
+                to: 'i18n',
+                label: 'Locale and translated labels',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-blocks/src/i18n.ts', imports: '@genai/i18n' },
+              },
+            ],
+            keywords:
+              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
+            schemas: [],
+          },
+          {
+            id: 'ui-assembly',
+            plane: 'consumers',
+            name: 'UI assembly',
+            note: 'Puts the UI blocks together from a layout',
+            icon: 'chat',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/ui-assembly'],
+            summary:
+              "Draws an assistant from a layout of UI blocks and wires them to a genki service, for the app builder's preview.",
+            description:
+              'A React package beside the UI blocks. It holds the state the blocks share and the events that change it, places each block of a layout in its zone of the shell, and calls genki through one interface, so the blocks themselves never fetch. It decides what happens when a block a partner needs is off, such as footnotes without the sources.',
+            responsibilities: [
+              'Draw any layout the block catalogue allows, live against a service',
+              'Keep the state the blocks share and link their events',
+              'Call genki for models, threads, facets and answers through one interface',
+            ],
+            files: [
+              'packages/ui-assembly/src/useAssistant.ts',
+              'packages/ui-assembly/src/Assistant.tsx',
+              'packages/ui-assembly/src/api.ts',
+              'packages/ui-assembly/src/i18n.ts',
+            ],
+            input: 'A layout, a service and a way to reach genki',
+            output: 'A rendered assistant',
+            replaces: [],
+            edges: [
+              {
+                to: 'ui-blocks',
+                label: 'The blocks, the catalogue and the layout rules',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/ui-assembly/src/useAssistant.ts',
+                  imports: '@genai/ui-blocks',
+                },
+              },
+              {
+                to: 'i18n',
+                label: "Its own words beside the blocks', in the reader's language",
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-assembly/src/i18n.ts', imports: '@genai/i18n' },
+              },
+              {
+                to: 'client',
+                label: 'Streams answers from the service',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-assembly/src/api.ts', imports: '@genai/client' },
+              },
+            ],
+            keywords: 'ui assembly app builder layout wiring assistant preview byggeklosser',
             schemas: [],
           },
           {
@@ -2584,6 +2697,7 @@
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
+              'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
@@ -4520,6 +4634,9 @@
                     },
                     evaluatorTemperature: { type: 'number', minimum: 0, maximum: 2 },
                     noToolCallRetry: { type: 'boolean' },
+                    noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
+                    instructionsInAnswer: { type: 'boolean' },
+                    citeBy: { type: 'string', enum: ['document', 'excerpt'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -5238,6 +5355,12 @@
                           exclusiveMinimum: 0,
                           maximum: 9007199254740991,
                         },
+                        aliases: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string' },
+                          additionalProperties: { type: 'array', items: { type: 'string' } },
+                        },
                         cacheTtlMs: {
                           default: 300000,
                           type: 'integer',
@@ -5542,8 +5665,10 @@
                 'Document records on the knowledge database':
                   "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
               },
+              "Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)",
             ],
             files: [
+              'packages/ingest/src/throttled-embedder.ts',
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
@@ -8802,6 +8927,7 @@
               'Embedding models from the model catalogue, by API id',
               'Dimension checks and batching',
               "Calls through the kernel gate, which applies the endpoint's egress guard",
+              "A 429's requested wait on the error (retryAfterMs), and the SDK's retries per opened embedder",
             ],
             files: [
               'packages/port-embedding/src/port.ts',
@@ -8940,10 +9066,16 @@
             summary:
               'Stores input and output files, with memory and filesystem implementations and folder watching.',
             description:
-              'Used by batch jobs and the worker; Azure Blob comes later behind the same port.',
-            responsibilities: ['Blob store interface', 'Folder watch for triggers', 'Zip export'],
+              "Used by batch jobs and the worker. Uploads are keyed by tenant; converters' native output has a store of its own, keyed by file sha256 with no tenant (ADR 0042), on a folder locally and on Azure Blob storage through providers-azure-blob.",
+            responsibilities: [
+              'Blob store interface',
+              'Native output store keyed by file sha256, converter, version and settings hash',
+              'Folder watch for triggers',
+              'Zip export',
+            ],
             files: [
               'packages/port-blob/src/port.ts',
+              'packages/port-blob/src/native-output.ts',
               'packages/port-blob/src/filesystem.ts',
               'packages/port-blob/src/watch.ts',
             ],
@@ -10137,6 +10269,41 @@
               },
             ],
             keywords: 'parquet hugging face open data file reader hyparquet',
+            schemas: [],
+          },
+          {
+            id: 'providers-azure-blob',
+            plane: 'providers',
+            name: 'Azure Blob conversions',
+            note: 'Blob container',
+            icon: 'source',
+            color: '#8fa8b3',
+            status: 'Provider',
+            packages: ['@genai/providers-azure-blob'],
+            summary: "Keeps converters' native output in the Blob container `conversions`.",
+            description:
+              "Implements the native output container of the Blob port on Azure Blob storage (ADR 0042), with the knowledge worker's managed identity through DefaultAzureCredential and never an account key or SAS token. Without `CONVERSIONS_BLOB_URL` the worker uses a folder under `DATA_DIR` instead. The container deletes an earlier version 30 days after it was written.",
+            responsibilities: [
+              'Write, read, list and delete blobs in the conversions container',
+              'Choose Azure or the local folder from the environment',
+            ],
+            files: ['packages/providers-azure-blob/src/container.ts'],
+            input: 'Conversion paths and bytes',
+            output: 'Stored native output',
+            replaces: [],
+            edges: [
+              {
+                to: 'port-blob',
+                label: 'Implements the native output container',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-azure-blob/src/container.ts',
+                  imports: '@genai/port-blob',
+                },
+              },
+            ],
+            keywords: 'azure blob storage conversions docling native output sha256',
             schemas: [],
           },
           {

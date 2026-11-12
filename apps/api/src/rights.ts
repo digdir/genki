@@ -1,7 +1,14 @@
 import type { Principal } from '@genai/contracts';
-import { PLATFORM_RIGHTS, platformRightsOf } from '@genai/identity';
+import {
+  carriesAltinnActions,
+  isTestRunnerKey,
+  PLATFORM_RIGHTS,
+  platformRightsOf,
+  rightsOnlyFromGrants,
+} from '@genai/identity';
 import type { Context } from 'hono';
 import { platformScope } from './config-store.js';
+import { testRunnerMayPerform } from './test-runner.js';
 
 export type Right =
   | 'use-services'
@@ -83,6 +90,10 @@ export const adminActionRights: Readonly<
 > = {
   'platform.service.publish': 'manage-services',
   'platform.service.lifecycle': 'manage-services',
+  'platform.service.environments.add': 'manage-services',
+  'platform.service.environments.remove': 'manage-services',
+  'platform.service.environments.promote': 'manage-services',
+  'platform.service.environments.rollback': 'manage-services',
   'platform.setting.set': 'manage-services',
   'platform.setting.pin': 'manage-services',
   'platform.tenant.import': 'manage-services',
@@ -222,14 +233,16 @@ export const actionRequirement = (action: string, input: ActionInput): ActionReq
   return typeof entry === 'function' ? entry(input) : entry;
 };
 
-export const carriesAltinnActions = (principal: Principal) =>
-  principal.authorizedFor?.some((entry) => entry.actions !== undefined) ?? false;
+export const rightsAreChecked = (principal: Principal) =>
+  carriesAltinnActions(principal) || rightsOnlyFromGrants(principal);
 
-const isOperator = (principal: Principal) =>
+export const isOperator = (principal: Principal) =>
   principal.kind === 'operator' || principal.actor?.kind === 'operator';
 
 export type ActionRefusal =
-  { kind: 'operator' } | { kind: 'right'; right: Right; problem: RightProblem };
+  | { kind: 'operator' }
+  | { kind: 'test-runner' }
+  | { kind: 'right'; right: Right; problem: RightProblem };
 
 export const refusedAction = (
   principal: Principal,
@@ -237,7 +250,9 @@ export const refusedAction = (
   tenant: string,
   input: ActionInput,
 ): ActionRefusal | undefined => {
-  if (isOperator(principal) || !carriesAltinnActions(principal)) return undefined;
+  if (isTestRunnerKey(principal))
+    return testRunnerMayPerform(action, input) ? undefined : { kind: 'test-runner' };
+  if (isOperator(principal) || !rightsAreChecked(principal)) return undefined;
   const requirement = actionRequirement(action, input);
   if (requirement === 'operator') return { kind: 'operator' };
   const held = rightsOf(principal, tenant);

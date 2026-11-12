@@ -10,7 +10,10 @@ coverage/
 
 apps/parity/reports/**/*-runs.jsonl
 .data/
+.venv/
+__pycache__/
 .claude/*
 !.claude/skills/
 CLAUDE.local.md
 .scratch/
+.scratchpad

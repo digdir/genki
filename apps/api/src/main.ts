@@ -39,6 +39,7 @@ import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
+import { evalSlotLimitsFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
@@ -564,6 +565,7 @@ const platform = await createPlatform({
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
+  evalSlots: evalSlotLimitsFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });

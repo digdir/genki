@@ -102,6 +102,24 @@ const ServiceDraft = z
   })
   .openapi('ServiceDraft');
 
+const ServiceDraftSummary = z
+  .object({
+    id: z.string(),
+    name: z.string().nullable().openapi({ description: 'null until the draft is named' }),
+    purpose: z.string(),
+    outputKind: z.string(),
+    latestVersion: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'The latest published version; null for a service never published' }),
+    revision: z.number().int(),
+    at: z.string(),
+    by: z.string().openapi({ description: 'Who saved the draft last' }),
+    byName: z.string().optional(),
+  })
+  .openapi('ServiceDraftSummary');
+
 const DraftConflict = z
   .object({ path: z.string(), published: z.unknown(), draft: z.unknown() })
   .openapi('DraftConflict');
@@ -189,15 +207,40 @@ const EvalRunSummary = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    environment: z
+      .string()
+      .optional()
+      .describe('The service environment the version was taken from, when no version was named'),
     split: z.enum(['locked', 'open']).optional(),
+    model: z
+      .string()
+      .optional()
+      .describe("The model the run answers with: the variant's own model, else the primary model"),
+    selected: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'The cases the run was limited to; such a run does not stand for the whole test set',
+      ),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
+    finished: z
+      .number()
+      .int()
+      .optional()
+      .describe('The cases done so far; passed, score and cost count only these'),
+    queuePlace: z
+      .number()
+      .int()
+      .optional()
+      .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),
+    interrupted: z.boolean().optional().describe('The platform restarted before the run was done'),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
   })
@@ -235,6 +278,28 @@ const Lifecycle = z
     at: z.string().optional(),
   })
   .openapi('ServiceLifecycle');
+
+const ServiceEnvironments = z
+  .object({
+    environments: z.array(
+      z.object({
+        name: z.string(),
+        version: z.number().int().nullable().describe('The version an unpinned call runs'),
+        followsPublishes: z
+          .boolean()
+          .describe('True when every publish moves the environment to the new version'),
+        previousVersion: z
+          .number()
+          .int()
+          .nullable()
+          .describe('Where a rollback without a version goes'),
+      }),
+    ),
+    latestVersion: z.number().int(),
+  })
+  .openapi('ServiceEnvironments');
+
+const environment = pathParam('environment', 'test');
 
 const RiskConfirmation = z
   .object({ riskClass: z.enum(['limited', 'high']), by: z.string(), at: z.string() })
@@ -793,7 +858,11 @@ const PlaygroundOptions = z
           z.object({
             version: z.number().int(),
             draft: z.boolean(),
-            inUse: z.boolean(),
+            inUse: z.boolean().describe('True for the version prod runs'),
+            environments: z
+              .array(z.string())
+              .optional()
+              .describe('The service environments that run this version'),
             setup: z.object({
               model: z.string(),
               datasets: z.array(z.string()),
@@ -969,6 +1038,17 @@ export const serviceRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'get',
+    path: '/tenants/{tenant}/service-drafts',
+    summary:
+      "The tenant's saved service drafts, newest first, including drafts of services that were never published. Any member",
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(z.object({ data: z.array(ServiceDraftSummary) }), 'Service drafts'),
+      ...tenantErrors,
+    },
+  }),
+  createRoute({
+    method: 'get',
     path: '/tenants/{tenant}/services/{id}/draft',
     summary:
       "The service's saved draft, or null when it has none. With rebase=clean a draft built on an older published version is rebased on read when that has no conflicts (audited, needs manage-services); otherwise the conflicts are returned for the person to choose. Any member",
@@ -1094,8 +1174,16 @@ export const serviceRoutes: RouteConfig[] = [
           version: z
             .union([z.literal('draft'), z.number().int()])
             .optional()
-            .openapi({ description: 'Defaults to the latest published version' }),
+            .openapi({ description: 'Defaults to the version the environment runs' }),
+          environment: z.string().optional().openapi({
+            description: 'Without a version: the environment whose version to run; prod by default',
+          }),
           split: z.enum(['locked', 'open']).optional(),
+          cases: z
+            .array(z.string())
+            .min(1)
+            .optional()
+            .openapi({ description: 'Run only these cases of the test set, by id' }),
           definition: record.optional().openapi({
             description: 'With version draft: run this definition instead of the saved draft',
           }),
@@ -1105,7 +1193,7 @@ export const serviceRoutes: RouteConfig[] = [
     },
     responses: {
       202: json(z.object({ id: z.string() }), 'Started'),
-      400: problem('Missing test set or invalid split'),
+      400: problem('Missing test set, invalid split, or a case the test set does not have'),
       ...tenantErrors,
       404: problem('No such test set or version'),
       409: problem('The test set has no cases'),
@@ -1188,6 +1276,86 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing reason or invalid state'),
       ...tenantErrors,
       404: problem('No such service'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/environments',
+    summary:
+      'The environments of the service and the version each one runs; prod alone, following every publish, until another is added. Needs use-services',
+    request: { params: z.object({ tenant, id: service }) },
+    responses: {
+      200: json(ServiceEnvironments, 'Environments'),
+      ...tenantErrors,
+      404: problem('No published service'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/environments',
+    summary:
+      'Add an environment that follows every publish; prod stays on the version it runs. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service }),
+      headers: changeReason,
+      body: body(z.object({ name: z.string().describe('Lowercase name such as test') })),
+    },
+    responses: {
+      201: audited(ServiceEnvironments, 'Added'),
+      400: problem('Missing reason, invalid name, prod, or too many environments'),
+      ...tenantErrors,
+      404: problem('No published service'),
+      409: problem('The environment exists'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}',
+    summary:
+      'Remove an environment other than prod. Removing the last one lets prod follow publishes again, so prod must run the latest version first. Needs manage-services; audited',
+    request: { params: z.object({ tenant, id: service, environment }), headers: changeReason },
+    responses: {
+      200: audited(ServiceEnvironments, 'Removed'),
+      400: problem('Missing reason, or prod'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
+      409: problem('prod does not run the latest version'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}/promote',
+    summary:
+      'Set the environment, usually prod, to the version another environment runs (test unless from says otherwise), without publishing. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service, environment }),
+      headers: changeReason,
+      body: body(z.object({ from: z.string().optional() })),
+    },
+    responses: {
+      200: audited(ServiceEnvironments, 'Promoted'),
+      400: problem('Missing reason, or promoting an environment to itself'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
+      409: problem('prod is the only environment'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/services/{id}/environments/{environment}/rollback',
+    summary:
+      'Set the environment to an earlier published version, or to the version it ran before its last change, without publishing. Needs manage-services; audited',
+    request: {
+      params: z.object({ tenant, id: service, environment }),
+      headers: changeReason,
+      body: body(z.object({ version: z.number().int().positive().optional() })),
+    },
+    responses: {
+      200: audited(ServiceEnvironments, 'Rolled back'),
+      400: problem('Missing reason, no such version, or nothing to roll back to'),
+      ...tenantErrors,
+      404: problem('No such service or environment'),
+      409: problem('prod is the only environment'),
     },
   }),
   createRoute({

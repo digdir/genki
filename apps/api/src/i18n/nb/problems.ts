@@ -19,6 +19,17 @@ export const problems = defineNamespace({
   tenantNotRegistered: 'Virksomheten er ikke registrert på plattformen',
   keyScope: 'API-nøkkelen gir ikke tilgang til denne ruten',
   keyScopeDetail: 'Ruter for virksomheter krever en nøkkel med admin-omfang.',
+  clientScope: 'Klienten har ikke tilgang til denne ruten',
+  clientScopeDetail:
+    'En Maskinporten-klient bruker tjenestene den er registrert for. Den har ingen rettigheter i virksomheten.',
+  testRunnerScope: 'En testkjørernøkkel kan ikke gjøre dette',
+  testRunnerScopeDetail:
+    'En testkjørernøkkel leser i egen virksomhet, sjekker definisjoner, gir tilbakemelding, prøver publiserte tjenester den når og smoke-tjenester i prøveområdet og endrer bare definisjoner som begynner med smoke-.',
+  testRunnerRefused: 'Nøkkelen kan ikke få testkjørertilgang',
+  testRunnerEnvironmentDetail:
+    'Testkjørertilgang kan bare gis i et låst testmiljø (GENAI_LOCKDOWN=true og GENAI_ENV=test).',
+  testRunnerCreatorDetail:
+    'Bare driftsoperatører som logger inn med Entra ID kan gi testkjørertilgang.',
   tenantNotRegisteredDetail: 'Virksomheten {tenant} er ikke registrert av Digdir.',
   modelsLocked:
     'Miljøet er låst: bare registrerte klienter og Entra ID-innlogging kan bruke modeller her',
@@ -78,6 +89,7 @@ export const problems = defineNamespace({
   reasonMinimum: 'Begrunnelsen må ha minst {minimum} tegn.',
   version: 'versjon {version}',
   operatorsOnly: 'bare operatører',
+  testRunnerOnlySmoke: 'testkjørernøkler endrer bare smoke-definisjoner',
   onlyOperatorsDoThis: 'bare operatører kan gjøre dette',
   invalidInputTitle: 'Ugyldig input',
   lowercaseDashes: 'små bokstaver, sifre og bindestrek',
@@ -113,6 +125,9 @@ export const problems = defineNamespace({
   datasetInUseTitle: 'Datasettet er i bruk',
   datasetRunOpenTitle: 'En innlesing av datasettet pågår',
   datasetDeleting: 'En sletting av datasettet pågår allerede',
+  shareOperatorOnly:
+    'Bare plattformoperatører endrer hvem tjenesten deles med. Behold spec.availableTo slik den er i publisert versjon.',
+  shareOperatorOnlyTitle: 'Bare operatører endrer deling',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',

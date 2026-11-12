@@ -540,6 +540,7 @@ describe('the playground', () => {
             version: 2,
             draft: false,
             inUse: true,
+            environments: ['prod'],
             setup: expect.objectContaining({ model: modelId }),
           },
           {
@@ -556,6 +557,31 @@ describe('the playground', () => {
     ]);
     expect(options.blocks.every((b) => typeof b.name === 'string')).toBe(true);
     expect(options.quota).toEqual({ usedPercent: 0, monthlyTokens: 50_000_000 });
+  });
+
+  it('marks the version prod runs as in use and names the environments of each version', async () => {
+    const { platform, app, call } = await boot();
+    await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');
+    const added = await app.request(`/tenants/${tenant}/services/svar/environments`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer kari',
+        'change-reason': 'Prøver bokmål på testerne',
+      },
+      body: JSON.stringify({ name: 'test' }),
+    });
+    expect(added.status).toBe(201);
+    await platform.definitions.publish(service('svar', 'Svar på bokmål.'), 'test', 'andre');
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const versions = options.services.find((s) => s.id === 'svar')?.versions ?? [];
+
+    expect(versions.map((v) => [v.version, v.inUse, v.environments])).toEqual([
+      [2, false, ['test']],
+      [1, true, ['prod']],
+    ]);
   });
 
   it('an uploaded file is stored in the tenant blob store and read by the run', async () => {

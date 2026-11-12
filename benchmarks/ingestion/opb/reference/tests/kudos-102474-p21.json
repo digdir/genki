@@ -1,0 +1,199 @@
+{
+ "tests": [
+  {
+   "id": "kudos-102474-p21-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "NÆRARE OMTALE AV STYRING OG KONTROLL",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Konsulentdelen av driftskostnader i driftsåret 2023 var på 0,3 %.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_review",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "noko som gjer det umogleg å nytte desentralisert arbeid",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Verksemda i Oslo er i stor grad knytt opp mot betening",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nasjonalbiblioteket hadde tre lærlingar i 2023.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "prosedyrar, revisjon av internkontrollar og medarbeidarundersøkingar",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Verksemda følger utviklinga tett for mellom anna",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "arbeidstid (heiltid, deltid og overtid)",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Data som kjem fram i slike kartleggingar, blir òg gått gjennom i forum for medråderett (IDF).",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Nasjonalbiblioteket planlegg to aktivitetar i samband med dei utvida krava",
+     "max_diffs": 3
+    },
+    "after": {
+     "text": "Vi arbeider med ein modell for å risikoanalysere",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "HMS/arbeidsmiljø",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p21-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det er lite uønskt gjennomtrekk, og den gjennomsnittlege pensjonsalderen er svært høg (over 68 år).",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

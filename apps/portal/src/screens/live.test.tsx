@@ -33,6 +33,7 @@ const emptyPlatform: typeof fetch = async (input) => {
         byModel: [],
       };
     if (/^\/tenants\/[^/]+\/services$/.test(path)) return { data: [] };
+    if (/^\/tenants\/[^/]+\/service-drafts$/.test(path)) return { data: [] };
     if (path.endsWith('/definitions')) return { data: [] };
     if (path.endsWith('/audit')) return { data: [] };
     if (path.endsWith('/access')) return { services: [], keys: [] };

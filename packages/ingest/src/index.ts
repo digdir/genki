@@ -23,3 +23,4 @@ export * from './prompts.js';
 export * from './sources.js';
 export * from './text.js';
 export * from './website.js';
+export * from './throttled-embedder.js';

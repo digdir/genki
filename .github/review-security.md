@@ -16,3 +16,11 @@ Check in particular:
 - Text from models, documents or users is never executed or used to build a query, path or command.
 
 Do not report denial of service, rate limits or generic hardening without a concrete path.
+
+## Invariants
+
+Check every path the change touches against these, not only the main route. A path that breaks one is Important under the REVIEW.md bullet it belongs to. Where a test holds the invariant, it is named; a change that weakens that test is a finding.
+
+- **Only operators change what a service is shared with.** Every path that can change who may use a service checks for an operator.
+- **A key or client gets only the rights it was granted, never every right by default.** A missing or empty grant means nothing, on every way a principal is made. Tests: `apps/api/src/api-consistency.test.ts`, "refuses every route of its own organisation to a Maskinporten client, which holds no right there", and `packages/identity/src/platform-rights.test.ts`, "gives an API key only the rights its scopes grant, in its own organisation".
+- **Every route that reads tenant data checks the tenant on that route, not only on a sibling route.** Tests: `apps/api/src/api-consistency.test.ts`, "answers 404, never 403, on every tenant route to someone who cannot reach the tenant", and `apps/api/src/routes/portal-routes.test.ts`, "reads a playground run by id like a service run, but not one from another tenant".

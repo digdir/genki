@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-85048-p39-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Kunnskapen om marin forsøpling og plastforurensing i havområdet er mangelfull.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-85048-p39-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Miljøtilstand og påvirkning i Nordsjøen og Skagerrak", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-85048-p39-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "mangler kunnskap om nivået og effekter.", "max_diffs": 1}, "after": {"text": "Miljøtilstand og påvirkning", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-85048-p39-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "kysten av Skagerrak og Nordsjøen. Havområdet er", "max_diffs": 2}, "after": {"text": "generelt mer forurenset enn de andre havområdene", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-85048-p39-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "3.3.1 Økologisk tilstand", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-85048-p39-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Klimaendringene påvirker de abiotiske delene av økosystemet betydelig, særlig gjennom økt temperatur.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-85048-p39-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "nob", "Latn"],
+  "args": {"content": {"text": "Sammendrag av vurdering av økologisk tilstand for hver av økosystemegenskapene i Nordsjøen og Skagerrak.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-85048-p39-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "er også tegn på at menneskelig påvirkning", "max_diffs": 1}, "after": {"text": "Sammendrag av vurdering av økologisk tilstand", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-85048-p39-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["caption", "eng", "Latn"],
+  "args": {"content": {"text": "Panel-based Assessment of Ecosystem Condition of the North Sea Shelf Ecosystem.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-85048-p39-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["figure", "nob", "Latn"],
+  "args": {"content": {"text": "Landskapsøkologiske mønstre", "max_diffs": 1}}, "settings": {}}
+]}

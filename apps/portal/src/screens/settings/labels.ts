@@ -35,6 +35,11 @@ export const settingLabels: Record<string, { label: string; cat: string; desc?: 
     desc: 'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   },
   'retrieval.autoFilter.rules': { label: 'Regler for automatisk filter', cat: 'Søk' },
+  'retrieval.autoFilter.aliases': {
+    label: 'Andre navn på verdier',
+    cat: 'Søk',
+    desc: 'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+  },
   'retrieval.docTitle.fanout': { label: 'Tekstbiter per titteltreff', cat: 'Søk' },
   'retrieval.merge.mode': { label: 'Måte å flette søkene på', cat: 'Søk' },
   'retrieval.merge.rrfK': { label: 'Utjevning ved fletting (RRF k)', cat: 'Søk' },
