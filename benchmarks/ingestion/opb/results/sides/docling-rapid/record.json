@@ -1,0 +1,59 @@
+{
+  "benchmark": "ingestion/opb",
+  "code": "3ec28323e6df42aeb433988815a2636307cf58a50d0d39d2ccfbc1b2310ed1b8",
+  "git": {
+    "commit": "8cf61bdfc6a6d80b2d466304589ed441fa3f700c",
+    "dirty": true
+  },
+  "items": "2b161ec8ed4ddf8eee20fce45a43d201b13102e7794ab1ba1fb2e03e54a46264",
+  "packages": {
+    "markdown-it-py": "4.2.0",
+    "omni-parse-bench": "0.2.0",
+    "pymupdf": "2.0"
+  },
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "2deebfd82fe47040d8fc141c0c96c75d9ea189a75e540b9c6073f4c535f0ef63",
+  "schema": 1,
+  "settings": {
+    "markdown_to_html": "omni_parse_bench.markdown.to_html",
+    "outputs": "html; no layout tests",
+    "scorer": "omni-parse-bench 0.2.0"
+  },
+  "side": "docling-rapid",
+  "side_settings": {
+    "conversions": "ef0aa0034a5e7bc5807cb0ce5051a4040c2b993e74cb3babc81f2800ff7c619e",
+    "converter_code": "8bf6cf4c9a0d2e6cc3a5bc64a637ad431be4136f26961e93324aae8206b197b0",
+    "docling_ibm_models": "4.0.4",
+    "failed_pages": [],
+    "machine": {
+      "chip": "Apple M3 Pro",
+      "machine": "arm64",
+      "python": "3.13.16",
+      "system": "Darwin"
+    },
+    "models": {
+      "layout": "docling-project/docling-layout-heron"
+    },
+    "ocr_engine": "Auto OCR model selected rapidocr with onnxruntime.",
+    "ocrmac_installed": false,
+    "onnxruntime": "1.31.1",
+    "pages": "each page converted on its own, as a one-page PDF",
+    "parser": "docling-rapid",
+    "rapidocr": "3.10.0",
+    "seconds_per_page": {
+      "median": 0.711,
+      "p90": 2.792,
+      "pages": 221
+    },
+    "settings": {
+      "do_ocr": true,
+      "ocr": "OcrAutoOptions",
+      "pipeline": "default PdfPipelineOptions",
+      "table_mode": "accurate"
+    },
+    "torch": "2.15.0",
+    "version": "2.146.0"
+  },
+  "time": "2026-11-11T11:41:39+00:00"
+}

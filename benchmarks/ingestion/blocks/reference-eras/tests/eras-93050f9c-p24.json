@@ -1,0 +1,579 @@
+{
+ "tests": [
+  {
+   "id": "eras-93050f9c-p24-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vedlegg 4: Verdiskaping ved aktiv forvaltning",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 1: Estimert avkastning for en passiv strategi",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "-0,05",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 15 år",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "-0,04",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "-0,02",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,06",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Inntekter fra verdipapirutlån",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 15 år",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,04",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Inntekter fra verdipapirutlån",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 5 år",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "-0,02",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Transaksjonskostnader ifm replikering av referanseindeksen",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 5 år",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "-0,03",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Forvaltningskostnader ved en passiv strategi",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 10 år",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "-0,03",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Beregningen antar at en passiv strategi oppnår en avkastning lik referanseindeksen.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Inntekter fra verdipapirutlån",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Tabell 2: Relativ avkastning etter kostnader",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,25",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Fondets relative avkastning før kostnader",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siden 01.01.1998",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t11",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,19",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Fondets relative avkastning før kostnader",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 5 år",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t12",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,07",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Forvaltningskostnader",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 15 år",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "0,03",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t13",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,16",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 10 år",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "0,06",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Forvaltningskostander inkluderer ikke kostnader relatert til unotert eiendom før 2017.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t15",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Fondets relative avkastning før kostnader",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Forvaltningskostander inkluderer ikke kostnader relatert til unotert eiendom",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t16",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 3: Sammenligning mellom fondets relative avkastning etter kostnader og estimert relativ avkastning for en passiv strategi",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t17",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,24",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Estimert verdiskaping ved aktiv forvaltning",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siden 01.01.1998",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t18",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,09",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Estimert verdiskaping ved aktiv forvaltning",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 15 år",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "-0,06",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t19",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,15",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 5 år",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "-0,02",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "0,14",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t20",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,14",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Estimert verdiskaping ved aktiv forvaltning",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 10 år",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t21",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,11",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Siste 10 år",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "-0,03",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t22",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "0,25",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t23",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "0,24",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-93050f9c-p24-t24",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Forvaltningskostander inkluderer ikke kostnader relatert til unotert eiendom",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Estimert verdiskaping ved aktiv forvaltning",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
