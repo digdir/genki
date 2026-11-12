@@ -48,10 +48,19 @@ export interface EvalStrategyDeps {
       sinkJudges?: unknown[];
     },
   ) => Map<string, Evaluator> | Promise<Map<string, Evaluator>>;
+  /**
+   * Case slots shared with the other runs on the instance. onQueue gets the run's place in line
+   * while it waits for a slot with no case running, and undefined once it has one.
+   */
+  slots?: (
+    tenant: string,
+    run: string,
+    onQueue: (place: number | undefined) => void,
+  ) => { perRun: number; acquire: () => Promise<() => void>; end: () => void };
 }
 
 export interface EvalNotice {
-  kind: 'eval.progress' | 'eval.waiting';
+  kind: 'eval.progress' | 'eval.waiting' | 'eval.queued';
   [key: string]: unknown;
 }
 
@@ -126,6 +135,9 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       notices.push(notice);
       wake?.();
     };
+    const slots = deps.slots?.(ctx.tenant, options.id ?? ctx.task, (place) =>
+      notify({ kind: 'eval.queued', ...(place === undefined ? {} : { place }) }),
+    );
     const running = runEval({
       ...(options.id ? { id: options.id } : {}),
       target,
@@ -138,10 +150,18 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       ...(deps.wait ? { wait: deps.wait } : {}),
       ...(deps.meterAnswers ? { meterAnswers: deps.meterAnswers } : {}),
       signal: ctx.signal,
-      onProgress: (done, total, usage) =>
-        notify({ kind: 'eval.progress', done, total, ...(usage ? { usage } : {}) }),
+      ...(slots ? { slots } : {}),
+      onProgress: (done, total, usage, results) =>
+        notify({
+          kind: 'eval.progress',
+          done,
+          total,
+          ...(usage ? { usage } : {}),
+          ...(results ? { results } : {}),
+        }),
       onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {
+      slots?.end();
       finished = true;
       wake?.();
     });

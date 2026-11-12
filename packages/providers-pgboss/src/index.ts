@@ -11,6 +11,7 @@ import {
   type JobReads,
   type JobTransaction,
   type QueueCounts,
+  type WorkOptions,
   type QueueDefinition,
   type ReadOptions,
   type RunJobs,
@@ -340,10 +341,19 @@ export class PgBossJobQueue implements JobQueue {
     });
   }
 
-  async work<T extends JobData>(queue: QueueDefinition<T>, handler: JobHandler<T>) {
+  async work<T extends JobData>(
+    queue: QueueDefinition<T>,
+    handler: JobHandler<T>,
+    options: WorkOptions = {},
+  ) {
     const id = await this.#boss.work<JobData>(
       queue.name,
-      { batchSize: 1, pollingIntervalSeconds: this.#pollingIntervalSeconds },
+      {
+        batchSize: 1,
+        pollingIntervalSeconds: this.#pollingIntervalSeconds,
+        // Each of these pollers takes one job, so the process works this many at once.
+        localConcurrency: options.concurrency ?? 1,
+      },
       async ([job]) => {
         if (!job) return;
         await handler({

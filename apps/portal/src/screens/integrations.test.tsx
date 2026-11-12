@@ -223,6 +223,42 @@ describe('Integrasjoner: Nøkler', () => {
     expect(screen.queryByLabelText('Den nye nøkkelen')).toBeNull();
   });
 
+  it('offers no test-runner choice when the API does not allow it here', async () => {
+    await renderAt('#/developer/keys');
+    await screen.findByRole('list', { name: 'API-nøkler' });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag API-nøkkel' }));
+    expect(screen.queryByLabelText('Testkjører for røyktester')).toBeNull();
+  });
+
+  it('creates a test-runner key when the API allows it and the box is ticked', async () => {
+    const { calls, fetch: recorded } = recording();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const res = await recorded(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.endsWith('/access') || (init?.method ?? 'GET') !== 'GET') return res;
+      const body = (await res.json()) as Record<string, unknown>;
+      return new Response(JSON.stringify({ ...body, testRunnerKeys: true }), {
+        status: res.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    await renderAt('#/developer/keys', fetch);
+    await screen.findByRole('list', { name: 'API-nøkler' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lag API-nøkkel' }));
+    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Røyktest' } });
+    fireEvent.click(screen.getByLabelText('Rapportassistenten'));
+    fireEvent.click(screen.getByLabelText('Testkjører for røyktester'));
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Røyktest etter utrulling' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lag nøkkel' }));
+
+    await screen.findByLabelText('Den nye nøkkelen');
+    const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/api-keys'));
+    expect(post?.body).toMatchObject({ name: 'Røyktest', testRunner: true, expiresInDays: 90 });
+  });
+
   it('asks for confirmation and a reason before revoking', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/developer/keys', fetch);

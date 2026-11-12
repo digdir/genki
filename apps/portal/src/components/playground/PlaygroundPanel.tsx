@@ -29,7 +29,8 @@ import type {
   PlaygroundStreamEvent,
   PlaygroundStreamProblem,
 } from '../../api/playground';
-import type { Problem } from '../../types';
+import type { Problem, Residency } from '../../types';
+import { describeProblem } from '../../screens/service/publish';
 import {
   decisionQuestion,
   evaluationQuestion,
@@ -174,6 +175,14 @@ const failedInService = (error: unknown): RunFailureInfo | undefined => {
 const modelDown = (error: unknown) =>
   !(error instanceof ApiError) || error.status >= 500 ? !failedInService(error) : false;
 
+const setupReason = (error: { path: string; message: string }, t: T) => {
+  const problem = { ...error, path: error.path.replace(/^(setup|compareWith)\./, '') };
+  const described = describeProblem(problem, t);
+  return described.message === problem.message
+    ? t('playground.setupNotRunnable', { section: described.section })
+    : described.message;
+};
+
 const errorText = (error: unknown, model: string, t: T) => {
   const notStored = t('playground.notStored');
   if (error instanceof ApiError && error.status === 400 && error.problem?.detail)
@@ -181,6 +190,13 @@ const errorText = (error: unknown, model: string, t: T) => {
   if (error instanceof ApiError && error.status === 403) {
     const policy = (error.problem as Partial<PlaygroundRefusal> | undefined)?.policy;
     return `${t('playground.refused', { model })}${policy ? ` ${policy.rule}` : ''} ${notStored}`;
+  }
+  if (error instanceof ApiError && error.status === 422 && error.problem) {
+    const first = error.problem.errors?.[0];
+    return t('playground.invalidSetup', {
+      reason: first && first.path !== 'input.file' ? setupReason(first, t) : error.problem.title,
+      notStored,
+    });
   }
   if (error instanceof ApiError && error.status === 429)
     return error.problem?.title ?? t('playground.quotaUsedUp', { notStored });
@@ -268,8 +284,16 @@ const fileInput = async (chosen: ChosenFile): Promise<PlaygroundInput> =>
       }
     : { file: { name: chosen.name, sample: true } };
 
-const otherModel = (options: PlaygroundOptions, current: string) =>
-  options.models.find((m) => m.status === 'allowed' && m.id !== current)?.id ?? current;
+const reach: Residency[] = ['norway', 'eu', 'global'];
+
+const otherModel = (options: PlaygroundOptions, current: string) => {
+  const at = options.models.find((m) => m.id === current)?.dataLocation;
+  const within = (place: Residency) => !at || reach.indexOf(place) <= reach.indexOf(at);
+  return (
+    options.models.find((m) => m.status === 'allowed' && m.id !== current && within(m.dataLocation))
+      ?.id ?? current
+  );
+};
 
 export const PlaygroundPanel = ({
   layout,

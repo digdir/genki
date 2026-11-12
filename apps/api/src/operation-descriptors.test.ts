@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
@@ -11,7 +14,7 @@ operation: classify
 status: ${overrides.status ?? 'review'}
 summary: A made-up classification API, uploaded by an operator.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01${overrides.extra ?? ''}
 request:
   method: POST
@@ -105,7 +108,7 @@ const boot = async (environmentTier?: 'test' | 'production') => {
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${server.url}/v1`,
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
@@ -131,7 +134,7 @@ const boot = async (environmentTier?: 'test' | 'production') => {
     booted.admin.classifyModel(
       people.drift as Principal,
       'lab/small',
-      { operations: ['chat', 'classify'] },
+      { apis: { chat: 'openai/chat-completions@1', classify: 'example/classify@1' } },
       reason,
     );
   const tryIt = () =>
@@ -244,11 +247,11 @@ describe('uploading operation descriptors', () => {
     expect(booted.server.seen).toHaveLength(1);
   });
 
-  it('an uploaded kind can be given to a model', async () => {
+  it('an uploaded API can be bound to a model for its kind', async () => {
     const booted = await boot();
     expect(await booted.offerClassify()).toMatchObject({
       ok: false,
-      errors: [{ path: 'operations', message: 'no descriptor defines the classify operation' }],
+      errors: [{ path: 'apis', message: 'classify: no API example/classify@1' }],
     });
     expect((await booted.put()).status).toBe(201);
     expect(await booted.offerClassify()).toMatchObject({
@@ -296,11 +299,18 @@ describe('uploading operation descriptors', () => {
     );
   });
 
-  it('an upload needs well-formed fixtures, at least one', async () => {
-    const { put } = await boot();
+  it('an upload may come without fixtures and stays in review until operation@1 passes on one', async () => {
+    const { put, setStatus } = await boot();
     const none = await put(upload(classifyYaml(), []));
-    expect(none.status).toBe(422);
-    expect((await errorsOf(none))[0]?.path).toBe('fixtures');
+    expect(none.status).toBe(201);
+    expect(await none.json()).toMatchObject({ status: 'review', fixtures: 0, contract: null });
+    const described = await setStatus('described');
+    expect(described.status).toBe(422);
+    expect((await errorsOf(described))[0]?.path).toBe('fixtures');
+  });
+
+  it('an upload needs well-formed fixtures', async () => {
+    const { put } = await boot();
     const malformed = await put(upload(classifyYaml(), [{ ...fixture(), usage: undefined }]));
     expect(malformed.status).toBe(422);
     expect((await errorsOf(malformed))[0]?.path).toBe('fixtures.0.usage');
@@ -336,14 +346,14 @@ describe('uploading operation descriptors', () => {
 
   it('an uploaded descriptor cannot replace a bundled one', async () => {
     const { send } = await boot();
-    const refused = await send('/operator/operation-descriptors/openai/embed@1', 'drift', {
+    const refused = await send('/operator/operation-descriptors/openai/embeddings@1', 'drift', {
       method: 'PUT',
       body: upload(),
       reason,
     });
     expect(refused.status).toBe(409);
     expect((await errorsOf(refused))[0]?.message).toContain('upload a new version instead');
-    const withdrawn = await send('/operator/operation-descriptors/openai/embed@1', 'drift', {
+    const withdrawn = await send('/operator/operation-descriptors/openai/embeddings@1', 'drift', {
       method: 'DELETE',
       reason,
     });
@@ -377,7 +387,7 @@ describe('uploading operation descriptors', () => {
     const listed = (await (await send('/operator/operation-descriptors', 'drift')).json()) as {
       data: { id: string }[];
     };
-    expect(listed.data.find((d) => d.id === 'openai/embed@1')).toMatchObject({
+    expect(listed.data.find((d) => d.id === 'openai/embeddings@1')).toMatchObject({
       source: 'bundled',
       status: 'typed',
       fixtures: 2,
@@ -458,5 +468,338 @@ describe('uploading operation descriptors', () => {
     expect((await booted.withdraw()).status).toBe(204);
     expect(await run(booted)).toContain('no descriptor example/classify@1');
     expect(booted.server.seen).toHaveLength(1);
+  });
+});
+
+describe('recording fixtures from tries', () => {
+  const fixtures = `${path}/fixtures`;
+  type Tried = { task: string; exchange: Record<string, unknown> };
+  const tryWith = async (booted: Booted, text: string) => {
+    const tried = await booted.send('/operator/operations/example/classify@1/try', 'drift', {
+      body: { model: 'lab/small', input: { text }, synthetic: true },
+      reason,
+    });
+    expect(tried.status).toBe(200);
+    return (await tried.json()) as Tried;
+  };
+  const record = (booted: Booted, body: unknown, id = path) =>
+    booted.send(`${id}/fixtures`, 'drift', { body, reason });
+  const ready = async () => {
+    const booted = await boot('test');
+    expect((await booted.put(upload(classifyYaml(), []))).status).toBe(201);
+    expect((await booted.offerClassify()).ok).toBe(true);
+    return booted;
+  };
+
+  it('a try answers the exchange it sent and received, with the input masked', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'Skriv til kari.nordmann@example.no');
+    expect(tried.exchange).toMatchObject({
+      deployment: 'small',
+      request: { method: 'POST', path: '/classifications', body: { model: 'small' } },
+      response: { status: 200, body: { label: 'billing' } },
+      result: { label: 'billing' },
+      usage: { inputTokens: 7, requests: 1 },
+      dropped: 0,
+    });
+    expect(JSON.stringify(tried.exchange)).not.toContain('kari.nordmann@example.no');
+  });
+
+  it('a synthetic try is recorded as a fixture of its upload in review, audited', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'Skriv til kari.nordmann@example.no');
+    const recorded = await record(booted, {
+      task: tried.task,
+      name: 'first-try',
+      exchange: tried.exchange,
+    });
+    expect(recorded.status).toBe(201);
+    expect(await recorded.json()).toMatchObject({
+      status: 'review',
+      fixtures: 1,
+      contract: { passed: true },
+      step: 'fixture-recorded',
+    });
+    const stored = (await (await booted.send(path, 'drift')).json()) as {
+      fixtureCases: { name: string; source: string; input: { text: string } }[];
+    };
+    expect(stored.fixtureCases[0]).toMatchObject({
+      name: 'first-try',
+      source: `recorded from the synthetic try ${tried.task}`,
+    });
+    expect(stored.fixtureCases[0]?.input.text).not.toContain('kari.nordmann@example.no');
+    expect((await booted.setStatus('described')).status).toBe(200);
+    const audited = (await booted.admin.audit()).find(
+      (a) => a.action === 'platform.operations.descriptor-fixture',
+    );
+    expect(audited).toMatchObject({
+      actor: 'operator:test:drift',
+      target: 'operation-descriptor:example/classify@1',
+      outcome: 'applied',
+      reason,
+    });
+  });
+
+  it('a recorded fixture keeps the connection settings the try read, so the contract can replay them', async () => {
+    const server = await fakeHttp(() => ({
+      status: 200,
+      json: { label: 'billing', usage: { input_tokens: 7 } },
+    }));
+    servers.push(server);
+    const booted = await bootPlatform({
+      people,
+      environmentTier: 'test',
+      models: {
+        endpoints: {
+          lab: {
+            families: { openai: '' },
+            baseURL: `${server.url}/v1`,
+            auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
+            settings: { keyId: 'AKID-7' },
+          },
+        },
+        models: [
+          {
+            id: 'lab/small',
+            endpoint: 'lab',
+            deployment: 'small',
+            residency: 'norway',
+            capabilities: ['json-schema'],
+          },
+        ],
+      },
+    });
+    const yaml = classifyYaml()
+      .replace(
+        '  path: /classifications\n',
+        '  path: /classifications\n  headers:\n    x-key-id: $connection.keyId\n',
+      )
+      .replace(
+        'wire:\n  request:',
+        'wire:\n  headers:\n    object:\n      x-key-id: plain\n  request:',
+      );
+    expect(
+      (await booted.send(path, 'drift', { method: 'PUT', body: upload(yaml, []), reason })).status,
+    ).toBe(201);
+    expect(
+      (
+        await booted.admin.classifyModel(
+          people.drift as Principal,
+          'lab/small',
+          { apis: { chat: 'openai/chat-completions@1', classify: 'example/classify@1' } },
+          reason,
+        )
+      ).ok,
+    ).toBe(true);
+    const tried = await tryWith(booted as Booted, 'hei');
+    expect(tried.exchange).toMatchObject({ settings: { keyId: 'AKID-7' } });
+    const recorded = await record(booted as Booted, {
+      task: tried.task,
+      name: 'with-settings',
+      exchange: tried.exchange,
+    });
+    expect(recorded.status).toBe(201);
+    expect(await recorded.json()).toMatchObject({ contract: { passed: true } });
+    const stored = (await (await booted.send(path, 'drift')).json()) as {
+      fixtureCases: { settings?: Record<string, string> }[];
+    };
+    expect(stored.fixtureCases[0]?.settings).toEqual({ keyId: 'AKID-7' });
+  });
+
+  it('a fixture is recorded only with the exchange the try answered', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'hei');
+    const changed = { ...tried.exchange, result: { label: 'complaint' } };
+    const refused = await record(booted, { task: tried.task, name: 'edited', exchange: changed });
+    expect(refused.status).toBe(422);
+    expect((await errorsOf(refused))[0]?.path).toBe('exchange');
+    const notATry = await record(booted, {
+      task: 'no-such-task',
+      name: 'edited',
+      exchange: tried.exchange,
+    });
+    expect(notATry.status).toBe(422);
+    expect((await errorsOf(notATry))[0]?.path).toBe('task');
+  });
+
+  it('a fixture name is used once per descriptor', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'hei');
+    const body = { task: tried.task, name: 'same', exchange: tried.exchange };
+    expect((await record(booted, body)).status).toBe(201);
+    const again = await record(booted, body);
+    expect(again.status).toBe(422);
+    expect((await errorsOf(again))[0]?.path).toBe('name');
+  });
+
+  it('fixtures are recorded only in test', async () => {
+    const booted = await boot('production');
+    expect((await booted.put()).status).toBe(201);
+    const refused = await booted.send(fixtures, 'drift', {
+      body: { task: 't', name: 'x', exchange: {} },
+      reason,
+    });
+    expect(refused.status).toBe(403);
+    expect((await errorsOf(refused))[0]?.path).toBe('environment');
+  });
+
+  it('a bundled descriptor or a described upload takes no recorded fixture', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'hei');
+    const body = { task: tried.task, name: 'late', exchange: tried.exchange };
+    expect(
+      (await record(booted, body, '/operator/operation-descriptors/openai/embeddings@1')).status,
+    ).toBe(409);
+    expect((await record(booted, { ...body, name: 'first' })).status).toBe(201);
+    expect((await booted.setStatus('described')).status).toBe(200);
+    expect((await record(booted, body)).status).toBe(409);
+  });
+});
+
+describe('who uses a descriptor', () => {
+  it("a descriptor's detail names the published services whose steps call it", async () => {
+    const booted = await boot();
+    expect((await booted.put()).status).toBe(201);
+    expect(await (await booted.send(path, 'drift')).json()).toMatchObject({ usedBy: [] });
+    expect((await booted.setStatus('described')).status).toBe(200);
+    expect((await booted.offerClassify()).ok).toBe(true);
+    const published = await publishService(booted);
+    expect(published.ok ? [] : published.errors).toEqual([]);
+    const detail = (await (await booted.send(path, 'drift')).json()) as {
+      usedBy: unknown[];
+      input: unknown;
+    };
+    expect(detail.usedBy).toEqual([{ tenant: digdir, service: 'sortering', version: 1 }]);
+    expect(detail.input).toEqual({ kind: 'object', fields: { text: { kind: 'text' } } });
+  });
+
+  it('the operation kinds name the API family each descriptor speaks', async () => {
+    const booted = await boot();
+    expect((await booted.put()).status).toBe(201);
+    const kinds = (await (await booted.send('/operator/operation-kinds', 'drift')).json()) as {
+      data: { kind: string; descriptors: unknown[] }[];
+    };
+    expect(kinds.data.find((k) => k.kind === 'classify')?.descriptors).toEqual([
+      { id: 'example/classify@1', status: 'review', family: 'openai' },
+    ]);
+  });
+});
+
+describe('modules in an upload (D)', () => {
+  const wasm = new Uint8Array(
+    readFileSync(
+      join(
+        import.meta.dirname,
+        '../../../packages/operations/src/testdata/modules/hmac-signer.wasm',
+      ),
+    ),
+  );
+  const pin = createHash('sha256').update(wasm).digest('hex');
+  const at = '2026-11-06T10:00:00.000Z';
+  const signed = (sha = pin) => `
+id: example/classify@1
+operation: classify
+status: review
+summary: A made-up classification API that wants every request signed.
+api: { family: openai, version: '2026-10-01' }
+modules:
+  signer: { sha256: ${sha}, keys: [connection] }
+input: { object: { text: text } }
+output: { object: { label: plain } }
+result: { label: $response.label }
+steps:
+  - name: classify
+    request: { method: POST, path: /classifications, body: { model: $deployment, text: $input.text } }
+    module:
+      use: signer
+      emits:
+        sig: { ref: '^[0-9a-f]{64}$' }
+        ts: { ref: '^[0-9]{10}$' }
+      headers: { x-signature: sig, x-timestamp: ts }
+    wire:
+      request: { object: { model: plain, text: text } }
+      response: { object: { label: plain } }
+    usage: { requests: 1 }
+`;
+  const signedFixture = {
+    name: 'signed',
+    source: 'hand-made for the upload test; not a recording',
+    deployment: 'small',
+    at,
+    input: { text: 'Hei' },
+    request: {
+      method: 'POST',
+      path: '/classifications',
+      body: { model: 'small', text: 'Hei' },
+    },
+    response: { status: 200, body: { label: 'billing' } },
+    result: { label: 'billing' },
+    usage: { requests: 1 },
+  };
+  const withModule = (
+    extra: Record<string, string> = { signer: Buffer.from(wasm).toString('base64') },
+  ) => ({
+    descriptor: signed(),
+    fixtures: [signedFixture],
+    modules: extra,
+  });
+
+  it('a module is uploaded with its descriptor, held to its pin, and proven by a fixture that signs', async () => {
+    const { put } = await boot();
+    const uploaded = await put(withModule());
+    expect(uploaded.status).toBe(201);
+    expect(await uploaded.json()).toMatchObject({
+      modules: [{ name: 'signer', sha256: pin }],
+      contract: { passed: true },
+    });
+  });
+
+  it('an upload whose module returns a value outside what the descriptor pins fails operation@1', async () => {
+    const { put } = await boot();
+    const refused = await put({
+      ...withModule(),
+      descriptor: signed().replace('^[0-9]{10}$', '^[a-z]{10}$'),
+    });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('outside its wire shape');
+  });
+
+  it('an upload whose module bytes do not match the pin is refused', async () => {
+    const { put } = await boot();
+    const refused = await put({ ...withModule(), descriptor: signed('a'.repeat(64)) });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('do not match the pinned SHA-256');
+  });
+
+  it('an upload that pins a module without sending it is refused', async () => {
+    const { put } = await boot();
+    const refused = await put(withModule({}));
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('is pinned but not uploaded');
+  });
+
+  it('an upload that sends a module the descriptor does not declare is refused', async () => {
+    const { put } = await boot();
+    const refused = await put(
+      withModule({ signer: Buffer.from(wasm).toString('base64'), extra: 'AAAA' }),
+    );
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(await refused.json())).toContain('declares no module extra');
+  });
+
+  it('an upload of a module over the size cap is refused', async () => {
+    const { put } = await boot();
+    const refused = await put(withModule({ signer: Buffer.alloc(200 * 1024).toString('base64') }));
+    expect(refused.status).toBe(422);
+  });
+
+  it('an upload with a module is audited like any upload, by who and why', async () => {
+    const { put, admin } = await boot();
+    await put(withModule());
+    const entries = (await admin.audit()).filter(
+      (a) => a.action === 'platform.operations.descriptor-upload',
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ outcome: 'applied', actor: 'operator:test:drift' });
   });
 });

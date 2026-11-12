@@ -17,7 +17,7 @@ const people: Record<string, Principal> = {
 
 const endpoint = {
   id: 'sigma2',
-  protocol: 'openai-chat',
+  families: { openai: '' },
   baseURL: 'https://llm.sigma2.test/v1',
   auth: { kind: 'bearer', secret: 'secret://platform/sigma2-key' },
 };
@@ -68,7 +68,7 @@ describe('platform models for operators', () => {
     });
     expect(listed.data.find((e) => e.spec.baseURL === endpoint.baseURL)).toMatchObject({
       scope: 'platform',
-      spec: { protocol: 'openai-chat', auth: { secret: 'secret://platform/sigma2-key' } },
+      spec: { families: { openai: '' }, auth: { secret: 'secret://platform/sigma2-key' } },
     });
     expect(visible.data.map((m) => m.id)).not.toContain('sigma2/norallm-7b');
   });
@@ -154,6 +154,109 @@ describe('platform models for operators', () => {
       services: [{ service: 'veileder', tenant: digdir, tenantName: digdir }],
     });
     expect(fake.status).toBe(204);
+  });
+
+  it('a connection is edited in place, keeping its discovery rules when the edit names none', async () => {
+    const { send, platform } = await boot();
+    await send('/operator/model-endpoints', 'drift', {
+      body: {
+        ...endpoint,
+        discovery: [{ source: 'azure-deployments', apis: { chat: 'openai/chat-completions@1' } }],
+      },
+      reason,
+    });
+
+    const edited = await send('/operator/model-endpoints/sigma2', 'drift', {
+      method: 'PUT',
+      body: {
+        baseURL: 'https://llm.sigma2.test',
+        families: { openai: '/v1', anthropic: '/anthropic' },
+        auth: endpoint.auth,
+      },
+      reason,
+    });
+    const unknownFamily = await send('/operator/model-endpoints/sigma2', 'drift', {
+      method: 'PUT',
+      body: { ...endpoint, families: { 'no-such-family': '' } },
+      reason,
+    });
+    const missing = await send('/operator/model-endpoints/nowhere', 'drift', {
+      method: 'PUT',
+      body: endpoint,
+      reason,
+    });
+
+    expect(edited.status).toBe(200);
+    expect(platform.catalog.get('model-endpoint', 'sigma2')?.spec).toMatchObject({
+      baseURL: 'https://llm.sigma2.test',
+      families: { openai: '/v1', anthropic: '/anthropic' },
+      discovery: [{ source: 'azure-deployments' }],
+    });
+    expect(unknownFamily.status).toBe(400);
+    expect(missing.status).toBe(404);
+  });
+
+  it('lists every API a model can bind, with the models bound to it', async () => {
+    const { send } = await boot();
+
+    const listed = await json<{
+      data: { id: string; kind: string; family: string; source: string; models: string[] }[];
+    }>(await send('/operator/apis', 'drift'));
+
+    expect(listed.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'openai/chat-completions@1',
+          kind: 'chat',
+          family: 'openai',
+          source: 'built-in',
+        }),
+        expect.objectContaining({ id: 'anthropic/messages@1', kind: 'chat', family: 'anthropic' }),
+      ]),
+    );
+    expect((await send('/operator/apis', 'kari')).status).toBe(403);
+  });
+
+  it('an API lists the units its usage mapping names', async () => {
+    const { send } = await boot();
+
+    const listed = await json<{ data: { id: string; units: string[] }[] }>(
+      await send('/operator/apis', 'drift'),
+    );
+
+    expect(listed.data.find((a) => a.id === 'openai/chat-completions@1')?.units).toEqual(
+      expect.arrayContaining(['input-token', 'output-token']),
+    );
+  });
+
+  it('a price is set per kind and unit, and the per-1000 view follows from it', async () => {
+    const { send, platform } = await boot();
+
+    const priced = await send('/operator/models/fake/gpt/price', 'drift', {
+      method: 'PUT',
+      body: { chat: { 'input-token': 0.00001, 'output-token': 0.00004 } },
+      reason: 'Ny avtale med leverandøren',
+    });
+
+    expect(priced.status).toBe(200);
+    expect(await priced.json()).toMatchObject({
+      prices: { chat: { 'input-token': 0.00001, 'output-token': 0.00004 } },
+      inputPerThousand: 0.01,
+      outputPerThousand: 0.04,
+    });
+    expect(platform.prices['fake/gpt']).toEqual({
+      inputPerThousand: 0.01,
+      outputPerThousand: 0.04,
+    });
+    expect(
+      (
+        await send('/operator/models/fake/gpt/price', 'drift', {
+          method: 'PUT',
+          body: { chat: { input_tokens: 0.1 } },
+          reason,
+        })
+      ).status,
+    ).toBe(400);
   });
 
   it('a price override shows in /models and in the prices usage cost reads', async () => {

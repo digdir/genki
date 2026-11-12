@@ -18,7 +18,7 @@ const slug = z
 export const versionedRef = z
   .string()
   .regex(
-    /^[a-z0-9][a-z0-9.-]*@\d+(\.\d+)*$/,
+    /^[a-z0-9][a-z0-9._-]*@\d+(\.\d+)*$/,
     'must be a versioned reference, like digdir.klarsprak@2.3',
   );
 const publicName = z
@@ -41,6 +41,21 @@ const strategyRef = z.strictObject({
   config: z.unknown(),
 });
 
+/** A fixed retrieval filter, in the same shape as the `filters` a caller sends with a question. */
+export const retrievalFilter = z.strictObject({
+  fields: z
+    .array(
+      z.strictObject({
+        field: z.string().min(1),
+        type: z.enum(['multiselect', 'contains', 'not-in-set']).optional(),
+        'value-type': z.enum(['string', 'integer']).optional(),
+        'selected-options': z.array(z.union([z.string().min(1), z.number()])).min(1),
+      }),
+    )
+    .min(1),
+});
+export type RetrievalFilter = z.infer<typeof retrievalFilter>;
+
 const variant = z.union([
   slug,
   z.strictObject({
@@ -54,6 +69,7 @@ const variant = z.union([
     chat: z.boolean().optional(),
     aliases: z.array(alias).default([]),
     overrides: z.record(z.string(), z.unknown()).default({}),
+    filters: retrievalFilter.optional(),
   }),
 ]);
 
@@ -107,6 +123,19 @@ export const serviceSpec = z.strictObject({
       at: z.string().min(1).optional(),
       reasons: z.array(z.string()).default([]),
       riskClass: z.enum(['minimal', 'limited', 'high']).optional(),
+      unmaskedInput: z
+        .array(
+          z.strictObject({
+            mediaType: z
+              .string()
+              .regex(
+                /^[a-z0-9][a-z0-9!#$&^_.+-]*\/(?:\*|[a-z0-9][a-z0-9!#$&^_.+-]*)$/,
+                'must be a media type such as audio/wav or audio/*',
+              ),
+            reason: z.string().trim().min(10, 'say why this input may leave unmasked'),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   variants: z.array(variant).min(1).default(['default']),

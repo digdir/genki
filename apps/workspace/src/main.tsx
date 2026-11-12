@@ -1,5 +1,6 @@
 import '@digdir/designsystemet-css';
 import '@digdir/designsystemet-theme/digdir.css';
+import '@genai/ui-blocks/styles.css';
 import './app.css';
 import { resolveLocale } from '@genai/i18n';
 import { StrictMode } from 'react';

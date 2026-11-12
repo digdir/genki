@@ -1,6 +1,7 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   knowledgeSourceRefusal,
+  kudosNarrowing,
   pipelineSpec,
   type PipelineSpec,
   type SkipReason,
@@ -11,6 +12,7 @@ import { nextRun, parseCron } from '@genai/jobs';
 import { z } from 'zod';
 import {
   appendVersion,
+  platformScope,
   serialized,
   VersionConflict,
   type ConfigEntry,
@@ -67,6 +69,8 @@ export interface IngestionReport {
   changed?: number;
   deleted?: number;
   unchanged?: number;
+  /** Set when the build that attaches the run's standalone generation went as a `knowledge.build` job. */
+  buildSent?: number;
   generation?: string;
   promoted?: boolean;
   previous?: string;
@@ -181,6 +185,9 @@ export interface Execution {
   /** When the API admitted the run; only the API sets it (ADR 0042, "Jobs"). */
   admittedAt?: string;
   cancelRequestedAt?: string;
+  /** The generation a run of an engine switch writes into, and that switch (ADR 0025). */
+  generation?: string;
+  engineSwitch?: string;
 }
 
 export type JobRunResult =
@@ -200,6 +207,8 @@ export interface JobRunStore {
     startedBy: string;
     startedAt: string;
     admittedAt: string;
+    generation?: string;
+    engineSwitch?: string;
   }): Promise<JobRunResult>;
   cancel(input: {
     dataset: string;
@@ -221,6 +230,8 @@ export interface JobRuns {
   /** The datasets whose runs are jobs; #139 sets it to the datasets on `connection: knowledge`. */
   runsAsJobs(dataset: string): boolean;
   runs: JobRunStore;
+  /** Sends a `knowledge.drop` job for one generation on the knowledge server (ADR 0025). */
+  drop?(input: { tenant: string; dataset: string; generation: string }): Promise<void>;
 }
 
 export interface ExecutionStore {
@@ -291,6 +302,7 @@ export type PipelineResult =
 
 const kind = 'ingestion-pipeline';
 const scheduleKind = 'ingestion-schedule';
+const deleteHoldKind = 'dataset-delete';
 const scheduleActor = 'platform:ingestion-schedule';
 
 const toPipeline = (entry: ConfigEntry<unknown>): Pipeline => {
@@ -313,6 +325,12 @@ export const runLockedMessage = (dataset: string, execution: string) =>
   `the dataset ${dataset} is already being ingested by run ${execution}; wait for it to finish or cancel it`;
 
 export const staleRunMessage = 'the platform restarted while the run was going';
+
+export const switchHoldMessage = (dataset: string, engineSwitch: string) =>
+  `the dataset ${dataset} is being switched to another search engine (${engineSwitch}); its pipelines run again once the switch is ready, active or ended`;
+
+export const deleteHoldMessage = (dataset: string) =>
+  `the dataset ${dataset} is being deleted; its pipelines do not run`;
 
 const runHeartbeatMs = 30_000;
 
@@ -339,6 +357,7 @@ export class IngestionService {
   readonly #serial = serialized();
   readonly #finished = new Set<(execution: Execution) => void>();
   readonly #running = new Map<string, RunningExecution>();
+  #held: (dataset: string) => Promise<string | undefined> = async () => undefined;
 
   constructor(
     private readonly options: {
@@ -353,6 +372,99 @@ export class IngestionService {
       onError?: (message: string) => void;
     },
   ) {}
+
+  /** An open engine switch holds every pipeline of its dataset while its own runs are open (ADR 0042). */
+  holdWith(held: (dataset: string) => Promise<string | undefined>) {
+    this.#held = held;
+  }
+
+  /** Records a delete in progress where every replica sees it; new runs are refused until it is released or stale. */
+  async hold(
+    dataset: string,
+    by: string,
+    reason: string,
+  ): Promise<(() => Promise<void>) | undefined> {
+    if (await this.#deleting(dataset)) return undefined;
+    let chain: Promise<unknown> = Promise.resolve();
+    const write = (deleted: boolean) =>
+      (chain = chain.then(() =>
+        appendVersion(this.options.store, {
+          kind: deleteHoldKind,
+          scope: platformScope,
+          id: dataset,
+          spec: { dataset },
+          deleted,
+          by,
+          reason,
+          at: this.#now(),
+        }),
+      ));
+    await write(false);
+    const beat = setInterval(() => void write(false).catch(() => undefined), runHeartbeatMs);
+    beat.unref?.();
+    return async () => {
+      clearInterval(beat);
+      await write(true);
+    };
+  }
+
+  async #deleting(dataset: string) {
+    const entry = (await this.options.store.history(deleteHoldKind, platformScope, dataset)).at(-1);
+    return (
+      entry !== undefined &&
+      !entry.deleted &&
+      Date.parse(entry.at) > Date.parse(this.#now()) - staleRunAfterMs
+    );
+  }
+
+  /**
+   * Starts a run of an engine switch: as jobs, into the switch's generation, admitted here like any
+   * run and never held by the switch itself (ADR 0025).
+   */
+  async startSwitchRun(input: {
+    pipeline: Pipeline;
+    generation: string;
+    engineSwitch: string;
+    by: string;
+    principal?: Principal;
+  }): Promise<JobRunResult> {
+    // A switch's runs are admitted like any run: in lockdown only a configured key starts them.
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; a run of engine switch ${input.engineSwitch} by ${input.by} did not start`,
+      );
+      return { ok: false, message: ingestionLockedMessage };
+    }
+    if (await this.#deleting(input.pipeline.dataset))
+      return { ok: false, message: deleteHoldMessage(input.pipeline.dataset) };
+    const jobs = this.options.jobs;
+    if (!jobs) return { ok: false, message: 'runs on the knowledge database need the job queue' };
+    const now = this.#now();
+    return jobs.runs.start({
+      id: this.options.newId?.() ?? crypto.randomUUID(),
+      dataset: input.pipeline.dataset,
+      pipeline: input.pipeline.id,
+      pipelineVersion: input.pipeline.version,
+      backend: 'knowledge-jobs',
+      startedBy: input.by,
+      startedAt: now,
+      admittedAt: now,
+      generation: input.generation,
+      engineSwitch: input.engineSwitch,
+    });
+  }
+
+  /** Sends the `knowledge.drop` job that removes one generation from the knowledge server. */
+  async dropGeneration(input: { tenant: string; dataset: string; generation: string }) {
+    const drop = this.options.jobs?.drop;
+    if (!drop)
+      throw new Error('dropping a generation on the knowledge database needs the job queue');
+    await drop(input);
+  }
+
+  execution(id: string) {
+    return this.options.executions.get(id);
+  }
 
   get backend() {
     return {
@@ -396,6 +508,12 @@ export class IngestionService {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
+  async pipelineIdsEver(scope: string, dataset: string): Promise<string[]> {
+    return (await this.options.store.latest({ kind, scope }))
+      .filter((e) => e.id.startsWith(`${dataset}#`))
+      .map((e) => e.id.slice(dataset.length + 1));
+  }
+
   async get(scope: string, dataset: string, id: string): Promise<Pipeline | undefined> {
     const latest = (await this.options.store.history(kind, scope, `${dataset}#${id}`)).at(-1);
     return latest && !latest.deleted ? toPipeline(latest) : undefined;
@@ -429,9 +547,11 @@ export class IngestionService {
             message: i.message,
           })),
         };
-      const refused = this.options.jobs?.runsAsJobs(input.dataset)
-        ? await this.#knowledgeRefusal(input, parsed.data)
-        : undefined;
+      const refused =
+        (await this.#kudosNarrowing(input, parsed.data)) ??
+        (this.options.jobs?.runsAsJobs(input.dataset)
+          ? await this.#knowledgeRefusal(input, parsed.data)
+          : undefined);
       if (refused) return { ok: false, errors: [refused] };
       try {
         const saved = await appendVersion(this.options.store, {
@@ -456,6 +576,25 @@ export class IngestionService {
         throw error;
       }
     });
+  }
+
+  /**
+   * A Kudos slice only grows, whatever engine its dataset is on: an engine switch fills the knowledge
+   * database while the dataset is still on its old engine, and two complete listings delete what a
+   * narrower slice leaves out. Compared with the last version saved, deleted or not.
+   */
+  async #kudosNarrowing(
+    input: { scope: string; dataset: string; id: string },
+    spec: PipelineSpec,
+  ): Promise<{ path: string; message: string } | undefined> {
+    if (spec.source.kind !== 'kudos') return undefined;
+    const previous = (
+      await this.options.store.history(kind, input.scope, `${input.dataset}#${input.id}`)
+    ).at(-1);
+    const before = previous ? pipelineSpec.safeParse(previous.spec) : undefined;
+    return before?.success && before.data.source.kind === 'kudos'
+      ? kudosNarrowing(before.data.source, spec.source)
+      : undefined;
   }
 
   /**
@@ -554,6 +693,19 @@ export class IngestionService {
       );
       return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
     }
+    if (await this.#deleting(input.pipeline.dataset))
+      return {
+        ok: false,
+        conflict: true,
+        errors: [{ path: 'dataset', message: deleteHoldMessage(input.pipeline.dataset) }],
+      };
+    const holder = await this.#held(input.pipeline.dataset);
+    if (holder)
+      return {
+        ok: false,
+        conflict: true,
+        errors: [{ path: 'dataset', message: switchHoldMessage(input.pipeline.dataset, holder) }],
+      };
     const backend = this.options.backend;
     const status = this.availability(input.target, input.pipeline);
     if (!status.available)
@@ -584,13 +736,13 @@ export class IngestionService {
         };
       return { ok: true, value: started.value, done: Promise.resolve(started.value) };
     }
-    const holder = this.#holder(input.target);
-    if (holder)
+    const locked = this.#holder(input.target);
+    if (locked)
       return {
         ok: false,
         conflict: true,
         errors: [
-          { path: 'dataset', message: runLockedMessage(input.target.dataset, holder.execution.id) },
+          { path: 'dataset', message: runLockedMessage(input.target.dataset, locked.execution.id) },
         ],
       };
     const execution: Execution = {

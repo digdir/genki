@@ -15,7 +15,7 @@ import {
 } from '@genai/definitions';
 import { refusedRight, type Access } from './access.js';
 import type { ActorNames } from './actor-names.js';
-import { actorOf, type Admin } from './admin.js';
+import { actorOf, shareOperatorOnlyType, sharingRefused, type Admin } from './admin.js';
 import { confirmedBy } from './governance.js';
 import { riskConfirmationProblems } from './risk-confirmation.js';
 import { t } from './i18n/index.js';
@@ -145,7 +145,10 @@ const routes = {
       },
       400: { content: problemContent, description: 'The body or reason could not be read' },
       401: { content: problemContent, description: 'Not authenticated' },
-      403: { content: problemContent, description: 'Not allowed for this tenant' },
+      403: {
+        content: problemContent,
+        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the definition changes spec.availableTo, which only operators change`,
+      },
       409: {
         content: problemContent,
         description: `${draftOutdatedType}: the body's draftRevision names a draft started from an older version, and publishing it would undo newer published changes; rebase the draft first`,
@@ -399,6 +402,8 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       reason,
     });
     c.header('genai-task', result.task);
+    if (!result.ok && result.type === shareOperatorOnlyType)
+      return sharingRefused(c, result.errors);
     if (!result.ok)
       return problem(c, 422, 'Invalid definition', { errors: redact(result.errors, tenant) });
     if (service && !fromDraft)

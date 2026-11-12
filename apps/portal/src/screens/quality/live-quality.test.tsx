@@ -17,6 +17,9 @@ interface Call {
 
 const base = '#/services/rapportassistenten/quality';
 
+// A test can make the case list answer slowly, so the screen shows it loading as a slow API would.
+let slowCases = false;
+
 const openLive = async (
   tab = '',
   quality: QualityMockOptions = {},
@@ -37,6 +40,8 @@ const openLive = async (
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
       reason: reason === null ? null : decodeURIComponent(reason),
     });
+    if (slowCases && (init?.method ?? 'GET') === 'GET' && /\/cases(\?|$)/.test(url))
+      await new Promise((done) => setTimeout(done, 30));
     return respond(url.replace(/^\/api/, '')) ?? inner(input, init);
   };
   const auth = mockAnsattporten(kari);
@@ -49,6 +54,7 @@ const openLive = async (
 };
 
 beforeEach(() => {
+  slowCases = false;
   window.location.hash = '';
 });
 afterEach(cleanup);
@@ -149,6 +155,8 @@ describe('live Testsett', () => {
     });
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     expect(within(row).getByText('Publisert versjon')).toBeTruthy();
+    expect(within(history).getByRole('columnheader', { name: 'Språkmodell' })).toBeTruthy();
+    expect(within(row).getByText('gpt-4o-2m-tps')).toBeTruthy();
     expect(within(row).getByText('2 av 3')).toBeTruthy();
     expect(within(row).getByText('67 %')).toBeTruthy();
     expect(within(row).getByText('ikke priset')).toBeTruthy();
@@ -287,6 +295,156 @@ describe('live Testsett', () => {
     expect(
       await screen.findByText('Ingen vurdering fra judge:criteria for 2 av 3 tilfeller.'),
     ).toBeTruthy();
+  });
+
+  it('shows a run the platform restarted as interrupted, with the cases it finished and their cost', async () => {
+    const finished = {
+      caseId: 'tc-1',
+      input: 'Hvor mange tilsyn hadde vi i 2025?',
+      expected: 'Oppgir tallet for 2025 og viser til årsrapporten.',
+      output: 'Vi hadde 41 tilsyn i 2025.',
+      pass: true,
+    };
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-avbrutt',
+          service: 'rapportassistenten',
+          status: 'interrupted',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: '2026-11-11T09:20:00Z',
+          score: 1,
+          passed: 1,
+          total: 3,
+          finished: 1,
+          cost: 2_500_000,
+          error: 'Avbrutt fordi plattformen ble startet på nytt',
+          cases: [finished],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history as HTMLElement).findAllByRole('row'))[1] as HTMLElement;
+
+    expect(within(row).getByText('Avbrutt av omstart')).toBeTruthy();
+    expect(within(row).getByText('1 av 1, 1 av 3 kjørt')).toBeTruthy();
+    expect(within(row).queryByText('ikke priset')).toBeNull();
+    expect(within(row).getByText(/2,50/)).toBeTruthy();
+
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const detail = await screen.findByRole('region', { name: 'Resultat per testtilfelle' });
+    expect(
+      await within(detail).findByText(
+        'Plattformen ble startet på nytt før kjøringen var ferdig. Her er de 1 av 3 testtilfellene som ble kjørt. Kjør testsettet på nytt for å få med resten.',
+      ),
+    ).toBeTruthy();
+    expect(within(detail).getByText('Vi hadde 41 tilsyn i 2025.')).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('shows a run that waits for a free slot as waiting, with its place in line', async () => {
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-venter',
+          service: 'rapportassistenten',
+          status: 'running',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: null,
+          score: null,
+          passed: 0,
+          total: 3,
+          finished: 0,
+          queuePlace: 2,
+          cost: 0,
+          cases: [],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history as HTMLElement).findAllByRole('row'))[1] as HTMLElement;
+
+    expect(within(row).getByText('Venter på ledig plass, nr. 2 i køen')).toBeTruthy();
+    expect(within(row).queryByText('Kjører')).toBeNull();
+    expectAccessible();
+  });
+
+  it('closes the question about marked test cases when every mark is taken off', async () => {
+    const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    const box = screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' });
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Kjøre bare det merkede testtilfellet?' }),
+    ).toBeTruthy();
+    const before = writes().length;
+    fireEvent.click(box);
+    expect(screen.queryByRole('heading', { name: /merkede testtilfellet/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start kjøringen' })).toBeNull();
+    fireEvent.click(box);
+    expect(screen.queryByRole('heading', { name: /merkede testtilfellet/ })).toBeNull();
+    expect(writes()).toHaveLength(before);
+    expectAccessible();
+  });
+
+  it('keeps the question about marked test cases open while the cases reload', async () => {
+    await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    slowCases = true;
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør det merkede testtilfellet' }));
+    await screen.findByRole('heading', { name: 'Kjøre bare det merkede testtilfellet?' });
+    fireEvent.click(screen.getByRole('button', { name: 'Nytt testtilfelle' }));
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: 'Hva koster tilsyn?' } });
+    fireEvent.change(screen.getByLabelText('Et godt svar'), {
+      target: { value: 'Oppgir gebyret.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre testtilfelle' }));
+    await screen.findByRole('button', { name: 'Slett testtilfellet «Hva koster tilsyn?»' });
+
+    expect(
+      screen.getByRole('heading', { name: 'Kjøre bare det merkede testtilfellet?' }),
+    ).toBeTruthy();
+    slowCases = false;
+  });
+
+  it('runs only the test cases marked in the list, and clears the marks', async () => {
+    const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    expect(screen.queryByRole('button', { name: /merkede testtilfellene/ })).toBeNull();
+    expect(screen.getByText('Kryss av testtilfeller for å kjøre bare dem.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Skriv et vedtak om tilskudd.' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør de 2 merkede testtilfellene' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Kjøre bare de 2 merkede testtilfellene?' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    expect(writes().at(-1)).toMatchObject({
+      method: 'POST',
+      path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+      body: { testSet: 'rapport-kjerne', version: 'draft', cases: ['tc-1', 'tc-3'] },
+      reason: 'Kjørte merkede testtilfeller (2) i Kjernespørsmål på utkastet',
+    });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    expect(within(row).getByText(/^\d av 2$/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern merkingen' }));
+    expect(screen.queryByRole('button', { name: /merkede testtilfellene/ })).toBeNull();
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Hvor mange tilsyn hadde vi i 2025?',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    expectAccessible();
   });
 
   it('shows a running run and blocks a second start', async () => {

@@ -1,4 +1,4 @@
-import { shape, type Shape } from '@genai/kernel';
+import { mediaTypesOf, shape, type Shape } from '@genai/kernel';
 
 export class DescriptorError extends Error {
   constructor(message: string) {
@@ -16,7 +16,10 @@ const scalars: Record<string, Shape> = {
   boolean: shape.boolean,
   null: shape.nothing,
   json: shape.json,
+  opaque: shape.opaque,
 };
+
+const mediaRule = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/(?:\*|[a-z0-9][a-z0-9!#$&^_.+-]*)$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -39,7 +42,7 @@ const fieldsOf = (spec: unknown, at: string): Record<string, Shape> => {
     Object.entries(spec).map(([key, value]) => {
       const optional = key.endsWith('?');
       const name = optional ? key.slice(0, -1) : key;
-      if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name))
+      if (!/^[A-Za-z_][A-Za-z0-9_-]*(?:\[\])?$/.test(name))
         throw new DescriptorError(`${at}.${key}: not a field name`);
       const field = shapeOf(value, `${at}.${name}`);
       return [name, optional ? shape.optional(field) : field];
@@ -110,6 +113,32 @@ export const shapeOf = (spec: unknown, at = 'shape'): Shape => {
     const min = limit(isRecord(spec.plain) ? spec.plain.min : undefined, `${at}.plain.min`);
     return shape.plain(min);
   }
+  if ('media' in spec) {
+    only(spec, ['media'], at);
+    const types = Array.isArray(spec.media) ? spec.media : [spec.media];
+    if (
+      types.length === 0 ||
+      types.some((t) => typeof t !== 'string' || !mediaRule.test(t.toLowerCase()))
+    )
+      throw new DescriptorError(
+        `${at}.media: must be a media type such as type/subtype, or a list of them`,
+      );
+    return shape.media(
+      Array.isArray(spec.media)
+        ? types.map((t) => String(t).toLowerCase())
+        : String(spec.media).toLowerCase(),
+    );
+  }
+  if ('issued' in spec) {
+    only(spec, ['issued'], at);
+    if (typeof spec.issued !== 'string')
+      throw new DescriptorError(`${at}.issued: must be a pattern`);
+    try {
+      return shape.issued(new RegExp(spec.issued));
+    } catch {
+      throw new DescriptorError(`${at}.issued: not a valid pattern`);
+    }
+  }
   if ('ref' in spec) {
     only(spec, ['ref'], at);
     if (typeof spec.ref !== 'string') throw new DescriptorError(`${at}.ref: must be a pattern`);
@@ -150,21 +179,66 @@ export const fieldNames = (s: Shape): string[] => {
   }
 };
 
-export const holdsJson = (s: Shape): boolean => {
+export const holdsMedia = (s: Shape): boolean => mediaTypesOf(s).length > 0;
+
+/** Whether a shape names one kind of value only, as a query parameter, header or form field must. */
+export const isScalar = (s: Shape): boolean =>
+  s.kind === 'optional'
+    ? isScalar(s.shape)
+    : ['text', 'plain', 'ref', 'issued', 'enum', 'number', 'boolean', 'opaque'].includes(s.kind);
+
+export const unwrapped = (s: Shape): Shape => (s.kind === 'optional' ? unwrapped(s.shape) : s);
+
+export const holdsKind = (s: Shape, kind: Shape['kind']): boolean => {
+  if (s.kind === kind) return true;
   switch (s.kind) {
-    case 'json':
-      return true;
     case 'object':
-      return Object.values(s.fields).some(holdsJson);
+      return Object.values(s.fields).some((f) => holdsKind(f, kind));
     case 'array':
-      return holdsJson(s.item);
+      return holdsKind(s.item, kind);
     case 'optional':
-      return holdsJson(s.shape);
+      return holdsKind(s.shape, kind);
     case 'variant':
-      return Object.values(s.options).some(holdsJson);
+      return Object.values(s.options).some((o) => holdsKind(o, kind));
     case 'either':
-      return s.options.some(holdsJson);
+      return s.options.some((o) => holdsKind(o, kind));
     default:
       return false;
+  }
+};
+
+export const holdsJson = (s: Shape): boolean => holdsKind(s, 'json');
+
+/** The shape at a path of field names and list indexes, or undefined when the path leaves the shape. */
+export const shapeAtPath = (s: Shape, path: readonly string[]): Shape | undefined => {
+  const [head, ...rest] = path;
+  const here = unwrapped(s);
+  if (head === undefined) return here;
+  if (here.kind === 'object') {
+    const field = here.fields[head];
+    return field ? shapeAtPath(field, rest) : undefined;
+  }
+  if (here.kind === 'array' && /^\d+$/.test(head)) return shapeAtPath(here.item, rest);
+  return undefined;
+};
+
+/** The shapes of every field with the given name, at any depth. */
+export const shapesNamed = (s: Shape, name: string): Shape[] => {
+  switch (s.kind) {
+    case 'object':
+      return Object.entries(s.fields).flatMap(([k, v]) => [
+        ...(k === name ? [unwrapped(v)] : []),
+        ...shapesNamed(v, name),
+      ]);
+    case 'array':
+      return shapesNamed(s.item, name);
+    case 'optional':
+      return shapesNamed(s.shape, name);
+    case 'variant':
+      return Object.values(s.options).flatMap((o) => shapesNamed(o, name));
+    case 'either':
+      return s.options.flatMap((o) => shapesNamed(o, name));
+    default:
+      return [];
   }
 };
