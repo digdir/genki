@@ -70,6 +70,12 @@ describe('the Threads styles', () => {
     );
   });
 
+  it('cut a title in the design’s list after one line, so a row stays one line until hovered or focused', () => {
+    expect(ruleFor(".uib-threads[data-variant='nav'] .uib-threads-thread-title")).toContain(
+      '-webkit-line-clamp: var(--genai-threads-title-lines, 1)',
+    );
+  });
+
   it('stop a row reached by keyboard below the design’s «Ny tråd», not under it (WCAG 2.4.11)', () => {
     const below = ruleFor(
       ".uib-threads[data-variant='nav'] :is(a, button, input, [tabindex]):not(.uib-threads-new)",
