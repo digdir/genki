@@ -1,9 +1,16 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
-import { sourceLinkRules } from '@genai/contracts';
+import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
-import { capabilities, operationKindPattern, parameterRules, residencies } from '@genai/port-model';
+import {
+  apiIdPattern,
+  capabilities,
+  operationKindPattern,
+  parameterRules,
+  residencies,
+} from '@genai/port-model';
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
+import { datasetInUseType, datasetRunOpenType } from '../dataset-delete.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
 import { switchStates } from '../engine-switches.js';
 import { changeReason, Problem, problemContent } from '../http.js';
@@ -43,6 +50,9 @@ const body = <T extends z.ZodType>(schema: T, contentType = 'application/json') 
 });
 
 const Residency = z.enum(residencies);
+const ApiBindings = z
+  .record(z.string().regex(operationKindPattern), z.string().regex(apiIdPattern))
+  .openapi({ example: { chat: 'openai/responses@1', decide: 'openai/decide@1' } });
 const Embedding = z.object({ model: z.string(), dimensions: z.number().int() });
 
 const CatalogItem = z
@@ -135,6 +145,7 @@ const SkippedDocument = z.object({
     'outside_access',
     'conversion_failed',
     'unreachable',
+    'too_large',
   ]),
 });
 
@@ -159,9 +170,41 @@ const DatasetWithStatus = Dataset.extend({
   nextRunAt: z.string().nullable(),
 }).openapi('DatasetWithStatus');
 
+const DatasetReader = z
+  .object({
+    kind: z.enum(['service', 'adoption']),
+    tenant: z.string(),
+    id: z.string(),
+    name: z.string(),
+  })
+  .openapi('DatasetReader');
+
 const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
+  usedBy: z
+    .array(DatasetReader)
+    .describe('The published services and adopted building blocks of the tenant that read it'),
 }).openapi('DatasetDetail');
+
+const DatasetDeleteResult = z
+  .object({
+    deleted: z.string(),
+    removed: z.object({
+      catalogEntry: z.literal(true),
+      pipelines: z.array(z.string()),
+      uploads: z.array(z.string()),
+      generations: z.array(z.string()),
+    }),
+    kept: z.object({
+      knowledgeRecords: z
+        .boolean()
+        .describe(
+          'True for a dataset on the knowledge database: its records and partitions stay until the drop job exists (issue 250), and its id is held',
+        ),
+      generations: z.array(z.string()).describe('Generations the engine refused to drop'),
+    }),
+  })
+  .openapi('DatasetDeleteResult');
 
 const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
   description:
@@ -236,6 +279,11 @@ const Execution = z
       .describe('Runs as knowledge jobs in the worker and ends when its jobs have ended'),
     admittedAt: z.string().optional().describe('When the API last admitted the run'),
     cancelRequestedAt: z.string().optional(),
+    generation: z
+      .string()
+      .optional()
+      .describe("The generation an engine switch's run writes into, on the knowledge database"),
+    engineSwitch: z.string().optional().describe('The engine switch that started the run'),
   })
   .openapi('IngestionExecution');
 const PipelineEstimate = z
@@ -294,6 +342,17 @@ const KnowledgeEndpoint = z
     writeKeyRequired: z.boolean(),
     capabilities: CapabilitySummary,
     datasetCount: z.number().int(),
+    datasets: z
+      .array(
+        z.object({
+          id: z.string(),
+          scope: z.string(),
+          name: z.string(),
+          pipelines: z.number().int(),
+        }),
+      )
+      .optional()
+      .openapi({ description: 'The datasets on the endpoint; only in the operator listing' }),
     status: z.enum(['ok', 'unused', 'skipped']),
     shared: z.boolean(),
     version: z.number().int(),
@@ -326,6 +385,11 @@ const EndpointInUse = Problem.extend({
     z.object({ dataset: z.string(), name: z.string(), tenant: z.string(), tenantName: z.string() }),
   ),
 }).openapi('KnowledgeEndpointInUse');
+
+const DatasetInUse = Problem.extend({ type: z.literal(datasetInUseType) }).openapi('DatasetInUse');
+const DatasetRunOpen = Problem.extend({ type: z.literal(datasetRunOpenType) }).openapi(
+  'DatasetRunOpen',
+);
 
 const Range = z.object({ min: z.number(), max: z.number() });
 const Side = z.object({ first: z.string().optional(), rank: z.number().nullable() });
@@ -382,6 +446,29 @@ const EngineSwitch = z
       })
       .optional(),
     comparisonNote: z.string().optional(),
+    generation: z
+      .string()
+      .describe('The generation the switch fills; on the knowledge database, g-<yyyymmdd>-<6 hex>'),
+    failedDocuments: z
+      .number()
+      .int()
+      .optional()
+      .describe('Into the knowledge database: documents of the fill that could not be read in'),
+    copy: z
+      .object({
+        copied: z.number().int(),
+        skipped: z.record(z.string(), z.number().int()),
+        failed: z.number().int(),
+      })
+      .optional()
+      .describe(
+        'A copy into the knowledge database, once filled: documents copied, skipped by reason (no_uuid, same_uuid, no_text) and failed',
+      ),
+    subset: z
+      .number()
+      .int()
+      .optional()
+      .describe('A copy of named documents: how many it names; it compares but is never activated'),
     minimumReasonLength: z.number().int(),
     previousKeptUntil: z.string().optional(),
     canRollback: z.boolean(),
@@ -401,10 +488,25 @@ const SwitchEstimate = z
     from: z.string(),
     to: z.string(),
     estimate: z.literal(true),
-    basis: z.object({ documents: z.number().int(), counted: z.boolean() }),
+    basis: z.object({
+      documents: z.number().int(),
+      counted: z.boolean(),
+      chunks: z
+        .number()
+        .int()
+        .optional()
+        .describe(
+          'A copy into the knowledge database: chunks, scaled from the first 100 documents',
+        ),
+      tokens: z.number().int().optional().describe('The same, in tokens to embed'),
+    }),
     method: SwitchMethod.optional(),
     copy: MethodEstimate,
     reingest: MethodEstimate,
+    embeddings: z
+      .array(Embedding)
+      .optional()
+      .describe('The embedding models the platform serves, for a dataset that has none'),
   })
   .openapi('EngineSwitchEstimate');
 
@@ -442,6 +544,14 @@ const StartSwitch = z
     method: SwitchMethod,
     embedding: Embedding.optional(),
     options: z.record(z.string(), z.unknown()).optional(),
+    documents: z
+      .array(z.string())
+      .min(1)
+      .max(1000)
+      .optional()
+      .describe(
+        'A copy into the knowledge database of these source ids only, to try it out: it deletes nothing and is never activated',
+      ),
   })
   .openapi('EngineSwitchStart');
 
@@ -502,17 +612,83 @@ const VerifyResult = z
   })
   .openapi('EnrichmentVerification');
 
-const ModelEndpointInput = z
+const DiscoveryRule = z
   .object({
-    id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/),
-    protocol: z.enum(['openai-chat', 'anthropic-messages']),
-    baseURL: z.string().openapi({ description: 'HTTPS, without credentials' }),
-    auth: z.object({
-      kind: z.enum(['api-key', 'bearer']),
-      secret: z.string().openapi({ example: 'secret://platform/sigma2-key' }),
-    }),
+    source: z.string().openapi({ example: 'azure-deployments' }),
+    from: z.string().optional().describe('Another connection to list deployments through'),
+    idPrefix: z
+      .string()
+      .optional()
+      .describe(
+        'Discovered models get ids <idPrefix>/<deployment>; the connection id when left out',
+      ),
+    include: z.array(z.string()).optional(),
+    exclude: z.array(z.string()).optional(),
+    capabilities: z.array(z.enum(capabilities)).optional(),
+    apis: ApiBindings.optional().describe('The APIs a discovered deployment binds'),
   })
+  .openapi('DiscoveryRule');
+const ModelEndpointFields = {
+  baseURL: z
+    .string()
+    .openapi({ description: 'The provider resource root, HTTPS, without credentials' }),
+  auth: z.object({
+    kind: z.enum(['api-key', 'bearer']),
+    secret: z.string().openapi({ example: 'secret://platform/sigma2-key' }),
+    header: z.string().optional(),
+  }),
+  families: z.record(z.string(), z.string()).openapi({
+    description:
+      'Each API family the connection offers and its base: a path under baseURL or a full HTTPS URL on the same resource',
+    example: { openai: '/openai/v1', anthropic: '/anthropic' },
+  }),
+  discovery: z.array(DiscoveryRule).optional(),
+  allowedHosts: z
+    .array(z.string())
+    .max(20)
+    .optional()
+    .openapi({
+      description:
+        "Hosts besides the connection's own that an answer link of a descriptor may lead to, each with an optional port; only the operator sets them, and a change is audited",
+      example: ['files.provider.example'],
+    }),
+  settings: z
+    .record(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,31}$/), z.string().max(256))
+    .optional()
+    .openapi({
+      description:
+        'Non-secret values a descriptor reads as $connection.<name> in headers, the query and module input, never in the host, the path or the body; at most 20, only the operator sets them, and a change is audited',
+      example: { keyId: 'AKID-7', region: 'eu-north-1' },
+    }),
+  keys: z
+    .record(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,31}$/), z.string())
+    .optional()
+    .openapi({
+      description:
+        'Named extra keys, each a platform secret reference; only a descriptor module reaches them, as connection.<name>, and no request carries them; at most 4, only the operator sets them, and a change is audited',
+      example: { signing: 'secret://platform/provider-signing-key' },
+    }),
+};
+const ModelEndpointInput = z
+  .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })
   .openapi('ModelEndpointInput');
+const ModelEndpointUpdate = z.object(ModelEndpointFields).openapi('ModelEndpointUpdate');
+const ApiView = z
+  .object({
+    id: z.string().openapi({ example: 'openai/responses@1' }),
+    kind: z.string(),
+    family: z.string(),
+    source: z.enum(['built-in', 'bundled', 'uploaded']),
+    status: z.enum(['review', 'described', 'typed']),
+    units: z
+      .array(z.string().regex(unitNamePattern))
+      .describe(
+        'The units its usage reports, which prices name: the built-in units and any unit its descriptor names',
+      ),
+    summary: z.string().optional(),
+    models: z.array(z.string()).describe('The models that bind it'),
+  })
+  .openapi('Api');
 const ModelEndpointInUse = Problem.extend({
   services: z.array(z.object({ service: z.string(), tenant: z.string(), tenantName: z.string() })),
   models: z.array(z.object({ id: z.string(), tenant: z.string() })),
@@ -524,10 +700,32 @@ const PlatformModelInput = z
     family: z.string().optional(),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)).optional(),
+    apis: ApiBindings.optional().describe(
+      'One API per operation kind; kept as it is when left out, and the default chat API of a single-family connection when none is set',
+    ),
+    options: z.record(z.string(), z.unknown()).optional(),
     enabled: z.boolean().optional(),
   })
   .openapi('PlatformModelInput');
 const Price = z.object({ inputPerThousand: z.number(), outputPerThousand: z.number() });
+const UnitPrices = z
+  .object(Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])))
+  .catchall(z.number().min(0))
+  .describe(
+    'Kroner per unit: the built-in units, and any other unit a descriptor names, such as page',
+  )
+  .openapi('UnitPrices');
+const ModelPrices = z
+  .record(z.string().regex(operationKindPattern), UnitPrices)
+  .describe('Kroner per unit, per operation kind the model binds')
+  .openapi('ModelPrices', {
+    example: { chat: { 'input-token': 0.0000119, 'output-token': 0.0000952 } },
+  });
+const PriceInput = z
+  .union([ModelPrices, Price])
+  .describe(
+    'Prices per kind and unit, or a price per 1,000 input and output tokens from before ADR 0048, which is set for every kind the model binds',
+  );
 const PublicModel = z
   .object({
     id: z.string(),
@@ -758,7 +956,11 @@ const engineRoutes = (base: Base): RouteConfig[] => {
       summary: `Estimate cost and time of moving a dataset to another engine (${who(base, 'manage-datasets')})`,
       request: {
         params,
-        query: z.object({ to: z.string(), method: SwitchMethod.optional() }),
+        query: z.object({
+          to: z.string(),
+          method: SwitchMethod.optional(),
+          model: z.string().optional().openapi({ description: 'The embedding model to price' }),
+        }),
       },
       responses: {
         200: json(SwitchEstimate, 'Estimate'),
@@ -817,6 +1019,10 @@ const engineRoutes = (base: Base): RouteConfig[] => {
       request: { params: switchParams, headers: reasonHeader },
       responses: {
         200: audited(EngineSwitch, 'Active'),
+        202: audited(
+          EngineSwitch,
+          'Into the knowledge database: activating; the platform publishes once the refresh runs have succeeded',
+        ),
         400: problem('Reason too short, or the change was refused'),
         ...failures,
         409: problem('Not ready, the dataset changed, or the engine cannot be opened'),
@@ -1211,6 +1417,15 @@ const ProcessorRecordBody = z
     retention: z
       .object({ days: z.number().int().min(0), note: z.string().optional() })
       .describe('How long the provider keeps what it is sent'),
+    providerState: z
+      .object({
+        allowed: z.boolean(),
+        retention: z.object({ days: z.number().int().min(0), note: z.string() }),
+      })
+      .optional()
+      .describe(
+        'Whether descriptors may leave objects at the provider, and how long it keeps them',
+      ),
   })
   .openapi('ProcessorRecordInput');
 const ProcessorRecordView = z
@@ -1224,9 +1439,36 @@ const ProcessorRecordView = z
 
 const operatorModelRoutes: RouteConfig[] = [
   createRoute({
+    method: 'get',
+    path: '/operator/apis',
+    summary:
+      'Every API a model can bind, built-in or described, with its kind, family and the models bound to it (operators)',
+    responses: {
+      200: json(z.object({ data: z.array(ApiView) }), 'The APIs'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/model-endpoints/{id}',
+    summary:
+      'Change a platform connection: its root, credential, API families and discovery rules (operators, audited)',
+    request: {
+      params: z.object({ id: param('sigma2') }),
+      headers: reasonHeader,
+      body: body(ModelEndpointUpdate),
+    },
+    responses: {
+      200: audited(CatalogItem, 'Saved'),
+      400: problem('Invalid connection, a model would lose its API, or missing reason'),
+      ...operatorOnly,
+      404: problem('No such platform connection'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/operator/model-endpoints',
-    summary: 'Add a platform model endpoint using a platform secret (operators, audited)',
+    summary: 'Add a platform connection using a platform secret (operators, audited)',
     request: { headers: reasonHeader, body: body(ModelEndpointInput) },
     responses: {
       201: audited(CatalogItem, 'Created'),
@@ -1258,7 +1500,17 @@ const operatorModelRoutes: RouteConfig[] = [
     summary:
       'Every model endpoint with its processor record, or null where it has none (operators)',
     responses: {
-      200: json(z.object({ data: z.array(ProcessorRecordView) }), 'The endpoints'),
+      200: json(
+        z.object({
+          data: z.array(ProcessorRecordView),
+          typedCalls: z
+            .enum(['warn', 'enforce'])
+            .describe(
+              'What a chat or decide call with real data does on an endpoint without a record: warn and go on, or be refused (GENAI_PROCESSOR_RECORDS)',
+            ),
+        }),
+        'The endpoints',
+      ),
       ...operatorOnly,
     },
   }),
@@ -1307,14 +1559,17 @@ const operatorModelRoutes: RouteConfig[] = [
     method: 'put',
     path: '/operator/models/{id}/price',
     summary:
-      'Set the price of a model in NOK per thousand tokens (operators, audited). The id may contain slashes.',
+      'Set the prices of a model per operation kind and unit, in kroner per unit (operators, audited). The id may contain slashes.',
     request: {
       params: z.object({ id: param('fake/gpt') }),
       headers: reasonHeader,
-      body: body(Price),
+      body: body(PriceInput),
     },
     responses: {
-      200: audited(Price.extend({ id: z.string(), currency: z.literal('NOK') }), 'Saved'),
+      200: audited(
+        Price.extend({ id: z.string(), prices: ModelPrices, currency: z.literal('NOK') }),
+        'Saved',
+      ),
       400: problem('Invalid price or missing reason'),
       ...operatorOnly,
       404: problem('No such model'),
@@ -1324,7 +1579,7 @@ const operatorModelRoutes: RouteConfig[] = [
     method: 'put',
     path: '/operator/models/{id}',
     summary:
-      'Add or change a catalog model on a platform endpoint; a new one starts as a release candidate (operators, audited). The id starts with the endpoint id and a slash.',
+      'Add or change a catalog model on a platform connection; a new one starts as a release candidate (operators, audited). A new id starts with the connection id, or a discovery rule id prefix, and a slash.',
     request: {
       params: z.object({ id: param('sigma2/norallm-7b') }),
       headers: reasonHeader,
@@ -1378,6 +1633,29 @@ const operatorCatalogRoutes: RouteConfig[] = [
   }),
 ];
 
+const deleteRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
+  createRoute({
+    method: 'delete',
+    path: `${base.path}/datasets/{id}`,
+    summary: `Delete a dataset: its catalog entry, pipelines, uploads and generations; on the knowledge database the records and partitions stay until the drop job exists (${who(base, 'manage-datasets')}, audited)`,
+    request: {
+      params: z.object({ ...base.params, id: param('sider') }),
+      headers: reasonHeader,
+    },
+    responses: {
+      200: audited(DatasetDeleteResult, 'What was removed and what stays'),
+      400: either('A missing reason'),
+      ...guarded(base, 'manage-datasets'),
+      409: {
+        description: `${datasetInUseType}: a published service or an adopted building block reads the dataset, a delete of it is already going, or the catalog refused to remove it; ${datasetRunOpenType}: a run of the dataset is open`,
+        content: {
+          'application/problem+json': { schema: z.union([DatasetInUse, DatasetRunOpen]) },
+        },
+      },
+    },
+  }),
+);
+
 export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
@@ -1391,6 +1669,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'knowledge-endpoints': knowledgeEndpointRoutes,
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
+  'dataset-delete': deleteRoutes,
   'dataset-enrichment': enrichmentRoutes,
   'operator-models': operatorModelRoutes,
   'operator-catalog': operatorCatalogRoutes,

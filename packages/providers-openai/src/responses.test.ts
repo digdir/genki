@@ -71,7 +71,7 @@ const error = (message: string, status = 400): FakeReply => ({
 });
 const setup = (
   url: string,
-  options: Record<string, unknown> = { api: 'responses' },
+  apis: Record<string, string> | null = { chat: 'openai/responses@1' },
   discovery = false,
   signal?: AbortSignal,
 ) => {
@@ -79,20 +79,22 @@ const setup = (
     catalog: {
       endpoints: {
         foundry: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${url}/v1`,
           auth: { kind: 'bearer', secret: 'secret://env/test-key' },
           ...(discovery
             ? {
-                discovery: {
-                  source: 'fake',
-                  capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
-                },
+                discovery: [
+                  {
+                    source: 'fake',
+                    capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
+                  },
+                ],
               }
             : {}),
         },
         other: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${url}/other/v1`,
           auth: { kind: 'bearer', secret: 'secret://env/test-key' },
         },
@@ -106,7 +108,7 @@ const setup = (
               deployment: 'gpt-6.1-sol',
               residency: 'norway',
               capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
-              options,
+              ...(apis ? { apis } : {}),
             },
             {
               id: 'foundry/unchanged',
@@ -283,7 +285,12 @@ describe('OpenAI Responses behind the model port', () => {
         ],
       }));
       const controller = new AbortController();
-      const { open, metered } = setup(url, { api: 'responses' }, false, controller.signal);
+      const { open, metered } = setup(
+        url,
+        { chat: 'openai/responses@1' },
+        false,
+        controller.signal,
+      );
       const iterator = open().chatStream(ask)[Symbol.asyncIterator]();
       expect(await iterator.next()).toMatchObject({ value: { kind: 'delta', text: 'Hei' } });
       controller.abort();
@@ -417,7 +424,7 @@ describe('OpenAI Responses behind the model port', () => {
               }
             : { status: 200, json: response() },
       );
-      const { router, open, metered } = setup(url, {}, true);
+      const { router, open, metered } = setup(url, null, true);
       await router.refresh();
       expect(
         router.describe().find((model) => model.id === 'foundry/gpt-6.1-sol')?.transport,
@@ -443,7 +450,7 @@ describe('OpenAI Responses behind the model port', () => {
     const { url, seen } = await fake((_body, _attempt, path) =>
       path.endsWith('/chat/completions') ? error(refusal) : { status: 200, json: response() },
     );
-    await setup(url, {})
+    await setup(url, null)
       .open()
       .chat({ ...ask, tools });
     expect(seen.map((request) => request.path)).toEqual(['/v1/chat/completions', '/v1/responses']);
@@ -454,9 +461,9 @@ describe('OpenAI Responses behind the model port', () => {
     const { url } = await fake((_body, _attempt, path) =>
       path.endsWith('/chat/completions') ? error(refusal) : { status: 200, json: response() },
     );
-    const { router, open } = setup(url, {});
+    const { router, open } = setup(url, null);
     await open().chat({ ...ask, tools });
-    const fresh = setup(url, {});
+    const fresh = setup(url, null);
     expect(fresh.router.describe()[0]?.transport).toEqual({
       api: 'chat-completions',
       source: 'default',
@@ -464,7 +471,7 @@ describe('OpenAI Responses behind the model port', () => {
     router.reload({
       endpoints: {
         foundry: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${url}/v1`,
           auth: { kind: 'bearer', secret: 'secret://env/test-key' },
         },
@@ -486,7 +493,7 @@ describe('OpenAI Responses behind the model port', () => {
     const { url, seen } = await fake((_body, _attempt, path) =>
       path.endsWith('/chat/completions') ? error(refusal) : { status: 200, json: response() },
     );
-    const { open, router } = setup(url, {});
+    const { open, router } = setup(url, null);
     await open().chat({ ...ask, tools, reasoning: 'high' });
     await expect(open('foundry/unchanged').chat(ask)).rejects.toMatchObject({
       code: 'bad_request',
@@ -515,21 +522,20 @@ describe('OpenAI Responses behind the model port', () => {
     [400, refusal + ' different error'],
   ])('does not learn Responses from unrelated refusal %s %s', async (status, message) => {
     const { url, seen } = await fake(() => error(message as string, status as number));
-    const { open, router } = setup(url, {});
+    const { open, router } = setup(url, null);
     await expect(open().chat({ ...ask, tools, reasoning: 'high' })).rejects.toBeDefined();
     expect(seen).toHaveLength(1);
     expect(router.describe()[0]?.transport?.source).toBe('default');
   });
 
-  it('honors an explicit chat-completions selection even for the exact refusal', async () => {
-    const { url, seen } = await fake(() => error(refusal));
-    await expect(
-      setup(url, { api: 'chat-completions' })
-        .open()
-        .chat({ ...ask, tools, reasoning: 'high' }),
-    ).rejects.toMatchObject({ code: 'bad_request' });
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.path).toBe('/v1/chat/completions');
+  it('a model that binds openai/chat-completions@1 by name keeps the learned switch to Responses', async () => {
+    const { url, seen } = await fake((_body, _attempt, path) =>
+      path.endsWith('/chat/completions') ? error(refusal) : { status: 200, json: response() },
+    );
+    const { open, router } = setup(url, { chat: 'openai/chat-completions@1' });
+    await open().chat({ ...ask, tools, reasoning: 'high' });
+    expect(seen.map((request) => request.path)).toEqual(['/v1/chat/completions', '/v1/responses']);
+    expect(router.describe()[0]?.transport).toEqual({ api: 'responses', source: 'learned' });
   });
 
   it.each([false, true])(
@@ -550,7 +556,7 @@ describe('OpenAI Responses behind the model port', () => {
                 }
               : { status: 200, json: response() },
       );
-      const { open, router } = setup(url, {});
+      const { open, router } = setup(url, null);
       const request = { ...ask, tools, reasoning: 'high' as const, temperature: 0 };
       if (stream) await collect(open().chatStream(request));
       else await open().chat(request);
@@ -640,4 +646,20 @@ describe('OpenAI Responses behind the model port', () => {
       expect(metered).toEqual([]);
     },
   );
+
+  it("keeps a 5xx answer's status and message on the error for the audit, and gives the caller only that the model is unavailable", async () => {
+    const { url } = await fake(() => ({
+      status: 503,
+      json: { error: { message: 'the deployment is overloaded', code: 'server_error' } },
+    }));
+    const { open } = setup(url);
+    const error = await open()
+      .chat(ask)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      code: 'unavailable',
+      message: 'the model is unavailable',
+      provider: { status: 503, body: expect.stringContaining('the deployment is overloaded') },
+    });
+  });
 });

@@ -22,7 +22,7 @@ import { reasonProblem } from '../../components/ReasonField';
 
 export const problemText = (error: unknown, t: T) =>
   error instanceof ApiError
-    ? (error.problem?.errors?.map((e) => e.message).join(' ') ?? error.message)
+    ? error.problem?.errors?.map((e) => e.message).join(' ') || error.message
     : t('serviceKeys.wrong');
 
 export const ServiceKeys = ({
@@ -237,13 +237,23 @@ export const ServiceKeys = ({
                     </span>
                     <span className="meta">
                       {k.prefix ?? 'gp'}…{k.lastFour ?? ''}
-                      {t('serviceKeys.created', {
+                      {t(k.createdByName ? 'serviceKeys.createdBy' : 'serviceKeys.created', {
                         when: k.createdAt
                           ? f.date(k.createdAt, 'medium')
                           : t('serviceKeys.unknownDate'),
+                        who: k.createdByName ?? '',
                       })}
                       {k.rotatedFrom ? t('serviceKeys.rotated') : ''}
                     </span>
+                    {!active || k.modelsInLockdown === undefined ? null : (
+                      <span className="meta">
+                        {t(
+                          k.modelsInLockdown
+                            ? 'serviceKeys.modelsAllowed'
+                            : 'serviceKeys.modelsRefused',
+                        )}
+                      </span>
+                    )}
                   </span>
                   <span className="stack-xs fe-row-meta">
                     <span>

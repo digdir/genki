@@ -54,11 +54,15 @@ export {
   type ThreadErasure,
   type ThreadRetentionStore,
 } from './retention.js';
+export * from './media.js';
+export * from './provider-objects.js';
 export {
   chatShape,
   decideShape,
   embedShape,
   maxDecisionQuestions,
+  mediaTypesOf,
+  type MediaFound,
   rerankShape,
   walk,
   type OperationShape,

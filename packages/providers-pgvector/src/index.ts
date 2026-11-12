@@ -11,6 +11,7 @@ export {
 } from './knowledge-setup.js';
 export {
   attachGeneration,
+  dropGeneration,
   migrateKnowledgeServer,
   partitionOf,
   prepareGeneration,

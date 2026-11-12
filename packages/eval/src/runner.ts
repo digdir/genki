@@ -3,6 +3,7 @@ import type { Event, Input, Part, Principal } from '@genai/contracts';
 import type { Kernel } from '@genai/kernel';
 import {
   EvalError,
+  judgedAgainst,
   type CollectedScore,
   type EvalContext,
   type Evaluator,
@@ -23,8 +24,7 @@ export interface TargetResult {
   parts: Part[];
   events: Event[];
   servedModels: string[];
-  /** The served models that wrote the answer; judges are checked against these alone. */
-  writers?: string[];
+  judgedModels?: string[];
   service?: string;
 }
 
@@ -34,14 +34,13 @@ export interface EvalTarget {
   annotate?(task: string, score: Score): Promise<void>;
 }
 
-const searchingKinds = new Set(['embedder']);
-
-const servedModelsOf = (events: Event[], writing = false) => [
+const modelsOf = (events: Event[], keep: (model: { kind?: unknown }) => boolean = () => true) => [
   ...new Set(
     events.flatMap((e) => {
       const model = (e.data as { model?: { id?: unknown; kind?: unknown } } | undefined)?.model;
-      if (e.type !== 'kernel.usage' || typeof model?.id !== 'string') return [];
-      return writing && searchingKinds.has(String(model.kind)) ? [] : [model.id];
+      return e.type === 'kernel.usage' && typeof model?.id === 'string' && keep(model)
+        ? [model.id]
+        : [];
     }),
   ),
 ];
@@ -64,8 +63,8 @@ export const describeTask = async (
     task,
     parts,
     events,
-    servedModels: servedModelsOf(events),
-    writers: servedModelsOf(events, true),
+    servedModels: modelsOf(events),
+    judgedModels: modelsOf(events, judgedAgainst),
     service: `${service.capability.id}@${service.capability.version}#${service.configHash}`,
   };
 };
@@ -361,7 +360,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       if (outcome.service) services.add(outcome.service);
       const observation: Observation = observe(outcome.parts, outcome.events);
       const ctx: EvalContext = {
-        servedModels: outcome.writers ?? outcome.servedModels,
+        servedModels: outcome.judgedModels ?? outcome.servedModels,
         modelFamily: options.modelFamily ?? (() => undefined),
         ...(options.signal ? { signal: options.signal } : {}),
       };

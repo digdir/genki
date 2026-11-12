@@ -27,6 +27,10 @@ export const sourceRef = z
     chunkId: z.string().min(1).optional(),
     document: z.string().min(1).optional(),
     position: z.number().int().nonnegative().optional(),
+    /** The page the passage is on, counted from 1. */
+    page: z.number().int().positive().optional(),
+    /** The id the document had before its source renumbered, as an older index names it. */
+    earlierDocument: z.string().min(1).optional(),
   })
   .refine(
     (s) => s.chunkId !== undefined || s.document !== undefined,

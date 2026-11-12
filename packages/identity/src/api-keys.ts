@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { Confinement, Principal } from '@genai/contracts';
-import { admittedCredentialScope, INTERNAL_GRANT_PREFIX } from './claims.js';
+import {
+  admittedCredentialScope,
+  INTERNAL_GRANT_PREFIX,
+  isApiKeyPrincipal,
+  LEGACY_KEY_ISSUER,
+  testRunnerScope,
+} from './claims.js';
 import { AuthenticationError, type VerifiedIdentity } from './verify.js';
-
-export const LEGACY_KEY_ISSUER = 'urn:genai:legacy-api-key';
 
 export type LegacyKeyScope = 'query' | 'ingest' | 'admin';
 
@@ -17,12 +21,14 @@ export interface StoredApiKey {
   agents: string[];
   clientId?: string;
   service?: string;
+  environments?: string[];
   allowedOverrides?: string[];
   callsPerMinute?: number;
   skillGraphs?: string[];
   allowedConfigKeys?: string[];
   policy?: KeyPolicy;
   admittedInLockdown?: boolean;
+  testRunner?: boolean;
   lastUsedAt?: string;
   revokedAt?: string;
   expiresAt?: string;
@@ -146,7 +152,12 @@ export const verifyApiKey = async (
   const agents = granted.filter((a) => !a.startsWith(SERVICE_GRANT));
   const everything = service !== undefined;
   const confinedTo: Confinement | undefined = service
-    ? { tenant: stored.tenant, service, ...(stored.clientId ? { client: stored.clientId } : {}) }
+    ? {
+        tenant: stored.tenant,
+        service,
+        ...(stored.clientId ? { client: stored.clientId } : {}),
+        ...(stored.environments?.length ? { environments: [...stored.environments] } : {}),
+      }
     : undefined;
   return {
     principal: {
@@ -162,6 +173,7 @@ export const verifyApiKey = async (
         ...skillGraphs.map((g) => `${SKILL_GRAPH_GRANT_SCOPE}${g}`),
         ...allowedConfigKeys.map((k) => `${CONFIG_KEY_GRANT_SCOPE}${k}`),
         ...(stored.admittedInLockdown ? [admittedCredentialScope] : []),
+        ...(stored.testRunner ? [testRunnerScope] : []),
       ],
       ...(stored.clientId ? { client: stored.clientId } : {}),
       ...(confinedTo ? { confinedTo } : {}),
@@ -190,8 +202,6 @@ export const keyAllows = (
   if (request.agent !== undefined && !granted(grants.agents, request.agent)) return false;
   return request.dataset !== undefined || request.agent !== undefined;
 };
-
-export const isApiKeyPrincipal = (principal: Principal) => principal.issuer === LEGACY_KEY_ISSUER;
 
 export const isGrantedClient = (principal: Principal) =>
   principal.scopes?.includes(CLIENT_GRANT_SCOPE) ?? false;

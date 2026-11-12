@@ -18,6 +18,7 @@ import { orgNumberValid } from '../extensions.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import type { OperationsOverview } from '../operations.js';
 import type { Organization } from '../organizations.js';
+import { isOperator } from '../rights.js';
 
 export const consoleActions = [
   'platform.service.share',
@@ -117,8 +118,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
   return {
     'platform.service.share': async (input, principal) => {
       const target = `service:${String(input.serviceTenant)}/${String(input.service)}`;
-      if (principal.kind !== 'operator' && !principal.actor)
-        return refused(target, 'only operators change what is shared');
+      if (!isOperator(principal)) return refused(target, 'only operators change what is shared');
       const parsed = availableTo.safeParse(input.availableTo);
       if (!parsed.success)
         return invalid(target, [
@@ -154,8 +154,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
     },
     'platform.judge.label': async (input, principal) => {
       const target = `judge:${String(input.judge)}`;
-      if (principal.kind !== 'operator' && !principal.actor)
-        return refused(target, 'only operators label judge results');
+      if (!isOperator(principal)) return refused(target, 'only operators label judge results');
       const parsed = humanLabel.safeParse({
         item: input.item,
         judge: input.judge,
@@ -173,8 +172,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
     },
     'platform.support.end': async (input, principal) => {
       const target = `support:${String(input.session)}`;
-      if (principal.kind !== 'operator' && !principal.actor)
-        return refused(target, 'only operators end support sessions');
+      if (!isOperator(principal)) return refused(target, 'only operators end support sessions');
       const ended = await deps.support.end(String(input.session), now());
       if (!ended)
         return invalid(target, [{ path: 'session', message: 'no active session with that id' }]);
@@ -182,8 +180,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
     },
     'platform.support.extend': async (input, principal) => {
       const target = `support:${String(input.session)}`;
-      if (principal.kind !== 'operator' && !principal.actor)
-        return refused(target, 'only operators extend support sessions');
+      if (!isOperator(principal)) return refused(target, 'only operators extend support sessions');
       const own = deps.support
         .list()
         .find((s) => s.id === String(input.session) && s.operator === actorOf(principal));
@@ -206,8 +203,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
     },
     'platform.task.cancel': async (input, principal) => {
       const target = `task:${String(input.task)}`;
-      if (principal.kind !== 'operator' && !principal.actor)
-        return refused(target, 'only operators cancel tasks');
+      if (!isOperator(principal)) return refused(target, 'only operators cancel tasks');
       const task = String(input.task);
       if (!(await deps.tasks()).some((t) => t.task === task))
         return invalid(target, [{ path: 'task', message: 'no running task with that id' }]);
@@ -216,8 +212,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
     },
     'platform.audit.export': async (input, principal) => {
       const target = 'audit:export';
-      if (principal.kind !== 'operator' && !principal.actor)
-        return refused(target, 'only operators export the audit log');
+      if (!isOperator(principal)) return refused(target, 'only operators export the audit log');
       const count = Number(input.count);
       return {
         ok: true,

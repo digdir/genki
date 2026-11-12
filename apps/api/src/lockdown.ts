@@ -82,6 +82,9 @@ export const ingestionRoutes = new Set([
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/retry',
   'POST /operator/datasets/:id/engine-switches',
   'POST /operator/datasets/:id/engine-switches/:sid/retry',
+  // Activating a switch into the knowledge database runs its pipelines once more (ADR 0025).
+  'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/activate',
+  'POST /operator/datasets/:id/engine-switches/:sid/activate',
   'POST /tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/apply',
 ]);
 
