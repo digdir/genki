@@ -3,8 +3,6 @@ import type { integrationsArea as source } from '../nb/operate-integrations';
 
 export const integrationsArea = {
   integrations: {
-    heading: 'Integrations',
-    lead: 'Systems and frontends that call the platform, and sources that start services automatically.',
     callFromCode: 'Call a service from code',
     tabSystems: 'Systems',
     tabFrontends: 'Frontends',
@@ -18,7 +16,6 @@ export const integrationsArea = {
       one: '{count} integration needs follow-up',
       other: '{count} integrations need follow-up',
     },
-    badgeFailing: '{count} failing',
     systemRejected: '{name}: calls are being rejected',
     systemSub: '{env} · Owner: {owner}',
     triggerSub: '{kind} · starts {service}',
@@ -250,8 +247,15 @@ export const integrationsArea = {
     address: 'Address (https)',
     secretName: 'Name of the secret (optional)',
     secret: 'The secret',
-    secretHelp: 'Stored in Key Vault and cannot be read out again, only replaced.',
+    secretHelp:
+      'Stored in Key Vault for the address above and cannot be read out again, only replaced.',
     register: 'Register connection',
+  },
+  secretHosts: {
+    setElsewhere:
+      'The secret "{name}" is set up for other addresses ({hosts}). Choose another name for the secret.',
+    unchecked:
+      'We could not check which addresses the secret "{name}" is set up for, so nothing was stored.',
   },
   integHooks: {
     pointBeforeModel: 'Before model call',
@@ -368,6 +372,10 @@ export const integrationsArea = {
     createdToday: 'today by you',
     rotatedToday: 'rotated today by you',
     unknownDate: 'unknown date',
+    createdBy: '{date} by {who}',
+    modelsAllowed: 'Can use models in the locked environment',
+    modelsRefused:
+      'Cannot use models in the locked environment: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     nameProblem: 'Give the key a name.',
     selectionProblem: 'Choose at least one service or dataset, or choose "All".',
     rateProblem: 'Enter a whole number from 1 to 6,000.',
@@ -396,6 +404,10 @@ export const integrationsArea = {
     datasets: 'Datasets',
     rate: 'Calls per minute',
     rateHelp: 'From 1 to 6,000.',
+    testRunner: 'Test runner for smoke tests',
+    testRunnerHelp:
+      'The key can read everything in the organisation and the platform configuration in the operator overviews, try services in the playground when it reaches all services, and create and archive definitions whose id starts with smoke-. It expires after 90 days. Only in this locked test environment.',
+    testRunnerTag: 'Test runner',
     createKey: 'Create key',
     none: 'No API keys yet',
     noneText: 'Create a key for systems that cannot use Maskinporten.',

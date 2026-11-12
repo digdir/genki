@@ -60,6 +60,8 @@ export const LogSection = ({
       </div>
     );
 
+  const usageShown = state.status === 'ready' && state.data.some((r) => r.usage !== undefined);
+
   return (
     <section aria-labelledby="svc-log-h" className="stack-sm">
       <Heading level={2} data-size="xs" id="svc-log-h">
@@ -82,12 +84,16 @@ export const LogSection = ({
                 <Table.HeaderCell scope="col">{t('serviceLog.colBy')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('serviceLog.colStatus')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('serviceLog.colStarted')}</Table.HeaderCell>
-                <Table.HeaderCell scope="col" className="right">
-                  {t('serviceLog.colTokens')}
-                </Table.HeaderCell>
-                <Table.HeaderCell scope="col" className="right">
-                  {t('serviceLog.colCost')}
-                </Table.HeaderCell>
+                {usageShown ? (
+                  <>
+                    <Table.HeaderCell scope="col" className="right">
+                      {t('serviceLog.colTokens')}
+                    </Table.HeaderCell>
+                    <Table.HeaderCell scope="col" className="right">
+                      {t('serviceLog.colCost')}
+                    </Table.HeaderCell>
+                  </>
+                ) : null}
               </Table.Row>
             </Table.Head>
             <Table.Body>
@@ -105,10 +111,16 @@ export const LogSection = ({
                       </Tag>
                     </Table.Cell>
                     <Table.Cell>{f.dateTime(r.createdAt, 'medium')}</Table.Cell>
-                    <Table.Cell className="right numeric">
-                      {f.number(r.usage.inputTokens + r.usage.outputTokens)}
-                    </Table.Cell>
-                    <Table.Cell className="right numeric">{kr(r.usage.costMicroNok)}</Table.Cell>
+                    {usageShown ? (
+                      <>
+                        <Table.Cell className="right numeric">
+                          {r.usage ? f.number(r.usage.inputTokens + r.usage.outputTokens) : ''}
+                        </Table.Cell>
+                        <Table.Cell className="right numeric">
+                          {r.usage ? kr(r.usage.costMicroNok) : ''}
+                        </Table.Cell>
+                      </>
+                    ) : null}
                   </Table.Row>
                 );
               })}

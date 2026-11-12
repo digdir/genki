@@ -174,6 +174,7 @@ export interface AgentEntry {
   inputSchema?: JSONSchema;
   inputFields?: InputField[];
   version?: number;
+  environment?: string;
   status?: string;
 }
 

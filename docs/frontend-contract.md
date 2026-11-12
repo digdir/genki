@@ -38,10 +38,13 @@ Rate limits apply per key. `401` means no or bad credentials, `403` a key that m
 | Datasets and the filter fields they declare | `GET /api/datasets`, `GET /api/datasets/{id}`                                                                   |
 | Facet values to build filters               | `GET /api/facets?tenant=&dataset-config-key=&fields=a,b&filter=<json>`                                          |
 | Feedback                                    | `POST /api/feedback` with `{ "task": "<genai-task header>", "rating": "up" or "down", "comment"?, "reasons"? }` |
+| Media an answer returned                    | `GET /v1/tasks/{task}/media/{id}`, the `url` of an item in `attachments` (see Media in an answer)               |
 
 OpenAPI: the platform document is served at `/openapi.json`; the per-key tool document is at `/api/tools/openapi.json`. The `/v1` routes follow OpenAI's own schema, and the extensions are the fields listed here.
 
 Send `GenAI-Version: <n>` to run a published version of the service, or put `"metadata": { "version": "<n>" }` in the body of `POST /v1/chat/completions`. If both are sent they must name the same version, or the call fails with `400 invalid_version`; a version that was never published is `409 version_not_found`. The response carries `genai-service-version`. Per channel: `/v1/chat/completions` reads the header and `metadata.version`; REST `/api/tools/call/{tool}` and MCP `tools/call` read the header; A2A takes no pin and runs the published version, which its agent card names.
+
+A service can have environments (ADR 0004): `prod`, and others such as `test` that its owner adds. Without a pin, a call runs the version its environment points to. Send `GenAI-Environment: <name>` to choose one; without it the call runs `prod`, or the first environment the key or frontend may use when `prod` is not among them. A key or frontend bound to environments is refused one it may not use with `403 environment_not_authorized`, a name the service does not have is `409 environment_not_found`, and a header that is not a name is `400 invalid_environment`. `GenAI-Version` overrides the environment's version, but a key or frontend bound to environments may pin only a version one of them runs, else `403 environment_not_authorized`. Every channel, A2A included, reads the header, and the response carries `genai-environment`. A server that sends its testers to `test` and everyone else to `prod` uses one key allowed both and sets the header per request.
 
 ## Services and their forms
 
@@ -208,7 +211,7 @@ Older platforms without `_pickable` can fall back to `_chat || _default`.
 - With a conversation the platform loads the history itself. Send only the new user message; earlier turns in `messages` are ignored.
 - An unknown or foreign id answers `404` with code `conversation_not_found`. A failed run stores no assistant turn.
 - A request that fails before the run starts (any `400`, `403`, `404`, `409` or `503` answer) creates no conversation, so `genai_conversation: true` on a refused request leaves nothing behind. A run that fails without streaming (`500`) removes the conversation it just created. A streamed run has already announced its id; it keeps the user turn and no assistant turn.
-- The conversation routes (`/api/conversations`) list, read, rename and delete the same conversations. A new conversation is titled from the first line of its first question (60 characters); until then its `topic` is the default.
+- The conversation routes (`/api/conversations`) list, read, rename and delete the same conversations. Deleting a conversation also erases the content of the tasks its turns ran as. A new conversation is titled from the first line of its first question (60 characters); until then its `topic` is the default.
 
 Shapes:
 
@@ -222,7 +225,7 @@ Shapes:
 
 - `service` is a service id or a model `id`; `agent` and `agent-id` are accepted for headless-rag compatibility.
 - `Conversation` is `{ id, topic, serviceId, agentId, userId, tags, created }`; `agentId` is the same as `serviceId`, kept for compatibility; `created` is milliseconds since 1970.
-- `Message` is `{ id, role, text, created, tags, filterValue, chunks, sources?, task?, attachments?, input? }`. `role` is `user` or `assistant`; system prompts are never returned. On a user message, `input` holds the form values and `attachments` the attached file names. On an assistant message, `sources` are the sources as the answer gave them (`{ index?, title, url?, document_id?, excerpts }`, the same shape and rule as Citations and sources, so `[N]` in `text` is the source with `index: N`), and `task` is the id for feedback. `chunks` (`[{ chunkId, docTitle, docNum, contentMarkdown }]`) is the older per-chunk list, kept for headless-rag clients; use `sources`. Messages stored before `sources` existed have only `chunks`.
+- `Message` is `{ id, role, text, created, tags, filterValue, chunks, sources?, task?, attachments?, input? }`. `role` is `user` or `assistant`; system prompts are never returned. On a user message, `input` holds the form values and `attachments` the attached file names. On an assistant message, `sources` are the sources as the answer gave them (`{ index?, title, url?, document_id?, excerpts }`, the same shape and rule as Citations and sources, so `[N]` in `text` is the source with `index: N`; a turn from a service that cites excerpts stores no `markers` list, ADR 0052), and `task` is the id for feedback. `chunks` (`[{ chunkId, docTitle, docNum, contentMarkdown }]`) is the older per-chunk list, kept for headless-rag clients; use `sources`. Messages stored before `sources` existed have only `chunks`.
 - `PUT` treats `title` and `topic` as the same field. Any other key answers `400 unknown_field`.
 
 ### Who owns a conversation
@@ -234,7 +237,8 @@ Shapes:
 ### Attached documents
 
 - A service takes documents with the question when `GET /v1/models` shows `_documents` on it: `accepts` (the media types this service takes), `max_bytes` (2 MiB) and `max_count` (5). `_documents.accepts` is authoritative; offer only those types. The platform can read `text/plain`, `text/markdown`, `text/csv` and `application/json`, and each service picks its own subset.
-- Send them as `genai_documents: [{ "name": "brev.md", "media_type": "text/markdown", "data": "<base64>" }]` on `POST /v1/chat/completions`. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`.
+- A service that accepts audio or images shows `_media: {accepts, max_bytes, max_count}` (10 MiB, 5). Send them in the last user message as `{ "type": "input_audio", "input_audio": { "data": "<base64>", "format": "wav" } }` or `{ "type": "image_url", "image_url": { "url": "data:image/png;base64,..." } }`, with the same errors as documents.
+- Send them as `genai_documents: [{ "name": "brev.md", "media_type": "text/markdown", "data": "<base64>" }]` on `POST /v1/chat/completions`. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`. A request body over 16 MiB is refused with `413 request_too_large`; `/api/tools/call/{tool}` takes at most 1 MiB.
 - Every strategy that answers from sources uses them: the RAG strategies and the agent loop give an attached document to the model as the first numbered sources, before the search results, and they are cited like other sources (`title` is the file name, `document_id` and chunk ids start with `attached:`). Such a source has no `url` and no entry in `citations`, since there is nothing to open. Plain chat gets the text in the prompt.
 - With a conversation, the user turn stores the file names, and `GET /api/conversations/{id}` returns them as `attachments` on that message. The `task` id for feedback is on the assistant message that answers it. The file content is not repeated in later turns; attach it again to ask about it again.
 - The files are kept in tenant blob storage. Files sent with a conversation are deleted right away when the conversation is deleted (`DELETE /api/conversations/{id}`); otherwise the nightly retention job deletes them when the service's retention period has passed.
@@ -277,7 +281,7 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 
 ### Citations and sources
 
-`[N]` in the answer text always refers to the source with `index: N`. Each source is one document:
+`[N]` in the answer text refers to the source with `index: N`, unless the service cites excerpts (below). Each source is one document:
 
 ```json
 {
@@ -296,7 +300,35 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 - `excerpts` holds every retrieved chunk of that document, so a frontend never fetches passage text itself. Per-chunk ids are `excerpts[].chunk_id`.
 - Existing fields (`source`, `document`, `metadata`, `excerpt`) are kept for OpenAI and Open WebUI clients. Note that `document` there is still the list of passage texts, which is why the document id is `document_id`. The top-level `citations` lists only links people can open, so it does not line up with `sources`; resolve `[N]` by `index`, never by position in `citations`.
 - An answer without citations still lists up to 10 retrieved sources, one per document, without `index`.
+- **When the service cites excerpts** (strategy config `citeBy: excerpt`, ADR 0052), each `[N]` leads to one excerpt, and several markers can lead to the same document. The top-level `markers` lists every marker in the answer in order, as `{ marker, chunk_id, document }`, with `marker` written as in the text without brackets. Resolve `[N]` by `markers`, then show the excerpt with that `chunk_id`. A source's `markers` lists the markers that cite its document, each excerpt's `markers` the ones that cite that excerpt, and `index` is the document's lowest marker. Number the markers for the reader as you like. MCP returns the same list as `structuredContent.markers`.
 - No answer: `no_answer: true` and a `notice` text to show instead of the answer.
+
+### Media in an answer
+
+A service whose steps make media, such as an image, a sound or a PDF, returns it next to `citations` as `attachments`. The text answer is unchanged, so OpenAI clients that do not know the field work as before.
+
+```json
+{
+  "choices": [{ "message": { "role": "assistant", "content": "Her er figuren." } }],
+  "attachments": [
+    {
+      "type": "image",
+      "id": "0b9e6c1a-4f1e-4a7e-9a55-2f0d7f6c1b2e",
+      "mediaType": "image/png",
+      "bytes": 48213,
+      "sha256": "9f2c…",
+      "step": "diagram",
+      "url": "/v1/tasks/6f1c2d3e-…/media/0b9e6c1a-4f1e-4a7e-9a55-2f0d7f6c1b2e"
+    }
+  ]
+}
+```
+
+- `type` is the part of `mediaType` before the slash (`image`, `audio`, `video`, `application`, `text`): pick the element from it, and use `mediaType` for the exact type. `step` is the step in the service that made it.
+- Fetch the bytes with `GET <url>` on the platform, with the same credential that asked (`X-API-Key` or the user's token). It answers the bytes with the media type as `content-type`, `cache-control: private, no-store`, and `404` to a caller that may not read the run. There are no public links: a browser frontend fetches it with its token and shows it from a blob URL; a server frontend fetches it and passes it on to its own user.
+- In a stream, `attachments` comes in one frame of its own before the frame with `finish_reason: "stop"`.
+- Only media types the deployment allows are made at all; a service step that would make another type fails before the model is called.
+- The run timeline (`GET /tenants/{tenant}/tasks/{task}`) gives a step's media as a block with `media: [{ id, mediaType, bytes }]`; the bytes are at `GET /v1/tasks/{task}/media/{id}` as above. Genki's portal and workspace show each item as a preview card (the image, a player for sound and video, type, size and a download link), never a public link.
 
 ### Errors
 
@@ -323,11 +355,11 @@ Frames in order for a live stream with a conversation (each line is `data: <json
 
 Without `genai_stream: "live"` the `sources` frame comes before the text and there is no `retract`. A table service sends one frame with `table` before the text. `genai_steps: true` adds `{"genai_step":{...}}` frames between text frames.
 
-Response headers: `genai-task` (use it for feedback), `genai-conversation`, `genai-service-version`, `genai-model`.
+Response headers: `genai-task` (use it for feedback), `genai-conversation`, `genai-service-version`, `genai-environment`, `genai-model`.
 
 ### Feedback
 
-`POST /api/feedback` with `{ "task": "<genai-task>", "rating": "up" | "down", "comment"?, "reasons"? }` answers `201 { "ok": true, "task": "<task>" }`. The platform takes feedback on a run only from the credential that made it: the same API key, or the same signed-in person. `X-User-Id` plays no part, so your server should send feedback only for task ids it got for that end user. Another key answers `403` with `errors: [{ "path": "task" }]`; an unknown task `404`. Comments are stored with personal data masked.
+`POST /api/feedback` with `{ "task": "<genai-task>", "rating": "up" | "down", "comment"?, "reasons"? }` answers `201 { "ok": true, "task": "<task>" }`. The platform takes feedback on a run only from the credential that made it: the same API key, or the same signed-in person. `X-User-Id` plays no part, so your server should send feedback only for task ids it got for that end user. Another key answers `403` with `errors: [{ "path": "task" }]`; an unknown task `404`. Comments are stored with personal data masked. Send feedback again on the same task to change it, sending the whole feedback each time, for example the rating again with a comment added: the latest feedback from a credential on a task is the one that counts, so a later post replaces the earlier one in feedback lists and quality figures instead of counting twice. Every post is kept on the run's timeline, and each one sends a `feedback.received` webhook.
 
 ## Use the client (repository only)
 

@@ -1,27 +1,41 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { envSecrets } from '@genai/kernel';
-import { EmbeddingRouter, parseEmbeddingCatalog, type Residency } from './index.js';
+import { bundledDescriptorDir, descriptorRegistry, parseDescriptor } from '@genai/operations';
+import { createGate, envSecrets } from '@genai/kernel';
+import { EmbeddingRouter, parseEmbedders, type Residency } from './index.js';
 import { fakeEmbedder, fakeEmbeddingAdapter, fakeVector, testContext } from './testing.js';
 
-const catalog = (model: Record<string, unknown> = {}) => ({
-  endpoints: {
-    foundry: {
-      protocol: 'fake',
-      baseURL: 'https://foundry.example/openai/v1',
-      auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/k' },
+const catalog = (model: Record<string, unknown> = {}) => {
+  const { maxBatch, ...rest } = model;
+  return {
+    endpoints: {
+      foundry: {
+        baseURL: 'https://foundry.example',
+        auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/k' },
+        families: { fake: '/openai/v1' },
+      },
     },
-  },
-  models: [
-    {
-      id: 'foundry/embed-small',
-      endpoint: 'foundry',
-      deployment: 'text-embedding-3-small',
-      residency: 'eu',
-      dimensions: 16,
-      ...model,
-    },
-  ],
-});
+    models: [
+      {
+        id: 'foundry/gpt',
+        endpoint: 'foundry',
+        deployment: 'gpt',
+        residency: 'eu',
+        apis: { chat: 'fake/chat@1' },
+      },
+      {
+        id: 'foundry/embed-small',
+        endpoint: 'foundry',
+        deployment: 'text-embedding-3-small',
+        residency: 'eu',
+        apis: { embed: 'fake/embeddings@1' },
+        embed: { dimensions: 16, ...(maxBatch === undefined ? {} : { maxBatch }) },
+        ...rest,
+      },
+    ],
+  };
+};
 
 const setup = (
   model: Record<string, unknown> = {},
@@ -39,30 +53,111 @@ const setup = (
 
 const ref = { kind: 'embedder', id: 'foundry/embed-small' };
 
-describe('embedding catalog', () => {
-  it('refuses a literal key, a protocol without an adapter and a missing dimension count', () => {
-    const result = parseEmbeddingCatalog(
+describe('embedders in the model catalogue', () => {
+  it('the embedders are the models that bind an API for embed, the others are left to their ports', () => {
+    const result = parseEmbedders(catalog(), [fakeEmbeddingAdapter()]);
+    expect(result.ok && result.catalog.embedders.map((e) => e.id)).toEqual(['foundry/embed-small']);
+    expect(result.ok && result.catalog.embedders[0]?.baseURL).toBe(
+      'https://foundry.example/openai/v1',
+    );
+  });
+
+  it('an embedder names its dimensions, an API with an implementation, and a family its connection offers', () => {
+    const missing = parseEmbedders(
       {
-        endpoints: {
-          main: {
-            protocol: 'fake',
-            baseURL: 'https://e.example',
-            auth: { kind: 'bearer', secret: 'abc' },
+        ...catalog(),
+        models: [
+          {
+            id: 'x',
+            endpoint: 'foundry',
+            deployment: 'd',
+            residency: 'eu',
+            apis: { embed: 'fake/embeddings@1' },
           },
-        },
-        models: [{ id: 'x', endpoint: 'main', deployment: 'd', residency: 'eu' }],
+        ],
       },
       [fakeEmbeddingAdapter()],
     );
-    expect(!result.ok && result.errors.map((e) => e.path)).toEqual([
-      'endpoints.main.auth.secret',
-      'models.0.dimensions',
-    ]);
+    expect(!missing.ok && missing.errors.map((e) => e.path)).toEqual(['models.0.embed']);
 
-    const unknown = parseEmbeddingCatalog(catalog(), [fakeEmbeddingAdapter('other')]);
-    expect(!unknown.ok && unknown.errors.map((e) => e.path)).toEqual([
-      'endpoints.foundry.protocol',
+    const unknown = parseEmbedders(catalog(), [fakeEmbeddingAdapter('other/embeddings@1')]);
+    expect(!unknown.ok && unknown.errors.map((e) => e.path)).toEqual(['models.1.apis.embed']);
+
+    const otherFamily = parseEmbedders(catalog({ apis: { embed: 'openai/embeddings@1' } }), [
+      fakeEmbeddingAdapter('openai/embeddings@1'),
     ]);
+    expect(!otherFamily.ok && otherFamily.errors[0]?.message).toMatch(
+      /does not offer the openai family/,
+    );
+  });
+
+  it('an embedder bound to the old id openai/embed@1 runs on openai/embeddings@1', () => {
+    const result = parseEmbedders(
+      {
+        ...catalog({ apis: { embed: 'openai/embed@1' } }),
+        endpoints: {
+          foundry: {
+            baseURL: 'https://foundry.example',
+            auth: { kind: 'bearer', secret: 'secret://env/k' },
+            families: { openai: '/openai/v1' },
+          },
+        },
+      },
+      [fakeEmbeddingAdapter('openai/embeddings@1')],
+    );
+    expect(result.ok && result.catalog.embedders[0]?.api).toBe('openai/embeddings@1');
+  });
+
+  it('a new embedder in the catalogue runs after a reload, with no deploy', async () => {
+    const adapter = fakeEmbeddingAdapter();
+    const router = new EmbeddingRouter({
+      catalog: { endpoints: {}, models: [] },
+      adapters: [adapter],
+      secrets: envSecrets({}),
+    });
+    expect(router.describe()).toEqual([]);
+    router.reload(catalog());
+    await router.open(ref, testContext().ctx).embed(['hei']);
+    expect(adapter.calls).toHaveLength(1);
+  });
+});
+
+describe('a described embedder on a connection with settings', () => {
+  it("a described embed call reads the connection's settings, as a model call does", async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'embeddings@1.yaml'), 'utf8')
+      .replace('id: openai/embeddings@1', 'id: fake/embed-described@1')
+      .replace('family: openai', 'family: fake')
+      .replace(
+        '  path: /embeddings\n',
+        '  path: /embeddings\n  headers:\n    x-key-id: $connection.keyId\n',
+      )
+      .replace(
+        'wire:\n  request:',
+        'wire:\n  headers:\n    object:\n      x-key-id: plain\n  request:',
+      );
+    const descriptor = parseDescriptor(yaml);
+    const keyIds: (string | null)[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      keyIds.push(new Headers(init?.headers).get('x-key-id'));
+      return Response.json({
+        data: [{ index: 0, embedding: fakeVector('hei', 16) }],
+        usage: { prompt_tokens: 1 },
+      });
+    };
+    const base = catalog({ apis: { embed: descriptor.id } });
+    const router = new EmbeddingRouter({
+      catalog: {
+        ...base,
+        endpoints: { foundry: { ...base.endpoints.foundry, settings: { keyId: 'AKID-7' } } },
+      },
+      adapters: [],
+      secrets: envSecrets({ K: 'k' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    const result = await router.open(ref, testContext().ctx).embed(['hei']);
+    expect(result.vectors).toHaveLength(1);
+    expect(keyIds).toEqual(['AKID-7']);
   });
 });
 
@@ -106,29 +201,29 @@ describe('embedding router', () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it('refuses a model whose residency exceeds the request', () => {
+  it('refuses a model whose residency exceeds the request when it is called', async () => {
     const { router } = setup({ residency: 'global' }, fakeEmbeddingAdapter(), 'global');
     const { router: strict } = setup({ residency: 'global' }, fakeEmbeddingAdapter(), 'eu');
 
-    expect(() => router.open(ref, testContext().ctx, { maxResidency: 'norway' })).toThrow(
-      expect.objectContaining({
-        code: 'residency',
-        message: expect.stringMatching(/outside norway/),
-      }),
-    );
-    expect(() => strict.open(ref, testContext().ctx)).toThrow(/outside eu/);
-    expect(() => router.open(ref, testContext().ctx)).not.toThrow();
+    await expect(
+      router.open(ref, testContext().ctx, { maxResidency: 'norway' }).embed(['hei']),
+    ).rejects.toMatchObject({
+      code: 'residency',
+      message: expect.stringMatching(/outside norway/),
+    });
+    await expect(strict.open(ref, testContext().ctx).embed(['hei'])).rejects.toThrow(/outside eu/);
+    await expect(router.open(ref, testContext().ctx).embed(['hei'])).resolves.toBeDefined();
     expect(() => router.open({ kind: 'embedder', id: 'none' }, testContext().ctx)).toThrow(
       /no embedder none/,
     );
   });
 
   it('a vector of the wrong length fails', async () => {
-    const short = fakeEmbeddingAdapter('fake', (_, texts) => ({
+    const short = fakeEmbeddingAdapter(undefined, (_, texts) => ({
       vectors: texts.map((t) => fakeVector(t, 8)),
       usage: { inputTokens: 1 },
     }));
-    const missing = fakeEmbeddingAdapter('fake', () => ({
+    const missing = fakeEmbeddingAdapter(undefined, () => ({
       vectors: [],
       usage: { inputTokens: 1 },
     }));
@@ -162,8 +257,22 @@ describe('embedding router', () => {
     ]);
   });
 
+  it('meters input tokens at the list price', async () => {
+    const router = new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [fakeEmbeddingAdapter()],
+      secrets: envSecrets({}),
+      priceOf: (id) => (id === 'foundry/embed-small' ? { 'input-token': 0.0000012 } : undefined),
+    });
+    const { ctx, metered } = testContext();
+
+    await router.open(ref, ctx).embed(['to ord', 'tre ord her']);
+
+    expect(metered.map((m) => m.usage)).toEqual([{ inputTokens: 5, requests: 1, costMicroNok: 6 }]);
+  });
+
   it('reports failures as unavailable, and a cancelled task as cancelled', async () => {
-    const failing = fakeEmbeddingAdapter('fake', () => {
+    const failing = fakeEmbeddingAdapter(undefined, () => {
       throw new Error('connection refused');
     });
     const controller = new AbortController();
@@ -175,6 +284,72 @@ describe('embedding router', () => {
     await expect(
       setup({}, failing).router.open(ref, testContext(controller.signal).ctx).embed(['a']),
     ).rejects.toMatchObject({ code: 'cancelled' });
+  });
+});
+
+describe('embedding through the gate', () => {
+  it("an embedding call outside the service's residency is refused", async () => {
+    const { router, adapter } = setup({ residency: 'eu' });
+    const { ctx } = testContext();
+
+    await expect(
+      router.open(ref, { ...ctx, serviceResidency: 'norway' }).embed(['a']),
+    ).rejects.toMatchObject({
+      code: 'residency',
+      message: expect.stringMatching(/outside norway/),
+    });
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it('an embedding call is let through in lockdown for a login without model access, so search keeps working', async () => {
+    const adapter = fakeEmbeddingAdapter();
+    const router = new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [adapter],
+      secrets: envSecrets({}),
+      gate: createGate({ admits: () => false }),
+    });
+
+    await router.open(ref, testContext().ctx).embed(['a']);
+
+    expect(adapter.calls).toHaveLength(1);
+  });
+
+  it('an embedding call for a tenant the embedder is not shared with is refused', async () => {
+    const { router, adapter } = setup({ tenants: ['111222333'] });
+
+    await expect(router.open(ref, testContext().ctx).embed(['a'])).rejects.toMatchObject({
+      code: 'bad_request',
+      message: expect.stringMatching(/not shared/),
+    });
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it("embedding calls go through the gate's egress guard for the endpoint", async () => {
+    const given: (typeof fetch | undefined)[] = [];
+    const reached: string[] = [];
+    const guarded = (async (input: string) => {
+      reached.push(input);
+      return new Response();
+    }) as unknown as typeof fetch;
+    const adapter = fakeEmbeddingAdapter();
+    new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [
+        {
+          ...adapter,
+          connect: (endpoint: Parameters<typeof adapter.connect>[0]) => {
+            given.push(endpoint.fetch);
+            return adapter.connect(endpoint);
+          },
+        },
+      ],
+      secrets: envSecrets({}),
+      gate: createGate({ egress: (endpoint) => (endpoint === 'foundry' ? guarded : undefined) }),
+    });
+
+    await given[0]?.('https://foundry.example/embeddings');
+    expect(reached).toEqual(['https://foundry.example/embeddings']);
   });
 });
 

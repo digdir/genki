@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { App } from '../App';
 import { mockAnsattporten, type AuthClient } from '../auth';
 import { exampleAccess, mockFetch } from '../mock';
-import { expectAccessible, failingFetch, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -28,14 +28,15 @@ const expander = (name: RegExp) => screen.getByRole('button', { name, expanded: 
 describe('Tilgang', () => {
   it('shows rights from Altinn and lists people with their rights', async () => {
     const calls: string[] = [];
-    const base = mockFetch();
+    const base = heldFetch(/\/access$/);
     await renderAt('#/access', async (input, init) => {
       calls.push(String(input));
-      return base(input, init);
+      return base.fetch(input, init);
     });
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Tilgang' })).toBeTruthy();
-    expect(screen.getByText('Henter fra Altinn')).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tilgang' })).toBeTruthy();
+    expect(await screen.findByText('Henter fra Altinn')).toBeTruthy();
+    await base.release();
     expect((await ready()).getAttribute('role')).toBe('status');
     expect(calls.some((c) => /\/tenants\/999888777\/access$/.test(c))).toBe(true);
 

@@ -2,6 +2,7 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { textPart, type Part } from '@genai/contracts';
 import type { Strategy } from '@genai/kernel';
+import { untrustedDataNotes } from '@genai/port-model';
 import { describe, expect, it } from 'vitest';
 import { builtinBlocks } from './builtins.js';
 import {
@@ -51,11 +52,11 @@ describe('ported headless-rag flows', () => {
       ),
     ).toBe(true);
     expect(prompt).toContain(
-      'Evidence:\n[1] \n```\nTitle: Dokument c3\n### Kapittel\n```\n\nTekst for c3.',
+      'Evidence:\n[1] <untrusted_data kind="source" id="c3">\n\n```\nTitle: Dokument c3\n### Kapittel\n```\n\nTekst for c3.\n</untrusted_data>',
     );
     expect(prompt).toContain('Claim: Digdir har fått økt bevilgning i 2025');
     expect(models.seen[0]?.request.messages[0]?.content).toBe(
-      'You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).',
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${untrustedDataNotes.nb}`,
     );
     expect(answerOf(out.result)).toEqual({
       mime: 'text/plain',
@@ -69,6 +70,44 @@ describe('ported headless-rag flows', () => {
     });
     expect(sourcesOf(out.result).map((s) => s.chunkId)).toEqual(['c3', 'c1']);
     expect(notices(out.events)).toContainEqual(expect.objectContaining({ kind: 'retrieval' }));
+  });
+
+  it('records what the search detected in the retrieval notice', async () => {
+    const detections = [
+      { kind: 'year', field: 'title', values: ['2025'], queries: ['q'], use: 'boost' },
+    ];
+    const retrieval = stubRetrieval([chunk('c1')], undefined, { detections });
+    const models = fakeModels({ primary: ['Påstanden stemmer [1].'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    expect(notices(out.events)).toContainEqual(
+      expect.objectContaining({ kind: 'retrieval', detections }),
+    );
+  });
+
+  it('fact-checker: reads OpenAI file-search markers as citations', async () => {
+    const retrieval = stubRetrieval([chunk('c1'), chunk('c2')]);
+    const models = fakeModels({ primary: ['Påstanden stemmer 【2†L1-L4】 og 【1†source】.'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    expect(answerOf(out.result)).toEqual({
+      mime: 'text/plain',
+      body: { kind: 'text', text: 'Påstanden stemmer [2] og [1].' },
+      meta: {
+        citations: [
+          { index: 1, chunkId: 'c1' },
+          { index: 2, chunkId: 'c2' },
+        ],
+      },
+    });
   });
 
   it('ai-overview: plans, reranks, passes the evidence gate and keeps a cited overview', async () => {

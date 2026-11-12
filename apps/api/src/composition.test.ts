@@ -29,6 +29,7 @@ import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
+import { kernelTaskReader, toTimeline } from './timeline.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -184,6 +185,7 @@ const modelReply = (body: Record<string, unknown>) => {
       json: {
         data: [
           { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+          { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
           { id: 'gpt-5-mini', model: 'gpt-5-mini', status: 'succeeded' },
           { id: 'text-embedding-3-small', model: 'text-embedding-3-small', status: 'succeeded' },
         ],
@@ -440,6 +442,85 @@ describe('the composed platform', () => {
         source: 'explicit',
       },
     ]);
+  });
+
+  it('applies a variant fixed filter to every chunk search, and lets a caller narrow it but not widen it', async () => {
+    const { platform, app, search } = await boot();
+    const service = yaml('services/kunnskapsassistenten-retrieve-only.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const fixed = { fields: [{ field: 'type', 'selected-options': ['ZZZ_fast_type'] }] };
+    const published = await platform.definitions.publish(
+      {
+        ...service,
+        metadata: { ...service.metadata, id: 'kudos-fixed-filter' },
+        spec: { ...service.spec, variants: [{ id: 'default', filters: fixed }] },
+      },
+      'test',
+      'test',
+    );
+    expect(published.ok).toBe(true);
+    const chunkFilters = async (overrides: Record<string, unknown>) => {
+      search.seen.length = 0;
+      const res = await mcp(app, 'tools/call', {
+        name: 'kudos-fixed-filter__default',
+        arguments: { query: 'tiltak og resultater', overrides },
+      });
+      expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+      const searches = search.seen.flatMap(
+        (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
+      );
+      const chunks = searches.filter((s) => String(s.collection).includes('chunks') && s.q !== '*');
+      expect(chunks.length).toBeGreaterThan(0);
+      return chunks.map((s) => String(s.filter_by));
+    };
+
+    for (const f of await chunkFilters({})) expect(f).toContain('type:=[`ZZZ_fast_type`]');
+    const caller = (field: string, value: string) => ({
+      'retrieve-filter-by': { fields: [{ field, 'selected-options': [value] }] },
+    });
+    for (const f of await chunkFilters(caller('orgs_short', 'DIGDIR'))) {
+      expect(f).toContain('type:=[`ZZZ_fast_type`]');
+      expect(f).toContain('orgs_short:=[`DIGDIR`]');
+    }
+    for (const f of await chunkFilters(caller('type', 'Tildelingsbrev'))) {
+      expect(f).toContain('type:=[`ZZZ_fast_type`]');
+      expect(f).toContain('type:=[`Tildelingsbrev`]');
+    }
+  });
+
+  it('refuses at publish a variant filter on a field none of its datasets declares', async () => {
+    const { platform } = await boot();
+    const service = yaml('services/kunnskapsassistenten-retrieve-only.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const publish = (id: string, field: string) =>
+      platform.definitions.publish(
+        {
+          ...service,
+          metadata: { ...service.metadata, id },
+          spec: {
+            ...service.spec,
+            variants: [
+              { id: 'default', filters: { fields: [{ field, 'selected-options': ['x'] }] } },
+            ],
+          },
+        },
+        'test',
+        'test',
+      );
+
+    const refused = await publish('kudos-undeclared-filter', 'produkt');
+    expect(refused.ok).toBe(false);
+    expect(!refused.ok && refused.errors).toEqual([
+      {
+        path: 'spec.variants[0].filters.fields[0].field',
+        message: 'no dataset of this service declares the filter field produkt',
+      },
+    ]);
+    expect((await publish('kudos-declared-filter', 'orgs_short')).ok).toBe(true);
   });
 
   it("streams the agent's steps and answer to KA as progress frames before the result", async () => {
@@ -821,7 +902,12 @@ describe('the composed platform', () => {
         }
       ).data.map((m) => m.id);
 
-    expect(await ids()).toEqual(['foundry-openai/gpt-4o-2m-tps', 'foundry-openai/gpt-5-mini']);
+    expect(await ids()).toEqual([
+      'foundry-openai/gpt-4o-2m-tps',
+      'foundry-openai/gpt-5-mini',
+      'foundry-openai/gpt-5.6-terra',
+      'foundry-openai/gpt-6-luna',
+    ]);
     expect(await ids('?residency=norway')).toEqual([]);
 
     const refused = await app.request('/operator/models/foundry-openai/gpt-4o-2m-tps', {
@@ -860,10 +946,14 @@ describe('the composed platform', () => {
     expect(await list()).toEqual([
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
     ]);
     expect(await list({ 'foundry-openai/gpt-4o-2m-tps': price })).toEqual([
       expect.objectContaining({ id: 'foundry-openai/gpt-4o-2m-tps', price }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5-mini', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-5.6-terra', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-6-luna', price: null }),
     ]);
   });
 
@@ -1081,8 +1171,10 @@ describe('a draft test run', () => {
       model: { primary: 'foundry-openai/gpt-4o-2m-tps', residency: 'global' },
     },
   };
-  const withAdmin = async () => {
-    const { platform } = await boot();
+  const withAdmin = async (
+    prices?: Record<string, { inputPerThousand: number; outputPerThousand: number }>,
+  ) => {
+    const { platform } = await boot(undefined, prices ? { prices } : {});
     const app = new Hono();
     platform.mount(
       app,
@@ -1115,6 +1207,29 @@ describe('a draft test run', () => {
     expect(platform.registry.all().some((c) => c.descriptor.id.startsWith('platform/draft/'))).toBe(
       false,
     );
+  });
+
+  it('shows what the run cost on its timeline, priced from the price list', async () => {
+    const { platform, app } = await withAdmin({
+      'foundry-openai/gpt-4o-2m-tps': { inputPerThousand: 0.0238, outputPerThousand: 0.0952 },
+    });
+
+    const res = await run(app, { definition: draft, query: 'Hva koster det?' });
+    const { task } = (await res.json()) as { task: string };
+    const reader = kernelTaskReader(platform.kernel, {
+      kind: 'operator',
+      issuer: 'platform',
+      subject: 'task-reader',
+    });
+    const found = await reader.task(task);
+    if (!found) throw new Error(`no task ${task}`);
+
+    expect(toTimeline(found, await reader.events(task), new Date())).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      costMicroNok: 714,
+      priced: true,
+    });
   });
 
   it('answers 422 with schema errors for an invalid draft', async () => {

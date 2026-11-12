@@ -11,6 +11,9 @@ import {
   type ChatResult,
   type ModelPort,
   type ToolSpec,
+  normaliseCitationMarkers,
+  untrustedData,
+  untrustedDataNote,
 } from '@genai/port-model';
 import { textOf, toolRef, type ToolPort } from '@genai/port-tools';
 import { z } from 'zod';
@@ -19,6 +22,8 @@ import { inferQueryIntent } from './intent.js';
 import {
   activeFiltersInstruction,
   agentTools,
+  cutOffToolCallNudge,
+  answerInstructionsLead,
   defaultSystemPrompt,
   type ActiveFilter,
   exhaustionDefault,
@@ -26,6 +31,7 @@ import {
   noToolCallHonestMiss,
   noToolCallNudge,
   searchScaffold,
+  smallTalkCheck,
   systemPromptWithDate,
 } from './prompts.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
@@ -37,8 +43,15 @@ import {
   soundsLikeRefusal,
 } from './citation-backfill.js';
 import { attachedChunks, attachedNote } from './attached.js';
-import { chunkIdsToMarkers, parseCitations, sourcesFirst, stripPageMarkers } from './citations.js';
-import { skillCatalog, useSkill, useSkillTool } from './skills.js';
+import {
+  chunkIdsToMarkers,
+  documentKey,
+  dropUnknownMarkers,
+  parseCitations,
+  sourcesFirst,
+  stripPageMarkers,
+} from './citations.js';
+import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';
 import {
@@ -131,6 +144,9 @@ export const agentLoopConfig = z.strictObject({
   synthesisMaxTokens: z.number().int().positive().optional(),
   evaluatorTemperature: z.number().min(0).max(2).optional(),
   noToolCallRetry: z.boolean().optional(),
+  noAnswerText: z.string().min(1).max(500).optional(),
+  instructionsInAnswer: z.boolean().optional(),
+  citeBy: z.enum(['document', 'excerpt']).optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -338,6 +354,14 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;
 
+// A second sentence explains more than that nothing was found.
+const onlySaysNothingFound = (text: string) =>
+  text.trim().length <= 200 &&
+  text
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.length > 0).length <= 1;
+
 interface ExtraTool {
   spec: ToolSpec;
   port: ToolPort;
@@ -394,6 +418,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const runStarted = Date.now();
     const config = agentLoopRuntimeConfig.parse(raw);
     const settings = config.strategy;
+    const citeBy = settings.citeBy ?? 'document';
     const ablated = new Set(settings.ablate ?? []);
     const { query, history } = readInput(input);
     const workspace = new Workspace({
@@ -433,7 +458,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           (settings.instructions ? baseInstructions(settings.instructions) : defaultSystemPrompt) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
-          attachedNote(workspace.attached),
+          attachedNote(workspace.attached) +
+          `\n\n${untrustedDataNote(config.languages)}`,
       },
       ...history.map((h) => ({ role: h.role, content: h.text })),
       { role: 'user', content: query },
@@ -451,13 +477,27 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         })
       ).content;
 
+    let smallTalk: Promise<boolean> | undefined;
+    const isSmallTalk = (text: string) =>
+      // The question is data, so it cannot answer the check.
+      (smallTalk ??= evaluator(smallTalkCheck, untrustedData('user-message', text)).then(
+        (verdict) => /^\s*SMALL_TALK\b/i.test(verdict),
+        () => false,
+      ));
+
     const environment = (push: (text: string) => void, onStream: () => void): ToolEnvironment => ({
       workspace,
       retrieval,
       query,
       history,
       signal: ctx.signal,
-      systemPrompt: systemPromptWithDate((options.now ?? (() => new Date()))()),
+      // The untrusted-data note comes last, as in the agent's prompt.
+      systemPrompt:
+        systemPromptWithDate((options.now ?? (() => new Date()))()) +
+        (settings.instructionsInAnswer && settings.instructions
+          ? `\n\n${answerInstructionsLead}\n\n${baseInstructions(settings.instructions)}`
+          : '') +
+        `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: (system, user) =>
         synthesisSession.text(
@@ -476,6 +516,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           },
         ),
       ...(settings.generationPrompt ? { generationPrompt: settings.generationPrompt } : {}),
+      ...(settings.citeBy ? { citeBy: settings.citeBy } : {}),
     });
 
     let answer: string | undefined;
@@ -514,16 +555,22 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         turn.toolCalls.length === 0 ||
         !(turn.finishReason === 'tool_calls' || turn.finishReason === 'stop')
       ) {
-        const searched = workspace.searches.length > 0;
-        const guard = Boolean(settings.noToolCallRetry);
-        if (guard && !searched && workspace.noToolCallRetries < 2) {
+        // An answer before any search comes from the model's own knowledge.
+        const cutOff = turn.toolCalls.length > 0;
+        const guard =
+          Boolean(settings.noToolCallRetry) &&
+          workspace.searches.length === 0 &&
+          (cutOff || !(await isSmallTalk(query)));
+        if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
-          messages = [...messages, assistant, { role: 'system', content: noToolCallNudge }];
+          messages = cutOff
+            ? [...messages, { role: 'system', content: cutOffToolCallNudge }]
+            : [...messages, assistant, { role: 'system', content: noToolCallNudge }];
           continue;
         }
         answer =
-          guard && !searched && searchScaffold.test(turn.content)
-            ? noToolCallHonestMiss
+          guard && (history.length === 0 || searchScaffold.test(turn.content))
+            ? (settings.noAnswerText ?? noToolCallHonestMiss)
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
         fallbackMessages = initialMessages;
@@ -581,14 +628,16 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
           if (call.name === 'generate_response') generated = true;
         } else if (skills.length && call.name === useSkillTool.name) {
-          content = useSkill(skills, args.value);
+          content = useSkill(skills, args.value, workspace.loadedSkills);
         } else {
           const tool = extra.find((t) => t.spec.name === call.name);
           if (!tool)
             content = `Unknown tool: ${call.name}. Available tools: ${toolSpecs.map((t) => t.name).join(', ')}`;
           else {
             const result = await tool.port.call(args.value);
-            content = textOf(result);
+            content = result.parts.some((part) => part.meta?.untrusted === true)
+              ? untrustedData(`tool:${call.name}`, textOf(result))
+              : textOf(result);
             for (const s of result.sources ?? [])
               extraSources.push({
                 chunkId: s.id,
@@ -803,7 +852,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             session.text(
               {
                 purpose: 'answer',
-                messages: [...fallbackMessages, { role: 'user', content: exhaustionNudge }],
+                messages: [
+                  ...withLoadedSkills(fallbackMessages, workspace.loadedSkills),
+                  { role: 'user', content: exhaustionNudge },
+                ],
                 temperature,
               },
               push,
@@ -817,12 +869,14 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       }
     }
 
+    if (!clarification && answer !== undefined) answer = normaliseCitationMarkers(answer);
+
     if (
       !clarification &&
       answer !== undefined &&
       parseCitations(answer, workspace.citationIndex).length === 0
     ) {
-      const marked = chunkIdsToMarkers(answer, [...workspace.chunks.values()]);
+      const marked = chunkIdsToMarkers(answer, [...workspace.chunks.values()], citeBy);
       if (marked) {
         workspace.citationIndex = marked.index;
         workspace.sourceOrder = marked.chunks;
@@ -864,7 +918,37 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         yield { type: 'kernel.part.delta', data: { text: settled } };
         answer = settled;
       }
+      if (citeBy === 'excerpt') {
+        const shown = dropUnknownMarkers(answer, workspace.citationIndex);
+        if (shown !== answer) {
+          yield {
+            type: 'kernel.notice',
+            data: { stage: 'answer-discarded', reason: 'unknown-markers' },
+          };
+          yield { type: 'kernel.part.delta', data: { text: shown } };
+          answer = shown;
+        }
+      }
       workspace.citations = citationsFor(answer, workspace);
+    }
+
+    const foundNothing =
+      !clarification &&
+      workspace.citations.length === 0 &&
+      (soundsLikeRefusal(answer ?? '') ||
+        (settings.noAnswerText !== undefined && answer === settings.noAnswerText));
+    // Only a plain miss in the sources gets the service's own words.
+    if (
+      foundNothing &&
+      settings.noAnswerText &&
+      answer !== settings.noAnswerText &&
+      answer !== exhaustionDefault &&
+      onlySaysNothingFound(answer ?? '') &&
+      workspace.searches.length > 0
+    ) {
+      yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'no-answer' } };
+      yield { type: 'kernel.part.delta', data: { text: settings.noAnswerText } };
+      answer = settings.noAnswerText;
     }
 
     const outputChunks = () =>
@@ -909,12 +993,16 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           meta: {
             citations: clarification
               ? []
-              : workspace.citations.map((c) => ({ index: c.index, chunkId: c.chunkId })),
-            ...(!clarification &&
-            workspace.citations.length === 0 &&
-            soundsLikeRefusal(answer ?? '')
-              ? { noAnswer: true }
-              : {}),
+              : workspace.citations.map((c) => {
+                  const chunk = workspace.chunks.get(c.chunkId);
+                  return {
+                    index: c.index,
+                    chunkId: c.chunkId,
+                    ...(citeBy === 'excerpt' && chunk ? { document: documentKey(chunk) } : {}),
+                  };
+                }),
+            ...(citeBy === 'excerpt' ? { citeBy } : {}),
+            ...(foundNothing ? { noAnswer: true } : {}),
           },
         },
         sourcesPart([...published, ...extraSources], clarification, {

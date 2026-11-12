@@ -37,6 +37,7 @@ export const queue = {
   subSkill: 'Skill · version {version}',
   subProposal: 'Requires a platform change',
   subAccess: 'New organisation',
+  assistantFor: 'The build assistant, for {name}',
   assistant: 'The build assistant',
   decPlanned: 'Included in the plan',
   decApproved: 'Approved',

@@ -65,6 +65,12 @@ describe('client definitions', () => {
     ]);
   });
 
+  it('binds a client to environments by name and refuses a name that is not one', () => {
+    expect(checkClient(ka({ environments: ['test'] }), []).ok).toBe(true);
+    const checked = checkClient(ka({ environments: ['Test env'] }), []);
+    expect(checked.ok ? [] : checked.errors.map((e) => e.path)).toEqual(['spec.environments.0']);
+  });
+
   it('lets a server client go without OIDC or origins', () => {
     expect(checkClient(ka({ kind: 'server', oidc: undefined, allowedOrigins: [] }), []).ok).toBe(
       true,
@@ -254,6 +260,23 @@ describe('service-scoped API keys', () => {
     });
     expect(verified.grants.allowedOverrides).toEqual(['retrieve-top-k']);
     expect((await keys.findByDigest(apiKeyDigest('gp_one')))?.lastUsedAt).toBe(at.toISOString());
+  });
+
+  it('carries the environments a service key may use into its confinement', async () => {
+    const keys = new InMemoryApiKeys();
+    keys.add({
+      ...base,
+      id: 'k4',
+      digest: apiKeyDigest('gp_four'),
+      agents: [],
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    expect((await verifyApiKey(keys, 'gp_four')).principal.confinedTo).toEqual({
+      tenant: DIGDIR,
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
   });
 
   it('reads a service binding stored as a grant, and hides the grant', async () => {

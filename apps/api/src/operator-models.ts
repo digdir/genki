@@ -1,4 +1,10 @@
-import type { Principal } from '@genai/contracts';
+import { perThousandView, type Principal } from '@genai/contracts';
+import {
+  allowedHostPattern,
+  connectionKeys,
+  connectionSettings,
+  firstIssue,
+} from '@genai/port-model';
 import type { Context } from 'hono';
 import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
@@ -10,7 +16,7 @@ import type { ServiceModels } from './service-health.js';
 export const platformSecretPattern = /^secret:\/\/platform\/([a-z0-9][a-z0-9._-]*)$/;
 
 const endpointId = /^[a-z0-9][a-z0-9._-]{0,62}$/;
-const protocols = ['openai-chat', 'anthropic-messages'];
+const familyBase = /^(\/[A-Za-z0-9._~-]+)*\/?$/;
 
 type Problem = { path: string; message: string };
 
@@ -30,20 +36,71 @@ const record = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-export const endpointProblems = (body: Record<string, unknown>): Problem[] => {
+const httpsURL = (value: unknown) => {
+  let url: URL | undefined;
+  try {
+    url = new URL(String(value));
+  } catch {
+    return false;
+  }
+  return url.protocol === 'https:' && !url.username && !url.password;
+};
+
+/** What is wrong with a connection: its id, an HTTPS root, a platform secret, and families Genki has APIs for. */
+export const endpointProblems = (
+  body: Record<string, unknown>,
+  knownFamilies: readonly string[],
+): Problem[] => {
   const errors: Problem[] = [];
   if (!endpointId.test(String(body.id ?? '')))
     errors.push({ path: 'id', message: 'lowercase letters, digits, dots, dashes' });
-  if (!protocols.includes(String(body.protocol)))
-    errors.push({ path: 'protocol', message: `one of ${protocols.join(', ')}` });
-  let url: URL | undefined;
-  try {
-    url = new URL(String(body.baseURL));
-  } catch {
-    url = undefined;
-  }
-  if (!url || url.protocol !== 'https:' || url.username || url.password)
+  if (!httpsURL(body.baseURL))
     errors.push({ path: 'baseURL', message: 'an HTTPS address without credentials' });
+  const families = record(body.families);
+  if (Object.keys(families).length === 0)
+    errors.push({ path: 'families', message: 'name at least one API family and its base' });
+  for (const [family, base] of Object.entries(families)) {
+    if (!knownFamilies.includes(family))
+      errors.push({
+        path: `families.${family}`,
+        message: `no API in the ${family} family; one of ${knownFamilies.join(', ')}`,
+      });
+    if (typeof base !== 'string' || !(familyBase.test(base) || httpsURL(base)))
+      errors.push({
+        path: `families.${family}`,
+        message: 'a path under baseURL, or an HTTPS address without credentials',
+      });
+  }
+  if (body.discovery !== undefined && !Array.isArray(body.discovery))
+    errors.push({ path: 'discovery', message: 'a list of discovery rules' });
+  if (
+    body.allowedHosts !== undefined &&
+    (!Array.isArray(body.allowedHosts) ||
+      body.allowedHosts.length > 20 ||
+      body.allowedHosts.some((h) => typeof h !== 'string' || !allowedHostPattern.test(h)))
+  )
+    errors.push({
+      path: 'allowedHosts',
+      message: 'a list of at most 20 host names, each with an optional port',
+    });
+  if (body.settings !== undefined) {
+    const parsed = connectionSettings.safeParse(body.settings);
+    if (!parsed.success) errors.push(firstIssue(parsed.error, ['settings']));
+  }
+  if (body.keys !== undefined) {
+    const keys = record(body.keys);
+    if (!connectionKeys.safeParse(body.keys).success)
+      errors.push({ path: 'keys', message: 'at most 4 named keys, each a key name' });
+    for (const [name, ref] of Object.entries(keys))
+      if (!platformSecretPattern.test(String(ref)))
+        errors.push({
+          path: `keys.${name}`,
+          message: 'use a platform secret: secret://platform/<name>',
+        });
+    for (const name of Object.keys(record(body.settings)))
+      if (Object.hasOwn(keys, name))
+        errors.push({ path: `keys.${name}`, message: 'a name is a setting or a key, not both' });
+  }
   const auth = record(body.auth);
   if (auth.kind !== 'api-key' && auth.kind !== 'bearer')
     errors.push({ path: 'auth.kind', message: 'api-key or bearer' });
@@ -57,9 +114,12 @@ export const endpointProblems = (body: Record<string, unknown>): Problem[] => {
 
 const modelsUsedBy = (config: unknown) => {
   const model = record(config).model as ServiceModels | undefined;
-  return [model?.primary, model?.fallback, ...Object.values(model?.roles ?? {})].filter(
-    (m): m is string => typeof m === 'string',
-  );
+  return [
+    model?.primary,
+    model?.fallback,
+    ...Object.values(model?.roles ?? {}),
+    ...Object.values(model?.operations ?? {}),
+  ].filter((m): m is string => typeof m === 'string');
 };
 
 export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
@@ -93,31 +153,99 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
         ? undefined
         : problem(c, 400, 'Invalid request', [{ path: 'change-reason', message: reasonTooShort }]);
 
+    const knownFamilies = () =>
+      [
+        ...new Set(
+          deps.models
+            .apis()
+            .list()
+            .map((a) => a.family),
+        ),
+      ].sort();
+    const connectionSpec = (input: Record<string, unknown>) => {
+      const auth = record(input.auth);
+      return {
+        baseURL: input.baseURL,
+        auth: {
+          kind: auth.kind,
+          secret: auth.secret,
+          ...(typeof auth.header === 'string' && auth.header ? { header: auth.header } : {}),
+        },
+        families: input.families,
+        ...(Array.isArray(input.discovery) ? { discovery: input.discovery } : {}),
+        ...(Array.isArray(input.allowedHosts) ? { allowedHosts: input.allowedHosts } : {}),
+        ...(input.settings !== undefined ? { settings: input.settings } : {}),
+        ...(input.keys !== undefined ? { keys: input.keys } : {}),
+      };
+    };
+
+    app.get('/operator/apis', async (c) => {
+      const guard = await operator(c);
+      if ('response' in guard) return guard.response;
+      const apis = deps.models.apis();
+      await deps.operations?.descriptors.refresh();
+      const models = deps.models.describe();
+      return c.json({
+        data: apis.list().map((api) => ({
+          ...api,
+          models: models.filter((m) => Object.values(m.apis).includes(api.id)).map((m) => m.id),
+        })),
+      });
+    });
+
     app.post('/operator/model-endpoints', async (c) => {
       const guard = await operator(c);
       if ('response' in guard) return guard.response;
       const missing = needReason(c);
       if (missing) return missing;
       const input = await body(c);
-      const errors = endpointProblems(input);
+      const errors = endpointProblems(input, knownFamilies());
       if (errors.length > 0) return problem(c, 400, 'Invalid request', errors);
       const id = String(input.id);
       if (deps.catalog.get('model-endpoint', id))
         return problem(c, 409, 'Endepunktet finnes allerede', [
           { path: 'id', message: `${id} exists` },
         ]);
-      const auth = record(input.auth);
+      const result = await catalogChange(c, guard.principal, 'platform.catalog.publish', {
+        kind: 'model-endpoint',
+        id,
+        spec: connectionSpec(input),
+      });
+      if (!result.ok) return problem(c, 400, 'Invalid request', result.errors);
+      return c.json(result.value, 201);
+    });
+
+    app.put('/operator/model-endpoints/:id', async (c) => {
+      const guard = await operator(c);
+      if ('response' in guard) return guard.response;
+      const id = c.req.param('id') ?? '';
+      const endpoint = deps.catalog.get('model-endpoint', id);
+      if (!endpoint || endpoint.scope !== platformScope) return problem(c, 404, 'Not found');
+      const missing = needReason(c);
+      if (missing) return missing;
+      const input: Record<string, unknown> = { ...(await body(c)), id };
+      const errors = endpointProblems(input, knownFamilies());
+      if (errors.length > 0) return problem(c, 400, 'Invalid request', errors);
       const result = await catalogChange(c, guard.principal, 'platform.catalog.publish', {
         kind: 'model-endpoint',
         id,
         spec: {
-          protocol: input.protocol,
-          baseURL: input.baseURL,
-          auth: { kind: auth.kind, secret: auth.secret },
+          ...connectionSpec(input),
+          ...(input.discovery === undefined && endpoint.spec.discovery
+            ? { discovery: endpoint.spec.discovery }
+            : {}),
+          ...(input.allowedHosts === undefined && endpoint.spec.allowedHosts
+            ? { allowedHosts: endpoint.spec.allowedHosts }
+            : {}),
+          ...(input.settings === undefined && endpoint.spec.settings
+            ? { settings: endpoint.spec.settings }
+            : {}),
+          ...(input.keys === undefined && endpoint.spec.keys ? { keys: endpoint.spec.keys } : {}),
+          ...(endpoint.spec.sharing ? { sharing: endpoint.spec.sharing } : {}),
         },
       });
       if (!result.ok) return problem(c, 400, 'Invalid request', result.errors);
-      return c.json(result.value, 201);
+      return c.json(result.value);
     });
 
     app.delete('/operator/model-endpoints/:id', async (c) => {
@@ -187,17 +315,14 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
       const id = c.req.param('id') ?? '';
       if (!deps.models.describe().some((m) => m.id === id) && !deps.catalog.get('model', id))
         return problem(c, 404, 'Not found');
-      const input = await body(c);
       const result = await catalogChange(c, guard.principal, 'platform.catalog.publish', {
         kind: 'price',
         id,
-        spec: {
-          inputPerThousand: input.inputPerThousand,
-          outputPerThousand: input.outputPerThousand,
-        },
+        spec: await body(c),
       });
       if (!result.ok) return problem(c, 400, 'Invalid request', result.errors);
-      return c.json({ id, ...result.value.spec, currency: 'NOK' });
+      const prices = result.value.spec;
+      return c.json({ id, prices, ...perThousandView(prices), currency: 'NOK' });
     });
 
     app.put('/operator/models/:id{.+}', async (c) => {
@@ -212,12 +337,19 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
         return problem(c, 400, 'Invalid request', [
           { path: 'endpoint', message: `no platform endpoint ${String(input.endpoint)}` },
         ]);
-      if (!id.startsWith(`${endpoint.id}/`))
+      const added =
+        !deps.catalog.get('model', id) && !deps.models.describe().some((m) => m.id === id);
+      const prefixes = [
+        endpoint.id,
+        ...(Array.isArray(endpoint.spec.discovery) ? endpoint.spec.discovery : []).flatMap((r) =>
+          typeof record(r).idPrefix === 'string' ? [String(record(r).idPrefix)] : [],
+        ),
+      ];
+      if (added && !prefixes.some((p) => id.startsWith(`${p}/`)))
         return problem(c, 400, 'Invalid request', [
           { path: 'id', message: `the id starts with ${endpoint.id}/` },
         ]);
-      const added =
-        !deps.catalog.get('model', id) && !deps.models.describe().some((m) => m.id === id);
+      const apis = record(input.apis ?? deps.catalog.get('model', id)?.spec.apis);
       const result = await catalogChange(c, guard.principal, 'platform.catalog.publish', {
         kind: 'model',
         id,
@@ -227,6 +359,8 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
           ...(input.family === undefined ? {} : { family: input.family }),
           residency: input.residency,
           capabilities: input.capabilities ?? [],
+          ...(Object.keys(apis).length > 0 ? { apis } : {}),
+          ...(input.options === undefined ? {} : { options: input.options }),
           ...(added ? { release: candidateRelease } : {}),
         },
       });

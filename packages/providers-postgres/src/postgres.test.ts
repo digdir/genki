@@ -4,7 +4,13 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { textPart, type Event, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Strategy } from '@genai/kernel';
-import { createPostgresStores, erased, LocalKeyWrapper, migrate } from './index.js';
+import {
+  createPostgresStores,
+  erased,
+  LocalKeyWrapper,
+  migrate,
+  PostgresIngestionExecutions,
+} from './index.js';
 import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
@@ -186,6 +192,49 @@ describe('postgres event log', () => {
     await reader.close();
   });
 
+  it('reads one event type of many tasks in one query and opens the encrypted content', async () => {
+    const stores = await openStores(pool, wrapper);
+    const inputScope = { tenant: '999888777', key: 'thread:inputs' };
+    const input = (task: string, query: string) =>
+      event(task, 'kernel.task.input', { input: { data: { query } } });
+    await stores.log.append(input('i-1', 'første'), inputScope);
+    await stores.log.append(event('i-1', 'kernel.part.delta', { text: 'svar' }), inputScope);
+    await stores.log.append(input('i-2', 'andre'), inputScope);
+    await stores.log.append(input('i-3', 'tredje'), inputScope);
+
+    const found = await stores.log.ofType(['i-1', 'i-2'], 'kernel.task.input');
+
+    expect(found.map((e) => [e.task, e.data])).toEqual([
+      ['i-1', { input: { data: { query: 'første' } } }],
+      ['i-2', { input: { data: { query: 'andre' } } }],
+    ]);
+    expect(await stores.log.ofType([], 'kernel.task.input')).toEqual([]);
+    await stores.close();
+  });
+
+  it('reads the usage events of many tasks in one query and nothing else', async () => {
+    const stores = await openStores(pool, wrapper);
+    const usageScope = { tenant: '999888777', key: 'thread:usage' };
+    const usage = (task: string, tokens: number) =>
+      event(task, 'kernel.usage', {
+        usage: { inputTokens: tokens },
+        model: { kind: 'model', id: 'm' },
+      });
+    await stores.log.append(event('u-1', 'kernel.part.delta', { text: 'hei' }), usageScope);
+    await stores.log.append(usage('u-1', 5), usageScope);
+    await stores.log.append(usage('u-1', 7), usageScope);
+    await stores.log.append(usage('u-2', 3), usageScope);
+    await stores.log.append(usage('u-3', 9), usageScope);
+
+    expect(await stores.log.usageOf(['u-1', 'u-2'])).toEqual([
+      { task: 'u-1', data: { usage: { inputTokens: 5 }, model: { kind: 'model', id: 'm' } } },
+      { task: 'u-1', data: { usage: { inputTokens: 7 }, model: { kind: 'model', id: 'm' } } },
+      { task: 'u-2', data: { usage: { inputTokens: 3 }, model: { kind: 'model', id: 'm' } } },
+    ]);
+    expect(await stores.log.usageOf([])).toEqual([]);
+    await stores.close();
+  });
+
   it('makes content unreadable after erasure, while the envelope survives', async () => {
     const stores = await openStores(pool, wrapper);
     const erasable = { tenant: '999888777', key: 'thread:erase-me' };
@@ -253,6 +302,99 @@ describe('postgres task and state stores', () => {
     expect((await stores.tasks.pendingFor(owner)).map((t) => t.id)).toEqual(['t-pending']);
     expect((await stores.tasks.pendingFor(leader)).map((t) => t.id)).toEqual(['t-pending']);
     expect((await stores.tasks.get('t-pending'))?.checkpoint).toEqual({ draft: 'Utkast' });
+    await stores.close();
+  });
+
+  it('sums the tokens of every task a tenant started this month, past the newest thousand, without builder assistant turns', async () => {
+    const stores = await openStores(pool, wrapper);
+    const tenant = '444555666';
+    const principal: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant };
+    const put = (id: string, capability: string, createdAt: string, tokens: number) =>
+      stores.tasks.put(
+        {
+          task: {
+            id,
+            service: {
+              capability: { id: capability, version: '1' },
+              strategy: { id: 's', version: '1' },
+              configHash: 'h',
+            },
+            principal: { kind: 'employee', id: 'kari', tenant },
+            tenant,
+            owner: tenant,
+            status: 'completed',
+            artifacts: [],
+            usage: { inputTokens: tokens, outputTokens: tokens },
+            createdAt,
+          },
+          principal,
+          lastSeq: 1,
+        },
+        { tenant, key: 'thread:quota' },
+      );
+    for (let i = 0; i < 1001; i++)
+      await put(
+        `q-${i}`,
+        `${tenant}/svar`,
+        `2026-10-${String(2 + (i % 20)).padStart(2, '0')}T08:00:00.000Z`,
+        1,
+      );
+    await put(
+      'q-assistant',
+      'platform/draft/assistant/0f3a9c2e7b1d4e65',
+      '2026-10-05T08:00:00.000Z',
+      500,
+    );
+    await put('q-september', `${tenant}/svar`, '2026-09-30T23:00:00.000Z', 500);
+
+    expect(
+      await stores.tasks.tokensUsed({
+        tenant,
+        since: '2026-10-01T00:00:00.000Z',
+        excludeCapabilityPrefix: 'platform/draft/assistant/',
+      }),
+    ).toBe(2002);
+    await stores.close();
+  });
+
+  it('lists the task envelopes of one tenant since a time, newest first, without results', async () => {
+    const stores = await openStores(pool, wrapper);
+    const tenant = '555666777';
+    const principal: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant };
+    const put = (id: string, owner: string, createdAt: string) =>
+      stores.tasks.put(
+        {
+          task: {
+            id,
+            service: {
+              capability: { id: `${owner}/svar/default`, version: '1' },
+              strategy: { id: 's', version: '1' },
+              configHash: 'h',
+            },
+            principal: { kind: 'employee', id: 'kari', tenant: owner },
+            tenant: owner,
+            owner,
+            status: 'completed',
+            artifacts: [],
+            usage: { inputTokens: 10, outputTokens: 2 },
+            result: [textPart('hemmelig svar')],
+            createdAt,
+          },
+          principal,
+          lastSeq: 1,
+        },
+        { tenant: owner, key: `task:${id}` },
+      );
+    await put('e-old', tenant, '2026-09-20T08:00:00.000Z');
+    await put('e-1', tenant, '2026-10-02T08:00:00.000Z');
+    await put('e-2', tenant, '2026-10-03T08:00:00.000Z');
+    await put('e-other', '666777888', '2026-10-03T09:00:00.000Z');
+
+    const found = await stores.tasks.envelopes({ tenant, since: '2026-10-01T00:00:00.000Z' });
+    expect(found.map((t) => t.id)).toEqual(['e-2', 'e-1']);
+    expect(found[0]?.usage).toEqual({ inputTokens: 10, outputTokens: 2 });
+    expect(JSON.stringify(found)).not.toContain('hemmelig');
+    expect((await stores.tasks.envelopes({ tenant, limit: 1 })).map((t) => t.id)).toEqual(['e-2']);
     await stores.close();
   });
 
@@ -341,5 +483,33 @@ describe('the kernel on postgres', () => {
     const audit = await collect(await after.events(kari, run.task, { audience: 'audit' }));
     expect(audit.map((e) => e.seq)).toEqual([...audit.keys()]);
     await second.close();
+  });
+});
+
+describe('postgres ingestion executions', () => {
+  it('stores a cancelled run, also after upgrading a table that did not allow it', async () => {
+    await pool.query(
+      'alter table ingestion_executions drop constraint ingestion_executions_status_check',
+    );
+    await pool.query(
+      `alter table ingestion_executions add constraint ingestion_executions_status_check
+         check (status in ('running', 'succeeded', 'failed'))`,
+    );
+    await migrate(pool);
+    const executions = new PostgresIngestionExecutions(pool);
+    const run = {
+      id: 'run-cancelled',
+      dataset: '999888777/sider',
+      pipeline: 'nettsider',
+      pipelineVersion: 1,
+      backend: 'test',
+      status: 'running' as const,
+      startedBy: 'kari',
+      startedAt: '2026-10-26T10:00:00.000Z',
+    };
+    await executions.save(run);
+    await executions.save({ ...run, status: 'cancelled', endedAt: '2026-10-26T10:01:00.000Z' });
+
+    expect(await executions.get(run.id)).toMatchObject({ status: 'cancelled' });
   });
 });

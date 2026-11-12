@@ -116,7 +116,7 @@
   flex: 0 1 440px;
   min-width: min(100%, 340px);
   position: sticky;
-  top: 84px;
+  top: calc(var(--header-offset) + 17px);
 }
 
 .skill-name-field {

@@ -2,6 +2,7 @@ import type { Citation, CitationIndex, CitationValidation } from './citations.js
 import type { QueryIntent } from './intent.js';
 import type { EvidencePlan, ReadSignal } from './read-signals.js';
 import type { SufficiencyDecision } from './sufficiency.js';
+import type { RuntimeSkill } from './skills.js';
 
 export type SearchType = 'phrase' | 'metadata' | 'content';
 
@@ -35,12 +36,21 @@ export interface FilterField {
   valueType?: 'string' | 'integer';
 }
 
+export interface SearchDetection {
+  kind: 'organisation' | 'year' | 'rule';
+  field: string;
+  values: string[];
+  queries: string[];
+  use: 'boost' | 'hint' | 'filter';
+}
+
 export interface SearchAttribution {
   phrase?: number;
   metadata?: number;
   content?: number;
   autoFilter?: { field: string; options: string[] };
   autoFilterFallback?: boolean;
+  detections?: SearchDetection[];
   rerankEnabled?: boolean;
   rerankMs?: number;
   rerankError?: string;
@@ -202,6 +212,7 @@ export const chunkContentLength = (
 const headerString = (headers?: string[]) => (headers?.length ? JSON.stringify(headers) : null);
 
 export class Workspace {
+  readonly loadedSkills = new Map<string, RuntimeSkill>();
   readonly searches: SearchEntry[] = [];
   readonly reads: ReadEntry[] = [];
   readonly seen = new Set<string>();

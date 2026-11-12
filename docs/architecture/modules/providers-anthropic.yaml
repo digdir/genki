@@ -1,17 +1,17 @@
 id: providers-anthropic
 plane: providers
-name: anthropic-messages adapter
+name: Anthropic adapter
 note: Claude on Foundry
 icon: llm
 color: '#8fa8b3'
 status: Provider
 packages:
   - '@genai/providers-anthropic'
-summary: The anthropic-messages wire protocol, used for Claude on Azure AI Foundry.
+summary: The built-in API anthropic/messages@1 in the anthropic family, used for Claude on Azure AI Foundry.
 description: Maps generic options such as reasoning and continuation to the Messages API. Available
   with residency global (ADR 0021).
 responsibilities:
-  - anthropic-messages protocol
+  - The anthropic/messages@1 chat API
   - Reasoning continuation passthrough
 files:
   - packages/providers-anthropic/src/index.ts

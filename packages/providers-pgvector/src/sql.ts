@@ -216,3 +216,9 @@ export const facetSql = (
     values: params.values,
   };
 };
+
+export const fieldsText = (fields: Record<string, unknown>) =>
+  Object.values(fields)
+    .flatMap((v) => (Array.isArray(v) ? v : [v]))
+    .filter((v) => typeof v === 'string' || typeof v === 'number')
+    .join(' ');

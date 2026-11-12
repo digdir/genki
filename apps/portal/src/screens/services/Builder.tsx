@@ -38,6 +38,7 @@ import {
   applySpec,
   asServiceDefinition,
   forTenant,
+  keepSharing,
   renamed,
   specChanges,
   specKeysOf,
@@ -73,6 +74,8 @@ import { initialTestState, scoreText, testKind, type TestState } from './testSta
 import { latestRunFact, type DraftConflict, type ServiceDraft } from '../../api/quality';
 import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
+import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
+import { PublishedTest } from '../service/PublishedTest';
 import { DraftOutdated, type ConflictPick } from './DraftOutdated';
 import { VersionsTab, type VersionItem } from './VersionsTab';
 import { YamlTab } from './YamlTab';
@@ -245,7 +248,7 @@ export const Builder = ({
   );
   const modelCatalog =
     live && catalog.status === 'ready'
-      ? catalog.data.map((m) => modelFor(m.id, m.residency, true))
+      ? catalog.data.map((m) => ({ ...modelFor(m.id, m.residency, true), price: m.price ?? null }))
       : live
         ? []
         : undefined;
@@ -283,9 +286,10 @@ export const Builder = ({
   const [files, setFiles] = useState(init.files ?? {});
   const filesRef = useRef(files);
   filesRef.current = files;
-  const serverDraft = live && !isNew;
+  const serverDraft = live && (!isNew || id !== 'new');
   const [draftRevision, setDraftRevision] = useState(init.draftRevision ?? 0);
   const revisionRef = useRef(draftRevision);
+  const routeId = isNew && draftRevision === 0 ? 'new' : id;
   const [edits, setEdits] = useState(0);
   const editsRef = useRef(0);
   const unsaved = useRef(false);
@@ -386,8 +390,7 @@ export const Builder = ({
     if (section) fromAi[section] = true;
   });
 
-  const go = (target: ServiceSection, rest = '') =>
-    navigate(servicePath(isNew ? 'new' : id, target, rest));
+  const go = (target: ServiceSection, rest = '') => navigate(servicePath(routeId, target, rest));
   const goTab = (t: ServiceSection) => {
     go(t);
     if (t !== 'setup') showPane('tjeneste');
@@ -537,7 +540,7 @@ export const Builder = ({
 
   const [remote] = useAsync(
     async (signal) => {
-      if (!serverDraft) return undefined;
+      if (!serverDraft || isNew) return undefined;
       const keep = unsaved.current;
       const [draft, opened, definition] = await Promise.all([
         keep ? api.quality.draft(tenant, id, signal) : undefined,
@@ -581,6 +584,8 @@ export const Builder = ({
   );
   const forbidden = Object.values(prohibited).some(Boolean);
   const canPublish = rights.has('manage-services');
+  const canDelete = serverDraft && isNew && draftRevision > 0 && canPublish;
+  const [deleting, setDeleting] = useState<'asking' | 'busy' | 'failed'>();
   const edited = JSON.stringify(service) !== JSON.stringify(init.definition);
   const high = service.spec.riskClass === 'high';
   const serviceId = isNew ? slug(service.metadata.name ?? '') || 'ny-tjeneste' : id;
@@ -614,6 +619,25 @@ export const Builder = ({
         .catch(() => undefined);
     },
     [api, tenant, flowRef],
+  );
+  const [operationCatalog] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const pinnedFlow =
+    flowDefinition.status === 'ready' ? flowDefinition.data?.definition : undefined;
+  const operationModels = useMemo(
+    () =>
+      operationKindsIn(pinnedFlow).map((kind) => ({
+        kind,
+        models:
+          operationCatalog.status === 'ready'
+            ? operationCatalog.data
+                .filter((m) => m.operations?.includes(kind))
+                .map((m) => {
+                  const choice = modelFor(m.id, m.residency, true);
+                  return { id: m.id, name: choice.name, where: choice.where };
+                })
+            : [],
+      })),
+    [pinnedFlow, operationCatalog],
   );
   const flowCheck =
     flowRef && flowDefinition.status === 'ready' && flowDefinition.data
@@ -651,6 +675,7 @@ export const Builder = ({
     if (!serverDraft || !unsaved.current || draftBlocked.current || saving.current) return;
     saving.current = true;
     const tick = editsRef.current;
+    const first = isNew && revisionRef.current === 0;
     try {
       const saved = await api.quality.saveDraft(
         tenant,
@@ -663,6 +688,10 @@ export const Builder = ({
         tRef.current('services.draftSavedReason'),
       );
       keepRevision(saved.revision);
+      if (first)
+        window.location.replace(
+          window.location.hash.replace(/^#\/services\/new\b/, `#${servicePath(id)}`),
+        );
       if (editsRef.current === tick) unsaved.current = false;
     } catch (error) {
       draftBlocked.current = error instanceof ApiError && error.status === 409;
@@ -958,6 +987,26 @@ export const Builder = ({
       actorLabel(result.publishedBy, tRef.current, result.publishedByName),
       reason,
     );
+    if (isNew && serverDraft) window.location.replace(`#${servicePath(result.id)}`);
+  };
+
+  const deleteDraft = async () => {
+    setDeleting('busy');
+    draftBlocked.current = true;
+    try {
+      await api.quality.deleteDraft(
+        tenant,
+        id,
+        revisionRef.current,
+        tRef.current('services.deleteDraftReason'),
+      );
+    } catch {
+      draftBlocked.current = false;
+      setDeleting('failed');
+      return;
+    }
+    unsaved.current = false;
+    window.location.replace('#/services');
   };
 
   const doPublishToTest = ({ reason }: PublishInput) => {
@@ -968,7 +1017,7 @@ export const Builder = ({
     if (v.live && !isNew) {
       try {
         const old = await api.getVersion(tenant, 'Service', id, v.n);
-        replaceWith(asServiceDefinition(old.definition));
+        replaceWith(keepSharing(asServiceDefinition(old.definition), service));
       } catch {
         setFlash(tRef.current('services.rollbackFailed', { n: v.n }));
         return;
@@ -1003,7 +1052,7 @@ export const Builder = ({
             : t('services.metaVersion', { n: shown.n }),
           ...(draftRevision > 0 ? [t('services.metaUnpublishedDraft')] : []),
         ].join(' · ')
-      : t('services.metaNotPublished')
+      : t(serverDraft ? 'services.metaNotPublishedAuto' : 'services.metaNotPublished')
     : latest
       ? t('services.metaDraftBased', { n: latest.n })
       : t('services.metaNotPublishedAuto');
@@ -1035,6 +1084,7 @@ export const Builder = ({
       inputLookup={inputLookup}
       tenant={tenant}
       flowCheck={flowCheck}
+      operationModels={operationModels}
       api={api}
       strategy={<StrategyPanel api={api} tenant={tenant} definition={service} patch={patch} />}
       instructionsAssist={improveSlot}
@@ -1079,6 +1129,13 @@ export const Builder = ({
               if (decision === 'accepted') setTest((t) => ({ ...t, testset: true }));
             }}
           />
+          {hasOperationSteps(pinnedFlow) ? (
+            <PublishedTest
+              api={api}
+              model={variantsOf(service.spec)[0]?.publicName || `${serviceId}__default`}
+              version={isNew ? undefined : shown?.n}
+            />
+          ) : null}
           <PlaygroundPanel
             layout="full"
             context="service"
@@ -1226,6 +1283,16 @@ export const Builder = ({
                   {t('services.publishToTest')}
                 </Button>
               )}
+              {canDelete ? (
+                <Button
+                  variant="secondary"
+                  data-color="danger"
+                  data-size="sm"
+                  onClick={() => setDeleting('asking')}
+                >
+                  {t('services.deleteDraft')}
+                </Button>
+              ) : null}
               {canPublish &&
               !isNew &&
               current > 0 &&
@@ -1243,7 +1310,30 @@ export const Builder = ({
             </>
           }
         />
-        <ServiceNav id={isNew ? 'new' : id} sections={sections} current={section} />
+        {canDelete && deleting ? (
+          <Alert data-color="danger" data-size="sm">
+            <Paragraph data-size="sm">{t('services.deleteDraftQuestion', { name })}</Paragraph>
+            {deleting === 'failed' ? (
+              <Paragraph data-size="sm">{t('services.deleteDraftFailed')}</Paragraph>
+            ) : null}
+            {deleting === 'busy' ? null : (
+              <div className="actions">
+                <Button
+                  variant="primary"
+                  data-color="danger"
+                  data-size="sm"
+                  onClick={() => void deleteDraft()}
+                >
+                  {t('services.deleteDraft')}
+                </Button>
+                <Button variant="secondary" data-size="sm" onClick={() => setDeleting(undefined)}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            )}
+          </Alert>
+        ) : null}
+        <ServiceNav id={routeId} sections={sections} current={section} />
         {readOnly ? (
           <Alert data-color="info" data-size="sm">
             <Heading level={2} data-size="2xs">

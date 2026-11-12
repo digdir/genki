@@ -5,7 +5,7 @@ Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
 ## Decision
 
 - The builder assistant and optimisers only produce **proposals**: a diff against a service version, with scores, cost and examples.
-- A human publishes a proposal through the normal publish path, with their own principal and rights, and the normal gates. High-risk services need two different approvers.
+- A human publishes a proposal through the normal publish path, with their own principal and rights, and the normal gates. High-risk services need two different approvers: the person who publishes and a recorded risk confirmation from someone else. A tenant import follows the same rules and records the importing person as the one who confirmed the risk class.
 - The builder assistant may propose a risk class, but a human sets it.
 - Neither may touch secrets, register tools, or widen access beyond what the person using them has.
 - Automatic changes are out of scope. The AI Act's predetermined-change exception (art. 43(4)) covers only high-risk systems that keep learning after release, with the changes fixed at the first conformity assessment. It does not cover swapping prompts or models.

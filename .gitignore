@@ -14,6 +14,6 @@ apps/parity/reports/**/*-runs.jsonl
 __pycache__/
 .claude/*
 !.claude/skills/
-CLAUDE.md
-
+CLAUDE.local.md
+.scratch/
 .scratchpad

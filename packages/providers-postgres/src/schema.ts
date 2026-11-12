@@ -2,6 +2,36 @@ import type { Pool } from 'pg';
 
 export const runtimeRole = 'genai_runtime';
 
+/** The worker's role: genai_runtime plus DML on the job tables, which the API cannot touch (ADR 0041). */
+export const workerRole = 'genai_worker';
+
+/** Creates an app role, refuses one that is a superuser or bypasses RLS, and lets the owner set it. */
+const appRole = (role: string, memberOf?: string) => [
+  `do $$ begin
+     create role ${role} nologin nosuperuser nobypassrls;
+   exception when duplicate_object then null;
+   end $$`,
+  `do $$ begin
+     if exists (select from pg_roles where rolname = '${role}' and (rolsuper or rolbypassrls)) then
+       raise exception '${role} must not be a superuser or bypass row-level security';
+     end if;${
+       memberOf
+         ? `
+     if not pg_has_role('${role}', '${memberOf}', 'MEMBER') then
+       grant ${memberOf} to ${role};
+     end if;`
+         : ''
+     }
+     if current_setting('server_version_num')::int >= 160000 then
+       if not pg_has_role(current_user, '${role}', 'SET') then
+         execute format('grant ${role} to %I with set true', current_user);
+       end if;
+     elsif not pg_has_role(current_user, '${role}', 'MEMBER') then
+       execute format('grant ${role} to %I', current_user);
+     end if;
+   end $$`,
+];
+
 const tenantTables = [
   'tenants',
   'conversations',
@@ -19,8 +49,10 @@ const tenantTables = [
   'clients',
   'webhook_deliveries',
   'ingestion_executions',
+  'knowledge_job_requests',
   'trigger_runs',
   'api_key_policies',
+  'provider_objects',
 ];
 
 const publishedTables = { definition_versions: 'tenant', config_entries: 'scope' };
@@ -35,6 +67,8 @@ const platformTables = [
   'judge_labels',
   'change_versions',
   'rate_limit_windows',
+  'usage_marks',
+  'currency_rates',
 ];
 
 const definerFunctions = [
@@ -48,7 +82,20 @@ const definerFunctions = [
   'platform_clients()',
   'platform_tenants()',
   'find_ingestion_execution(text)',
+  'fail_stopped_ingestion_executions(text, text[], text, text)',
+  'job_ingestion_executions()',
+  'pending_knowledge_job_requests()',
+  'apply_knowledge_job_request(text, text)',
+  'end_job_ingestion_execution(text, text, text, jsonb, text)',
+  'start_queued_job_ingestion_execution(text, text, text, text, text)',
+  'report_job_ingestion_execution(text, jsonb, boolean)',
+  'stop_job_ingestion_execution_at_budget(text, text)',
   'find_api_key_policy(text)',
+  'store_usage_bucket(text, timestamptz, boolean, jsonb)',
+  'usage_open_starts(text)',
+  'platform_usage_buckets(text[], timestamptz, timestamptz)',
+  'platform_usage_unassigned(timestamptz, timestamptz)',
+  'due_provider_objects(timestamptz, integer)',
 ];
 
 const platformAccess = `coalesce(current_setting('app.platform_access', true), '') <> ''`;
@@ -73,6 +120,121 @@ const publishedIsolation = (table: string, column: string) => [
   `drop policy if exists tenant_write on ${table}`,
   `create policy tenant_write on ${table} for insert
      with check (${column} = current_setting('app.tenant', true))`,
+];
+
+const usageFigures = `closed boolean not null,
+     input_tokens bigint not null,
+     output_tokens bigint not null,
+     cached_input_tokens bigint not null,
+     cache_write_tokens bigint not null,
+     requests bigint not null,
+     unpriced_requests bigint not null,
+     currency text not null,
+     micros bigint not null,
+     primary key (source, start, model, subject_kind, subject_id, subject_org)`;
+
+const usageColumns = `source, start, model, subject_kind, subject_id, subject_org, closed, input_tokens,
+  output_tokens, cached_input_tokens, cache_write_tokens, requests, unpriced_requests, currency, micros`;
+
+const incomingUsage = `jsonb_to_recordset(p_rows) as i(model text, subject_kind text, subject_id text,
+  subject_org text, org text, input_tokens bigint, output_tokens bigint, cached_input_tokens bigint,
+  cache_write_tokens bigint, requests bigint, unpriced_requests bigint, currency text, micros bigint)`;
+
+const differs = (table: string) => `exists (select from ${table} b
+  where b.source = p_source and b.start = p_start and b.model = i.model
+    and b.subject_kind = i.subject_kind and b.subject_id = i.subject_id
+    and b.subject_org = i.subject_org
+    and (b.input_tokens, b.output_tokens, b.cached_input_tokens, b.cache_write_tokens, b.requests,
+         b.unpriced_requests, b.currency, b.micros)
+        is distinct from
+        (i.input_tokens, i.output_tokens, i.cached_input_tokens, i.cache_write_tokens, i.requests,
+         i.unpriced_requests, i.currency, i.micros))`;
+
+const insertUsage = (table: string, assigned: boolean) => `insert into ${table} (${
+  assigned ? 'tenant, ' : ''
+}${usageColumns})
+  select ${assigned ? 't.org_number, ' : ''}p_source, p_start, i.model, i.subject_kind, i.subject_id,
+    i.subject_org, p_closed, i.input_tokens, i.output_tokens, i.cached_input_tokens,
+    i.cache_write_tokens, i.requests, i.unpriced_requests, i.currency, i.micros
+  from ${incomingUsage} left join tenants t on t.org_number = i.org
+  where t.org_number is ${assigned ? 'not ' : ''}null
+  on conflict do nothing`;
+
+/** Gateway usage per hour (docs/api/gateway.md, "Step 1 in genki: design"). */
+const usageMigrations = [
+  `create table if not exists usage_buckets (
+     tenant text not null,
+     source text not null,
+     start timestamptz not null,
+     model text not null,
+     subject_kind text not null,
+     subject_id text not null,
+     subject_org text not null,
+     ${usageFigures}
+   )`,
+  `create index if not exists usage_buckets_tenant_start on usage_buckets (tenant, start)`,
+  ...tenantIsolation('usage_buckets'),
+  `create table if not exists usage_unassigned (
+     source text not null,
+     start timestamptz not null,
+     model text not null,
+     subject_kind text not null,
+     subject_id text not null,
+     subject_org text not null,
+     ${usageFigures}
+   )`,
+  `alter table usage_unassigned enable row level security`,
+  `alter table usage_unassigned force row level security`,
+  `drop policy if exists platform_access on usage_unassigned`,
+  `create policy platform_access on usage_unassigned to current_user
+     using (${platformAccess}) with check (${platformAccess})`,
+  `create table if not exists usage_marks (
+     source text primary key,
+     closed_through timestamptz not null
+   )`,
+  `create table if not exists currency_rates (
+     currency text not null check (currency ~ '^[A-Z]{3}$'),
+     day date not null,
+     nok_per_unit numeric not null check (nok_per_unit > 0),
+     primary key (currency, day)
+   )`,
+  `create or replace function store_usage_bucket(
+       p_source text, p_start timestamptz, p_closed boolean, p_rows jsonb) returns integer
+     language plpgsql volatile security definer set search_path = public
+     as $$ declare differing integer; begin
+       perform require_platform_access();
+       delete from usage_buckets where source = p_source and start = p_start and not closed;
+       delete from usage_unassigned where source = p_source and start = p_start and not closed;
+       select count(*) into differing from ${incomingUsage}
+        where ${differs('usage_buckets')} or ${differs('usage_unassigned')};
+       ${insertUsage('usage_buckets', true)};
+       ${insertUsage('usage_unassigned', false)};
+       return differing;
+     end $$`,
+  `create or replace function usage_open_starts(p_source text) returns setof timestamptz
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select start from usage_buckets where source = p_source and not closed
+         union select start from usage_unassigned where source = p_source and not closed;
+     end $$`,
+  `create or replace function platform_usage_buckets(
+       p_tenants text[], p_from timestamptz, p_to timestamptz) returns setof usage_buckets
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from usage_buckets
+         where tenant = any(p_tenants) and start >= p_from and start < p_to
+         order by start, source, model, subject_kind, subject_id, subject_org;
+     end $$`,
+  `create or replace function platform_usage_unassigned(p_from timestamptz, p_to timestamptz)
+     returns setof usage_unassigned
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from usage_unassigned where start >= p_from and start < p_to
+         order by start, source, model, subject_kind, subject_id, subject_org;
+     end $$`,
 ];
 
 const migrations: string[] = [
@@ -131,6 +293,7 @@ const migrations: string[] = [
      body bytea
    )`,
   `create index if not exists tasks_pending on tasks (status) where status = 'interrupted'`,
+  `create index if not exists tasks_thread on tasks (tenant, (envelope->>'thread'))`,
   `create table if not exists state (
      key text primary key,
      v integer not null,
@@ -528,6 +691,9 @@ const migrations: string[] = [
      perform set_config('app.platform_access', '', true);
    end $$`,
   `alter table legacy_api_keys add column if not exists admitted_in_lockdown boolean not null default false`,
+  `alter table legacy_api_keys add column if not exists created_by text`,
+  `alter table legacy_api_keys add column if not exists test_runner boolean not null default false`,
+  `alter table legacy_api_keys add column if not exists environments text[] not null default '{}'`,
   `create table if not exists clients (
      tenant text not null,
      id text not null,
@@ -574,6 +740,33 @@ const migrations: string[] = [
   `alter table trigger_runs add column if not exists cost_micro_nok bigint`,
   `create index if not exists trigger_runs_recent on trigger_runs (tenant, trigger_id, at desc)`,
   ...tenantIsolation('trigger_runs'),
+  `create table if not exists provider_objects (
+     tenant text not null,
+     connection text not null,
+     object_id text not null,
+     run text not null,
+     descriptor text not null,
+     deployment text not null,
+     step text not null,
+     field text not null,
+     delete_by timestamptz not null,
+     deletable boolean not null,
+     state text not null check (state in ('open', 'deleted', 'incident', 'retained')),
+     created_at timestamptz not null default now(),
+     settled_at timestamptz,
+     incident text,
+     primary key (tenant, connection, object_id)
+   )`,
+  `create index if not exists provider_objects_due on provider_objects (delete_by) where state = 'open'`,
+  ...tenantIsolation('provider_objects'),
+  `create or replace function due_provider_objects(before timestamptz, max_rows integer)
+     returns setof provider_objects
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from provider_objects
+         where state = 'open' and delete_by <= before order by delete_by limit max_rows;
+     end $$`,
   `create table if not exists config_entries (
      kind text not null,
      scope text not null,
@@ -632,7 +825,7 @@ const migrations: string[] = [
      pipeline text not null,
      pipeline_version integer not null,
      backend text not null,
-     status text not null check (status in ('running', 'succeeded', 'failed')),
+     status text not null check (status in ('running', 'succeeded', 'failed', 'cancelled')),
      started_by text not null,
      started_at text collate "C" not null,
      ended_at text,
@@ -641,6 +834,20 @@ const migrations: string[] = [
    )`,
   `create index if not exists ingestion_executions_recent
      on ingestion_executions (scope, dataset, pipeline, started_at desc)`,
+  `do $$
+     declare existing text;
+     begin
+       select conname into existing from pg_constraint
+        where conrelid = 'ingestion_executions'::regclass and contype = 'c'
+          and pg_get_constraintdef(oid) like '%status%'
+          and pg_get_constraintdef(oid) not like '%cancelled%';
+       if existing is not null then
+         execute format('alter table ingestion_executions drop constraint %I', existing);
+         alter table ingestion_executions add constraint ingestion_executions_status_check
+           check (status in ('running', 'succeeded', 'failed', 'cancelled'));
+       end if;
+     end $$`,
+  `alter table ingestion_executions add column if not exists heartbeat_at text collate "C"`,
   ...tenantIsolation('ingestion_executions', 'scope'),
   `create or replace function find_ingestion_execution(p_id text) returns setof ingestion_executions
      language plpgsql stable security definer set search_path = public
@@ -648,34 +855,195 @@ const migrations: string[] = [
        perform require_platform_access();
        return query select * from ingestion_executions where id = p_id;
      end $$`,
+  `drop function if exists fail_stale_ingestion_executions(text, text[], text, text)`,
+  `create or replace function fail_stopped_ingestion_executions(
+       p_heartbeat_before text, p_except text[], p_ended_at text, p_error text) returns integer
+     language plpgsql volatile security definer set search_path = public
+     as $$ declare changed integer; begin
+       perform require_platform_access();
+       update ingestion_executions set status = 'failed', ended_at = p_ended_at, error = p_error
+         where status = 'running' and coalesce(heartbeat_at, started_at) < p_heartbeat_before
+           and not (id = any(p_except)) and not runs_as_jobs;
+       get diagnostics changed = row_count;
+       return changed;
+     end $$`,
+  // Runs that run as jobs (ADR 0042, "Ingestion runs"): two more states, admission, a cancel mark.
+  `do $$
+     declare existing text;
+     begin
+       select conname into existing from pg_constraint
+        where conrelid = 'ingestion_executions'::regclass and contype = 'c'
+          and pg_get_constraintdef(oid) like '%status%'
+          and pg_get_constraintdef(oid) not like '%queued%';
+       if existing is not null then
+         execute format('alter table ingestion_executions drop constraint %I', existing);
+         alter table ingestion_executions add constraint ingestion_executions_status_check
+           check (status in ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled'));
+       end if;
+     end $$`,
+  `alter table ingestion_executions
+     add column if not exists runs_as_jobs boolean not null default false,
+     add column if not exists admitted_at text collate "C",
+     add column if not exists cancel_requested_at text collate "C",
+     add column if not exists cancelled_by text`,
+  `create unique index if not exists ingestion_executions_one_queued
+     on ingestion_executions (dataset, pipeline) where status = 'queued'`,
+  `create unique index if not exists ingestion_executions_one_open
+     on ingestion_executions (dataset, pipeline) where status = 'running' and runs_as_jobs`,
+  `create or replace function refuse_worker_admission() returns trigger
+     language plpgsql as $$ begin
+       if current_user = '${workerRole}' and (
+            (tg_op = 'INSERT' and new.admitted_at is not null)
+         or (tg_op = 'UPDATE' and new.admitted_at is distinct from old.admitted_at)) then
+         raise exception 'only the API admits an ingestion run' using errcode = 'insufficient_privilege';
+       end if;
+       return new;
+     end $$`,
+  `create or replace trigger ingestion_executions_admission
+     before insert or update on ingestion_executions
+     for each row execute function refuse_worker_admission()`,
+  // A switch's runs write into the switch's generation (ADR 0025); where a run writes is the API's call.
+  `alter table ingestion_executions
+     add column if not exists generation text,
+     add column if not exists engine_switch text`,
+  `create or replace function refuse_worker_generation() returns trigger
+     language plpgsql as $$ begin
+       if current_user = '${workerRole}' and (
+            (tg_op = 'INSERT' and (new.generation is not null or new.engine_switch is not null))
+         or (tg_op = 'UPDATE' and (new.generation is distinct from old.generation
+                                   or new.engine_switch is distinct from old.engine_switch))) then
+         raise exception 'only the API names the generation and the engine switch of an ingestion run'
+           using errcode = 'insufficient_privilege';
+       end if;
+       return new;
+     end $$`,
+  `create or replace trigger ingestion_executions_generation
+     before insert or update on ingestion_executions
+     for each row execute function refuse_worker_generation()`,
+  `create table if not exists knowledge_job_requests (
+     id text primary key,
+     scope text not null,
+     run text not null references ingestion_executions (id) on delete cascade,
+     kind text not null check (kind in ('redrive')),
+     requested_by text not null,
+     reason text not null,
+     requested_at text collate "C" not null,
+     applied_at text collate "C"
+   )`,
+  `alter table knowledge_job_requests
+     add column if not exists previous_status text,
+     add column if not exists previous_error text`,
+  `create index if not exists knowledge_job_requests_pending
+     on knowledge_job_requests (requested_at) where applied_at is null`,
+  ...tenantIsolation('knowledge_job_requests', 'scope'),
+  `create or replace function job_ingestion_executions() returns setof ingestion_executions
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from ingestion_executions
+         where runs_as_jobs and status in ('queued', 'running', 'waiting') order by started_at, id;
+     end $$`,
+  `create or replace function pending_knowledge_job_requests() returns setof knowledge_job_requests
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from knowledge_job_requests where applied_at is null
+         order by requested_at, id;
+     end $$`,
+  `create or replace function apply_knowledge_job_request(p_id text, p_applied_at text) returns void
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       update knowledge_job_requests set applied_at = p_applied_at where id = p_id and applied_at is null;
+     end $$`,
+  `create or replace function end_job_ingestion_execution(
+       p_id text, p_status text, p_ended_at text, p_report jsonb, p_error text)
+     returns setof ingestion_executions
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       if p_status not in ('succeeded', 'failed', 'cancelled') then
+         raise exception 'a run ends as succeeded, failed or cancelled';
+       end if;
+       return query update ingestion_executions
+          set status = p_status, ended_at = p_ended_at,
+              report = coalesce(report, '{"stored": 0, "skipped": 0, "failed": []}'::jsonb)
+                       || coalesce(p_report, '{}'::jsonb),
+              error = p_error
+        where id = p_id and runs_as_jobs and status in ('queued', 'running')
+          and not exists (select from knowledge_job_requests r
+                           where r.run = p_id and r.applied_at is null)
+        returning *;
+     end $$`,
+  // A running run's counts as its jobs report them: set (a listing's) or added to (a document's).
+  `create or replace function report_job_ingestion_execution(p_id text, p_report jsonb, p_add boolean)
+     returns void
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       update ingestion_executions r
+          set report = coalesce(r.report, '{"stored": 0, "skipped": 0, "failed": []}'::jsonb)
+                       || case when p_add
+                            then (select coalesce(jsonb_object_agg(e.key,
+                                    coalesce((r.report ->> e.key)::bigint, 0) + e.value::bigint), '{}'::jsonb)
+                                    from jsonb_each_text(p_report) e)
+                            -- A listing's counts are kept from its first delivery.
+                            else (select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                                    from jsonb_each(p_report) e
+                                   where not coalesce(r.report ? e.key, false)) end
+        where r.id = p_id and r.runs_as_jobs and r.status = 'running';
+     end $$`,
+  // A run over its failure budget is cancelled and keeps what it replaced (ADR 0017, ADR 0042).
+  `create or replace function stop_job_ingestion_execution_at_budget(p_id text, p_at text)
+     returns void
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       update ingestion_executions set cancel_requested_at = p_at, cancelled_by = 'failure-budget'
+        where id = p_id and runs_as_jobs and status = 'running' and cancel_requested_at is null;
+     end $$`,
+  `create or replace function start_queued_job_ingestion_execution(
+       p_dataset text, p_pipeline text, p_admitted_after text, p_now text, p_expired text)
+     returns setof ingestion_executions
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       if exists (select from ingestion_executions where dataset = p_dataset
+                    and pipeline = p_pipeline and status = 'running' and runs_as_jobs) then
+         return;
+       end if;
+       update ingestion_executions set status = 'failed', ended_at = p_now, error = p_expired
+        where dataset = p_dataset and pipeline = p_pipeline and status = 'queued'
+          and p_admitted_after is not null and coalesce(admitted_at, '') < p_admitted_after;
+       return query update ingestion_executions set status = 'running'
+        where dataset = p_dataset and pipeline = p_pipeline and status = 'queued'
+          and cancel_requested_at is null
+        returning *;
+     end $$`,
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,
+  `create index if not exists events_usage on events (task) where type = 'kernel.usage'`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
+  `alter table erased_scopes add column if not exists reason text`,
+  `create table if not exists platform_identity (
+     singleton boolean primary key default true check (singleton),
+     id uuid not null default gen_random_uuid(),
+     created_at timestamptz not null default now()
+   )`,
+  `insert into platform_identity default values on conflict do nothing`,
   ...Object.entries(publishedTables).flatMap(([table, column]) =>
     publishedIsolation(table, column),
   ),
-  `do $$ begin
-     create role ${runtimeRole} nologin nosuperuser nobypassrls;
-   exception when duplicate_object then null;
-   end $$`,
-  `do $$ begin
-     if exists (select from pg_roles where rolname = '${runtimeRole}' and (rolsuper or rolbypassrls)) then
-       raise exception '${runtimeRole} must not be a superuser or bypass row-level security';
-     end if;
-     if current_setting('server_version_num')::int >= 160000 then
-       if not pg_has_role(current_user, '${runtimeRole}', 'SET') then
-         execute format('grant ${runtimeRole} to %I with set true', current_user);
-       end if;
-     elsif not pg_has_role(current_user, '${runtimeRole}', 'MEMBER') then
-       execute format('grant ${runtimeRole} to %I', current_user);
-     end if;
-   end $$`,
+  ...usageMigrations,
+  ...appRole(runtimeRole),
+  ...appRole(workerRole, runtimeRole),
   `grant select, insert, update, delete on ${[
     ...tenantTables,
     ...Object.keys(publishedTables),
     ...kernelTables,
     ...platformTables,
   ].join(', ')} to ${runtimeRole}`,
+  `grant select on usage_buckets to ${runtimeRole}`,
   `grant usage on schema public to ${runtimeRole}`,
   `grant usage, select on all sequences in schema public to ${runtimeRole}`,
   ...definerFunctions.map((fn) => `revoke all on function ${fn} from public`),
@@ -700,4 +1068,11 @@ export const migrate = async (pool: Pool) => {
   } finally {
     client.release();
   }
+};
+
+export const platformId = async (pool: Pool): Promise<string> => {
+  const { rows } = await pool.query<{ id: string }>('select id from platform_identity');
+  const id = rows[0]?.id;
+  if (!id) throw new Error('the platform server has no id; run its migrations first');
+  return id;
 };

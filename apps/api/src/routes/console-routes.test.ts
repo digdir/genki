@@ -247,6 +247,35 @@ describe('console routes', () => {
     expect(listed.data.find((s) => s.id === 'klarsprak')?.availableTo).toBe('*');
   });
 
+  it('refuses operator-only console actions for a principal whose actor is not an operator', async () => {
+    const { admin, store } = await setup();
+    const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
+    const acting: Principal = { ...kari, actor: kari };
+    const actions = [
+      'platform.service.share',
+      'platform.judge.label',
+      'platform.support.end',
+      'platform.support.extend',
+      'platform.task.cancel',
+      'platform.audit.export',
+    ];
+
+    for (const action of actions) {
+      const result = await admin.perform(acting, action, {
+        tenant: digdir,
+        reason: 'prøver å endre noe',
+        serviceTenant: digdir,
+        service: 'klarsprak',
+        availableTo: '*',
+      });
+      expect(result.ok, action).toBe(false);
+      if (!result.ok) expect(result.errors[0]?.path, action).toBe('principal');
+    }
+    expect((await store.get('Service', digdir, 'klarsprak'))?.definition.spec).not.toHaveProperty(
+      'availableTo',
+    );
+  });
+
   it('marks an archived service in the tenant list and leaves it out of the shared services', async () => {
     const { send } = await setup({ lifecycle: async () => ({ state: 'archived' }) });
 

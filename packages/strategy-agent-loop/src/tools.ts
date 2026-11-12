@@ -1,7 +1,10 @@
+import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import {
   detectInsufficientContext,
   numberByDocument,
+  numberByExcerpt,
+  type CiteBy,
   parseCitations,
   sourcesFirst,
   stripSourceLists,
@@ -12,10 +15,12 @@ import {
   ambiguityInstruction,
   citationInstruction,
   defaultGenerationPrompt,
+  excerptCitationInstruction,
   sameLanguageRule,
 } from './prompts.js';
 import { buildEvidencePlan } from './read-signals.js';
 import { json } from './structured.js';
+import { skillsSection } from './skills.js';
 import {
   defaultSearchDisplayLimit,
   expandShortDocReads,
@@ -32,6 +37,7 @@ import {
   type FilterField,
   type ReadSource,
   type SearchAttribution,
+  type SearchDetection,
   type SearchType,
   type Workspace,
 } from './workspace.js';
@@ -63,6 +69,7 @@ export interface ToolEnvironment {
   signal: AbortSignal;
   systemPrompt: string;
   generationPrompt?: string;
+  citeBy?: CiteBy;
   search?: SearchSettings;
 }
 
@@ -78,6 +85,7 @@ export interface SearchMade {
   queries: string[];
   filters?: FilterField[];
   fellBack?: boolean;
+  detections?: SearchDetection[];
 }
 
 export interface ToolOutcome {
@@ -205,6 +213,25 @@ export const enforceStrategyQuota = <T extends ChunkSummary>(chunks: T[], quota:
 
 const fixed = (n: number, digits: number) => n.toFixed(digits);
 
+const detectionHint = (d: SearchDetection) => {
+  const names = d.values.map((v) => JSON.stringify(v)).join(', ');
+  const them = d.values.length > 1 ? 'them' : 'it';
+  const what =
+    d.kind === 'year'
+      ? `names the year${d.values.length > 1 ? 's' : ''} ${names}`
+      : d.kind === 'organisation'
+        ? `names ${names}`
+        : `suggests ${d.field} ${names}`;
+  return `The query ${what}; ${d.field} can filter on ${them}.`;
+};
+
+const searchHints = (attribution: SearchAttribution | undefined): string => {
+  const hints = (attribution?.detections ?? []).filter((d) => d.use === 'hint');
+  return hints.length
+    ? `\nHint, no filter applied: ${hints.map(detectionHint).join(' ')} Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations' documents.`
+    : '';
+};
+
 export const formatSearchMetadataResults = (
   chunks: (ChunkSummary & { titleOverlapBonus?: number })[],
   newCount: number,
@@ -249,7 +276,8 @@ export const formatSearchMetadataResults = (
     (omitted > 0
       ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
       : '') +
-    `\n${lines.join('\n')}`
+    searchHints(attribution) +
+    `\n${untrustedData('search-results', lines.join('\n'))}`
   );
 };
 
@@ -268,7 +296,8 @@ export const formatReadResult = (
       ` ---\n${c.content}`,
   );
   return (
-    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):\n\n${blocks.join('\n\n')}` +
+    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):` +
+    (blocks.length ? `\n\n${untrustedData('documents', blocks.join('\n\n'))}` : '') +
     (skippedNote ? `\n\n${skippedNote}` : '') +
     (budgetNote ? `\n\n${budgetNote}` : '')
   );
@@ -448,6 +477,9 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       queries: args.data.queries,
       ...(!fellBack && filters?.length ? { filters } : {}),
       ...(fellBack ? { fellBack } : {}),
+      ...(outcome.attribution?.detections?.length
+        ? { detections: outcome.attribution.detections }
+        : {}),
     },
     ...(autoRead.length ? { read: { chunks: retrievalHits(autoRead), auto: true } } : {}),
   };
@@ -597,7 +629,9 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       .slice(0, 3)
       .map((c, i) => `${i + 1}. ${c.content.slice(0, 80)}`)
       .join('; ');
-    return { content: `Reranked to top ${reranked.length} chunks. Top results: ${top}` };
+    return {
+      content: `Reranked to top ${reranked.length} chunks. Top results:\n${untrustedData('excerpts', top)}`,
+    };
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {
@@ -606,8 +640,13 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   }
 };
 
-export const generationPromptFor = (template: string, context: string, question: string) =>
-  `${template.replace('{context}', context).replace('{question}', question)}\n\n${ambiguityInstruction}\n\n${citationInstruction}\n\n${sameLanguageRule}`;
+export const generationPromptFor = (
+  template: string,
+  context: string,
+  question: string,
+  citeBy: CiteBy = 'document',
+) =>
+  `${template.replace('{context}', context).replace('{question}', question)}\n\n${ambiguityInstruction}\n\n${citeBy === 'excerpt' ? excerptCitationInstruction : citationInstruction}\n\n${sameLanguageRule}`;
 
 const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace } = env;
@@ -624,16 +663,23 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
     workspace.attached,
     workspace.contextDocs.length ? workspace.contextDocs : chunks.slice(0, 10),
   );
-  const { context, index, chunks: ordered } = numberByDocument(docs);
+  const {
+    context,
+    index,
+    chunks: ordered,
+  } = env.citeBy === 'excerpt' ? numberByExcerpt(docs) : numberByDocument(docs);
   let text: string;
   try {
     text = stripSourceLists(
-      await env.synthesize(
-        env.systemPrompt,
-        generationPromptFor(
-          env.generationPrompt ?? defaultGenerationPrompt,
-          context,
-          args.data.query,
+      normaliseCitationMarkers(
+        await env.synthesize(
+          env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+          generationPromptFor(
+            env.generationPrompt ?? defaultGenerationPrompt,
+            context,
+            args.data.query,
+            env.citeBy,
+          ),
         ),
       ),
     );

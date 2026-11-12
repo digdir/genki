@@ -7,7 +7,7 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 - Reading runs, test sets, gates and feedback needs membership in the tenant. A run's timeline is open to whoever started it, or to `manage-services`.
 - Projects and their runs need `use-services`; a subscription that runs a service needs `manage-services`.
 - Test sets, eval runs, improvements, batch runs, gates, guardrail rules and candidate reviews need `manage-services`.
-- An API key needs the `admin` scope on these routes, also on the ones outside `/tenants/{tenant}` (`/eval-runs/*`, `/eval-tasks/*`, `/testcase-candidates/*`); other keys get 403 `urn:genai:problem:api-key-scope`.
+- An API key needs the `admin` scope on these routes, also on the ones outside `/tenants/{tenant}` (`/eval-runs/*`, `/eval-tasks/*`, `/testcase-candidates/*`); other keys get 403 `urn:genai:problem:api-key-scope`. A test-runner key in a locked test environment is the exception on `/tenants/{tenant}` (see [Access](access.md#test-runner-keys)).
 - A rerun of a batch with the same `batchId` skips the items that already succeeded. Their entries in the new result carry status, attempts and the task that produced them, not the answer, which stays with that task and its retention.
 - Editing and approving a table review (`PUT .../tasks/{task}/review/edits`, `POST .../review/approve`) needs `use-services` and is open only to whoever started the run. Both are audited admin tasks with `change-reason`; an edit that races another answers 409.
 - Usage and cost need `view-usage`.
@@ -23,11 +23,15 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 5. `GET /eval-runs/compare`: compare with the run of the published version.
 6. `GET /tenants/{tenant}/gates`: the gates publishing must pass; then publish (see [Services](services.md)).
 
-To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenant}/tasks/{task}/timeline`.
+To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenant}/tasks/{task}/timeline`. Both also read a playground run, and `GET /tenants/{tenant}/tasks?origin=playground` lists the tenant's playground runs instead of its service runs.
+
+A run whose content was erased on purpose carries `erasure: { reason, at }` on the run, in the run list and on its timeline. `reason` is `conversation-deleted` (the conversation was deleted), `retention` (removed after the retention period) or `erased` (erased before the platform recorded why); `at` is when, if known. Such a run has no `excerpt`, and its timeline keeps only what the envelopes hold: start, status, duration, model calls with tokens and cost, and a result step that says the answer was erased.
 
 ## Two kinds of evaluation run
 
-- A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`.
+- A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`. It runs every case of the test set, only one split with `split` (`locked` or `open`), or only the cases named in `cases` (case ids); a case id the test set does not have is a 400.
+- A service evaluation run saves each case as it finishes: `finished` counts the cases done, and `passed`, `score`, `cost` and `tokens` count only those. If the platform restarts during the run, the run ends `failed` with `interrupted: true` and keeps the cases it finished and what they cost. It does not resume; start it again.
+- A service evaluation run runs up to four cases at a time and shares a limited number of case slots with the other test-set runs on its API instance, a fair share per organisation and per run ([development.md](../development.md), "Test-set runs side by side", has the settings). While it has no case in flight and waits for a slot, it carries `queuePlace` (1 is next in line), and it stays `queued` until its first case starts. Cases finish in any order; `cases` is always in test-set order. Before each case the run checks the organisation's monthly token quota; once it is used up, the run starts no new case, lets the ones in flight finish, and ends `failed` with the cases it finished.
 - An eval capability run starts with `POST /tenants/{tenant}/eval-runs` (capability, test set, evaluators and provenance are required) and is listed by `GET /tenants/{tenant}/eval-runs`. Follow it with `GET /eval-tasks/{task}`; every instance answers the same status, read from the task and the stored run.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both. `kind` tells them apart: `service` answers the run with its case results, `kernel` answers the same body as `GET /eval-runs/{id}`.
 - Neither kind shows its lease (`owner`, `heartbeatAt`).

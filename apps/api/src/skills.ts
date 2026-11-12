@@ -9,7 +9,9 @@ import {
 } from '@genai/definitions';
 import {
   contractAssertions,
+  criteriaJudgeIdentity,
   criteriaJudgePrompt,
+  defaultObserve,
   rubricJudge,
   type EvalContext,
   type Observation,
@@ -117,6 +119,7 @@ export interface SkillTestRun {
   by: string;
   model: string;
   judge: string | null;
+  judgePrompt?: string;
   passed: number;
   total: number;
   passRate: number;
@@ -259,6 +262,10 @@ const splitShareId = (id: string) => ({ tenant: id.slice(0, 9), skill: id.slice(
 
 const percent = (value: number) => Math.round(value * 100);
 
+const countsForDraft = (run: SkillTestRun, draft: { version: number } | undefined) =>
+  run.draftRevision === draft?.version &&
+  (run.judge === null || run.judgePrompt === criteriaJudgeIdentity);
+
 const contentTypeOf = (name: string) =>
   ({
     md: 'text/markdown',
@@ -309,6 +316,7 @@ export const readZip = (zip: Uint8Array): ZipEntry[] => {
     if (ranges.some(([a, b]) => local < b && start + compressed > a))
       throw new Error('overlapping zip entries');
     ranges.push([local, start + compressed]);
+    if (size > maxZipBytes - total) throw new Error('the package is too large');
     const raw = zip.subarray(start, start + compressed);
     let data: Uint8Array;
     if (method === 0) data = raw;
@@ -462,7 +470,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
   ): { threshold: number; requirements: SkillRequirement[]; current?: SkillTestRun } => {
     const definition = draft?.spec.definition;
     const threshold = thresholdFor(tenant, definition);
-    const current = runs.filter((r) => r.draftRevision === draft?.version).at(-1);
+    const current = runs.filter((r) => countsForDraft(r, draft)).at(-1);
     const cases = (definition?.spec as { testset?: { cases?: unknown } } | undefined)?.testset
       ?.cases;
     const notRun =
@@ -629,7 +637,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       published: (history.at(-1)?.definition as SkillDefinition | undefined) ?? null,
       versions,
       lastTestRun,
-      stale: Boolean(lastTestRun && draft && lastTestRun.draftRevision !== draft.version),
+      stale: Boolean(lastTestRun && draft && !countsForDraft(lastTestRun, draft)),
       threshold: gates.threshold,
       requirements: gates.requirements,
       shareRequest: share ? shareView(share) : null,
@@ -807,12 +815,15 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
         json?.kind === 'json' && isRecord(json.json)
           ? (json.json as Record<string, unknown>)
           : undefined;
+      const { retrieved, citations } = defaultObserve(outcome.parts, []);
       const observation: Observation = {
         answer: outcome.answer,
-        retrieved: [],
-        citations: [],
+        retrieved,
+        citations,
         ...(fields ? { fields } : {}),
       };
+      if (testCase.context)
+        observation.retrieved.unshift({ document: 'skill-test-context', text: testCase.context });
       const evalCase = {
         id: `case-${index + 1}`,
         split: 'validation',
@@ -881,6 +892,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       by: actorOf(principal.actor ?? principal),
       model,
       judge: judge ?? null,
+      ...(judge ? { judgePrompt: criteriaJudgeIdentity } : {}),
       passed: passedCount,
       total: results.length,
       passRate: passedCount / results.length,

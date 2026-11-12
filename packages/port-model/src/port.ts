@@ -1,4 +1,4 @@
-import type { Usage } from '@genai/contracts';
+import type { ProviderFailure, Usage } from '@genai/contracts';
 import type { ParameterRules, TunableParameter } from './parameters.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -54,10 +54,16 @@ export type ChatChunk = { kind: 'delta'; text: string } | { kind: 'done'; result
 export const capabilities = ['stream', 'tools', 'json-schema', 'reasoning'] as const;
 export type Capability = (typeof capabilities)[number];
 
+export const builtInOperations = ['chat', 'decide'] as const;
+export type BuiltInOperation = (typeof builtInOperations)[number];
+export type Operation = string;
+export const operationKindPattern = /^[a-z][a-z0-9-]*$/;
+
 export interface ModelInfo {
   id: string;
   residency: Residency;
   capabilities: Capability[];
+  operations?: Operation[];
   contextWindow?: number;
   parameters?: ParameterRules;
 }
@@ -83,6 +89,7 @@ export class ModelError extends Error {
   constructor(
     readonly code: ModelErrorCode,
     message: string,
+    readonly provider?: ProviderFailure,
   ) {
     super(message);
     this.name = 'ModelError';

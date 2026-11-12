@@ -39,7 +39,11 @@ export interface ImportOptions {
   onConflict: 'skip' | 'overwrite';
   actor: string;
   reason: string;
-  check?: (definition: unknown, files: PromptFiles) => ValidationError[];
+  check?: (
+    definition: unknown,
+    files: PromptFiles,
+  ) => ValidationError[] | Promise<ValidationError[]>;
+  prepare?: (definition: unknown) => unknown;
 }
 
 export type ImportResult =
@@ -173,7 +177,10 @@ export const importTenant = async (
     const action = plan.find((p) => p.target === target)?.action;
     if (options.check && (action === 'create' || action === 'update'))
       errors.push(
-        ...options.check(definition, files).map((e) => ({ ...e, path: `${target}.${e.path}` })),
+        ...(await options.check(definition, files)).map((e) => ({
+          ...e,
+          path: `${target}.${e.path}`,
+        })),
       );
   }
   for (const [key, version] of Object.entries(bundle.settings.pins)) {
@@ -197,7 +204,8 @@ export const importTenant = async (
     const target = `${String(definition.kind)}:${String((definition.metadata as { id?: unknown }).id)}`;
     const action = applies(target);
     if (action !== 'create' && action !== 'update') continue;
-    const result = await store.publish(definition, options.actor, options.reason, files);
+    const prepared = options.prepare ? options.prepare(definition) : definition;
+    const result = await store.publish(prepared, options.actor, options.reason, files);
     if (!result.ok) {
       settings.restoreTenant(options.tenant, before);
       return {

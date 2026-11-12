@@ -1,0 +1,50 @@
+id: example/stream-events@1
+operation: stream-events
+status: described
+summary: A made-up API that streams named events, tokens, a final count and a failure event, as server-sent events.
+api:
+  family: example
+  version: '2026-11-01'
+input:
+  object:
+    question: text
+output:
+  object:
+    answer: text
+steps:
+  - name: ask
+    request:
+      method: POST
+      path: /answers
+      body:
+        model: $deployment
+        question: $input.question
+    wire:
+      request:
+        object:
+          model: plain
+          question: text
+    response:
+      stream:
+        framing: sse
+        events:
+          token:
+            shape: { object: { text: text } }
+            delta: $event.text
+          stats:
+            shape:
+              object:
+                input: { number: { integer: true } }
+                output: { number: { integer: true } }
+          failed:
+            shape: { object: { detail: plain } }
+            fail: { kind: unavailable, message: $event.detail }
+          finished:
+            shape: { object: {} }
+            done: true
+    usage:
+      input-token: $response.input
+      output-token: $response.output
+      request: 1
+result:
+  answer: $response.text

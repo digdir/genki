@@ -9,6 +9,7 @@ import type {
   PlaygroundServiceVersion,
   PlaygroundSetup,
   PlaygroundSource,
+  PlaygroundVariant,
   PlaygroundStreamEvent,
   RunStats,
 } from '../api/playground';
@@ -190,6 +191,19 @@ export const versionOf = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
   return service && version ? { service, version } : undefined;
 };
 
+export const variantLabel = (variant: PlaygroundVariant, t: T = nbT) =>
+  variant.title ?? (variant.id === 'default' ? t('playground.variantDefault') : variant.id);
+
+export const variantOf = (options: PlaygroundOptions, setup: PlaygroundSetup) => {
+  const variants = versionOf(options, setup)?.version.variants ?? [];
+  return variants.find((v) => v.id === setup.service?.variant) ?? variants[0];
+};
+
+const serviceName = (options: PlaygroundOptions, setup: PlaygroundSetup, name: string, t: T) => {
+  const variant = variantOf(options, setup);
+  return variant ? `${name} (${variantLabel(variant, t)})` : name;
+};
+
 const nameIn = (list: { id: string; name: string; ref?: string }[], id: string) =>
   list.find((x) => x.id === id || x.ref === id)?.name ?? id;
 
@@ -207,7 +221,7 @@ export const setupChips = (options: PlaygroundOptions, setup: PlaygroundSetup, t
   if (found)
     chips.push(
       t('playground.chipService', {
-        name: found.service.name,
+        name: serviceName(options, setup, found.service.name, t),
         version: versionLabel(found.version, t).toLowerCase(),
       }),
     );
@@ -233,7 +247,7 @@ export const resultLabel = (options: PlaygroundOptions, setup: PlaygroundSetup, 
   const found = versionOf(options, setup);
   const model = modelOf(options, setup.model).name;
   return found
-    ? `${model} · ${found.service.name}, ${versionLabel(found.version, t).toLowerCase()}`
+    ? `${model} · ${serviceName(options, setup, found.service.name, t)}, ${versionLabel(found.version, t).toLowerCase()}`
     : model;
 };
 
@@ -362,29 +376,20 @@ export const sourceUrl = (source: PlaygroundSource) => {
   return undefined;
 };
 
-export const sourceExcerpt = (source: PlaygroundSource, max = 300) => {
-  const flat = (source.excerpt ?? source.text ?? '').replace(/\s+/g, ' ').trim();
-  if (flat.length <= max) return flat || undefined;
-  const cut = flat.slice(0, max - 1);
-  const space = cut.lastIndexOf(' ');
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
-};
+export const sourceExcerpt = (source: PlaygroundSource) =>
+  (source.excerpt ?? source.text ?? '').trim() || undefined;
 
 export const sourceFacts = (source: PlaygroundSource, f: Format = nbFormat, t: T = nbT) => {
   const date = source.publishedAt ? new Date(source.publishedAt) : undefined;
-  return [
-    ...(source.version !== undefined && source.version !== ''
-      ? [t('playground.sourceVersion', { version: source.version })]
-      : []),
-    ...(date && !Number.isNaN(date.getTime()) ? [f.date(date, 'long')] : []),
-  ].join(', ');
+  return date && !Number.isNaN(date.getTime())
+    ? t('playground.sourcePublished', { date: f.date(date, 'long') })
+    : undefined;
 };
 
-export const sourceLocation = (source: PlaygroundSource) =>
-  [
-    ...(source.document && source.document !== sourceTitle(source) ? [source.document] : []),
-    ...(source.headers ?? []),
-  ].join(', ');
+export const sourceDataset = (source: PlaygroundSource) => {
+  const qualifiedId = [source.document, source.chunkId].find((id) => id?.includes('::'));
+  return qualifiedId?.split('::')[0];
+};
 
 const valueText = (value: unknown): string =>
   Array.isArray(value)

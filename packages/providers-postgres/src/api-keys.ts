@@ -13,12 +13,18 @@ export interface PostgresApiKey {
   agents: string[];
   clientId?: string;
   service?: string;
+  environments?: string[];
   allowedOverrides?: string[];
   callsPerMinute?: number;
   skillGraphs?: string[];
   allowedConfigKeys?: string[];
   policy?: PostgresKeyPolicy;
   admittedInLockdown?: boolean;
+  prefix?: string;
+  lastFour?: string;
+  createdAt?: string;
+  createdBy?: string;
+  testRunner?: boolean;
   lastUsedAt?: string;
   revokedAt?: string;
   expiresAt?: string;
@@ -45,9 +51,6 @@ export interface StoredKeyPolicy extends PostgresKeyPolicy {
 
 export interface NewApiKey extends PostgresApiKey {
   tenant: string;
-  prefix?: string;
-  lastFour?: string;
-  createdAt?: string;
 }
 
 export interface RestoredApiKey extends NewApiKey {
@@ -57,6 +60,8 @@ export interface RestoredApiKey extends NewApiKey {
 interface KeyRow {
   id: string;
   name: string;
+  prefix: string | null;
+  last_four: string | null;
   digest: string;
   tenant: string;
   scopes: string[];
@@ -64,12 +69,16 @@ interface KeyRow {
   agent_grants: string[];
   client_id: string | null;
   service: string | null;
+  environments: string[] | null;
   allowed_overrides: string[] | null;
   calls_per_minute: number | null;
   skill_graph_grants: string[];
   allowed_config_keys: string[];
   policy_id: string | null;
   admitted_in_lockdown: boolean;
+  created_at: Date;
+  created_by: string | null;
+  test_runner: boolean;
   last_used_at: Date | null;
   revoked_at: Date | null;
   expires_at: Date | null;
@@ -103,14 +112,20 @@ const toKey = (row: KeyRow): PostgresApiKey => ({
   scopes: row.scopes as Scope[],
   datasets: row.dataset_grants,
   agents: row.agent_grants,
+  ...(row.prefix === null ? {} : { prefix: row.prefix }),
+  ...(row.last_four === null ? {} : { lastFour: row.last_four }),
   ...(row.client_id === null ? {} : { clientId: row.client_id }),
   ...(row.service === null ? {} : { service: row.service }),
+  ...(row.environments?.length ? { environments: row.environments } : {}),
   ...(row.allowed_overrides === null ? {} : { allowedOverrides: row.allowed_overrides }),
   ...(row.calls_per_minute === null ? {} : { callsPerMinute: row.calls_per_minute }),
   ...(row.skill_graph_grants.length ? { skillGraphs: row.skill_graph_grants } : {}),
   ...(row.allowed_config_keys.length ? { allowedConfigKeys: row.allowed_config_keys } : {}),
   ...(row.policy_id === null ? {} : { policy: { id: row.policy_id } }),
   ...(row.admitted_in_lockdown ? { admittedInLockdown: true } : {}),
+  createdAt: row.created_at.toISOString(),
+  ...(row.created_by === null ? {} : { createdBy: row.created_by }),
+  ...(row.test_runner ? { testRunner: true } : {}),
   ...(row.last_used_at === null ? {} : { lastUsedAt: row.last_used_at.toISOString() }),
   ...(row.revoked_at === null ? {} : { revokedAt: row.revoked_at.toISOString() }),
   ...(row.expires_at === null ? {} : { expiresAt: row.expires_at.toISOString() }),
@@ -212,8 +227,10 @@ export class PostgresApiKeys {
       client.query(
         `insert into legacy_api_keys (id, digest, prefix, last_four, name, tenant, legacy, scopes, dataset_grants,
            agent_grants, client_id, revoked_at, expires_at, created_at, service, allowed_overrides, calls_per_minute,
-           skill_graph_grants, allowed_config_keys, policy_id, admitted_in_lockdown)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+           skill_graph_grants, allowed_config_keys, policy_id, admitted_in_lockdown, created_by, test_runner,
+           environments)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+           $24)`,
         [
           key.id,
           key.digest,
@@ -236,6 +253,9 @@ export class PostgresApiKeys {
           key.allowedConfigKeys ?? [],
           key.policy?.id ?? null,
           key.admittedInLockdown === true,
+          key.createdBy ?? null,
+          key.testRunner === true,
+          key.environments ?? [],
         ],
       ),
     );

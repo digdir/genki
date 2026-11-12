@@ -4,3 +4,10 @@ useDefault = true
 [[allowlists]]
 description = "Azure built-in role definition ids: published by Microsoft, identical in every tenant"
 regexes = ['''4633458b-17de-408a-b874-0445c86b69e6''']
+
+[[allowlists]]
+description = "Benchmark model ids under a key field are names, not credentials"
+condition = "AND"
+paths = ['''^benchmarks/.+\.json$''']
+regexTarget = "line"
+regexes = ['''"key":\s*"[a-z0-9.-]+"''']

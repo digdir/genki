@@ -308,7 +308,7 @@ export const docs: { title: PlainKey; desc: PlainKey; href: string }[] = [
   {
     title: 'integrations.docCodeTitle',
     desc: 'integrations.docCodeDesc',
-    href: '#/integrations/code',
+    href: '#/developer/api/code',
   },
   { title: 'integrations.docApiTitle', desc: 'integrations.docApiDesc', href: '#/api-reference' },
   {
@@ -331,7 +331,11 @@ export const docs: { title: PlainKey; desc: PlainKey; href: string }[] = [
     desc: 'integrations.docMcpDesc',
     href: '#/api-reference?view=service',
   },
-  { title: 'integrations.docLimitsTitle', desc: 'integrations.docLimitsDesc', href: '#/usage' },
+  {
+    title: 'integrations.docLimitsTitle',
+    desc: 'integrations.docLimitsDesc',
+    href: '#/statistics',
+  },
   { title: 'integrations.docStatusTitle', desc: 'integrations.docStatusDesc', href: '#/status' },
 ];
 

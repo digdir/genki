@@ -76,6 +76,8 @@ export const OverviewSection = ({
     },
     [api, tenant, id],
   );
+  const usageShown =
+    state.status === 'ready' && state.data.tasks.some((r) => r.usage !== undefined);
   const strategy = strategyFor(d.spec.strategy.id, t);
   const model = modelFor(d.spec.model.primary, d.spec.model.residency);
   const riskKey = riskKeys[d.spec.riskClass ?? ''];
@@ -176,9 +178,11 @@ export const OverviewSection = ({
                   <Table.HeaderCell scope="col">{t('serviceLog.colRun')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col">{t('serviceLog.colStatus')}</Table.HeaderCell>
                   <Table.HeaderCell scope="col">{t('serviceLog.colStarted')}</Table.HeaderCell>
-                  <Table.HeaderCell scope="col" className="right">
-                    {t('serviceLog.colTokens')}
-                  </Table.HeaderCell>
+                  {usageShown ? (
+                    <Table.HeaderCell scope="col" className="right">
+                      {t('serviceLog.colTokens')}
+                    </Table.HeaderCell>
+                  ) : null}
                 </Table.Row>
               </Table.Head>
               <Table.Body>
@@ -197,9 +201,11 @@ export const OverviewSection = ({
                         </Tag>
                       </Table.Cell>
                       <Table.Cell>{f.dateTime(r.createdAt, 'medium')}</Table.Cell>
-                      <Table.Cell className="right numeric">
-                        {f.number(r.usage.inputTokens + r.usage.outputTokens)}
-                      </Table.Cell>
+                      {usageShown ? (
+                        <Table.Cell className="right numeric">
+                          {r.usage ? f.number(r.usage.inputTokens + r.usage.outputTokens) : ''}
+                        </Table.Cell>
+                      ) : null}
                     </Table.Row>
                   );
                 })}

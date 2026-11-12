@@ -1,3 +1,5 @@
+import type { Server } from 'node:http';
+import { attachSessionUpgrade } from './session-upgrade.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -23,26 +25,40 @@ import {
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  ingestSender,
+  knowledgeReadSourceFromEnv,
+  knowledgeSourceFromEnv,
   LocalKeyWrapper,
   PostgresDefinitionStore,
+  PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
+import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
+import { evalSlotLimitsFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
-import type { ModelPrice } from './draft-runner.js';
+import type { PriceSpec } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
 import {
+  databaseHosts,
+  knowledgeServerEndpoints,
+  savedKnowledgeCatalog,
   defaultPlatformTenant,
+  environmentTierOf,
+  openKnowledgePools,
+  processorRecordCheckOf,
   ownedByPlatformTenant,
   platformTenantFrom,
 } from '@genai/composition';
 import { createApp } from './app.js';
+import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
 import { followChanges } from './change-feed.js';
@@ -66,7 +82,8 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
+import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
@@ -74,6 +91,30 @@ import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
 import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
+
+/**
+ * Runs that run as knowledge jobs (ADR 0042) send their jobs only to the platform server, as
+ * genai_runtime; pg-boss starts for sending on the first send, since the worker installs it.
+ */
+const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0]) => {
+  let queue: Promise<PgBossJobQueue> | undefined;
+  const started = () =>
+    (queue ??= PgBossJobQueue.start(runtimePool, { works: false }).catch((error: unknown) => {
+      queue = undefined;
+      throw error;
+    }));
+  return {
+    runs: new PostgresJobRuns(runtimePool, {
+      send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+    }),
+    // A generation an engine switch left on the knowledge server is dropped by the worker (ADR 0025).
+    drop: async (input: { tenant: string; dataset: string; generation: string }) => {
+      await (
+        await started()
+      ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
+    },
+  };
+};
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -86,7 +127,8 @@ const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-gena
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
 
-const refused = bootProblems(process.env);
+const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
 if (refused.length > 0) {
   log('refusing to start', { problems: refused });
   process.exit(1);
@@ -96,6 +138,8 @@ if (isDevMode(process.env)) {
   log('dev mode', { warning: devModeWarning });
 }
 const platformTenant = platformTenantFrom(process.env);
+const enhetsregisteret =
+  process.env.ENHETSREGISTERET_URL ?? 'https://data.brreg.no/enhetsregisteret/api/enheter';
 log('platform tenant', { tenant: platformTenant });
 
 const identityFile = (() => {
@@ -120,15 +164,10 @@ log('altinn pdp', {
   kind: altinnPdp.kind,
   ...(altinnPdp.kind === 'altinn' ? { baseURL: altinnPdp.baseURL } : {}),
 });
-
-const databaseHosts = (...urls: (string | undefined)[]) =>
-  urls.flatMap((url) => {
-    try {
-      return url ? [new URL(url).hostname.replace(/^\[|\]$/g, '')] : [];
-    } catch {
-      return [];
-    }
-  });
+if (altinnPdp.kind === 'altinn')
+  void altinnPdp
+    .warm()
+    .catch((error: unknown) => log('altinn token not fetched at boot', { error: String(error) }));
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
@@ -154,8 +193,9 @@ const registeredClients = clientRegistry(clients);
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
-  log('lockdown: Entra logins in the configured groups get the whole platform', {
+  log('lockdown: Entra logins in the configured groups are admitted', {
     groups: trustedEntra.groups.length,
+    userGroups: trustedEntra.userGroups?.length ?? 0,
     clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });
@@ -166,6 +206,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   testData,
   registeredClients,
   ...(trustedEntra ? { trustedEntra } : {}),
+  onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 if (mock)
   mockRegistration = {
@@ -303,6 +344,35 @@ const catalogs = {
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
+const savedKnowledge = savedKnowledgeCatalog(
+  db ? await db.configEntries.latest({ kind: 'knowledge-endpoint' }) : [],
+);
+const knowledgeRefused = [
+  ...knowledgeServerProblems(process.env, catalogs.knowledge.catalog),
+  ...knowledgeServerProblems(process.env, savedKnowledge),
+];
+if (
+  !process.env.KNOWLEDGE_DATABASE_URL &&
+  !process.env.KNOWLEDGE_PGHOST &&
+  knowledgeServerEndpoints(savedKnowledge).length > 0
+)
+  log('warning', {
+    message: `saved knowledge endpoints skipped, no knowledge server is configured: ${knowledgeServerEndpoints(savedKnowledge).join(', ')}`,
+  });
+if (knowledgeRefused.length > 0) {
+  log('refusing to start', { problems: knowledgeRefused });
+  process.exit(1);
+}
+const knowledgeSource = knowledgeSourceFromEnv(process.env, 'api');
+const knowledgeReadSource = knowledgeReadSourceFromEnv(process.env);
+const knowledgeServer = knowledgeSource
+  ? openKnowledgePools(knowledgeSource, 'api', knowledgeReadSource)
+  : undefined;
+log('knowledge server', {
+  configured: Boolean(knowledgeServer),
+  readHost: knowledgeReadSource?.host ?? 'primary',
+});
+
 const dataDir = process.env.DATA_DIR ?? join(import.meta.dirname, '..', '.data');
 
 const allowWorker = (inner: PolicyDecisionPoint): PolicyDecisionPoint => ({
@@ -320,7 +390,7 @@ const settings = new SettingsRegistry(platformSettings);
 if (db) await settings.attach(db.settings);
 const pricesFile = join(configDir, 'prices.yaml');
 const prices = existsSync(pricesFile)
-  ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, ModelPrice> })
+  ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, PriceSpec> })
       .models ?? {})
   : {};
 const tenantKeys: TenantApiKeys = db ? postgresTenantKeys(db.apiKeys) : memoryKeys;
@@ -362,9 +432,17 @@ if (lockdown)
     configuredKeys: configuredKeys.size,
   });
 
+const environmentTier = environmentTierOf(process.env);
+if (environmentTier === 'test')
+  log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
+
+const processorRecords = processorRecordCheckOf(process.env);
+
 const platform = await createPlatform({
   platformTenant,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
+  environmentTier,
+  processorRecords,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
@@ -372,6 +450,7 @@ const platform = await createPlatform({
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
+  ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock
     ? { testOverride: { allowHttp: true, allowLoopback: true } }
     : { platformHosts: ['localhost', '127.0.0.1', `localhost:${port}`] },
@@ -389,6 +468,8 @@ const platform = await createPlatform({
     store: configEntries,
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
+    // The platform adds every dataset on `connection: knowledge` (createPlatform).
+    ...(db ? { jobRuns: { runsAsJobs: () => false, ...knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT
@@ -406,6 +487,7 @@ const platform = await createPlatform({
     embeddings: catalogs.embeddings.catalog,
   },
   ...(db ? { knowledgePool: db.pool, changes: db.changes } : {}),
+  ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
   ...(db
     ? {
         rateLimits: {
@@ -416,11 +498,15 @@ const platform = await createPlatform({
       }
     : {}),
   ...(db ? { databasePing: () => db.pool.query('select 1') } : {}),
-  ...(process.env.ENHETSREGISTERET_URL
-    ? { organizationRegistry: { url: process.env.ENHETSREGISTERET_URL } }
-    : {}),
+  ...(enhetsregisteret ? { organizationRegistry: { url: enhetsregisteret } } : {}),
   searchOnlyClusters: [process.env.TYPESENSE_URL],
   ...(process.env.INGEST_FOLDER_ROOT ? { ingestFolderRoot: process.env.INGEST_FOLDER_ROOT } : {}),
+  ...(process.env.INGEST_WORKING_DIRECTORY
+    ? { ingestWorkingDirectory: process.env.INGEST_WORKING_DIRECTORY }
+    : {}),
+  ...(process.env.INGEST_PARQUET_MAX_BYTES
+    ? { ingestParquetMaxBytes: Number(process.env.INGEST_PARQUET_MAX_BYTES) }
+    : {}),
   secrets,
   definitions: (plugins, sharedSkill, sharedFlow) =>
     db
@@ -442,19 +528,13 @@ const platform = await createPlatform({
   tasks,
   blobStore: new FileSystemBlobStore(process.env.BLOB_DIR ?? join(dataDir, 'blobs')),
   egress: {
-    platformHosts: [
-      'localhost',
-      '127.0.0.1',
-      `localhost:${port}`,
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
-      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
-    ],
+    platformHosts: ['localhost', '127.0.0.1', `localhost:${port}`, ...databaseHosts(process.env)],
   },
   catalogSkips: skipped,
   ...(db
     ? {
         tenantDirectory: postgresTenantDirectory(db.tenants),
-        taskIndex: postgresTaskIndex(db.tasks),
+        taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
         ingestionExecutions: db.ingestionExecutions,
       }
     : {}),
@@ -462,7 +542,9 @@ const platform = await createPlatform({
   ...(db
     ? {
         conversations: db.conversations,
+        threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
+        providerObjects: db.providerObjects,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
         evalStores: db.eval,
@@ -483,6 +565,7 @@ const platform = await createPlatform({
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
+  evalSlots: evalSlotLimitsFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });
@@ -495,20 +578,26 @@ const admin = createAdmin({
   models: platform.models,
   extensions: platform.extensions,
   tenants: () => platform.directory.list(),
+  names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
 const app = createApp(version, {
+  requestTiming: {
+    write: (entry) => log('request', { ...entry }),
+    slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
+    everyRequest: process.env.LOG_REQUESTS === 'true',
+  },
   platform: {
     store: platform.definitions,
     plugins: platform.plugins,
     settings,
     models: platform.models,
     admin,
-    tasks: kernelTaskReader(platform.kernel, {
-      kind: 'operator',
-      issuer: 'platform',
-      subject: 'task-reader',
-    }),
+    tasks: kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    ),
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
@@ -606,6 +695,7 @@ if (db)
     settings,
     supportSessions: db.adminRecords,
     catalog: platform.catalog,
+    descriptors: platform.descriptors,
     definitions: platform,
     models: platform.models,
     toolConnections: platform.toolConnections,
@@ -646,19 +736,7 @@ if (mock) {
   });
 }
 
-const logRequests = process.env.LOG_REQUESTS === 'true';
-const fetchHandler: typeof app.fetch = logRequests
-  ? async (request, ...rest) => {
-      const response = await app.fetch(request, ...rest);
-      log('request', {
-        method: request.method,
-        path: new URL(request.url).pathname,
-        status: response.status,
-      });
-      return response;
-    }
-  : app.fetch;
-
-serve({ fetch: fetchHandler, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });
+attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);

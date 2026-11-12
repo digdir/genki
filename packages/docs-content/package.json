@@ -1,0 +1,18 @@
+{
+  "name": "@genai/docs-content",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "description": "The Norwegian platform content shared by the docs site and the portal's public pages",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

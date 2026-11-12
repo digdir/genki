@@ -1,37 +1,23 @@
-import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
+import { Alert, Button, Paragraph } from '@digdir/designsystemet-react';
 import { negotiate, type Locale } from '@genai/i18n';
-import { LocaleProvider, useFormat, useLocale } from '@genai/i18n/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LocaleProvider, storedPreference, useFormat, useLocale } from '@genai/i18n/react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
+import { appTitle } from './app-title';
 import type { AuthClient } from './auth';
 import { navigate, parseRoute, useRoute } from './hooks';
-import type { ScreenProps } from './screen';
-import { Access } from './screens/Access';
-import { ApiReference } from './screens/ApiReference';
-import { BuildingBlocks } from './screens/BuildingBlocks';
-import { DataHandling, PublicDataHandling } from './screens/DataHandling';
-import { Contact, Guide, Status } from './screens/FooterPages';
-import { Datasets } from './screens/Datasets';
-import { Integrations } from './screens/Integrations';
-import { Log } from './screens/Log';
-import { NoAccess } from './screens/NoAccess';
-import { Overview } from './screens/Overview';
-import { Playground } from './screens/Playground';
-import { Services } from './screens/Services';
-import { Settings } from './screens/Settings';
-import { SharedServices } from './screens/SharedServices';
-import { Skills } from './screens/Skills';
-import { Startside } from './screens/Startside';
-import { StepFlows } from './screens/StepFlows';
-import { tenantNotRegistered } from './screens/Unregistered';
-import { Usage } from './screens/Usage';
+import { prefetchOnIntent, prefetchPath } from './prefetch';
+import { tenantNotRegistered } from './problem-types';
+import { PublicLanding } from './screens/about/PublicLanding';
 import { translator, useT } from './i18n';
-import { navigation, Shell } from './Shell';
 import { useSessionTimer } from './session-timer';
-import { StrategyCatalogue } from './strategy-catalogue';
-import { EmptyState } from './states';
+import { EmptyState, Loading } from './states';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import type { Organisation, Session } from './types';
+
+const Shell = lazy(() => import('./Shell').then((m) => ({ default: m.Shell })));
+const NoAccess = lazy(() => import('./screens/NoAccess').then((m) => ({ default: m.NoAccess })));
+const Page = lazy(() => import('./signed-in-page').then((m) => ({ default: m.Page })));
 
 interface Props {
   auth: AuthClient;
@@ -52,77 +38,21 @@ const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
 const chosen = (session: Session, org: string | null) =>
   session.organisations.find((o) => o.orgNumber === org) ?? session.organisations[0];
 
-const footerPages = {
-  help: 'shell.guide',
-  status: 'shell.status',
-  contact: 'shell.contact',
-} as const;
-
-const Page = ({
-  onFailingIngests,
-  ...props
-}: ScreenProps & { onFailingIngests: (count: number) => void }) => {
-  const t = useT();
-  const [area = 'overview', id, sub] = props.route.segments;
-  if (area === 'overview') return <Overview {...props} onFailingIngests={onFailingIngests} />;
-  if (area === 'services')
-    return (
-      <StrategyCatalogue api={props.api} tenant={props.tenant}>
-        <Services {...props} />
-      </StrategyCatalogue>
-    );
-  if (area === 'step-flows') return <StepFlows {...props} />;
-  if (area === 'shared-services') return <SharedServices {...props} />;
-  if (area === 'datasets' && id && id !== 'new' && sub === 'settings')
-    return <Settings {...props} context={{ kind: 'dataset', id }} />;
-  if (area === 'datasets') return <Datasets {...props} />;
-  if (area === 'building-blocks') return <BuildingBlocks {...props} />;
-  if (area === 'skills') return <Skills {...props} />;
-  if (area === 'playground') return <Playground {...props} />;
-  if (area === 'access') return <Access {...props} />;
-  if (area === 'usage') return <Usage {...props} />;
-  if (area === 'integrations') return <Integrations {...props} />;
-  if (area === 'api-reference') return <ApiReference {...props} />;
-  if (area === 'log') return <Log {...props} />;
-  if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
-  if (area === 'data-handling') return <DataHandling api={props.api} />;
-  const item = navigation.find((n) => n.path === `/${area}`);
-  if (area in footerPages)
-    return (
-      <>
-        <Heading level={1} data-size="lg">
-          {t(footerPages[area as keyof typeof footerPages])}
-        </Heading>
-        {area === 'help' ? <Guide /> : area === 'status' ? <Status api={props.api} /> : <Contact />}
-      </>
-    );
-  return (
-    <>
-      <Heading level={1} data-size="lg">
-        {item
-          ? t(item.label)
-          : area in footerPages
-            ? t(footerPages[area as keyof typeof footerPages])
-            : t('app.notFound')}
-      </Heading>
-      <Paragraph>{t.rich('app.notDrawn', { link: (c) => <a href="#/overview">{c}</a> })}</Paragraph>
-    </>
-  );
-};
+const chosenLanguage = storedPreference(
+  typeof window === 'undefined' ? undefined : window.localStorage,
+);
 
 export const App = ({ languages, ...props }: Props) => {
-  const [language, setLanguage] = useState<Locale | null>(null);
+  const [language, setLanguage] = useState<Locale | null>(chosenLanguage.load);
   const save = useRef<(next: Locale | null) => void>(() => undefined);
   return (
     <LocaleProvider
       preference={language}
       detected={languages}
-      title={{
-        nb: 'Fellesløsning for generativ KI',
-        en: 'Generative AI platform for the public sector',
-      }}
+      title={appTitle}
       onPreferenceChange={(next) => {
         setLanguage(next);
+        chosenLanguage.save(next);
         save.current(next);
       }}
     >
@@ -147,9 +77,12 @@ const Portal = ({
   const route = useRoute();
   const orgParam = route.query.get('org');
   const [session, setSession] = useState<Session | undefined>(auth.current());
-  const [organisation, setOrganisation] = useState<Organisation | undefined>(
+  const [picked, setOrganisation] = useState<Organisation | undefined>(
     () => session && chosen(session, orgParam),
   );
+  const organisation = session
+    ? (session.organisations.find((o) => o.orgNumber === orgParam) ?? picked)
+    : undefined;
   const [busy, setBusy] = useState(() => auth.callbackPending?.() ?? false);
   const [failed, setFailed] = useState(false);
   const [unregistered, setUnregistered] = useState<Set<string>>(() => new Set());
@@ -284,6 +217,15 @@ const Portal = ({
     return () => controller.abort();
   }, [api, live, tenantKey, token]);
 
+  const routePath = route.path;
+  useEffect(() => {
+    if (tenantKey && token) prefetchPath(routePath, api, tenantKey, live);
+  }, [routePath, api, tenantKey, token, live]);
+  useEffect(() => {
+    if (!tenantKey || !token) return;
+    return prefetchOnIntent(document, (path) => prefetchPath(path, api, tenantKey, live));
+  }, [api, tenantKey, token, live]);
+
   save.current = (next) => {
     locale.current = next ?? negotiate(languages) ?? 'nb';
     if (tenantKey)
@@ -292,10 +234,9 @@ const Portal = ({
         .catch(() => undefined);
   };
 
-  return content();
+  return <Suspense fallback={null}>{content()}</Suspense>;
 
   function content() {
-    if (!session && route.segments[0] === 'data-handling') return <PublicDataHandling />;
     if (!session && expired)
       return (
         <main id="hovedinnhold" className="signed-out" lang={active}>
@@ -313,7 +254,10 @@ const Portal = ({
           </EmptyState>
         </main>
       );
-    if (!session) return <Startside onLogin={() => void login()} busy={busy} failed={failed} />;
+    if (!session)
+      return (
+        <PublicLanding route={route} onLogin={() => void login()} busy={busy} failed={failed} />
+      );
     if (!organisation)
       return (
         <NoAccess
@@ -385,14 +329,16 @@ const Portal = ({
             </Button>
           </Alert>
         ) : null}
-        <Page
-          api={api}
-          tenant={organisation.orgNumber}
-          tenantName={organisation.name}
-          route={effective}
-          live={live}
-          onFailingIngests={reportFailing}
-        />
+        <Suspense fallback={<Loading label={t('common.loading')} />}>
+          <Page
+            api={api}
+            tenant={organisation.orgNumber}
+            tenantName={organisation.name}
+            route={effective}
+            live={live}
+            onFailingIngests={reportFailing}
+          />
+        </Suspense>
       </Shell>
     );
   }

@@ -1,3 +1,4 @@
+import { ExternalLinkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -10,7 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
@@ -27,6 +28,7 @@ import {
 } from './snippets';
 import './channels.css';
 import { reasonProblem } from '../../components/ReasonField';
+import { hostsToStore, SecretHostsProblem } from '../../secret-hosts';
 
 type Flash = { text: string; color: 'success' | 'info' | 'danger' };
 
@@ -112,7 +114,7 @@ const ClientCard = ({
           {spec.url ? (
             <Link href={spec.url} target="_blank" rel="noopener">
               {spec.url}
-              <Icon d={icons.external} size={16} />
+              <Icon icon={ExternalLinkIcon} size={16} />
               <span className="visually-hidden">{t('serviceChannels.newTab')}</span>
             </Link>
           ) : null}
@@ -350,20 +352,23 @@ export const ServiceChannels = ({
   };
 
   const rollSecret = async (client: ClientView) => {
-    const name = client.definition.spec.webhook?.secret;
-    if (!name) return;
+    const webhook = client.definition.spec.webhook;
+    if (!webhook?.secret) return;
+    const name = webhook.secret;
     setBusy(true);
     try {
       const value = randomSecret();
+      const allowedHosts = await hostsToStore(api, tenant, name, new URL(webhook.url).origin, t);
       await api.setSecret(
         tenant,
         name,
         value,
         t('serviceChannels.secretReason', { id: client.definition.metadata.id }),
+        allowedHosts,
       );
       setNewSecret({ name, value });
     } catch (e) {
-      notify(problemText(e, t), 'danger');
+      notify(e instanceof SecretHostsProblem ? e.message : problemText(e, t), 'danger');
     } finally {
       setBusy(false);
     }

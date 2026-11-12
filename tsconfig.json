@@ -23,10 +23,19 @@
       "path": "packages/providers-postgres"
     },
     {
+      "path": "packages/providers-pgboss"
+    },
+    {
       "path": "packages/providers-pgvector"
     },
     {
+      "path": "packages/providers-parquet"
+    },
+    {
       "path": "packages/providers-postgres-source"
+    },
+    {
+      "path": "packages/operations"
     },
     {
       "path": "packages/port-model"
@@ -101,6 +110,12 @@
       "path": "packages/i18n"
     },
     {
+      "path": "packages/docs-content"
+    },
+    {
+      "path": "packages/docs-site"
+    },
+    {
       "path": "packages/adapter-rest"
     },
     {
@@ -114,6 +129,12 @@
     },
     {
       "path": "packages/port-blob"
+    },
+    {
+      "path": "packages/port-usage"
+    },
+    {
+      "path": "packages/providers-ai-gateway"
     },
     {
       "path": "packages/jobs"
@@ -137,6 +158,12 @@
       "path": "packages/providers-documents"
     },
     {
+      "path": "packages/ui-blocks"
+    },
+    {
+      "path": "packages/ui-assembly"
+    },
+    {
       "path": "apps/api"
     },
     {
@@ -153,6 +180,12 @@
     },
     {
       "path": "apps/workspace"
+    },
+    {
+      "path": "apps/docs"
+    },
+    {
+      "path": "apps/admin-mcp"
     }
   ]
 }

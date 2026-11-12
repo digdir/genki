@@ -1,0 +1,45 @@
+id: example/classify@1
+operation: classify
+status: described
+summary: A made-up classification API, to prove that a new kind needs only a descriptor.
+api:
+  family: proto-a
+  version: 2026-10-01
+request:
+  method: POST
+  path: /classifications
+  body:
+    model: $deployment
+    text: $input.text
+    labels: $input.labels
+input:
+  object:
+    text: text
+    labels: { array: { enum: [billing, complaint, other] }, min: 1 }
+output:
+  object:
+    label: { enum: [billing, complaint, other] }
+    confidence: { number: { min: 0, max: 1 } }
+    usage:
+      object:
+        inputTokens?: { number: { min: 0 } }
+        requests?: { number: { min: 0 } }
+wire:
+  request:
+    object:
+      model: plain
+      text: text
+      labels: [{ enum: [billing, complaint, other] }]
+  response:
+    object:
+      label: { enum: [billing, complaint, other] }
+      confidence: { number: { min: 0, max: 1 } }
+      usage: { object: { input_tokens: { number: { integer: true, min: 0 } } } }
+result:
+  label: $response.label
+  confidence: $response.confidence
+  usage: $usage
+usage:
+  inputTokens: $response.usage.input_tokens
+  requests: 1
+stream: none
