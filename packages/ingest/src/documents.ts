@@ -2,6 +2,7 @@ import { extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import {
   ConversionPending,
+  ConversionRefused,
   NoTextLayerError,
   isPdfFile,
   joinPages,
@@ -124,6 +125,7 @@ export const readDocument = async (
       };
     } catch (error) {
       if (error instanceof ConversionPending) throw error;
+      if (error instanceof ConversionRefused) return { skip: error.reason };
       return { skip: error instanceof NoTextLayerError ? 'no_text' : 'conversion_failed' };
     }
   };

@@ -3,6 +3,7 @@ import type { BlobStore } from '@genai/port-blob';
 import type { Chunk } from './chunk-document.js';
 import {
   ConversionPending,
+  ConversionRefused,
   NoTextLayerError,
   joinPages,
   type Conversion,
@@ -75,6 +76,12 @@ const kudosTexts = async (
             conversion: await options.converter.stored({ name: nameOf(file), sha256: file.sha256 }),
           });
         } catch (error) {
+          // A file its converter refused is left out, as one that failed to convert always was.
+          if (error instanceof ConversionRefused) {
+            skip = error.reason;
+            if (error.reason === 'too_large') tooLarge = true;
+            continue;
+          }
           if (!(error instanceof ConversionPending)) throw error;
           pending.push(...error.files);
         }

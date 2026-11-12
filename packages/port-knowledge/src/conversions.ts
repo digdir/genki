@@ -38,6 +38,12 @@ export interface StoredConversion extends ConverterKey {
   pages: string[];
   /** Where the converter's native output lies in the Blob container, when it has one. */
   outputPath?: string;
+  /**
+   * Why the converter refused the file (`too_large`, `unsupported_type`, `conversion_failed`):
+   * stored with no pages, so documents skip the file with that reason and it is not converted
+   * again until a converter replaces it.
+   */
+  failure?: string;
 }
 
 /** A record waiting on a file's conversion, with what its index job needs. */
@@ -105,18 +111,38 @@ export interface StoredConversions {
   ): Promise<boolean>;
   /**
    * Stores a conversion under the same lock, ends every wait on its file and converter, and calls
-   * `send` in that transaction for each waiting record that waits on nothing else.
+   * `send` in that transaction for each waiting record that waits on nothing else. A record whose
+   * index job could not be sent, since one is still queued or running (`send` answered null), keeps
+   * its wait and is answered as `busy`: the convert job is tried again.
    */
   store(
     conversion: StoredConversion,
     send: (waiter: ConversionWaiter, transaction: RecordTransaction) => Promise<unknown>,
-  ): Promise<ConversionWaiter[]>;
-  /** The runs and organisations with a record waiting on a file's conversion. */
-  waiting(target: ConversionTarget): Promise<{ run: string; tenant: string }[]>;
+  ): Promise<{ sent: ConversionWaiter[]; busy: ConversionWaiter[] }>;
+  /**
+   * Ends a record's waits, inside the transaction that writes it, so a wait on a file the record no
+   * longer holds, or on a conversion that ended as a dead letter, does not hold its index job back.
+   */
+  clear(transaction: RecordTransaction, dataset: string, record: string): Promise<void>;
+  /** The records waiting on a file's conversion, with their runs and organisations. */
+  waiting(
+    target: ConversionTarget,
+  ): Promise<{ run: string; tenant: string; dataset: string; record: string }[]>;
   /** The convert keys a run's records wait on. */
   waitKeys(run: string): Promise<string[]>;
-  /** Ends a cancelled run's waits; answers the convert keys no record waits on any more. */
-  release(run: string): Promise<string[]>;
+  /**
+   * Ends a cancelled run's waits under each key's lock, and in that transaction calls `act` with
+   * the convert keys no record waits on any more and, for each key another run still waits on, one
+   * of those runs, so the conversion can be cancelled or handed over before anyone waits again.
+   */
+  release(
+    run: string,
+    act: (
+      transaction: RecordTransaction,
+      freed: string[],
+      kept: { key: string; run: string }[],
+    ) => Promise<unknown>,
+  ): Promise<void>;
   /** Every convert key some record waits on. */
   waitedKeys(): Promise<string[]>;
 }

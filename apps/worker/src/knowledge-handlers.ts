@@ -28,6 +28,7 @@ import {
   knowledgeIngestQueue,
   knowledgeKeys,
   type JobQueue,
+  type QueueDefinition,
   type QueueWork,
 } from '@genai/jobs';
 import {
@@ -45,7 +46,12 @@ import type { RunProgress } from './run-progress.js';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
-import { admittedConversion, admittedWork, type AdmissionDeps } from './knowledge-jobs.js';
+import {
+  admittedConversion,
+  admittedWork,
+  type AdmissionDeps,
+  type KnowledgeJob,
+} from './knowledge-jobs.js';
 
 export interface KnowledgeHandlerDeps {
   /** The document records on the knowledge server, as the writer role. */
@@ -248,6 +254,36 @@ const conversionTarget = (sha256: string): ConversionTarget => ({
 const derivationOf = (converter: string) =>
   converter === textLayer.name ? textLayerDerivation : { name: `${converter}-pages`, version: 1 };
 
+type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
+type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
+
+/**
+ * Why a converter refused a file, when it did: its own errors about the file are refusals, kept
+ * as such; an unavailable converter host (an HTTP status) is not, so its job is tried again.
+ */
+const refusalOf = (error: unknown) => {
+  if (!(error instanceof Error) || typeof (error as { status?: unknown }).status === 'number')
+    return undefined;
+  if (error.message.startsWith('the converter made ')) return undefined;
+  if (error.name === 'DocumentTooLargeError' || error.name === 'TooManyPagesError')
+    return 'too_large';
+  if (error.name === 'UnsupportedDocumentError') return 'unsupported_type';
+  return 'conversion_failed';
+};
+
+/** A file a convert job could not fetch: tried again, never stored as the converter's refusal. */
+class FetchFailed extends Error {
+  override readonly name = 'FetchFailed';
+  constructor(override readonly cause: unknown) {
+    super('the file could not be fetched');
+  }
+}
+
+/** A conversion stored while an index job it must send still ran: the convert job is tried again. */
+export class IndexJobBusy extends Error {
+  override readonly name = 'IndexJobBusy';
+}
+
 /** Thrown when a conversion was stored while an index job read it: the job's retry reads it. */
 export class ConversionStoredMeanwhile extends Error {
   override readonly name = 'ConversionStoredMeanwhile';
@@ -340,6 +376,9 @@ export const knowledgeWork = (
             run: run.id,
             tenant: job.data.tenant,
           };
+          // A wait left from an earlier run, on a file the record no longer holds or on a
+          // conversion that ended as a dead letter, is ended before the record waits again.
+          await conversions.clear(transaction, run.dataset, record);
           let waiting = false;
           for (const file of await conversions.missing(transaction, record, acceptedTextLayer))
             waiting = (await waitOn(conversions, file.sha256, waiter, transaction)) || waiting;
@@ -471,51 +510,24 @@ export const knowledgeWork = (
       deps.admission,
     );
 
+  /**
+   * A convert job's error names its record by number and the error by its code, never a file name,
+   * a path or a dataset: its dead letter is shown to every organisation waiting on it (ADR 0042).
+   */
+  const convertError = (record: string, error: unknown) => {
+    const code =
+      (error as { code?: unknown }).code ?? (error instanceof Error ? error.name : 'Error');
+    return new Error(`converting a file of record ${record} failed: ${String(code)}`);
+  };
+
   const convert = admittedConversion(
     convertQueue,
-    async ({ job, run, sender, cancelled }) => {
-      deps.bound?.();
-      const { conversions, converter } = deps;
-      if (!conversions || !converter) throw new Error('this worker keeps no stored conversions');
-      if (await cancelled()) return;
-      const record = await deps.records.find(job.data.record);
-      if (!record || record.dataset !== job.data.dataset)
-        throw new Error(`record ${job.data.record} is not a record of ${job.data.dataset}`);
-      // Fetched as the record's own run fetches it, through the same guard and policies.
-      const { listing } = await listingFor(deps, sender ?? run, job.signal, converter);
-      if (!listing.file) throw new Error(`the source of record ${job.data.record} fetches no file`);
-      const file = await listing.file(record.record, job.data.file);
-      const conversion = await converter.convert(file);
-      const key = {
-        sha256: job.data.file,
-        converter: conversion.converter.name,
-        version: conversion.converter.version,
-        settings: conversion.converter.settings,
-      };
-      // The native output goes to Blob first, so a stored conversion never names a missing path.
-      const output =
-        conversion.output && deps.nativeOutputs
-          ? await deps.nativeOutputs.put(key, conversion.output, conversion.pages.length)
-          : undefined;
-      await conversions.store(
-        {
-          ...key,
-          derivation: derivationOf(key.converter),
-          pages: conversion.pages,
-          ...(output ? { outputPath: output.path } : {}),
-        },
-        (waiter, transaction) =>
-          deps.knowledge.send(
-            knowledgeIndexQueue,
-            {
-              run: waiter.run,
-              tenant: waiter.tenant,
-              generation: waiter.generation,
-              record: waiter.record,
-            },
-            { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
-          ),
-      );
+    async (input) => {
+      try {
+        await convertFile(input);
+      } catch (error) {
+        throw convertError(input.job.data.record, error);
+      }
     },
     {
       ...deps.admission,
@@ -523,6 +535,95 @@ export const knowledgeWork = (
         ((await deps.conversions?.waiting(conversionTarget(data.file))) ?? []).map((w) => w.run),
     },
   );
+
+  /**
+   * The job's file, fetched as its record's own run fetches it, through the same guard and
+   * policies: the sender's record, or, when the sender is gone, the record of the waiting run that
+   * admitted the job.
+   */
+  async function fetchFile(
+    job: ConvertJob['job'],
+    run: IngestionExecution,
+    sender: IngestionExecution | undefined,
+  ) {
+    try {
+      const waiter = sender
+        ? { dataset: job.data.dataset, record: job.data.record }
+        : (await deps.conversions?.waiting(conversionTarget(job.data.file)))?.find(
+            (w) => w.run === run.id,
+          );
+      if (!waiter) throw new Error(`no waiting record of run ${run.id} names the file`);
+      const record = await deps.records.find(waiter.record);
+      if (!record || record.dataset !== waiter.dataset)
+        throw new Error(`record ${waiter.record} is not a record of its dataset`);
+      const { listing } = await listingFor(deps, sender ?? run, job.signal, deps.converter);
+      if (!listing.file) throw new Error(`the source of record ${waiter.record} fetches no file`);
+      return await listing.file(record.record, job.data.file);
+    } catch (error) {
+      throw new FetchFailed(error);
+    }
+  }
+
+  async function convertFile({ job, run, sender, cancelled }: ConvertJob) {
+    deps.bound?.();
+    const { conversions, converter } = deps;
+    if (!conversions || !converter) throw new Error('this worker keeps no stored conversions');
+    if (await cancelled()) return;
+    // Stored under the key its job and waits name, so the conversion always ends those waits.
+    const key = conversionTarget(job.data.file);
+    let stored: { pages: string[]; output?: Uint8Array; failure?: string };
+    // A conversion stored by an earlier try is not made again: only its waits are ended.
+    const kept = await conversions.find(job.data.file, acceptedTextLayer);
+    if (kept) stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
+    else
+      try {
+        const file = await fetchFile(job, run, sender);
+        const conversion = await converter.convert(file);
+        const made = conversion.converter;
+        if (made.name !== key.converter || made.version !== key.version)
+          throw new Error(
+            `the converter made ${made.name} ${made.version}, not the job's converter`,
+          );
+        stored = {
+          pages: conversion.pages,
+          ...(conversion.output ? { output: conversion.output } : {}),
+        };
+      } catch (error) {
+        const failure = error instanceof FetchFailed ? undefined : refusalOf(error);
+        if (!failure) throw error instanceof FetchFailed ? error.cause : error;
+        // A refusal is stored with no pages: documents skip the file, and it is not converted again.
+        stored = { pages: [], failure };
+      }
+    // The native output goes to Blob first, so a stored conversion never names a missing path.
+    const output =
+      stored.output && deps.nativeOutputs
+        ? await deps.nativeOutputs.put(key, stored.output, stored.pages.length)
+        : undefined;
+    const { busy } = await conversions.store(
+      {
+        ...key,
+        derivation: derivationOf(key.converter),
+        pages: stored.pages,
+        ...(output ? { outputPath: output.path } : {}),
+        ...(stored.failure ? { failure: stored.failure } : {}),
+      },
+      (waiter, transaction) =>
+        deps.knowledge.send(
+          knowledgeIndexQueue,
+          {
+            run: waiter.run,
+            tenant: waiter.tenant,
+            generation: waiter.generation,
+            record: waiter.record,
+          },
+          { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
+        ),
+    );
+    if (busy.length > 0)
+      throw new IndexJobBusy(
+        `${busy.length} record(s) had an index job still queued or running; tried again`,
+      );
+  }
 
   return {
     platform: [ingest as QueueWork],

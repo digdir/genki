@@ -111,7 +111,9 @@ const readFunctions = (schema: string) => [
                 case when p_tenant is null then j.data
                      when j.data ->> 'tenant' = p_tenant then j.data - 'tenants'
                      else jsonb_build_object('tenant', p_tenant, 'file', j.data -> 'file') end,
-                coalesce(j.source_output ->> 'message', j.output ->> 'message'), j.created_on
+                case when p_tenant is null or j.data ->> 'tenant' = p_tenant
+                     then coalesce(j.source_output ->> 'message', j.output ->> 'message') end,
+                j.created_on
            from ${schema}.job j
           where j.name = p_queue and j.state in ('created', 'retry')
             and (p_tenant is null or j.data ->> 'tenant' = p_tenant
@@ -520,6 +522,44 @@ export class PgBossRunJobs implements RunJobs {
       [queue, keys],
     );
     return Number(rows[0]?.open ?? 0);
+  }
+
+  async deadFiles(queue: string, files: string[], run: string): Promise<number> {
+    if (files.length === 0) return 0;
+    const { rows } = await this.pool.query<{ dead: string }>(
+      `select count(*) as dead from ${this.schema}.job
+        where name = $1 and state in ('created', 'retry')
+          and data ->> 'file' = any($2::text[]) and data ->> 'run' <> $3`,
+      [deadLetterQueue(queue), files, run],
+    );
+    return Number(rows[0]?.dead ?? 0);
+  }
+
+  async cancelKeys(queue: string, keys: string[], transaction?: JobTransaction): Promise<number> {
+    if (keys.length === 0) return 0;
+    // As pg-boss's own cancel does, inside the transaction that holds the keys' locks.
+    const { rows } = await (transaction ?? this.pool).query(
+      `update ${this.schema}.job set state = 'cancelled', completed_on = now()
+        where name = $1 and singleton_key = any($2::text[]) and state in ('created', 'retry')
+        returning id`,
+      [queue, keys],
+    );
+    return rows.length;
+  }
+
+  async handOver(
+    queue: string,
+    key: string,
+    from: string,
+    to: string,
+    transaction?: JobTransaction,
+  ): Promise<void> {
+    await (transaction ?? this.pool).query(
+      `update ${this.schema}.job set data = jsonb_set(data, '{run}', to_jsonb($4::text))
+        where name = $1 and singleton_key = $2 and data ->> 'run' = $3
+          and state in ('created', 'retry', 'active')`,
+      [queue, key, from, to],
+    );
   }
 
   async deadLetters(run: string): Promise<Record<string, number>> {

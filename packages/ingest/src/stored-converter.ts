@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AcceptedConverter, StoredConversions } from '@genai/port-knowledge';
-import { ConversionPending, type DocumentConverter } from './converter.js';
+import { ConversionPending, ConversionRefused, type DocumentConverter } from './converter.js';
 
 /**
  * The converter an index job reads with (ADR 0042, "Ingestion runs"): it never converts, but reads
@@ -15,6 +15,13 @@ export const storedConverter = (
   const stored: NonNullable<DocumentConverter['stored']> = async (file) => {
     const found = await conversions.find(file.sha256, accepted);
     if (!found) throw new ConversionPending([file]);
+    if (found.failure)
+      throw new ConversionRefused(
+        file.name,
+        found.failure === 'too_large' || found.failure === 'unsupported_type'
+          ? found.failure
+          : 'conversion_failed',
+      );
     return {
       pages: found.pages,
       converter: { name: found.converter, version: found.version, settings: found.settings },

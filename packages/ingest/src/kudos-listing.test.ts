@@ -191,6 +191,47 @@ describe('a Kudos listing', () => {
     await expect(listing.load(two?.record ?? {})).rejects.toBeInstanceOf(ConversionPending);
   });
 
+  it('a Kudos document with a file its converter refused is indexed from its other files', async () => {
+    const two = doc(3);
+    const [pdfFile] = two.files ?? [];
+    const sheet = {
+      uuid: 'f3b',
+      url: `https://kudos.dfo.no/dokument/${uuid(3)}/filer/budsjett.xlsx`,
+      sha256: 'd'.repeat(64),
+      size: 10,
+      mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+    const withSheet = { ...two, files: [sheet, ...(pdfFile ? [pdfFile] : [])] };
+    const { access } = fakeKudos({ docs: [withSheet] });
+    const stored = storedConverter(
+      { extensions: ['.pdf'] },
+      {
+        find: async (sha256) => ({
+          sha256,
+          converter: 'text-layer',
+          version: '1',
+          settings: {},
+          derivation: { name: 'text-layer', version: 1 },
+          ...(sha256 === sheet.sha256
+            ? { pages: [], failure: 'unsupported_type' }
+            : { pages: ['Mål og resultater for året.'] }),
+        }),
+      },
+      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 } }],
+    );
+    const listing = await knowledgeListingOf(
+      spec({ types: ['Årsrapport'] }),
+      { kudos: access, converter: stored },
+      scope,
+      signal,
+    );
+    const [listed] = await all(listing);
+    const loaded = await listing.load(listed?.record ?? {});
+
+    expect(loaded.skip).toBeUndefined();
+    expect(loaded.texts).toEqual(['Mål og resultater for året.']);
+  });
+
   it('a Kudos listing asks KUDOS by type and publish year, 50 a page', async () => {
     const { access, calls } = fakeKudos({ docs: [doc(1)] });
     await all(

@@ -58,6 +58,26 @@ describe('chunks in the knowledge database', () => {
       expect(chunk).toMatchObject({ file: 'rapport.pdf', fileSha256: sha('b') });
   });
 
+  it('a running header on every page does not move a chunk to an earlier page', () => {
+    const header = 'Årsrapport 2025 Digdir';
+    const doc = prepared('kudos:topptekst', [
+      {
+        name: 'rapport.pdf',
+        sha256: sha('c'),
+        pages: [
+          `${header}\n\n# Innledning\n\nDette er side én om året som gikk.`,
+          `${header}\n\nSide to fortsetter innledningen med mer tekst.`,
+          `${header}\n\nSide tre avslutter innledningen.`,
+          `${header}\n\n# Vedlegg\n\nTabeller og tall på side fire.`,
+        ],
+      },
+    ]);
+    const byHeading = Object.fromEntries(doc.chunks.map((c) => [c.headingPath?.join(' / '), c]));
+
+    expect(byHeading.Innledning).toMatchObject({ pageFrom: 1, pageTo: 4 });
+    expect(byHeading.Vedlegg).toMatchObject({ pageFrom: 4, pageTo: 4 });
+  });
+
   it('chunk ids outside the knowledge database stay as they were', () => {
     const text = '# Mål\n\nDirektoratet skal digitalisere offentlig sektor.';
     const [chunk] = chunkDocument('4711', [text], chunking);

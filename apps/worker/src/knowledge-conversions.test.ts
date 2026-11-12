@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -245,6 +245,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
     writeFile(join(folderRoot, folder, name), bytes);
   const move = (from: string, to: string) =>
     rename(join(folderRoot, folder, from), join(folderRoot, folder, to));
+  const remove = (name: string) => rm(join(folderRoot, folder, name));
   return {
     dataset,
     tenant,
@@ -254,6 +255,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
     converted,
     file,
     move,
+    remove,
   };
 };
 
@@ -537,9 +539,12 @@ describe('stored conversions', () => {
     const jobs = runJobs();
 
     await jobs.cancel(first.run);
-    expect(await convertJobs()).toHaveLength(1);
+    const kept = await convertJobs();
+    expect(kept).toHaveLength(1);
+    // The conversion is handed to the run that still waits on it, so the cancelled run can end.
+    expect(kept[0]?.data.run).toBe(second.run);
     expect(await jobs.open(second.run)).toBeGreaterThan(0);
-    expect(await jobs.open(first.run)).toBe(1);
+    expect(await jobs.open(first.run)).toBe(0);
 
     // With no run left waiting, cancelling cancels the conversion too.
     await jobs.cancel(second.run);
@@ -577,6 +582,82 @@ describe('stored conversions', () => {
     expect(await deadLettersFor('123456785')).toEqual([]);
   }, 60_000);
 
+  it("another organisation never sees a shared conversion's error, and its sender's error names no file", async () => {
+    await clearConvertJobs();
+    const a = await scenario();
+    const b = await scenario({ tenant: OTHER_ORG });
+    const pdf = pdfBytes([['Lonnsoversikt som forsvinner.']]);
+    await a.file('ansatte-lonn-2025.pdf', pdf);
+    await b.file('ansatte-lonn-2025.pdf', pdf);
+    await ingest(a);
+    await ingest(b);
+    // The sender's file is gone when its convert job fetches it: a real error, naming its path.
+    await a.remove('ansatte-lonn-2025.pdf');
+    const convert = handler(a.work.knowledge, 'knowledge.convert');
+    const stop = await knowledgeQueue.work(convertQueue(), (j) => convert(j));
+    try {
+      await expect
+        .poll(async () => (await deadLettersFor(OTHER_ORG)).length, { timeout: 30_000 })
+        .toBe(1);
+    } finally {
+      await stop();
+    }
+    const [theirs] = await deadLettersFor(OTHER_ORG);
+    expect(theirs?.error ?? null).toBeNull();
+    const [ours] = await deadLettersFor(ORG);
+    expect(ours?.error).toBeTruthy();
+    expect(ours?.error).not.toContain('lonn');
+    expect(ours?.error).not.toContain(a.dataset.id);
+  }, 60_000);
+
+  it('a file the converter refuses is skipped with its reason and not converted again', async () => {
+    await clearConvertJobs();
+    const a = await scenario();
+    const b = await scenario();
+    const broken = encoder.encode('%PDF-1.4 dette er ikke en hel PDF');
+    await a.file('odelagt.pdf', broken);
+    await b.file('odelagt.pdf', broken);
+    await ingest(a);
+    await drain(a);
+    const second = await ingest(b);
+    await drain(b);
+
+    expect(a.converted).toEqual(['odelagt.pdf']);
+    expect(b.converted).toEqual([]);
+    expect(second.sent.map((j) => j.queue)).toEqual(['knowledge.index']);
+    for (const s of [a, b]) {
+      const { rows } = await admin.query(
+        `select state, reason from src_documents where dataset = $1`,
+        [s.dataset.id],
+      );
+      expect(rows).toEqual([{ state: 'skipped', reason: 'conversion_failed' }]);
+    }
+  }, 60_000);
+
+  it('a record whose conversion dead-lettered is indexed once its file changes', async () => {
+    await clearConvertJobs();
+    const s = await scenario();
+    await s.file('forsvinner.pdf', pdfBytes([['Forste versjon.']]));
+    const first = await ingest(s);
+    // Its file is unreadable when the convert job fetches it, so the job dead-letters.
+    await s.remove('forsvinner.pdf');
+    const convert = handler(s.work.knowledge, 'knowledge.convert');
+    const stop = await knowledgeQueue.work(convertQueue(), (j) => convert(j));
+    try {
+      await expect.poll(() => convertJobs(), { timeout: 30_000 }).toEqual([]);
+    } finally {
+      await stop();
+    }
+    await endRun(first.run);
+    await s.file('forsvinner.pdf', pdfBytes([['Andre versjon, som kan leses.']]));
+    await ingest(s);
+    await drain(s);
+
+    expect((await chunks(s.generation)).map((c) => c.text).join(' ')).toContain(
+      'Andre versjon, som kan leses.',
+    );
+  }, 60_000);
+
   it('a conversion that ended as a dead letter no longer holds its waiting runs open', async () => {
     await clearConvertJobs();
     const a = await scenario();
@@ -599,6 +680,29 @@ describe('stored conversions', () => {
     }
     expect(await jobs.open(second.run)).toBe(0);
     expect(await jobs.open(first.run)).toBe(0);
+    // Both runs count the failed conversion among their failed documents.
+    expect(await jobs.deadLetters(second.run)).toEqual({ 'knowledge.convert': 1 });
+    expect(await jobs.deadLetters(first.run)).toEqual({ 'knowledge.convert': 1 });
+  }, 60_000);
+
+  it("a convert job whose sending run is gone fetches through a waiting run's record", async () => {
+    await clearConvertJobs();
+    const a = await scenario();
+    const b = await scenario();
+    const pdf = pdfBytes([['Avsenderen er borte.']]);
+    await a.file('borte.pdf', pdf);
+    await b.file('borte.pdf', pdf);
+    const first = await ingest(a);
+    await ingest(b);
+    await platform.pool.query(`delete from ingestion_executions where id = $1`, [first.run]);
+    const [convert] = first.sent;
+    await handler(
+      b.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}));
+
+    expect(b.converted).toEqual(['borte.pdf']);
+    expect((await stored(await sha(pdf)))[0]?.pages).toEqual(['Avsenderen er borte.']);
   }, 60_000);
 
   it('a PDF with no text layer is stored as an empty conversion and not converted again', async () => {
@@ -707,6 +811,94 @@ describe('stored conversions', () => {
     await store(two);
     expect(sent).toEqual(['424242']);
   }, 30_000);
+
+  it('a conversion that finishes while a record starts waiting still sends its index job', async () => {
+    const target = { sha256: 'e'.repeat(64), converter: 'text-layer', version: '1', settings: {} };
+    const waiter = {
+      dataset: `${ORG}/las`,
+      record: '515151',
+      generation: 'g-las',
+      run: crypto.randomUUID(),
+      tenant: ORG,
+    };
+    const client = await writer().connect();
+    try {
+      await client.query('begin');
+      await conversions.wait(target, waiter, async () => undefined, client);
+      const sent: string[] = [];
+      // Started while the wait is not committed: it must wait for it, then end it.
+      const storing = conversions.store(
+        { ...target, derivation: { name: 'text-layer', version: 1 }, pages: ['Side'] },
+        async (w) => void sent.push(w.record),
+      );
+      await new Promise((r) => setTimeout(r, 300));
+      expect(sent).toEqual([]);
+      await client.query('commit');
+      await storing;
+      expect(sent).toEqual(['515151']);
+    } finally {
+      client.release();
+    }
+  }, 30_000);
+
+  it("a conversion whose record's index job is still queued keeps the wait and is tried again", async () => {
+    await clearConvertJobs();
+    const target = { sha256: 'f'.repeat(64), converter: 'text-layer', version: '1', settings: {} };
+    const waiter = {
+      dataset: `${ORG}/opptatt`,
+      record: '616161',
+      generation: 'g-opptatt',
+      run: crypto.randomUUID(),
+      tenant: ORG,
+    };
+    const index = queues.find((q) => q.name === 'knowledge.index') as QueueDefinition;
+    const busy = {
+      run: waiter.run,
+      tenant: ORG,
+      generation: waiter.generation,
+      record: waiter.record,
+    };
+    const key = `${waiter.generation}#${waiter.record}`;
+    await knowledgeQueue.send(index, busy, { key });
+    await conversions.wait(target, waiter, async () => undefined);
+
+    const stored = await conversions.store(
+      { ...target, derivation: { name: 'text-layer', version: 1 }, pages: ['Side'] },
+      (w, transaction) => knowledgeQueue.send(index, busy, { key, transaction }),
+    );
+
+    expect(stored.busy.map((w) => w.record)).toEqual(['616161']);
+    expect(await conversions.waitKeys(waiter.run)).toHaveLength(1);
+    await admin.query(`delete from pgboss.job where singleton_key = $1`, [key]);
+  }, 30_000);
+
+  it('a first run makes 20,000 records wait in one transaction', async () => {
+    const client = await writer().connect();
+    try {
+      await client.query('begin');
+      for (let i = 0; i < 20_000; i++)
+        await conversions.wait(
+          {
+            sha256: i.toString(16).padStart(64, '0'),
+            converter: 'text-layer',
+            version: '1',
+            settings: {},
+          },
+          {
+            dataset: `${ORG}/mange`,
+            record: String(i + 1),
+            generation: 'g-mange',
+            run: 'r-mange',
+            tenant: ORG,
+          },
+          async () => undefined,
+          client,
+        );
+      await client.query('rollback');
+    } finally {
+      client.release();
+    }
+  }, 300_000);
 
   it('an index job without a stored conversion sends the convert job and waits', async () => {
     await clearConvertJobs();

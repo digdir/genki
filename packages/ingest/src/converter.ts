@@ -34,6 +34,20 @@ export interface DocumentConverter {
 }
 
 /**
+ * A file its converter refused, as its stored conversion records: documents skip the file with the
+ * reason, and it is not converted again (ADR 0042).
+ */
+export class ConversionRefused extends Error {
+  override readonly name = 'ConversionRefused';
+  constructor(
+    readonly file: string,
+    readonly reason: 'too_large' | 'unsupported_type' | 'conversion_failed',
+  ) {
+    super(`the converter refused a file: ${reason}`);
+  }
+}
+
+/**
  * Files with no stored conversion yet: an index job that meets them makes its record wait and sends
  * their convert jobs instead of converting (ADR 0042, "Ingestion runs").
  */
