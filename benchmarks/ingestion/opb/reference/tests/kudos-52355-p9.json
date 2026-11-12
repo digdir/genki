@@ -1,0 +1,22 @@
+{
+ "tests": [
+  {
+   "id": "kudos-52355-p9-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Foto: Erling Fløistad",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

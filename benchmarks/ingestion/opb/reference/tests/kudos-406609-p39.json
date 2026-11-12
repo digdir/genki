@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-406609-p39-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "SAMMENHENGENDE TJENESTER KREVER SYSTEMATISK ARBEID MED GEVINSTREALISERING", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-406609-p39-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Å lykkes med sammenhengende og brukervennlige tjenester krever samarbeid på tvers av tradisjonelle tjenestelinjer.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-406609-p39-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Økt kompleksitet i tjenester øker samtidig kravene til systematisk arbeid med å kartlegge, forankre og styre etter gevinster av tjenestene", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-406609-p39-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Rambøll erfaring imidlertid at offentlige virksomheter ikke jobber systematisk med gevinstrealisering.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-406609-p39-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I IT i praksis 2020 svarer kun 23 prosent av øverste digitaliseringsansvarlige statlige virksomheter og kommuner", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-406609-p39-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "23 prosent", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-406609-p39-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "med en anslått totalkostnad på 1 milliard kroner.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-406609-p39-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Studien viste at få offentlige virksomheter dokumenterer sitt arbeid med gevinstrealisering systematisk og målrettet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-406609-p39-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "og operasjonalisere forventede gevinster.", "max_diffs": 1}, "after": {"text": "Tidligere tall fra IT i praksis viser at", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-406609-p39-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "det er utfordrende jobbe systematisk med å realisere gevinster av egne endringstiltak.", "max_diffs": 3}}, "settings": {}}
+]}
