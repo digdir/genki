@@ -35,11 +35,13 @@ import {
   shellSides,
   storedLayout,
   widthRange,
-  withAllCollapsed,
+  withChosen,
   withCollapsed,
   withDismissed,
   withOneOpen,
   withWidth,
+  withWindowFold,
+  withWindowRoom,
   yieldingSide,
   type ShellGeometry,
   type ShellLayout,
@@ -247,21 +249,34 @@ export const Shell = ({
   const byReader = (side: ShellSide, collapsed: (current: ShellState) => boolean) =>
     setState((current) => {
       const value = collapsed(current);
-      return withDismissed(fitted(current, side, value), side, value);
+      return withChosen(withDismissed(fitted(current, side, value), side, value), side);
     });
 
-  // Too narrow for both: the yielding panel folds on the crossing, during render.
+  // The panel that stays where only one fits; the other yields.
+  const keep = otherSide(yieldingSide(geometry));
+
+  // Too narrow for both: the yielding panel folds on the crossing, during render. Growing back
+  // opens again what the window folded, unless the reader chose for it meanwhile.
   const [appliedNarrow, setAppliedNarrow] = useState(false);
   if (narrow !== appliedNarrow) {
     setAppliedNarrow(narrow);
-    if (narrow) setState((current) => withOneOpen(current, otherSide(yieldingSide(geometry))));
+    setState((current) => {
+      if (!narrow) return shellSides.reduce(withWindowRoom, current);
+      return current.collapsed[keep] ? current : withWindowFold(current, otherSide(keep));
+    });
   }
 
-  // Entering drawer mode folds both, since a drawer is modal; crossing back opens nothing.
+  // Entering drawer mode folds both, since a drawer is modal; leaving it opens again what it
+  // folded, as far as the window has room: where only one fits, the one that does not yield.
   const [appliedDrawer, setAppliedDrawer] = useState(false);
   if (drawer !== appliedDrawer) {
     setAppliedDrawer(drawer);
-    if (drawer) setState(withAllCollapsed);
+    setState((current) => {
+      if (drawer) return shellSides.reduce(withWindowFold, current);
+      if (!narrow) return shellSides.reduce(withWindowRoom, current);
+      const kept = withWindowRoom(current, keep);
+      return kept.collapsed[keep] ? withWindowRoom(kept, otherSide(keep)) : kept;
+    });
   }
 
   // The host's request, once per object, also one given on the first render.
@@ -270,14 +285,16 @@ export const Shell = ({
     setSeenRequest(request);
     if (request?.action === 'open') {
       const { side } = request;
-      setState((current) => withDismissed(fitted(current, side, false), side, false));
+      setState((current) =>
+        withChosen(withDismissed(fitted(current, side, false), side, false), side),
+      );
     } else if (request?.action === 'offer') {
       const { side } = request;
       setState((current) => {
         // Never as a drawer, never over the reader's choice, never at the other panel's cost.
         const room = !narrow || current.collapsed[otherSide(side)];
         if (!current.collapsed[side] || current.dismissed[side] || drawer || !room) return current;
-        return fitted(current, side, false);
+        return withChosen(fitted(current, side, false), side);
       });
     } else if (request?.action === 'close-drawers' && drawer) {
       setState((current) =>

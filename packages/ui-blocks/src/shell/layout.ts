@@ -40,6 +40,8 @@ export interface ShellState {
   /** The width asked for. What is drawn is `fittedWidths`. */
   widths: Record<ShellSide, number>;
   dismissed: Record<ShellSide, boolean>;
+  /** Open panels the window folded, not the reader: they open again when it has room. Not stored. */
+  foldedByWindow?: Partial<Record<ShellSide, boolean>>;
 }
 
 /** Fixed for a page: which panels there are, and every size the sums need. */
@@ -201,6 +203,27 @@ export const withOneOpen = (state: ShellState, keep: ShellSide) =>
 /** Fold both, on entering drawer mode: an open drawer is modal and would cover the main column. */
 export const withAllCollapsed = (state: ShellState) =>
   shellSides.reduce((next, side) => withCollapsed(next, side, true), state);
+
+/** Fold `side` for want of room, remembered if it was open, so it opens again with room. */
+export const withWindowFold = (state: ShellState, side: ShellSide): ShellState =>
+  state.collapsed[side]
+    ? state
+    : {
+        ...withCollapsed(state, side, true),
+        foldedByWindow: { ...state.foldedByWindow, [side]: true },
+      };
+
+/** The reader or the host chose for `side`: the window no longer opens it by itself. */
+export const withChosen = (state: ShellState, side: ShellSide): ShellState => {
+  if (!state.foldedByWindow?.[side]) return state;
+  const foldedByWindow = { ...state.foldedByWindow };
+  delete foldedByWindow[side];
+  return { ...state, foldedByWindow };
+};
+
+/** Open `side` again if the window folded it. */
+export const withWindowRoom = (state: ShellState, side: ShellSide): ShellState =>
+  state.foldedByWindow?.[side] ? withChosen(withCollapsed(state, side, false), side) : state;
 
 /** A collapse or an open the reader asked for, which also says whether they shut it themselves. */
 export const withDismissed = (state: ShellState, side: ShellSide, dismissed: boolean) =>
