@@ -524,13 +524,23 @@ export class PgBossRunJobs implements RunJobs {
     return Number(rows[0]?.open ?? 0);
   }
 
-  async deadFiles(queue: string, files: string[], run: string): Promise<number> {
+  async deadFiles(
+    queue: string,
+    files: { sha256: string; since: Date }[],
+    run: string,
+  ): Promise<number> {
     if (files.length === 0) return 0;
     const { rows } = await this.pool.query<{ dead: string }>(
-      `select count(*) as dead from ${this.schema}.job
-        where name = $1 and state in ('created', 'retry')
-          and data ->> 'file' = any($2::text[]) and data ->> 'run' <> $3`,
-      [deadLetterQueue(queue), files, run],
+      `select count(*) as dead
+         from ${this.schema}.job d
+         join jsonb_to_recordset($2::jsonb) as f(sha256 text, since timestamptz)
+           on d.data ->> 'file' = f.sha256 and d.created_on >= f.since
+        where d.name = $1 and d.state in ('created', 'retry') and d.data ->> 'run' <> $3
+          and not exists (
+            select 1 from ${this.schema}.job o
+             where o.name = $4 and o.state in ('created', 'retry', 'active')
+               and o.data ->> 'file' = f.sha256)`,
+      [deadLetterQueue(queue), JSON.stringify(files), run, queue],
     );
     return Number(rows[0]?.dead ?? 0);
   }
@@ -551,14 +561,16 @@ export class PgBossRunJobs implements RunJobs {
     queue: string,
     key: string,
     from: string,
-    to: string,
+    to: { run: string; tenant: string; dataset: string; record: string },
     transaction?: JobTransaction,
   ): Promise<void> {
     await (transaction ?? this.pool).query(
-      `update ${this.schema}.job set data = jsonb_set(data, '{run}', to_jsonb($4::text))
+      `update ${this.schema}.job
+          set data = data || jsonb_build_object('run', $4::text, 'tenant', $5::text,
+                                                'dataset', $6::text, 'record', $7::text)
         where name = $1 and singleton_key = $2 and data ->> 'run' = $3
           and state in ('created', 'retry', 'active')`,
-      [queue, key, from, to],
+      [queue, key, from, to.run, to.tenant, to.dataset, to.record],
     );
   }
 

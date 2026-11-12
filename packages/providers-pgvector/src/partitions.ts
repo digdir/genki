@@ -99,6 +99,7 @@ const recordMigrations: string[] = [
      primary key (key, dataset, record)
    )`,
   `create index if not exists src_conversion_waits_run on src_conversion_waits (run)`,
+  `alter table src_conversion_waits add column if not exists created_at timestamptz not null default now()`,
   // One row per convert key, locked by the waits and the conversion that ends them.
   `create table if not exists src_conversion_keys (key text primary key)`,
   `create index if not exists src_conversion_waits_record on src_conversion_waits (dataset, record)`,

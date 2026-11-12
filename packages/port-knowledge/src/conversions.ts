@@ -130,6 +130,8 @@ export interface StoredConversions {
   ): Promise<{ run: string; tenant: string; dataset: string; record: string }[]>;
   /** The convert keys a run's records wait on. */
   waitKeys(run: string): Promise<string[]>;
+  /** The files a run's records wait on, each with when its first record began waiting. */
+  waitsSince(run: string): Promise<{ sha256: string; since: Date }[]>;
   /**
    * Ends a cancelled run's waits under each key's lock, and in that transaction calls `act` with
    * the convert keys no record waits on any more and, for each key another run still waits on, one
@@ -140,7 +142,7 @@ export interface StoredConversions {
     act: (
       transaction: RecordTransaction,
       freed: string[],
-      kept: { key: string; run: string }[],
+      kept: ({ key: string } & ConversionWaiter)[],
     ) => Promise<unknown>,
   ): Promise<void>;
   /** Every convert key some record waits on. */

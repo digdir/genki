@@ -192,7 +192,10 @@ export const admittedWork = <T extends JobData & { run: string }>(
   });
 
 /** The waits of a run's records on conversions, as the reconciler counts and cancels them. */
-export type ConversionWaits = Pick<StoredConversions, 'waitKeys' | 'release' | 'waitedKeys'>;
+export type ConversionWaits = Pick<
+  StoredConversions,
+  'waitKeys' | 'waitsSince' | 'release' | 'waitedKeys'
+>;
 
 /**
  * A run's jobs on the knowledge server with its records' waits (ADR 0042, "Jobs"): a record waiting
@@ -214,15 +217,14 @@ export const conversionRunJobs = (
   deadLetters: async (run) => {
     const dead = await jobs.deadLetters(run);
     if (!jobs.deadFiles) return dead;
-    const files = [...new Set((await waits.waitKeys(run)).map((key) => key.split(':')[0] ?? ''))];
-    const shared = await jobs.deadFiles(convertQueue, files, run);
+    const shared = await jobs.deadFiles(convertQueue, await waits.waitsSince(run), run);
     return shared > 0 ? { ...dead, [convertQueue]: (dead[convertQueue] ?? 0) + shared } : dead;
   },
   cancel: async (run, options = {}) => {
     let cancelled = 0;
     await waits.release(run, async (transaction, freed, kept) => {
       cancelled += (await jobs.cancelKeys?.(convertQueue, freed, transaction)) ?? 0;
-      for (const { key, run: to } of kept)
+      for (const { key, ...to } of kept)
         await jobs.handOver?.(convertQueue, key, run, to, transaction);
     });
     return (

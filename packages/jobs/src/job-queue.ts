@@ -136,16 +136,22 @@ export interface RunJobs {
   cancel(run: string, options?: { except?: string[]; keep?: string[] }): Promise<number>;
   /** How many jobs of a queue under these keys are waiting, retrying or running. */
   openKeys?(queue: string, keys: string[]): Promise<number>;
-  /** A queue's dead letters for these files that another run sent, counted. */
-  deadFiles?(queue: string, files: string[], run: string): Promise<number>;
+  /**
+   * A queue's dead letters for these files that another run sent, counted: only those that failed
+   * after the file's first wait began, for a file with no job waiting, retrying or running.
+   */
+  deadFiles?(queue: string, files: { sha256: string; since: Date }[], run: string): Promise<number>;
   /** Cancels a queue's jobs under these keys that have not started, inside the caller's transaction. */
   cancelKeys?(queue: string, keys: string[], transaction?: JobTransaction): Promise<number>;
-  /** Makes a job under a key name another run, inside the caller's transaction. */
+  /**
+   * Makes a job under a key serve another run's record: its run, organisation, dataset and record,
+   * inside the caller's transaction.
+   */
   handOver?(
     queue: string,
     key: string,
     from: string,
-    to: string,
+    to: { run: string; tenant: string; dataset: string; record: string },
     transaction?: JobTransaction,
   ): Promise<void>;
   /** Sends the run's dead letters back to their queues. */

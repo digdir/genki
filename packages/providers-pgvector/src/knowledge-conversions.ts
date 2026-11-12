@@ -178,6 +178,13 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     }),
 
   clear: async (client, dataset, record) => {
+    // The keys' locks first, in key order, as a conversion takes them before it ends the same waits.
+    const { rows } = await client.query(
+      `select distinct key from src_conversion_waits
+        where dataset = $1 and record = $2::bigint order by key`,
+      [dataset, record],
+    );
+    for (const { key } of rows as { key: string }[]) await lock(client, key);
     await client.query(
       `delete from src_conversion_waits where dataset = $1 and record = $2::bigint`,
       [dataset, record],
@@ -215,9 +222,9 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       // In key order, so two runs cancelled together never wait on each other's locks.
       for (const { key } of keys) await lock(client, key);
       await client.query(`delete from src_conversion_waits where run = $1`, [run]);
-      const { rows: still } = await client.query<{ key: string; run: string }>(
-        `select distinct on (key) key, run from src_conversion_waits
-          where key = any($1::text[]) order by key, run`,
+      const { rows: still } = await client.query<{ key: string } & ConversionWaiter>(
+        `select distinct on (key) key, dataset, record::text, generation, run, tenant
+           from src_conversion_waits where key = any($1::text[]) order by key, run, record`,
         [keys.map((k) => k.key)],
       );
       const kept = new Set(still.map((r) => r.key));
@@ -227,6 +234,15 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         still,
       );
     }),
+
+  waitsSince: async (run) => {
+    const { rows } = await writer.query<{ sha256: string; since: Date }>(
+      `select split_part(key, ':', 1) as sha256, min(created_at) as since
+         from src_conversion_waits where run = $1 group by 1 order by 1`,
+      [run],
+    );
+    return rows;
+  },
 
   waitedKeys: async () => {
     const { rows } = await writer.query<{ key: string }>(

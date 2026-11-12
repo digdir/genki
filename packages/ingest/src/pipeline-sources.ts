@@ -782,10 +782,22 @@ const listingOf = (
   };
 };
 
+/** A file whose bytes are no longer the sha256 its record names; the next run lists the new one. */
+export class FileChanged extends Error {
+  override readonly name = 'FileChanged';
+}
+
+/** A file a record names that its source no longer has, or that lies outside the source. */
+export class FileGone extends Error {
+  override readonly name = 'FileGone';
+}
+
 /** A fetched file, refused when it is no longer the file its record names. */
 const sameFile = (file: DocumentFile, sha256: string): DocumentFile => {
   if (sha256Of(file.bytes) !== sha256)
-    throw new Error('the file changed since it was listed; the next run converts the new one');
+    throw new FileChanged(
+      'the file changed since it was listed; the next run converts the new one',
+    );
   return file;
 };
 
@@ -935,7 +947,7 @@ export const knowledgeListingOf = async (
       },
       async (record, sha256) => {
         const path = String(record.path);
-        if (!inside(root, path)) throw new Error('the file lies outside the folder');
+        if (!inside(root, path)) throw new FileGone('the file lies outside the folder');
         return sameFile({ name: name(path), bytes: await readFile(path) }, sha256);
       },
     );
@@ -982,9 +994,9 @@ export const knowledgeListingOf = async (
       async (record, sha256) => {
         const info = record as unknown as BlobInfo;
         if (info.tenant !== scope.tenant || !info.path.startsWith(prefix))
-          throw new Error('the upload lies outside its dataset');
+          throw new FileGone('the upload lies outside its dataset');
         const blob = await uploads.get(info);
-        if (!blob) throw new Error('the upload is gone');
+        if (!blob) throw new FileGone('the upload is gone');
         return sameFile(
           { name: info.path.slice(prefix.length), bytes: blob.body, mimetype: info.contentType },
           sha256,
@@ -1029,7 +1041,7 @@ export const knowledgeListingOf = async (
     complete: listing.complete,
     file: async (record, sha256) => {
       const file = ((record as KudosDocument).files ?? []).find((f) => f.sha256 === sha256);
-      if (!file) throw new Error('the document no longer lists the file');
+      if (!file) throw new FileGone('the document no longer lists the file');
       const bytes = await fetchKudosFile(file, (url) =>
         kudosDownload(
           limiter,
