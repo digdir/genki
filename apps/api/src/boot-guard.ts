@@ -1,5 +1,6 @@
 import {
   databaseRequirement,
+  employeeClientIds,
   lockdownEntraProblems,
   platformTenantProblems,
   traceContentRequirement,
@@ -24,6 +25,11 @@ export const bootProblems = (env: Env): string[] => [
       met: hasIdentityProvider(env),
       problem:
         'set ANSATTPORTEN_ISSUER, or MASKINPORTEN_ISSUER and MASKINPORTEN_JWKS_URI; the mock login runs only with GENAI_DEV_MODE=true',
+    },
+    {
+      met: !env.ANSATTPORTEN_ISSUER || employeeClientIds(env).length > 0,
+      problem:
+        'set EMPLOYEE_CLIENT_IDS, the Ansattporten clients whose logins the API accepts besides registered ones',
     },
     databaseRequirement(env),
     {

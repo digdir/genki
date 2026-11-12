@@ -69,17 +69,18 @@ The apps talk to the live API through a Vite proxy on `/api`. To run one against
 
 In `.env.local`:
 
-| Setting                                                                  | Value                                                                                                     |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `ANSATTPORTEN_ISSUER`                                                    | `https://test.ansattporten.no`. With it set, the mock login is not mounted                                |
-| `ALTINN_PDP_URL`, `ALTINN_SUBSCRIPTION_KEY`                              | `https://platform.tt02.altinn.no` and the APIM subscription key                                           |
-| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                          | `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`                                  |
-| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`, `ALTINN_PDP_MASKINPORTEN_KEY`       | The Maskinporten client that asks the PDP, and its private JWK                                            |
-| `ALTINN_RESOURCE`                                                        | `urn:altinn:resource:digdir-genai-platform-test`                                                          |
-| `PLATFORM_TENANT`                                                        | The synthetic organisation that plays Digdir in TT02, as in genki-test                                    |
-| `GENAI_LOCKDOWN`, `LOCKDOWN_ENTRA_GROUPS`, `LOCKDOWN_ENTRA_EMAIL_DOMAIN` | `true`, the Entra group, `digdir.no`: needed to log in with Entra ID (below)                              |
-| `LOCKDOWN_USER_GROUPS`                                                   | Optional: an Entra group whose members get the whole platform organisation, but are not operators (below) |
-| `OPERATOR_CLIENT_IDS`                                                    | Your local portal, workspace and console client ids: the clients whose Entra logins count                 |
+| Setting                                                                  | Value                                                                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANSATTPORTEN_ISSUER`                                                    | `https://test.ansattporten.no`. With it set, the mock login is not mounted                                                            |
+| `ALTINN_PDP_URL`, `ALTINN_SUBSCRIPTION_KEY`                              | `https://platform.tt02.altinn.no` and the APIM subscription key                                                                       |
+| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                          | `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`                                                              |
+| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`, `ALTINN_PDP_MASKINPORTEN_KEY`       | The Maskinporten client that asks the PDP, and its private JWK                                                                        |
+| `ALTINN_RESOURCE`                                                        | `urn:altinn:resource:digdir-genai-platform-test`                                                                                      |
+| `PLATFORM_TENANT`                                                        | The synthetic organisation that plays Digdir in TT02, as in genki-test                                                                |
+| `GENAI_LOCKDOWN`, `LOCKDOWN_ENTRA_GROUPS`, `LOCKDOWN_ENTRA_EMAIL_DOMAIN` | `true`, the Entra group, `digdir.no`: needed to log in with Entra ID (below)                                                          |
+| `LOCKDOWN_USER_GROUPS`                                                   | Optional: an Entra group whose members get the whole platform organisation, but are not operators (below)                             |
+| `EMPLOYEE_CLIENT_IDS`                                                    | Your local portal, workspace and console client ids: the only clients, besides ones a tenant registered, whose logins the API accepts |
+| `OPERATOR_CLIENT_IDS`                                                    | Your local portal, workspace and console client ids: the clients whose Entra logins count                                             |
 
 In `apps/portal/.env.local` and `apps/workspace/.env.local`: `VITE_ANSATTPORTEN_ISSUER`, `VITE_OIDC_CLIENT_ID` and `VITE_ALTINN_RESOURCE`. In `apps/console/.env.local`: `VITE_OIDC_ISSUER`, `VITE_OIDC_TOKEN_ENDPOINT` (`https://test.ansattporten.no/token`), `VITE_OIDC_CLIENT_ID` and `VITE_ALTINN_RESOURCE`. Each app has its own client, and Ansattporten only accepts the login when that client lists `http://localhost:<the app's port>/callback` as a redirect URI. A git worktree does not get these files; copy or link them from your main checkout.
 
