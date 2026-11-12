@@ -395,6 +395,11 @@ export const blockPath = (block: Pick<CatalogItem, 'kind' | 'id'>, rest = '') =>
 export const blockHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
   `#/building-blocks${blockPath(block)}`;
 
+export const flowEditorHref = (block: Pick<CatalogItem, 'kind' | 'id'>) =>
+  block.kind === 'step_flow' && !block.id.includes('@')
+    ? `#/step-flows/${encodeURIComponent(block.id)}`
+    : undefined;
+
 export const changeOf = (result: BlockChangeResult): LoggedChange | undefined =>
   result.block.changedBy;
 

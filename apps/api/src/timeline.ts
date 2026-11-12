@@ -27,6 +27,8 @@ export interface TaskTimeline {
   costOre?: number;
   costMicroNok?: number | null;
   priced?: boolean;
+  units?: Record<string, number>;
+  unpricedUnits?: Record<string, number>;
   erasure?: Erasure;
   steps: TimelineStep[];
   stats: RunStats | Omit<RunStats, UsageStats>;
@@ -38,6 +40,8 @@ type UsageStats =
   | 'cachedInputTokens'
   | 'costMicroNok'
   | 'unpricedTokens'
+  | 'units'
+  | 'unpricedUnits'
   | 'byModel';
 
 const seconds = (from: string, to: string) =>
@@ -74,7 +78,7 @@ export const kernelTaskReader = (
   events: async (id) => {
     const events: Event[] = [];
     try {
-      for await (const e of await kernel.events(reader, id)) events.push(e);
+      for await (const e of await kernel.events(reader, id, { audience: 'audit' })) events.push(e);
     } catch (error) {
       if (error instanceof KernelError && error.code === 'not_found') return [];
       throw error;
@@ -103,6 +107,8 @@ export const toTimeline = (
     cachedInputTokens,
     costMicroNok,
     unpricedTokens,
+    units,
+    unpricedUnits,
     byModel,
     ...counts
   } = mapper.stats();
@@ -123,7 +129,10 @@ export const toTimeline = (
           outputTokens: task.usage.outputTokens ?? 0,
           costOre: Math.round((task.usage.costMicroNok ?? 0) / 10_000),
           costMicroNok: unpricedRun ? null : (task.usage.costMicroNok ?? 0),
-          priced: !unpricedRun && unpricedTokens === 0,
+          priced:
+            !unpricedRun && unpricedTokens === 0 && Object.keys(unpricedUnits ?? {}).length === 0,
+          ...(units ? { units } : {}),
+          ...(unpricedUnits ? { unpricedUnits } : {}),
         }
       : {}),
     ...(options.erasure ? { erasure: options.erasure } : {}),
@@ -136,6 +145,8 @@ export const toTimeline = (
           ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
           costMicroNok,
           unpricedTokens,
+          ...(units ? { units } : {}),
+          ...(unpricedUnits ? { unpricedUnits } : {}),
           byModel,
         }
       : counts,

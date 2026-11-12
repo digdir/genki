@@ -19,6 +19,7 @@ import {
   type BlockUser,
   type BlockVersion,
   type CatalogItem,
+  flowEditorHref,
 } from '../../api/building-blocks';
 import { reasonPlaceholder, type ApiCallPreview } from '../../components/ApiCall';
 import { Crumbs } from '../../components/Crumbs';
@@ -105,6 +106,7 @@ export const BlockDetail = ({
   };
   const rights = useBlockRights();
   const canChange = rights.canChange(item.kind);
+  const editorHref = flowEditorHref(item);
   const [pending, setPending] = useState<Pending>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addService, setAddService] = useState('');
@@ -340,6 +342,11 @@ export const BlockDetail = ({
                 <a href={`#/skills?id=${encodeURIComponent(item.id)}`}>
                   {item.publisher.type === 'own' ? t('blocks.editSkill') : t('blocks.openSkill')}
                 </a>
+              </Button>
+            ) : null}
+            {editorHref ? (
+              <Button asChild variant="secondary">
+                <a href={editorHref}>{t('blocks.openStepFlow')}</a>
               </Button>
             ) : null}
             {item.status === 'in_use' || item.status === 'available' ? (

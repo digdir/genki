@@ -13,7 +13,12 @@ import {
   type ChatResult,
   type ModelPort,
 } from '@genai/port-model';
-import { SOURCES_MIME, type Chunk, type SourceRecord } from '@genai/strategy-agent-loop';
+import {
+  SOURCES_MIME,
+  type Chunk,
+  type SearchDetection,
+  type SourceRecord,
+} from '@genai/strategy-agent-loop';
 import {
   createRagSingleShot,
   ragConfig,
@@ -255,6 +260,21 @@ describe('rag-single-shot strategy', () => {
     ).toEqual(['plan', 'retrieval', 'rerank', 'read']);
   });
 
+  it('records what the search detected in the retrieval notice', async () => {
+    const detections: SearchDetection[] = [
+      { kind: 'organisation', field: 'orgs_short', values: ['NAV'], queries: ['q'], use: 'boost' },
+    ];
+    const r = retrieval({
+      retrieve: async () => ({ chunks: [chunk(1)], attribution: { detections } }),
+    });
+    const out = await run({ strategy: {} }, r.impl);
+
+    const notice = out.events.find(
+      (e) => e.type === 'kernel.notice' && (e.data as { kind?: string }).kind === 'retrieval',
+    );
+    expect(notice?.data).toMatchObject({ detections });
+  });
+
   it('generates once with numbered context, keeping the streamed numbers and publishing every numbered source in order', async () => {
     const m = model('Svar [3] og [1].', { stream: true });
     const out = await run(
@@ -279,6 +299,25 @@ describe('rag-single-shot strategy', () => {
     expect(out.seen[0]?.messages[1]?.content).toContain(
       '[1] <untrusted_data kind="source" id="d4" title="Rapport 4">\nInnhold 4.\n</untrusted_data>\n\n[2] <untrusted_data kind="source" id="d3" title="Rapport 3">\nInnhold 3.\n</untrusted_data>',
     );
+  });
+
+  it('rewrites OpenAI-style markers such as 【1†L1-L4】 as [N], so their sources are cited', async () => {
+    const m = model('Svar 【3†L1-L4】 og 【1:0†source】.\nKilder: 【3†source】, 【1†source】', {
+      stream: true,
+    });
+    const out = await run(
+      { strategy: { generate: true }, model: { primary: 'primary', tenant: '991825827' } },
+      undefined,
+      m,
+    );
+
+    expect(out.text?.body).toEqual({ kind: 'text', text: 'Svar [3] og [1].' });
+    expect(out.text?.meta).toEqual({
+      citations: [
+        { index: 1, chunkId: 'c4' },
+        { index: 3, chunkId: 'c2' },
+      ],
+    });
   });
 
   it('caps the answer at the platform default when no limit is configured', async () => {

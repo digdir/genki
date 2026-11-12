@@ -24,6 +24,7 @@ files:
   - packages/jobs/src/trace-deliveries.ts
   - packages/jobs/src/retention-policy.ts
   - packages/jobs/src/batch.ts
+  - packages/jobs/src/provider-object-sweep.ts
   - packages/jobs/src/scheduler.ts
   - packages/jobs/src/cron.ts
   - packages/jobs/src/job-queue.ts

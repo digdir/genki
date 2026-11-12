@@ -29,7 +29,8 @@
       "groupName": "bicep api versions"
     },
     {
-      "matchDatasources": ["docker"],
+      "description": "Node stays on 24 in mise, engines and the Docker image, so dev, CI and production move together",
+      "matchDatasources": ["docker", "node-version"],
       "matchPackageNames": ["node"],
       "allowedVersions": "/^24\\./"
     },
@@ -37,6 +38,27 @@
       "description": "The local Langfuse moves with production's, by hand",
       "matchFileNames": ["compose.langfuse.yaml"],
       "enabled": false
+    },
+    {
+      "description": "Patch and minor updates merge themselves once every check is green; majors and 0.x stay manual",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Pins, digests and lock file maintenance merge themselves once every check is green",
+      "matchUpdateTypes": ["pin", "pinDigest", "digest", "lockFileMaintenance"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false
+    },
+    {
+      "description": "GitHub Actions run with the deploy credentials, so a person reviews every update",
+      "matchManagers": ["github-actions"],
+      "automerge": false
     }
   ]
 }

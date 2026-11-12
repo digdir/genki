@@ -32,6 +32,7 @@ export const blocksLane = {
     viewAndAdoptNamed: 'View and adopt {name}',
     viewCatalog: 'View the whole catalogue',
     goToSkills: 'Go to Skills',
+    goToStepFlows: 'Go to Step flows',
     noHits: 'No building blocks match the search and filters.',
     resetFilters: 'Reset the filters',
     new: 'New',
@@ -197,6 +198,7 @@ export const blocksLane = {
     tryInDraft: 'Try in the draft',
     editSkill: 'Edit the skill',
     openSkill: 'Open the skill',
+    openStepFlow: 'Open in the step-flow editor',
     addToService: 'Add to a service',
     service: 'Service',
     addToDraft:

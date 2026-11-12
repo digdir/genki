@@ -39,7 +39,14 @@ describe('the strategy catalogue', () => {
 
     expect(status).toBe(200);
     expect(body.data.map((s) => s.id).sort()).toEqual(
-      ['agent-loop', 'rag-single-shot', 'remote-agent', 'single-call', 'step-flow'].sort(),
+      [
+        'agent-loop',
+        'live-session',
+        'rag-single-shot',
+        'remote-agent',
+        'single-call',
+        'step-flow',
+      ].sort(),
     );
   });
 

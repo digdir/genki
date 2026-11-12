@@ -3,7 +3,7 @@ operation: classify
 status: described
 summary: A made-up classification API, to prove that a new kind needs only a descriptor.
 api:
-  protocol: proto-a
+  family: proto-a
   version: 2026-10-01
 request:
   method: POST

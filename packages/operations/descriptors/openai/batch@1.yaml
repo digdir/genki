@@ -1,0 +1,123 @@
+id: openai/batch@1
+operation: batch-chat
+status: described
+summary: A chat batch on an OpenAI-compatible endpoint (Files, Batches), JSONL requests up, polled until it ends within ten minutes, the output file read back and both files deleted.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    requests: { media: text/plain }
+output:
+  object:
+    results: text
+resources:
+  - { id: upload.file, delete: remove_input, longestSeconds: 172800 }
+  - { id: poll.output_file, delete: remove_output, longestSeconds: 172800 }
+steps:
+  - name: upload
+    request:
+      method: POST
+      path: /files
+      encoding: multipart
+      parts:
+        purpose: batch
+        file: $input.requests
+      filenames:
+        file: requests.jsonl
+    wire:
+      request:
+        object:
+          purpose: { enum: [batch] }
+          file: { media: text/plain }
+      filenames:
+        object:
+          file?: plain
+      response:
+        object:
+          id: plain
+    bind:
+      file: { from: $response.id, class: { issued: '^file-[A-Za-z0-9_-]+$' } }
+  - name: create
+    request:
+      method: POST
+      path: /batches
+      body:
+        input_file_id: $steps.upload.file
+        endpoint: /v1/chat/completions
+        completion_window: 24h
+    wire:
+      request:
+        object:
+          input_file_id: { issued: '^file-[A-Za-z0-9_-]+$' }
+          endpoint: { enum: [/v1/chat/completions] }
+          completion_window: { enum: [24h] }
+      response:
+        object:
+          id: plain
+          status: plain
+    bind:
+      batch: { from: $response.id, class: { issued: '^batch_[A-Za-z0-9]+$' } }
+    usage:
+      requests: 1
+  - name: poll
+    request:
+      method: GET
+      path: /batches/{steps.create.batch}
+    wire:
+      response:
+        object:
+          id: plain
+          status:
+            {
+              enum:
+                [
+                  validating,
+                  in_progress,
+                  finalizing,
+                  completed,
+                  failed,
+                  expired,
+                  cancelling,
+                  cancelled,
+                ],
+            }
+          output_file_id?: plain
+    bind:
+      output_file: { from: $response.output_file_id, class: { issued: '^file-[A-Za-z0-9_-]+$' } }
+    until:
+      test: $response.status
+      equals: [completed, failed, expired, cancelled]
+      intervalSeconds: 10
+      longestSeconds: 600
+    checks:
+      - one-of: { value: $response.status, in: [completed] }
+  - name: read
+    request:
+      method: GET
+      path: /files/{steps.poll.output_file}/content
+    response:
+      encoding: text
+    wire:
+      response: text
+finally:
+  - name: remove_input
+    request:
+      method: DELETE
+      path: /files/{steps.upload.file}
+    wire:
+      response:
+        object:
+          deleted: boolean
+  - name: remove_output
+    request:
+      method: DELETE
+      path: /files/{steps.poll.output_file}
+    wire:
+      response:
+        object:
+          deleted: boolean
+result:
+  results: $response

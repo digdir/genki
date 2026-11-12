@@ -30,6 +30,7 @@ export const blocks = defineNamespace({
   viewAndAdoptNamed: 'Se og ta i bruk {name}',
   viewCatalog: 'Se hele katalogen',
   goToSkills: 'Gå til Ferdigheter',
+  goToStepFlows: 'Gå til Stegflyter',
   noHits: 'Ingen byggeklosser passer søket og filtrene.',
   resetFilters: 'Nullstill filtrene',
   new: 'Ny',
@@ -195,6 +196,7 @@ export const blocks = defineNamespace({
   tryInDraft: 'Prøv i utkastet',
   editSkill: 'Rediger ferdigheten',
   openSkill: 'Åpne ferdigheten',
+  openStepFlow: 'Åpne i stegflyteditoren',
   addToService: 'Legg til i en tjeneste',
   service: 'Tjeneste',
   addToDraft:

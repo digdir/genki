@@ -547,7 +547,7 @@ describe('export and import', () => {
 });
 
 describe('task timeline and the operator tenant list', () => {
-  it("shows a task's status, numbers and steps to its own tenant, from client events only", async () => {
+  it("shows a task's status, numbers and steps to its own tenant, without its audit-only events", async () => {
     const { send, publish } = setup();
     const task = (await publish('kari', klarsprak())).headers.get('genai-task');
 

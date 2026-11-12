@@ -19,6 +19,7 @@ import {
   exampleTracing,
 } from './example-data';
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
+import { exampleDescriptors, operationsMock } from './screens/models/operations-mock';
 import { queueMock } from './screens/queue/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -28,8 +29,11 @@ import type {
   AuditEntry,
   BuildingBlocks,
   Capability,
+  DescriptorDetail,
+  ModelApi,
   ModelPrice,
   DefaultVersion,
+  OperationKind,
   OperatorModel,
   QualityOverview,
   RefreshResult,
@@ -51,11 +55,12 @@ export { exampleTenants } from './example-data';
 const baseModels: OperatorModel[] = [
   {
     id: 'foundry-openai/gpt-4o-2m-tps',
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'gpt-4o-2M-tps',
     family: 'gpt-4o',
     residency: 'global',
     capabilities: ['stream', 'tools', 'json-schema'],
+    apis: { chat: 'openai/chat-completions@1' },
     operations: ['chat'],
     enabled: true,
     origin: 'discovered',
@@ -63,12 +68,17 @@ const baseModels: OperatorModel[] = [
   },
   {
     id: 'foundry-openai/gpt-4.1',
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'gpt-4.1',
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
-    operations: ['chat', 'decide'],
+    apis: {
+      chat: 'openai/chat-completions@1',
+      decide: 'openai/decide@1',
+      'plain-language': 'openai/plain-language@1',
+    },
+    operations: ['chat', 'decide', 'plain-language'],
     enabled: true,
     origin: 'discovered',
     classified: true,
@@ -77,16 +87,79 @@ const baseModels: OperatorModel[] = [
   },
   {
     id: 'foundry-claude/claude-sonnet-5-5',
-    endpoint: 'foundry-claude',
+    endpoint: 'foundry',
     deployment: 'claude-sonnet-5-5',
     family: 'claude-sonnet-5-5',
     residency: 'global',
     capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
+    apis: { chat: 'anthropic/messages@1' },
+    operations: ['chat'],
     enabled: false,
     origin: 'discovered',
     classified: true,
   },
+  {
+    id: 'foundry-openai/gpt-image-1.5',
+    endpoint: 'foundry',
+    deployment: 'gpt-image-1.5',
+    family: 'gpt-image-1.5',
+    residency: 'global',
+    capabilities: [],
+    apis: { 'generate-image': 'openai/generate-image@1' },
+    operations: ['generate-image'],
+    enabled: true,
+    origin: 'catalog',
+    classified: true,
+  },
 ];
+
+export const exampleOperationKinds: OperationKind[] = [
+  { kind: 'chat', builtIn: true, maturity: 'test', typed: 'production', descriptors: [] },
+  { kind: 'decide', builtIn: true, maturity: 'test', typed: 'production', descriptors: [] },
+  {
+    kind: 'generate-image',
+    builtIn: false,
+    maturity: 'test',
+    descriptors: [{ id: 'openai/generate-image@1', status: 'review', family: 'openai' }],
+  },
+];
+
+const builtInApi = (id: string, kind: string, family: string): ModelApi => ({
+  id,
+  kind,
+  family,
+  source: 'built-in',
+  status: 'typed',
+  models: [],
+});
+
+const builtInApis: ModelApi[] = [
+  builtInApi('anthropic/messages@1', 'chat', 'anthropic'),
+  builtInApi('openai/chat-completions@1', 'chat', 'openai'),
+  builtInApi('openai/decide@1', 'decide', 'openai'),
+  builtInApi('openai/responses@1', 'chat', 'openai'),
+];
+
+const registryOf = (descriptors: DescriptorDetail[]): ModelApi[] =>
+  [
+    ...builtInApis.map((a) => {
+      const described = descriptors.find((d) => d.id === a.id);
+      return described ? { ...a, summary: described.summary } : a;
+    }),
+    ...descriptors
+      .filter((d) => !builtInApis.some((a) => a.id === d.id))
+      .map((d): ModelApi => ({
+        id: d.id,
+        kind: d.operation,
+        family: d.family ?? 'openai',
+        source: d.source,
+        status: d.status,
+        summary: d.summary,
+        models: [],
+      })),
+  ].sort((a, b) => a.id.localeCompare(b.id));
+
+export const exampleApis: ModelApi[] = registryOf(exampleDescriptors());
 
 export const exampleModels: OperatorModel[] = baseModels.map((m) => {
   const usage = exampleModelUsage[m.id];
@@ -292,7 +365,7 @@ export const mockFetch = (
   const history = structuredClone(exampleSettingHistory);
   const searchEngines = searchEnginesMock();
   const schemaFixtures = fixtureSchemaFetch();
-  const secrets = new Set<string>(['foundry-openai-key', 'foundry-claude-key']);
+  const secrets = new Set<string>(['foundry-key', 'local-model-key']);
 
   const tenantName = (org: string) => tenantList.find((t) => t.orgNumber === org)?.name ?? org;
   const record = (
@@ -310,6 +383,25 @@ export const mockFetch = (
         tenantName: tenant === 'alle' ? 'Alle' : tenantName(tenant),
         action: actionLabel,
         actionLabel,
+        actor: `operator:${operatorName}`,
+        actorName: operatorName,
+        actorOrg: 'Digdir',
+        at: new Date().toISOString(),
+        outcome: 'applied',
+        target,
+        reason,
+      },
+      ...log,
+    ];
+  };
+
+  const recordAction = (action: string, target: string, reason = '') => {
+    log = [
+      {
+        task: `a-${log.length + 100}`,
+        tenant: 'alle',
+        tenantName: 'Alle',
+        action,
         actor: `operator:${operatorName}`,
         actorName: operatorName,
         actorOrg: 'Digdir',
@@ -342,25 +434,43 @@ export const mockFetch = (
       '/operator/catalog/entries?kind=model-endpoint',
       [
         {
-          id: 'foundry-openai',
+          id: 'foundry',
           scope: 'platform',
           origin: 'seed',
-          version: 1,
+          version: 2,
           spec: {
-            protocol: 'openai-chat',
             baseURL: 'https://foundry.example',
-            auth: { kind: 'api-key', secret: 'secret://platform/foundry-openai-key' },
+            families: { openai: '/openai/v1', anthropic: '/anthropic' },
+            auth: { kind: 'api-key', secret: 'secret://platform/foundry-key' },
+            settings: { keyId: 'AKID-7' },
+            keys: { signing: 'secret://platform/foundry-signing-key' },
+            discovery: [
+              {
+                source: 'azure-deployments',
+                idPrefix: 'foundry-openai',
+                exclude: ['claude-*', 'text-embedding-*'],
+                capabilities: ['stream', 'tools', 'json-schema'],
+                apis: { chat: 'openai/chat-completions@1' },
+              },
+              {
+                source: 'azure-deployments',
+                idPrefix: 'foundry-claude',
+                include: ['claude-*'],
+                capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
+                apis: { chat: 'anthropic/messages@1' },
+              },
+            ],
           },
         },
         {
-          id: 'foundry-claude',
+          id: 'local-model',
           scope: 'platform',
           origin: 'seed',
           version: 1,
           spec: {
-            protocol: 'anthropic-messages',
-            baseURL: 'https://foundry.example/anthropic',
-            auth: { kind: 'api-key', secret: 'secret://platform/foundry-claude-key' },
+            baseURL: 'https://local-model.example',
+            families: { openai: '' },
+            auth: { kind: 'bearer', secret: 'secret://platform/local-model-key' },
           },
         },
       ],
@@ -551,6 +661,23 @@ export const mockFetch = (
         data: configs.get(path) ?? [],
         backend: { name: 'typesense', available: false, reason: 'no write key configured' },
       });
+    const engineOf = /^\/operator\/datasets\/([^/]+)\/engine$/.exec(path);
+    if (method === 'GET' && engineOf) {
+      const id = decodeURIComponent(engineOf[1] as string);
+      const entry = (configs.get('/operator/catalog/entries?kind=dataset') ?? []).find(
+        (e) => e.id === id,
+      );
+      if (!entry) return json({ title: 'Not found', status: 404 }, 404);
+      return json({
+        dataset: id,
+        endpoint: String((entry.spec as { endpoint?: string }).endpoint),
+        embedding: null,
+        canSwitch: true,
+        retentionDays: 14,
+      });
+    }
+    if (method === 'GET' && full === '/operator/catalog/entries?kind=knowledge-endpoint')
+      return json({ data: configs.get(full) ?? [] });
     if (method === 'GET') {
       const key = configListOf(full);
       return key ? json({ data: configs.get(key) }) : undefined;
@@ -598,6 +725,12 @@ export const mockFetch = (
 
   const decisions = queueMock(record);
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
+  const operations = operationsMock(
+    () => current,
+    'test',
+    () => (configs.get(endpointKey) ?? []).map((e) => String(e.id)),
+    recordAction,
+  );
   const modelRoute = (
     path: string,
     method: string,
@@ -619,19 +752,26 @@ export const mockFetch = (
       record('alle', 'Lagret hemmelighet', name, reason);
       return new Response(null, { status: 204 });
     }
-    if (endpoint && method === 'POST') {
+    if (endpoint && (method === 'POST' || (method === 'PUT' && endpoint[1]))) {
+      const editing = method === 'PUT' ? decodeURIComponent(endpoint[1] ?? '') : undefined;
       const b = body() as {
         id?: string;
-        protocol?: string;
+        families?: Record<string, string>;
         baseURL?: string;
         auth?: { kind?: string; secret?: string };
+        discovery?: unknown[];
+        settings?: Record<string, string>;
+        keys?: Record<string, string>;
       };
+      const id = editing ?? b.id;
       const list = configs.get(endpointKey) ?? [];
+      const known = new Set(registryOf(operations.descriptors()).map((a) => a.family));
+      const families = Object.keys(b.families ?? {});
       const errors = [
-        ...(b.id && /^[a-z0-9-]+$/.test(b.id) ? [] : [{ path: 'id', message: 'Ugyldig navn' }]),
-        ...(b.protocol === 'openai-chat' || b.protocol === 'anthropic-messages'
+        ...(id && /^[a-z0-9-]+$/.test(id) ? [] : [{ path: 'id', message: 'Ugyldig navn' }]),
+        ...(families.length > 0 && families.every((f) => known.has(f))
           ? []
-          : [{ path: 'protocol', message: 'Ukjent protokoll' }]),
+          : [{ path: 'families', message: 'Ukjent API-familie' }]),
         ...(/^https:\/\//.test(b.baseURL ?? '')
           ? []
           : [{ path: 'baseURL', message: 'Adressen må starte med https://' }]),
@@ -641,20 +781,40 @@ export const mockFetch = (
       ];
       if (errors.length)
         return json({ title: 'Ugyldig modellendepunkt', status: 400, errors }, 400);
-      if (list.some((e) => e.id === b.id))
+      const existing = list.find((e) => e.id === id);
+      if (editing && !existing) return notFound();
+      if (!editing && existing)
         return json({ title: 'Endepunktet finnes allerede', status: 409 }, 409);
       const entry = {
-        id: b.id,
+        id,
         scope: 'platform',
         origin: 'api',
-        version: 1,
-        spec: { protocol: b.protocol, baseURL: b.baseURL, auth: b.auth },
+        version: Number(existing?.version ?? 0) + 1,
+        spec: {
+          baseURL: b.baseURL,
+          auth: b.auth,
+          families: b.families,
+          ...(b.discovery
+            ? { discovery: b.discovery }
+            : existing && (existing.spec as Record<string, unknown>).discovery
+              ? { discovery: (existing.spec as Record<string, unknown>).discovery }
+              : {}),
+          ...(b.settings ? { settings: b.settings } : {}),
+          ...(b.keys ? { keys: b.keys } : {}),
+        },
         by: 'operator:entra:lise',
         at: new Date().toISOString(),
       };
-      configs.set(endpointKey, [...list, entry]);
-      record('alle', 'La til modellendepunkt', b.id ?? '', reason);
-      return json(entry, 201);
+      configs.set(
+        endpointKey,
+        existing ? list.map((e) => (e.id === id ? entry : e)) : [...list, entry],
+      );
+      recordAction(
+        'platform.catalog.publish',
+        `catalog:model-endpoint/${id}@${entry.version}`,
+        reason,
+      );
+      return json(entry, existing ? 200 : 201);
     }
     if (endpoint?.[1] && method === 'DELETE') {
       const id = decodeURIComponent(endpoint[1]);
@@ -671,7 +831,7 @@ export const mockFetch = (
         list.filter((e) => e.id !== id),
       );
       current = current.filter((m) => m.endpoint !== id);
-      record('alle', 'Fjernet modellendepunkt', id, reason);
+      recordAction('platform.catalog.delete', `catalog:model-endpoint/${id}`, reason);
       return new Response(null, { status: 204 });
     }
     if (price && method === 'PUT') {
@@ -690,7 +850,7 @@ export const mockFetch = (
         },
       };
       current = current.map((m) => (m.id === id ? next : m));
-      record('alle', 'Satte pris', found.deployment, reason);
+      recordAction('platform.catalog.publish', `catalog:price/${id}@1`, reason);
       return json(next.price);
     }
     if (model && method === 'PUT') {
@@ -700,6 +860,7 @@ export const mockFetch = (
         deployment: string;
         residency: Residency;
         capabilities: Capability[];
+        apis?: Record<string, string>;
         enabled: boolean;
       };
       if (!(configs.get(endpointKey) ?? []).some((e) => e.id === b.endpoint))
@@ -712,12 +873,13 @@ export const mockFetch = (
         deployment: b.deployment,
         residency: b.residency,
         capabilities: b.capabilities,
+        ...(b.apis ? { apis: b.apis, operations: Object.keys(b.apis) } : {}),
         enabled: b.enabled,
         origin: found?.origin ?? 'catalog',
         classified: true,
       };
       current = found ? current.map((m) => (m.id === id ? next : m)) : [...current, next];
-      record('alle', found ? 'Endret modell' : 'La til modell', b.deployment, reason);
+      recordAction('platform.catalog.publish', `catalog:model/${id}@1`, reason);
       return json(next);
     }
     return undefined;
@@ -775,6 +937,8 @@ export const mockFetch = (
     }
     const schemaReply = method === 'GET' ? schemaFixtures(path) : undefined;
     if (schemaReply !== undefined) return json(schemaReply);
+    const operationReply = operations(path, method, reason, body);
+    if (operationReply) return operationReply;
     const queueReply = decisions(path, method, reason, body);
     if (queueReply) return queueReply;
     const modelReply = modelRoute(path, method, reason, body);
@@ -1010,17 +1174,35 @@ export const mockFetch = (
         ? json(exampleTimeline)
         : notFound();
     }
+    if (path === '/operator/apis' && method === 'GET')
+      return json({
+        data: registryOf(operations.descriptors()).map((a) => ({
+          ...a,
+          models: current
+            .filter((m) => Object.values(m.apis ?? {}).includes(a.id))
+            .map((m) => m.id),
+        })),
+      });
     if (path === '/operator/models' && method === 'GET') return json({ data: current });
-    if (path === '/operator/models/refresh' && method === 'POST')
-      return reason ? json(refresh) : json({ error: 'a change reason is required' }, 400);
+    if (path === '/operator/models/refresh' && method === 'POST') {
+      if (!reason) return json({ error: 'a change reason is required' }, 400);
+      recordAction('platform.models.refresh', 'models', reason);
+      return json(refresh);
+    }
     if (path.startsWith('/operator/models/') && method === 'PATCH') {
       if (!reason) return json({ error: 'a change reason is required' }, 400);
       const id = path.slice('/operator/models/'.length);
       const found = current.find((m) => m.id === id);
       if (!found) return json({ error: `no model ${id}` }, 404);
-      const updated = { ...found, ...body(), classified: true };
+      const change = body() as Partial<OperatorModel>;
+      const updated = {
+        ...found,
+        ...change,
+        ...(change.apis ? { operations: Object.keys(change.apis) } : {}),
+        classified: true,
+      };
       current = current.map((m) => (m.id === id ? updated : m));
-      record('alle', 'Endret modell', found.deployment, reason);
+      recordAction('platform.models.classify', `model:${id}`, reason);
       return json(updated);
     }
     if (path === '/support-sessions' && method === 'POST') {

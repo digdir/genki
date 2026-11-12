@@ -1,8 +1,33 @@
 # Security
 
-What genki protects, what it does not, and what an operator must set up so it holds. The argument for why it holds, with the threat model and trust boundaries, is in the [assurance case](assurance-case.md). To report a vulnerability, see [SECURITY.md](../../SECURITY.md).
+What genki protects, what it does not, and what an operator must set up so it holds. The argument for why it holds, with the threat model and trust boundaries, is in the [assurance case](assurance-case.md). To report a vulnerability, see [below](#reporting-a-vulnerability).
 
-genki is under development and not in production. Only `main` is supported.
+genki is under development and not in production. Only the latest commit on `main` is supported; there are no releases or backports.
+
+## Reporting a vulnerability
+
+Never report a vulnerability in a public issue, pull request or discussion. Report it privately on this repository's **Security** tab with **Report a vulnerability**, or through the channels in Digdir's [security.txt](https://www.digdir.no/.well-known/security.txt). Digdir's [security policy](https://github.com/digdir/genki/security/policy) and [responsible disclosure policy](https://www.digdir.no/digdir/responsible-disclosure-policy/6386) apply.
+
+Say which configuration reproduces it: dev mode on or off, Postgres or memory, and which identity provider.
+
+In scope:
+
+- the code in this repository: the API, worker, portal, console and workspace apps, and the packages they use
+- authentication and authorisation: Ansattporten, Maskinporten and API key handling, Altinn rights, operator access and tenant isolation (row-level security in Postgres)
+- leaks between tenants or users: conversations, documents, datasets, API keys, secrets and logs
+- prompt injection or tool misuse that crosses a tenant boundary, reaches a secret, or calls a tool or network address the service was not granted
+- the container image built from the `Dockerfile` and the CI workflow
+
+Out of scope:
+
+- dev mode (`GENAI_DEV_MODE=true`): the mock Ansattporten, mock Altinn, dev login and in-memory storage are for local development and are insecure by design. A way to turn dev mode on, or reach the mock login, without setting that flag is in scope.
+- the test persons, generated keys and example data in `apps/api/config/local` and in tests
+- the Azure setup in `infra/`, deployed to the test environment only
+- the services the platform calls (Azure AI Foundry, Typesense, Altinn, Ansattporten, Maskinporten, Langfuse) and other Digdir systems such as digdir-headless-rag: report those to their owners
+- model answers that are wrong or unwanted but cross no security boundary, and denial of service by volume
+- findings from automated scanners without a demonstrated impact
+
+Never commit a secret. If you find one in this repository or its history, report it as a vulnerability.
 
 ## What genki protects
 
@@ -10,7 +35,8 @@ When genki runs outside development mode, with the settings below:
 
 - **Organisations are kept apart.** A person, API key or Maskinporten client acts for one organisation at a time, and reads only that organisation's services, conversations, documents, datasets, keys and secrets. Postgres enforces this again with row-level security ([ADR 0022](../adr/0022-tenant-isolation-in-postgres.md)).
 - **People get the rights Altinn gives them.** Five rights per organisation, looked up in the Altinn decision point. When Altinn does not answer, the person gets no rights ([ADR 0027](../adr/0027-platform-rights.md)). In the locked test environment, the Entra groups under [Settings](#settings) also give rights in the platform organisation.
-- **API keys are a ceiling.** A key reaches only its own organisation and at most what its grants and the service allow. A key bound to a service reaches only that service ([ADR 0008](../adr/0008-principal-model-and-api-key-bridge.md)).
+- **Keys and clients get only the rights they were granted.** A missing or empty grant means nothing. An API key's `admin` scope gives the five rights in its own organisation and `ingest` gives Administrere datasett; a Maskinporten client or system user gets the services it is registered for and no platform right ([ADR 0027](../adr/0027-platform-rights.md)).
+- **API keys are a ceiling.** A key reaches only its own organisation and at most what its grants and the service allow. A key bound to a service reaches only that service ([ADR 0008](../adr/0008-principal-model-and-api-key-bridge.md)). The one exception is a test-runner key in the locked test environment: it reads its own organisation with every platform right, changes only definitions whose id starts with `smoke-`, and reads a short allowlist of operator routes with platform configuration or health, some of which list every organisation. Only an Entra ID operator can create one, it must expire within 90 days and have a rate limit, and the grant is ignored outside lockdown on the test tier ([ADR 0033](../adr/0033-locked-test-environment.md#test-runner-keys)).
 - **Content is encrypted at rest.** Prompts, answers, tool results and tenant secrets are encrypted with a key per organisation and scope. Erasing that key erases the content ([ADR 0011](../adr/0011-retention-erasure-and-archiving.md)).
 - **Secrets go only where they are allowed.** A tenant secret used by a tool is sent only to the hosts it is bound to, and tool calls never go to a private or reserved address ([ADR 0015](../adr/0015-tenant-tools-and-secrets.md)). A database connector's password can reach a private address only when the organisation has allowed that private network.
 - **Every change is audited.** Who changed what, when and why, including changes by operators and by the builder assistant ([ADR 0010](../adr/0010-admin-operations-and-audit.md), [ADR 0020](../adr/0020-changes-made-by-ai.md)).

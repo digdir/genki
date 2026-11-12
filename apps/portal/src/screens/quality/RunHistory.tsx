@@ -25,6 +25,7 @@ import { storageLabels } from '../../data/building-blocks';
 import { formatKroner, httpStatusOf, usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import type { Format, PlainKey, T } from '../../i18n';
+import { modelLabel } from '../../models';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { problemTitle, type SetFlash } from './shared';
@@ -38,29 +39,38 @@ const versionText = (t: T, v: RunVersion) =>
       ? t('quality.versionPublished')
       : t('quality.versionN', { version: v });
 
-const statusTag = (t: T, r: EvalRun): [string, 'success' | 'danger' | 'info' | 'neutral'] =>
+const statusTag = (
+  t: T,
+  r: EvalRun,
+): [string, 'success' | 'danger' | 'warning' | 'info' | 'neutral'] =>
   r.status === 'completed'
     ? [t('quality.runDone'), 'success']
     : r.status === 'failed'
       ? [t('quality.runFailed'), 'danger']
       : r.status === 'interrupted'
-        ? [t('quality.runInterrupted'), 'danger']
+        ? [t('quality.runInterrupted'), 'warning']
         : r.status === 'waiting-for-scores'
           ? [t('quality.runWaiting'), 'info']
-          : r.status === 'running'
-            ? [t('quality.runRunning'), 'info']
-            : [r.status, 'neutral'];
+          : typeof r.queuePlace === 'number' && r.status === 'running'
+            ? [t('quality.runQueued', { place: r.queuePlace }), 'neutral']
+            : r.status === 'running'
+              ? [t('quality.runRunning'), 'info']
+              : [r.status, 'neutral'];
 
 const percent = (f: Format, score: number | null | undefined) =>
   typeof score === 'number' ? f.percent(score) : '–';
 
 const passedText = (t: T, r: EvalRun) =>
-  typeof r.passed === 'number' && typeof r.total === 'number'
-    ? t('quality.passedOf', { passed: r.passed, total: r.total })
-    : '–';
+  typeof r.passed !== 'number' || typeof r.total !== 'number'
+    ? '–'
+    : typeof r.finished === 'number' && r.finished < r.total
+      ? t('quality.passedOfFinished', { passed: r.passed, finished: r.finished, total: r.total })
+      : t('quality.passedOf', { passed: r.passed, total: r.total });
 
-const costText = (t: T, f: Format, cost: number | null | undefined) =>
-  typeof cost === 'number' ? formatKroner(cost, f, t) : t('quality.notPricedLower');
+const costText = (t: T, f: Format, r: EvalRun) =>
+  typeof r.cost === 'number'
+    ? formatKroner(r.cost, f, t)
+    : t(r.status === 'interrupted' ? 'quality.costUnknown' : 'quality.notPricedLower');
 
 const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
 
@@ -320,10 +330,9 @@ const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
 const usageDays = 30;
 
 const perCaseFromRuns = (runs: EvalRun[]) => {
-  const priced = runs.filter(
-    (r) => !active(r) && typeof r.cost === 'number' && typeof r.total === 'number' && r.total > 0,
-  );
-  const cases = priced.reduce((n, r) => n + (r.total ?? 0), 0);
+  const casesOf = (r: EvalRun) => r.finished ?? r.total ?? 0;
+  const priced = runs.filter((r) => !active(r) && typeof r.cost === 'number' && casesOf(r) > 0);
+  const cases = priced.reduce((n, r) => n + casesOf(r), 0);
   return cases > 0 ? priced.reduce((n, r) => n + (r.cost ?? 0), 0) / cases : undefined;
 };
 
@@ -401,7 +410,7 @@ const RunDetail = ({
         <Loading label={t('quality.runLoading')} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
-      ) : state.data.cases.length === 0 ? (
+      ) : state.data.cases.length === 0 && state.data.status !== 'interrupted' ? (
         <Paragraph data-size="sm" className={state.data.error ? 'danger-text' : undefined}>
           {state.data.error
             ? t('quality.runStopped', { error: state.data.error })
@@ -409,6 +418,14 @@ const RunDetail = ({
         </Paragraph>
       ) : (
         <>
+          {state.data.status === 'interrupted' ? (
+            <Paragraph data-size="sm">
+              {t('quality.runInterruptedNote', {
+                finished: state.data.cases.length,
+                total: state.data.total ?? state.data.cases.length,
+              })}
+            </Paragraph>
+          ) : null}
           <RunMetrics run={state.data} />
           <SinkJudges run={state.data} />
           <ul className="live-case-list">
@@ -465,6 +482,8 @@ export const RunHistory = ({
   serviceId,
   testSet,
   cases,
+  marked,
+  onClearMarks,
   setFlash,
 }: {
   api: ApiClient;
@@ -472,14 +491,20 @@ export const RunHistory = ({
   serviceId: string;
   testSet: ServiceTestSet;
   cases: number;
+  marked: string[];
+  onClearMarks: () => void;
   setFlash: SetFlash;
 }) => {
   const { t, f, dateTime } = usePortalFormat();
   const canManage = useRights().has('manage-services');
   const canRun = canManage && cases > 0;
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'all' | 'marked'>();
+  // Unticking every marked case closes the question, so it cannot start a run of no cases.
+  if (confirming === 'marked' && marked.length === 0) setConfirming(undefined);
   const [round, setRound] = useState(0);
   const [version, setVersion] = useState<'draft' | 'published'>('draft');
+  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const modelList = models.status === 'ready' ? models.data : [];
   const [starting, setStarting] = useState(false);
   const [trace, setTrace] = useState(false);
   const [sinks] = useAsync(
@@ -527,19 +552,31 @@ export const RunHistory = ({
     return () => clearTimeout(timer);
   }, [running, round]);
 
-  const start = async () => {
-    if (starting || running || !canRun || refusedText) return;
-    setConfirming(false);
+  const start = async (choice: 'all' | 'marked') => {
+    if (
+      starting ||
+      running ||
+      !canRun ||
+      refusedText ||
+      (choice === 'marked' && marked.length === 0)
+    )
+      return;
+    setConfirming(undefined);
     setStarting(true);
+    const names = { name: testSet.name, version: versionText(t, version).toLowerCase() };
     try {
       const started = await api.quality.startRun(
         tenant,
         serviceId,
-        { testSet: testSet.id, version, ...(trace && sink ? { trace: true } : {}) },
-        t('quality.runReason', {
-          name: testSet.name,
-          version: versionText(t, version).toLowerCase(),
-        }),
+        {
+          testSet: testSet.id,
+          version,
+          ...(choice === 'marked' ? { cases: marked } : {}),
+          ...(trace && sink ? { trace: true } : {}),
+        },
+        choice === 'marked'
+          ? t('quality.runMarkedReason', { ...names, count: marked.length })
+          : t('quality.runReason', names),
       );
       setStartedId(started.id);
       setFlash({ text: t('quality.runStarted'), color: 'info' });
@@ -552,6 +589,7 @@ export const RunHistory = ({
   };
 
   const blocked = starting || running || !canRun;
+  const chosen = confirming === 'marked' ? marked.length : cases;
 
   return (
     <section aria-labelledby="kj-h" className="stack-sm">
@@ -578,16 +616,41 @@ export const RunHistory = ({
           variant="secondary"
           aria-disabled={blocked || undefined}
           aria-describedby={!canRun ? 'run-hint' : undefined}
-          aria-expanded={canRun ? confirming : undefined}
+          aria-expanded={canRun ? confirming === 'all' : undefined}
           onClick={() => {
             if (blocked) return;
             // Each run is sent to Langfuse only when the person ticks it for that run.
             setTrace(false);
-            setConfirming(true);
+            setConfirming('all');
           }}
         >
           {t('quality.runSet')}
         </Button>
+        {marked.length > 0 ? (
+          <>
+            <Button
+              variant="tertiary"
+              aria-disabled={blocked || undefined}
+              aria-expanded={canRun ? confirming === 'marked' : undefined}
+              onClick={() => {
+                if (blocked) return;
+                setTrace(false);
+                setConfirming('marked');
+              }}
+            >
+              {t('quality.runMarked', { count: marked.length })}
+            </Button>
+            <Button
+              variant="tertiary"
+              onClick={() => {
+                if (confirming === 'marked') setConfirming(undefined);
+                onClearMarks();
+              }}
+            >
+              {t('quality.clearMarks')}
+            </Button>
+          </>
+        ) : null}
         {!canRun ? (
           <span id="run-hint" className="small">
             {canManage ? t('quality.addCasesFirst') : needsRight('manage-services', t)}
@@ -597,9 +660,11 @@ export const RunHistory = ({
       {confirming && canRun ? (
         <Alert data-color="info" data-size="sm">
           <Heading level={3} data-size="2xs">
-            {t('quality.confirmRunTitle', { count: cases })}
+            {confirming === 'marked'
+              ? t('quality.confirmMarkedTitle', { count: marked.length })
+              : t('quality.confirmRunTitle', { count: cases })}
           </Heading>
-          <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={cases} />
+          <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={chosen} />
           {sink ? (
             <Checkbox
               data-size="sm"
@@ -622,11 +687,11 @@ export const RunHistory = ({
               variant="primary"
               data-size="sm"
               aria-disabled={blocked || refusedText !== undefined || undefined}
-              onClick={() => void start()}
+              onClick={() => void start(confirming)}
             >
               {t('quality.confirmRun')}
             </Button>
-            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(false)}>
+            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(undefined)}>
               {t('quality.cancel')}
             </Button>
           </div>
@@ -645,6 +710,7 @@ export const RunHistory = ({
               <Table.Row>
                 <Table.HeaderCell scope="col">{t('quality.started')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('quality.version')}</Table.HeaderCell>
+                <Table.HeaderCell scope="col">{t('quality.model')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('quality.status')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col" className="right">
                   {t('quality.score')}
@@ -665,6 +731,7 @@ export const RunHistory = ({
                   <Table.Row key={r.id}>
                     <Table.Cell>{dateTime(r.startedAt)}</Table.Cell>
                     <Table.Cell>{versionText(t, r.version)}</Table.Cell>
+                    <Table.Cell>{r.model ? modelLabel(r.model, modelList) : '–'}</Table.Cell>
                     <Table.Cell>
                       <Tag data-size="sm" data-color={color}>
                         {text}
@@ -672,7 +739,7 @@ export const RunHistory = ({
                     </Table.Cell>
                     <Table.Cell className="right numeric">{percent(f, r.score)}</Table.Cell>
                     <Table.Cell>{passedText(t, r)}</Table.Cell>
-                    {costShown ? <Table.Cell>{costText(t, f, r.cost)}</Table.Cell> : null}
+                    {costShown ? <Table.Cell>{costText(t, f, r)}</Table.Cell> : null}
                     <Table.Cell>
                       {active(r) ? null : (
                         <Button

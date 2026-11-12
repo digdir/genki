@@ -486,6 +486,27 @@ describe('cross-tenant definer functions', () => {
     );
   });
 
+  it('keeps the test-runner grant of an API key, and none on keys stored without it', async () => {
+    const add = (id: string, digest: string, testRunner?: boolean) =>
+      stores.apiKeys.add({
+        id,
+        name: 'n',
+        digest,
+        tenant: ORG_A,
+        scopes: ['query'],
+        datasets: [],
+        agents: [],
+        ...(testRunner ? { testRunner: true } : {}),
+      });
+    await add('key-test-runner', '12'.repeat(32), true);
+    await add('key-no-test-runner', '34'.repeat(32));
+
+    expect(await stores.apiKeys.findByDigest('12'.repeat(32))).toMatchObject({
+      testRunner: true,
+    });
+    expect(await stores.apiKeys.findByDigest('34'.repeat(32))).not.toHaveProperty('testRunner');
+  });
+
   it('serves the platform reads of the stores through the runtime role', async () => {
     expect((await stores.tenants.list()).map((t) => t.orgNumber).sort()).toEqual(
       [ORG_A, ORG_B].sort(),

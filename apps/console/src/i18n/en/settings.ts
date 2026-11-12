@@ -22,8 +22,9 @@ export const settings = {
   labelRetrievalQueryAwareBoost: 'Boost results that resemble the question',
   labelRetrievalAutoFilterEnabled: 'Automatic filter',
   descRetrievalAutoFilterEnabled:
-    'Add filters based on organisation names and years in the question.',
+    'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
   labelRetrievalAutoFilterRules: 'Rules for the automatic filter',
+  labelRetrievalAutoFilterAliases: 'Other names for values',
   labelRetrievalDocTitleFanout: 'Text chunks per title match',
   labelRetrievalMergeMode: 'How the searches are merged',
   labelRetrievalMergeRrfK: 'Smoothing when merging (RRF k)',
@@ -235,7 +236,10 @@ export const settings = {
   emptyText: 'The platform has no settings with a default value yet.',
   descPlannerPrompt: 'A custom prompt for the planner. Empty uses the built-in one.',
   descRetrievalQueryAwareBoost: 'Boosts hits that overlap with the question.',
-  descRetrievalAutoFilterRules: 'The rules for automatic filtering, in order.',
+  descRetrievalAutoFilterAliases:
+    'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
+  descRetrievalAutoFilterRules:
+    'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
   descRetrievalDocTitleFanout: 'Number of passages read per document that matches on title.',
   descRetrievalMergeMode: 'How the results from the search strategies are merged.',
   descRetrievalMergeRrfK: 'The smoothing constant when results are merged with rank fusion.',

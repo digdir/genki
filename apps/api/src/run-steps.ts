@@ -1,6 +1,7 @@
-import type { Event, Part } from '@genai/contracts';
+import { usageUnits, type Event, type Part, type Usage } from '@genai/contracts';
+import { mediaAttachments } from '@genai/kernel';
 import { intlLocale } from '@genai/i18n';
-import { failureOf, failureReason } from './failures.js';
+import { failureOf, failureReason, type RunFailure } from './failures.js';
 import { requestLocale, t, type ApiKey } from './i18n/index.js';
 
 export interface TimelineBlock {
@@ -12,6 +13,7 @@ export interface TimelineBlock {
   sources?: string[];
   calls?: true;
   usage?: true;
+  media?: { id: string; mediaType: string; bytes: number }[];
 }
 
 export type StepState = 'running' | 'failed' | 'skipped' | 'partial' | 'waiting';
@@ -52,8 +54,15 @@ export interface RunStats {
   cachedInputTokens?: number;
   costMicroNok: number;
   unpricedTokens: number;
+  units?: Record<string, number>;
+  unpricedUnits?: Record<string, number>;
   byModel: ModelTokens[];
 }
+
+const countedUnits = new Set(['input-token', 'output-token', 'cached-input-token', 'request']);
+
+const otherUnits = (usage: Usage) =>
+  Object.entries(usageUnits(usage)).filter(([unit]) => !countedUnits.has(unit));
 
 export interface HitView {
   id: string;
@@ -74,6 +83,33 @@ export const retrievalMime = 'application/vnd.genai.retrieval+json';
 export const sourcesMime = 'application/vnd.genai.sources+json';
 
 type Data = Record<string, unknown>;
+
+const mediaBlock = (media: { id: string; mediaType: string; bytes: number }[]): TimelineBlock[] =>
+  media.length
+    ? [
+        {
+          kind: 'list',
+          label: t('steps.media'),
+          items: media.map((m): [string, string] => [
+            m.mediaType,
+            t('steps.mediaBytes', { bytes: m.bytes, id: m.id }),
+          ]),
+          media: media.map(({ id, mediaType, bytes }) => ({ id, mediaType, bytes })),
+        },
+      ]
+    : [];
+
+const mediaOfNotice = (value: unknown) =>
+  Array.isArray(value)
+    ? value.flatMap((m) => {
+        const v = (m ?? {}) as Record<string, unknown>;
+        return typeof v.id === 'string' &&
+          typeof v.mediaType === 'string' &&
+          typeof v.bytes === 'number'
+          ? [{ id: v.id, mediaType: v.mediaType, bytes: v.bytes }]
+          : [];
+      })
+    : [];
 
 const record = (v: unknown): Data =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : {};
@@ -236,6 +272,24 @@ const filterTags = (value: unknown): string[] =>
     return field ? [`${field}: ${values.join(', ')}`] : [];
   });
 
+const detectionUses: Record<
+  string,
+  'steps.detectedHint' | 'steps.detectedBoost' | 'steps.detectedFilter'
+> = {
+  hint: 'steps.detectedHint',
+  boost: 'steps.detectedBoost',
+  filter: 'steps.detectedFilter',
+};
+
+const detectionTags = (value: unknown): string[] =>
+  (Array.isArray(value) ? value : []).flatMap((d) => {
+    const r = record(d);
+    const field = str(r.field);
+    const key = detectionUses[str(r.use) ?? ''];
+    const values = strings(r.values).join(', ');
+    return field && key && values ? [t(key, { field, values })] : [];
+  });
+
 const hitLabel = (h: HitView) => h.title ?? h.document ?? h.id;
 
 const hitMeta = (h: HitView) =>
@@ -312,6 +366,8 @@ export class RunMapper {
   private cachedInputTokens = 0;
   private costMicroNok = 0;
   private unpricedTokens = 0;
+  private units: Record<string, number> = {};
+  private unpricedUnits: Record<string, number> = {};
 
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
@@ -332,6 +388,8 @@ export class RunMapper {
       ...(this.cachedInputTokens ? { cachedInputTokens: this.cachedInputTokens } : {}),
       costMicroNok: this.costMicroNok,
       unpricedTokens: this.unpricedTokens,
+      ...(Object.keys(this.units).length ? { units: this.units } : {}),
+      ...(Object.keys(this.unpricedUnits).length ? { unpricedUnits: this.unpricedUnits } : {}),
       byModel: [...this.byModel.values()],
     };
   }
@@ -705,6 +763,9 @@ export class RunMapper {
         blocks: [],
       });
     this.searchBlocks(step, hits, queries, filters);
+    const detected = detectionTags(data.detections);
+    if (detected.length)
+      step.blocks.push({ kind: 'tags', label: t('steps.detectedLabel'), items: detected });
     if (data.fellBack === true) {
       step.state = 'partial';
       step.warning = true;
@@ -1000,7 +1061,7 @@ export class RunMapper {
       ...(open && ms === undefined && data.status !== 'started'
         ? { durationSeconds: round(at - open.at) }
         : timing),
-      blocks: [],
+      blocks: mediaBlock(mediaOfNotice(data.media)),
     };
     if (open) {
       this.steps[this.steps.indexOf(open)] = step;
@@ -1176,6 +1237,10 @@ export class RunMapper {
     const cost = num(usage.costMicroNok);
     if (cost === undefined) this.unpricedTokens += input + output;
     else this.costMicroNok += cost;
+    for (const [unit, count] of otherUnits(usage as Usage)) {
+      this.units[unit] = (this.units[unit] ?? 0) + count;
+      if (cost === undefined) this.unpricedUnits[unit] = (this.unpricedUnits[unit] ?? 0) + count;
+    }
     const seen = this.byModel.get(model) ?? { model, inputTokens: 0, outputTokens: 0, calls: 0 };
     const modelCost = cost === undefined ? seen.costMicroNok : (seen.costMicroNok ?? 0) + cost;
     this.byModel.set(model, {
@@ -1227,7 +1292,7 @@ export class RunMapper {
       ...(tokens === undefined ? {} : { tokens }),
       model,
       blocks: [],
-      ...this.rawOf(data),
+      ...(this.usageShown ? this.rawOf(data) : {}),
     });
     step.blocks = [kv(step)];
     this.steps.push(step);
@@ -1319,6 +1384,7 @@ export class RunMapper {
       : fields !== undefined && !text.trim()
         ? [{ kind: 'kv', label: t('steps.fields'), rows: fieldRows(fields) }]
         : [{ kind: 'answer', text, ...(sources.length ? { sources } : {}) }];
+    blocks.push(...mediaBlock(mediaAttachments(parts)));
     this.add({
       id: `e${e.seq}`,
       type: 'result',
@@ -1357,7 +1423,7 @@ export class RunMapper {
       summary: failureReason(failure),
       at: this.errorStep?.at ?? this.offset(ts),
       state: 'failed',
-      blocks: this.details && failure.message ? [{ kind: 'quote', text: failure.message }] : [],
+      blocks: this.details ? failureBlocks(failure) : [],
     };
     if (this.errorStep) {
       Object.assign(this.errorStep, step);
@@ -1368,6 +1434,17 @@ export class RunMapper {
     this.errorStep = this.add(step);
   }
 }
+
+const failureBlocks = (failure: RunFailure): TimelineBlock[] => {
+  const blocks: TimelineBlock[] = failure.message ? [{ kind: 'quote', text: failure.message }] : [];
+  const { provider } = failure;
+  if (!provider) return blocks;
+  const label = t('runs.providerAnswered', { status: provider.status });
+  return [
+    ...blocks,
+    provider.body ? { kind: 'quote', label, text: provider.body } : { kind: 'note', text: label },
+  ];
+};
 
 export const mapRun = (events: Event[], options: RunMapperOptions = {}) => {
   const mapper = new RunMapper(options);

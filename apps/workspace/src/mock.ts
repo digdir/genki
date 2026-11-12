@@ -1,4 +1,5 @@
 import type { Locale } from '@genai/i18n';
+import type { StreamStep } from './procedure';
 import { PROVENANCE_MIME } from './provenance';
 import { tableFrom } from './ResultTable';
 import type {
@@ -311,11 +312,78 @@ export const exampleDraft: DocumentDraft = {
   ],
 };
 
+const examplePng = Uint8Array.from(
+  atob(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  ),
+  (c) => c.charCodeAt(0),
+);
+
 const reply = (text: string, sources: ChatReply['sources']): ChatReply => ({
   text,
   sources,
   task: `task-${Math.random().toString(36).slice(2, 10)}`,
 });
+
+/** The approach as the design has it; the platform sends only tool names today (ADR 0053). */
+const exampleSteps: StreamStep[] = [
+  {
+    tool: 'plan_queries',
+    plan: [
+      'plan_queries',
+      'inspect_filters',
+      'search',
+      'read_chunks',
+      'rerank_results',
+      'report_gaps',
+      'generate_response',
+    ],
+    description:
+      'Du spør hva tilsynene i 2025 fant. Jeg tolket «fant» som mangler tilsynet påpekte, ikke det som fungerte.',
+  },
+  {
+    tool: 'inspect_filters',
+    description: 'Tilsynsrapporter 2025 og Evalueringer 2020–2025. Til sammen 214 dokumenter.',
+    'documents-total': 214,
+  },
+  {
+    tool: 'search',
+    description:
+      'Jeg lette etter omtale av blant annet disse temaene: rapportering, dokumentasjon, bruk av midler, frister.',
+  },
+  {
+    tool: 'read_chunks',
+    description: '38 dokumenter så relevante ut. 17 er lest så langt.',
+    documents: [
+      { title: 'Tilsynsrapport 2025/12', pages: 's. 3–5' },
+      { title: 'Tilsynsrapport 2025/19', pages: 's. 5, 11–12' },
+      { title: 'Evaluering av tilskuddsforvaltningen', pages: 's. 8–14' },
+    ],
+    'documents-read': 17,
+  },
+  {
+    tool: 'read_chunks',
+    description: '38 dokumenter så relevante ut. Jeg leste de delene som handler om spørsmålet.',
+    'documents-read': 38,
+  },
+  {
+    tool: 'rerank_results',
+    description:
+      '2 dokumenter svarer direkte, og er brukt i svaret. Resten nevner tilsyn uten å si hva som ble funnet.',
+    'sources-used': [1, 2],
+  },
+  {
+    tool: 'report_gaps',
+    description:
+      'Ingen dokumenter sier hvor mange tilsyn som ble gjort i alt. Svaret sier derfor ikke noe om omfanget.',
+    missing: true,
+  },
+  {
+    tool: 'generate_response',
+    description:
+      'Skilte mellom det kildene sier direkte og det jeg har sammenstilt fra flere kilder.',
+  },
+];
 
 export const mockWorkspaceApi = (delayMs = 0): WorkspaceApi => {
   const wait = () => new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -367,8 +435,14 @@ export const mockWorkspaceApi = (delayMs = 0): WorkspaceApi => {
       await wait();
       return [...exampleServices, exampleFormService];
     },
-    chat: async (service, history, onDelta) => {
-      await wait();
+    chat: async (service, history, onDelta, _signal, _input, _conversation, _documents, onStep) => {
+      for (const frame of onStep ? exampleSteps : []) {
+        onStep?.(frame);
+        await wait();
+        await wait();
+        await wait();
+      }
+      if (!onStep) await wait();
       if (service === exampleFormService.id && history.length === 1) {
         const table = tableFrom(exampleGoalTable);
         return {
@@ -381,6 +455,19 @@ export const mockWorkspaceApi = (delayMs = 0): WorkspaceApi => {
       const question = history[history.length - 1]?.content.toLowerCase() ?? '';
       if (/lønn|tjener/.test(question)) return { text: '', sources: [], failure: refusedExample };
       if (/kantine/.test(question)) return { text: '', sources: [], failure: noSourcesExample };
+      if (/figur|bilde/.test(question))
+        return {
+          ...reply('Her er figuren du ba om.', []),
+          media: [
+            {
+              id: 'm1',
+              mediaType: 'image/png',
+              bytes: examplePng.byteLength,
+              step: 'figur',
+              url: '/v1/tasks/task-figur/media/m1',
+            },
+          ],
+        };
       const answer =
         'Tilsynene i 2025 fant oftest mangler i rapporteringen og i dokumentasjonen av bruken av midler.';
       const words = answer.split(' ');
@@ -393,6 +480,7 @@ export const mockWorkspaceApi = (delayMs = 0): WorkspaceApi => {
     sendFeedback: async () => {
       await wait();
     },
+    media: async () => new Blob([examplePng], { type: 'image/png' }),
     failedRuns: async () => {
       await wait();
       return exampleFailedRuns;

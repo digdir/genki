@@ -87,3 +87,80 @@ export const readDocuments = (
   }
   return out;
 };
+
+export const mediaLimits = { maxBytes: 10 * 1024 * 1024, maxCount: 5 };
+
+const audioTypes: Record<string, string> = { mp3: 'audio/mpeg', wav: 'audio/wav' };
+
+const dataUrl = /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/;
+
+/** Reads `input_audio` and data-URL `image_url` content parts of a message into media the caller sends. */
+export const readMedia = (
+  content: unknown,
+  accepts: string[] | undefined,
+): RuntimeDocument[] | DocumentProblem => {
+  if (!Array.isArray(content)) return [];
+  const found: { name: string; mediaType: string; data: string }[] = [];
+  for (const part of content) {
+    const p = (part ?? {}) as Record<string, unknown>;
+    if (p.type === 'input_audio') {
+      const { data, format } = (p.input_audio ?? {}) as Record<string, unknown>;
+      if (typeof data !== 'string' || typeof format !== 'string')
+        return {
+          code: 'invalid_documents',
+          message: '`input_audio` needs `data` and `format`.',
+          status: 400,
+        };
+      const type = audioTypes[format.toLowerCase()] ?? `audio/${format.toLowerCase()}`;
+      found.push({ name: `audio.${format.toLowerCase()}`, mediaType: type, data });
+    } else if (p.type === 'image_url') {
+      const url = ((p.image_url ?? {}) as Record<string, unknown>).url;
+      const match = typeof url === 'string' ? dataUrl.exec(url) : null;
+      if (!match)
+        return {
+          code: 'invalid_documents',
+          message: '`image_url.url` must be a base64 data URL.',
+          status: 400,
+        };
+      const type = (match[1] ?? '').toLowerCase();
+      found.push({
+        name: `image.${type.split('/')[1] ?? 'bin'}`,
+        mediaType: type,
+        data: match[2] ?? '',
+      });
+    }
+  }
+  if (found.length === 0) return [];
+  if (!accepts?.length)
+    return {
+      code: 'documents_not_accepted',
+      message: 'This service does not take audio or images.',
+      status: 400,
+    };
+  if (found.length > mediaLimits.maxCount)
+    return {
+      code: 'invalid_documents',
+      message: `Send at most ${mediaLimits.maxCount} audio or image parts.`,
+      status: 400,
+    };
+  const out: RuntimeDocument[] = [];
+  for (const item of found) {
+    if (!accepts.includes(item.mediaType))
+      return {
+        code: 'unsupported_document_type',
+        message: `This service takes ${accepts.join(', ')}, not ${item.mediaType}.`,
+        status: 415,
+      };
+    if (!base64.test(item.data))
+      return { code: 'invalid_documents', message: `${item.name} is not base64.`, status: 400 };
+    const body = new Uint8Array(Buffer.from(item.data, 'base64'));
+    if (body.byteLength > mediaLimits.maxBytes)
+      return {
+        code: 'document_too_large',
+        message: `Each audio or image part can be at most ${mediaLimits.maxBytes} bytes.`,
+        status: 413,
+      };
+    out.push({ name: item.name, mediaType: item.mediaType, body });
+  }
+  return out;
+};

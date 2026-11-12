@@ -3,6 +3,8 @@ import { defineNamespace } from '@genai/i18n';
 export const catalogErrors = defineNamespace({
   onlyOperatorsChangeModels: 'bare operatører endrer modeller',
   routeOnlyAction: 'denne handlingen kjøres bare fra sin egen rute',
+  testRunnerExpiry: 'en testkjørernøkkel må utløpe innen 1 til {testRunnerMaxDays} dager',
+  testRunnerCallsPerMinute: 'en testkjørernøkkel må ha en grense for kall per minutt',
   supportMinutes: '1 til {minutes} minutter',
   noModel: 'ingen modell {id}',
   tenantsCannotRegister: 'virksomheter kan ikke registrere {kind}',
@@ -54,6 +56,7 @@ export const catalogErrors = defineNamespace({
   noDataset: 'ingen datasett {dataset}',
   onlyTenantTestSets: 'bare virksomheten eller en operatør endrer testsettene',
   onlyTenantChangesServiceState: 'bare virksomheten endrer tilstanden til tjenestene sine',
+  onlyTenantChangesEnvironments: 'bare virksomheten endrer miljøene til tjenestene sine',
   serviceStateValues: 'tilstanden må være active, paused eller archived',
   indexRequired: 'en indeks er påkrevd',
   datasetExists: 'datasettet {datasetId} finnes',
@@ -101,8 +104,22 @@ export const catalogErrors = defineNamespace({
   hooksOff: 'kroker er slått av',
   endpointId: 'små bokstaver, sifre, punktum og bindestrek',
   httpsAddress: 'en HTTPS-adresse uten påloggingsopplysninger',
+  familyAndBase: 'oppgi minst én API-familie og stien eller adressen til den',
+  noApiFamily: 'ingen API-er i familien {family}; en av {knownFamilies}',
+  familyBase: 'en sti under baseURL, eller en HTTPS-adresse uten påloggingsopplysninger',
+  allowedHostList: 'en liste på høyst 20 vertsnavn, hvert med valgfri port',
+  discoveryRules: 'en liste med regler for å finne modeller',
   apiKeyOrBearer: 'api-key eller bearer',
   usePlatformSecret: 'bruk en hemmelighet for plattformen: secret://platform/<name>',
+  namedKeyList: 'høyst 4 navngitte nøkler, hver med et nøkkelnavn',
+  settingOrKey: 'et navn er enten en innstilling eller en nøkkel',
+  settingName: 'en liten bokstav, deretter bokstaver, sifre eller _, høyst 32 tegn',
+  settingValue: 'synlig tekst på høyst 256 tegn',
+  settingNotSecret: 'en innstilling er ikke en hemmelighet; legg den under keys',
+  settingsCount: 'høyst 20 innstillinger',
+  keysCount: 'høyst 4 navngitte nøkler',
+  secretReference: 'må være en secret://-referanse',
+  onlyOperatorSets: 'bare operatøren setter {field}, og bare på en modellkobling',
   endpointExists: 'Endepunktet finnes allerede',
   endpointModelsInUse: 'Modellene fra endepunktet er i bruk',
   usesModelFrom: '{tenant}/{service} bruker en modell fra {id}',
@@ -256,6 +273,10 @@ export const knowledgeErrors = defineNamespace({
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',
+  switchHold:
+    'datasettet {dataset} byttes til en annen søkemotor ({engineSwitch}); innlesingene kjører igjen når byttet er klart, tatt i bruk eller avsluttet',
+  generationNotBuilt:
+    'generasjonen {generation} ble ikke bygget: byggejobben sluttet uten å koble den til; prøv byttet på nytt',
 });
 
 export const blockErrors = defineNamespace({
@@ -430,6 +451,8 @@ export const qualityErrors = defineNamespace({
   baseVersionRange: 'baseVersion er en publisert versjon fra 0 til {latest}',
   inputRequired: 'input er påkrevd',
   lockedOrOpen: 'split er locked eller open',
+  caseIdList: 'cases er en liste med minst én id for et testtilfelle',
+  noCaseIn: 'ingen testtilfelle {id} i {setId}',
   expectedRequired: 'forventet svar eller kriterier er påkrevd',
   expectedShape: 'forventet svar er en tekst, eller et referansesvar og navngitte kriterier',
   criteriaCaseNeedsCriteria: 'et kriterietilfelle trenger kriterier',
@@ -488,6 +511,8 @@ export const operationErrors = defineNamespace({
   stepAt: '{at}: {message}',
   fixedOperation: 'operasjonen og modellen er faste verdier, ikke fylt inn mens tjenesten kjører',
   noOperationDescriptor: 'det finnes ingen operasjonsbeskrivelse {id}',
+  mediaInputWithoutConsent:
+    '{id} tar imot {mediaType}, som ikke kan maskeres; tjenestens risikovurdering må registrere umaskert inndata av {mediaType} med en begrunnelse',
   descriptorInReview:
     '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
   kindInTest:
@@ -495,12 +520,14 @@ export const operationErrors = defineNamespace({
   notServiceModel: 'modellen {modelId} er ikke en av modellene til tjenesten',
   noCatalogueModel: 'det finnes ingen modell {modelId} i katalogen',
   modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
+  modelBindsOther: 'modellen {modelId} bruker {bound} for {operation}, ikke {id}',
+  modelBindsNone: 'modellen {modelId} bruker ikke noe API for {operation}',
   noProcessorRecordForService:
     'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
   decideOnlyThroughPurposeCheck:
     'decide brukes bare gjennom vernregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
   callOperationNeedsMasking:
-    'et call-operation-steg trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
+    'et steg som kaller en operasjon, trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
   operatorsGovernOperations: 'bare operatører styrer operasjoner',
   noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
   noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',
@@ -511,6 +538,14 @@ export const operationErrors = defineNamespace({
   descriptorBundled: '{id} følger med Genki; last opp en ny versjon i stedet',
   descriptorUploadTooLarge: 'en opplasting er på høyst {size} KiB',
   descriptorDescribedInUse: '{id} er beskrevet og kan være i bruk; last opp en ny versjon i stedet',
+  descriptorNoFixturesYet:
+    '{id} har ingen testtilfeller ennå; lagre ett fra et forsøk før den beskrives',
+  fixturesFromTriesInTest: 'testtilfeller lagres fra forsøk, bare i test',
+  descriptorBundledFixtures: '{id} følger med Genki; testtilfellene endres gjennom en pull request',
+  notAFinishedTry: '{task} er ikke et fullført forsøk med {id}',
+  exchangeNotTheTry: 'utvekslingen er ikke den dette forsøket sendte og fikk',
+  fixtureNameTaken: '{id} har allerede et testtilfelle som heter {name}',
+  descriptorFixturesAtMost: 'en beskrivelse har høyst {maxDescriptorFixtures} testtilfeller',
   bodyNotJson: 'innholdet er ikke JSON',
   uploadStatusValues:
     'status er review eller described; typed betyr at Genki har egen kode for operasjonen',

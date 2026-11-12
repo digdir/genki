@@ -37,6 +37,10 @@ export const bootProblems = (env: Env): string[] => [
         'set ALTINN_PDP_URL and its Altinn PDP settings; the mock Altinn rights run only with GENAI_DEV_MODE=true',
     },
     traceContentRequirement(env),
+    {
+      met: env.GENAI_MOCK_RIGHTS !== 'true',
+      problem: 'GENAI_MOCK_RIGHTS=true runs only with GENAI_DEV_MODE=true; remove it',
+    },
   ]),
 ];
 
