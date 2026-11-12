@@ -211,22 +211,23 @@ describe('the excerpt markers a service names', () => {
     expect(answer?.markers).toEqual([{ marker: '1', chunkId: 'c3', documentId: 'd22' }]);
   });
 
-  it('counts a chunks-only stored turn by position when none of its markers names an excerpt', async () => {
+  it('reads a chunks-only stored turn by document when none of its markers names an excerpt', async () => {
     const answer = await reloadTurn({ chunks, markers: [{ marker: '1' }, '2'] });
-    expect(answer?.markers?.map((m) => [m.marker, m.chunkId])).toEqual([
-      ['1', 'c1'],
-      ['2', 'c2'],
-      ['3', 'c3'],
+    expect(answer?.markers).toBeUndefined();
+    expect(answer?.sources?.map((s) => [s.index, s.documentId])).toEqual([
+      [1, 'd20'],
+      [2, 'd22'],
     ]);
   });
 
-  it('reads a stored turn without markers as before: a chunks-only turn counts by position', async () => {
+  it('numbers a chunks-only stored turn without markers by document, never by chunk position', async () => {
     const answer = await reloadTurn({ chunks });
-    expect(answer?.markers).toEqual([
-      { marker: '1', chunkId: 'c1', documentId: 'd20' },
-      { marker: '2', chunkId: 'c2', documentId: 'd20' },
-      { marker: '3', chunkId: 'c3', documentId: 'd22' },
+    expect(answer?.markers).toBeUndefined();
+    expect(answer?.sources?.map((s) => [s.index, s.documentId])).toEqual([
+      [1, 'd20'],
+      [2, 'd22'],
     ]);
+    expect(answer?.sources?.[0]?.excerpts.map((e) => e.chunkId)).toEqual(['c1', 'c2']);
   });
 
   it('pairs each footnote of a reloaded answer with its excerpt', async () => {
