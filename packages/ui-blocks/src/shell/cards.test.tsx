@@ -138,4 +138,24 @@ describe('what a folded panel shows under its button, `rail` (dev-verktoy-4)', (
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     expect(document.querySelector('.uib-shell-rail')).toBeNull();
   });
+
+  it('draws them on the rail a narrow window leaves, where the panel opens as a drawer', () => {
+    // Below 1139 every `(width < …)` query the shell asks is true but the top row's, at 774.
+    window.matchMedia = ((media: string) => ({
+      media,
+      matches: !media.includes('774'),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    draw({ secondary: { label: 'Verktøypanelet', title: 'Verktøy', rail } });
+    const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
+    expect(tools.hasAttribute('data-drawer')).toBe(true);
+    const onRail = tools.querySelector<HTMLElement>('.uib-shell-rail');
+    expect(onRail).not.toBeNull();
+    expect(
+      within(onRail as HTMLElement)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Fremgangsmåte', 'Kilder']);
+  });
 });

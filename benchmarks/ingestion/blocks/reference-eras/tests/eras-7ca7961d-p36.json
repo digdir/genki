@@ -1,0 +1,259 @@
+{
+ "tests": [
+  {
+   "id": "eras-7ca7961d-p36-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 6 - Beskrivelse av mulig kvalitetskontroll.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Etablere en fullstendig jordprofil med kvalitetssikret informasjon og dokumentasjon fra felt og laboratorier som bekrefter alle forutsetninger er tilstede for enhetlig tolkning.",
+     "max_diffs": 5
+    },
+    "top_heading": {
+     "text": "Beskrivelse av kvalitetskontroll mellom hvert steg",
+     "max_diffs": 5
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2)",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Faser",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "3)",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Tilbakemeldinger og forbedringsforslag vil samles inn på en systematisk måte via geoportalen og distribueres til dataeier og produsenter. Avhengig av funksjonalitet i portalen kan disse forbedringsforslagene også være synlig for sluttbrukere.",
+     "max_diffs": 7
+    },
+    "up": {
+     "text": "Geodatakoordinator (Statens kartverk) godkjenner leveranse og tilhørende dokumentasjon ved mottak og publisering i nasjonal geoportal. Geodatakoordinator vil utføre kvalitetskontroll og eventuelle avvik meldes tilbake til dataeier.",
+     "max_diffs": 7
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Basert på tilbakemeldinger vil dataprodusentene på en systematisk måte kunne forbedre produksjonsprosess og egne rutiner. Tilbakemeldinger kan komme via fremskritt innen forskning eller nye erfaringer fra gjennomførte prosjekter.",
+     "max_diffs": 7
+    },
+    "up": {
+     "text": "Tilbakemeldinger og forbedringsforslag vil samles inn på en systematisk måte via geoportalen og distribueres til dataeier og produsenter. Avhengig av funksjonalitet i portalen kan disse forbedringsforslagene også være synlig for sluttbrukere.",
+     "max_diffs": 7
+    },
+    "top_heading": {
+     "text": "Beskrivelse av kvalitetskontroll mellom hvert steg",
+     "max_diffs": 7
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5)",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Faser",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "4)",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kvalitetskontrollen vil være basert på kvalitetselementene som beskrevet i Tabell 1",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Geodatakoordinator (Statens kartverk) godkjenner leveranse og tilhørende dokumentasjon",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tabell 6 - Beskrivelse av mulig kvalitetskontroll.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Etablere en fullstendig jordprofil",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "nye erfaringer fra gjennomførte prosjekter",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Det pågår et arbeid for å formalisere bruken av lisenser",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Åpne datasett skal kunne merkes med en predefinert lisens som sikrer fri bruk av åpne offentlige data.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-7ca7961d-p36-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dette kan være en mulig modell for distribusjon av data mellom NGP og NADAG.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

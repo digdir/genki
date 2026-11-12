@@ -1,0 +1,227 @@
+{
+ "tests": [
+  {
+   "id": "eras-d17a8877-p27-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En foregangskvinne",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "En foregangskvinne",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "I 1887 ble 20 år gamle Kristine Broch ansatt",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I 1887 ble 20 år gamle Kristine Broch ansatt i Kartverket, som den første kvinne.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Hun ble ansatt som falserske (papirbretter), men jobbet etter hvert også som kopperstikke.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "lenger enn sine mannlige kolleger.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Og begrunnelsen for den lange prøvetiden?",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "«Behandlingen af større Kobberplader og litografiske Stene overstiger hendes Kræfter»",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Ved 150-årsjubileet i 1923 var det fortsatt bare ni kvinnelige medarbeidere.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I dag har Kartverket 808 ansatte, hvorav 416 er kvinner.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Gravyreavdelingen, 4de seksjon i 1909: I fremre rekke f.v. ukjent, kobberstikker Carl Ludvig Hansen Bjune",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Faksimiler: Nasjonalbiblioteket / Aftenposten. Montasje: Heidi Fauske",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "degraded",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "40 aar i Norges geografiske Opmaaling.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d17a8877-p27-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "degraded",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Hun er meget avholdt av sine overordnede og kamerater i Opmaalingen.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

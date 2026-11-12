@@ -23,12 +23,15 @@ from omni_parse_bench import markdown, views
 import build_dataset
 import predict
 from benchlib import record, tables
-from common_opb import (BENCHMARK, DATA, DATASET, HERE, MARKER_CACHE, PAGES, PUBLISHED, RESULTS, RUNS, SIDES,
-                        TESTS, kudos_pages, marker_pages, pages, sample)
+from common_opb import (BENCHMARK, CONVERSIONS, DATA, DATASET, HERE, MARKER_CACHE, PAGES, PARSER_CODE, PARSERS,
+                        PUBLISHED, RESULTS, RUNS, SIDES, TESTS, dataset_pages, kudos_pages, marker_pages, pages,
+                        parsers_done, sample)
 
 PACKAGES = ("omni-parse-bench", "pymupdf", "markdown-it-py")
 LOST_MIN = 200
 WHY_MAX = 200
+# A "why" can quote a side's text; benchlib refuses em-dashes in published text, so a quoted one becomes "--"
+EM_DASH = "\u2014"
 
 
 def marker_settings(docs):
@@ -52,7 +55,26 @@ def side_settings(docs):
         "kudos": {**kudos_text, "pages": "split on page breaks; no text where a document has fewer pieces than pages"},
         "kudos-joined": {**kudos_text, "pages": "split on page breaks; a document whose pieces don't match its "
                                                 "pages gives its whole text on each page"},
+        **{side: parser_settings(side) for side in parsers_done()},
     }
+
+
+def parser_settings(side):
+    """What a parser side used: its meta.json (parser, version, settings, models, machine), the hashes of its
+    pages' Markdown and of the converter script, and the pages it failed on."""
+    out = CONVERSIONS / side
+    ids = dataset_pages()
+    converted = [i for i in ids if (out / f"{i}.md").exists()]
+    # Note: the last timing per page, so a resumed run counts each page once; a note only, never ranked
+    timed = {t["page_id"]: t["seconds"] for t in map(json.loads, open(out / "timings.jsonl")) if t["page_id"] in ids}
+    seconds = sorted(timed.values())
+    return {**json.loads((out / "meta.json").read_text()),
+            "seconds_per_page": {"median": seconds[len(seconds) // 2], "p90": seconds[int(len(seconds) * 0.9)],
+                                 "pages": len(seconds)} if seconds else None,
+            "pages": "each page converted on its own, as a one-page PDF",
+            "conversions": record.tree_hash([out / f"{i}.md" for i in converted]),
+            "converter_code": record.tree_hash([PARSER_CODE / "convert_common.py", PARSER_CODE / PARSERS[side]]),
+            "failed_pages": sorted(set(ids) - set(converted))}
 
 
 def coverage():
@@ -97,12 +119,12 @@ def publish(docs):
                 "outputs": "html; no layout tests", "markdown_to_html": "omni_parse_bench.markdown.to_html"}
     code = sorted(HERE.glob("*.py")) + [HERE.parent.parent / "benchlib"]
     per_side = side_settings(docs)
-    for side in SIDES:
+    for side in SIDES + parsers_done():
         rows = sorted(map(json.loads, open(RUNS / side / "scores.jsonl")), key=lambda r: r["test_id"])
         out = PUBLISHED / "sides" / side
         tables.write_jsonl(out / "verdicts.jsonl", (
             {"test_id": r["test_id"], "page_id": r["page_id"], "document": r["document"], "suite": r["suite"],
-             "test_type": r["test_type"], "tags": r["tags"], "result": r["result"], "why": r["why"][:WHY_MAX]}
+             "test_type": r["test_type"], "tags": r["tags"], "result": r["result"], "why": r["why"][:WHY_MAX].replace(EM_DASH, "--")}
             for r in rows))
         record.write(out / "record.json", record.make(
             BENCHMARK, root=HERE, code=code, reference=[TESTS], items=[PAGES], side=side,
@@ -112,18 +134,19 @@ def publish(docs):
 
 def main():
     build_dataset.main()
-    for side in SIDES:
+    graded = SIDES + parsers_done()
+    for side in graded:
         shutil.rmtree(RUNS / side, ignore_errors=True)
     predict.main()
     opb = HERE / ".venv" / "bin" / "opb"
-    for side in SIDES:
+    for side in graded:
         # Note: `--unsupported` with no value: every side gives html, and no test reads layout blocks
         done = subprocess.run([opb, "grade", RUNS / side, "--dataset", DATASET, "--unsupported"])
         if done.returncode:
             sys.exit(done.returncode)
     docs = sample()
     publish({p["doc_num"]: docs[p["doc_num"]] for p in pages()})
-    print(f"published verdicts and records for {', '.join(SIDES)} in {PUBLISHED}")
+    print(f"published verdicts and records for {', '.join(graded)} in {PUBLISHED}")
 
 
 if __name__ == "__main__":

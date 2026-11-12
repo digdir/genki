@@ -107,6 +107,16 @@ describe('the panel variant', () => {
     expect(within(body).getByText('Virksomheter').className).toContain('ds-sr-only');
   });
 
+  it('draws an opened field at the small size, as the rows around it, and its ticks as they are', () => {
+    render(<Host />);
+    const bodyOf = (name: RegExp) =>
+      document.getElementById(row(name).getAttribute('aria-controls') ?? '') as HTMLElement;
+    fireEvent.click(row(/^Virksomhet/));
+    expect(bodyOf(/^Virksomhet/).getAttribute('data-size')).toBe('sm');
+    fireEvent.click(row(/^Dokumenttype/));
+    expect(bodyOf(/^Dokumenttype/).hasAttribute('data-size')).toBe(false);
+  });
+
   it('removes every filter with «Fjern alle filtre», drawn only when something is chosen', () => {
     const seen: FilterSelection[] = [];
     const { rerender } = render(<Host seen={seen} />);

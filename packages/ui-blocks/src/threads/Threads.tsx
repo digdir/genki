@@ -49,7 +49,7 @@ export interface ThreadsProps {
   search?: boolean | undefined;
   /**
    * `links`, kunnskapsassistenten's: each row a link on one line, with its time under it. `nav`,
-   * the design's: titles in the text colour on up to two lines, with no time, the open row tinted,
+   * the design's: titles in the text colour on one line, with no time, the open row tinted,
    * small group names, «Ny tråd» across the panel, and a row's «…» only on hover or focus.
    */
   variant?: 'links' | 'nav' | undefined;
@@ -77,6 +77,10 @@ type Pending =
 
 /** Where focus goes when the row it was on has gone. */
 const newThreadTarget = '\u0000new-thread';
+
+/** The design's «Ny tråd» stands in a row of its own, which the list scrolls under (dev-trader). */
+const NewThreadRow = ({ pinned, children }: { pinned: boolean; children: ReactNode }) =>
+  pinned ? <div className="uib-threads-top">{children}</div> : children;
 
 /** «Tråder»: the person's conversations by period, with search, rename and delete. */
 export const Threads = ({
@@ -360,22 +364,24 @@ export const Threads = ({
 
       {/* No aria-current: «Ny tråd» is an action, not a place like the rows. */}
       {newThreadHref !== undefined ? (
-        <Button asChild>
-          <a
-            href={newThreadHref}
-            ref={newThreadRef}
-            className="uib-threads-new"
-            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-              if (!onNewThread || !plainClick(event)) return;
-              event.preventDefault();
-              onNewThread();
-            }}
-          >
-            {empty ? t('threads.firstThread') : t('threads.newThread')}
-            {/* The design's button is its words alone. */}
-            {nav ? null : <PencilWritingIcon aria-hidden="true" />}
-          </a>
-        </Button>
+        <NewThreadRow pinned={nav}>
+          <Button asChild>
+            <a
+              href={newThreadHref}
+              ref={newThreadRef}
+              className="uib-threads-new"
+              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                if (!onNewThread || !plainClick(event)) return;
+                event.preventDefault();
+                onNewThread();
+              }}
+            >
+              {empty ? t('threads.firstThread') : t('threads.newThread')}
+              {/* The design's button is its words alone. */}
+              {nav ? null : <PencilWritingIcon aria-hidden="true" />}
+            </a>
+          </Button>
+        </NewThreadRow>
       ) : null}
 
       {/* Hidden on screen, where the groups name themselves; kept so the outline does not jump. */}
