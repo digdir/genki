@@ -90,7 +90,7 @@ import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
-import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
+import { employeeClientIds, isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
 
 /**
  * Runs that run as knowledge jobs (ADR 0042) send their jobs only to the platform server, as
@@ -247,6 +247,7 @@ if (!mock && bareSubjects > 0)
 const reservedClientIds = [
   ...(testData.clients ?? []).map((c) => c.clientId),
   ...operatorClientIds(process.env),
+  ...employeeClientIds(process.env),
 ];
 const verifier = operators.watch(
   asPlatformResource(

@@ -363,6 +363,7 @@ module apps 'modules/containerapps.bicep' = {
       MASKINPORTEN_REQUIRED_SCOPE: maskinportenRequiredScope
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
+      EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer

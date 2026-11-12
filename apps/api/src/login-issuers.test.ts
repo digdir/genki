@@ -39,6 +39,25 @@ describe('login issuers', () => {
     ]);
   });
 
+  it('accepts employee logins from the real Ansattporten only through EMPLOYEE_CLIENT_IDS', async () => {
+    const { trusted } = await loginIssuers(
+      options({
+        ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
+        EMPLOYEE_CLIENT_IDS: ' genki-portal , genki-console ',
+      }),
+    );
+    expect(trusted).toEqual([
+      expect.objectContaining({ trustedClients: ['genki-portal', 'genki-console'] }),
+    ]);
+  });
+
+  it('accepts no employee login from the real Ansattporten when no client is trusted', async () => {
+    const { trusted } = await loginIssuers(
+      options({ GENAI_DEV_MODE: 'true', ANSATTPORTEN_ISSUER: 'https://ansattporten.no' }),
+    );
+    expect(trusted).toEqual([expect.objectContaining({ trustedClients: [] })]);
+  });
+
   it('reports the login keys it cannot fetch, with the issuer and the answer', async () => {
     const reported: Record<string, unknown>[] = [];
     const { trusted } = await loginIssuers({
