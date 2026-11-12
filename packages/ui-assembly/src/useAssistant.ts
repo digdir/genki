@@ -66,6 +66,11 @@ import { useStoredValue, type AssistantStorage } from './storage.js';
 
 export interface AssistantFeedback {
   answerId: string;
+  /**
+   * genki's id for the run that gave the answer, the `task` of `POST /api/feedback`. Missing when
+   * genki gave none, such as through a proxy that drops the `genai-task` header.
+   */
+  runId?: string | undefined;
   rating: 'up' | 'down';
   reasons: readonly string[];
   comment?: string | undefined;
@@ -831,6 +836,7 @@ export const useAssistant = ({
             noAnswer: event.answer.noAnswer,
             status: 'complete',
             created: Date.now(),
+            ...(event.answer.taskId ? { runId: event.answer.taskId } : {}),
           }));
           if (sourcesOn && event.answer.sources.length > 0)
             setRequest({ action: 'offer', side: 'secondary' });
