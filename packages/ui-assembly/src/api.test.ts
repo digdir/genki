@@ -315,6 +315,93 @@ describe('a source from the wire', () => {
   });
 });
 
+// «Fremgangsmåte» for a thread opened again, from the `steps` stored with each answer.
+describe('the steps of a stored answer', () => {
+  const steps = [
+    { event: 'agent/iteration-started', iteration: 1, 'max-iterations': 10 },
+    { stage: 'tool', tool: 'search', iteration: 1, event: 'tool/call' },
+    {
+      event: 'agent/turn-completed',
+      iteration: 1,
+      'tool-calls': [{ tool: 'read_chunks', args: { chunk_ids: ['c1', 'c2'] } }],
+    },
+  ];
+  const question = (id: string, created: number) => ({
+    id,
+    role: 'user',
+    text: `Spørsmål ${id}?`,
+    created,
+    chunks: [],
+  });
+  const answer = (id: string, created: number, turn: Record<string, unknown> = {}) => ({
+    id,
+    role: 'assistant',
+    text: 'Svar.',
+    created,
+    chunks: [],
+    ...turn,
+  });
+  const reloadMessages = async (messages: unknown[]) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ conversation: { id: 't1', topic: 'Tråd', tags: [] }, messages }),
+      ),
+    );
+    return (await api().loadThread('t1')).turns;
+  };
+
+  it('sets a reloaded turn’s Approach from the steps stored with it', async () => {
+    const [turn] = await reloadMessages([question('q', 1_000), answer('a', 5_000, { steps })]);
+    expect(turn?.approach?.frames).toEqual(steps);
+  });
+
+  it('times a reloaded Approach from the question to the answer', async () => {
+    const [turn] = await reloadMessages([question('q', 1_000), answer('a', 5_000, { steps })]);
+    expect(turn?.approach).toMatchObject({ startedAt: 1_000, finishedAt: 5_000 });
+  });
+
+  it('reads a stored turn without steps as before, with no Approach, beside one that has them', async () => {
+    const turns = await reloadMessages([
+      question('q1', 1_000),
+      answer('a1', 2_000, { steps }),
+      question('q2', 3_000),
+      answer('a2', 4_000),
+    ]);
+    expect(turns[0]?.approach?.frames).toEqual(steps);
+    expect(turns[1]).toStrictEqual({
+      id: 'q2',
+      question: 'Spørsmål q2?',
+      askedAt: 3_000,
+      answer: { text: 'Svar.', status: 'complete', created: 4_000 },
+    });
+  });
+
+  it('keeps only the stored steps that are objects', async () => {
+    const [turn] = await reloadMessages([
+      question('q', 1_000),
+      answer('a', 2_000, { steps: [steps[1], 'search', null, ['tool'], 3, steps[2]] }),
+    ]);
+    expect(turn?.approach?.frames).toEqual([steps[1], steps[2]]);
+  });
+
+  it('takes a question’s Approach from its latest run, and none when that run kept no steps', async () => {
+    const later = [{ stage: 'tool', tool: 'generate_response', iteration: 2 }];
+    const [rerun] = await reloadMessages([
+      question('q', 1_000),
+      answer('a1', 2_000, { steps }),
+      answer('a2', 3_000, { steps: later }),
+    ]);
+    const [plain] = await reloadMessages([
+      question('q', 1_000),
+      answer('a1', 2_000, { steps }),
+      answer('a2', 3_000),
+    ]);
+    expect(rerun?.approach?.frames).toEqual(later);
+    expect(plain).not.toHaveProperty('approach');
+  });
+});
+
 // The run feedback is sent on, from `task` on a stored message.
 describe('the run behind an answer', () => {
   it('is kept from the stored message for a thread opened again', async () => {

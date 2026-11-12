@@ -314,6 +314,12 @@ const StoredMessage = z
       .describe(
         'Assistant messages from a service that cites excerpts: the markers as the answer gave them, so `[N]` resolves to one excerpt (ADR 0052). Messages stored before markers were kept have none.',
       ),
+    steps: z
+      .array(z.record(z.string(), z.unknown()))
+      .optional()
+      .describe(
+        'Assistant messages answered with `"stream": true` and `"genai_steps": true`: each `genai_step` object as the stream sent it (`event`, `stage`, `label`, `tool`, `iteration`, `max-iterations`, `duration-ms`, `tool-calls`, each optional), in order: at most the first 200, cut before the frame that would bring their JSON past 64 KiB. Messages stored before steps were kept have none (ADR 0053).',
+      ),
     task: z.string().optional().describe('Assistant messages: the task id to send as feedback.'),
     attachments: z.array(z.string()).optional(),
     input: z.record(z.string(), z.unknown()).optional().describe('User messages: the form values.'),

@@ -141,10 +141,18 @@ export interface AskTurn {
   chunks?: { chunkId: string; docTitle: string; docNum?: string; contentMarkdown: string }[];
   sources?: StoredSource[];
   markers?: AnswerMarker[];
+  steps?: StoredStep[];
   task?: string;
   attachments?: string[];
   input?: Record<string, unknown>;
 }
+
+/** A `genai_step` object as the stream sent it. */
+export type StoredStep = Record<string, unknown>;
+
+const maxStoredSteps = 200;
+
+const maxStoredStepBytes = 64 * 1024;
 
 export interface StoredSource {
   index?: number;
@@ -855,10 +863,10 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
 
     if (body.stream === true) {
       const live = body[liveStreamField] === 'live';
-      const remember = async (parts: Part[]) => {
+      const remember = async (parts: Part[], steps: StoredStep[]) => {
         if (conversationId)
           await options.conversations
-            ?.append(c.req.raw, conversationId, assistantTurn(parts, run.task))
+            ?.append(c.req.raw, conversationId, assistantTurn(parts, run.task, steps))
             .catch(() => undefined);
       };
       const stream = { live, steps: body[stepsField] === true, conversationId, remember };
@@ -929,7 +937,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       live: boolean;
       steps: boolean;
       conversationId: string | undefined;
-      remember(parts: Part[]): Promise<void>;
+      remember(parts: Part[], steps: StoredStep[]): Promise<void>;
     },
   ) => {
     const { live } = stream;
@@ -956,6 +964,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
         const send = (data: unknown) => write(`data: ${JSON.stringify(data)}\n\n`);
         const keepAlive = setInterval(() => write(': keep-alive\n\n'), keepAliveMs);
         const events: Event[] = [];
+        const sentSteps: StoredStep[] = [];
         const answer = new AnswerTracker(live, {
           content: (text) => send(chunk({ content: text }, null)),
           retract: () => send(chunk({}, null, { retract: true })),
@@ -977,8 +986,10 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
               else if (e.type === 'kernel.notice') {
                 answer.notice(e.data);
                 const step = isRecord(e.data) ? stepOf(e.data) : {};
-                if (stream.steps && e.audience !== 'audit' && Object.keys(step).length)
+                if (stream.steps && e.audience !== 'audit' && Object.keys(step).length) {
                   send(chunk({}, null, { genai_step: step }));
+                  sentSteps.push(step);
+                }
                 if (
                   options.streamReasoning &&
                   typeof data?.reasoning === 'string' &&
@@ -997,7 +1008,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
           }
           await draining.catch(() => undefined);
           if (parts) {
-            await stream.remember(parts);
+            await stream.remember(parts, sentSteps);
             const { citations, sources } = sourcesBundle(parts);
             const markers = markersOf(parts);
             const sourcesChunk = () =>
@@ -1243,15 +1254,29 @@ export const datasetOf = (d: ServiceDataset) => ({
   filters: d.filters.map((f) => ({ field: f.field, kinds: f.kinds, 'value-type': f.valueType })),
 });
 
-const assistantTurn = (parts: Part[], task: string): AskTurn => {
+// The first frames in the order sent, up to the first that would pass either limit.
+const storedStepsOf = (sent: readonly StoredStep[]): StoredStep[] => {
+  const kept: StoredStep[] = [];
+  let bytes = 0;
+  for (const step of sent.slice(0, maxStoredSteps)) {
+    bytes += Buffer.byteLength(JSON.stringify(step));
+    if (bytes > maxStoredStepBytes) break;
+    kept.push(step);
+  }
+  return kept;
+};
+
+const assistantTurn = (parts: Part[], task: string, sentSteps: StoredStep[] = []): AskTurn => {
   const { sources } = sourcesBundle(parts);
   const markers = markersOf(parts);
+  const steps = storedStepsOf(sentSteps);
   return {
     role: 'assistant',
     task,
     text: answerOf(parts),
     ...(sources.length ? { sources: sources.map(storedSource) } : {}),
     ...(markers.length ? { markers } : {}),
+    ...(steps.length ? { steps } : {}),
     chunks: sourcesOf(parts)
       .slice(0, 20)
       .map((r) => ({

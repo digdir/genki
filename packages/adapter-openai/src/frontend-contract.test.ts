@@ -47,6 +47,7 @@ const byDocument = {
   } as Record<string, unknown>,
 };
 let reply = byDocument;
+let moreNotices: Emitted[] = [];
 
 const strategy: Strategy = {
   id: 'echo',
@@ -58,6 +59,7 @@ const strategy: Strategy = {
     seen.overrides = data.overrides;
     yield { type: 'kernel.notice', data: { event: 'agent/iteration-started', iteration: 1 } };
     yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: 3 } };
+    yield* moreNotices;
     yield { type: 'kernel.part.delta', data: { text: reply.answer } };
     const parts: Part[] = [
       { ...textPart(reply.answer), meta: reply.meta },
@@ -521,5 +523,103 @@ describe('/v1 frontend contract: steps', () => {
 
     expect(stepFrames(stepped)).toHaveLength(1);
     expect(stepped).not.toContain('"genai_step":{}');
+  });
+});
+
+describe('/v1 frontend contract: steps of a stored turn', () => {
+  afterEach(() => {
+    moreNotices = [];
+  });
+
+  const sentSteps = (text: string) =>
+    text
+      .split('\n\n')
+      .filter((f) => f.includes('genai_step'))
+      .map((f) => (JSON.parse(f.slice('data: '.length)) as { genai_step: unknown }).genai_step);
+
+  const notice = (data: Record<string, unknown>, audit = false): Emitted => ({
+    type: 'kernel.notice',
+    data,
+    ...(audit ? { audience: 'audit' as const } : {}),
+  });
+
+  it('keeps the steps of an answer when the turn is stored', async () => {
+    moreNotices = [
+      notice({ stage: 'tool', tool: 'search', iteration: 1, event: 'tool/call' }),
+      notice({ stage: 'plan', label: 'Bare for drift' }, true),
+      notice({
+        event: 'agent/turn-completed',
+        iteration: 1,
+        'tool-calls': [{ tool: 'read_chunks', args: { chunk_ids: ['c1', 'c2'] }, 'ok?': true }],
+      }),
+    ];
+    const { ask, stored } = setup();
+
+    const text = await (
+      await ask({ genai_conversation: true, stream: true, genai_steps: true })
+    ).text();
+    const turn = stored.get('conv-1')?.[1];
+
+    expect(turn?.steps).toEqual(sentSteps(text));
+    expect(turn?.steps).toEqual([
+      { event: 'agent/iteration-started', iteration: 1 },
+      { stage: 'tool', tool: 'search', iteration: 1, event: 'tool/call' },
+      {
+        event: 'agent/turn-completed',
+        iteration: 1,
+        'tool-calls': [{ tool: 'read_chunks', args: { chunk_ids: ['c1', 'c2'] }, 'ok?': true }],
+      },
+    ]);
+  });
+
+  it('stores steps only on a turn streamed with genai_steps, the frames the person was sent', async () => {
+    const { ask, stored } = setup();
+
+    await (await ask({ genai_conversation: true, stream: true, genai_steps: true })).text();
+    await (await ask({ conversation_id: 'conv-1', stream: true })).text();
+    await ask({ conversation_id: 'conv-1', genai_steps: true });
+
+    expect(stored.get('conv-1')?.map((t) => [t.role, t.steps?.length])).toEqual([
+      ['user', undefined],
+      ['assistant', 1],
+      ['user', undefined],
+      ['assistant', undefined],
+      ['user', undefined],
+      ['assistant', undefined],
+    ]);
+  });
+
+  it('caps the stored steps at the first 200 frames', async () => {
+    moreNotices = Array.from({ length: 250 }, (_, i) =>
+      notice({ event: 'agent/iteration-started', iteration: i + 2 }),
+    );
+    const { ask, stored } = setup();
+
+    const text = await (
+      await ask({ genai_conversation: true, stream: true, genai_steps: true })
+    ).text();
+    const steps = stored.get('conv-1')?.[1]?.steps;
+
+    expect(sentSteps(text)).toHaveLength(251);
+    expect(steps).toEqual(sentSteps(text).slice(0, 200));
+  });
+
+  it('caps the stored steps at 64 KiB of JSON, cut before the frame that would pass it', async () => {
+    const label = 'å'.repeat(2000);
+    moreNotices = Array.from({ length: 40 }, (_, i) => notice({ label, iteration: i + 2 }));
+    const { ask, stored } = setup();
+
+    const text = await (
+      await ask({ genai_conversation: true, stream: true, genai_steps: true })
+    ).text();
+    const steps = stored.get('conv-1')?.[1]?.steps ?? [];
+    const sent = sentSteps(text);
+    const bytes = (frames: unknown[]) =>
+      frames.reduce<number>((sum, f) => sum + Buffer.byteLength(JSON.stringify(f)), 0);
+
+    expect(steps.length).toBeGreaterThan(1);
+    expect(steps).toEqual(sent.slice(0, steps.length));
+    expect(bytes(steps)).toBeLessThanOrEqual(64 * 1024);
+    expect(bytes(sent.slice(0, steps.length + 1))).toBeGreaterThan(64 * 1024);
   });
 });

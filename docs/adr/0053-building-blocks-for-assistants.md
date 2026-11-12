@@ -1,6 +1,6 @@
 # 0053 Building blocks for assistants
 
-Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11)
+Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace; the package's rules and their lint, 2026-11-10; the components from #403 to #413, 2026-11-11; stored conversation turns keep the step frames, 2026-11-13)
 
 Not built yet: projects, notes, the builder's preview drawing the real components, and a playground.
 
@@ -40,4 +40,5 @@ The styling rules are Designsystemet's own: its components sit in cascade layers
 - The lint reads a new block's sheet as soon as it is in a folder, and runs in `npm test`. A new block brings its own test that reads its props against its page, as `approach/docs.test.ts` does.
 - The variables and props are public once the package is published: renaming one then breaks a host. Until then they may still change.
 - What a component needs from the platform shows up as gaps. Approach is the first: the stream sends tool calls and agent iterations, but not what the assistant understood, how many documents it read or what it did not find. Those need the step frames in `docs/frontend-contract.md` to carry more, which is a separate change.
+- Proposed, 2026-11-13: a stored conversation turn keeps the step frames its answer streamed, so Approach shows a reloaded answer's steps as it showed them live, timed from the stored question to the stored answer. `/v1` stores each `genai_step` object as sent, in order, at most the first 200 and cut before the frame that would bring their JSON past 64 KiB, and `GET /api/conversations/{id}` returns them as `steps` on the message. An MCP tool result carries no steps, so a turn answered through MCP keeps none. A turn stored before this, or asked without `genai_steps`, has no `steps`, and the assembly says the steps were not kept. The tests are in `packages/adapter-openai/src/frontend-contract.test.ts` ("steps"), `packages/conversations/src/conversations.test.ts`, `packages/providers-postgres/src/tenancy.test.ts`, `packages/ui-assembly/src/api.test.ts` and `packages/ui-assembly/src/assistant.test.tsx`.
 - The layout templates proposed for the builder in #210 and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition: the layout format of ADR 0054.
