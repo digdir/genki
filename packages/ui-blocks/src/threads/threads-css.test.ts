@@ -45,8 +45,7 @@ const navNeutralPins = [
 ];
 
 const ruleFor = (selector: string) =>
-  [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(([, s = '']) => s.trim() === selector)?.[2] ??
-  '';
+  [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(([, s = '']) => s.trim() === selector)?.[2] ?? '';
 
 describe('the Threads styles', () => {
   it('read the design’s rows through their own rules, which the lint reads too', () => {
