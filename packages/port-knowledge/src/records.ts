@@ -5,6 +5,12 @@ import type { IndexDocument } from './writer.js';
  * and index jobs reach them. `packages/ingest` compares and indexes; a provider stores.
  */
 
+/**
+ * The owner of the records an engine switch copies into the knowledge database (#366). It is no
+ * valid pipeline id, so no pipeline owns them until one takes them over.
+ */
+export const copyOwner = '_copy';
+
 export interface ListedFile {
   name: string;
   /** The hash the source lists for the file, when it lists one without a download. */
@@ -19,6 +25,8 @@ export interface ListedDocument {
   /** What the metadata hash covers: the record without what changes when nothing does. */
   metadata: Record<string, unknown>;
   files: ListedFile[];
+  /** Ids the source gave the document before it renumbered (ADR 0042); a citation resolves through them. */
+  earlierIds?: string[];
 }
 
 /** A record its pipeline owns, with the change its run's generation has applied. */
@@ -34,12 +42,15 @@ export interface OwnedRecord {
   applied?: number;
   /** When the generation last wrote it, so a crawled page is downloaded again after a while. */
   appliedAt?: string;
+  /** Owned by an engine switch's copy, not by this pipeline: a run that lists it takes it over (#366). */
+  copied?: boolean;
 }
 
 /** A change to one record. `new`, `changed` and `delete` take the next number in the change sequence. */
 export type RecordWrite =
   | { kind: 'new' | 'changed'; listed: ListedDocument; metadataHash: string }
-  | { kind: 'seen'; id: string }
+  /** A listed record with no change; `earlierIds` replaces its earlier ids without a new change. */
+  | { kind: 'seen'; id: string; earlierIds?: string[] }
   | { kind: 'missing'; id: string }
   | { kind: 'delete'; id: string };
 

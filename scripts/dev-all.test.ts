@@ -3,10 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import { createServer } from 'node:net';
+import { createMockAnsattporten, createSigningKey } from '@genai/identity';
 import {
   devProcesses,
   localModelPort,
   missingCallbacks,
+  mockAcceptsRedirect,
   portInUse,
   prefixer,
   repoRoot,
@@ -15,6 +17,8 @@ import {
 } from './dev-all.ts';
 
 const portOf = (name: string) => devProcesses({}).find((p) => p.name === name)?.port;
+const apiEnv = (env: Record<string, string>) =>
+  devProcesses(env).find((p) => p.name === 'api')?.env;
 
 describe('dev:all', () => {
   it('runs each app on the port its vite config and OIDC client expect', () => {
@@ -41,11 +45,37 @@ describe('dev:all', () => {
     expect(localModelPort('not a url')).toBeUndefined();
   });
 
+  it('passes LOCAL_MODEL_RESPONSES from .env.local to the local test model', () => {
+    expect(
+      devProcesses({
+        LOCAL_MODEL_URL: 'http://127.0.0.1:8095/v1',
+        LOCAL_MODEL_RESPONSES: '/tmp/answers',
+      }).find((p) => p.name === 'model')?.env,
+    ).toEqual({ LOCAL_MODEL_PORT: '8095', LOCAL_MODEL_RESPONSES: '/tmp/answers' });
+  });
+
   it('starts the API in dev mode unless GENAI_DEV_MODE is set', () => {
-    const api = (env: Record<string, string>) =>
-      devProcesses(env).find((p) => p.name === 'api')?.env;
-    expect(api({})).toEqual({ GENAI_DEV_MODE: 'true' });
-    expect(api({ GENAI_DEV_MODE: 'false' })).toEqual({});
+    expect(apiEnv({})).toMatchObject({ GENAI_DEV_MODE: 'true' });
+    expect(apiEnv({ GENAI_DEV_MODE: 'false' })).toEqual({});
+  });
+
+  it('runs the API as the test tier in dev mode unless GENAI_ENV is set', () => {
+    expect(apiEnv({})).toMatchObject({ GENAI_ENV: 'test' });
+    expect(apiEnv({ GENAI_DEV_MODE: 'true' })).toMatchObject({ GENAI_ENV: 'test' });
+    expect(apiEnv({ GENAI_ENV: 'local' })).not.toHaveProperty('GENAI_ENV');
+  });
+
+  it('gives the mock persons their mock rights in dev mode, even when ALTINN_PDP_URL is set', () => {
+    expect(apiEnv({ ALTINN_PDP_URL: 'https://platform.tt02.altinn.no' })).toMatchObject({
+      GENAI_MOCK_RIGHTS: 'true',
+    });
+  });
+
+  it('asks the real Altinn PDP when GENAI_MOCK_RIGHTS=false or the login is real Ansattporten', () => {
+    expect(apiEnv({ GENAI_MOCK_RIGHTS: 'false' })).not.toHaveProperty('GENAI_MOCK_RIGHTS');
+    expect(apiEnv({ ANSATTPORTEN_ISSUER: 'https://test.ansattporten.no' })).not.toHaveProperty(
+      'GENAI_MOCK_RIGHTS',
+    );
   });
 
   it('points the workspace portal link at the dev:all portal', () => {
@@ -69,7 +99,7 @@ describe('dev:all', () => {
       ['console', 8102],
       ['workspace', 8103],
     ]);
-    expect(byName.api?.env).toEqual({ GENAI_DEV_MODE: 'true', PORT: '8100' });
+    expect(byName.api?.env).toMatchObject({ GENAI_DEV_MODE: 'true', PORT: '8100' });
     expect(byName.console?.env).toEqual({
       GENAI_API_PORT: '8100',
       VITE_PUBLIC_API_BASE: 'http://localhost:8100',
@@ -89,13 +119,89 @@ describe('dev:all', () => {
     expect(portal?.env?.VITE_ANSATTPORTEN_ISSUER).toBeUndefined();
   });
 
-  it('names the OIDC callbacks identity.yaml lacks for the ports in use', () => {
+  it('accepts registered mock loopback callbacks on other ports', () => {
     const identity = readFileSync(join(repoRoot, 'apps/api/config/local/identity.yaml'), 'utf8');
 
     expect(missingCallbacks(identity, devProcesses({}))).toEqual([]);
+    expect(
+      missingCallbacks(
+        identity,
+        devProcesses({
+          GENAI_PORTAL_PORT: '8101',
+          GENAI_CONSOLE_PORT: '8102',
+          GENAI_WORKSPACE_PORT: '8103',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    'http://localhost:5174/other',
+    'http://127.0.0.1:5174/callback',
+    'https://localhost:5174/callback',
+    'http://evil.test:5174/callback',
+    'http://localhost:70000/callback',
+    'http://localhost:5174/callback\n',
+  ])('still names a missing mock callback when only %s is registered', (uri) => {
+    const identity = JSON.stringify({
+      clients: [{ clientId: 'local-console', redirectUris: [uri] }],
+    });
     expect(missingCallbacks(identity, devProcesses({ GENAI_CONSOLE_PORT: '8102' }))).toEqual([
       'local-console http://localhost:8102/callback',
     ]);
+  });
+
+  it.each(['localhost', '127.0.0.1', '[::1]'])(
+    'accepts a callback registered on %s on any other port of the same host',
+    (host) => {
+      expect(
+        mockAcceptsRedirect([`http://${host}:5174/callback`], `http://${host}:8102/callback`),
+      ).toBe(true);
+      expect(
+        mockAcceptsRedirect([`http://${host}:5174/callback`], `http://${host}:8102/other`),
+      ).toBe(false);
+    },
+  );
+
+  it('names a callback missing exactly when the mock login would refuse it', async () => {
+    const registered = [
+      'http://localhost:5174/callback',
+      'http://localhost/callback',
+      'http://127.0.0.1:5174/callback',
+      'http://[::1]:5174/callback',
+      'https://localhost:5174/callback',
+      'http://localhost:5174/other',
+      'http://evil.test:5174/callback',
+    ];
+    const requested = [
+      'http://localhost:8102/callback',
+      'http://127.0.0.1:8102/callback',
+      'http://[::1]:8102/callback',
+      'http://127.1:8102/callback',
+      'http://LOCALHOST:8102/callback',
+    ];
+    const key = await createSigningKey();
+    for (const uri of registered) {
+      const { app } = createMockAnsattporten({
+        issuer: 'http://localhost:8080/mock/ansattporten',
+        key,
+        testData: {
+          clients: [
+            { clientId: 'c', redirectUris: [uri], postLogoutRedirectUris: [], audience: 'a' },
+          ],
+        },
+      });
+      for (const redirect_uri of requested) {
+        const response = await app.request(
+          `/authorize?${new URLSearchParams({ client_id: 'c', response_type: 'code', code_challenge: 'x', code_challenge_method: 'S256', redirect_uri })}`,
+        );
+        expect({ uri, redirect_uri, accepted: mockAcceptsRedirect([uri], redirect_uri) }).toEqual({
+          uri,
+          redirect_uri,
+          accepted: response.status === 200,
+        });
+      }
+    }
   });
 
   it('prefixes every complete line and holds a partial line until it ends', () => {

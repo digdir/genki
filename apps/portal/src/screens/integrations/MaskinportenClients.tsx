@@ -48,7 +48,7 @@ const problemText = (error: unknown, t: T) =>
   error instanceof ApiError
     ? error.status === 409
       ? t('integMaskinporten.alreadyRegistered')
-      : (error.problem?.errors?.map((e) => e.message).join(' ') ?? error.message)
+      : error.problem?.errors?.map((e) => e.message).join(' ') || error.message
     : t('integConnections.wrong');
 
 export const MaskinportenClients = ({

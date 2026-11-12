@@ -33,17 +33,68 @@ export const numbersIn = (text: string): string[] =>
 export const intersect = <T>(a: Set<T>, b: Set<T>): Set<T> =>
   new Set([...a].filter((x) => b.has(x)));
 
-export const asciiLower = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+export const foldCase = (s: string) => s.normalize('NFC').toLowerCase();
 
-export const containsWord = (text: string, value: string): boolean => {
-  const haystack = asciiLower(text);
-  const needle = asciiLower(value);
+const nordicLetters: Record<string, string> = { æ: 'ae', ø: 'o', å: 'a' };
+
+export const foldNordic = (s: string) =>
+  foldCase(s).replace(/[æøå]/gu, (c) => nordicLetters[c] ?? c);
+
+export const containsWord = (text: string, value: string): boolean =>
+  containsFoldedWord(foldCase(text), foldCase(value));
+
+export const containsFoldedWord = (haystack: string, needle: string): boolean => {
   if (needle === '') return false;
   for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
     const end = at + needle.length;
-    if (isBoundary(text, at) && isBoundary(text, end)) return true;
+    const genitive = haystack[end] === 's' && isBoundary(haystack, end + 1);
+    if (isBoundary(haystack, at) && (isBoundary(haystack, end) || genitive)) return true;
   }
   return false;
+};
+
+const unitAfter = /^[^\S\n]{0,3}(%|\p{L}+)/u;
+const currencyBefore = /(?:^|[^\p{L}])(?:kr|eur|usd)\.?[^\S\n]{0,3}$|[$€£][^\S\n]{0,3}$/u;
+const amountUnits = new Set([
+  '%',
+  'kr',
+  'krone',
+  'kroner',
+  'nok',
+  'mnok',
+  'eur',
+  'euro',
+  'usd',
+  'dollar',
+  'prosent',
+  'tusen',
+  'mill',
+  'million',
+  'millioner',
+  'mrd',
+  'milliard',
+  'milliarder',
+  'ansatte',
+  'årsverk',
+  'stillinger',
+  'personer',
+  'saker',
+  'timer',
+  'dager',
+  'stk',
+]);
+
+export const queryYearsIn = (text: string): Set<string> => {
+  const years = new Set<string>();
+  for (const m of text.matchAll(yearPattern)) {
+    const start = m.index;
+    const end = start + m[0].length;
+    const unit = unitAfter.exec(text.slice(end, end + 16))?.[1]?.toLowerCase();
+    if (unit !== undefined && amountUnits.has(unit)) continue;
+    if (currencyBefore.test(text.slice(Math.max(0, start - 8), start).toLowerCase())) continue;
+    years.add(m[1] as string);
+  }
+  return years;
 };
 
 const isJavaSpace = (c: string) =>

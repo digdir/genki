@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import { exampleOrganisations, mockFetch, type FeatureMockOptions } from '../mock';
+import { exampleLiveDatasets } from '../mock/datasets';
 import { exampleEndpoints } from '../mock/search-engines';
 import { expectAccessible } from '../test-utils';
 
@@ -466,6 +467,50 @@ describe('live dataset detail', () => {
     expect(put?.reason).toBe('Holder med en gang i uken');
   });
 
+  it('saving a Kudos dataset without a start date leaves its source without one', async () => {
+    const own = exampleLiveDatasets.find((d) => d.id === 'nettsider');
+    if (!own) throw new Error('the example datasets changed');
+    const evalueringer = {
+      ...own,
+      id: 'evalueringer',
+      fullId: '999888777/evalueringer',
+      name: 'Evalueringer',
+      source: 'kudos' as const,
+    };
+    const { calls, fetch } = recorded({
+      datasets: [evalueringer],
+      pipelines: {
+        '999888777/evalueringer': [
+          {
+            id: 'kudos',
+            version: 1,
+            spec: {
+              name: 'Evalueringer',
+              source: { kind: 'kudos', types: ['Evaluering'] },
+              schedule: 'none',
+            },
+          },
+        ],
+      },
+    });
+    await renderLive(
+      `#/datasets/${encodeURIComponent('999888777/evalueringer')}?tab=source`,
+      fetch,
+    );
+    // The form mounts again once the pipeline has loaded.
+    fireEvent.change(await screen.findByLabelText('Oppdater'), { target: { value: 'weekly' } });
+    const card = screen.getByRole('region', { name: 'Kilde og innstillinger' });
+    fireEvent.change(within(card).getByLabelText('Begrunnelse'), {
+      target: { value: 'Holder med en gang i uken' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText(/Endringene er lagret/)).toBeTruthy();
+
+    const put = calls.filter((c) => c.method === 'PUT').at(-1);
+    expect(put?.body).toMatchObject({ schedule: 'weekly', source: { kind: 'kudos' } });
+    expect((put?.body as { source: Record<string, unknown> }).source).not.toHaveProperty('since');
+  });
+
   it('uploads dropped files one by one with a result per file, and deletes a file', async () => {
     const { calls, fetch } = recorded();
     await renderLive(`${veiledere}?tab=source`, fetch);
@@ -510,5 +555,59 @@ describe('live dataset detail', () => {
     expect(screen.getByText('Kudos, delt med dere')).toBeTruthy();
     expect(screen.queryByRole('switch', { name: 'Kan brukes som filter' })).toBeNull();
     expect(await screen.findByText('Årsrapport')).toBeTruthy();
+  });
+});
+
+describe('deleting a live dataset', () => {
+  it('deletes a dataset with a reason and says what stays', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`${veiledere}?tab=source`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
+    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
+    expect(within(card).getByText('Ingen tjenester ennå')).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett datasett' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett' }));
+    expect(within(card).getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    fireEvent.change(within(card).getByLabelText('Begrunnelse'), {
+      target: { value: 'Feil modell, lager det på nytt' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett' }));
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv er slettet' }),
+    ).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'DELETE')).toEqual([
+      expect.objectContaining({
+        url: expect.stringMatching(/\/tenants\/999888777\/datasets\/veiledere$/),
+        reason: 'Feil modell, lager det på nytt',
+      }),
+    ]);
+    expect(
+      screen.getByText(
+        'Katalogoppføringen, 1 kilder, 2 opplastede filer og 1 generasjoner i søkemotoren er fjernet.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Ingenting ble igjen i søkemotoren.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Datasett' })).toBeTruthy();
+  });
+
+  it('the delete is disabled while a service reads the dataset', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(`${nettsider}?tab=source`, fetch);
+    const card = await screen.findByRole('region', { name: 'Slett datasettet' });
+    expect(within(card).getByText('Hjelperen')).toBeTruthy();
+    expect(within(card).getByText(/kan ikke slettes mens tjenester bruker det/)).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'Slett datasett' }));
+    fireEvent.change(within(card).getByLabelText('Begrunnelse'), {
+      target: { value: 'Trenger det ikke lenger' },
+    });
+    const confirm = within(card).getByRole('button', { name: 'Slett' });
+    expect(confirm.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(confirm);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' }),
+    ).toBeTruthy();
   });
 });

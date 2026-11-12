@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import type { CatalogItem, CatalogProposal } from '../api/building-blocks';
-import { exampleProposal } from '../data/building-blocks';
+import { exampleBlocks, exampleProposal } from '../data/building-blocks';
 import { mockFetch } from '../mock';
 import type { BuildingBlocksMockOptions } from '../mock/building-blocks';
 import { translator } from '../i18n';
@@ -1303,5 +1303,33 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     expect(screen.queryByText(/could not be read/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
     expectAccessible();
+  });
+});
+
+describe('a step flow in Byggeklosser', () => {
+  const flow = exampleBlocks.find((b) => b.id === 'sf-vedtak') as CatalogItem;
+  const stepType: CatalogItem = { ...flow, id: 'call-operation@1', name: 'Kall en operasjon' };
+
+  it('opens a flow definition in the step-flow editor', async () => {
+    await open('#/building-blocks/step_flow/sf-vedtak');
+    await screen.findByRole('heading', { level: 1, name: 'Vedtaksforberedelse' });
+    expect(screen.getByRole('link', { name: 'Åpne i stegflyteditoren' }).getAttribute('href')).toBe(
+      '#/step-flows/sf-vedtak',
+    );
+  });
+
+  it('gives a step type no link to the step-flow editor', async () => {
+    await open(`#/building-blocks/step_flow/${encodeURIComponent(stepType.id)}`, {
+      items: [...exampleBlocks, stepType],
+    });
+    await screen.findByRole('heading', { level: 1, name: 'Kall en operasjon' });
+    expect(screen.queryByRole('link', { name: 'Åpne i stegflyteditoren' })).toBeNull();
+  });
+
+  it('links the step flow group to the step-flow library', async () => {
+    await open('#/building-blocks');
+    expect(
+      (await screen.findByRole('link', { name: 'Gå til Stegflyter' })).getAttribute('href'),
+    ).toBe('#/step-flows');
   });
 });

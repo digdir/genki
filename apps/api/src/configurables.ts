@@ -13,6 +13,7 @@ import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
 import { connectorSecretOf } from './connectors.js';
+import type { DatasetReader } from './dataset-readers.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -100,6 +101,7 @@ export const createConfigurables = (
     adapters: { knowledge: KnowledgeAdapter[] };
     embeddingResidency?: (model: string) => Residency | undefined;
     testSets: TestSetStore;
+    usedBy?: (dataset: string) => Promise<DatasetReader[]>;
   }) => {
     const { catalog } = deps;
     const ingestion = new IngestionService({
@@ -128,6 +130,7 @@ export const createConfigurables = (
       adapters: deps.adapters.knowledge,
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
+      ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorSecret: connectorSecretOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),

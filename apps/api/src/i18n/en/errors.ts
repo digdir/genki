@@ -4,6 +4,8 @@ import type * as source from '../nb/errors.js';
 export const catalogErrors = {
   onlyOperatorsChangeModels: 'only operators change models',
   routeOnlyAction: 'this action runs only from its own route',
+  testRunnerExpiry: 'a test-runner key needs an expiry of 1 to {testRunnerMaxDays} days',
+  testRunnerCallsPerMinute: 'a test-runner key needs a calls-per-minute limit',
   supportMinutes: '1 to {minutes} minutes',
   noModel: 'no model {id}',
   tenantsCannotRegister: 'tenants cannot register {kind}',
@@ -55,6 +57,7 @@ export const catalogErrors = {
   noDataset: 'no dataset {dataset}',
   onlyTenantTestSets: 'only the tenant or an operator changes its test sets',
   onlyTenantChangesServiceState: 'only the tenant changes the state of its services',
+  onlyTenantChangesEnvironments: 'only the tenant changes the environments of its services',
   serviceStateValues: 'state must be active, paused or archived',
   indexRequired: 'an index is required',
   datasetExists: 'dataset {datasetId} exists',
@@ -102,8 +105,22 @@ export const catalogErrors = {
   hooksOff: 'hooks are off',
   endpointId: 'lowercase letters, digits, dots, dashes',
   httpsAddress: 'an HTTPS address without credentials',
+  familyAndBase: 'name at least one API family and its base',
+  noApiFamily: 'no API in the {family} family; one of {knownFamilies}',
+  familyBase: 'a path under baseURL, or an HTTPS address without credentials',
+  allowedHostList: 'a list of at most 20 host names, each with an optional port',
+  discoveryRules: 'a list of discovery rules',
   apiKeyOrBearer: 'api-key or bearer',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',
+  namedKeyList: 'at most 4 named keys, each a key name',
+  settingOrKey: 'a name is a setting or a key, not both',
+  settingName: 'a lowercase letter, then letters, digits or _, at most 32 characters',
+  settingValue: 'printable text of at most 256 characters',
+  settingNotSecret: 'a setting is not a secret; name it under keys',
+  settingsCount: 'at most 20 settings',
+  keysCount: 'at most 4 named keys',
+  secretReference: 'must be a secret:// reference',
+  onlyOperatorSets: 'only the operator sets {field}, and only on a model connection',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',
@@ -250,6 +267,10 @@ export const knowledgeErrors = {
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',
+  switchHold:
+    'the dataset {dataset} is being switched to another search engine ({engineSwitch}); its pipelines run again once the switch is ready, active or ended',
+  generationNotBuilt:
+    'the generation {generation} was not built: its build job ended without attaching it; retry the switch',
 } satisfies Translation<typeof source.knowledgeErrors>;
 
 export const blockErrors = {
@@ -424,6 +445,8 @@ export const qualityErrors = {
   baseVersionRange: 'baseVersion is a published version from 0 to {latest}',
   inputRequired: 'the input is required',
   lockedOrOpen: 'split is locked or open',
+  caseIdList: 'cases is a non-empty list of case ids',
+  noCaseIn: 'no case {id} in {setId}',
   expectedRequired: 'the expected answer or criteria are required',
   expectedShape: 'expected is a text, or a reference answer and named criteria',
   criteriaCaseNeedsCriteria: 'a criteria case needs criteria',
@@ -480,6 +503,8 @@ export const operationErrors = {
   fixedOperation:
     'the operation and the model are fixed values, not filled in while the service runs',
   noOperationDescriptor: 'there is no operation descriptor {id}',
+  mediaInputWithoutConsent:
+    "{id} takes {mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of {mediaType} with a reason",
   descriptorInReview:
     '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
   kindInTest:
@@ -487,6 +512,8 @@ export const operationErrors = {
   notServiceModel: "the model {modelId} is not one of the service's models",
   noCatalogueModel: 'there is no model {modelId} in the catalogue',
   modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
+  modelBindsOther: 'the model {modelId} binds {bound} for {operation}, not {id}',
+  modelBindsNone: 'the model {modelId} binds no API for {operation}',
   noProcessorRecordForService:
     'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
   decideOnlyThroughPurposeCheck:
@@ -503,6 +530,14 @@ export const operationErrors = {
   descriptorBundled: '{id} is bundled with Genki; upload a new version instead',
   descriptorUploadTooLarge: 'an upload is at most {size} KiB',
   descriptorDescribedInUse: '{id} is described and may be in use; upload a new version instead',
+  descriptorNoFixturesYet: '{id} has no fixtures yet; record one from a try before it is described',
+  fixturesFromTriesInTest: 'fixtures are recorded from tries, in test only',
+  descriptorBundledFixtures:
+    '{id} is bundled with Genki; its fixtures change through a pull request',
+  notAFinishedTry: '{task} is not a finished try of {id}',
+  exchangeNotTheTry: 'the exchange is not the one this try sent and received',
+  fixtureNameTaken: '{id} already has a fixture called {name}',
+  descriptorFixturesAtMost: 'a descriptor has at most {maxDescriptorFixtures} fixtures',
   bodyNotJson: 'the body is not JSON',
   uploadStatusValues:
     'status is review or described; typed means Genki has its own code for the operation',

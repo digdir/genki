@@ -60,7 +60,7 @@ const rules: [RegExp, ApiTag][] = [
     'Work and quality',
   ],
   [
-    /^\/tenants\/\{tenant\}\/(definitions|services|skills|skill-tools|step-flows|playground|proposals|settings|pins|export|import)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(definitions|services|service-drafts|skills|skill-tools|step-flows|playground|proposals|settings|pins|export|import)(\/|$)/,
     'Services and definitions',
   ],
   [/^\/(definitions|services|settings|shared-services)(\/|$)/, 'Services and definitions'],

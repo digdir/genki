@@ -525,6 +525,7 @@ export const RunDetail = ({
       {steps.length > 0 ? (
         <Steps
           steps={steps}
+          media={{ task: runId, load: api.media }}
           isOpen={isOpen}
           onToggle={(i) => {
             const step = steps[i] as TimelineStep;

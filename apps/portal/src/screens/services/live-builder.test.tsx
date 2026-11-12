@@ -23,7 +23,12 @@ afterEach(cleanup);
 
 const liveModels: ModelOption[] = [
   { id: 'foundry-openai/gpt-4.1-mini', residency: 'global', capabilities: ['stream'] },
-  { id: 'foundry-openai/gpt-4.1', residency: 'eu', capabilities: ['stream'] },
+  {
+    id: 'foundry-openai/gpt-4.1',
+    residency: 'eu',
+    capabilities: ['stream'],
+    price: { inputPerThousand: 0.02, outputPerThousand: 0.08 },
+  },
 ];
 
 interface Call {
@@ -102,6 +107,18 @@ describe('the live builder', () => {
     ]);
   });
 
+  it('shows the price per 1,000 tokens the API returns and "ikke priset" only for a model without one', async () => {
+    const { fetch } = recorded();
+    await startBuilder(fetch);
+    await openSection(/^Modell/);
+
+    const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
+    expect(
+      within(models).getByText('Kostnad: 0,02 kr inn og 0,08 kr ut per 1 000 tokens'),
+    ).toBeTruthy();
+    expect(within(models).getAllByText('Kostnad: ikke priset')).toHaveLength(1);
+  });
+
   it('lists only live models with residency in words and no invented cost or speed', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
@@ -110,7 +127,6 @@ describe('the live builder', () => {
     const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
     expect(within(models).getAllByRole('radio')).toHaveLength(2);
     expect(within(models).getByText(/Data behandles i EU/)).toBeTruthy();
-    expect(within(models).getAllByText('Kostnad: ikke priset')).toHaveLength(2);
     expect(within(models).queryByText(/Borealis|Fart:|Kostnad: høy/)).toBeNull();
   });
 
@@ -193,7 +209,7 @@ describe('the live builder', () => {
     expect(confirmation).not.toHaveProperty('by');
   });
 
-  it('shows the published status in the header right after the first publish', async () => {
+  it('opens the published service with its status in the header right after the first publish', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
@@ -216,8 +232,13 @@ describe('the live builder', () => {
         true,
       ),
     );
-    await waitFor(() => expect(within(header).queryByText('Utkast')).toBeNull());
-    expect(within(header).getByText('I bruk')).toBeTruthy();
+    await waitFor(() => expect(window.location.hash).toBe('#/services/ny-tjeneste'));
+    const published = await waitFor(() => {
+      const head = document.querySelector('.service-head') as HTMLElement;
+      expect(within(head).getByText('I bruk')).toBeTruthy();
+      return head;
+    });
+    expect(within(published).queryByText('Utkast')).toBeNull();
   });
 
   it('drops the risk confirmation when the risk level changes', async () => {
@@ -540,5 +561,218 @@ describe('the live builder when the draft is outdated', () => {
         (screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement).value,
       ).toBe('Svar utfyllende.'),
     );
+  });
+});
+
+describe('a new service saved as a draft on the server', () => {
+  const draftPath = /\/services\/(utkast-[0-9a-f]{8})\/draft$/;
+  const draftWrites = (calls: Call[], method: string) =>
+    calls.filter((c) => c.method === method && draftPath.test(c.url));
+  const idOf = (call: Call | undefined) => draftPath.exec(call?.url ?? '')?.[1] ?? '';
+  const nameIn = (call: Call | undefined) =>
+    (call?.body as { definition?: { metadata?: { name?: string } } } | undefined)?.definition
+      ?.metadata?.name;
+  const revisions = (calls: Call[]) =>
+    draftWrites(calls, 'PUT').map((c) => (c.body as { revision: number }).revision);
+  const rename = async (name: string) =>
+    fireEvent.change(await screen.findByLabelText('Navn'), { target: { value: name } });
+  const savedAs = (calls: Call[], name: string) =>
+    waitFor(() => expect(nameIn(draftWrites(calls, 'PUT').at(-1))).toBe(name), { timeout: 3000 });
+
+  const quiet = (
+    refuse?: (method: string, url: string) => Response | undefined,
+    drafts: Record<string, { definition: Record<string, unknown> }> = {},
+  ) => {
+    const calls: Call[] = [];
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
+      features: {
+        quality: { drafts },
+        assistant: {
+          reply: () => ({
+            turnId: 'trn_quiet',
+            status: 'completed',
+            message: 'Jeg venter på mer fra deg.',
+            proposals: [],
+            usage: { tokens: 10, budgetLeftToday: 1000, dailyBudget: 1000 },
+          }),
+        },
+      },
+    });
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? 'GET';
+      const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
+      calls.push({ url, method, body });
+      return refuse?.(method, url) ?? base(input, init);
+    };
+    return { calls, fetch };
+  };
+
+  const startNamed = async (name: string) => {
+    const recording = recorded();
+    const panel = await startBuilder(recording.fetch);
+    await rename(name);
+    await savedAs(recording.calls, name);
+    return { ...recording, panel, id: idOf(draftWrites(recording.calls, 'PUT')[0]) };
+  };
+
+  const elsewhere = async (fetch: typeof globalThis.fetch, hash: string) => {
+    cleanup();
+    localStorage.clear();
+    sessionStorage.clear();
+    const auth = mockAnsattporten({ name: 'Ingrid Berg', organisations: exampleOrganisations });
+    await auth.login();
+    window.location.hash = hash;
+    render(<App auth={auth} fetch={fetch} live />);
+  };
+
+  it('saves nothing while nothing has changed, and saves the first change the person makes', async () => {
+    const { calls, fetch } = quiet();
+    const panel = await startBuilder(fetch);
+    await within(panel).findAllByText('Jeg venter på mer fra deg.');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(calls.filter((c) => c.url.includes('/draft'))).toEqual([]);
+
+    await rename('Permisjonssvar');
+    await savedAs(calls, 'Permisjonssvar');
+    expect(revisions(calls)).toEqual([0]);
+  });
+
+  it('saves the work as a draft under its own id from the first change, and moves the address there', async () => {
+    const { calls, fetch } = recorded();
+    await startBuilder(fetch);
+
+    await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0), {
+      timeout: 3000,
+    });
+    const id = idOf(draftWrites(calls, 'PUT')[0]);
+    expect(revisions(calls)[0]).toBe(0);
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
+  });
+
+  it('keeps the conversation when the address moves, saves every change to the same draft and never reloads it', async () => {
+    const { calls, panel, id } = await startNamed('Permisjonssvar');
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+
+    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBe(panel);
+    expect(within(panel).getByText('Svar på spørsmål om permisjon')).toBeTruthy();
+    await rename('Permisjonssvar for ledere');
+    await savedAs(calls, 'Permisjonssvar for ledere');
+    expect(new Set(draftWrites(calls, 'PUT').map(idOf))).toEqual(new Set([id]));
+    expect(revisions(calls)).toEqual(revisions(calls).map((_, i) => i));
+    expect(calls.filter((c) => c.url.endsWith(`/services/${id}/draft?rebase=clean`))).toEqual([]);
+  });
+
+  it('lists the draft under Tjenester as Utkast and resumes it in another browser', async () => {
+    const { calls, fetch, id } = await startNamed('Permisjonssvar');
+    const saved = draftWrites(calls, 'PUT').length;
+
+    await elsewhere(fetch, '#/services');
+    const link = await screen.findByRole('link', { name: 'Permisjonssvar' });
+    expect(link.getAttribute('href')).toBe(`#/services/${id}`);
+    const row = link.closest('li') as HTMLElement;
+    expect(within(row).getByText('Utkast')).toBeTruthy();
+    expect(within(row).getByText(/av Kari Nordmann/)).toBeTruthy();
+
+    window.location.hash = `#/services/${id}`;
+    expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
+      'Permisjonssvar',
+    );
+    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
+    await rename('Permisjonssvar for ledere');
+    await savedAs(calls, 'Permisjonssvar for ledere');
+    expect(revisions(calls).at(-1)).toBe(saved);
+  });
+
+  it('opens a draft-only service at its setup when the address names a section it does not have', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/quality`);
+
+    expect(((await screen.findByLabelText('Navn')) as HTMLInputElement).value).toBe(
+      'Permisjonssvar',
+    );
+    expect(screen.getByRole('link', { name: 'Oppsett', current: 'page' })).toBeTruthy();
+  });
+
+  const deleteQuestion = /^Vil du slette utkastet til Permisjonssvar\?/;
+  const confirmBox = async () =>
+    (await screen.findByText(deleteQuestion)).parentElement as HTMLElement;
+
+  it('deletes a draft-only service after a confirmation on the page, and the list no longer shows it', async () => {
+    const { calls, id } = await startNamed('Permisjonssvar');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Slett utkastet' }));
+    fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Avbryt' }));
+    expect(screen.queryByText(deleteQuestion)).toBeNull();
+    expect(draftWrites(calls, 'DELETE')).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Slett utkastet' }));
+    fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Slett utkastet' }));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/services'));
+    expect(draftWrites(calls, 'DELETE').map((c) => [idOf(c), c.body])).toEqual([
+      [id, { revision: revisions(calls).length }],
+    ]);
+    expect(await screen.findByText('Ingen tjenester ennå')).toBeTruthy();
+  });
+
+  it('offers to delete only a saved draft of a service never published', async () => {
+    const published = exampleServices.find((s) => s.id === 'rapportassistenten');
+    const { fetch } = quiet(undefined, {
+      rapportassistenten: { definition: published?.latest.definition ?? {} },
+    });
+    await startBuilder(fetch);
+    await screen.findByRole('button', { name: 'Publiser' });
+    expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
+
+    await rename('Permisjonssvar');
+    expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
+
+    window.location.hash = '#/services/rapportassistenten';
+    await screen.findByText(/upublisert utkast/);
+    expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
+  });
+
+  it('says so when the draft could not be deleted, keeps the page and goes on saving', async () => {
+    const { calls, fetch } = quiet((method, url) =>
+      method === 'DELETE' && draftPath.test(url) ? new Response(null, { status: 500 }) : undefined,
+    );
+    await startBuilder(fetch);
+    await rename('Permisjonssvar');
+    await savedAs(calls, 'Permisjonssvar');
+    const id = idOf(draftWrites(calls, 'PUT')[0]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Slett utkastet' }));
+    fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Slett utkastet' }));
+
+    expect(await screen.findByText('Kunne ikke slette utkastet. Prøv igjen om litt.')).toBeTruthy();
+    expect(window.location.hash).toBe(`#/services/${id}`);
+    await rename('Permisjonssvar for ledere');
+    await savedAs(calls, 'Permisjonssvar for ledere');
+  });
+
+  it('publishing clears the draft, opens the published service and drops the draft from the list', async () => {
+    const { calls, id } = await startNamed('Permisjonssvar');
+    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+      target: { value: 'Første versjon av tjenesten' },
+    });
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
+      ).not.toBe('true'),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/services/permisjonssvar'));
+    expect(draftWrites(calls, 'DELETE').map(idOf)).toEqual([id]);
+    window.location.hash = '#/services';
+    const link = await screen.findByRole('link', { name: 'Permisjonssvar' });
+    expect(link.getAttribute('href')).toBe('#/services/permisjonssvar');
+    expect(within(link.closest('li') as HTMLElement).queryByText('Utkast')).toBeNull();
   });
 });

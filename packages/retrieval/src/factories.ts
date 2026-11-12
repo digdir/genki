@@ -2,6 +2,7 @@ import {
   knowledgeProfiles,
   matchAllQuery,
   type DocumentSummary,
+  type FilterKind,
   type FilterValue,
   type Hit,
   type KnowledgePort,
@@ -23,7 +24,7 @@ import {
   type SkippedDocument,
 } from './pipeline.js';
 import { createPlanner } from './planner.js';
-import type { Chunk } from './stages.js';
+import type { Chunk, Detection } from './stages.js';
 import {
   bestContentWindows,
   formatMetadataHeaders,
@@ -57,6 +58,7 @@ export interface RetrievalAttribution {
   content?: number;
   autoFilter?: { field: string; options: string[] };
   autoFilterFallback?: boolean;
+  detections?: Detection[];
   rerankEnabled?: boolean;
   rerankMs?: number;
   rerankError?: string;
@@ -94,6 +96,7 @@ export interface RetrievalFactoryOptions {
   facetCache?: FacetCache;
   now?: () => number;
   filters?: Record<string, FilterInput>;
+  detectionUse?: 'boost' | 'hint';
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -117,7 +120,7 @@ const isoDate = (value: unknown): string | undefined => {
 };
 
 const publishedAtOf = (fields: Record<string, unknown>) =>
-  ['publish_date', 'published_at', 'publishedAt', 'ingested_at']
+  ['publish_date', 'published_at', 'publishedAt']
     .map((name) => isoDate(joined(fields, name)))
     .find((v) => v !== undefined);
 
@@ -183,6 +186,7 @@ const attributionOf = (
     ...optional('content', trace.hitsPerStrategy.content),
     ...(detected ? { autoFilter: { field: detected[0], options: options(detected[1]) } } : {}),
     ...(trace.autoFilterFallback ? { autoFilterFallback: true } : {}),
+    ...(trace.detections ? { detections: trace.detections } : {}),
     ...(trace.rerank.status === 'off' ? {} : { rerankEnabled: true, rerankMs: trace.rerank.ms }),
     ...optional('rerankError', trace.rerank.error),
     ...(caller ? { callerFilter: toFilterMapFields(caller) } : {}),
@@ -193,17 +197,32 @@ const attributionOf = (
 
 const toFilters = (
   selections: FilterSelection[] | undefined,
+  textFields: Set<string> = new Set(),
 ): Record<string, FilterValue> | undefined => {
   const entries = (selections ?? [])
     .filter((s) => s.selectedOptions.length > 0)
     .map((s): [string, FilterValue] => [
       s.field,
-      s.valueType === 'integer' ? s.selectedOptions.map(Number) : s.selectedOptions,
+      textFields.has(s.field)
+        ? { contains: s.selectedOptions }
+        : s.valueType === 'integer'
+          ? s.selectedOptions.map(Number)
+          : s.selectedOptions,
     ]);
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
 
 const kindName: Record<string, string> = { text: 'contains' };
+
+const firstKind = (declared: FilterKind | FilterKind[]) =>
+  (Array.isArray(declared) ? declared[0] : declared) ?? 'select';
+
+const textFieldsOf = (knowledge: KnowledgePort) =>
+  new Set(
+    Object.entries(knowledge.info().filters).flatMap(([field, declared]) =>
+      firstKind(declared) === 'text' ? [field] : [],
+    ),
+  );
 
 export const createRetrievalBackend = (options: RetrievalFactoryOptions) => {
   const config = retrievalConfig.parse(options.config ?? {});
@@ -229,6 +248,7 @@ export const createRetrievalBackend = (options: RetrievalFactoryOptions) => {
       config,
       facetCache,
       ...optional('now', options.now),
+      ...optional('detectionUse', options.detectionUse),
     });
     for (const c of result.chunks) remember(c.id, c.fields);
     return result;
@@ -306,6 +326,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
   const backend = createRetrievalBackend({
     ...options,
     config: searchRerankByDefault(options.config, options.rerank),
+    detectionUse: 'hint',
   });
   return {
     search: async (
@@ -316,7 +337,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
       const result = await backend.run(
         queries,
         opts.userIntent,
-        backend.toFilters(opts.filters),
+        backend.toFilters(opts.filters, textFieldsOf(options.knowledge)),
         signal,
       );
       return {
@@ -331,7 +352,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
     filterFields: async (signal: AbortSignal) => {
       signal.throwIfAborted();
       return Object.entries(options.knowledge.info().filters).map(([field, declared]) => {
-        const kind = (Array.isArray(declared) ? declared[0] : declared) ?? 'select';
+        const kind = firstKind(declared);
         return {
           field,
           type: kindName[kind] ?? kind,

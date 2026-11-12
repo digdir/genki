@@ -10,6 +10,7 @@ export interface SeenRequest {
 export interface FakeReply {
   status: number;
   json?: unknown;
+  text?: string;
   sse?: { event?: string; data: unknown }[];
   delayMs?: number;
 }
@@ -21,16 +22,20 @@ export interface FakeServer {
 }
 
 export const fakeHttp = async (
-  reply: (body: Record<string, unknown>, attempt: number, path: string) => FakeReply,
+  reply: (
+    body: Record<string, unknown>,
+    attempt: number,
+    path: string,
+  ) => FakeReply | Promise<FakeReply>,
 ): Promise<FakeServer> => {
   const seen: SeenRequest[] = [];
   const server: Server = createServer((req, res) => {
     let raw = '';
     req.on('data', (c: Buffer) => (raw += c.toString()));
-    req.on('end', () => {
+    req.on('end', async () => {
       const body = JSON.parse(raw || '{}') as Record<string, unknown>;
       seen.push({ path: req.url ?? '', headers: req.headers, body });
-      const r = reply(body, seen.length, req.url ?? '');
+      const r = await reply(body, seen.length, req.url ?? '');
       setTimeout(() => {
         if (r.sse) {
           res.writeHead(r.status, { 'content-type': 'text/event-stream' });
@@ -39,6 +44,11 @@ export const fakeHttp = async (
             res.write(`${frame.event ? `event: ${frame.event}\n` : ''}data: ${data}\n\n`);
           }
           res.end();
+          return;
+        }
+        if (r.text !== undefined) {
+          res.writeHead(r.status, { 'content-type': 'text/plain' });
+          res.end(r.text);
           return;
         }
         res.writeHead(r.status, { 'content-type': 'application/json' });

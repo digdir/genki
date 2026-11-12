@@ -33,6 +33,13 @@ edges:
     witness:
       file: packages/eval/src/feedback.ts
       imports: '@genai/contracts'
+  - to: port-model
+    label: Marks run sources as untrusted data for the criteria judge
+    kind: call
+    target: call
+    witness:
+      file: packages/eval/src/evaluators.ts
+      imports: '@genai/port-model'
   - to: port-knowledge
     label: Search and fetch through the knowledge port
     kind: call
@@ -47,6 +54,13 @@ edges:
     witness:
       file: packages/eval/src/scripts/kudos-live.ts
       imports: '@genai/providers-typesense'
+  - to: ingest
+    label: Kudos client and the earlier-ids check for the id map script
+    kind: call
+    target: call
+    witness:
+      file: packages/eval/src/scripts/kudos-earlier-ids.ts
+      imports: '@genai/ingest'
 contract:
   - name: run config
     file: packages/eval/src/strategy.ts

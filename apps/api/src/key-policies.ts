@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
-import { boundService, type KeyPolicy, type LegacyKeyScope } from '@genai/identity';
+import {
+  boundService,
+  KEY_SCOPE_RIGHTS,
+  type KeyPolicy,
+  type LegacyKeyScope,
+} from '@genai/identity';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import type { AdminHandler, AdminOutcome } from './admin.js';
 import { changeReasonOf, isReasonLongEnough, minimumReasonLength } from './http.js';
 import { t } from './i18n/index.js';
-import { carriesAltinnActions, type Right, rights, rightsOf } from './rights.js';
+import { type Right, rightsAreChecked, rightsOf } from './rights.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import type { KeyPolicyStore, TenantApiKeys, TenantKeyPolicy } from './routes/portal-routes.js';
 
@@ -97,11 +102,14 @@ const failed = (target: string, path: string, message: string): AdminOutcome => 
 const tenantOnly = (principal: Principal, tenant: string) =>
   principal.kind !== 'operator' && !principal.actor && principal.tenant === tenant;
 
-const impliedRights = (scopes: readonly string[]): readonly Right[] =>
-  scopes.includes('admin') ? rights : scopes.includes('ingest') ? ['manage-datasets'] : [];
+const impliedRights = (scopes: readonly string[]): readonly Right[] => [
+  ...new Set(
+    scopes.flatMap((s) => (Object.hasOwn(KEY_SCOPE_RIGHTS, s) && KEY_SCOPE_RIGHTS[s]) || []),
+  ),
+];
 
 const rightBeyondHolder = (principal: Principal, tenant: string, scopes: readonly string[]) => {
-  if (!carriesAltinnActions(principal)) return undefined;
+  if (!rightsAreChecked(principal)) return undefined;
   const held = rightsOf(principal, tenant);
   return impliedRights(scopes).find((r) => !held.has(r));
 };

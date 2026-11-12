@@ -14,6 +14,7 @@ import { PostgresAdminRecords } from './admin-records.js';
 import { PostgresClients } from './clients.js';
 import { PostgresTraceDeliveries } from './trace-deliveries.js';
 import { PostgresWebhookDeliveries } from './webhook-deliveries.js';
+import { PostgresProviderObjects } from './provider-objects.js';
 import { PostgresTriggerRuns } from './trigger-runs.js';
 import { PostgresConfigEntries } from './config-entries.js';
 import { PostgresConnections } from './connections.js';
@@ -65,6 +66,7 @@ export {
 export { PostgresClients } from './clients.js';
 export { PostgresTraceDeliveries } from './trace-deliveries.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
+export { PostgresProviderObjects } from './provider-objects.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
 export { PostgresUsageBuckets } from './usage.js';
 export { PostgresLeaderLease } from './leader-lease.js';
@@ -212,6 +214,7 @@ export const createPostgresStores = async (
     webhookDeliveries: new PostgresWebhookDeliveries(pool),
     traceDeliveries: new PostgresTraceDeliveries(pool),
     triggerRuns: new PostgresTriggerRuns(pool),
+    providerObjects: new PostgresProviderObjects(pool),
     configEntries: new PostgresConfigEntries(pool),
     ingestionExecutions: new PostgresIngestionExecutions(pool),
     rateLimits: new PostgresRateLimiter(pool),
