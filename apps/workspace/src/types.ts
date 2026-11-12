@@ -1,4 +1,5 @@
 import type { Locale } from '@genai/i18n';
+import type { StreamedStep, StreamStep } from './procedure';
 import type { ResultTable } from './ResultTable';
 export interface Organisation {
   orgNumber: string;
@@ -90,6 +91,14 @@ export interface UserMessage {
   attachments?: string[];
 }
 
+export interface MediaAttachment {
+  id: string;
+  mediaType: string;
+  bytes: number;
+  step?: string;
+  url: string;
+}
+
 export interface AssistantMessage {
   id: string;
   role: 'assistant';
@@ -102,6 +111,17 @@ export interface AssistantMessage {
   noAnswer?: boolean;
   table?: ResultTable;
   csv?: string;
+  media?: MediaAttachment[];
+  procedure?: AnswerProcedure;
+}
+
+/** How the assistant worked on an answer, from the step frames in the stream. */
+export interface AnswerProcedure {
+  steps: readonly StreamedStep[];
+  /** Documents the run reads from in all, when the platform says. */
+  read?: number;
+  startedAt: number;
+  finishedAt?: number;
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -112,6 +132,7 @@ export interface ChatReply {
   noAnswer?: boolean;
   table?: ResultTable;
   csv?: string;
+  media?: MediaAttachment[];
   task?: string;
   conversationId?: string;
   failure?: ChatFailure;
@@ -149,9 +170,11 @@ export interface WorkspaceApi {
     input?: FormInput,
     conversation?: { id?: string },
     documents?: AttachedDocument[],
+    onStep?: (step: StreamStep) => void,
   ): Promise<ChatReply>;
   conversations?: ConversationApi;
   sendFeedback(input: FeedbackInput): Promise<void>;
+  media?(url: string, signal?: AbortSignal): Promise<Blob>;
   failedRuns?(tenant: string, signal?: AbortSignal): Promise<FailedRun[]>;
   rights?(tenant: string, signal?: AbortSignal): Promise<string[]>;
   lockdown?(signal?: AbortSignal): Promise<boolean>;

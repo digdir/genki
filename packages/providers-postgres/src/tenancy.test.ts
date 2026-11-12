@@ -301,6 +301,7 @@ describe('API keys', () => {
       agents: [AGENT],
       prefix: 'hr_',
       lastFour: 'abcd',
+      createdAt: '2026-10-06T11:00:00.000Z',
     });
 
     const found = await keys.findByDigest(digest(1));
@@ -315,6 +316,9 @@ describe('API keys', () => {
       scopes: ['query'],
       datasets: [],
       agents: [AGENT],
+      prefix: 'hr_',
+      lastFour: 'abcd',
+      createdAt: '2026-10-06T11:00:00.000Z',
     });
     expect(await keys.usage(ORG_A, 'key-ka')).toEqual({
       count: 2,
@@ -349,6 +353,46 @@ describe('API keys', () => {
       service: 'kunnskapsassistenten',
     });
     expect(verified.grants.allowedOverrides).toEqual(['retrieval.*', 'answer.language']);
+  });
+
+  it('keeps the environments a service key may use, and confines the key to them', async () => {
+    const keys = new PostgresApiKeys(runtime);
+    await keys.add({
+      id: 'key-environments',
+      name: 'KA-server med test',
+      digest: apiKeyDigest('gp_environment_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    await keys.add({
+      id: 'key-no-environments',
+      name: 'KA-server',
+      digest: apiKeyDigest('gp_plain_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+    });
+
+    expect((await keys.list(ORG_A)).find((k) => k.id === 'key-environments')).toMatchObject({
+      environments: ['prod', 'test'],
+    });
+    expect((await keys.list(ORG_A)).find((k) => k.id === 'key-no-environments')).not.toHaveProperty(
+      'environments',
+    );
+    expect((await verifyApiKey(keys, 'gp_environment_key')).principal.confinedTo).toEqual({
+      tenant: ORG_A,
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    expect(await keys.list(ORG_B)).not.toContainEqual(
+      expect.objectContaining({ id: 'key-environments' }),
+    );
   });
 
   it('keeps the calls per minute of a key', async () => {

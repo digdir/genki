@@ -91,9 +91,12 @@ const nb = {
   keepOrder: { label: 'Behold rekkefølgen fra søket' },
   descriptor: {
     label: 'Operasjon',
-    help: 'En gjennomgått beskrivelse av operasjonen, for eksempel openai/decide@1.',
+    help: 'En gjennomgått operasjon som er tatt i bruk her, i formen leverandør/type@versjon.',
   },
-  model: { label: 'Modell', help: 'En av modellene til tjenesten. Tom betyr hovedmodellen.' },
+  model: {
+    label: 'Modell',
+    help: 'En av modellene til tjenesten som kan utføre operasjonen. Tom betyr modellen tjenesten har valgt for denne typen operasjon, ellers hovedmodellen.',
+  },
   answerLength: {
     label: 'Lengde på svaret',
     values: { short: 'Kort', medium: 'Middels', long: 'Langt' },
@@ -158,9 +161,12 @@ const en: Record<keyof typeof nb, LabelText> = {
   keepOrder: { label: 'Keep the order from the search' },
   descriptor: {
     label: 'Operation',
-    help: 'A reviewed operation descriptor, for example openai/decide@1.',
+    help: 'A reviewed operation that is in use here, as provider/kind@version.',
   },
-  model: { label: 'Model', help: "One of the service's models. Empty means the main model." },
+  model: {
+    label: 'Model',
+    help: "One of the service's models that can perform the operation. Empty means the model the service has chosen for this kind of operation, else the main model.",
+  },
   answerLength: {
     label: 'Length of the answer',
     values: { short: 'Short', medium: 'Medium', long: 'Long' },

@@ -20,6 +20,7 @@ export interface CapabilityEntry {
   inputSchema?: JSONSchema;
   inputFields?: InputField[];
   version?: number;
+  environment?: string;
   datasets?: string[];
 }
 
@@ -33,14 +34,21 @@ export type ResolveErrorCode =
   | 'dataset_not_authorized'
   | 'no_dataset_scope'
   | 'service_paused'
-  | 'version_not_found';
+  | 'version_not_found'
+  | 'invalid_environment'
+  | 'environment_not_authorized'
+  | 'environment_not_found';
 
 export type Resolution =
   { ok: true; entry: CapabilityEntry } | { ok: false; code: ResolveErrorCode; message: string };
 
 export interface CapabilityResolver {
   list(principal: Principal): Promise<CapabilityEntry[]>;
-  resolve(principal: Principal, name: string, options?: { version?: number }): Promise<Resolution>;
+  resolve(
+    principal: Principal,
+    name: string,
+    options?: { version?: number; environment?: string },
+  ): Promise<Resolution>;
 }
 
 export interface Authenticator {
@@ -95,6 +103,23 @@ export const defaultOutputSchema: JSONSchema = {
     conversation_id: {
       type: 'string',
       description: 'Handle for this conversation; pass it back to continue.',
+    },
+    markers: {
+      type: 'array',
+      description:
+        'Present only when the service cites excerpts: every marker in the answer, in order, with the one excerpt (chunk_id) and the document it leads to.',
+      items: {
+        type: 'object',
+        properties: {
+          marker: {
+            type: 'string',
+            description: 'The marker as written in the answer, without brackets.',
+          },
+          chunk_id: { type: 'string' },
+          document: { type: 'string' },
+        },
+        required: ['marker', 'chunk_id', 'document'],
+      },
     },
     chunks: {
       type: 'array',
@@ -480,6 +505,31 @@ const textOf = (parts: Part[], fields: Record<string, unknown> | undefined) => {
     : JSON.stringify(fields, null, 2);
 };
 
+const markersIn = (parts: Part[], known: Set<string>) => {
+  const marked = parts.find(
+    (p) =>
+      p.mime !== SOURCES_MIME &&
+      isRecord(p.meta) &&
+      p.meta.citeBy === 'excerpt' &&
+      Array.isArray(p.meta.citations),
+  );
+  const citations = (marked?.meta?.citations ?? []) as unknown[];
+  return citations
+    .filter(
+      (c): c is { index: number; chunkId: string; document?: string } =>
+        isRecord(c) &&
+        typeof c.index === 'number' &&
+        typeof c.chunkId === 'string' &&
+        known.has(c.chunkId),
+    )
+    .sort((a, b) => a.index - b.index)
+    .map((c) => ({
+      marker: String(c.index),
+      chunk_id: c.chunkId,
+      document: c.document ?? c.chunkId,
+    }));
+};
+
 export const defaultOutput = (parts: Part[]): ToolOutput => {
   const fields = fieldsOf(parts);
   const text = textOf(parts, fields);
@@ -509,6 +559,8 @@ export const defaultOutput = (parts: Part[]): ToolOutput => {
     }
   }
   if (chunks.length > 0) structured.chunks = chunks;
+  const markers = markersIn(parts, new Set(chunks.map((c) => String(c.chunk_id))));
+  if (markers.length > 0) structured.markers = markers;
   return { text, structured };
 };
 
@@ -540,6 +592,7 @@ const present = (v: unknown) =>
 
 export const structuredContent = (structured: Record<string, unknown>, conversationId: string) => {
   const out: Record<string, unknown> = { conversation_id: conversationId };
+  if (present(structured.markers)) out.markers = structured.markers;
   const chunks = Array.isArray(structured.chunks)
     ? (structured.chunks as Record<string, unknown>[])
     : [];

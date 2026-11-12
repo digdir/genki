@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { inEnglish } from '@genai/i18n/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PlaygroundResult } from '../../api/playground';
 import { AnswerCard, groupSources } from './AnswerCard';
@@ -69,11 +70,28 @@ describe('an answer in Prøveområde', () => {
       'https://kudos.dfo.no/dokumenter?query=Kudos-rapport',
     );
     const item = screen.getByRole('link', { name: 'Kudos-rapport' }).closest('li') as HTMLElement;
-    expect(item.textContent).toContain('versjon 2, 1. mars 2026');
-    const details = item.querySelector('details') as HTMLDetailsElement;
-    expect(details.open).toBe(false);
-    expect((details.textContent ?? '').length).toBeLessThan(320);
+    expect(item.textContent).toContain('Publisert 1. mars 2026');
+    const toggle = screen.getByRole('button', { name: 'Utdrag fra Kudos-rapport' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    const excerpt = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
+    expect(excerpt?.hidden).toBe(true);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(excerpt?.hidden).toBe(false);
+    expect(excerpt?.textContent).toBe('Permisjon gis etter søknad. '.repeat(30).trim());
     expect(screen.queryByRole('link', { name: 'Notat' })).toBeNull();
+  });
+
+  it('shows no publish date for a source without one', () => {
+    card(
+      result({
+        text: 'Du har rett til permisjon.',
+        sources: [{ chunkId: 'c1', title: 'Kudos-rapport', url: 'digdir://doc/48211' }],
+      }),
+    );
+
+    const item = screen.getByRole('link', { name: 'Kudos-rapport' }).closest('li') as HTMLElement;
+    expect(item.textContent).not.toContain('Publisert');
   });
 
   it('does not label an empty answer as made with AI', () => {
@@ -142,7 +160,7 @@ describe('answer text in Prøveområde', () => {
     expect(container.querySelector('a[href^="javascript"]')).toBeNull();
   });
 
-  it('lists a document once with all its [N] and excerpts, however many chunks were cited', () => {
+  it('lists a document once with all its excerpts, however many chunks were cited', () => {
     const r = result({
       text: 'Først [1] og så [2], samt [3].',
       sources: [
@@ -161,11 +179,208 @@ describe('answer text in Prøveområde', () => {
       ['Årsrapport 2024', [3]],
     ]);
 
-    const { container } = card(r);
-    const items = container.querySelectorAll('.playground-sources > ol > li');
+    card(r);
+    const items = within(screen.getByRole('list', { name: 'Kilder' })).getAllByRole('listitem');
     expect(items).toHaveLength(2);
     expect(items[0]?.textContent).toContain('Første utdrag.');
     expect(items[0]?.textContent).toContain('Andre utdrag.');
     expect(screen.getAllByText('Tildelingsbrev 2024')).toHaveLength(1);
+    expect(items[0]?.getAttribute('value')).toBe('1');
+    expect(items[1]?.getAttribute('value')).toBe('3');
+    expect(items[0]?.textContent).not.toMatch(/\[\d+\]/);
+  });
+
+  it('numbers an uncited source after the highest citation so it never takes a cited number', () => {
+    card(
+      result({
+        text: 'Først [1] og så [2].',
+        sources: [
+          { chunkId: 'c1', title: 'Tildelingsbrev 2024', document: '48211', text: 'Første.' },
+          { chunkId: 'c2', title: 'Tildelingsbrev 2024', document: '48211', text: 'Andre.' },
+          { chunkId: 'c3', title: 'Årsrapport 2024', document: '48300', text: 'Tredje.' },
+        ],
+        citations: [
+          { index: 1, chunkId: 'c1' },
+          { index: 2, chunkId: 'c2' },
+        ],
+      }),
+    );
+    const items = within(screen.getByRole('list', { name: 'Kilder' })).getAllByRole('listitem');
+    expect(items.map((item) => item.getAttribute('value'))).toEqual(['1', '3']);
+  });
+
+  it('renders a long run of unclosed link brackets in an excerpt in linear time', () => {
+    const started = performance.now();
+    card(
+      result({
+        text: 'Svar [1].',
+        sources: [{ chunkId: 'c1', title: 'Rapport', text: '[a'.repeat(50_000) }],
+        citations: [{ index: 1, chunkId: 'c1' }],
+      }),
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it('renders a long run of unclosed link URLs in an excerpt in linear time', () => {
+    const started = performance.now();
+    card(
+      result({
+        text: 'Svar [1].',
+        sources: [{ chunkId: 'c1', title: 'Rapport', text: '[a](http://x'.repeat(50_000) }],
+        citations: [{ index: 1, chunkId: 'c1' }],
+      }),
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe('source excerpts in Prøveområde', () => {
+  it('renders Markdown headings, bold, lists and safe links without flattening or truncating it', () => {
+    const text = `# Veiledning\n\n**Permisjon**\n\n- Vilkår: søknad\n- Frist: juni\n\n${'Mer informasjon. '.repeat(30)}\n\nLes [veilederen](https://example.no/guide)`;
+    card(result({ sources: [{ chunkId: 'c1', title: 'Veileder', text }] }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Utdrag fra Veileder' }));
+    const excerpt = screen.getByRole('region', { name: 'Utdrag fra Veileder' });
+    expect(within(excerpt).getByText('Veiledning').closest('.answer-heading')).toBeTruthy();
+    expect(within(excerpt).getByText('Permisjon').tagName).toBe('STRONG');
+    expect(
+      within(excerpt)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Vilkår: søknad', 'Frist: juni']);
+    const link = within(excerpt).getByRole('link', { name: 'veilederen' });
+    expect(link.getAttribute('href')).toBe('https://example.no/guide');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')?.split(' ')).toEqual(
+      expect.arrayContaining(['noopener', 'noreferrer']),
+    );
+    expect(excerpt.textContent).not.toContain('**');
+    expect(excerpt.textContent).toContain('Mer informasjon. '.repeat(30).trim());
+    expect(excerpt.tabIndex).toBe(0);
+  });
+
+  it.each(['excerpt', 'details'] as const)(
+    'neutralises scripts, raw HTML and unsafe Markdown links in the %s view',
+    (view) => {
+      const text =
+        '<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<svg onload=alert(1)></svg>\n\n<a href="javascript:alert(1)">raw link</a>\n\n[x](javascript:alert(1)) [data](data:text/html,bad)';
+      const { container } = card(result({ sources: [{ chunkId: 'c1', title: 'Veileder', text }] }));
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: view === 'excerpt' ? 'Utdrag fra Veileder' : 'Detaljer om Veileder',
+        }),
+      );
+      const excerpt = screen.getByRole('region', {
+        name: view === 'excerpt' ? 'Utdrag fra Veileder' : 'Tekst fra Veileder',
+      });
+      expect(excerpt.querySelector('script, img, svg, a, [onerror], [onload]')).toBeNull();
+      expect(excerpt.textContent).toContain('<script>alert(1)</script>');
+      expect(excerpt.textContent).toContain('<img src=x onerror=alert(1)>');
+      expect(container.querySelector('a[href^="javascript:"], a[href^="data:"]')).toBeNull();
+    },
+  );
+
+  it('names the open excerpt and the full text in the details view apart', () => {
+    card(result({ sources: [{ chunkId: 'c1', title: 'Veileder', text: 'Hele teksten.' }] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Utdrag fra Veileder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detaljer om Veileder' }));
+
+    expect(screen.getByRole('region', { name: 'Utdrag fra Veileder' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Tekst fra Veileder' })).toBeTruthy();
+  });
+
+  it('keeps the dataset and a single ordinal in the list, with technical identifiers behind info', () => {
+    card(
+      result({
+        sources: [
+          {
+            chunkId: 'digdir/ai-policy::chunk-123',
+            document: 'digdir/ai-policy::doc-456',
+            title: 'Veileder',
+            headers: ['Kapittel 1'],
+            version: 2,
+            text: 'Utdrag.',
+          },
+        ],
+        citations: [{ index: 1, chunkId: 'digdir/ai-policy::chunk-123' }],
+      }),
+    );
+    const sources = screen.getByRole('list', { name: 'Kilder' });
+    const [row, ...others] = within(sources).getAllByRole('listitem');
+    if (!(row instanceof HTMLLIElement)) throw new Error('expected one source row');
+    expect(others).toHaveLength(0);
+    expect(row.value).toBe(1);
+    expect(row.textContent).toContain('digdir/ai-policy');
+    expect(sources.textContent).not.toContain('[1]');
+    expect(row.textContent).not.toMatch(/chunk-123|doc-456|Kapittel 1|Publisert/);
+    expect(screen.queryByText('digdir/ai-policy::chunk-123')).toBeNull();
+    const info = within(row).getByRole('button', { name: 'Detaljer om Veileder' });
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(info);
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('digdir/ai-policy::chunk-123')).toBeTruthy();
+    expect(screen.getByText('digdir/ai-policy::doc-456')).toBeTruthy();
+    expect(screen.getByText('Versjon')).toBeTruthy();
+    fireEvent.click(info);
+    expect(screen.queryByText('digdir/ai-policy::chunk-123')).toBeNull();
+  });
+
+  it('names each disclosure after its source, connects it to its content, and closes on a second click', () => {
+    card(
+      result({
+        sources: [
+          { chunkId: 'c1', title: 'Første', excerpt: '**Utdrag**' },
+          { chunkId: 'c2', title: 'Andre', excerpt: '- Liste' },
+        ],
+      }),
+    );
+    const first = screen.getByRole('button', { name: 'Utdrag fra Første' });
+    const second = screen.getByRole('button', { name: 'Utdrag fra Andre' });
+    expect(first.tagName).toBe('BUTTON');
+    expect(first.getAttribute('aria-controls')).not.toBe(second.getAttribute('aria-controls'));
+    fireEvent.click(first);
+    expect(screen.getByRole('region', { name: 'Utdrag fra Første' }).id).toBe(
+      first.getAttribute('aria-controls'),
+    );
+    expect(second.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(first);
+    expect(first.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('region', { name: 'Utdrag fra Første' })).toBeNull();
+  });
+
+  it('translates source controls, publication labels and missing titles into English', () => {
+    render(
+      inEnglish(
+        <AnswerCard
+          result={result({
+            text: 'Answer [1].',
+            sources: [{ chunkId: 'secret-id', text: 'Excerpt', publishedAt: '2026-03-01' }],
+            citations: [{ index: 1, chunkId: 'secret-id' }],
+          })}
+          saveExpanded={false}
+          onSave={() => {}}
+          onShowCall={() => {}}
+        />,
+      ),
+    );
+    expect(screen.getByText('Untitled source')).toBeTruthy();
+    expect(screen.getByText('Published 1 March 2026')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Excerpt from Untitled source' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Details about Untitled source' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Source 1: Untitled source' })).toBeTruthy();
+    expect(screen.queryByText('secret-id')).toBeNull();
+  });
+
+  it.each(['', '   '])('uses the translated fallback for a blank title (%j)', (title) => {
+    card(
+      result({
+        sources: [{ chunkId: 'secret-id', title, url: 'https://example.no', text: 'Utdrag.' }],
+      }),
+    );
+
+    expect(screen.getByRole('link', { name: 'Kilde uten tittel' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Utdrag fra Kilde uten tittel' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Detaljer om Kilde uten tittel' }));
+    expect(screen.getByRole('heading', { name: /Kilde uten tittel/ })).toBeTruthy();
   });
 });

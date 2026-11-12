@@ -155,6 +155,15 @@ export const serviceUi = {
     published: 'Version {version} is published and in use.',
   },
   serviceTest: {
+    publishedTitle: 'Test the step that calls an operation',
+    publishedNote:
+      'The flow has steps that call an operation. A draft cannot call operations, so this test runs the published version v{version}. Changes you have not published are not included. The test uses the model and costs the same as a normal run.',
+    publishedMissing:
+      'The flow has steps that call an operation, and a draft cannot call operations. Publish the service to test them.',
+    publishedRun: 'Run the test against v{version}',
+    publishedFailed: 'The test against the published version failed: {detail}',
+    draftNoOperations:
+      'The playground below runs the draft. Steps that call an operation are refused there.',
     queryRequired: 'Write something for the service to answer.',
     runsLive: 'Runs the version in use once.',
     runsDraft: 'Runs the draft once without publishing it.',
@@ -274,6 +283,10 @@ export const serviceUi = {
     active: 'Active',
     revokedTag: 'Revoked',
     created: ' · created {when}',
+    createdBy: ' · created {when} by {who}',
+    modelsAllowed: 'Can use models in the locked environment',
+    modelsRefused:
+      'Cannot use models in the locked environment: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     unknownDate: 'unknown date',
     rotated: ' · rotated',
     clientLine: 'Frontend: {client}',
@@ -358,13 +371,16 @@ export const serviceUi = {
     temperatureIgnored: 'The model you chose does not support temperature. The value is not sent.',
     temperatureFixed:
       'The model you chose always uses temperature {value}. The value here is not used.',
+    flowVersionLatest: '{id}, version {version} (latest)',
+    flowPinned: 'The service uses version {version}.',
+    newVersionAvailable: 'A new version is available: {flow} v{version}.',
+    updateFlow: 'Update to v{version}',
     flowOption: '{id}, version {version}',
     flowUnpublished: '{flow} (not published by the organisation)',
     flow: 'Step flow',
     flowsLoading: 'Loading the step flows …',
     flowsNone: 'The organisation has no published step flows yet.',
     flowsPick: 'Choose a published step flow from the library.',
-    flowPlaceholder: 'Choose step flow',
     flowRequired: 'Choose which step flow the service should run.',
     openEditor: 'Open in the step flow editor',
     block: 'Step type {block}',

@@ -19,7 +19,7 @@ import {
 } from '@genai/definitions';
 import { bundledJudge, runState, type StoredRun } from '@genai/eval';
 import { type SecretResolver, type Strategy } from '@genai/kernel';
-import { residencies, type Residency } from '@genai/port-model';
+import { residencies, servesModelPort, type Residency } from '@genai/port-model';
 import {
   A2aClient,
   jsonRpcInterface,
@@ -655,7 +655,7 @@ export const createBuildingBlocksModule =
       );
       for (const model of deps.models.describe()) {
         const item = catalogModels.get(model.id) ?? deps.catalog.get('model', model.id);
-        if (!model.enabled) continue;
+        if (!model.enabled || !servesModelPort(model)) continue;
         if (item && !catalogModels.has(model.id)) continue;
         const scope = item?.scope ?? platformScope;
         out.push({

@@ -1,6 +1,12 @@
 import type { DatasetConfig } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
-import { attachGeneration, knowledgeTables, partitionOf } from './partitions.js';
+import {
+  attachGeneration,
+  dropGeneration,
+  generationOf,
+  knowledgeTables,
+  partitionOf,
+} from './partitions.js';
 
 /**
  * The first key of every generation's advisory lock; the second is `hashtext(generation)`. Writers
@@ -299,6 +305,8 @@ export const recallBaseline = async (owner: Pool, generation: string, measured: 
 
 /** The heavy work above, bound to the knowledge server's owner login, as the worker runs it. */
 export const knowledgeHeavyWork = (owner: Pool) => ({
+  state: async (generation: string) => (await generationOf(owner, generation))?.state,
+  drop: (generation: string) => dropGeneration(owner, generation),
   chunks: (generation: string) => generationChunks(owner, generation),
   vacuum: (generation: string, options: VacuumOptions) =>
     vacuumGeneration(owner, generation, options),

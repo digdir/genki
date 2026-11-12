@@ -21,10 +21,12 @@ import {
   type createTokenVerifier,
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
+import type { BlobStore } from '@genai/port-blob';
+import type { ProcessorRecordCheck } from '@genai/port-model';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
-import { envSecrets, type EventLog } from '@genai/kernel';
+import { envSecrets, type EventLog, type MediaOutputConfig } from '@genai/kernel';
 import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
 import { actorNames } from './actor-names.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
@@ -34,6 +36,7 @@ import {
   maskinportenClientsModule,
 } from './maskinporten-clients.js';
 import { onboardingModule } from './onboarding.js';
+import { kernelTaskReader } from './timeline.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 
 export const digdir = '991825827';
@@ -202,7 +205,7 @@ export const setup = (
 export const fakeModels = {
   endpoints: {
     fake: {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modell.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
     },
@@ -240,6 +243,10 @@ export interface BootOptions {
   lockdown?: boolean;
   egress?: EgressOptions;
   log?: EventLog;
+  mediaOutput?: MediaOutputConfig;
+  processorRecords?: ProcessorRecordCheck;
+  blobStore?: BlobStore;
+  fakeKey?: string;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -260,7 +267,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     },
     settings,
     prices: {},
-    secrets: envSecrets({ FAKE_KEY: 'k' }),
+    secrets: envSecrets({ FAKE_KEY: options.fakeKey ?? 'k' }),
     definitions: (p, skill, flow) => new InMemoryDefinitionStore(p, undefined, skill, flow),
     configurables: { store: configEntries, scheduleIntervalMs: 0 },
     ...(options.triggerRuns ? { triggerRuns: options.triggerRuns } : {}),
@@ -269,6 +276,9 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     ...(options.egress ? { egress: options.egress } : {}),
     ...(options.log ? { log: options.log } : {}),
+    ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
+    ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
+    ...(options.blobStore ? { blobStore: options.blobStore } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,
@@ -301,6 +311,11 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      tasks: kernelTaskReader(platform.kernel, {
+        kind: 'operator',
+        issuer: 'platform',
+        subject: 'task-reader',
+      }),
     },
   });
   platform.mount(app, admin);

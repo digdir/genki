@@ -1,0 +1,235 @@
+{
+  "data": [
+    {
+      "id": "genki-guide__default",
+      "title": "GenKI-guiden",
+      "_service": "genki-guide",
+      "_service_title": "GenKI-guiden",
+      "_variant_title": "Svar med kilder",
+      "_pickable": true,
+      "_alias_of": null,
+      "_chat": true,
+      "_documents": null,
+      "_datasets": [
+        {
+          "id": "genki-docs",
+          "tenant": "digdir",
+          "dataset-config-key": "genki-docs",
+          "filters": []
+        }
+      ]
+    },
+    {
+      "id": "klarsprak__default",
+      "title": "Klarspråk",
+      "_service": "klarsprak",
+      "_service_title": "Klarspråk",
+      "_variant_title": "Standard",
+      "_pickable": false,
+      "_alias_of": null,
+      "_chat": false,
+      "_documents": null,
+      "_datasets": null
+    },
+    {
+      "id": "kunnskapsassistenten__default",
+      "title": "Kunnskapsassistenten",
+      "_service": "kunnskapsassistenten",
+      "_service_title": "Kunnskapsassistenten",
+      "_variant_title": "Svar med kilder",
+      "_pickable": true,
+      "_alias_of": null,
+      "_chat": true,
+      "_documents": null,
+      "_datasets": [
+        {
+          "id": "kudos",
+          "tenant": "digdir",
+          "dataset-config-key": "kudos",
+          "filters": [
+            {
+              "field": "type",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "concerned_years",
+              "kinds": ["multiselect"],
+              "value-type": "integer"
+            },
+            {
+              "field": "orgs_short",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "orgs_long",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "doc_num",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "title",
+              "kinds": ["text"],
+              "value-type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kunnskapsassistenten-demo__default",
+      "title": "Kunnskapsassistenten (demo)",
+      "_service": "kunnskapsassistenten-demo",
+      "_service_title": "Kunnskapsassistenten (demo)",
+      "_variant_title": "Agentisk (søker selv)",
+      "_pickable": true,
+      "_alias_of": null,
+      "_chat": true,
+      "_documents": null,
+      "_datasets": [
+        {
+          "id": "kudos",
+          "tenant": "digdir",
+          "dataset-config-key": "kudos",
+          "filters": [
+            {
+              "field": "type",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "concerned_years",
+              "kinds": ["multiselect"],
+              "value-type": "integer"
+            },
+            {
+              "field": "orgs_short",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "orgs_long",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "doc_num",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "title",
+              "kinds": ["text"],
+              "value-type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kunnskapsassistenten-diagram__default",
+      "title": "Kunnskapsassistenten med diagram",
+      "_service": "kunnskapsassistenten-diagram",
+      "_service_title": "Kunnskapsassistenten med diagram",
+      "_variant_title": "Svar med kilder",
+      "_pickable": false,
+      "_alias_of": null,
+      "_chat": false,
+      "_documents": null,
+      "_datasets": [
+        {
+          "id": "kudos",
+          "tenant": "digdir",
+          "dataset-config-key": "kudos",
+          "filters": [
+            {
+              "field": "type",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "concerned_years",
+              "kinds": ["multiselect"],
+              "value-type": "integer"
+            },
+            {
+              "field": "orgs_short",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "orgs_long",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "doc_num",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "title",
+              "kinds": ["text"],
+              "value-type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kunnskapsassistenten-retrieve-only__default",
+      "title": "Kunnskapsassistenten, bare søk",
+      "_service": "kunnskapsassistenten-retrieve-only",
+      "_service_title": "Kunnskapsassistenten, bare søk",
+      "_variant_title": "Svar med kilder",
+      "_pickable": false,
+      "_alias_of": null,
+      "_chat": false,
+      "_documents": null,
+      "_datasets": [
+        {
+          "id": "kudos",
+          "tenant": "digdir",
+          "dataset-config-key": "kudos",
+          "filters": [
+            {
+              "field": "type",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "concerned_years",
+              "kinds": ["multiselect"],
+              "value-type": "integer"
+            },
+            {
+              "field": "orgs_short",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "orgs_long",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "doc_num",
+              "kinds": ["multiselect"],
+              "value-type": "string"
+            },
+            {
+              "field": "title",
+              "kinds": ["text"],
+              "value-type": "string"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

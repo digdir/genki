@@ -27,6 +27,10 @@ export const sourceRef = z
     chunkId: z.string().min(1).optional(),
     document: z.string().min(1).optional(),
     position: z.number().int().nonnegative().optional(),
+    /** The page the passage is on, counted from 1. */
+    page: z.number().int().positive().optional(),
+    /** The id the document had before its source renumbered, as an older index names it. */
+    earlierDocument: z.string().min(1).optional(),
   })
   .refine(
     (s) => s.chunkId !== undefined || s.document !== undefined,
@@ -252,6 +256,8 @@ export const evalRun = z.strictObject({
   status: z.enum(evalRunStates).optional(),
   error: z.string().optional(),
   progress: z.strictObject({ done: z.number().int(), total: z.number().int() }).optional(),
+  /** Set while the run waits for a free case slot with no case running; 1 is next in line. */
+  queuePlace: z.number().int().positive().optional(),
   usage: z.strictObject({ answers: usageSummary, judges: usageSummary.optional() }).optional(),
   /** For a run started from a service: the version or draft, variant and split it tested. */
   tested: z
@@ -261,6 +267,12 @@ export const evalRun = z.strictObject({
       split: z.enum(['locked', 'open']).optional(),
       /** The tenant's trace connection the run's cases were sent to. */
       sink: z.string().optional(),
+      /** The environment whose version was tested, when the service has environments. */
+      environment: z.string().optional(),
+      /** The model the run was set to answer with. */
+      model: z.string().optional(),
+      /** The cases the run was limited to; such a run is no evidence for a gate. */
+      selected: z.array(z.string()).optional(),
     })
     .optional(),
   owner: z.string().optional(),

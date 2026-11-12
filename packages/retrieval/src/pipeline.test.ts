@@ -212,7 +212,7 @@ const at = <T>(items: readonly T[] | undefined, i: number): T => {
 const filtersOf = (r: SearchRequest): Record<string, FilterValue> => r.filters ?? {};
 
 describe('retrieval pipeline', () => {
-  it('runs every strategy for every query in one batch, with org and year auto-filters', async () => {
+  it('runs every strategy for every query in one batch, ranking by the organisation and year it detects', async () => {
     const k = knowledgeStub((r) =>
       r.profile === 'content' ? ['c1', 'c4'] : r.profile === 'phrase' ? ['c4'] : [],
     );
@@ -232,10 +232,7 @@ describe('retrieval pipeline', () => {
       'content:Hvor mange årsverk hadde Digdir i 2022?',
       'content:årsverk Digdir',
     ]);
-    expect(filtersOf(at(at(k.batches, 0), 0))).toEqual({
-      orgs_short: ['Digdir'],
-      title: { contains: ['2022'] },
-    });
+    expect(k.batches[0]?.every((r) => r.filters === undefined)).toBe(true);
     expect(k.batches[0]?.every((r) => r.limit === 30)).toBe(true);
     expect(k.facetCalls).toEqual([['orgs_long', 'orgs_short']]);
     expect(result.trace.expansion.hitsPerStrategy).toEqual({ phrase: 1, metadata: 0, content: 2 });
@@ -247,8 +244,8 @@ describe('retrieval pipeline', () => {
     );
   });
 
-  it('lets an explicit filter win over a detected one, and retries without auto-filters on zero hits', async () => {
-    const k = knowledgeStub((r) => ('title' in filtersOf(r) ? [] : ['c4']));
+  it('sends only the explicit filter when the query also names an organisation and a year', async () => {
+    const k = knowledgeStub(() => ['c4']);
 
     const result = await retrieve({
       knowledge: k.port,
@@ -258,9 +255,37 @@ describe('retrieval pipeline', () => {
       config: { strategies: [{ name: 'content', profiles: ['content'] }] },
     });
 
+    expect(k.batches).toHaveLength(1);
+    expect(filtersOf(at(at(k.batches, 0), 0))).toEqual({ orgs_short: ['NAV'] });
+    expect(result.trace.expansion.autoFilterFallback).toBe(false);
+    expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+  });
+
+  it('without an agent, a rule filter that finds nothing is retried with only the explicit filter', async () => {
+    const k = knowledgeStub((r) => ('type' in filtersOf(r) ? [] : ['c4']));
+
+    const result = await retrieve({
+      knowledge: k.port,
+      queries: ['tildelingsbrev'],
+      filters: { orgs_short: ['NAV'] },
+      facetCache: new FacetCache(),
+      config: {
+        strategies: [{ name: 'content', profiles: ['content'] }],
+        autoFilter: {
+          rules: [
+            {
+              type: 'shape-pattern',
+              field: 'type',
+              patterns: [{ value: 'Tildelingsbrev', regex: '(?i)tildelingsbrev' }],
+            },
+          ],
+        },
+      },
+    });
+
     expect(filtersOf(at(at(k.batches, 0), 0))).toEqual({
       orgs_short: ['NAV'],
-      title: { contains: ['2023'] },
+      type: ['Tildelingsbrev'],
     });
     expect(filtersOf(at(at(k.batches, 1), 0))).toEqual({ orgs_short: ['NAV'] });
     expect(result.trace.expansion.autoFilterFallback).toBe(true);
@@ -538,7 +563,7 @@ describe('retrieval pipeline', () => {
       ]);
     });
 
-    it('auto-filter is skipped without the facets capability', async () => {
+    it('organisation detection is skipped without the facets capability', async () => {
       const k = knowledgeStub(numericScript, {
         capabilities: allCapabilities.filter((c) => c !== 'facets'),
       });
@@ -550,7 +575,7 @@ describe('retrieval pipeline', () => {
       });
 
       expect(k.facetCalls).toEqual([]);
-      expect(filtersOf(at(at(k.batches, 0), 0))).toEqual({ title: { contains: ['2022'] } });
+      expect(result.trace.expansion.detections?.map((d) => d.kind)).toEqual(['year']);
       expect(result.trace.expansion.autoFilterError).toBeUndefined();
       expect(result.trace.expansion.warnings).toEqual([
         'skipped org auto-filter: engine lacks facets',
@@ -558,7 +583,7 @@ describe('retrieval pipeline', () => {
       expect(result.chunks.map((c) => c.id)).toEqual(['c4', 'c1']);
     });
 
-    it('skips a detected filter whose kind the engine cannot filter on', async () => {
+    it('offers an agent no hint on a field the engine cannot filter on', async () => {
       const k = knowledgeStub(numericScript, {
         capabilities: allCapabilities.filter((c) => c !== 'filter.text'),
       });
@@ -567,9 +592,10 @@ describe('retrieval pipeline', () => {
         knowledge: k.port,
         queries: numericQueries,
         facetCache: new FacetCache(),
+        detectionUse: 'hint',
       });
 
-      expect(filtersOf(at(at(k.batches, 0), 0))).toEqual({ orgs_short: ['Digdir'] });
+      expect(result.trace.expansion.detections?.map((d) => d.field)).toEqual(['orgs_short']);
       expect(result.trace.expansion.warnings).toEqual([
         'skipped auto-filter on title: engine lacks filter.text',
       ]);

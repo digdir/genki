@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Part, Principal } from '@genai/contracts';
-import { validateDefinition } from '@genai/definitions';
+import { validateDefinition, variantId, variantModelOf, type Variant } from '@genai/definitions';
 import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
   answerText,
@@ -10,6 +10,7 @@ import {
   defaultObserve,
   evalRun,
   gradeAnswer,
+  judgedAgainst,
   runState,
   splitsFor,
   sumUsage,
@@ -31,12 +32,16 @@ import { definitionSubject } from './definition-subject.js';
 import { connectionsCovering, deliveryGate } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
+import { evalSlots, type QueueWatch } from './eval-slots.js';
+import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
+import { chooseEnvironment } from './service-environments.js';
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
-  byModel.filter((m) => m.kind !== 'embedder').map((m) => m.model);
+  byModel.filter(judgedAgainst).map((m) => m.model);
 
+export const quotaStopMessage = 'Stoppet fordi månedskvoten for tokens er brukt opp';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
 export type RunVersion = 'draft' | number;
@@ -81,6 +86,7 @@ export interface Subject {
   definition: Record<string, unknown>;
   files: Record<string, string>;
   version: RunVersion;
+  environment?: string;
   variant?: string;
 }
 
@@ -96,8 +102,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export const casesIn = (set: TestSet, split?: CaseSplit) =>
-  split ? set.spec.cases.filter((c) => splitsFor(split).includes(c.split)) : set.spec.cases;
+export const casesIn = (set: TestSet, split?: CaseSplit, only?: string[]) =>
+  set.spec.cases.filter(
+    (c) => (!split || splitsFor(split).includes(c.split)) && (!only || only.includes(c.id)),
+  );
 
 export const summarize = (results: CaseResult[]): Outcome => {
   const passed = results.filter((r) => r.pass).length;
@@ -143,11 +151,16 @@ export const runSummary = (run: EvalRun) => {
     version: run.tested?.version ?? 'draft',
     ...(run.tested?.variant ? { variant: run.tested.variant } : {}),
     ...(run.tested?.split ? { split: run.tested.split } : {}),
+    ...(run.tested?.environment ? { environment: run.tested.environment } : {}),
+    ...(run.tested?.model ? { model: run.tested.model } : {}),
+    ...(run.tested?.selected ? { selected: run.tested.selected } : {}),
+    ...(run.queuePlace ? { queuePlace: run.queuePlace } : {}),
     startedAt: run.startedAt,
     endedAt: state === 'running' || state === 'waiting-for-scores' ? null : run.endedAt,
     score: state === 'completed' && counted.length > 0 ? passed / counted.length : null,
     passed,
     total: state === 'completed' ? counted.length : (run.progress?.total ?? 0),
+    ...(state === 'completed' ? {} : { finished: counted.length }),
     ...(run.progress ? { progress: run.progress } : {}),
     metrics: run.metrics,
     incomplete: run.incomplete,
@@ -195,8 +208,11 @@ export const interruptedIfAbandoned = (
   const state = runState(run);
   if (state !== 'running' && state !== 'waiting-for-scores') return run;
   if (!leases.abandoned(`${tenant}/${run.id}`, run, run.startedAt)) return run;
+  const rest = { ...run };
+  // It waits for nothing any more.
+  delete rest.queuePlace;
   return {
-    ...run,
+    ...rest,
     status: 'interrupted',
     endedAt: run.heartbeatAt ?? run.startedAt,
     error: restartMessage,
@@ -222,7 +238,22 @@ export const progressed = (
   run: EvalRun,
   progress: { done: number; total: number },
   usage?: EvalRun['usage'],
-): EvalRun => (finished(run) ? run : { ...run, progress, ...(usage ? { usage } : {}) });
+  results?: EvalRun['results'],
+): EvalRun => {
+  if (finished(run)) return run;
+  const rest = { ...run };
+  // A case has started, so the run no longer waits in line.
+  delete rest.queuePlace;
+  return { ...rest, progress, ...(usage ? { usage } : {}), ...(results ? { results } : {}) };
+};
+
+/** The run's place in line for a case slot, or none once a slot is free. */
+export const queued = (run: EvalRun, place: number | undefined): EvalRun => {
+  if (finished(run)) return run;
+  const rest = { ...run };
+  delete rest.queuePlace;
+  return place === undefined ? rest : { ...rest, queuePlace: place };
+};
 
 export const waitingForScores = (run: EvalRun): EvalRun =>
   finished(run) ? run : { ...run, status: 'waiting-for-scores' };
@@ -233,8 +264,17 @@ const modelsOf = (definition: Record<string, unknown>) => {
   return [model?.primary, model?.fallback].filter((m): m is string => typeof m === 'string');
 };
 
+// Without a chosen variant, the first one, as the draft runner does.
+export const answeringModel = ({ definition, variant }: Subject) => {
+  const variants = isRecord(definition.spec) ? definition.spec.variants : undefined;
+  const list = Array.isArray(variants) ? (variants as Variant[]) : [];
+  const chosen = variant === undefined ? list[0] : list.find((v) => variantId(v) === variant);
+  return (chosen && variantModelOf(chosen)) ?? modelsOf(definition)[0];
+};
+
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
   const choice = modelChoice(deps);
+  const slots = deps.evalSlots ?? evalSlots();
   const leases = backgroundLeases(leaseOptions);
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
@@ -261,7 +301,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     tenant: string,
     service: string,
     version: unknown,
-    inline?: { definition?: unknown; files?: unknown },
+    inline?: { definition?: unknown; files?: unknown; environment?: unknown },
   ): Promise<Subject | undefined> => {
     if (version === 'draft') {
       if (isRecord(inline?.definition)) {
@@ -284,7 +324,17 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ? { definition: draft.spec.definition, files: draft.spec.files, version: 'draft' }
         : undefined;
     }
-    if (version === undefined || version === 'published') return published(tenant, service);
+    if (version === undefined || version === 'published') {
+      const requested = typeof inline?.environment === 'string' ? inline.environment : undefined;
+      const environment = await chooseEnvironment(
+        deps.configEntries,
+        { tenant, id: service },
+        requested,
+      );
+      if (!environment.ok) return undefined;
+      const found = await published(tenant, service, environment.version);
+      return found && { ...found, ...(environment.name ? { environment: environment.name } : {}) };
+    }
     return typeof version === 'number' && Number.isInteger(version)
       ? published(tenant, service, version)
       : undefined;
@@ -296,7 +346,14 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     cases: TestCase[],
     meter: Meter,
-    options: { avoidAsJudge?: string[]; chargeTo?: string } = {},
+    options: {
+      avoidAsJudge?: string[];
+      chargeTo?: string;
+      run?: string;
+      onCaseStart?: () => void;
+      onCase?: (index: number, result: CaseResult) => Promise<void>;
+      onQueue?: QueueWatch;
+    } = {},
   ): Promise<Outcome> => {
     const served = modelsOf(subject.definition);
     const judgeTenant = options.chargeTo ?? tenant;
@@ -309,8 +366,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     const judge = judgeId
       ? choice.judgeModel(principal, judgeTenant, judgeId, 'builder', meter)
       : undefined;
-    const results: CaseResult[] = [];
-    for (const c of cases) {
+    const runCase = async (c: TestCase): Promise<CaseResult> => {
       const view = caseView(c);
       const base = {
         caseId: c.id,
@@ -330,19 +386,21 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(options.chargeTo ? { chargeTo: options.chargeTo } : {}),
       });
       meter.add(outcome);
-      if (!outcome.ok) {
-        results.push({
+      if (!outcome.ok)
+        return {
           ...base,
           output: '',
           pass: false,
           reason: outcome.errors.map((e) => e.message).join('; '),
-        });
-        continue;
-      }
+        };
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
-        { text: outcome.answer, noAnswer: outcome.noAnswer },
+        {
+          ...defaultObserve(outcome.parts, []),
+          text: outcome.answer,
+          noAnswer: markedNotFound(outcome),
+        },
         {
           ...(judge ? { judge } : {}),
           context: {
@@ -351,14 +409,48 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           },
         },
       );
-      results.push({
+      return {
         ...base,
         output: outcome.answer,
         pass: grade.pass,
         ...(grade.reason ? { reason: grade.reason } : {}),
-      });
+      };
+    };
+    const results: (CaseResult | undefined)[] = Array.from({ length: cases.length });
+    const session = slots.session(options.run ?? randomUUID(), judgeTenant, options.onQueue);
+    let next = 0;
+    let stop: { error: unknown } | undefined;
+    const worker = async () => {
+      while (!stop && next < cases.length) {
+        const release = await session.acquire();
+        try {
+          if (stop || next >= cases.length) return;
+          if ((await deps.quota?.(judgeTenant, { fresh: true }))?.exhausted) {
+            stop = { error: new Error(quotaStopMessage) };
+            return;
+          }
+          const index = next++;
+          const c = cases[index] as TestCase;
+          options.onCaseStart?.();
+          const result = await runCase(c);
+          results[index] = result;
+          await options.onCase?.(index, result);
+        } catch (error) {
+          stop ??= { error };
+        } finally {
+          release();
+        }
+      }
+    };
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(slots.limits.perRun, cases.length) }, worker),
+      );
+    } finally {
+      session.end();
     }
-    return summarize(results);
+    if (stop) throw stop.error;
+    return summarize(results.filter((r): r is CaseResult => r !== undefined));
   };
 
   /** The deterministic evaluators that compute a publishing gate's metric from the answers alone. */
@@ -410,7 +502,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   const latestCompleted = async (tenant: string, service: string, testSet?: string) =>
     (await runsOf(tenant, service)).find(
       (s) =>
-        runState(s.run) === 'completed' && (testSet === undefined || s.run.testSet.id === testSet),
+        runState(s.run) === 'completed' &&
+        // A run of a few marked cases does not show how the whole test set does.
+        !s.run.tested?.selected &&
+        (testSet === undefined || s.run.testSet.id === testSet),
     );
 
   /** What each case answered, read from its task; empty once the task's content is erased. */
@@ -436,6 +531,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     set: TestSet,
     subject: Subject,
     split?: CaseSplit,
+    only?: string[],
     options: { trace?: boolean } = {},
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
@@ -471,7 +567,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         );
       }
     }
-    const cases = casesIn(set, split);
+    const cases = casesIn(set, split, only);
+    const model = answeringModel(subject);
     const startedAt = leases.now().toISOString();
     const first: EvalRun = {
       id: randomUUID(),
@@ -499,6 +596,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(split ? { split } : {}),
         ...(sink ? { sink: sink.id } : {}),
+        ...(subject.environment ? { environment: subject.environment } : {}),
+        ...(model ? { model } : {}),
+        ...(only ? { selected: only } : {}),
       },
       ...leases.stamp(),
     };
@@ -538,7 +638,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           data: {
             id: first.id,
             capability: prepared.capability,
-            testSet: set,
+            // Only the marked cases, when the run was limited to them.
+            testSet: only ? { ...set, spec: { ...set.spec, cases } } : set,
             evaluators: evaluatorsFor(cases, gatesOf(spec)),
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
@@ -552,20 +653,32 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         void (async () => {
           for await (const event of invoked.events) {
             const data = event.data as
-              { kind?: string; done?: number; total?: number; usage?: unknown } | undefined;
+              | {
+                  kind?: string;
+                  done?: number;
+                  total?: number;
+                  usage?: unknown;
+                  results?: unknown;
+                  place?: number;
+                }
+              | undefined;
             if (event.type !== 'kernel.notice') continue;
             if (data?.kind === 'eval.progress' && data.done !== undefined) {
               const usage = evalRun.shape.usage.safeParse(data.usage);
+              const results = evalRun.shape.results.safeParse(data.results);
               await lease.update(
                 (run) =>
                   progressed(
                     run,
                     { done: data.done ?? 0, total: data.total ?? 0 },
                     usage.success ? usage.data : undefined,
+                    results.success ? results.data : undefined,
                   ),
                 'progress',
               );
             }
+            if (data?.kind === 'eval.queued')
+              await lease.update((run) => queued(run, data.place), 'queued');
             if (data?.kind === 'eval.waiting') await lease.update(waitingForScores, 'waiting');
           }
         })().catch(() => undefined);
@@ -594,7 +707,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
               ...run,
               status: 'failed',
               endedAt: leases.now().toISOString(),
-              error: messageOf(error),
+              // The eval run stops at the quota before a case; say so as the portal's runs do.
+              error: messageOf(error).endsWith('the monthly token quota is used up')
+                ? quotaStopMessage
+                : messageOf(error),
             }),
             'failed',
           )

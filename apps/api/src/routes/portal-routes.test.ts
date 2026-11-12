@@ -20,6 +20,8 @@ import {
   InMemoryTenantApiKeys,
   portalAdminHandlers,
   registerPortalRoutes,
+  tallyOf,
+  usageView,
   type PortalTaskRow,
 } from './portal-routes.js';
 
@@ -45,6 +47,8 @@ const task = (
   createdAt: at,
   ...(status === 'completed' || status === 'failed' ? { endedAt: at } : {}),
 });
+
+const now = () => new Date('2026-10-06T12:00:00Z');
 
 const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> = {}) => {
   const store = new InMemoryDefinitionStore({
@@ -113,7 +117,7 @@ const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> 
     }),
     prices: { 'foundry/gpt-4o': { inputPerThousand: 0.0238, outputPerThousand: 0.0952 } },
     traces: { enabled: true, content: false },
-    now: () => new Date('2026-10-06T12:00:00Z'),
+    now,
     newKey: () => 'gp_testkey_abcdefghijklmnop1234',
     newId: () => 'key-1',
     ...extra,
@@ -522,7 +526,7 @@ describe('portal routes', () => {
     const listed = await json<{ keys: Record<string, unknown>[] }>(
       await send(`/tenants/${digdir}/access`, 'kari'),
     );
-    const authenticator = createAuthenticator({ apiKeys: legacy });
+    const authenticator = createAuthenticator({ apiKeys: legacy, now });
     const principal = await authenticator.principalOf(
       new Request('http://x', { headers: { 'x-api-key': body.key } }),
     );
@@ -579,7 +583,7 @@ describe('portal routes', () => {
       method: 'POST',
       reason: 'ikke i bruk',
     });
-    const authenticator = createAuthenticator({ apiKeys: legacy });
+    const authenticator = createAuthenticator({ apiKeys: legacy, now });
     const principal = await authenticator.principalOf(
       new Request('http://x', { headers: { 'x-api-key': created.key } }),
     );
@@ -1281,4 +1285,22 @@ describe('usage from an AI gateway', () => {
     });
     return store;
   };
+});
+
+describe('usage totals with open units', () => {
+  it('shows units besides tokens and marks a unit without a price as not priced', () => {
+    const view = usageView(tallyOf({ units: { page: 3 }, audioSeconds: 7 }));
+
+    expect(view).toMatchObject({
+      priced: false,
+      units: { page: 3, 'audio-second': 7 },
+      unpricedUnits: { page: 3, 'audio-second': 7 },
+    });
+  });
+
+  it('counts a unit as priced when the call that reported it was priced', () => {
+    const view = usageView(tallyOf({ units: { page: 3 }, costMicroNok: 30_000 }));
+
+    expect(view).toMatchObject({ priced: true, units: { page: 3 }, unpricedUnits: {} });
+  });
 });

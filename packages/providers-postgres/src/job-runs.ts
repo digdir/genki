@@ -58,6 +58,9 @@ interface StartInput {
   startedBy: string;
   startedAt: string;
   admittedAt: string;
+  /** A switch's run writes into the switch's generation (ADR 0025). */
+  generation?: string;
+  engineSwitch?: string;
 }
 
 /**
@@ -88,8 +91,8 @@ export class PostgresJobRuns {
         const status = open.length > 0 ? 'queued' : 'running';
         const { rows } = await client.query<Row>(
           `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
-             status, started_by, started_at, runs_as_jobs, admitted_at)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10) returning *`,
+             status, started_by, started_at, runs_as_jobs, admitted_at, generation, engine_switch)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12) returning *`,
           [
             input.id,
             scope,
@@ -101,6 +104,8 @@ export class PostgresJobRuns {
             input.startedBy,
             input.startedAt,
             input.admittedAt,
+            input.generation ?? null,
+            input.engineSwitch ?? null,
           ],
         );
         const run = toExecution(rows[0] as Row);

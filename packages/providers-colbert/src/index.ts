@@ -33,8 +33,11 @@ const toRanked = (body: unknown): Ranked[] => {
   });
 };
 
+export const colbertRerankApi = 'colbert/rerank@1';
+
 export const colbert: RerankAdapter<Record<string, never>, Options> = {
   engine: 'colbert',
+  api: { id: colbertRerankApi, family: 'colbert' },
   endpointOptions: z.strictObject({}),
   rerankerOptions,
 

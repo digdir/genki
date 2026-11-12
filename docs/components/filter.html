@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Filter · Components</title>
+    <meta
+      name="description"
+      content="Lets the user narrow which documents the assistant reads from, by the fields the dataset declares, with the collection and the documents behind the answer."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Filter</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="filter"
+        data-component="filter"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="filter-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="filter-title">Filter</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Primary sidebar</span>
+            </div>
+            <p class="summary">
+              Lets the user narrow which documents the assistant reads from, by the fields the
+              dataset declares, such as document type, organisation and year. With it come the
+              collection being searched and the documents behind the answer.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Filter», «Utvalg» and «Dokumenter og egne dokumenter»</dd>
+              <dt>Sits in</dt>
+              <dd>Primary sidebar, with the threads</dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/178"
+                  >kunnskapsassistenten#178</a
+                >
+              </dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Filter</code>, <code>CorpusChoice</code>, <code>CorpusLine</code>,
+                <code>Documents</code> and <code>OwnDocuments</code> in
+                <code>@genai/ui-blocks</code>
+              </dd>
+              <dt>Canvas</dt>
+              <dd>00-Filter (FI-A2, FI-4c1 to FI-4c3, FI-P1, FI-P3, FI-P4)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="130" y="12" width="50" height="100" rx="10" opacity="0.55" />
+            <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+            <rect class="s-soft" x="16" y="20" width="98" height="18" rx="7" />
+            <rect class="s-accent" x="24" y="26" width="44" height="6" rx="3" />
+            <rect class="s-accent" x="20" y="46" width="11" height="11" rx="3" />
+            <path class="s-check" d="M23 51.5l2.2 2.2 3.8-4.4" />
+            <rect class="s-bar" x="40" y="49" width="60" height="6" rx="3" />
+            <rect class="s-bar" x="20" y="63" width="11" height="11" rx="3" />
+            <rect class="s-bar" x="40" y="66" width="48" height="6" rx="3" />
+            <rect class="s-accent" x="20" y="80" width="11" height="11" rx="3" />
+            <path class="s-check" d="M23 85.5l2.2 2.2 3.8-4.4" />
+            <rect class="s-bar" x="40" y="83" width="66" height="6" rx="3" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                Users should be able to narrow what the assistant reads from, for example in a large
+                collection such as Kudos.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>
+                The assistant should always read from a fixed set. Then the set is chosen at setup,
+                and the filter is left out.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>A, the filter belongs to the thread</strong> (FI-P1): in the sidebar with
+                the threads. Preferred.
+              </li>
+              <li>
+                <strong>B, the filter in the answer:</strong> inside
+                <a href="approach.html">Approach</a> (FI-P3).
+              </li>
+              <li>
+                In the thread, at the top of the conversation, or as a tab next to «Kilder» (FI-4c1
+                to FI-4c3).
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>fields</code>: the dataset's filter fields (<code>/api/datasets/{id}</code>,
+                <code>filters[]</code>) with their facet values (<code>/api/facets</code>), in the
+                order to draw them. Undefined while they load; an empty list says filtering is not
+                available.
+              </li>
+              <li>
+                <code>selection</code> and <code>onChange</code>: what is chosen, per field id. Ask
+                with <code>narrowing(selection, fields)</code>, which leaves out a field where every
+                value is ticked.
+              </li>
+              <li>
+                <code>failed</code> and <code>onRetry</code>: the facets could not be fetched.
+              </li>
+              <li>
+                <code>locked</code>, <code>thread</code> and <code>onNewThread</code>: a thread's
+                lock, and the note when the filter changes in a thread under way. The platform keeps
+                no filter per thread yet, so <code>locked</code> is for a host that keeps one.
+                <code>onNewThread</code> takes a plain click on «Ny tråd»; a click for a new tab
+                follows <code>newThreadHref</code>, the browser's.
+              </li>
+              <li>
+                <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
+                default as in KA. A reader turns them on in the settings, under «Eksperimenter».
+              </li>
+              <li>
+                <code>head</code> and <code>children</code>: the corpus choice over the fields, and
+                the documents under a line after them.
+              </li>
+              <li>
+                <code>pinIn</code>: an element to draw the heading and <code>head</code> in, such as
+                the shell's pinned region from its panel's <code>pinnedRef</code>. They stay in
+                sight while the fields scroll, as kunnskapsassistenten pins them, and keep the
+                filter's live region. <code>null</code> while the element is not there draws no
+                head.
+              </li>
+              <li>
+                <code>documents</code>: the documents behind the answer, over a line before the
+                fields, so they are in sight without scrolling past the fields. KA keeps its list
+                apart from the reader's own documents «so the view can show them above the facets,
+                in sight». KA's filter view today draws them after the fields instead, so the facets
+                keep their full size; a host passes them as <code>children</code> for that order.
+              </li>
+              <li>
+                <code>variant</code>: <code>fields</code>, the default, or <code>panel</code>, the
+                dev boards' filter beside the threads (dev-filter-panel): «Fjern alle filtre» over
+                the fields, and each field a row with its <code>heading</code> and what is chosen,
+                «Alle» when nothing is, that opens one at a time to a checkbox per value with its
+                exact count. A field with more than 12 values opens to its list with search instead.
+                <code>children</code> stand under the rows with no line.
+              </li>
+              <li>
+                <code>FilterRead</code> and <code>FilterNext</code>: the filter where it is not
+                edited. <code>FilterRead</code> is «Leste fra 8 781 dokumenter:» and the chosen
+                values as chips, alike and not clickable, for <a href="approach.html">Approach</a>'s
+                <code>scope</code>. <code>FilterNext</code> is the line under the field, «Neste
+                spørsmål leser fra 8 781 dokumenter · Evaluering · 2020–2025 – endres i filteret til
+                venstre», drawn only with a <code>count</code>. Both, and the rows, name values with
+                <code>valueLabels</code>, so they never drift apart; <code>documentCount</code>
+                counts exactly from the facets, never «ca.».
+              </li>
+              <li>
+                <code>DocumentsInScope</code>: «Dokumentene som blir med», a box under the panel's
+                rows. Its summary, «Assistenten leser fra 8 781 av 45 778 dokumenter i Kudos», takes
+                <code>count</code>, <code>total</code> and <code>corpus</code>. The list under it,
+                each document with its type, organisation, year, pages and a tick to leave it out,
+                is drawn only when the host passes <code>documents</code> and
+                <code>onIncludedChange</code>; the platform sends neither yet.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="threads.html">Threads</a>: each thread has its own filter</li>
+              <li><a href="approach.html">Approach</a>: shows the filter for each answer</li>
+              <li><a href="sources.html">Sources</a>: the documents that match the filter</li>
+              <li>
+                <a href="projects.html">Projects</a>: a project's documents are added with the
+                filter
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>The filter applies to the next question. Earlier answers don't change.</li>
+              <li>
+                When you go back to a thread, the filter shows the choices from the last question in
+                that thread.
+              </li>
+              <li>
+                Numbers are exact, never «ca.». The system knows how many documents there are.
+              </li>
+              <li>
+                Large selections are summarised instead of listed: «Alle 173», «12 av 173 valgt»,
+                «172 av 173 · 1 tatt ut». The filter must handle about 45,000 documents.
+              </li>
+              <li>
+                Beyond the filter, users don't choose what the assistant reads. It always reads
+                every source that is included, and the system decides how many it reads closely.
+              </li>
+              <li>
+                «Fjern alle filtre» sits above «Dokumenttype», and the summary has a neutral grey
+                background so it stands apart from the chat.
+              </li>
+              <li>Call it «Filter», not «Avgrensning».</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <p>
+              KA's filter panel, made generic: its look, behaviour and wording, with the fields
+              taken from the dataset instead of a fixed list. The blocks draw and report; the host
+              fetches the facets, keeps the selection and starts threads.
+            </p>
+            <p>
+              To make the filter and the collection last, the host stores <code>selection</code> and
+              the collection's key from <code>onChange</code>, and passes them back. KA keeps both
+              in the browser and empties them at «Logg ut». A stored value the facets no longer hold
+              is still shown, under «Avgrenset til», so it can be removed.
+            </p>
+            <ul>
+              <li>
+                <strong>A field per facet:</strong> Designsystemet's <code>Suggestion</code> with
+                chips, «Velg alle» and «Tøm», the count of each value in the list, and the state in
+                the description: «Ingen avgrensning», «3 av 12 valgt», «Alle 12 valgt, altså ingen
+                avgrensning». Chosen values come first when the list opens, and nothing moves while
+                it is open. More than 100 chosen in one field says so, with the way out.
+              </li>
+              <li>
+                <strong>Years as periods</strong> (<code>yearPeriods</code>): a field of kind
+                <code>year</code> takes «2021», «2023–2028» or «23-28», and years in a row show as
+                one chip.
+              </li>
+              <li>
+                <strong>Values no field can show</strong>, under «Avgrenset til», removable one by
+                one or with «Tøm»: when the facets fail or come back without a field a stored filter
+                still holds.
+              </li>
+              <li>
+                <strong>A locked thread</strong> shows what it is limited to, with «Ny tråd». A
+                change in a thread under way shows a note, with «Ny tråd».
+              </li>
+              <li>
+                One live region tells what changed where the combobox says nothing, never twice.
+                Focus never falls to the page when a control removes itself.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Utvalg and documents</h2>
+            <ul>
+              <li>
+                <strong><code>CorpusChoice</code></strong
+                >, «Dokumentsamling»: a select over the collections a service can search, drawn only
+                with more than one. In the filter's <code>head</code> it speaks through the filter's
+                live region; with <code>resetsFilter</code> it says the filter was reset.
+              </li>
+              <li>
+                <strong><code>CorpusLine</code></strong
+                >: «Dokumenter fra Kudos», with the rest behind «Vis mer»: how many documents, which
+                types, biggest first, and which years, counted from the unnarrowed facets. Without
+                counts, the collection's own description. <code>typePlurals</code> names the types
+                in the plural.
+              </li>
+              <li>
+                <strong><code>Documents</code></strong
+                >: the documents behind the answer on screen, five at first, then «Vis flere
+                dokumenter». A title without a public address is text, and the line under it says
+                why. The reader's own uploads are left to <code>OwnDocuments</code>.
+              </li>
+              <li>
+                <strong><code>OwnDocuments</code></strong
+                >, «Dine dokumenter»: a drop zone and the reader's files with progress, size and why
+                one failed. Without <code>onUpload</code> the zone is switched off and says «Kommer
+                snart». Files go up one at a time; a rejected upload does not stop the next, and the
+                same file can be picked again.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The blocks sit in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follow
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and read every token through their own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. The muted text is pinned to neutral on
+              purpose, so it stays grey whatever family the links and chips beside it follow; a
+              failed upload is pinned to danger. The gap between the fields follows the window's
+              height between two tokens, as kunnskapsassistenten's does.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-filter-actions-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between «Velg alle» and «Tøm»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-changed-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in the note about a changed filter</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chips-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the values under «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-empty-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>text when filtering is not available</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-empty-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap when filtering is not available</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap</code></td>
+                  <td><code>3.6dvh</code></td>
+                  <td>
+                    gap between the fields, and around the line: a share of the window's height,
+                    between the floor and the ceiling
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-ceiling</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>the largest gap, on a tall window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-floor</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the smallest gap, on a short window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-head-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>gap between the heading and the corpus choice</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-label-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between a label and its buttons</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-limit-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap under «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-list-margin</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>room left beside a field's list in a narrow window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-list-width</code></td>
+                  <td>26 rem</td>
+                  <td>width of a field's list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-padding-block-end</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>space after the block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-unavailable-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>gap between the empty state and «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-years-hint-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>hint over the years in the year list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>corpus line text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-column-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap before «Vis mer»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-row-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap over the opened detail</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-toggle-padding-block-end</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>«Vis mer»'s target, grown downward</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-error-color</code></td>
+                  <td><code>--ds-color-danger-text-default</code></td>
+                  <td>why an upload failed</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in each section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-heading-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between «Dine dokumenter» and its tag</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-muted-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the count and the lines under the titles</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-own-item-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between a file and «Fjern»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-own-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the reader's files</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-zone-icon-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the upload icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-zone-off-background</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td>the drop zone, switched off</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkbox-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: checkbox font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkbox-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: checkbox padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkboxes-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the panel variant and the filter lines: checkboxes gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the panel variant and the filter lines: chip background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the panel variant and the filter lines: chip color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>the panel variant and the filter lines: chip font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the panel variant and the filter lines: chip line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-padding-block</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the panel variant and the filter lines: chip padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: chip padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>the panel variant and the filter lines: chip radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-clear-all-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: clear all font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-clear-all-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the panel variant and the filter lines: clear all font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-clear-all-min-height</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>the panel variant and the filter lines: clear all min height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-count-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: count color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-count-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>the panel variant and the filter lines: count font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: next color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: next font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: next gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the panel variant and the filter lines: next line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-panel-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the panel variant and the filter lines: panel gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-panel-padding-block-end</code></td>
+                  <td><code>0</code></td>
+                  <td>the panel variant and the filter lines: panel padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: read color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: read font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: read gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-lead-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the panel variant and the filter lines: read lead gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the panel variant and the filter lines: row border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the panel variant and the filter lines: row border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-chosen-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: row chosen color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-chosen-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: row chosen font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-focus-color</code></td>
+                  <td><code>--ds-color-focus-outer</code></td>
+                  <td>the panel variant and the filter lines: row focus color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-focus-width</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>the panel variant and the filter lines: row focus width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: row gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-icon-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: row icon color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the panel variant and the filter lines: row icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the panel variant and the filter lines: row line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-name-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the panel variant and the filter lines: row name color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-name-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the panel variant and the filter lines: row name font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-name-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the panel variant and the filter lines: row name font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: row padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-padding-inline</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the panel variant and the filter lines: row padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>«Dokumentene som blir med»: scope border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>«Dokumentene som blir med»: scope border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-document-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope document padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-focus-color</code></td>
+                  <td><code>--ds-color-focus-outer</code></td>
+                  <td>«Dokumentene som blir med»: scope focus color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-focus-width</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>«Dokumentene som blir med»: scope focus width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-color</code></td>
+                  <td><code>--ds-color-accent-text-subtle</code></td>
+                  <td>«Dokumentene som blir med»: scope fold color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>«Dokumentene som blir med»: scope fold font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>«Dokumentene som blir med»: scope fold gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-name-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>«Dokumentene som blir med»: scope name font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>«Dokumentene som blir med»: scope padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>«Dokumentene som blir med»: scope padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-quiet-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«Dokumentene som blir med»: scope quiet color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>«Dokumentene som blir med»: scope radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-small-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope small font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope summary padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-padding-inline</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>«Dokumentene som blir med»: scope summary padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-radius</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
+                  <td>«Dokumentene som blir med»: scope summary radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-tiny-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>«Dokumentene som blir med»: scope tiny font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>«Dokumentene som blir med»: scope title color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>«Dokumentene som blir med»: scope title font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>«Dokumentene som blir med»: scope title font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>«Dokumentene som blir med»: scope type background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>«Dokumentene som blir med»: scope type color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope type padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>«Dokumentene som blir med»: scope type radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-background</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>«Dokumentene som blir med»: scope summary background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkbox-size</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>the panel variant: checkbox size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-checkbox-size</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>«Dokumentene som blir med»: scope checkbox size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-search-height</code></td>
+                  <td><code>--ds-size-10</code></td>
+                  <td>«Dokumentene som blir med»: scope search height</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>How is it shown when the selection changes in the middle of a thread?</li>
+              <li>
+                The canvas uses a technical label in the filter that must not appear in user-facing
+                text. It needs a replacement before the filter is built.
+              </li>
+              <li>
+                The platform's facets carry no label for a field or a value. A host names the fields
+                for now, and a value is shown as it is stored.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="threads.html" rel="prev"><small>Previous</small>Threads</a>
+        <a class="next" href="projects.html" rel="next"><small>Next</small>Projects</a>
+      </nav>
+    </main>
+  </body>
+</html>

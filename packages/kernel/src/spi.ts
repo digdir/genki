@@ -69,6 +69,7 @@ export interface PortContext {
   provenance?(resource: ResourceProvenance): Promise<void>;
   guards?: readonly PayloadGuard[];
   serviceResidency?: Residency;
+  unmaskedMedia?: readonly string[];
   audit?(record: GateRecord): Promise<void>;
 }
 
@@ -121,6 +122,7 @@ export interface InvokeOptions {
   maxOutputTokens?: number;
   /** Recorded for audit beside the input, never in it; the strategy does not receive it. */
   evaluation?: EvaluationContext;
+  environment?: string;
 }
 
 export interface EventsOptions {

@@ -1,6 +1,7 @@
 export * from './chunk-document.js';
 export * from './chunking.js';
 export * from './converter.js';
+export * from './copy-listing.js';
 export * from './database.js';
 export * from './document-records.js';
 export * from './documents.js';
@@ -11,6 +12,8 @@ export * from './html.js';
 export * from './ids.js';
 export * from './index-writer.js';
 export * from './kudos.js';
+export * from './kudos-earlier-ids.js';
+export * from './kudos-rate.js';
 export * from './phrase-archive.js';
 export * from './phrases.js';
 export * from './parquet.js';

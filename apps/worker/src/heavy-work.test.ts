@@ -36,6 +36,7 @@ const dataset: DatasetConfig = {
 };
 
 const server = (overrides: Partial<HeavyServer> = {}): HeavyServer => ({
+  state: vi.fn(async () => 'attached' as const),
   chunks: vi.fn(async () => 10),
   vacuum: vi.fn(async () => undefined),
   build: vi.fn(async () => undefined),
@@ -59,6 +60,7 @@ interface Sent {
 const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
   const sent: Sent[] = [];
   const worked: string[] = [];
+  const concurrency: Record<string, number | undefined> = {};
   const stopped: string[] = [];
   const retimed: { queues: string[]; startAfter: Date }[] = [];
   const scheduled: { queue: string; cron: string; tz: string }[] = [];
@@ -73,8 +75,9 @@ const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
         });
         return 'job';
       },
-      work: async (queue: QueueDefinition) => {
+      work: async (queue: QueueDefinition, _handler, options) => {
         worked.push(queue.name);
+        concurrency[queue.name] = options?.concurrency;
         return async () => {
           stopped.push(queue.name);
         };
@@ -94,7 +97,7 @@ const deps = (overrides: Partial<HeavyDeps> = {}, at = day) => {
     log: () => undefined,
     ...overrides,
   };
-  return { deps: d, sent, worked, stopped, retimed, scheduled };
+  return { deps: d, sent, worked, concurrency, stopped, retimed, scheduled };
 };
 
 const job = <T extends JobData>(queue: QueueDefinition<T>, data: T): Job<T> => ({
@@ -168,6 +171,16 @@ describe('heavy work waits for the night window', () => {
     });
     await window.tick();
     expect(t.worked).toEqual(['knowledge.build', 'knowledge.fill']);
+  });
+
+  it('fill jobs are worked in the window as many at a time as their work asks', async () => {
+    const t = deps({ window: () => 'always' });
+    const window = heavyWindow(t.deps, {
+      build: noop(knowledgeBuildQueue),
+      fill: queueWork(knowledgeFillQueue, async () => undefined, { concurrency: 8 }),
+    });
+    await window.tick();
+    expect(t.concurrency).toEqual({ 'knowledge.build': undefined, 'knowledge.fill': 8 });
   });
 
   it('a change of the night window moves waiting heavy jobs to its next start', async () => {
@@ -248,6 +261,99 @@ describe("a run's end", () => {
     expect(await finishRun(dropped.deps, async () => undefined)(run)).toBe(true);
   });
 
+  it('a cancelled run ends without building its standalone generation', async () => {
+    const cancelled = {
+      ...run,
+      generation: 'g-20261104-7f3c2a',
+      engineSwitch: 'docs:1',
+      cancelRequestedAt: '2026-11-04T10:00:00Z',
+    };
+    const standalone = deps({
+      server: server({ state: vi.fn(async () => 'standalone' as const) }),
+    });
+    expect(await finishRun(standalone.deps, async () => undefined)(cancelled)).toBe(true);
+    expect(standalone.deps.server.build).not.toHaveBeenCalled();
+    expect(standalone.sent).toEqual([]);
+  });
+
+  it("a new dataset's cancelled first run still builds the generation the catalog names", async () => {
+    // Nothing drops the catalog's own generation, so searches need it attached.
+    const cancelled = { ...run, cancelRequestedAt: '2026-11-04T10:00:00Z' };
+    const standalone = deps({
+      server: server({ state: vi.fn(async () => 'standalone' as const) }),
+    });
+    expect(await finishRun(standalone.deps, async () => undefined)(cancelled)).toBe(true);
+    expect(standalone.deps.server.build).toHaveBeenCalled();
+  });
+
+  it('a run on a standalone generation ends by building and attaching it, as a build job above the heavy threshold', async () => {
+    const switched: DatasetConfig = { ...dataset, generation: 'g-20261104-7f3c2a' };
+    const own = { ...run, generation: 'g-20261104-7f3c2a', engineSwitch: 'docs:1' };
+    // At or below the threshold: built and attached at once, then its VACUUM (ANALYZE).
+    const small = deps({
+      server: server({ state: vi.fn(async () => 'standalone' as const) }),
+      datasetOfGeneration: async (g) => (g === switched.generation ? switched : undefined),
+    });
+    expect(await finishRun(small.deps, async () => undefined)(own)).toBe(true);
+    expect(small.deps.server.build).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dataset.id }),
+      'g-20261104-7f3c2a',
+      expect.anything(),
+    );
+    expect(small.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-20261104-7f3c2a',
+      expect.objectContaining({ analyze: true }),
+    );
+    expect(small.sent).toEqual([]);
+    // Above it: a build job that names the run, which stays open until the job has ended.
+    const reports: Record<string, number>[] = [];
+    const large = deps({
+      server: server({
+        state: vi.fn(async () => 'standalone' as const),
+        chunks: vi.fn(async () => 500),
+      }),
+      datasetOfGeneration: async () => switched,
+    });
+    expect(
+      await finishRun(large.deps, async (_id, counts) => {
+        reports.push(counts);
+      })(own),
+    ).toBe(false);
+    expect(large.sent).toEqual([
+      {
+        queue: 'knowledge.build',
+        data: { tenant: '991825827', generation: 'g-20261104-7f3c2a', kind: 'index', run: 'run-1' },
+        startAfter: new Date(nextStart),
+      },
+    ]);
+    expect(reports).toEqual([{ buildSent: 1 }]);
+    expect(large.deps.server.build).not.toHaveBeenCalled();
+    // The build job attached it: the run ends.
+    const built = deps({ server: server({ state: vi.fn(async () => 'attached' as const) }) });
+    expect(
+      await finishRun(
+        built.deps,
+        async () => undefined,
+      )({
+        ...own,
+        report: { stored: 1, skipped: 0, failed: [], buildSent: 1 },
+      }),
+    ).toBe(true);
+    expect(built.deps.server.vacuum).not.toHaveBeenCalled();
+  });
+
+  it("a run on an attached generation vacuums that generation, not the dataset's active one", async () => {
+    const t = deps();
+    expect(
+      await finishRun(t.deps, async () => undefined)({ ...run, generation: 'g-20261104-7f3c2a' }),
+    ).toBe(true);
+    expect(t.deps.server.vacuum).toHaveBeenCalledTimes(1);
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-20261104-7f3c2a',
+      expect.objectContaining({ analyze: true }),
+    );
+  });
+
   it('a VACUUM that waited too long for the lock is tried again on the next pass', async () => {
     const busy = Object.assign(new Error('canceling statement due to lock timeout'), {
       code: '55P03',
@@ -275,6 +381,44 @@ describe('knowledge.build', () => {
     expect(unset.deps.server.reindex).toHaveBeenCalledWith(
       'g-docs-2',
       expect.not.objectContaining({ maintenanceWorkers: expect.anything() }),
+    );
+  });
+
+  it('an index build that ends a run vacuums the generation it attached', async () => {
+    const t = deps({}, night);
+    await buildWork(t.deps).handler(
+      job(knowledgeBuildQueue, {
+        tenant: '991825827',
+        generation: 'g-docs-2',
+        kind: 'index',
+        run: 'run-1',
+      }),
+    );
+    expect(t.deps.server.build).toHaveBeenCalled();
+    expect(t.deps.server.vacuum).toHaveBeenCalledWith(
+      'g-docs-2',
+      expect.objectContaining({ analyze: true }),
+    );
+  });
+
+  it("a switch's generation is built with the switch's dataset", async () => {
+    const switched: DatasetConfig = {
+      ...dataset,
+      generation: 'g-20261104-7f3c2a',
+      embedding: { model: 'other/embed', dimensions: 4 },
+    };
+    const t = deps({ datasetOfGeneration: async () => switched }, night);
+    await buildWork(t.deps).handler(
+      job(knowledgeBuildQueue, {
+        tenant: '991825827',
+        generation: 'g-20261104-7f3c2a',
+        kind: 'index',
+      }),
+    );
+    expect(t.deps.server.build).toHaveBeenCalledWith(
+      switched,
+      'g-20261104-7f3c2a',
+      expect.anything(),
     );
   });
 

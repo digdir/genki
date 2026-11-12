@@ -221,6 +221,24 @@ export const datasets = defineNamespace({
   sharedIngestions: 'Datasettet deles med dere. Innlesingene styres av virksomheten som eier det.',
   sharedWithYou: 'Datasettet deles med dere. Dere kan søke i det, men ikke endre kilden.',
   filesUploaded: 'Filene er lastet opp. Trykk «Les inn nå» for å gjøre dem søkbare.',
+  deleteTitle: 'Slett datasettet',
+  deleteIntro:
+    'Sletting fjerner datasettet fra katalogen med kildene, de opplastede filene og innholdet i søkemotoren. Innlesingshistorikken og revisjonssporet beholdes.',
+  deleteBlocked:
+    'Datasettet kan ikke slettes mens tjenester bruker det. Ta det ut av tjenestene først.',
+  deleteDataset: 'Slett datasett',
+  deleteConfirmText: 'Slett «{name}»? Dette kan ikke angres.',
+  deleteConfirm: 'Slett',
+  deleteFailed: 'Datasettet ble ikke slettet. {problem}',
+  deletedTitle: '{name} er slettet',
+  deletedRemoved:
+    'Katalogoppføringen, {pipelines} kilder, {uploads} opplastede filer og {generations} generasjoner i søkemotoren er fjernet.',
+  deletedKeptRecords:
+    'Dokumentene og partisjonene på kunnskapsserveren blir liggende til slettejobben er bygd (sak 250). Navnet kan ikke brukes på nytt før det.',
+  deletedKeptGenerations:
+    'Søkemotoren nektet å fjerne {count} generasjoner: {list}. Si fra til plattformteamet.',
+  deletedNothingKept: 'Ingenting ble igjen i søkemotoren.',
+  readerAdoption: 'Byggekloss hos {tenant}',
   stepChooseSource: 'Velg kilde',
   stepSetUp: 'Sett opp {source}',
   stepReview: 'Se over og start',
@@ -462,6 +480,11 @@ export const searchEngine = defineNamespace({
   swFirstNow: 'Første treff nå:',
   swFirstWith: 'Første treff med {engine}:',
   swNotFound: 'Ikke funnet blant de 5 første',
+  swFailedDocuments:
+    '{count} dokumenter kunne ikke leses inn. De leses inn på nytt før byttet tas i bruk.',
+  swRefreshing:
+    'Leser inn det som er endret i kilden siden overføringen. Deretter tas {engine} i bruk.',
+  swRefreshFailed: 'Innlesingen før byttet stoppet: {message}. Prøv å ta i bruk på nytt.',
   swAdoptHeading: 'Ta i bruk {engine}',
   swRetained:
     '{engine} beholdes i {days} dager <undecided/>, så du kan gå tilbake uten å lese inn på nytt.',

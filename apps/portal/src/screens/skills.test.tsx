@@ -318,7 +318,7 @@ describe('Ferdigheter', () => {
   it('the stale-result alert appears after editing', async () => {
     await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', { failing: true });
     tab(/Testsett/);
-    const stale = /Utkastet er endret siden siste kjøring/;
+    const stale = /Utkastet eller dommeren er endret siden siste kjøring/;
     expect(screen.queryByText(stale)).toBeNull();
     tab(/Oppsett/);
     fireEvent.change(screen.getByRole('textbox', { name: 'Instruksjoner' }), {
@@ -329,6 +329,16 @@ describe('Ferdigheter', () => {
     expect(screen.queryByRole('heading', { name: /feilet/ })).toBeNull();
     expect(within(region('Testtilfeller')).getAllByText('Ikke kjørt')).toHaveLength(10);
     expectAccessible();
+  });
+
+  it('a run the API marks stale for an earlier judge does not count on the current draft', async () => {
+    await openSkill('skrive-vedtaksbrev', 'Skrive vedtaksbrev', {
+      failing: true,
+      judgeChanged: true,
+    });
+    tab(/Testsett/);
+    expect(screen.getByText(/Utkastet eller dommeren er endret siden siste kjøring/)).toBeTruthy();
+    expect(within(region('Testtilfeller')).getAllByText('Ikke kjørt')).toHaveLength(10);
   });
 
   it('adds a test case inline and validates it', async () => {

@@ -20,9 +20,9 @@ const embedders = (log: InMemoryEventLog) =>
     catalog: {
       endpoints: {
         local: {
-          protocol: 'fake',
           baseURL: 'https://embed.example',
           auth: { kind: 'api-key', secret: 'secret://env/k' },
+          families: { fake: '' },
         },
       },
       models: [
@@ -31,7 +31,8 @@ const embedders = (log: InMemoryEventLog) =>
           endpoint: 'local',
           deployment: 'd',
           residency: 'norway',
-          dimensions: 4,
+          apis: { embed: 'fake/embeddings@1' },
+          embed: { dimensions: 4 },
         },
       ],
     },
