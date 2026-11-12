@@ -165,6 +165,12 @@ const Source = z
         chunk_id: z.string(),
         text: z.string(),
         position: z.number().int().optional(),
+        heading: z
+          .string()
+          .optional()
+          .describe(
+            'The section the excerpt is from: its heading path as plain text, levels joined by ` › `. Present only when the index gives the excerpt a heading.',
+          ),
         markers: z
           .array(z.string())
           .optional()
