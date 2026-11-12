@@ -66,6 +66,8 @@ export interface ConversationTurn {
   chunks?: TurnChunk[];
   markers?: TurnMarker[];
   diagnostics?: unknown;
+  /** The run that wrote an assistant turn, which feedback on the answer names. */
+  task?: string;
 }
 
 export type OpenedConversation =
@@ -206,7 +208,7 @@ const turnMarkers = (v: unknown): TurnMarker[] =>
       : [{ marker, chunk_id: chunkId, document }];
   });
 
-const assistantTurn = (output: ToolOutput): ConversationTurn => {
+const assistantTurn = (output: ToolOutput, task: string): ConversationTurn => {
   const s = output.structured;
   const chunks = Array.isArray(s.chunks) ? (s.chunks as Record<string, unknown>[]) : [];
   const markers = turnMarkers(s.markers);
@@ -214,6 +216,7 @@ const assistantTurn = (output: ToolOutput): ConversationTurn => {
   return {
     role: 'assistant',
     text: output.text,
+    task,
     chunks: chunks.slice(0, 20).map((c) => {
       const docNum = text(c.doc_num);
       return {
@@ -424,7 +427,7 @@ export const createMcpApp = (options: McpAppOptions) => {
 
       const output = mapOutput(parts);
       await options.conversations
-        ?.append(hooks.request, conversationId, assistantTurn(output))
+        ?.append(hooks.request, conversationId, assistantTurn(output, run.task))
         .catch(() => undefined);
       const models = await modelsOf(run.task);
       return outcomeOf(
