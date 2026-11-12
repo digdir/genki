@@ -1,0 +1,5 @@
+omni-parse-bench[benchmark]==0.2.0
+markdown-it-py==4.2.0
+pillow==13.0.0
+pyarrow==26.0.0
+pymupdf==2.0

@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-31868-p5-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Prop. 35 S", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-31868-p5-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Samtykke til ratifikasjon av tilleggsprotokoll av 19. mai 2015 til Europarådets konvensjon om forebygging av terrorisme", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-31868-p5-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Proposisjon til Stortinget (forslag til stortingsvedtak)", "max_diffs": 2}, "after": {"text": "Samtykke til ratifikasjon av tilleggsprotokoll", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31868-p5-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Tilråding fra Utenriksdepartementet 16. desember 2022, godkjent i statsråd samme dag.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31868-p5-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "Innledning", "max_diffs": 1}, "after": {"text": "I Europarådets regi ble det fremforhandlet en tilleggsprotokoll", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-31868-p5-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Per 24. november 2022 er protokollen ratifisert av 26 stater og undertegnet av ytterligere 16 stater.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31868-p5-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "i kraft 1. juli 2019, jf. Prop. 100 L (2018–2019)", "max_diffs": 2}, "after": {"text": "Endringer i straffeloven mv. (terrorrelaterte folkerettslige forpliktelser", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31868-p5-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Rigaprotokollen antas å være en sak av særlig stor viktighet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31868-p5-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "oversettelse til norsk følger som trykt vedlegg til proposisjonen", "max_diffs": 2}, "after": {"text": "På bakgrunn av det økende antallet fremmedkrigere", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31868-p5-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "og skal styrke statenes mulighet til å forhindre at fremmedkrigere reiser til utlandet", "max_diffs": 3}}, "settings": {}}
+]}
