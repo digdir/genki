@@ -60,7 +60,7 @@ module.exports = {
         ],
       },
       to: {
-        path: '^packages/providers-(openai|anthropic|typesense|typesense-writer|colbert|langfuse|pgvector|pgboss)/',
+        path: '^packages/providers-(openai|anthropic|typesense|typesense-writer|colbert|langfuse|pgvector|pgboss|azure-blob)/',
       },
     },
     {
