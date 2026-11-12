@@ -213,6 +213,33 @@ describe('/v1 frontend contract: conversations', () => {
     expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('url');
   });
 
+  it('stores a turn that cites documents as before, with no markers on the turn, its sources or their excerpts', async () => {
+    const { ask, stored } = setup();
+
+    await ask({ genai_conversation: true });
+    const turn = stored.get('conv-1')?.[1];
+
+    expect(turn).not.toHaveProperty('markers');
+    expect(turn?.sources).toStrictEqual([
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        url: 'https://x.no/d1',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', position: 0 },
+          { chunk_id: 'c1b', text: 'Tredje', position: 4 },
+        ],
+      },
+      {
+        index: 2,
+        title: 'Årsrapport',
+        document_id: 'd2',
+        excerpts: [{ chunk_id: 'c2', text: 'Andre', position: 0 }],
+      },
+    ]);
+  });
+
   it('creates no conversation when the request fails validation', async () => {
     const { ask, stored } = setup();
 
@@ -363,6 +390,52 @@ describe('/v1 frontend contract: sources', () => {
       const text = await (await setup().ask({ stream: true })).text();
 
       expect(text).toContain(`"markers":${JSON.stringify(markers)}`);
+    });
+
+    it('keeps the markers of an answer that cites excerpts when the turn is stored', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        markers?: unknown;
+      };
+      const turn = stored.get('conv-1')?.[1];
+
+      expect(turn?.markers).toEqual(markers);
+      expect(turn?.markers).toEqual(body.markers);
+      expect(turn?.sources?.map((s) => [s.document_id, s.index, s.markers])).toEqual([
+        ['d1', 1, ['1', '2']],
+        ['d2', 3, ['3']],
+      ]);
+      expect(turn?.sources?.[0]?.excerpts).toStrictEqual([
+        { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, markers: ['2'] },
+      ]);
+    });
+
+    it('stores each excerpt of a turn exactly as the answer gave it, every field kept', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.excerpts)).toStrictEqual(
+        body.sources.map((s) => s.excerpts),
+      );
+    });
+
+    it('keeps the same markers on the stored turn when the answer is streamed', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      await (await ask({ genai_conversation: true, stream: true })).text();
+      const turn = stored.get('conv-1')?.[1];
+
+      expect(turn?.markers).toEqual(markers);
+      expect(turn?.sources?.map((s) => s.markers)).toEqual([['1', '2'], ['3']]);
+      expect(turn?.sources?.[0]?.excerpts.map((e) => e.markers)).toEqual([['1'], ['2']]);
     });
   });
 

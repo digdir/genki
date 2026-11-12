@@ -487,6 +487,25 @@ describe('openapi.json for a frontend', () => {
     expect(excerpts.items?.required).not.toContain('heading');
   });
 
+  it('describes the markers a stored message keeps, in the same shape as the answer gave them', async () => {
+    const { request } = await boot();
+    const spec = (await (
+      await request('/openapi.json', undefined, undefined, { key: '' })
+    ).json()) as {
+      components: { schemas: Record<string, { properties: Record<string, unknown> }> };
+    };
+    const stored = spec.components.schemas.StoredMessage?.properties ?? {};
+    const response = spec.components.schemas.ChatResponse?.properties ?? {};
+
+    expect(stored.markers).toMatchObject({
+      type: 'array',
+      items: { required: ['marker', 'chunk_id', 'document'] },
+    });
+    expect((stored.markers as { items?: unknown }).items).toEqual(
+      (response.markers as { items?: unknown }).items,
+    );
+  });
+
   it('gives the rename route a body that names title, topic and tags', async () => {
     const { request } = await boot();
     const spec = (await (
