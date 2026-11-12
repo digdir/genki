@@ -166,7 +166,8 @@ def slices(rows):
 
 def describe(t):
     a = t["args"]
-    txt = lambda x: x.get("text", x.get("number", ""))
+    # A test can quote an em-dash from the page; published text refuses them, so it becomes "--" (as in score.py)
+    txt = lambda x: str(x.get("text", x.get("number", ""))).replace("\u2014", "--")
     if t["test_type"] == "present":
         return f'"{txt(a["content"])}"'
     if t["test_type"] == "order":

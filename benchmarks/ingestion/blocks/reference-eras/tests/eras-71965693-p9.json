@@ -1,0 +1,326 @@
+{
+ "tests": [
+  {
+   "id": "eras-71965693-p9-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 1. Oversikt over årlig import av PER, i tonn. Kilde: NRV",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "795",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "1988",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Mengde",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "283",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "1998",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "280",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "633",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "633",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "1999",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Mengde",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "24",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "2003",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Mengde",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "12",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "2008",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "25",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "633",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "409",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tabell 1. Oversikt over årlig import av",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Oversikten viser at importen av PER har falt kraftig",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Oversikten viser at importen av PER har falt kraftig etter at avgiften på kr 50,- pr kg ble innført i 2000.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Dette har blitt tatt opp i intervju med NRV",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Intervju med Norsk Renseri og Vaskeriforening",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Intervju med Norsk Renseri og Vaskeriforening (NRV)",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t13",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "vil maskinen fortsette å bruke dette vaskemidlet hele sin levetid",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Innen bransjen regnes PER som et løsemiddel",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Typisk mengde PER i en maskin er 200-300 liter.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-71965693-p9-t15",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utskraping av destillasjonsslam fra maskinen skjer som regel en gang i uken hos de fleste renserier, avhengig av hvor mye maskinene er brukt.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

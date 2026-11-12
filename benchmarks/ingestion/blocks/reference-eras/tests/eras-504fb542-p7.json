@@ -1,0 +1,192 @@
+{
+ "tests": [
+  {
+   "id": "eras-504fb542-p7-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Les dispositions des articles 15, 16 et du paragraphe 1 sont également applicables",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Article 2",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Article 2",
+     "max_diffs": 0
+    },
+    "after": {
+     "text": "Chacun des Etats notifiera",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "L'Avenant demeurera en vigueur aussi longtemps que la Convention.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "ont signé le présent Avenant",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Fait à Oslo le 16 septembre 1999",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fait à Oslo le 16 septembre 1999 en double exemplaire en langue française.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "fra",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Bjarne Lindstrø",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t12",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Patrick Henault",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Tilleggsoverenskomst til overenskomsten mellom Kongeriket",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Den Franske Republikkens Regjering og Kongeriket Norges Regjering som ønsker å endre overenskomsten",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-504fb542-p7-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Artikkel 19 i Overenskomsten skal oppheves og erstattes med følgende:",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -29,7 +29,8 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run boundaries && npm run size && npm test",
     "parity": "npm run parity --workspace apps/parity --",
     "atlas:build": "tsx --conditions=source scripts/build-atlas.ts",
-    "atlas:test": "vitest run --root scripts"
+    "atlas:test": "vitest run --root scripts",
+    "conversions:check": "tsx --conditions=source scripts/conversions-check.ts"
   },
   "engines": {
     "node": ">=24"

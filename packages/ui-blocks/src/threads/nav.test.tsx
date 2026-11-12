@@ -97,6 +97,15 @@ describe('the design’s list, `variant="nav"`', () => {
     expect(newThread().querySelector('svg')).toBeNull();
   });
 
+  it('keeps «Ny tråd» in a row of its own above the list, which the list scrolls under', () => {
+    draw({ variant: 'nav' });
+    expect(newThread().parentElement?.className).toBe('uib-threads-top');
+    expect(newThread().parentElement?.parentElement).toBe(root());
+    cleanup();
+    draw();
+    expect(newThread().parentElement).toBe(root());
+  });
+
   it('holds the groups in one list, in order, each with its heading over its rows', () => {
     draw({ variant: 'nav' });
     expect(root()?.getAttribute('data-variant')).toBe('nav');

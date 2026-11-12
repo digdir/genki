@@ -1,0 +1,20 @@
+# Marker 2.1.0 with the versions the page tests graded (opb marker2 venv, 4 Nov 2026). Its OCR and layout model
+# (datalab-to/surya-ocr-2.5) runs in vLLM, which Surya starts itself as a sibling container
+# (vllm/vllm-openai, Surya's VLLM_DOCKER_IMAGE) through the host's Docker socket, so the image carries the
+# Docker CLI. run.sh mounts the socket and shares the host network so Surya reaches the server it started.
+FROM python:3.13-slim
+# build-essential: Triton compiles its launcher with the C compiler at run time (Surya's models).
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0 build-essential curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz \
+    | tar -xz -C /usr/local/bin --strip-components=1 docker/docker
+RUN pip install --no-cache-dir torch==2.15.0 torchvision==0.29.2 marker-pdf==2.1.0 surya-ocr==0.23.0 \
+    transformers==5.22.1 pdftext==0.7.1 openai==2.54.0 huggingface_hub==1.33.0
+# Marker downloads a font into site-packages on first load; the container runs as the host user, who can't write
+# there, so fetch it at build time.
+RUN python -c "from marker.util import download_font; download_font()"
+COPY documents.json /app/documents.json
+COPY convert/ /app/convert/
+WORKDIR /app/convert
+ENV PYTHONUNBUFFERED=1
+ENTRYPOINT ["python", "convert_marker2.py"]
