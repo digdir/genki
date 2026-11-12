@@ -1,0 +1,223 @@
+{
+ "tests": [
+  {
+   "id": "kudos-4957-p46-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Note 6 Innkrevingsvirksomhet og andre overføringer til staten",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "418 435",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Tilfeldige og andre inntekter",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "31.12.2019",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "5 155 000",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "4 969 790",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "31.12.2019",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Sum innkrevingsvirksomhet og andre overføringer til staten",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Klagenemndssekretariatet krevde i 2020",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Klagenemndssekretariatet krevde i 2020 inn kr. 4.969.790,- i overtredelsesgebyr på saker i KOFA.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Størrelsen på regnskapsførte gebyrer vil variere år for år",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Note 7 Sammenheng mellom avregning med statskassen",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Sammenheng mellom avregning med statskassen og mellomværende med statskassen",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "42 200",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Kundefordringer",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Forskjell",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "-55 517",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Leverandørgjeld",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Forskjell",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-4957-p46-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "1 201 400",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -1,0 +1,234 @@
+{
+ "tests": [
+  {
+   "id": "kudos-13175-p23-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Men over et så vidt kort tidsrom som evalueringen har foregått i, har det uansett begrenset verdi",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "bredere framstilling av deltakernes opplevelse av utdanningen",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Populasjon, utvalg og datainnsamling",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Svarprosentene for deltakerne har gått noe ned fra kull til kull, men er likevel relativt høy.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 2-2: Utsendte spørreskjema og svarprosent for tre deltakerkull og kontrollgruppe",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "457",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Januar 2017",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Antall utsendte",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "26",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "495",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Fullførte skjema, prosent",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "496",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "Kontrollgruppe, rektorer",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Antall utsendte",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2016-kullet halvannet år etter",
+     "max_diffs": 1
+    },
+    "right": {
+     "text": "472",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "number": "473"
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Kontroll-gruppe, rektorer",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Tabellen viser antall skjema som ble sendt ut",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-13175-p23-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vi har også i denne rapporten konstruert nye dimensjoner i svarmønstrene basert på faktoranalyse",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}
