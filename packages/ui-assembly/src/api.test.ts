@@ -27,8 +27,7 @@ describe('a source from the wire', () => {
   });
 });
 
-// genki names the run behind an answer, which feedback is sent on: `task` on a stored message, the
-// `genai-task` header on a stream.
+// The run feedback is sent on, from `task` on a stored message.
 describe('the run behind an answer', () => {
   const api = () => createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' });
 
@@ -61,33 +60,5 @@ describe('the run behind an answer', () => {
     );
     const { turns } = await api().loadThread('t1');
     expect(turns[0]?.answer).not.toHaveProperty('runId');
-  });
-
-  it('comes with the end of an answer asked here, from the stream’s `genai-task` header', async () => {
-    const frames = [
-      { choices: [{ delta: { content: 'Svar.' } }] },
-      { choices: [{ delta: {}, finish_reason: 'stop' }] },
-    ];
-    const body = `${frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('')}data: [DONE]\n\n`;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(body, {
-            headers: { 'content-type': 'text/event-stream', 'genai-task': 'task-9' },
-          }),
-      ),
-    );
-    const events = [];
-    for await (const event of api().ask({
-      question: 'Hva er fast?',
-      model: 'ka__default',
-      conversationId: 't1',
-      steps: false,
-      signal: new AbortController().signal,
-    }))
-      events.push(event);
-    const done = events.at(-1);
-    expect(done?.type === 'done' ? done.answer.taskId : undefined).toBe('task-9');
   });
 });

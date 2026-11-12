@@ -66,11 +66,7 @@ import { useStoredValue, type AssistantStorage } from './storage.js';
 
 export interface AssistantFeedback {
   answerId: string;
-  /**
-   * genki's id for the run that gave the answer, the `task` of `POST /api/feedback`. Missing when
-   * genki gave none, such as through a proxy that drops the `genai-task` header. It comes from the
-   * page: a host behind one shared key sends it only for runs it made for that reader.
-   */
+  /** genki's run (`task` in `POST /api/feedback`), when given; see the component page. */
   runId?: string | undefined;
   rating: 'up' | 'down';
   reasons: readonly string[];
