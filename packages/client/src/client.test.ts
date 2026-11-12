@@ -87,6 +87,22 @@ const excerptSources = [
   },
 ];
 
+// Each excerpt's own section, as `/v1` sends it when the index gives the chunk a heading.
+const headedSource = {
+  index: 1,
+  title: 'Tildelingsbrev',
+  document_id: 'd1',
+  excerpts: [
+    { chunk_id: 'c1', text: 'Første', position: 0, heading: '1 Innledning' },
+    { chunk_id: 'c7', text: 'Mål', position: 4, heading: '3 Styringsparametere › 3.2 Mål' },
+  ],
+};
+
+const headedExcerpts = [
+  { chunkId: 'c1', text: 'Første', position: 0, heading: '1 Innledning' },
+  { chunkId: 'c7', text: 'Mål', position: 4, heading: '3 Styringsparametere › 3.2 Mål' },
+];
+
 describe('@genai/client requests', () => {
   it('sends the API key, the end user and the pinned version as the contract headers', async () => {
     const { calls, fetchFn } = recording(() => Response.json({ data: [] }));
@@ -288,6 +304,54 @@ describe('@genai/client requests', () => {
     expect(answer.sources[0]?.excerpts[0]?.markers).toEqual(['1']);
   });
 
+  it("keeps each excerpt's heading from the answer", async () => {
+    const { fetchFn } = recording(() =>
+      Response.json({
+        id: 'c',
+        choices: [{ message: { content: 'Se [1].' } }],
+        sources: [headedSource],
+      }),
+    );
+
+    const answer = await createClient({ baseUrl: 'http://api', fetch: fetchFn }).ask({
+      service: 's',
+      question: 'q',
+    });
+
+    expect(answer.sources[0]?.excerpts).toEqual(headedExcerpts);
+  });
+
+  it('leaves the heading out when the excerpt has none', async () => {
+    const { fetchFn } = recording(() =>
+      Response.json({
+        id: 'c',
+        choices: [{ message: { content: 'Se [1].' } }],
+        sources: [
+          {
+            index: 1,
+            title: 'T',
+            excerpts: [
+              { chunk_id: 'c1', text: 'A', heading: '1 Innledning' },
+              { chunk_id: 'c2', text: 'B' },
+              { chunk_id: 'c3', text: 'C', heading: 3 },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const answer = await createClient({ baseUrl: 'http://api', fetch: fetchFn }).ask({
+      service: 's',
+      question: 'q',
+    });
+
+    expect(answer.sources[0]?.excerpts).toStrictEqual([
+      { chunkId: 'c1', text: 'A', heading: '1 Innledning' },
+      { chunkId: 'c2', text: 'B' },
+      { chunkId: 'c3', text: 'C' },
+    ]);
+  });
+
   it('turns an error body into an ApiError with status, code and field errors', async () => {
     const { fetchFn } = recording(() =>
       Response.json(
@@ -444,5 +508,27 @@ describe('@genai/client streaming', () => {
     const done = events.at(-1);
     expect(events.find((e) => e.type === 'sources')).not.toHaveProperty('markers');
     expect(done?.type === 'done' && done.answer).not.toHaveProperty('markers');
+  });
+
+  it("keeps each excerpt's heading in the streamed sources and the finished answer", async () => {
+    const { fetchFn } = recording(() =>
+      sse([
+        frame({ content: 'Se [1].' }),
+        frame({}, { sources: [headedSource] }),
+        { ...frame({}), choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      ]),
+    );
+
+    const events = [];
+    for await (const e of createClient({ baseUrl: 'http://api', fetch: fetchFn }).stream({
+      service: 's',
+      question: 'q',
+    }))
+      events.push(e);
+
+    const streamed = events.find((e) => e.type === 'sources');
+    const done = events.at(-1);
+    expect(streamed?.type === 'sources' && streamed.sources[0]?.excerpts).toEqual(headedExcerpts);
+    expect(done?.type === 'done' && done.answer.sources[0]?.excerpts).toEqual(headedExcerpts);
   });
 });
