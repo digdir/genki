@@ -216,9 +216,7 @@ export const withWindowFold = (state: ShellState, side: ShellSide): ShellState =
 /** The reader or the host chose for `side`: the window no longer opens it by itself. */
 export const withChosen = (state: ShellState, side: ShellSide): ShellState => {
   if (!state.foldedByWindow?.[side]) return state;
-  const foldedByWindow = { ...state.foldedByWindow };
-  delete foldedByWindow[side];
-  return { ...state, foldedByWindow };
+  return { ...state, foldedByWindow: { ...state.foldedByWindow, [side]: false } };
 };
 
 /** Open `side` again if the window folded it. */
