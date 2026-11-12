@@ -1,0 +1,42 @@
+{
+  "parser": "mineru",
+  "version": "4.1.6",
+  "mineru_vl_utils": "2.0.8",
+  "docvortex": "0.6.21",
+  "vllm": "0.30.0",
+  "mlx_vlm": null,
+  "settings": {
+    "tier": "standard",
+    "ocr_mode": "auto",
+    "image_analysis": true,
+    "vlm_engine": "auto",
+    "telemetry": "off"
+  },
+  "models": {
+    "small": "MinerU-4_models_torch",
+    "vlm": "MinerU2.5-Pro-2605-1.2B"
+  },
+  "native": "ParseResult.to_dict() (docvortex.middle), image bytes left out",
+  "device_requested": "auto",
+  "load_seconds": 0.0,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 138.3
+  },
+  "torch": "2.13.0+cu130",
+  "cuda_available": true,
+  "cuda": "13.0",
+  "cuda_device": "NVIDIA A100 80GB PCIe",
+  "machine": {
+    "host_label": "azure-NC24ads_A100_v4-swedencentral",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 7V13 64-Core Processor",
+    "cpus": 24,
+    "memory": "226755524 kB",
+    "gpus": [
+      "NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"
+    ],
+    "python": "3.12.16"
+  }
+}

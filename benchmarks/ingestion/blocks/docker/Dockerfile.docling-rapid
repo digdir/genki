@@ -1,0 +1,18 @@
+# docling-rapid: the Docling image plus onnxruntime, so Docling's automatic OCR choice is RapidOCR. A separate image,
+# because onnxruntime in the main image would switch the docling parser's OCR too. onnxruntime (CPU) is what
+# Docling's automatic choice asks for, so RapidOCR runs on the CPU even on GPU hosts.
+# PyPI's Linux x86_64 torch wheels carry their own CUDA runtime; the host needs only the NVIDIA driver.
+FROM python:3.13-slim
+# tesseract-ocr-nor: for docling-tess only; Docling's automatic OCR choice never picks Tesseract, so docling and
+# docling-no are unchanged by it.
+RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-nor \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir \
+    docling==2.146.0 docling-core==2.105.0 docling-ibm-models==4.0.4 \
+    rapidocr==3.10.0 easyocr==1.7.2 torch==2.15.0 torchvision==0.29.2
+RUN pip install --no-cache-dir onnxruntime==1.31.1
+COPY documents.json /app/documents.json
+COPY convert/ /app/convert/
+WORKDIR /app/convert
+ENV PYTHONUNBUFFERED=1
+ENTRYPOINT ["python", "convert_docling.py"]

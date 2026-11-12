@@ -1,0 +1,48 @@
+{
+  "parser": "docling-tess",
+  "version": "2.146.0",
+  "docling_core": "2.105.0",
+  "docling_ibm_models": "4.0.4",
+  "rapidocr": "3.10.0",
+  "tesseract": "tesseract 5.5.0",
+  "settings": {
+    "pipeline": "default PdfPipelineOptions",
+    "do_ocr": true,
+    "ocr": "TesseractCliOcrOptions",
+    "ocr_engine": "Tesseract CLI, Norwegian",
+    "ocr_lang": [
+      "nor"
+    ],
+    "table_mode": "accurate",
+    "accelerator": {
+      "device": "cuda",
+      "num_threads": 24
+    }
+  },
+  "models": {
+    "layout": "docling-project/docling-layout-heron"
+  },
+  "native": "DoclingDocument.export_to_dict()",
+  "device_requested": "cuda",
+  "load_seconds": 0.3,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 6.0
+  },
+  "torch": "2.15.0+cu132",
+  "cuda_available": true,
+  "cuda": "13.2",
+  "cuda_device": "NVIDIA A100 80GB PCIe",
+  "machine": {
+    "host_label": "azure-NC24ads_A100_v4-swedencentral",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 7V13 64-Core Processor",
+    "cpus": 24,
+    "memory": "226755524 kB",
+    "gpus": [
+      "NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"
+    ],
+    "python": "3.13.18"
+  }
+}

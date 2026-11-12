@@ -1,0 +1,523 @@
+{
+ "note": "per era: 2 scanned, 1 table-heavy, 1 two-column (hard) and 2 easy documents, at most 80 pages, from the era sample; no page tests exist for them yet",
+ "documents": [
+  {
+   "id": "8a1cc78e",
+   "uuid": "8a1cc78e-4578-4787-bb4b-fcf4cc0242ae",
+   "era": "before 2000",
+   "type": "NOU",
+   "publish_year": 1980,
+   "pages": 60,
+   "sha256": "4af8a039814754da17ee635cd247fb7c562dca8c80f7e874090e82cc85b50d44",
+   "size": 3072610,
+   "pdf_url": "https://kudos.dfo.no/dokument/8a1cc78e-4578-4787-bb4b-fcf4cc0242ae/filer/cbd8ab78-ab94-473c-88f8-c8142e57e506.pdf",
+   "page_kinds": {
+    "scan+text": 51,
+    "image-only": 5,
+    "digital": 4
+   },
+   "table_pages": 0,
+   "multi_column_pages": 20,
+   "reasons": [
+    "5 image-only pages",
+    "93% scanned pages",
+    "two columns on 33% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "e87e4ace",
+   "uuid": "e87e4ace-0431-4d2b-81f3-502238928382",
+   "era": "before 2000",
+   "type": "Proposisjon til Stortinget",
+   "publish_year": 1994,
+   "pages": 2,
+   "sha256": "4a205b2d56eb8d756645a6c9093fc2f56f22b14306aa06faf48fc01ac069e2d0",
+   "size": 105089,
+   "pdf_url": "https://kudos.dfo.no/dokument/e87e4ace-0431-4d2b-81f3-502238928382/filer/8db187f0-3910-49f1-9b45-725cd1c235af.pdf",
+   "page_kinds": {
+    "image-only": 2
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [
+    "2 image-only pages",
+    "100% scanned pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "504fb542",
+   "uuid": "504fb542-b3bc-41d4-8d83-e664444fa4fa",
+   "era": "before 2000",
+   "type": "Proposisjon til Stortinget",
+   "publish_year": 1999,
+   "pages": 9,
+   "sha256": "060ec08abdc04007a1a3f50246e17de04738a4f18b73e80dbebc7129fd815e9e",
+   "size": 105882,
+   "pdf_url": "https://kudos.dfo.no/dokument/504fb542-b3bc-41d4-8d83-e664444fa4fa/filer/dbc21636-747c-4378-8789-3893347396b9.pdf",
+   "page_kinds": {
+    "digital": 9
+   },
+   "table_pages": 3,
+   "multi_column_pages": 0,
+   "reasons": [
+    "tables on 33% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "tables"
+  },
+  {
+   "id": "e9bad2e8",
+   "uuid": "e9bad2e8-831c-4080-989d-01ae5297084b",
+   "era": "before 2000",
+   "type": "Evaluering",
+   "publish_year": 1996,
+   "pages": 56,
+   "sha256": "3417686a2ab35cbed1acc292f6e7bce86b55b51ecfd840479797bfe16eb4f86a",
+   "size": 9775343,
+   "pdf_url": "https://kudos.dfo.no/dokument/e9bad2e8-831c-4080-989d-01ae5297084b/filer/160eaf92-020e-4ae0-9468-ec0574d8155c.pdf",
+   "page_kinds": {
+    "scan+text": 54,
+    "image-only": 2
+   },
+   "table_pages": 0,
+   "multi_column_pages": 23,
+   "reasons": [
+    "2 image-only pages",
+    "100% scanned pages",
+    "two columns on 41% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "two columns"
+  },
+  {
+   "id": "f4585a45",
+   "uuid": "f4585a45-e24e-40a9-9e02-3d9a5ed8d43e",
+   "era": "before 2000",
+   "type": "Retningslinjer",
+   "publish_year": 1997,
+   "pages": 8,
+   "sha256": "4b312438e33d85e0afbaa60ced40dd649731f46fbaa269e7e17ff174182aa478",
+   "size": 145405,
+   "pdf_url": "https://kudos.dfo.no/dokument/f4585a45-e24e-40a9-9e02-3d9a5ed8d43e/filer/b62079e0-0556-4c7c-ae5d-4cf994ce99a6.pdf",
+   "page_kinds": {
+    "digital": 8
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "47b5d29b",
+   "uuid": "47b5d29b-1d0b-4301-ab6a-12408a6da9bc",
+   "era": "before 2000",
+   "type": "Retningslinjer",
+   "publish_year": 1997,
+   "pages": 8,
+   "sha256": "47ff1803172a60e20884d645b51273e09295ddee1b8596a1bd60169fc97afa62",
+   "size": 126694,
+   "pdf_url": "https://kudos.dfo.no/dokument/47b5d29b-1d0b-4301-ab6a-12408a6da9bc/filer/a9d4fcc0-3a59-4618-b257-12f732998024.pdf",
+   "page_kinds": {
+    "digital": 8
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "63ec8679",
+   "uuid": "63ec8679-97c6-4ec7-a361-3296815594b4",
+   "era": "2000-2009",
+   "type": "Kartlegging",
+   "publish_year": 2006,
+   "pages": 17,
+   "sha256": "3a475dfc13b18683feb50348f49594fba82398e04821773da1c40e58547e0662",
+   "size": 711225,
+   "pdf_url": "https://kudos.dfo.no/dokument/63ec8679-97c6-4ec7-a361-3296815594b4/filer/c1759ed0-b547-4fc3-a438-600b7d713e8f.pdf",
+   "page_kinds": {
+    "image-only": 17
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [
+    "17 image-only pages",
+    "100% scanned pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "b3ffd2a8",
+   "uuid": "b3ffd2a8-1c9d-4b7d-a282-a22b9802dc23",
+   "era": "2000-2009",
+   "type": "Statusrapport",
+   "publish_year": 2007,
+   "pages": 40,
+   "sha256": "28d0121caf57b8d6ce1f32c40ffaaabf10f51a601ca39b2d2c2b93bc83283538",
+   "size": 10894828,
+   "pdf_url": "https://kudos.dfo.no/dokument/b3ffd2a8-1c9d-4b7d-a282-a22b9802dc23/filer/9792b9ba-2c16-4110-9017-261b07b7c1f8.pdf",
+   "page_kinds": {
+    "scan+text": 25,
+    "digital": 15
+   },
+   "table_pages": 8,
+   "multi_column_pages": 21,
+   "reasons": [
+    "62% scanned pages",
+    "tables on 20% of pages",
+    "two columns on 52% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "71965693",
+   "uuid": "71965693-0ca0-4474-98b8-7aab165ae2d8",
+   "era": "2000-2009",
+   "type": "Evaluering",
+   "publish_year": 2009,
+   "pages": 32,
+   "sha256": "0c9fc7b31107198298356ad68440dc844ea5082b2cbbb8b614e819cb08f14c55",
+   "size": 494201,
+   "pdf_url": "https://kudos.dfo.no/dokument/71965693-0ca0-4474-98b8-7aab165ae2d8/filer/0105d38e-012d-4303-8e67-df82e670b096.pdf",
+   "page_kinds": {
+    "digital": 32
+   },
+   "table_pages": 15,
+   "multi_column_pages": 0,
+   "reasons": [
+    "tables on 47% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "tables"
+  },
+  {
+   "id": "c083beda",
+   "uuid": "c083beda-64a7-47a6-85c0-255fbc1593af",
+   "era": "2000-2009",
+   "type": "Statusrapport",
+   "publish_year": 2007,
+   "pages": 33,
+   "sha256": "30bd29e44bd9420d3d976a2d8b0dba7dfc693b0c98c3667d85e8d308fa615886",
+   "size": 1119878,
+   "pdf_url": "https://kudos.dfo.no/dokument/c083beda-64a7-47a6-85c0-255fbc1593af/filer/3e0becf8-6a66-4e51-8dd9-30d3c0951453.pdf",
+   "page_kinds": {
+    "blank": 1,
+    "digital": 32
+   },
+   "table_pages": 4,
+   "multi_column_pages": 15,
+   "reasons": [
+    "two columns on 45% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "two columns"
+  },
+  {
+   "id": "34783e9d",
+   "uuid": "34783e9d-c18f-48a6-9ca6-daf2c4f9c75e",
+   "era": "2000-2009",
+   "type": "Studie",
+   "publish_year": 2008,
+   "pages": 80,
+   "sha256": "ec70579ac9947f80f88e693d6d3614e030ee5f242a9364d237fe42c4084ed957",
+   "size": 745072,
+   "pdf_url": "https://kudos.dfo.no/dokument/34783e9d-c18f-48a6-9ca6-daf2c4f9c75e/filer/e6a030e1-5273-41f9-813f-870bc5caa795.pdf",
+   "page_kinds": {
+    "digital": 80
+   },
+   "table_pages": 2,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "40178058",
+   "uuid": "40178058-8be9-47f4-8021-4d4a8ab92b68",
+   "era": "2000-2009",
+   "type": "Kartlegging",
+   "publish_year": 2003,
+   "pages": 46,
+   "sha256": "67476d1a375df16242fa0fd460bd72caadf19533d12231464d362f4d215f67e2",
+   "size": 21311318,
+   "pdf_url": "https://kudos.dfo.no/dokument/40178058-8be9-47f4-8021-4d4a8ab92b68/filer/abdb4057-d733-45e4-87e3-f17d64247ab7.pdf",
+   "page_kinds": {
+    "digital": 41,
+    "blank": 5
+   },
+   "table_pages": 1,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "810ca2af",
+   "uuid": "810ca2af-8054-4246-b3f0-3be922911662",
+   "era": "2010-2019",
+   "type": "Studie",
+   "publish_year": 2012,
+   "pages": 78,
+   "sha256": "c7718925e18dc62e552e6ffb8c5513f04291b807a24caef2f44ab0691bc41960",
+   "size": 2286806,
+   "pdf_url": "https://kudos.dfo.no/dokument/810ca2af-8054-4246-b3f0-3be922911662/filer/f54f7d17-3d2b-4aea-ac1d-87fd4f902167.pdf",
+   "page_kinds": {
+    "image-only": 1,
+    "digital": 75,
+    "blank": 2
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [
+    "1 image-only pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "7ca7961d",
+   "uuid": "7ca7961d-0423-4cbf-864a-0d2881483050",
+   "era": "2010-2019",
+   "type": "Studie",
+   "publish_year": 2014,
+   "pages": 51,
+   "sha256": "83e6aa39cdc42b504daa8e5f8506082b747d3ee16a6cccd7e61fc6be341655c2",
+   "size": 4462234,
+   "pdf_url": "https://kudos.dfo.no/dokument/7ca7961d-0423-4cbf-864a-0d2881483050/filer/8c2d6eea-5457-4834-ad38-e37e099be626.pdf",
+   "page_kinds": {
+    "digital": 47,
+    "scan+text": 1,
+    "blank": 2,
+    "image-only": 1
+   },
+   "table_pages": 10,
+   "multi_column_pages": 1,
+   "reasons": [
+    "1 image-only pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "36e2d1d0",
+   "uuid": "36e2d1d0-66c3-4eec-93e8-27e7d269377d",
+   "era": "2010-2019",
+   "type": "Statusrapport",
+   "publish_year": 2016,
+   "pages": 18,
+   "sha256": "8b6b0845debcbb7de118dcd7b2ac57acea415f55e5b952fd10ae14eba658591d",
+   "size": 459139,
+   "pdf_url": "https://kudos.dfo.no/dokument/36e2d1d0-66c3-4eec-93e8-27e7d269377d/filer/c85da729-1be7-4ef4-b9a9-d1ccdd521d7e.pdf",
+   "page_kinds": {
+    "digital": 18
+   },
+   "table_pages": 4,
+   "multi_column_pages": 0,
+   "reasons": [
+    "tables on 22% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "tables"
+  },
+  {
+   "id": "73e413c8",
+   "uuid": "73e413c8-1c3b-4b0f-8f2b-747db0a1a01a",
+   "era": "2010-2019",
+   "type": "Proposisjon til Stortinget",
+   "publish_year": 2015,
+   "pages": 16,
+   "sha256": "100ca5ec117f10e463e3184a48c6fbf4f18fd2552fac60c9094e8ce855b4e319",
+   "size": 1811456,
+   "pdf_url": "https://kudos.dfo.no/dokument/73e413c8-1c3b-4b0f-8f2b-747db0a1a01a/filer/69956e69-6343-4042-9098-99ccc9599793.pdf",
+   "page_kinds": {
+    "digital": 13,
+    "blank": 3
+   },
+   "table_pages": 0,
+   "multi_column_pages": 6,
+   "reasons": [
+    "two columns on 38% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "two columns"
+  },
+  {
+   "id": "d6e0e88b",
+   "uuid": "d6e0e88b-370d-4330-b407-dbb4c82d2474",
+   "era": "2010-2019",
+   "type": "Evaluering",
+   "publish_year": 2015,
+   "pages": 22,
+   "sha256": "20744467210000c67cbc9f04b5839bb2e3e1fd2384c2cc7619ba42af5c29acef",
+   "size": 759976,
+   "pdf_url": "https://kudos.dfo.no/dokument/d6e0e88b-370d-4330-b407-dbb4c82d2474/filer/63ebe571-ab3b-48df-b3d3-bd8ff54f0426.pdf",
+   "page_kinds": {
+    "digital": 21,
+    "blank": 1
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "5cb6ee7a",
+   "uuid": "5cb6ee7a-4c0c-477b-a181-01477c815c75",
+   "era": "2010-2019",
+   "type": "Statusrapport",
+   "publish_year": 2019,
+   "pages": 17,
+   "sha256": "384fc59f0e7a3828f8e8ed56fde301420b0641413b52a2e848818e23c5647bae",
+   "size": 737615,
+   "pdf_url": "https://kudos.dfo.no/dokument/5cb6ee7a-4c0c-477b-a181-01477c815c75/filer/22e38fc9-9fdd-4282-800c-328d3778bfa3.pdf",
+   "page_kinds": {
+    "digital": 17
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "d17a8877",
+   "uuid": "d17a8877-1fb9-444d-abb2-518145e1a969",
+   "era": "2020 on",
+   "type": "Årsrapport",
+   "publish_year": 2024,
+   "pages": 60,
+   "sha256": "9376d63c0f038cb57b3dec29e310e3bc50ec2760204c24cb0de4e3448614aa2a",
+   "size": 18547959,
+   "pdf_url": "https://kudos.dfo.no/dokument/d17a8877-1fb9-444d-abb2-518145e1a969/filer/e89bd230-b933-43ae-8e89-954e8334142a.pdf",
+   "page_kinds": {
+    "image-only": 1,
+    "digital": 53,
+    "scan+text": 5,
+    "blank": 1
+   },
+   "table_pages": 29,
+   "multi_column_pages": 21,
+   "reasons": [
+    "1 image-only pages",
+    "10% scanned pages",
+    "tables on 48% of pages",
+    "two columns on 35% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "93050f9c",
+   "uuid": "93050f9c-8748-4a43-845e-6add7c407c2a",
+   "era": "2020 on",
+   "type": "Evaluering",
+   "publish_year": 2021,
+   "pages": 32,
+   "sha256": "0891bff67763caf1fbd006351fe9a4780713d5de3dd4fbbe465dcb06d67b9c36",
+   "size": 21356746,
+   "pdf_url": "https://kudos.dfo.no/dokument/93050f9c-8748-4a43-845e-6add7c407c2a/filer/f279c6b3-dc52-4187-93b2-04bf50bab868.pdf",
+   "page_kinds": {
+    "image-only": 32
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [
+    "32 image-only pages",
+    "100% scanned pages"
+   ],
+   "class": "hard",
+   "picked_for": "scanned"
+  },
+  {
+   "id": "d71c0286",
+   "uuid": "d71c0286-7702-4506-bb9d-7ab0cf9d5f1c",
+   "era": "2020 on",
+   "type": "Statusrapport",
+   "publish_year": 2024,
+   "pages": 8,
+   "sha256": "d6f979d1a111d446ec7bfa66d3178949f712f323c5204218d629e3cdea4f2069",
+   "size": 381320,
+   "pdf_url": "https://kudos.dfo.no/dokument/d71c0286-7702-4506-bb9d-7ab0cf9d5f1c/filer/1fe85330-5a89-4a3b-91d4-02483f33a348.pdf",
+   "page_kinds": {
+    "digital": 8
+   },
+   "table_pages": 7,
+   "multi_column_pages": 0,
+   "reasons": [
+    "tables on 88% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "tables"
+  },
+  {
+   "id": "cc081a8d",
+   "uuid": "cc081a8d-3f73-4796-a671-20a522c2c381",
+   "era": "2020 on",
+   "type": "Proposisjon til Stortinget",
+   "publish_year": 2024,
+   "pages": 16,
+   "sha256": "9963c0a3ae641aff21ff668851b4e9f4ffd34343bc2c014160244577cdff2f63",
+   "size": 4703369,
+   "pdf_url": "https://kudos.dfo.no/dokument/cc081a8d-3f73-4796-a671-20a522c2c381/filer/5baf7f42-cc11-4b0c-87d7-442c18b1acdc.pdf",
+   "page_kinds": {
+    "digital": 13,
+    "blank": 3
+   },
+   "table_pages": 0,
+   "multi_column_pages": 10,
+   "reasons": [
+    "two columns on 62% of pages"
+   ],
+   "class": "hard",
+   "picked_for": "two columns"
+  },
+  {
+   "id": "7c683b2a",
+   "uuid": "7c683b2a-21b8-4bb0-bfde-dc77822b01a8",
+   "era": "2020 on",
+   "type": "Evaluering",
+   "publish_year": 2024,
+   "pages": 47,
+   "sha256": "2d94f68765c938b3f10dff46aface56432981dede8d849a60ece9c7222f68588",
+   "size": 748237,
+   "pdf_url": "https://kudos.dfo.no/dokument/7c683b2a-21b8-4bb0-bfde-dc77822b01a8/filer/50e1f447-1d9d-4a11-8fc3-dbf1198bbe3d.pdf",
+   "page_kinds": {
+    "digital": 41,
+    "blank": 6
+   },
+   "table_pages": 1,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  },
+  {
+   "id": "7d136c1c",
+   "uuid": "7d136c1c-a158-4a44-8862-915bb3689f37",
+   "era": "2020 on",
+   "type": "Instruks",
+   "publish_year": 2026,
+   "pages": 12,
+   "sha256": "54fd90a93dd03288ebe3adb7ee97138afdcb1210a830e781f76eb70a95530165",
+   "size": 162478,
+   "pdf_url": "https://kudos.dfo.no/dokument/7d136c1c-a158-4a44-8862-915bb3689f37/filer/bfa40ad3-1204-4ea4-a8e4-1c53a8ffe96a.pdf",
+   "page_kinds": {
+    "digital": 12
+   },
+   "table_pages": 0,
+   "multi_column_pages": 0,
+   "reasons": [],
+   "class": "easy",
+   "picked_for": "easy"
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+{
+  "parser": "marker2",
+  "version": "2.1.0",
+  "surya": "0.23.0",
+  "settings": {
+    "output_format": "markdown",
+    "disable_image_extraction": true,
+    "mode": "balanced",
+    "paginate_output": true,
+    "page_separator": "___PAGE_SEPARATOR___"
+  },
+  "torch_device": "cuda",
+  "ocr_inference": {
+    "SURYA_INFERENCE_BACKEND": "vllm",
+    "SURYA_MODEL_CHECKPOINT": "datalab-to/surya-ocr-2.5",
+    "VLLM_DOCKER_IMAGE": "vllm/vllm-openai:v0.25.1",
+    "VLLM_GPU_TYPE": "a100-80",
+    "VLLM_DTYPE": "bfloat16",
+    "VLLM_MAX_MODEL_LEN": 24576,
+    "VLLM_GPU_MEMORY_UTILIZATION": 0.85,
+    "VLLM_ENABLE_MTP": null,
+    "SURYA_INFERENCE_PARALLEL": null
+  },
+  "native": "JSONRenderer output of the same document, images left out",
+  "device_requested": "cuda",
+  "load_seconds": 0.5,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 429.8
+  },
+  "torch": "2.15.0+cu132",
+  "cuda_available": true,
+  "cuda": "13.2",
+  "cuda_device": "NVIDIA A100 80GB PCIe",
+  "machine": {
+    "host_label": "azure-NC24ads_A100_v4-swedencentral",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 7V13 64-Core Processor",
+    "cpus": 24,
+    "memory": "226755524 kB",
+    "gpus": [
+      "NVIDIA A100 80GB PCIe, 81920 MiB, 580.178.04"
+    ],
+    "python": "3.13.18"
+  }
+}

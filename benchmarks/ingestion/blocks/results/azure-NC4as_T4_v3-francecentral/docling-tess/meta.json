@@ -1,0 +1,48 @@
+{
+  "parser": "docling-tess",
+  "version": "2.146.0",
+  "docling_core": "2.105.0",
+  "docling_ibm_models": "4.0.4",
+  "rapidocr": "3.10.0",
+  "tesseract": "tesseract 5.5.0",
+  "settings": {
+    "pipeline": "default PdfPipelineOptions",
+    "do_ocr": true,
+    "ocr": "TesseractCliOcrOptions",
+    "ocr_engine": "Tesseract CLI, Norwegian",
+    "ocr_lang": [
+      "nor"
+    ],
+    "table_mode": "accurate",
+    "accelerator": {
+      "device": "cuda",
+      "num_threads": 4
+    }
+  },
+  "models": {
+    "layout": "docling-project/docling-layout-heron"
+  },
+  "native": "DoclingDocument.export_to_dict()",
+  "device_requested": "cuda",
+  "load_seconds": 0.4,
+  "warmup": {
+    "doc_num": "33245",
+    "seconds": 11.8
+  },
+  "torch": "2.15.0+cu132",
+  "cuda_available": true,
+  "cuda": "13.2",
+  "cuda_device": "Tesla T4",
+  "machine": {
+    "host_label": "azure-NC4as_T4_v3-francecentral",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 7V12 64-Core Processor",
+    "cpus": 4,
+    "memory": "28733524 kB",
+    "gpus": [
+      "Tesla T4, 16384 MiB, 580.178.04"
+    ],
+    "python": "3.13.18"
+  }
+}
