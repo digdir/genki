@@ -87,8 +87,12 @@ How the text the chunker reads is made from a native output, such as `docling-pa
 _Avoid_: post-processing, normalisation
 
 **Kept conversion**:
-A stored conversion from a converter a pipeline keeps, such as Docling, which is never converted again unless an upgrade is chosen. One from a converter the pipeline only accepts, such as the text layer, is replaced in the background.
+A stored conversion from a converter a pipeline keeps, such as Docling, which is never converted again unless an upgrade is chosen. One from a converter the pipeline only accepts, such as the text layer, is replaced by a replacement run.
 _Avoid_: final conversion, pinned conversion
+
+**Replacement run**:
+A run a pipeline's run sends for the files whose only conversion is one to be replaced, such as the text layer, converting them again in the night window. It is not the pipeline's open run, so the next run does not wait for it.
+_Avoid_: upgrade, backfill
 
 **Recipe**:
 How documents become searchable: the converters accepted and how their text is derived, how text is cut into chunks and which search phrases are made, the embedding model, and how full text is indexed.

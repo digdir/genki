@@ -1,34 +1,61 @@
-import json, sys, random, glob, collections
+"""Count pages of the Docling export whose only text is inside pictures.
+
+python3 -I picture_text.py <export root> [seed]
+Reads 300 random docling.json files under <export root>/docling/*/*/.
+"""
+import collections
+import glob
+import json
+import random
+import sys
+
 root = sys.argv[1]
-files = sorted(glob.glob(root + '/docling/*/*/docling.json'))
 seed = int(sys.argv[2]) if len(sys.argv) > 2 else 7
-random.seed(seed); files = random.sample(files, 300)
-FURN = {'page_header','page_footer'}
-tot=body_empty=pic_only=pic_only_big=0
+files = sorted(glob.glob(root + '/docling/*/*/docling.json'))
+random.seed(seed)
+files = random.sample(files, 300)
+FURNITURE = {'page_header', 'page_footer'}
+pages = no_body = picture_only = picture_only_200 = 0
 for f in files:
     d = json.load(open(f))
-    texts = {t['self_ref']: t for t in d['texts']}
-    pics = {p['self_ref'] for p in d['pictures']}
-    def under_pic(t):
-        p = t.get('parent', {}).get('$ref')
-        seen=0
-        while p and seen<20:
-            if p in pics: return True
-            p = (texts.get(p) or {}).get('parent', {}).get('$ref'); seen+=1
+    items = {}
+    for kind in ('texts', 'groups', 'tables', 'pictures'):
+        for item in d.get(kind, []):
+            items[item['self_ref']] = item
+    pictures = {p['self_ref'] for p in d['pictures']}
+
+    def under_picture(item):
+        ref = item.get('parent', {}).get('$ref')
+        for _ in range(50):
+            if not ref:
+                return False
+            if ref in pictures:
+                return True
+            ref = (items.get(ref) or {}).get('parent', {}).get('$ref')
         return False
-    body = collections.Counter(); pic = collections.Counter()
+
+    body = collections.Counter()
+    picture = collections.Counter()
     for t in d['texts']:
-        if t.get('content_layer','body')!='body' or t['label'] in FURN: continue
-        s = (t.get('text') or '').strip()
-        if not s or not t.get('prov'): continue
-        pg = t['prov'][0]['page_no']
-        (pic if under_pic(t) else body)[pg] += len(s)
-    for tb in d['tables']:
-        if tb.get('prov'): body[tb['prov'][0]['page_no']] += 1
-    for pg in d['pages']:
-        pg=int(pg); tot+=1
-        if body[pg] < 20:
-            body_empty+=1
-            if pic[pg] > 0: pic_only+=1
-            if pic[pg] >= 200: pic_only_big+=1
-print(f"seed {seed} files 300 pages {tot} no-body-text {body_empty} of-which-text-in-pictures {pic_only} (>=200 chars: {pic_only_big})")
+        if t.get('content_layer', 'body') != 'body' or t['label'] in FURNITURE:
+            continue
+        text = (t.get('text') or '').strip()
+        if not text or not t.get('prov'):
+            continue
+        page = t['prov'][0]['page_no']
+        (picture if under_picture(t) else body)[page] += len(text)
+    for table in d['tables']:
+        if not table.get('prov') or under_picture(table):
+            continue
+        cells = sum(len((c.get('text') or '').strip()) for c in table.get('data', {}).get('table_cells', []))
+        body[table['prov'][0]['page_no']] += cells
+    for page in d['pages']:
+        page = int(page)
+        pages += 1
+        if body[page] < 20:
+            no_body += 1
+            if picture[page] > 0:
+                picture_only += 1
+            if picture[page] >= 200:
+                picture_only_200 += 1
+print(f"seed {seed} pages {pages} no-body-text {no_body} text-only-in-pictures {picture_only} (>=200 chars: {picture_only_200})")
