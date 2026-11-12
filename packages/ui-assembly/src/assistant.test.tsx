@@ -432,6 +432,55 @@ describe('the assistant a layout describes', () => {
     }
   });
 
+  it('draws each footnote of a reloaded chunks-only answer at the excerpt its stored marker names', async () => {
+    const chunk = (chunkId: string, docTitle: string, docNum: string, contentMarkdown: string) => ({
+      chunkId,
+      docTitle,
+      docNum,
+      contentMarkdown,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't-old', topic: 'Ansatte', tags: [], created: 1 },
+          messages: [
+            { id: 'q', role: 'user', text: 'Hvor mange ansatte?', created: 1, chunks: [] },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: 'I 2022 var det 169 ansatte [1], i 2020 var lønnen 153 mill. [2].',
+              created: 2,
+              chunks: [
+                chunk('c1', 'Årsrapport 2020', 'd20', 'Lønn var 153 mill.'),
+                chunk('c2', 'Årsrapport 2020', 'd20', '176 ansatte.'),
+                chunk('c3', 'Årsrapport 2022', 'd22', '169 ansatte.'),
+              ],
+              markers: [
+                { marker: '1', chunk_id: 'c3', document: 'd22' },
+                { marker: '2', chunk_id: 'c1', document: 'd20' },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      const { api } = fakeApi();
+      api.loadThread = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).loadThread;
+      history.replaceState(null, '', '/?t=t-old');
+      draw(state('sources-only').layout, api, true);
+      await waitFor(() =>
+        expect(footnotes().map((mark) => mark.getAttribute('aria-label'))).toEqual([
+          'Utdrag 1: Årsrapport 2022',
+          'Utdrag 2: Årsrapport 2020',
+        ]),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows no footnotes without Kilder: a footnote never points nowhere', async () => {
     await stored(state('without-secondary').layout);
     expect(footnotes()).toEqual([]);

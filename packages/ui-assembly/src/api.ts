@@ -180,6 +180,8 @@ interface ApiMessage {
   created: number;
   chunks: ApiChunk[];
   sources?: WireSource[];
+  /** The answer's markers, `{ marker, chunk_id, document }`, when the stored turn carries them. */
+  markers?: unknown;
 }
 
 /** The collection a thread was made in, from its `corpus:` tag. */
@@ -245,7 +247,21 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile) => {
   return { sources: [...documents.values()], markers };
 };
 
-// A stored turn keeps its markers only on its excerpts; each leads to the excerpt as drawn.
+// The turn's own list; a marker that does not name its excerpt and document is left out.
+const storedMarkers = (raw: unknown): AnswerMarker[] | undefined => {
+  const found = (Array.isArray(raw) ? (raw as unknown[]) : []).flatMap((m) => {
+    if (typeof m !== 'object' || m === null) return [];
+    const { marker, chunk_id: chunkId, document: documentId } = m as Record<string, unknown>;
+    return typeof marker === 'string' &&
+      typeof chunkId === 'string' &&
+      typeof documentId === 'string'
+      ? [{ marker, chunkId, documentId }]
+      : [];
+  });
+  return found.length > 0 ? found : undefined;
+};
+
+// A turn stored with markers only on its excerpts: each leads to the excerpt as drawn.
 const markersFromSources = (
   wire: readonly WireSource[],
   drawn: readonly SourceDocument[],
@@ -269,9 +285,10 @@ const markersFromSources = (
 };
 
 const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerData => {
+  const stored = storedMarkers(message.markers);
   if (message.sources && message.sources.length > 0) {
     const sources = message.sources.map((s, at) => sourceFromWire(s, corpus, at));
-    const markers = markersFromSources(message.sources, sources);
+    const markers = stored ?? markersFromSources(message.sources, sources);
     return {
       text: message.text,
       status: 'complete',
@@ -282,7 +299,13 @@ const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerD
   }
   if (message.chunks.length > 0) {
     const { sources, markers } = fromChunks(message.chunks, corpus);
-    return { text: message.text, status: 'complete', sources, markers, created: message.created };
+    return {
+      text: message.text,
+      status: 'complete',
+      sources,
+      markers: stored ?? markers,
+      created: message.created,
+    };
   }
   return { text: message.text, status: 'complete', created: message.created };
 };
