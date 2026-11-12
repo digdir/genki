@@ -174,6 +174,7 @@ export interface SettingInfo {
   sensitivity: 'normal' | 'secret';
   default: unknown;
   settableAt: string[];
+  operatorOnly?: boolean;
   schema?: Record<string, unknown>;
 }
 
