@@ -59,6 +59,7 @@ export interface Confinement {
   tenant: string;
   service?: string;
   client?: string;
+  environments?: string[];
 }
 
 export type Interaction = 'unary' | 'stream' | 'async' | 'duplex';
@@ -288,6 +289,7 @@ export interface ServiceProvenance {
   capability: { id: string; version: string };
   strategy: { id: string; version: string };
   configHash: string;
+  environment?: string;
   models?: ModelProvenance[];
   indexes?: IndexProvenance[];
 }

@@ -349,7 +349,7 @@ export const improvements = (deps: ModuleDeps, evals: ServiceEval) => {
     if (casesIn(set, 'locked').length === 0 || casesIn(set, 'open').length === 0)
       return refused(409, 'Testsettet trenger både låste og åpne testtilfeller', 'testSet');
     const latest = (await evals.runsOf(tenant, service)).find(
-      (r) => r.status === 'succeeded' && r.testSet === set.metadata.id,
+      (r) => r.status === 'succeeded' && !r.selected && r.testSet === set.metadata.id,
     );
     const evidence: ImprovementEvidence = {
       purpose: String((base.definition.spec as { purpose?: unknown }).purpose ?? ''),

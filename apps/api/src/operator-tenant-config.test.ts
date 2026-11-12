@@ -5,6 +5,7 @@ import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { localeMiddleware } from './i18n/index.js';
 
 const tenant = '991825827';
 
@@ -77,6 +78,7 @@ const boot = async () => {
     extensions: platform.extensions,
   });
   const app = new Hono();
+  app.use('*', localeMiddleware);
   platform.mount(app, admin);
   const call = (
     path: string,
@@ -86,6 +88,7 @@ const boot = async () => {
       ifMatch?: number;
       as?: string;
       session?: string;
+      language?: string;
     } = {},
   ) =>
     app.request(path, {
@@ -96,6 +99,7 @@ const boot = async () => {
         'change-reason': 'Hjelp fra Digdir',
         ...(init.ifMatch !== undefined ? { 'if-match': `"${init.ifMatch}"` } : {}),
         ...(init.session ? { 'support-session': init.session } : {}),
+        ...(init.language ? { 'accept-language': init.language } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
@@ -401,5 +405,280 @@ describe('allowed hosts of a model connection', () => {
     });
     expect(refused.status).toBe(400);
     expect(JSON.stringify(await json(refused))).toContain('only the operator sets allowedHosts');
+  });
+});
+
+describe('settings and named keys of a model connection', () => {
+  const connection = {
+    id: 'signert',
+    families: { openai: '' },
+    baseURL: 'https://modeller.example.no/v1',
+    auth: { kind: 'api-key', secret: 'secret://platform/signing-key' },
+  };
+
+  it('lets the operator set non-secret settings and named keys on a connection, audited with the reason', async () => {
+    const { admin, call } = await boot();
+    const saved = await call('/operator/model-endpoints', {
+      body: {
+        ...connection,
+        settings: { keyId: 'AKID-7', region: 'eu-north-1' },
+        keys: { signing: 'secret://platform/hmac-key' },
+      },
+    });
+    expect(saved.status).toBe(201);
+    expect(await json(saved)).toMatchObject({
+      spec: {
+        settings: { keyId: 'AKID-7', region: 'eu-north-1' },
+        keys: { signing: 'secret://platform/hmac-key' },
+      },
+    });
+    const entry = (await admin.audit('991825827')).find(
+      (e) => e.action === 'platform.catalog.publish',
+    );
+    expect(entry).toMatchObject({ outcome: 'applied', reason: 'Hjelp fra Digdir' });
+  });
+
+  it('keeps the settings and keys when an operator change to the connection leaves them out', async () => {
+    const { call } = await boot();
+    await call('/operator/model-endpoints', {
+      body: {
+        ...connection,
+        settings: { keyId: 'AKID-7' },
+        keys: { signing: 'secret://platform/hmac-key' },
+      },
+    });
+    const changed = await call('/operator/model-endpoints/signert', {
+      method: 'PUT',
+      body: { ...connection, baseURL: 'https://modeller.example.no/v2' },
+    });
+    expect(changed.status).toBe(200);
+    expect(await json(changed)).toMatchObject({
+      spec: { settings: { keyId: 'AKID-7' }, keys: { signing: 'secret://platform/hmac-key' } },
+    });
+  });
+
+  it('a tenant member listing the catalog sees a shared connection without its settings and keys, and the operator route still returns them', async () => {
+    const { call } = await boot();
+    const { id, ...spec } = connection;
+    const shared = await call(`/operator/catalog/model-endpoint/${id}`, {
+      method: 'PUT',
+      body: {
+        ...spec,
+        settings: { keyId: 'AKID-7' },
+        keys: { signing: 'secret://platform/hmac-key' },
+        sharing: { tenants: '*' },
+      },
+    });
+    expect(shared.status).toBe(200);
+    const listed = await json<{ data: { id: string; spec: Record<string, unknown> }[] }>(
+      await call(`/tenants/${tenant}/catalog?kind=model-endpoint`, { as: 'kari' }),
+    );
+    const seen = listed.data.find((i) => i.id === id);
+    expect(seen).toMatchObject({ spec: { baseURL: connection.baseURL } });
+    expect(seen?.spec).not.toHaveProperty('settings');
+    expect(seen?.spec).not.toHaveProperty('keys');
+    expect(
+      await json<{ spec: Record<string, unknown> }>(
+        await call(`/operator/catalog/model-endpoint/${id}`),
+      ),
+    ).toMatchObject({
+      spec: { settings: { keyId: 'AKID-7' }, keys: { signing: 'secret://platform/hmac-key' } },
+    });
+    const entries = await json<{ data: { id: string; spec: Record<string, unknown> }[] }>(
+      await call('/operator/catalog/entries?kind=model-endpoint'),
+    );
+    expect(entries.data.find((i) => i.id === id)?.spec).toMatchObject({
+      settings: { keyId: 'AKID-7' },
+      keys: { signing: 'secret://platform/hmac-key' },
+    });
+  });
+
+  const refusal = async (
+    call: Awaited<ReturnType<typeof boot>>['call'],
+    extra: Record<string, unknown>,
+  ) => {
+    const res = await call('/operator/model-endpoints', { body: { ...connection, ...extra } });
+    expect(res.status).toBe(400);
+    return JSON.stringify(await json(res));
+  };
+
+  it('refuses a setting that holds a secret reference', async () => {
+    const { call } = await boot();
+    expect(await refusal(call, { settings: { keyId: 'secret://platform/hmac-key' } })).toContain(
+      'a setting is not a secret',
+    );
+  });
+
+  it('refuses a setting name that is not an identifier', async () => {
+    const { call } = await boot();
+    expect(await refusal(call, { settings: { 'key id': 'x' } })).toContain(
+      '"path":"settings.key id","message":"a lowercase letter, then letters, digits or _, at most 32 characters"',
+    );
+  });
+
+  it('accepts a setting named constructor when the connection has no keys', async () => {
+    const { call } = await boot();
+    const created = await call('/operator/model-endpoints', {
+      body: { ...connection, settings: { constructor: 'x' } },
+    });
+    expect(created.status).toBe(201);
+  });
+
+  it('each settings and keys validation error from the operator routes comes back in the requested language', async () => {
+    const { call } = await boot();
+    const many = (count: number, prefix: string, value: string) =>
+      Object.fromEntries(Array.from({ length: count }, (_, i) => [`${prefix}${i}`, value]));
+    const endpoints = '/operator/model-endpoints';
+    const catalogRoute = '/operator/catalog/model-endpoint/signert';
+    const cases: [string, Record<string, unknown>, string, string][] = [
+      [
+        endpoints,
+        { settings: many(21, 's', 'x') },
+        'at most 20 settings',
+        'høyst 20 innstillinger',
+      ],
+      [
+        endpoints,
+        { settings: { 'key id': 'x' } },
+        'a lowercase letter, then letters, digits or _, at most 32 characters',
+        'en liten bokstav, deretter bokstaver, sifre eller _, høyst 32 tegn',
+      ],
+      [
+        endpoints,
+        { settings: { keyId: ' x' } },
+        'printable text of at most 256 characters',
+        'synlig tekst på høyst 256 tegn',
+      ],
+      [
+        endpoints,
+        { settings: { keyId: 'secret://platform/k' } },
+        'a setting is not a secret; name it under keys',
+        'en innstilling er ikke en hemmelighet; legg den under keys',
+      ],
+      [
+        endpoints,
+        { keys: many(5, 'k', 'secret://platform/k') },
+        'at most 4 named keys, each a key name',
+        'høyst 4 navngitte nøkler, hver med et nøkkelnavn',
+      ],
+      [
+        endpoints,
+        { keys: { signing: 'the-key' } },
+        'use a platform secret: secret://platform/<name>',
+        'bruk en hemmelighet for plattformen: secret://platform/<name>',
+      ],
+      [
+        endpoints,
+        { settings: { signing: 'x' }, keys: { signing: 'secret://platform/k' } },
+        'a name is a setting or a key, not both',
+        'et navn er enten en innstilling eller en nøkkel',
+      ],
+      [
+        catalogRoute,
+        { keys: many(5, 'k', 'secret://platform/k') },
+        'at most 4 named keys',
+        'høyst 4 navngitte nøkler',
+      ],
+      [
+        catalogRoute,
+        { keys: { signing: 'the-key' } },
+        'must be a secret:// reference',
+        'må være en secret://-referanse',
+      ],
+      [
+        '/operator/catalog/model/fakegpt',
+        { endpoint: 'fake', deployment: 'gpt', residency: 'norway', settings: { keyId: 'x' } },
+        'only the operator sets settings, and only on a model connection',
+        'bare operatøren setter settings, og bare på en modellkobling',
+      ],
+    ];
+    for (const [path, extra, en, nb] of cases)
+      for (const [language, expected] of [
+        ['en', en],
+        ['nb', nb],
+      ] as const) {
+        const res = await call(path, {
+          method: path === endpoints ? 'POST' : 'PUT',
+          body: path === endpoints || path === catalogRoute ? { ...connection, ...extra } : extra,
+          language,
+        });
+        expect(res.status).toBe(400);
+        const { errors } = await json<{ errors: { message: string }[] }>(res);
+        expect(
+          errors.map((e) => e.message),
+          `${path} ${language}`,
+        ).toContain(expected);
+      }
+  });
+
+  it('refuses a setting value with a control character, leading or trailing space, or over 256 characters', async () => {
+    const { call } = await boot();
+    for (const value of ['a\nb', ' x', 'x ', 'y'.repeat(257)])
+      expect(await refusal(call, { settings: { keyId: value } })).toContain('printable text');
+  });
+
+  it('refuses more than 20 settings and more than 4 named keys', async () => {
+    const { call } = await boot();
+    const settings = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`s${i}`, 'x']));
+    expect(await refusal(call, { settings })).toContain('at most 20 settings');
+    const keys = Object.fromEntries(
+      Array.from({ length: 5 }, (_, i) => [`k${i}`, 'secret://platform/hmac-key']),
+    );
+    expect(await refusal(call, { keys })).toContain('at most 4 named keys');
+  });
+
+  it('refuses a named key that is not a platform secret, on both operator routes', async () => {
+    const { call } = await boot();
+    expect(await refusal(call, { keys: { signing: 'the-key-itself' } })).toContain(
+      'secret://platform/<name>',
+    );
+    const viaCatalog = await call('/operator/catalog/model-endpoint/signert', {
+      method: 'PUT',
+      body: { ...connection, keys: { signing: 'secret://env/hmac-key' } },
+    });
+    expect(viaCatalog.status).toBe(400);
+    expect(JSON.stringify(await json(viaCatalog))).toContain('secret://platform/<name>');
+  });
+
+  it('refuses a name that is both a setting and a key, at the key', async () => {
+    const { call } = await boot();
+    expect(
+      await refusal(call, {
+        settings: { signing: 'x' },
+        keys: { signing: 'secret://platform/hmac-key' },
+      }),
+    ).toContain('"path":"keys.signing"');
+  });
+
+  it('refuses settings on anything but a model connection', async () => {
+    const { call } = await boot();
+    const refused = await call('/operator/catalog/model/fakegpt', {
+      method: 'PUT',
+      body: { endpoint: 'fake', deployment: 'gpt', residency: 'norway', settings: { keyId: 'x' } },
+    });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await json(refused))).toContain('only on a model connection');
+  });
+
+  it('refuses settings and keys on a tenant connection, because only the operator sets them', async () => {
+    const { call, support } = await boot();
+    const session = await support();
+    for (const extra of [
+      { settings: { keyId: 'x' } },
+      { keys: { signing: `secret://tenant/${tenant}/k` } },
+    ]) {
+      const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
+        method: 'PUT',
+        session,
+        body: {
+          families: { openai: '' },
+          baseURL: 'https://modeller.example.no/v1',
+          auth: { kind: 'api-key', secret: `secret://tenant/${tenant}/key` },
+          ...extra,
+        },
+      });
+      expect(refused.status).toBe(400);
+      expect(JSON.stringify(await json(refused))).toMatch(/only the operator sets (settings|keys)/);
+    }
   });
 });

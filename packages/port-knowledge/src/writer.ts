@@ -206,8 +206,8 @@ export class IndexWriterRouter {
   }
 
   async #refuseServed(id: string, engine: string, generation: string, context: IndexWriterContext) {
-    const served = this.#required(id);
-    if (this.#catalog.endpoints[served.endpoint]?.engine !== engine) return;
+    const served = this.#dataset(id);
+    if (!served || this.#catalog.endpoints[served.endpoint]?.engine !== engine) return;
     let active: string | undefined;
     try {
       const route = this.open(id, context);

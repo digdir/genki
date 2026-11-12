@@ -1,6 +1,7 @@
 import { Alert, Button, Paragraph, Tag, Textfield } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
+import { asServiceDefinition, keepSharing } from '../../data/service-definition';
 import { actorLabel } from '../../format';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
@@ -79,7 +80,12 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
     try {
       const old = await api.getVersion(tenant, 'Service', serviceId, version);
       const published = await api.publishDefinition(
-        withoutVersion(old.definition),
+        withoutVersion({
+          ...keepSharing(
+            asServiceDefinition(old.definition),
+            asServiceDefinition(state.data.latest.definition),
+          ),
+        }),
         old.files ?? {},
         reason.trim(),
       );

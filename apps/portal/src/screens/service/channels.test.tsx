@@ -32,7 +32,7 @@ const catalog = [
   setting('model.primary', 'Hovedmodell', 'Modell', false),
 ];
 
-const setup = (service = 'rapportassistenten') => {
+const setup = (service = 'rapportassistenten', { secretsFail = false } = {}) => {
   const calls: Call[] = [];
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -43,6 +43,8 @@ const setup = (service = 'rapportassistenten') => {
       reason: decodeURIComponent(new Headers(init?.headers).get('change-reason') ?? ''),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
+    if (secretsFail && new URL(url, 'http://test').pathname.endsWith('/secrets'))
+      return new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 });
     if (new URL(url, 'http://test').pathname === '/api/settings')
       return new Response(JSON.stringify({ data: catalog }), {
         headers: { 'content-type': 'application/json' },
@@ -113,6 +115,61 @@ describe('channels and frontends for a service', () => {
     });
     const cards = await screen.findByRole('list', { name: 'Brukerflater' });
     expect(within(cards).getByRole('heading', { name: 'Saksbehandlerportalen' })).toBeTruthy();
+  });
+
+  it('stores a new webhook secret for the webhook address', async () => {
+    const { calls } = setup('nytt-oppslag');
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    type('Navn', 'Saksvarsler');
+    type('Adresse varslene sendes til', 'https://varsel.testetaten.example.no/krok');
+    fireEvent.click(screen.getByLabelText('En kjøring er ferdig'));
+    type('Begrunnelse', 'Saksbehandlerne skal få varsel');
+    fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
+    expect(await screen.findByText(/Saksvarsler er registrert/)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Lag ny hemmelighet' }));
+
+    expect(await screen.findByLabelText('Ny verdi for nytt-oppslag-varsler')).toBeTruthy();
+    const put = calls.find((c) => c.method === 'PUT' && c.url.includes('/secrets/'));
+    expect(put?.url).toBe('/api/tenants/999888777/secrets/nytt-oppslag-varsler');
+    expect(put?.body).toMatchObject({ allowedHosts: ['https://varsel.testetaten.example.no'] });
+  });
+
+  const registerWebhook = async (secretName?: string) => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer brukerflate' }));
+    type('Navn', 'Saksvarsler');
+    type('Adresse varslene sendes til', 'https://varsel.testetaten.example.no/krok');
+    fireEvent.click(screen.getByLabelText('En kjøring er ferdig'));
+    if (secretName) type('Navn på hemmeligheten som signerer varslene', secretName);
+    type('Begrunnelse', 'Saksbehandlerne skal få varsel');
+    fireEvent.click(screen.getByRole('button', { name: 'Registrer' }));
+    expect(await screen.findByText(/Saksvarsler er registrert/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Lag ny hemmelighet' }));
+  };
+
+  it('refuses to roll a webhook secret that is set up for other addresses', async () => {
+    const { calls } = setup('nytt-oppslag');
+    await registerWebhook('saks-api');
+
+    expect(
+      await screen.findByText(
+        'Hemmeligheten «saks-api» er satt opp for andre adresser (https://sak.testetaten.example.no). Velg et annet navn på hemmeligheten.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Ny verdi for saks-api')).toBeNull();
+    expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/secrets/'))).toBe(false);
+  });
+
+  it('stores no webhook secret when its addresses could not be checked', async () => {
+    const { calls } = setup('nytt-oppslag', { secretsFail: true });
+    await registerWebhook();
+
+    expect(
+      await screen.findByText(
+        'Vi kunne ikke sjekke hvilke adresser hemmeligheten «nytt-oppslag-varsler» er satt opp for, så ingenting er lagret.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/secrets/'))).toBe(false);
   });
 
   it('refuses an origin with a path', async () => {

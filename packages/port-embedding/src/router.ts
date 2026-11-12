@@ -109,11 +109,31 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
       );
     }
     const credentials = new Map<string, Credential>();
-    for (const [name, spec] of Object.entries(result.catalog.connections))
+    const extras = new Map<string, Pick<DescribedEndpoint, 'settings' | 'keys'>>();
+    for (const [name, spec] of Object.entries(result.catalog.connections)) {
       credentials.set(
         name,
         credentialFor(spec.auth, options.secrets, options.tokenProviders, spec.baseURL),
       );
+      extras.set(name, {
+        ...(spec.settings ? { settings: spec.settings } : {}),
+        ...(spec.keys
+          ? {
+              keys: Object.fromEntries(
+                Object.entries(spec.keys).map(([key, ref]) => {
+                  const named = credentialFor(
+                    { kind: 'api-key', secret: ref },
+                    options.secrets,
+                    options.tokenProviders,
+                    spec.baseURL,
+                  );
+                  return [key, named.kind === 'api-key' ? named.key : named.token];
+                }),
+              ),
+            }
+          : {}),
+      });
+    }
     const timeoutMs = options.timeoutMs ?? 60_000;
     const connections = new Map<string, EmbeddingConnection>();
     const routes = new Map<string, Route>();
@@ -146,7 +166,16 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           ? {
               described: {
                 descriptor,
-                endpoint: { baseURL: model.baseURL, credential, fetch, timeoutMs },
+                endpoint: {
+                  baseURL: model.baseURL,
+                  credential,
+                  fetch,
+                  timeoutMs,
+                  ...(options.descriptors?.module
+                    ? { modules: (sha: string) => options.descriptors?.module?.(sha) }
+                    : {}),
+                  ...extras.get(model.endpoint),
+                },
               },
             }
           : {}),

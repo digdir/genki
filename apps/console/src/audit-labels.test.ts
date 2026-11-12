@@ -46,6 +46,18 @@ describe('audit labels', () => {
     },
   );
 
+  it.each(['nb', 'en'] as const)(
+    'Revisjon names adding, removing, promoting and rolling back a service environment in %s',
+    (locale) => {
+      const t = translator(locale);
+      const labels = ['add', 'remove', 'promote', 'rollback'].map((step) =>
+        labelOf(entry(`platform.service.environments.${step}`, 'service:991825827/svar'), t),
+      );
+      for (const label of labels) expect(label).not.toBe(t('audit.otherAction'));
+      expect(new Set(labels).size).toBe(4);
+    },
+  );
+
   it('says whether a connection or model was added or changed, by its catalogue version', () => {
     const t = translator('nb');
     expect(labelOf(entry('platform.catalog.publish', 'catalog:model-endpoint/foundry@1'), t)).toBe(

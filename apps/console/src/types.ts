@@ -118,6 +118,7 @@ export interface DescriptorUpload {
 
 export interface WireExchange {
   deployment: string;
+  settings?: Record<string, string>;
   input: unknown;
   request: { method: string; path: string; query?: Record<string, string>; body: unknown };
   response: { status: number; body: unknown };
@@ -1076,6 +1077,8 @@ export interface ModelEndpointInput {
   auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
   families: Record<string, string>;
   discovery?: DiscoveryRule[];
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
 }
 
 export interface ModelSettings {

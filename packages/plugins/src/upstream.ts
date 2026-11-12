@@ -10,6 +10,7 @@ export interface SeenRequest {
 export interface FakeReply {
   status: number;
   json?: unknown;
+  text?: string;
   sse?: { event?: string; data: unknown }[];
   delayMs?: number;
   /** Response headers beside the content type, such as `retry-after-ms`. */
@@ -41,6 +42,11 @@ export const fakeHttp = async (
             res.write(`${frame.event ? `event: ${frame.event}\n` : ''}data: ${data}\n\n`);
           }
           res.end();
+          return;
+        }
+        if (r.text !== undefined) {
+          res.writeHead(r.status, { ...r.headers, 'content-type': 'text/plain' });
+          res.end(r.text);
           return;
         }
         res.writeHead(r.status, { ...r.headers, 'content-type': 'application/json' });

@@ -1,7 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { PriceSpec } from '@genai/contracts';
-import { allowedHostPattern, residencies, type Residency } from '@genai/port-model';
+import {
+  allowedHostPattern,
+  connectionKeys,
+  connectionSettings,
+  firstIssue,
+  residencies,
+  type Residency,
+} from '@genai/port-model';
 import { z } from 'zod';
 import {
   appendVersion,
@@ -49,6 +56,14 @@ const listKeyOf: Partial<Record<CatalogKind, string>> = {
 };
 
 const isEndpoint = (kind: CatalogKind) => kind.endsWith('-endpoint');
+
+const withoutConnectionInputs = (item: CatalogItem): CatalogItem => {
+  if (!isEndpoint(item.kind)) return item;
+  const spec = { ...item.spec };
+  delete spec.settings;
+  delete spec.keys;
+  return { ...item, spec };
+};
 
 export interface CatalogProblem {
   path: string;
@@ -352,17 +367,20 @@ export class CatalogRegistry {
   }
 
   visibleTo(tenant: string): CatalogItem[] {
-    return this.list().filter((item) => {
-      if (item.scope === tenant) return true;
-      if (item.scope !== platformScope) return false;
-      if (isEndpoint(item.kind)) return this.sharedWith(this.sharingOf(item.kind, item.id), tenant);
-      if (item.kind === 'dataset') {
-        const tenants = item.spec.tenants as string[] | undefined;
-        return !tenants || tenants.includes(tenant);
-      }
-      if (item.kind === 'model') return item.spec.release !== 'candidate';
-      return item.kind !== 'price';
-    });
+    return this.list()
+      .filter((item) => {
+        if (item.scope === tenant) return true;
+        if (item.scope !== platformScope) return false;
+        if (isEndpoint(item.kind))
+          return this.sharedWith(this.sharingOf(item.kind, item.id), tenant);
+        if (item.kind === 'dataset') {
+          const tenants = item.spec.tenants as string[] | undefined;
+          return !tenants || tenants.includes(tenant);
+        }
+        if (item.kind === 'model') return item.spec.release !== 'candidate';
+        return item.kind !== 'price';
+      })
+      .map((item) => (item.scope === platformScope ? withoutConnectionInputs(item) : item));
   }
 
   qualify(scope: string, id: string) {
@@ -422,6 +440,28 @@ export class CatalogRegistry {
           path: 'spec.allowedHosts',
           message: 'a list of at most 20 host names, each with an optional port',
         });
+    }
+    for (const [field, schema] of [
+      ['settings', connectionSettings],
+      ['keys', connectionKeys],
+    ] as const) {
+      if (out[field] === undefined) continue;
+      if (kind !== 'model-endpoint' || scope !== platformScope) {
+        errors.push({
+          path: `spec.${field}`,
+          message: `only the operator sets ${field}, and only on a model connection`,
+        });
+        continue;
+      }
+      const parsed = schema.safeParse(out[field]);
+      if (!parsed.success) errors.push(firstIssue(parsed.error, [`spec.${field}`]));
+      else if (field === 'keys')
+        for (const [name, ref] of Object.entries(parsed.data as Record<string, string>))
+          if (!ref.startsWith('secret://platform/'))
+            errors.push({
+              path: `spec.keys.${name}`,
+              message: 'use a platform secret: secret://platform/<name>',
+            });
     }
     if (scope === platformScope) {
       if (isEndpoint(kind) && out.sharing !== undefined) {
@@ -547,6 +587,17 @@ export class CatalogRegistry {
           errors: [{ path: 'id', message: `${id} comes from a registered plug-in` }],
           conflict: true,
         };
+      if (input.kind === 'dataset' && !existing && (await this.#heldAfterDeletion(input.scope, id)))
+        return {
+          ok: false,
+          conflict: true,
+          errors: [
+            {
+              path: 'id',
+              message: `${id} was deleted and keeps its records on the knowledge database until they are dropped (issue 250)`,
+            },
+          ],
+        };
       const { spec, errors } = this.#normalize(
         input.kind,
         input.scope,
@@ -582,6 +633,11 @@ export class CatalogRegistry {
   #onKnowledgeServer(endpoint: unknown) {
     const slot = this.#slots.get(keyOf('knowledge-endpoint', String(endpoint ?? '')));
     return record(record(slot?.spec).options).connection === 'knowledge';
+  }
+
+  async #heldAfterDeletion(scope: string, id: string) {
+    const last = (await this.#options.store.history('dataset', scope, id)).at(-1);
+    return last?.deleted === true && this.#onKnowledgeServer(record(last.spec).endpoint);
   }
 
   /** A new generation id, `g-<yyyymmdd>-<6 hex>`, that no dataset's entry names. */

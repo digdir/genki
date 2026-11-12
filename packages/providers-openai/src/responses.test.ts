@@ -646,4 +646,20 @@ describe('OpenAI Responses behind the model port', () => {
       expect(metered).toEqual([]);
     },
   );
+
+  it("keeps a 5xx answer's status and message on the error for the audit, and gives the caller only that the model is unavailable", async () => {
+    const { url } = await fake(() => ({
+      status: 503,
+      json: { error: { message: 'the deployment is overloaded', code: 'server_error' } },
+    }));
+    const { open } = setup(url);
+    const error = await open()
+      .chat(ask)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      code: 'unavailable',
+      message: 'the model is unavailable',
+      provider: { status: 503, body: expect.stringContaining('the deployment is overloaded') },
+    });
+  });
 });

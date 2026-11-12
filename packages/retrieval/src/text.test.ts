@@ -6,6 +6,7 @@ import {
   contentSnippet,
   formatMetadataHeaders,
   numbersIn,
+  queryYearsIn,
   tokenize,
   truncateHeadTail,
   yearsIn,
@@ -95,16 +96,61 @@ describe('Java regex semantics', () => {
     expect(numbersIn('Digdir hadde 326 årsverk i 2022.')).toEqual(['326 ', '2022']);
   });
 
-  it('matches facet values case-insensitively for ASCII only, on word boundaries', () => {
-    expect(containsWord('Hva gjør DIGDIR i 2024?', 'Digdir')).toBe(true);
-    expect(containsWord('Hva gjør digdirs folk?', 'Digdir')).toBe(false);
-    expect(containsWord('Spør økokrim', 'Økokrim')).toBe(false);
-    expect(containsWord('Spør Økokrim', 'Økokrim')).toBe(true);
-  });
-
   it('tokenises on anything that is not a letter or number', () => {
     expect(tokenize('Hvor mange årsverk? 2022/23')).toEqual(
       new Set(['hvor', 'mange', 'årsverk', '2022', '23']),
     );
+  });
+});
+
+describe('naming an organisation in a query', () => {
+  it('matches a facet value whatever its case', () => {
+    expect(containsWord('Hva gjør DIGDIR i 2024?', 'Digdir')).toBe(true);
+  });
+
+  it('matches a facet value only as a whole word', () => {
+    expect(containsWord('Hva gjør digdirsk folk?', 'Digdir')).toBe(false);
+  });
+
+  it('lower-case æøå match their capitals', () => {
+    expect(containsWord('hva sier dfø', 'DFØ')).toBe(true);
+    expect(containsWord('Spør økokrim', 'ØKOKRIM')).toBe(true);
+    expect(containsWord('Åpenhet i ålesund kommune', 'Ålesund kommune')).toBe(true);
+  });
+
+  it('a genitive organisation name is detected', () => {
+    expect(containsWord('Datatilsynets arbeid', 'Datatilsynet')).toBe(true);
+    expect(containsWord('ifølge DFØs evaluering', 'DFØ')).toBe(true);
+    expect(containsWord('ifølge DFØss evaluering', 'DFØ')).toBe(false);
+  });
+
+  it('matches in linear time on a long run of near misses', () => {
+    const started = performance.now();
+    containsWord('a'.repeat(100_000), `${'a'.repeat(50)}b`);
+    containsWord('as'.repeat(50_000), 'a');
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe('reading a year from a query', () => {
+  it('a number standing alone or after a word like i, fra or til is a year', () => {
+    expect(queryYearsIn('Årsrapport 2022')).toEqual(new Set(['2022']));
+    expect(queryYearsIn('tall fra 2019 til 2021')).toEqual(new Set(['2019', '2021']));
+  });
+
+  it('an amount is not read as a year', () => {
+    expect(queryYearsIn('Kostnad på 2000 kroner i 2023')).toEqual(new Set(['2023']));
+    expect(queryYearsIn('2000 kr, kr 2100, 2050 NOK, 2020 % og 2000 ansatte')).toEqual(new Set());
+  });
+
+  it('the word nok before a year does not make it an amount', () => {
+    expect(queryYearsIn('Er det nok 2024?')).toEqual(new Set(['2024']));
+  });
+
+  it('reads years in linear time on a long run of numbers and spaces', () => {
+    const started = performance.now();
+    queryYearsIn('2023 '.repeat(20_000));
+    queryYearsIn(`kr${' '.repeat(100_000)}2023`);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });

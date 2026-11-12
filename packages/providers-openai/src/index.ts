@@ -112,19 +112,35 @@ const toOpenAi = (m: ChatMessage): ChatCompletionMessageParam => {
 const rejectsTemperature = (error: unknown) =>
   error instanceof APIError && rejectedParameter(error.status, error.message) === 'temperature';
 
+type TokenParam = ModelOptions['tokenParam'];
+
+const refusedTokenParam = (error: unknown) => {
+  if (!(error instanceof APIError)) return undefined;
+  const rejected = rejectedParameter(error.status, error.message, error.param);
+  return rejected === 'temperature' ? undefined : rejected;
+};
+
+interface Adjustments {
+  fixedTemperature: boolean;
+  tokenParam?: TokenParam;
+}
+
 const params = (
   model: DeploymentConfig<Partial<ModelOptions>>,
   request: ChatRequest,
-  fixedTemperature = false,
+  adjust: Adjustments = { fixedTemperature: false },
 ): ChatCompletionCreateParamsBase => ({
   model: model.deployment,
   messages: request.messages.map(toOpenAi),
-  ...(request.temperature === undefined || fixedTemperature
+  ...(request.temperature === undefined || adjust.fixedTemperature
     ? {}
     : { temperature: request.temperature }),
   ...(request.maxTokens === undefined
     ? {}
-    : { [model.options.tokenParam ?? 'max_completion_tokens']: request.maxTokens }),
+    : {
+        [adjust.tokenParam ?? model.options.tokenParam ?? 'max_completion_tokens']:
+          request.maxTokens,
+      }),
   ...(request.reasoning ? { reasoning_effort: request.reasoning } : {}),
   ...(request.tools?.length
     ? {
@@ -154,7 +170,7 @@ const toModelError = (error: unknown, signal: AbortSignal): ModelError => {
   if (error instanceof ModelError) return error;
   if (error instanceof APIError) {
     const code = (error.error as { code?: string } | undefined)?.code ?? error.code ?? undefined;
-    return errorFromStatus(error.status, error.message, code);
+    return errorFromStatus(error.status, error.message, code, error.message);
   }
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
@@ -178,6 +194,7 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
     });
 
     const fixedTemperature = new Set<string>();
+    const tokenParams = new Map<string, TokenParam>();
     const learnedResponses = new Set<string>();
     const configured = (model: DeploymentConfig) => model.api === openAiApis.responses;
     const apiFor = (model: DeploymentConfig) =>
@@ -187,20 +204,33 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
     const create = async <T>(
       model: DeploymentConfig<Partial<ModelOptions>>,
       request: ChatRequest,
-      send: (api: 'chat-completions' | 'responses', omitTemperature: boolean) => Promise<T>,
+      send: (
+        api: 'chat-completions' | 'responses',
+        omitTemperature: boolean,
+        tokenParam: TokenParam | undefined,
+      ) => Promise<T>,
     ): Promise<{ response: T; dropped: TunableParameter[] }> => {
       for (;;) {
         const api = apiFor(model);
         const key = `${api}/${model.deployment}`;
         const omit = fixedTemperature.has(key);
+        const tokenParam = tokenParams.get(key);
         try {
           return {
-            response: await send(api, omit),
+            response: await send(api, omit, tokenParam),
             dropped: request.temperature !== undefined && omit ? ['temperature'] : [],
           };
         } catch (error) {
+          const current = model.options.tokenParam ?? 'max_completion_tokens';
           if (request.temperature !== undefined && !omit && rejectsTemperature(error)) {
             fixedTemperature.add(key);
+          } else if (
+            api === 'chat-completions' &&
+            !tokenParam &&
+            request.maxTokens !== undefined &&
+            refusedTokenParam(error) === current
+          ) {
+            tokenParams.set(key, current === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens');
           } else if (
             api === 'chat-completions' &&
             !configured(model) &&
@@ -228,24 +258,34 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
       }),
       chat: async (model, request, signal): Promise<ChatResult> => {
         try {
-          const { response: result, dropped } = await create(model, request, async (api, omit) => {
-            if (api === 'responses') {
+          const { response: result, dropped } = await create(
+            model,
+            request,
+            async (api, omit, tokenParam) => {
+              if (api === 'responses') {
+                return {
+                  api,
+                  response: await client.responses.create(
+                    { ...responsesParams(model, request, omit), stream: false },
+                    { signal },
+                  ),
+                } as const;
+              }
               return {
                 api,
-                response: await client.responses.create(
-                  { ...responsesParams(model, request, omit), stream: false },
+                response: await client.chat.completions.create(
+                  {
+                    ...params(model, request, {
+                      fixedTemperature: omit,
+                      ...(tokenParam ? { tokenParam } : {}),
+                    }),
+                    stream: false,
+                  },
                   { signal },
                 ),
               } as const;
-            }
-            return {
-              api,
-              response: await client.chat.completions.create(
-                { ...params(model, request, omit), stream: false },
-                { signal },
-              ),
-            } as const;
-          });
+            },
+          );
           if (result.api === 'responses')
             return {
               ...responsesResult(result.response),
@@ -295,7 +335,7 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
         const calls = new Map<number, ToolCall>();
         const dropped: TunableParameter[] = [];
         try {
-          const opened = await create(model, request, async (api, omit) => {
+          const opened = await create(model, request, async (api, omit, tokenParam) => {
             if (api === 'responses')
               return {
                 api,
@@ -308,7 +348,10 @@ export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
               api,
               stream: await client.chat.completions.create(
                 {
-                  ...params(model, request, omit),
+                  ...params(model, request, {
+                    fixedTemperature: omit,
+                    ...(tokenParam ? { tokenParam } : {}),
+                  }),
                   stream: true,
                   stream_options: { include_usage: true },
                 },

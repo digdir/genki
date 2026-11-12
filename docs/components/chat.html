@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat · Components</title>
+    <meta
+      name="description"
+      content="Where the user asks questions and reads answers. The chat starts a new thread, takes the question and shows the answer."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Chat</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="chat"
+        data-component="chat"
+        data-phase="building"
+        data-optional="unknown"
+        aria-labelledby="chat-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="chat-title">Chat</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Always included?</span
+              ><span class="badge">Main area</span>
+            </div>
+            <p class="summary">
+              Where the user asks questions and reads answers. The chat starts a new thread, takes
+              the question and shows the answer.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Chat»</dd>
+              <dt>Sits in</dt>
+              <dd>Main area</dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Composer</code> («Spørsmålsfeltet»), <code>Welcome</code> and
+                <code>Suggestions</code> («Velkomst og spørsmålsforslag») in
+                <code>@genai/ui-blocks</code>. The conversation itself is not built yet.
+              </dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/174"
+                  >kunnskapsassistenten#174</a
+                >, and
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/223"
+                  >kunnskapsassistenten#223</a
+                >
+                for the welcome and the suggestions
+              </dd>
+              <dt>Canvas</dt>
+              <dd>00-Chat (FM-0, FM-0b, FM-0c, FM-0d, FM-2b)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-accent-soft" x="80" y="22" width="52" height="12" rx="6" />
+            <rect class="s-accent" x="28" y="42" width="18" height="6" rx="3" />
+            <rect class="s-bar" x="28" y="54" width="96" height="6" rx="3" />
+            <rect class="s-bar" x="28" y="64" width="72" height="6" rx="3" />
+            <rect class="s-soft" x="28" y="78" width="104" height="16" rx="8" />
+            <circle class="s-accent" cx="124" cy="86" r="4" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                Hypothesis: always, as the core of every assistant. To be tested: some assistants
+                may not need a chat at all.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>New thread:</strong> an empty state, with «Endre» for what the thread reads
+                from right in the question field.
+              </li>
+              <li>
+                <strong>With and without side panels:</strong> the side panels can be hidden, and
+                the conversation then stays centred at a fixed width.
+              </li>
+              <li>
+                <strong>Start page</strong> (built): the greeting, the question field and the
+                suggestions as one group, with the disclaimer at the foot of the page. The field is
+                not sticky there.
+              </li>
+              <li>
+                <strong>In a conversation</strong> (built): the field is sticky at the foot, with a
+                fade over it, «Bla til bunnen» when the reader has scrolled up, and follow-up
+                questions under it.
+              </li>
+              <li>
+                <strong>Attachments</strong> (built): a paperclip and drop on the field where the
+                service takes files, the paperclip switched off with «Kommer snart» where uploading
+                is coming, and nothing where the host has no attachments.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>Composer</code>: <code>value</code>, <code>onChange</code> and
+                <code>onSubmit</code> with the question, which every way of sending goes through:
+                Enter, the send button and a follow-up. <code>working</code> holds sending, and with
+                <code>onCancel</code> the send button becomes «Avbryt».
+              </li>
+              <li>
+                <code>attachments</code>: the files as the host tracks them, in <code>items</code>,
+                each with an <code>id</code>, its <code>name</code>, a
+                <code>status</code> (uploading, ready or failed), <code>progress</code> from 0 to
+                100 while uploading and an <code>error</code> if it failed; with <code>onAdd</code>,
+                <code>onRemove</code> and <code>onRetry</code>, <code>accept</code> for the file
+                picker, and <code>types</code> and <code>maxBytes</code> (shown in megabytes to one
+                decimal) for what it takes, named as in <code>OwnDocuments</code>. The old names,
+                <code>fileTypes</code> and <code>maxMegabytes</code>, still work until hosts have
+                moved. Uploading is the host's; the block draws and refuses.
+              </li>
+              <li>
+                <code>followUps</code>, <code>onScrollToBottom</code>, <code>actions</code> (a slot
+                beside the send button, for the variant picker), <code>assistantName</code>,
+                <code>placeholder</code>, <code>showDisclaimer</code>, <code>shortcut</code> and
+                <code>sticky</code>. Docked with <code>sticky</code>, the block keeps its own height
+                clear under whatever the browser scrolls to in the same column, so the field never
+                hides the focus (WCAG 2.4.11), as kunnskapsassistenten does.
+              </li>
+              <li>
+                <code>note</code>: a line right under the field, docked with it, such as the
+                filter's <code>FilterNext</code>: «Neste spørsmål leser fra 8 781 dokumenter ·
+                Evaluering – endres i filteret til venstre» (dev-filter-panel).
+              </li>
+              <li>
+                <code>fieldRef</code> and <code>sendRef</code>: refs to the field and the send
+                button, for a host that moves focus there, such as a skip link. <code>ref</code> is
+                the block's root.
+              </li>
+              <li>Every block here takes a <code>className</code> for its root, beside its own.</li>
+              <li>
+                <code>actions</code> is where the variant picker goes: kunnskapsassistenten decided
+                on 6 October 2026 that the choice of who answers sits in the question field, like
+                the model choice in claude.ai, not in the conversation's head. Its list opens above
+                the field, a long name ends in an ellipsis, and on a narrow field the paperclip
+                drops «Kommer snart» first.
+              </li>
+              <li>
+                The field is controlled, so the draft is the host's: it passes <code>value</code>
+                back after a reload or a sign-in, as kunnskapsassistenten keeps it for the tab.
+              </li>
+              <li>
+                <code>color</code> sets Designsystemet's <code>data-color</code> on the block, and
+                <code>actionColor</code> on the send button and the follow-ups. They are
+                <code>neutral</code> and <code>accent</code> unless given, as a field is in
+                Designsystemet and in kunnskapsassistenten. <code>Welcome</code>,
+                <code>Suggestions</code> and <code>ComposerDisclaimer</code> are neutral too.
+              </li>
+              <li>
+                <code>Welcome</code>: the reader's first <code>name</code>, if known.
+                <code>Suggestions</code>: <code>suggestions</code> and <code>onPick</code>; the host
+                fills the field and puts the caret there, it does not send. Both take
+                <code>headingLevel</code>, 2 for the greeting and 3 for «Forslag» by default.
+              </li>
+              <li>
+                <code>ComposerDisclaimer</code>: the disclaimer on its own, for the foot of the
+                start page.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="conversation.html">Conversation</a>: the turns, built as a block</li>
+              <li><a href="threads.html">Threads</a>: the selected thread is shown in the chat</li>
+              <li><a href="approach.html">Approach</a>: the plan before and during an answer</li>
+              <li>
+                <a href="footnotes.html">Footnotes</a> and <a href="sources.html">Sources</a>: the
+                answer's references
+              </li>
+              <li><a href="filter.html">Filter</a>: «Endre» in the question field</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The question field and the welcome sit in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follow
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and read every token through their own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. Three are pinned to a colour family on
+              purpose: accent for the frame and the hint while a file is dragged over it, and danger
+              for why a file was not attached. The block is neutral and its actions accent unless
+              the host passes <code>color</code> and <code>actionColor</code>. In the markup, four
+              controls are pinned to neutral as kunnskapsassistenten draws them: «Bla til bunnen»,
+              the paperclip, a file's «Prøv igjen» and the suggestions. Two values are not tokens,
+              both Kunnskapsassistenten's: the empty field takes a tenth of the screen's height,
+              between two tokens, and grows to at most 274 px.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-composer-attachment-error-color</code></td>
+                  <td><code>--ds-color-danger-text-subtle</code></td>
+                  <td>why a file was not attached</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-attachment-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap in one attachment's row</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-attachments-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between attachments</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-controls-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the buttons under the field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-disclaimer-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>disclaimer color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-disclaimer-margin-block-start</code></td>
+                  <td><code>--ds-size-4</code>, none under 500 px</td>
+                  <td>air over the disclaimer</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-drop-hint-color</code></td>
+                  <td><code>--ds-color-accent-text-subtle</code></td>
+                  <td>«Slipp filen for å legge den ved»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-fade-block-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>height of the fade over a sticky field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-max-block-size</code></td>
+                  <td>274 px</td>
+                  <td>how tall the field grows before it scrolls</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-min-block-size</code></td>
+                  <td>a tenth of the screen's height</td>
+                  <td>the empty field's height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-min-block-size-ceiling</code></td>
+                  <td><code>--ds-size-22</code></td>
+                  <td>the most the empty field takes on a tall screen</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-min-block-size-floor</code></td>
+                  <td><code>--ds-size-12</code></td>
+                  <td>the least the empty field takes on a short screen</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-padding-block</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>field padding, top and bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-padding-inline-start</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>where the text starts, in line with the paperclip's icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-focus-offset</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>focus ring offset around the frame</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-follow-ups-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>gap between follow-up questions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font family</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-background</code></td>
+                  <td><code>--ds-color-surface-default</code></td>
+                  <td>frame background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-border-color</code></td>
+                  <td><code>--ds-color-border-default</code></td>
+                  <td>frame border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-border-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>frame border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>frame border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-dragging-border-color</code></td>
+                  <td><code>--ds-color-accent-border-strong</code></td>
+                  <td>frame border while a file is over it</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the field and its buttons</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-frame-padding</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>frame padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>gap between the parts around the field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-note-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>the drop hint, a refusal and why a file was not attached</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-refusal-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>why a question was not sent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-scroll-background</code></td>
+                  <td><code>--ds-color-background-default</code></td>
+                  <td>«Bla til bunnen» background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-scroll-border-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>«Bla til bunnen» border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-scroll-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between «Bla til bunnen» and the field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-scroll-shadow</code></td>
+                  <td><code>--ds-shadow-sm</code></td>
+                  <td>«Bla til bunnen» shadow</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-send-border-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>send and «Avbryt» border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-sticky-background</code></td>
+                  <td><code>--ds-color-background-tinted</code></td>
+                  <td>ground under a sticky field, and its fade</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-sticky-padding-block-end</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>space under a sticky field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-sticky-padding-block-start</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>space over a sticky field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font family of the greeting and the suggestions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap in the greeting</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-border-color</code></td>
+                  <td><code>--ds-color-border-subtle</code></td>
+                  <td>line between suggestions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>line between suggestions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>a suggestion's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a suggestion's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>gap between a suggestion's icon and text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-icon-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>a suggestion's icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-icon-offset</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the icon's drop to the first line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>a suggestion's padding, top and bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestions-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between «Forslag» and the list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestions-padding-block-start</code></td>
+                  <td><code>--ds-size-4</code>, <code>--ds-size-2</code> under 500 px</td>
+                  <td>air over «Forslag»</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>Parity with Kunnskapsassistenten</h2>
+            <p>
+              Read against <code>views/chat/</code> in kunnskapsassistenten: <code>Composer</code>,
+              <code>Attachments</code>, <code>ScrollToBottom</code>,
+              <code>useComposerShortcut</code>, <code>Welcome</code> and <code>Kickstarters</code>,
+              their tests and <code>chat.css</code>.
+            </p>
+            <ul>
+              <li>
+                <strong>Ported, with tests:</strong> Enter sends and Shift+Enter breaks the line,
+                never mid-word in an input method; «Avbryt» in words while the answer comes; nothing
+                is sent while a file uploads, and the block says why; the paperclip, the hidden
+                picker and drop on the field; the switched-off paperclip where uploading is coming;
+                chips from uploading to ready or failed, with «Prøv igjen» only where it can help;
+                three announcements per file and none per percent; focus back in the field after
+                remove, retry and cancel; Ctrl+/ and Cmd+/; «Bla til bunnen», which hands the
+                keyboard on and leaves a tap alone; the greeting as one heading; the suggestions,
+                which fill the field and do not send.
+              </li>
+              <li>
+                <strong>Moved into the block:</strong> focus after cancel and after «Bla til
+                bunnen», and the shortcut, which the chat view did.
+              </li>
+              <li>
+                <strong>Made data:</strong> the assistant's name, the follow-up questions, the
+                suggestions per dataset, the file types and the size limit.
+              </li>
+              <li>
+                <strong>Left to the host:</strong> uploading and its progress, the draft kept across
+                a sign-in, whether the conversation is at its end, the glide from the start page to
+                the foot, and the margin that keeps the field from hiding what is scrolled to.
+              </li>
+              <li>
+                <strong>Different on purpose:</strong> the air over the disclaimer and over
+                «Forslag» steps at the block's own width instead of following the window's.
+              </li>
+              <li>
+                <strong>Decided:</strong> a service without suggestions of its own gets none, not
+                even the heading, since nothing is shown without data. Kunnskapsassistenten's
+                suggestions for any dataset stay in that app.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Kunnskapsassistenten's question field and welcome were close to generic: its name in
+                two sentences was the only thing tied to it.
+              </li>
+              <li>
+                Measured beside Kunnskapsassistenten's start page and one live conversation, at 1440
+                px under its theme: all 61 sizes, gaps, offsets and colours compared are the same,
+                once the host passes <code>neutral</code> with <code>accent</code> actions. The
+                field measures 88 px empty and at most 274 px at 1440 × 900, and 84 px empty at 390
+                × 844, as in Kunnskapsassistenten. Its surfaces are neutral while its send button
+                and follow-ups keep the page's accent, which is why the block takes two colour
+                props.
+              </li>
+              <li>
+                The conversation reads in order: the question you asked with its document selection,
+                the answer, the sources used in the answer, and «Spør videre». The input field sits
+                below.
+              </li>
+              <li>
+                Your question has a subtle accent surface and your avatar. The answer has the
+                sparkle icon and no bubble around it.
+              </li>
+              <li>Typical answers are long, about one A4 page. Test the layout with that.</li>
+              <li>
+                What the sources don't say is a finding in itself. It gets its own section after the
+                answer,
+                <span class="sample gap" lang="nb">Ikke funnet i kildene</span>, with actions such
+                as «Let i hele Kudos» and «Bruk i teksten». It must not look like a weak claim.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>Does every assistant need a chat? To be tested.</li>
+              <li>
+                How do we tell “not found” from “not read”, when the assistant reads only a
+                selection closely?
+              </li>
+              <li>
+                The workspace's field has a visible label, a line about personal data and a
+                validation message. Should the question field take them?
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="next" href="approach.html" rel="next"><small>Next</small>Approach</a>
+      </nav>
+    </main>
+  </body>
+</html>

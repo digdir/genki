@@ -37,6 +37,7 @@ export const call = async (
     guards?: PayloadGuard[];
     endpoint?: Partial<DescribedEndpoint>;
     deployment?: string;
+    maxMediaBytes?: number;
   } = {},
 ) => {
   const sent: { url: URL; init: RequestInit | undefined }[] = [];
@@ -75,7 +76,7 @@ export const call = async (
       gate: createGate({
         media: {
           allows: () => true,
-          maxBytes: () => 1_000_000,
+          maxBytes: () => options.maxMediaBytes ?? 1_000_000,
           keep: async (c) => ({ tenant: c.tenant, path: 'kept/1', sha256: 'abc' }),
         },
         ...(options.readMedia

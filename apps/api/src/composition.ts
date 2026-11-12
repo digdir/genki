@@ -85,6 +85,7 @@ import {
   grantsOf,
   InMemoryClients,
   isBoundToServices,
+  isTestRunnerKey,
   keyGrantPolicy,
   keyReaches,
   keyReachesMode,
@@ -118,6 +119,8 @@ import {
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
 import { publicDatasetState } from './dataset-status.js';
+import { datasetDeleteModule } from './dataset-delete.js';
+import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
@@ -209,10 +212,12 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
+import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
+import { evalSlots, type EvalSlotLimits } from './eval-slots.js';
 import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
@@ -253,6 +258,12 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import {
+  allowedEnvironments,
+  chooseEnvironment,
+  serviceEnvironmentsModule,
+  type EnvironmentChoice,
+} from './service-environments.js';
 import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
@@ -311,6 +322,7 @@ export const platformModules: PlatformModuleFactory[] = [
   strategyCatalogueModule,
   definitionCompletionModule,
   datasetUploadsModule,
+  datasetDeleteModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
@@ -321,6 +333,7 @@ export const platformModules: PlatformModuleFactory[] = [
   maskinportenClientsModule,
   triggersModule,
   serviceLifecycleModule,
+  serviceEnvironmentsModule,
   operatorModelsModule,
   operatorOperationsModule,
   operationGovernanceModule,
@@ -452,6 +465,7 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
   documentConverter?: DocumentConverter;
@@ -568,6 +582,12 @@ const entryOf = (compiled: CompiledCapability, name: string): ModelEntry => {
 
 export interface ResolverHooks {
   pin?(compiled: CompiledCapability, version: number): Promise<CompiledCapability | undefined>;
+  environment?(
+    principal: Principal,
+    compiled: CompiledCapability,
+    requested: string | undefined,
+    version: number | undefined,
+  ): Promise<EnvironmentChoice>;
   fieldOptions?: FieldOptionsLookup;
   paused?(compiled: CompiledCapability): boolean | Promise<boolean>;
   pauseReason?(compiled: CompiledCapability): string | undefined | Promise<string | undefined>;
@@ -748,7 +768,14 @@ export const capabilityResolver = (
           !keyReachesMode(principal, capabilityModes(compiled.capability.descriptor.id, [name]))
           ? { ok: false, code: 'mode_not_authorized', message: `API key cannot use mode: ${name}` }
           : { ok: false, code: 'agent_not_authorized', message: `not authorized for ${name}` };
-      const wanted = options.version;
+      const environment = await hooks.environment?.(
+        principal,
+        compiled,
+        options.environment,
+        options.version,
+      );
+      if (environment && !environment.ok) return environment;
+      const wanted = options.version ?? (environment?.ok ? environment.version : undefined);
       const chosen =
         wanted === undefined || wanted === compiled.service.version
           ? compiled
@@ -757,7 +784,7 @@ export const capabilityResolver = (
         return {
           ok: false,
           code: 'version_not_found',
-          message: `Tjenesten ${compiled.service.id} har ingen publisert versjon ${wanted}.`,
+          message: t('services.environmentNoVersion', { version: wanted ?? '' }),
         };
       if (await hooks.paused?.(chosen))
         return {
@@ -770,6 +797,7 @@ export const capabilityResolver = (
         entry: await withOptions(principal, chosen, {
           ...entryOf(chosen, name),
           version: chosen.service.version,
+          ...(environment?.ok && environment.name ? { environment: environment.name } : {}),
           ...(hooks.datasets ? { datasets: hooks.datasets(chosen) } : {}),
         }),
       };
@@ -1174,6 +1202,15 @@ export const createPlatform = async (input: PlatformInput) => {
     adapters: { knowledge: knowledgeAdapters },
     embeddingResidency,
     testSets: evalStores.testSets,
+    usedBy: (dataset) =>
+      datasetReaders(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        dataset,
+      ),
   });
   if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
@@ -1355,6 +1392,14 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const resolver = capabilityResolver(definitions, kernel, {
     pin,
+    environment: async (principal, compiled, requested, version) =>
+      chooseEnvironment(
+        configEntries,
+        compiled.service,
+        requested,
+        await allowedEnvironments(principal, clients),
+        version === undefined ? undefined : { version, latest: compiled.service.version },
+      ),
     fieldOptions: (principal, tenant, from) =>
       facetOptions(knowledge, optionCache, principal, tenant, from),
     paused: async (compiled) =>
@@ -1422,6 +1467,7 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return [...used];
   };
+  const testRunnersAllowed = input.lockdown !== undefined && input.environmentTier === 'test';
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -1429,12 +1475,13 @@ export const createPlatform = async (input: PlatformInput) => {
     const found = (async () => {
       const authenticated = await input.authenticate(request);
       if (!authenticated) return undefined;
-      const caller = input.lockdown
-        ? {
-            ...authenticated,
-            principal: withCredentialOrigin(input.lockdown, request, authenticated.principal),
-          }
-        : authenticated;
+      const origin = input.lockdown
+        ? withCredentialOrigin(input.lockdown, request, authenticated.principal)
+        : authenticated.principal;
+      const caller = {
+        ...authenticated,
+        principal: testRunnerView(origin, request, testRunnersAllowed),
+      };
       return (await admitConfined(clients, request, caller.principal)) ? caller : undefined;
     })();
     callers.set(request, found);
@@ -1683,13 +1730,19 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
     ingestion: config.ingestion,
-    ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
+    ...(input.lockdown
+      ? {
+          modelAdmission: mayUseModels,
+          readOnly: (p: Principal) => readOnlyInLockdown(p) || isTestRunnerKey(p),
+        }
+      : {}),
     evalStores,
     connections,
     blobs: blobStore,
     prices,
     quota,
     drafts,
+    evalSlots: evalSlots(input.evalSlots),
     pinService: async (tenant, service, version) => {
       const compiled = (await definitions.capabilities()).find(
         (c) => c.service.tenant === tenant && c.service.id === service,
@@ -1789,7 +1842,7 @@ export const createPlatform = async (input: PlatformInput) => {
       },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys }),
+    ...portalAdminHandlers({ apiKeys, testRunnerKeys: testRunnersAllowed }),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -1877,7 +1930,9 @@ export const createPlatform = async (input: PlatformInput) => {
         traces: { enabled: Boolean(input.traces?.()), content: Boolean(input.traces?.()?.content) },
         drafts,
         names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
+        testRunnerKeys: testRunnersAllowed,
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);
@@ -1888,6 +1943,8 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         apiKeys,
         webhooks,
+        names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         ...(input.endpoints ? { endpoints: input.endpoints } : {}),
       });
       const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };

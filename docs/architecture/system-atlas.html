@@ -1524,6 +1524,16 @@
                 witness: { file: 'apps/workspace/src/App.tsx', imports: '@genai/i18n' },
               },
               {
+                to: 'ui-blocks',
+                label: 'Draws the approach above an answer',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/workspace/src/Conversation.tsx',
+                  imports: '@genai/ui-blocks',
+                },
+              },
+              {
                 to: 'adapter-openai',
                 label: 'Chat completions and model list',
                 kind: 'http',
@@ -1906,6 +1916,109 @@
               },
             ],
             keywords: 'schema forms json schema react renderer designsystemet',
+            schemas: [],
+          },
+          {
+            id: 'ui-blocks',
+            plane: 'consumers',
+            name: 'UI building blocks',
+            note: 'The components assistants are made from',
+            icon: 'chat',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/ui-blocks'],
+            summary:
+              "Shared React components for assistants, such as Approach, Sources and Filter, used by the workspace and later the builder's preview.",
+            description:
+              "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the builder's preview will draw the draft with the same components. Each component has a page in docs/components.",
+            responsibilities: [
+              'Draw the components assistants are made from with Designsystemet',
+              'Texts in bokmål and English',
+              'Accessible status and live updates while the assistant works',
+              "Pair an answer's footnotes with the excerpts they cite, both ways",
+              "Narrow the documents by the dataset's facets, and show the collection and its documents",
+              "Every token a block's stylesheet reads can be changed through its own CSS variable",
+            ],
+            files: [
+              'packages/ui-blocks/src/approach/Approach.tsx',
+              'packages/ui-blocks/src/sources/Sources.tsx',
+              'packages/ui-blocks/src/sources/pairing.ts',
+              'packages/ui-blocks/src/document-view/DocumentView.tsx',
+              'packages/ui-blocks/src/filter/Filter.tsx',
+              'packages/ui-blocks/src/corpus/Corpus.tsx',
+              'packages/ui-blocks/src/documents/Documents.tsx',
+              'packages/ui-blocks/src/i18n.ts',
+            ],
+            input: 'Steps, sources, footnotes, counts, facets, documents and state as props',
+            output: 'Rendered components and callbacks',
+            replaces: [],
+            edges: [
+              {
+                to: 'i18n',
+                label: 'Locale and translated labels',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-blocks/src/i18n.ts', imports: '@genai/i18n' },
+              },
+            ],
+            keywords:
+              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
+            schemas: [],
+          },
+          {
+            id: 'ui-assembly',
+            plane: 'consumers',
+            name: 'UI assembly',
+            note: 'Puts the UI blocks together from a layout',
+            icon: 'chat',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/ui-assembly'],
+            summary:
+              "Draws an assistant from a layout of UI blocks and wires them to a genki service, for the app builder's preview.",
+            description:
+              'A React package beside the UI blocks. It holds the state the blocks share and the events that change it, places each block of a layout in its zone of the shell, and calls genki through one interface, so the blocks themselves never fetch. It decides what happens when a block a partner needs is off, such as footnotes without the sources.',
+            responsibilities: [
+              'Draw any layout the block catalogue allows, live against a service',
+              'Keep the state the blocks share and link their events',
+              'Call genki for models, threads, facets and answers through one interface',
+            ],
+            files: [
+              'packages/ui-assembly/src/useAssistant.ts',
+              'packages/ui-assembly/src/Assistant.tsx',
+              'packages/ui-assembly/src/api.ts',
+              'packages/ui-assembly/src/i18n.ts',
+            ],
+            input: 'A layout, a service and a way to reach genki',
+            output: 'A rendered assistant',
+            replaces: [],
+            edges: [
+              {
+                to: 'ui-blocks',
+                label: 'The blocks, the catalogue and the layout rules',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/ui-assembly/src/useAssistant.ts',
+                  imports: '@genai/ui-blocks',
+                },
+              },
+              {
+                to: 'i18n',
+                label: "Its own words beside the blocks', in the reader's language",
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-assembly/src/i18n.ts', imports: '@genai/i18n' },
+              },
+              {
+                to: 'client',
+                label: 'Streams answers from the service',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-assembly/src/api.ts', imports: '@genai/client' },
+              },
+            ],
+            keywords: 'ui assembly app builder layout wiring assistant preview byggeklosser',
             schemas: [],
           },
           {
@@ -3303,7 +3416,7 @@
                           type: 'array',
                           items: {
                             type: 'string',
-                            pattern: '^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$',
+                            pattern: '^[a-z0-9][a-z0-9._-]*@\\d+(\\.\\d+)*$',
                           },
                         },
                         attachments: {
@@ -3511,6 +3624,43 @@
                                     propertyNames: { type: 'string' },
                                     additionalProperties: {},
                                   },
+                                  filters: {
+                                    type: 'object',
+                                    properties: {
+                                      fields: {
+                                        minItems: 1,
+                                        type: 'array',
+                                        items: {
+                                          type: 'object',
+                                          properties: {
+                                            field: { type: 'string', minLength: 1 },
+                                            type: {
+                                              type: 'string',
+                                              enum: ['multiselect', 'contains', 'not-in-set'],
+                                            },
+                                            'value-type': {
+                                              type: 'string',
+                                              enum: ['string', 'integer'],
+                                            },
+                                            'selected-options': {
+                                              minItems: 1,
+                                              type: 'array',
+                                              items: {
+                                                anyOf: [
+                                                  { type: 'string', minLength: 1 },
+                                                  { type: 'number' },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          required: ['field', 'selected-options'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                    },
+                                    required: ['fields'],
+                                    additionalProperties: false,
+                                  },
                                 },
                                 required: ['id'],
                                 additionalProperties: false,
@@ -3700,13 +3850,13 @@
                           type: 'array',
                           items: {
                             anyOf: [
-                              { type: 'string', pattern: '^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$' },
+                              { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*@\\d+(\\.\\d+)*$' },
                               {
                                 type: 'object',
                                 properties: {
                                   use: {
                                     type: 'string',
-                                    pattern: '^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$',
+                                    pattern: '^[a-z0-9][a-z0-9._-]*@\\d+(\\.\\d+)*$',
                                   },
                                 },
                                 required: ['use'],
@@ -3720,7 +3870,7 @@
                           type: 'array',
                           items: {
                             type: 'string',
-                            pattern: '^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$',
+                            pattern: '^[a-z0-9][a-z0-9._-]*@\\d+(\\.\\d+)*$',
                           },
                         },
                         model: {
@@ -4094,7 +4244,7 @@
                       properties: {
                         id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,62}$' },
                         name: { type: 'string' },
-                        block: { type: 'string', pattern: '^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$' },
+                        block: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*@\\d+(\\.\\d+)*$' },
                         input: {
                           type: 'object',
                           propertyNames: { type: 'string' },
@@ -4155,7 +4305,7 @@
                         else: { type: 'array', items: { $ref: '#/$defs/__schema0' } },
                         subflow: {
                           type: 'string',
-                          pattern: '^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$',
+                          pattern: '^[a-z0-9][a-z0-9._-]*@\\d+(\\.\\d+)*$',
                         },
                       },
                       required: ['id'],
@@ -4484,6 +4634,9 @@
                     },
                     evaluatorTemperature: { type: 'number', minimum: 0, maximum: 2 },
                     noToolCallRetry: { type: 'boolean' },
+                    noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
+                    instructionsInAnswer: { type: 'boolean' },
+                    citeBy: { type: 'string', enum: ['document', 'excerpt'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -5202,6 +5355,12 @@
                           exclusiveMinimum: 0,
                           maximum: 9007199254740991,
                         },
+                        aliases: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string' },
+                          additionalProperties: { type: 'array', items: { type: 'string' } },
+                        },
                         cacheTtlMs: {
                           default: 300000,
                           type: 'integer',
@@ -5647,6 +5806,13 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'packages/eval/src/feedback.ts', imports: '@genai/contracts' },
+              },
+              {
+                to: 'port-model',
+                label: 'Marks run sources as untrusted data for the criteria judge',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/eval/src/evaluators.ts', imports: '@genai/port-model' },
               },
               {
                 to: 'port-knowledge',
@@ -6597,6 +6763,22 @@
                                 '^(?![\\d.]+(?::\\d+)?$)(?=.{1,253}(?::\\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\\d{1,5})?$',
                             },
                           },
+                          settings: {
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^[\\x21-\\x7e](?:[\\x20-\\x7e]{0,254}[\\x21-\\x7e])?$',
+                            },
+                          },
+                          keys: {
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
+                            },
+                          },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -6916,6 +7098,12 @@
                           required: ['basic'],
                           additionalProperties: false,
                         },
+                        {
+                          type: 'object',
+                          properties: { signedBy: { type: 'string', const: 'module' } },
+                          required: ['signedBy'],
+                          additionalProperties: false,
+                        },
                       ],
                     },
                     input: {},
@@ -6950,9 +7138,12 @@
                           sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
                           keys: {
                             default: [],
-                            maxItems: 1,
+                            maxItems: 4,
                             type: 'array',
-                            items: { type: 'string', enum: ['connection'] },
+                            items: {
+                              type: 'string',
+                              pattern: '^connection(?:\\.[a-z][a-zA-Z0-9_]{0,31})?$',
+                            },
                           },
                         },
                         required: ['sha256'],
@@ -7049,6 +7240,12 @@
                                   },
                                 },
                                 required: ['basic'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: { signedBy: { type: 'string', const: 'module' } },
+                                required: ['signedBy'],
                                 additionalProperties: false,
                               },
                             ],
@@ -7207,6 +7404,19 @@
                               },
                             },
                             required: ['use', 'emits', 'headers'],
+                            additionalProperties: false,
+                          },
+                          parts: {
+                            type: 'object',
+                            properties: {
+                              of: {
+                                type: 'string',
+                                pattern: '^\\$input(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+$',
+                              },
+                              bytes: { type: 'integer', minimum: 1, maximum: 33554432 },
+                              most: { type: 'integer', minimum: 1, maximum: 100 },
+                            },
+                            required: ['of', 'bytes', 'most'],
                             additionalProperties: false,
                           },
                           request: {
@@ -7376,6 +7586,7 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              after: {},
                               fail: {
                                 type: 'object',
                                 properties: {
@@ -7438,6 +7649,7 @@
                                   ],
                                 },
                                 message: {},
+                                retry: { type: 'boolean' },
                               },
                               required: ['status', 'kind'],
                               additionalProperties: false,
@@ -7600,6 +7812,12 @@
                                 required: ['basic'],
                                 additionalProperties: false,
                               },
+                              {
+                                type: 'object',
+                                properties: { signedBy: { type: 'string', const: 'module' } },
+                                required: ['signedBy'],
+                                additionalProperties: false,
+                              },
                             ],
                           },
                           websocket: {
@@ -7756,6 +7974,19 @@
                               },
                             },
                             required: ['use', 'emits', 'headers'],
+                            additionalProperties: false,
+                          },
+                          parts: {
+                            type: 'object',
+                            properties: {
+                              of: {
+                                type: 'string',
+                                pattern: '^\\$input(?:\\.[A-Za-z_][A-Za-z0-9_-]*)+$',
+                              },
+                              bytes: { type: 'integer', minimum: 1, maximum: 33554432 },
+                              most: { type: 'integer', minimum: 1, maximum: 100 },
+                            },
+                            required: ['of', 'bytes', 'most'],
                             additionalProperties: false,
                           },
                           request: {
@@ -7925,6 +8156,7 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              after: {},
                               fail: {
                                 type: 'object',
                                 properties: {
@@ -7987,6 +8219,7 @@
                                   ],
                                 },
                                 message: {},
+                                retry: { type: 'boolean' },
                               },
                               required: ['status', 'kind'],
                               additionalProperties: false,
@@ -8199,6 +8432,7 @@
                         equals: {},
                         intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                         longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                        after: {},
                         fail: {
                           type: 'object',
                           properties: {
@@ -8261,6 +8495,7 @@
                             ],
                           },
                           message: {},
+                          retry: { type: 'boolean' },
                         },
                         required: ['status', 'kind'],
                         additionalProperties: false,

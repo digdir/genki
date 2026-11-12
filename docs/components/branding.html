@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Branding · Components</title>
+    <meta
+      name="description"
+      content="How a service brands every block the way Designsystemet does: a theme for all of them, and a variable for one detail of one block."
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      pre {
+        margin: 12px 0 16px;
+        overflow-x: auto;
+      }
+      pre code {
+        display: block;
+        padding: 12px 16px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Branding</span>
+        </p>
+      </nav>
+
+      <article class="component" id="branding" aria-labelledby="branding-title">
+        <div class="component-head">
+          <div>
+            <h1 id="branding-title">Branding</h1>
+            <p class="summary">
+              How a service gives every block its own look the way Designsystemet does: a theme
+              changes all of them at once, and a variable changes one detail of one block. The
+              blocks carry no colours of their own.
+            </p>
+            <dl class="facts">
+              <dt>Issues</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/229"
+                  >kunnskapsassistenten#229</a
+                >,
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/170">#170</a>
+              </dd>
+              <dt>Builds on</dt>
+              <dd>
+                <a href="https://designsystemet.no">Designsystemet</a>'s themes, data attributes and
+                cascade layers
+              </dd>
+            </dl>
+          </div>
+        </div>
+        <div class="component-body">
+          <div class="wide">
+            <h2>Three levers, from broad to narrow</h2>
+            <ol>
+              <li>
+                <strong>A theme</strong> changes every block, and the rest of the app, at once.
+              </li>
+              <li>
+                <strong>Designsystemet's attributes</strong> change a part of the page:
+                <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>.
+              </li>
+              <li>
+                <strong>A block's own variable</strong>,
+                <code>--genai-&lt;block&gt;-&lt;element&gt;-&lt;property&gt;</code>, changes one
+                detail of one block.
+              </li>
+            </ol>
+          </div>
+
+          <div class="wide">
+            <h2>1. Load a theme</h2>
+            <p>
+              Designsystemet's CSS first, then the theme, then the blocks. Here with Altinn's theme,
+              one of the four in <code>@digdir/designsystemet-theme</code> (<code>altinn</code>,
+              <code>digdir</code>, <code>portal</code> and <code>uutilsynet</code>). genki's portal,
+              console and workspace load <code>digdir.css</code> from the same package.
+            </p>
+            <pre><code>@import '@digdir/designsystemet-css';
+@import '@digdir/designsystemet-theme/altinn.css';
+@import '@genai/ui-blocks/styles.css';</code></pre>
+            <p>
+              A service with colours of its own makes its theme with Designsystemet's
+              <a href="https://theme.designsystemet.no/">theme builder</a>, or its command line.
+              Each colour it is given becomes a whole scale, for light and dark mode.
+              Kunnskapsassistenten's theme is made from this file,
+              <code>designsystemet.config.json</code>:
+            </p>
+            <pre><code>{
+  "$schema": "node_modules/@digdir/designsystemet/dist/config.schema.json",
+  "outDir": "./design-tokens",
+  "clean": true,
+  "themes": {
+    "digdir": {
+      "colors": {
+        "accent": "#0062BA",
+        "brand1": "#F45F63",
+        "brand2": "#E5AA20",
+        "brand3": "#1E98F5",
+        "neutral": "#1E2B3C"
+      },
+      "borderRadius": 4,
+      "typography": {
+        "fontFamily": "Inter"
+      }
+    }
+  }
+}</code></pre>
+            <pre><code>npx @digdir/designsystemet tokens create --config designsystemet.config.json
+npx @digdir/designsystemet tokens build -t ./design-tokens -o ./design-tokens-build</code></pre>
+            <p>
+              The build writes one stylesheet named after the theme, here
+              <code>design-tokens-build/digdir.css</code>, which takes the place of the theme in the
+              imports above.
+            </p>
+          </div>
+
+          <div class="wide">
+            <h2>2. Set the attributes</h2>
+            <pre><code>&lt;html lang="nb" data-color-scheme="auto"&gt;
+  &lt;body data-size="md" data-color="accent"&gt;</code></pre>
+            <ul>
+              <li>
+                <code>data-color-scheme</code>: <code>light</code>, <code>dark</code> or
+                <code>auto</code>, which follows the operating system. The
+                <a href="settings.html">Settings</a> block lets the reader choose; the app stores
+                the choice and sets it here.
+              </li>
+              <li>
+                <code>data-color</code>: the colour family for everything inside, such as
+                <code>accent</code>, <code>neutral</code> or <code>brand1</code>. A block's
+                <code>color</code> prop sets it on that block only, and only when given, so with no
+                prop the block follows the app.
+              </li>
+              <li><code>data-size</code>: <code>sm</code>, <code>md</code> or <code>lg</code>.</li>
+            </ul>
+          </div>
+
+          <div class="wide">
+            <h2>3. Change one detail of one block</h2>
+            <p>
+              Every value a block uses is read through a variable of its own, with a Designsystemet
+              token as the fallback. Set the variable on any ancestor, and only that detail changes.
+              Each block's page lists its variables, their defaults and what they style.
+            </p>
+            <pre><code>/* Outside every layer, so it wins over the blocks' defaults. */
+.service-settings {
+  --genai-settings-gap: var(--ds-size-6);
+  --genai-settings-section-gap: var(--ds-size-2);
+}</code></pre>
+            <ul>
+              <li>
+                Give a token, not a literal, so the value still follows the theme, dark mode and
+                <code>data-size</code>.
+              </li>
+              <li>
+                Set the variables, not the blocks' <code>uib-</code> classes. The classes are inside
+                the block and may change; the variables are what a block promises.
+              </li>
+              <li>
+                Designsystemet's components inside a block keep their own
+                <code>--dsc-*</code> variables. A block adds a <code>--genai-</code> variable only
+                for a value it gives them itself.
+              </li>
+            </ul>
+          </div>
+
+          <div class="wide">
+            <h2>Why an app's own CSS wins</h2>
+            <p>
+              The blocks' styles sit in <code>@layer genai.components</code>, declared after
+              Designsystemet's <code>ds.theme</code>, <code>ds.base</code> and
+              <code>ds.components</code>. CSS an app writes outside any layer wins over all of them,
+              with no <code>!important</code> and no contest of selectors.
+            </p>
+          </div>
+
+          <div class="wide">
+            <h2>What every block keeps to</h2>
+            <ul>
+              <li>No colour of its own: only Designsystemet's tokens.</li>
+              <li>
+                No bare token or literal: each is the fallback of a <code>--genai-</code> variable.
+              </li>
+              <li>
+                Its font is set on its own root, through
+                <code>--genai-&lt;block&gt;-font-family</code>, so a font can be given to one block.
+              </li>
+              <li>
+                A colour pinned to one family is pinned on purpose, named in the stylesheet, and
+                listed on the block's page.
+              </li>
+              <li>A test fails a block's stylesheet that breaks one of these.</li>
+              <li>Approach, the first block, does not set its own font yet.</li>
+            </ul>
+          </div>
+
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Where a service owner picks the brand colour: the app builder's brand step, which
+                makes the theme (kunnskapsassistenten#170).
+              </li>
+              <li>
+                The <code>--genai-</code> prefix follows the package's scope, and is to be agreed
+                with genki's maintainers before the first release. After it, renaming a variable
+                breaks the apps that set it.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="settings.html" rel="prev"><small>Previous</small>Settings</a>
+        <a class="next" href="ui-assembly.html" rel="next"><small>Next</small>UI assembly</a>
+      </nav>
+    </main>
+  </body>
+</html>

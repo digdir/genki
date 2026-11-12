@@ -1,7 +1,13 @@
-import type { ResourceProvenance, Usage } from '@genai/contracts';
+import {
+  providerBodyLength,
+  type ProviderFailure,
+  type ResourceProvenance,
+  type Usage,
+} from '@genai/contracts';
 import {
   encodeBase64,
   isMediaInput,
+  mediaInputKind,
   shape as shapes,
   ShapeError,
   walk,
@@ -11,11 +17,13 @@ import {
   type GateChunk,
   type GatePayload,
   type GateTarget,
+  type MediaInput,
   type ObjectLedger,
   type PortContext,
   type Shape,
 } from '@genai/kernel';
 import {
+  maxRequestsPerCall,
   maxRetryWaitSeconds,
   modelFieldsOf,
   type CredentialPlacement,
@@ -35,22 +43,25 @@ import {
   recordedBody,
   streamTypeFits,
 } from './encoding.js';
-import { evaluate, holds } from './mapping.js';
+import { evaluate, holds, pathsOf } from './mapping.js';
 import type { ConnectProvider } from './websocket.js';
-import { ModuleError, runModule, sha256Of } from './module.js';
+import { moduleLimits, ModuleError, runModule, sha256Of } from './module.js';
 import { unwrapped } from './shape.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export class OperationError extends Error {
+  readonly provider?: ProviderFailure;
   constructor(
     readonly status: number | undefined,
     message: string,
     readonly kind?: OperationErrorKind,
+    body?: string,
   ) {
     super(message);
     this.name = 'OperationError';
+    if (status !== undefined) this.provider = { status, ...(body ? { body } : {}) };
   }
 }
 
@@ -63,6 +74,10 @@ export interface DescribedEndpoint {
   allowedHosts?: readonly string[];
   /** The connection's name, as the ledger records it. */
   connection?: string;
+  /** The connection's non-secret settings, read as `$connection.<name>`. */
+  settings?: Readonly<Record<string, string>>;
+  /** The connection's extra named keys, which only a module reaches. */
+  keys?: Readonly<Record<string, () => Promise<string>>>;
   tenant?: string;
   run?: string;
   ledger?: ObjectLedger;
@@ -81,7 +96,6 @@ export interface Answer<Res = unknown> {
   dropped: number;
 }
 
-export const maxRequestsPerCall = 100;
 export const maxStreamEvents = 50_000;
 export const maxAnswerBytes = 32 * 1024 * 1024;
 
@@ -109,6 +123,7 @@ export interface StepExchange {
 /** One call as a fixture records it: the masked typed input, every wire request and answer, and the result. */
 export interface WireExchange {
   deployment: string;
+  settings?: Record<string, string>;
   input: unknown;
   request?: RecordedRequest;
   response?: RecordedResponse;
@@ -120,7 +135,12 @@ export interface WireExchange {
 
 export interface SendOptions {
   signal?: AbortSignal;
-  fail?: (status: number | undefined, message: string, kind?: OperationErrorKind) => Error;
+  fail?: (
+    status: number | undefined,
+    message: string,
+    kind?: OperationErrorKind,
+    body?: string,
+  ) => Error;
   observe?: (exchange: WireExchange) => void;
   /** Sees each classified value before it is encoded; operation@1 uses it to look for text that was not input text. */
   inspect?: (shape: Shape, value: unknown) => void;
@@ -183,19 +203,29 @@ const statusMatches = (rule: ErrorRule['status'], status: number) =>
         ? rule.includes(status)
         : rule === status;
 
-const defaultMessage = (body: unknown, status: number) => {
+const defaultMessage = (body: unknown, status: number, contentType: string | null) => {
+  if (typeof body === 'string' && body.trim() && contentType?.startsWith('text/plain'))
+    return body.trim().slice(0, providerBodyLength);
   const b = isRecord(body) ? body : {};
   const error = isRecord(b.error) ? b.error : {};
   const message = error.message ?? b.message;
-  return typeof message === 'string' ? message.slice(0, 500) : `the provider answered ${status}`;
+  return typeof message === 'string'
+    ? message.slice(0, providerBodyLength)
+    : `the provider answered ${status}`;
 };
 
-const readErrorBody = async (response: Response) => {
-  const text = await response.text().catch(() => '');
+const withoutKeys = (text: string, keys: Iterable<string>) => {
+  let out = text;
+  for (const key of keys) if (key) out = out.replaceAll(key, '[redacted]');
+  return out;
+};
+
+const readErrorBody = async (response: Response, keys: Iterable<string>) => {
+  const text = withoutKeys(await response.text().catch(() => ''), keys);
   try {
-    return JSON.parse(text) as unknown;
+    return { body: JSON.parse(text) as unknown, text };
   } catch {
-    return text.slice(0, 500);
+    return { body: text.slice(0, 500), text };
   }
 };
 
@@ -204,6 +234,7 @@ interface RunState {
   deployment: string;
   steps: Record<string, Record<string, unknown>>;
   secrets: Map<string, string>;
+  moduleKeys: Set<string>;
   links: Map<string, string>;
   issued: Set<string>;
   usage: Usage;
@@ -248,6 +279,7 @@ const credentialFor = async (
   const { credential } = endpoint;
   const value = await credentialValue(credential);
   const placement = step.credential;
+  if (placement.place === 'module') return { query: {}, headers: {}, value };
   if (placement.place === 'basic')
     return {
       query: {},
@@ -416,8 +448,15 @@ const prepare = (
   endpoint: DescribedEndpoint,
   state: RunState,
   options: SendOptions,
+  part?: Part,
 ): Prepared => {
-  const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
+  const scope = {
+    input: state.input,
+    deployment: state.deployment,
+    steps: state.steps,
+    ...(part ? { part } : {}),
+  };
+  const outward = { ...scope, connection: endpoint.settings ?? {} };
   const built = evaluate(step.request.body, scope);
   const body =
     step.wire.request === undefined
@@ -439,7 +478,7 @@ const prepare = (
           'a query',
           step.wire.query,
           withDeployment(
-            evaluate(step.request.query, scope),
+            evaluate(step.request.query, outward),
             modelFieldsOf(step.wire.query),
             state.deployment,
           ),
@@ -455,7 +494,7 @@ const prepare = (
           step,
           'headers',
           step.wire.headers,
-          evaluate(step.request.headers, scope),
+          evaluate(step.request.headers, outward),
           state,
           options,
         ),
@@ -492,7 +531,55 @@ const bytesOf = async (body: RequestInit['body']): Promise<Uint8Array> => {
   if (typeof body === 'string') return new TextEncoder().encode(body);
   if (body instanceof URLSearchParams) return new TextEncoder().encode(body.toString());
   if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
-  throw new ShapeError('a module signs a text body');
+  if (body instanceof Uint8Array) return body;
+  throw new ShapeError('a module signs a body the gate has serialised');
+};
+
+/** A form or multipart body serialised once, so the module signs the exact bytes that are sent. */
+const serialised = async (encoded: {
+  body?: RequestInit['body'];
+  contentType?: string;
+}): Promise<{ body?: RequestInit['body']; contentType?: string }> => {
+  if (encoded.body instanceof URLSearchParams)
+    return {
+      body: encoded.body.toString(),
+      contentType: 'application/x-www-form-urlencoded;charset=UTF-8',
+    };
+  if (!(encoded.body instanceof FormData)) return encoded;
+  const framed = new Response(encoded.body);
+  const contentType = framed.headers.get('content-type') ?? undefined;
+  return {
+    body: new Uint8Array(await framed.arrayBuffer()),
+    ...(contentType ? { contentType } : {}),
+  };
+};
+
+/** What the connection must hold for a descriptor to run: every `$connection.<name>` and every module key. */
+const missingConnectionInputs = (descriptor: Descriptor, endpoint: DescribedEndpoint) => {
+  const settings = endpoint.settings ?? {};
+  const keys = endpoint.keys ?? {};
+  const missing: string[] = [];
+  for (const step of [...descriptor.steps, ...descriptor.finally]) {
+    for (const path of pathsOf([step.request.query, step.request.headers]))
+      if (path.startsWith('$connection.') && !Object.hasOwn(settings, path.slice(12)))
+        missing.push(`setting ${path.slice(12)}`);
+    for (const key of descriptor.modules[step.module?.use ?? '']?.keys ?? [])
+      if (key.startsWith('connection.') && !Object.hasOwn(keys, key.slice(11)))
+        missing.push(`key ${key}`);
+  }
+  return [...new Set(missing)];
+};
+
+/** The outgoing headers as fetch sends them: lower-case names, combined values, sorted. */
+const canonicalHeaders = (headers: Record<string, string>) => {
+  const lower = [...new Headers(headers)]
+    .map(([name, value]) => [name, value.trim()] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return {
+    lines: lower.map(([name, value]) => `${name}:${value}\n`).join(''),
+    names: lower.map(([name]) => name).join(';'),
+    each: Object.fromEntries(lower.map(([name, value]) => [`header.${name}`, value])),
+  };
 };
 
 /** The headers a step's module returns for the request about to go out, walked against what the step declares. */
@@ -502,7 +589,13 @@ const moduleHeaders = async (
   endpoint: DescribedEndpoint,
   state: RunState,
   options: SendOptions,
-  sent: { body: RequestInit['body']; path: string; key: string },
+  sent: {
+    body: RequestInit['body'];
+    path: string;
+    host: string;
+    headers: Record<string, string>;
+    key: string;
+  },
 ): Promise<Record<string, string>> => {
   const spec = step.module;
   if (!spec) return {};
@@ -514,18 +607,40 @@ const moduleHeaders = async (
     throw new ShapeError(`${at}: the module ${spec.use} does not match its pinned SHA-256`);
   const text = (value: string) => new TextEncoder().encode(value);
   const now = (endpoint.now ?? (() => new Date()))();
+  const keys: Record<string, string> = {};
+  for (const name of declared.keys) {
+    if (name === 'connection') {
+      keys[name] = sent.key;
+      continue;
+    }
+    const short = name.slice('connection.'.length);
+    const resolve =
+      endpoint.keys && Object.hasOwn(endpoint.keys, short) ? endpoint.keys[short] : undefined;
+    if (!resolve) throw new ShapeError(`${at}: the connection has no key ${name}`);
+    const value = await resolve();
+    keys[name] = value;
+    state.moduleKeys.add(value);
+  }
+  const body = await bytesOf(sent.body);
+  const headers = canonicalHeaders({ host: sent.host, ...sent.headers });
+  const inputs: Record<string, Uint8Array> = {
+    method: text(step.request.method),
+    path: text(sent.path),
+    host: text(sent.host),
+    timestamp: text(String(Math.floor(now.getTime() / 1000))),
+    body_sha256: text(sha256Of(body)),
+    headers: text(headers.lines),
+    header_names: text(headers.names),
+    ...Object.fromEntries(Object.entries(headers.each).map(([n, v]) => [n, text(v)])),
+    ...Object.fromEntries(
+      Object.entries(endpoint.settings ?? {}).map(([n, v]) => [`connection.${n}`, text(v)]),
+    ),
+  };
+  const used = Object.values(inputs).reduce((n, v) => n + v.byteLength, 0);
+  if (used + body.byteLength <= moduleLimits.maxInputBytes) inputs.body = body;
   let emitted: [string, string][];
   try {
-    emitted = await runModule({
-      bytes,
-      inputs: {
-        body: await bytesOf(sent.body),
-        method: text(step.request.method),
-        path: text(sent.path),
-        timestamp: text(String(Math.floor(now.getTime() / 1000))),
-      },
-      keys: declared.keys.includes('connection') ? { connection: sent.key } : {},
-    });
+    emitted = await runModule({ bytes, inputs, keys });
   } catch (error) {
     if (error instanceof ModuleError) throw new ShapeError(`${at}: ${error.message}`);
     throw error;
@@ -572,20 +687,33 @@ const dispatch = async (
     const url =
       prepared.follow ?? new URL(`${withoutTrailingSlashes(endpoint.baseURL)}${prepared.path}`);
     if (!prepared.follow)
-      for (const [name, value] of Object.entries({
-        ...descriptor.api.query,
-        ...prepared.query,
-        ...credential.query,
-      }))
+      for (const [name, value] of Object.entries({ ...descriptor.api.query, ...prepared.query }))
+        url.searchParams.set(name, value);
+    const signedPath = `${url.pathname}${url.search}`;
+    if (!prepared.follow)
+      for (const [name, value] of Object.entries(credential.query))
         url.searchParams.set(name, value);
     const filenames = prepared.filenames ? { filenames: prepared.filenames } : {};
-    const encoded = encodeBody(step.request.encoding, prepared.body, {
+    const built = encodeBody(step.request.encoding, prepared.body, {
       ...filenames,
       ...(credential.fields ? { fields: credential.fields } : {}),
     });
+    const encoded = step.module ? await serialised(built) : built;
+    const outgoing: Record<string, string> = {
+      ...(encoded.contentType ? { 'content-type': encoded.contentType } : {}),
+      accept: step.response.stream
+        ? step.response.stream.framing === 'sse'
+          ? 'text/event-stream'
+          : 'application/x-ndjson, text/plain'
+        : acceptOf(step.response.encoding, prepared.media),
+      ...(prepared.follow ? {} : descriptor.api.headers),
+      ...prepared.headers,
+    };
     const signed = await moduleHeaders(descriptor, step, endpoint, state, options, {
       body: encoded.body,
-      path: prepared.path,
+      path: signedPath,
+      host: url.host,
+      headers: outgoing,
       key: credential.value,
     });
     const signals = [
@@ -595,18 +723,7 @@ const dispatch = async (
     const response = await (endpoint.fetch ?? globalThis.fetch)(url, {
       method: step.request.method,
       redirect: 'manual',
-      headers: {
-        ...(encoded.contentType ? { 'content-type': encoded.contentType } : {}),
-        accept: step.response.stream
-          ? step.response.stream.framing === 'sse'
-            ? 'text/event-stream'
-            : 'application/x-ndjson, text/plain'
-          : acceptOf(step.response.encoding, prepared.media),
-        ...(prepared.follow ? {} : descriptor.api.headers),
-        ...prepared.headers,
-        ...signed,
-        ...credential.headers,
-      },
+      headers: { ...outgoing, ...signed, ...credential.headers },
       ...(encoded.body === undefined ? {} : { body: encoded.body }),
       ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
     }).catch((error: unknown) => {
@@ -616,7 +733,7 @@ const dispatch = async (
     });
     const recorded = credential.fields
       ? encodeBody(step.request.encoding, prepared.body, filenames)
-      : encoded;
+      : built;
     const request: RecordedRequest = {
       method: step.request.method,
       path: prepared.follow ? `${prepared.follow.host}${prepared.follow.pathname}` : prepared.path,
@@ -627,7 +744,13 @@ const dispatch = async (
       body: await recordedBody(recorded.body, recorded.contentType ?? null),
     };
     if (!response.ok) {
-      const errorBody = await readErrorBody(response);
+      const { body: errorBody, text: errorText } = await readErrorBody(response, [
+        credential.value,
+        await credentialValue(endpoint.credential),
+        ...state.secrets.values(),
+        ...state.moduleKeys,
+        ...Object.values(signed),
+      ]);
       const errorHeaders = Object.fromEntries(response.headers);
       state.exchanges.push({
         step: step.name,
@@ -637,9 +760,11 @@ const dispatch = async (
       if (prepared.deletes && response.status === 404) return { gone: true, request };
       const rule = step.errors.find((r) => statusMatches(r.status, response.status));
       const kind = rule?.kind ?? (response.status === 429 ? 'rate-limited' : undefined);
-      const after = retryAfterSeconds(response.headers.get('retry-after'));
+      const after =
+        retryAfterSeconds(response.headers.get('retry-after')) ??
+        (rule?.retry ? Math.min(2 ** retries, step.retry.longestWaitSeconds) : undefined);
       if (
-        kind === 'rate-limited' &&
+        (kind === 'rate-limited' || rule?.retry) &&
         after !== undefined &&
         after <= step.retry.longestWaitSeconds &&
         retries < step.retry.attempts
@@ -655,8 +780,9 @@ const dispatch = async (
         response.status,
         typeof mapped === 'string'
           ? mapped.slice(0, 500)
-          : defaultMessage(errorBody, response.status),
+          : defaultMessage(errorBody, response.status, response.headers.get('content-type')),
         rule?.kind,
+        errorText.trim().slice(0, providerBodyLength) || undefined,
       );
     }
     return { response, request };
@@ -665,18 +791,38 @@ const dispatch = async (
 
 const ledgerNow = (endpoint: DescribedEndpoint) => (endpoint.now ?? (() => new Date()))();
 
+interface Part {
+  index: number;
+  offset: number;
+  body: MediaInput;
+}
+
+type StepAnswer = { response: unknown; headers: Record<string, unknown> };
+
+type Answered = StepAnswer & { part?: Part };
+
+const issuedIn = (s: Shape, value: unknown): string[] => {
+  const u = unwrapped(s);
+  if (u.kind === 'issued') return typeof value === 'string' ? [value] : [];
+  if (u.kind === 'array' && Array.isArray(value)) return value.flatMap((v) => issuedIn(u.item, v));
+  if (u.kind === 'object' && isRecord(value))
+    return Object.entries(u.fields).flatMap(([k, f]) => issuedIn(f, value[k]));
+  return [];
+};
+
 const finish = async (
   descriptor: Descriptor,
   step: Step,
   endpoint: DescribedEndpoint,
   state: RunState,
   scope: Record<string, unknown>,
-  answer: { response: unknown; headers: Record<string, unknown> },
+  answers: Answered[],
 ) => {
-  runChecks(descriptor, step, { ...scope, ...answer });
+  for (const answer of answers) runChecks(descriptor, step, { ...scope, ...answer });
   const bound: Record<string, unknown> = {};
   for (const [field, spec] of Object.entries(step.bind)) {
-    const value = evaluate(spec.from, answer);
+    const values = answers.map((answer) => evaluate(spec.from, answer));
+    const value = values[0];
     if (spec.class.kind === 'secret') {
       if (typeof value !== 'string' || !value)
         throw new ShapeError(`${descriptor.id} step ${step.name}: the secret ${field} is not text`);
@@ -689,16 +835,20 @@ const finish = async (
       state.links.set(`${step.name}.${field}`, value);
       continue;
     }
-    const checked = walk(spec.class.shape, value, { side: 'result' });
-    if (checked.problems.length > 0)
-      throw new ShapeError(
-        `${descriptor.id} step ${step.name}: bind.${field}: ${checked.problems.join('; ')}`,
-      );
-    bound[field] = checked.value;
-    if (unwrapped(spec.class.shape).kind === 'issued' && typeof checked.value === 'string') {
-      state.issued.add(checked.value);
+    const { shape } = spec.class;
+    const checked = values.map((v) => {
+      const walked = walk(shape, v, { side: 'result' });
+      if (walked.problems.length > 0)
+        throw new ShapeError(
+          `${descriptor.id} step ${step.name}: bind.${field}: ${walked.problems.join('; ')}`,
+        );
+      return walked.value;
+    });
+    bound[field] = step.parts ? checked : checked[0];
+    for (const id of checked.flatMap((v) => issuedIn(shape, v))) state.issued.add(id);
+    if (!step.parts && unwrapped(shape).kind === 'issued' && typeof checked[0] === 'string') {
       const resource = descriptor.resources.find((r) => r.step === step.name && r.field === field);
-      if (resource) await record(descriptor, resource, endpoint, state, checked.value);
+      if (resource) await record(descriptor, resource, endpoint, state, checked[0]);
     }
   }
   state.steps[step.name] = bound;
@@ -741,6 +891,145 @@ const record = async (
   });
 };
 
+type Exchanged = { gone: true } | { answer: StepAnswer; response: Response };
+
+const exchange = async (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  options: SendOptions,
+  fail: NonNullable<SendOptions['fail']>,
+  prepared: Prepared,
+): Promise<Exchanged> => {
+  const sent = await dispatch(descriptor, step, endpoint, state, options, fail, prepared);
+  if ('gone' in sent) return { gone: true };
+  const { response, request } = sent;
+  const contentType = response.headers.get('content-type');
+  if (!contentTypeFits(step.response.encoding, contentType, prepared.media))
+    throw fail(
+      undefined,
+      `${descriptor.id} step ${step.name} declares a ${prepared.media.join(' or ') || step.response.encoding} answer, and the provider answered ${contentType ?? 'without a content type'}`,
+    );
+  let raw: unknown;
+  try {
+    raw = await decodeAnswer(step.response.encoding, response, maxAnswerBytes, prepared.media);
+  } catch (error) {
+    if (error instanceof AnswerFormatError)
+      throw fail(undefined, `${descriptor.id} step ${step.name}: ${error.message}`);
+    throw error;
+  }
+  const recordedHeaders: Record<string, string> = {};
+  const answerHeaders: Record<string, unknown> = {};
+  for (const [name, shape] of Object.entries(step.response.headers)) {
+    const value = response.headers.get(name);
+    if (value === null) continue;
+    recordedHeaders[name] = value;
+    answerHeaders[name] = unwrapped(shape).kind === 'number' ? countOf(value) : value;
+  }
+  state.exchanges.push({
+    step: step.name,
+    request,
+    response: {
+      status: response.status,
+      ...(Object.keys(recordedHeaders).length ? { headers: recordedHeaders } : {}),
+      body: raw,
+    },
+  });
+  const walked = walk(step.wire.response, raw, { side: 'result' });
+  const walkedHeaders = walk({ kind: 'object', fields: step.response.headers }, answerHeaders, {
+    side: 'result',
+  });
+  const problems = [...walked.problems, ...walkedHeaders.problems];
+  if (problems.length > 0)
+    throw new ShapeError(
+      `the provider answered ${descriptor.id} step ${step.name} outside its wire shape: ${problems.join('; ')}`,
+    );
+  state.dropped += walked.dropped;
+  const answer = {
+    response: walked.value,
+    headers: walkedHeaders.value as Record<string, unknown>,
+  };
+  addUsage(state.usage, evaluate(step.usage, answer));
+  return { answer, response };
+};
+
+const partCount = (
+  descriptor: Descriptor,
+  step: Step,
+  input: unknown,
+  fail: NonNullable<SendOptions['fail']>,
+) => {
+  const spec = step.parts as NonNullable<Step['parts']>;
+  const at = `${descriptor.id} step ${step.name}`;
+  const media = lookupPath(input, spec.of);
+  if (!isMediaInput(media))
+    throw fail(undefined, `${at}: the input has no media to send in parts`, 'invalid');
+  const count = Math.max(1, Math.ceil(media.body.byteLength / spec.bytes));
+  if (count > spec.most)
+    throw fail(
+      undefined,
+      `${at}: the file needs ${count} parts of ${spec.bytes} bytes, more than the ${spec.most} the step allows`,
+      'invalid',
+    );
+  return { media, count, bytes: spec.bytes };
+};
+
+const checkParts = (
+  descriptor: Descriptor,
+  input: unknown,
+  fail: NonNullable<SendOptions['fail']>,
+) => {
+  for (const step of descriptor.steps) if (step.parts) partCount(descriptor, step, input, fail);
+};
+
+const partsOf = (
+  descriptor: Descriptor,
+  step: Step,
+  input: unknown,
+  fail: NonNullable<SendOptions['fail']>,
+): Part[] => {
+  const { media, count, bytes } = partCount(descriptor, step, input, fail);
+  return Array.from({ length: count }, (_, index) => {
+    const offset = index * bytes;
+    const body = media.body.subarray(offset, offset + bytes);
+    return {
+      index,
+      offset,
+      body: {
+        kind: mediaInputKind,
+        mediaType: media.mediaType,
+        bytes: body.byteLength,
+        sha256: sha256Of(body),
+        body,
+      },
+    };
+  });
+};
+
+const runParts = async (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  options: SendOptions,
+  fail: NonNullable<SendOptions['fail']>,
+): Promise<StepAnswer> => {
+  const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
+  const answers: Answered[] = [];
+  for (const part of partsOf(descriptor, step, state.input, fail)) {
+    const prepared = prepare(descriptor, step, endpoint, state, options, part);
+    const sent = await exchange(descriptor, step, endpoint, state, options, fail, prepared);
+    answers.push({
+      ...('gone' in sent ? { response: undefined, headers: {} } : sent.answer),
+      part,
+    });
+  }
+  await finish(descriptor, step, endpoint, state, scope, answers);
+  const last = answers.at(-1) as Answered;
+  return { response: last.response, headers: last.headers };
+};
+
 const runStep = async (
   descriptor: Descriptor,
   step: Step,
@@ -748,67 +1037,22 @@ const runStep = async (
   state: RunState,
   options: SendOptions,
   fail: NonNullable<SendOptions['fail']>,
-) => {
+): Promise<StepAnswer> => {
   if (step.session)
     throw fail(undefined, `${descriptor.id} is a live session; it runs as a session`);
+  if (step.parts) return runParts(descriptor, step, endpoint, state, options, fail);
   const sleep = endpoint.sleep ?? defaultSleep;
   const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
   const prepared = prepare(descriptor, step, endpoint, state, options);
   let waited = 0;
   for (;;) {
-    const sent = await dispatch(descriptor, step, endpoint, state, options, fail, prepared);
+    const sent = await exchange(descriptor, step, endpoint, state, options, fail, prepared);
     if ('gone' in sent) {
       const answer = { response: undefined, headers: {} };
-      await finish(descriptor, step, endpoint, state, scope, answer);
+      await finish(descriptor, step, endpoint, state, scope, [answer]);
       return answer;
     }
-    const { response, request } = sent;
-    const contentType = response.headers.get('content-type');
-    if (!contentTypeFits(step.response.encoding, contentType, prepared.media))
-      throw fail(
-        undefined,
-        `${descriptor.id} step ${step.name} declares a ${prepared.media.join(' or ') || step.response.encoding} answer, and the provider answered ${contentType ?? 'without a content type'}`,
-      );
-    let raw: unknown;
-    try {
-      raw = await decodeAnswer(step.response.encoding, response, maxAnswerBytes, prepared.media);
-    } catch (error) {
-      if (error instanceof AnswerFormatError)
-        throw fail(undefined, `${descriptor.id} step ${step.name}: ${error.message}`);
-      throw error;
-    }
-    const recordedHeaders: Record<string, string> = {};
-    const answerHeaders: Record<string, unknown> = {};
-    for (const [name, shape] of Object.entries(step.response.headers)) {
-      const value = response.headers.get(name);
-      if (value === null) continue;
-      recordedHeaders[name] = value;
-      answerHeaders[name] = unwrapped(shape).kind === 'number' ? countOf(value) : value;
-    }
-    state.exchanges.push({
-      step: step.name,
-      request,
-      response: {
-        status: response.status,
-        ...(Object.keys(recordedHeaders).length ? { headers: recordedHeaders } : {}),
-        body: raw,
-      },
-    });
-    const walked = walk(step.wire.response, raw, { side: 'result' });
-    const walkedHeaders = walk({ kind: 'object', fields: step.response.headers }, answerHeaders, {
-      side: 'result',
-    });
-    const problems = [...walked.problems, ...walkedHeaders.problems];
-    if (problems.length > 0)
-      throw new ShapeError(
-        `the provider answered ${descriptor.id} step ${step.name} outside its wire shape: ${problems.join('; ')}`,
-      );
-    state.dropped += walked.dropped;
-    const answer = {
-      response: walked.value,
-      headers: walkedHeaders.value as Record<string, unknown>,
-    };
-    addUsage(state.usage, evaluate(step.usage, answer));
+    const { answer, response } = sent;
     const until = step.until;
     if (until) {
       const failing = until.fail;
@@ -826,7 +1070,9 @@ const runStep = async (
         );
       }
       if (!holds(evaluate(until.test, answer), evaluate(until.equals, answer))) {
-        const after = retryAfterSeconds(response.headers.get('retry-after'));
+        const hinted =
+          until.after === undefined ? undefined : countOf(evaluate(until.after, answer));
+        const after = hinted ?? retryAfterSeconds(response.headers.get('retry-after'));
         const wait = Math.max(until.intervalSeconds, Math.min(after ?? 0, maxRetryWaitSeconds));
         if (waited + wait > until.longestSeconds)
           throw fail(
@@ -839,7 +1085,7 @@ const runStep = async (
         continue;
       }
     }
-    await finish(descriptor, step, endpoint, state, scope, answer);
+    await finish(descriptor, step, endpoint, state, scope, [answer]);
     return answer;
   }
 };
@@ -967,7 +1213,7 @@ async function* runStreamStep(
     response: { text, ...(last === undefined ? {} : { last }) },
     headers: {},
   };
-  await finish(descriptor, step, endpoint, state, scope, answer);
+  await finish(descriptor, step, endpoint, state, scope, [answer]);
   return answer;
 }
 
@@ -997,6 +1243,7 @@ const newState = (input: unknown, deployment: string): RunState => ({
   deployment,
   steps: {},
   secrets: new Map(),
+  moduleKeys: new Set(),
   links: new Map(),
   issued: new Set(),
   usage: {},
@@ -1015,13 +1262,18 @@ async function* runDescriptor<Res>(
   options: SendOptions,
 ): AsyncGenerator<StreamedText, Answer<Res>> {
   const fail =
-    options.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
+    options.fail ??
+    ((status, message, kind, body) => new OperationError(status, message, kind, body));
   if (descriptor.resources.length > 0 && !endpoint.ledger)
     throw fail(
       undefined,
       `${descriptor.id} keeps objects at the provider and the call has no ledger`,
       'processor',
     );
+  const missing = missingConnectionInputs(descriptor, endpoint);
+  if (missing.length > 0)
+    throw fail(undefined, `${descriptor.id}: the connection has no ${missing.join(', ')}`);
+  checkParts(descriptor, input, fail);
   const state = newState(input, deployment);
   let failure: unknown;
   try {
@@ -1060,13 +1312,16 @@ async function* runDescriptor<Res>(
       withoutSecrets(
         {
           deployment,
+          ...(endpoint.settings && Object.keys(endpoint.settings).length > 0
+            ? { settings: { ...endpoint.settings } }
+            : {}),
           input: inlineMedia(input),
           ...(one ? { request: one.request, response: one.response } : { steps: state.exchanges }),
           result,
           usage,
           dropped: state.dropped,
         },
-        state.secrets.values(),
+        [...state.secrets.values(), ...state.moduleKeys],
       ),
     );
   }
@@ -1119,7 +1374,8 @@ export const deleteProviderObject = async (
   if (!step)
     throw new ShapeError(`${descriptor.id} has no step ${resource.delete ?? ''} to delete with`);
   const fail =
-    options.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
+    options.fail ??
+    ((status, message, kind, body) => new OperationError(status, message, kind, body));
   const binding = descriptor.steps.find((s) => s.name === resource.step)?.bind[resource.field];
   if (binding?.class.kind === 'shape') {
     const checked = walk(binding.class.shape, object.objectId, { side: 'result' });
@@ -1222,9 +1478,11 @@ export const executorInternals = {
   prepare,
   credentialFor,
   runStep,
+  checkParts,
   readsOnly,
   lookupPath,
   addUsage,
   isRecord,
+  missingConnectionInputs,
 };
 export type { RunState };

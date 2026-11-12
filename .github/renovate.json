@@ -29,7 +29,8 @@
       "groupName": "bicep api versions"
     },
     {
-      "matchDatasources": ["docker"],
+      "description": "Node stays on 24 in mise, engines and the Docker image, so dev, CI and production move together",
+      "matchDatasources": ["docker", "node-version"],
       "matchPackageNames": ["node"],
       "allowedVersions": "/^24\\./"
     },

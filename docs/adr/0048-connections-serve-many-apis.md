@@ -32,6 +32,7 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 - The processor record stays keyed on the connection id, so one provider resource has one record.
 - `discovery` is a list of rules, each with `include`, `exclude`, `capabilities` and `apis`, the bindings a discovered deployment gets. Two rules on one connection replace the former `foundry-openai` and `foundry-claude`; embedders are listed models, not discovered. A discovered model still starts as a candidate an operator confirms (ADR 0021).
 - Connection `options` are removed; both adapters declare an empty schema today.
+- A connection may hold non-secret `settings` (such as a key id or a region) and named `keys` (secret references) for descriptors that sign requests (ADR 0049). Only an operator sets them, a tenant connection cannot have them, and a `PUT` without them keeps them.
 
 ### A model binds one API per kind
 
@@ -65,7 +66,7 @@ A price is per model and kind, per unit: `input-token`, `output-token`, `cached-
 
 ### Operator API and console
 
-- `POST` and `PUT /operator/model-endpoints/{id}` take `baseURL`, `auth`, `families` and `discovery`. A connection can be edited; one in use cannot be removed.
+- `POST` and `PUT /operator/model-endpoints/{id}` take `baseURL`, `auth`, `families`, `discovery`, `allowedHosts`, `settings` and `keys`. A connection can be edited; one in use cannot be removed.
 - `PUT /operator/models/{id}` takes `apis` and `options` next to the deployment, family, residency, capabilities and `enabled`. The classification `PATCH /operator/models/{id}` takes `apis`, `residency`, `capabilities`, `enabled` and `parameters`.
 - The console offers an API on a model when the model's connection offers the API's family.
 

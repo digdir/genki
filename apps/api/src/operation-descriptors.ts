@@ -515,6 +515,7 @@ export const operationDescriptorsModule: PlatformModuleFactory = (deps) => ({
         name: body.data.name,
         source: `recorded from the synthetic try ${body.data.task}`,
         deployment: exchange.deployment,
+        ...(exchange.settings ? { settings: exchange.settings } : {}),
         input: exchange.input,
         ...(exchange.steps
           ? { steps: exchange.steps }

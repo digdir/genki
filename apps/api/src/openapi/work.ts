@@ -166,6 +166,11 @@ const OperationFixture = z
     name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
     source: z.string().optional().describe('Where the recording comes from'),
     deployment: z.string(),
+    at: z.string().optional().describe('The time a module signs with, when the descriptor has one'),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe("The descriptor's typed input"),
     request: z.object({
       method: z.string(),
@@ -188,6 +193,10 @@ const OperationFixture = z
 const WireExchange = z
   .object({
     deployment: z.string(),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe('The typed input as it was sent, masked'),
     request: z.object({
       method: z.string(),
@@ -214,6 +223,12 @@ const TaskBase = z.object({
   service: z.string(),
   capability: z.string(),
   version: z.number().int().nullable(),
+  environment: z
+    .string()
+    .nullable()
+    .describe(
+      'The service environment that ran the version; prod for runs before environments, null for a pinned version no environment ran',
+    ),
   createdAt: z.string(),
   endedAt: z.string().nullable(),
 });
@@ -885,6 +900,7 @@ const taskRoutes: RouteConfig[] = [
           .describe('playground lists playground runs instead of service runs'),
         status: taskStatus.optional(),
         service: z.string().optional(),
+        environment: z.string().optional().describe('Only runs in this service environment'),
         from: z.string().optional().describe('ISO time, inclusive'),
         to: z.string().optional().describe('ISO time, inclusive'),
         limit: z.string().optional().describe('1 to 500, default 100'),
@@ -1139,15 +1155,40 @@ const ServiceEvalRun = z
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    environment: z
+      .string()
+      .optional()
+      .describe('The service environment the version was taken from, when no version was named'),
     split: z.enum(caseSplits).optional(),
+    model: z
+      .string()
+      .optional()
+      .describe("The model the run answers with: the variant's own model, else the primary model"),
+    selected: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'The cases the run was limited to; such a run does not stand for the whole test set',
+      ),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
+    finished: z
+      .number()
+      .int()
+      .optional()
+      .describe('The cases done so far; passed, score and cost count only these'),
+    queuePlace: z
+      .number()
+      .int()
+      .optional()
+      .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
     cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
+    interrupted: z.boolean().optional().describe('The platform restarted before the run was done'),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
     cases: z.array(
@@ -1449,7 +1490,8 @@ const evalRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/feedback',
-    summary: 'Feedback on runs; a rating given fewer than five times shows only rating and date',
+    summary:
+      'Feedback on runs, the latest per run and credential; a rating given fewer than five times shows only rating and date',
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
@@ -2458,7 +2500,11 @@ const TenantUsage = z
       .optional()
       .describe("The AI gateway's rows per owner, in the currency it charged"),
     byProject: z.array(z.object({ project: z.string(), usage: UsageWithRuns, name: z.string() })),
+    byEnvironment: z
+      .array(z.object({ environment: z.string(), usage: UsageWithRuns }))
+      .describe('Service runs per service environment'),
     project: z.string().optional(),
+    environment: z.string().optional(),
     ingestion: z.object({
       usage: Usage,
       byDataset: z.array(z.object({ dataset: z.string(), usage: Usage })),
@@ -2489,7 +2535,7 @@ const operationsRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/usage',
-    summary: 'Tokens, requests and cost per day, service, model and project',
+    summary: 'Tokens, requests and cost per day, service, model, project and environment',
     description: described('view-usage', notAudited),
     request: {
       params: z.object({ tenant }),
@@ -2497,6 +2543,10 @@ const operationsRoutes: RouteConfig[] = [
       query: z.object({
         days: z.string().optional().describe('1 to 366, default 30'),
         project: z.string().optional().describe('Only runs in this project; leaves out ingestion'),
+        environment: z
+          .string()
+          .optional()
+          .describe('Only service runs in this environment; leaves out ingestion and testing'),
       }),
     },
     responses: { 200: json(TenantUsage, 'Usage'), 403: problem('Missing right'), ...memberRead },
@@ -2882,6 +2932,13 @@ const versionHeader = z
   .optional()
   .describe('Pin a published version of the service; a positive whole number');
 
+const environmentHeader = z
+  .string()
+  .optional()
+  .describe(
+    'Run the version this service environment points to, such as test. Without it, prod, or the first environment the key or frontend may use. A key or frontend bound to environments may pin with GenAI-Version only a version one of them runs',
+  );
+
 const ToolResult = z
   .object({
     answer: z.string(),
@@ -3020,6 +3077,7 @@ const protocolRoutes: RouteConfig[] = [
       headers: apiKeyHeaders.extend({
         'mcp-protocol-version': z.string().optional(),
         'genai-version': versionHeader,
+        'genai-environment': environmentHeader,
       }),
       body: body(JsonRpcRequest),
     },
@@ -3064,7 +3122,10 @@ const protocolRoutes: RouteConfig[] = [
     description: described('An API key or token allowed to use the service', notAudited),
     request: {
       params: z.object({ tool: pathParam('tool', '991825827__kudos') }),
-      headers: apiKeyHeaders.extend({ 'genai-version': versionHeader }),
+      headers: apiKeyHeaders.extend({
+        'genai-version': versionHeader,
+        'genai-environment': environmentHeader,
+      }),
       body: body(
         z
           .object({

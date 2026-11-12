@@ -592,6 +592,7 @@ export const createApiClient = ({
         agents: string[];
         expiresInDays?: number;
         callsPerMinute?: number;
+        testRunner?: boolean;
       },
       reason: string,
     ) =>
