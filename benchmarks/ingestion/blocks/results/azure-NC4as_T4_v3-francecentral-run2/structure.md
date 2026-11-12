@@ -1,6 +1,6 @@
 # Block structure: marker, marker-strip
 
-Run folders: /home/azureuser/blocks/.data/runs/azure-NC4as_T4_v3-francecentral-run2. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
+Run folders: `.data/runs/azure-NC4as_T4_v3-francecentral-run2`. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
 
 ## Per parser, all documents
 

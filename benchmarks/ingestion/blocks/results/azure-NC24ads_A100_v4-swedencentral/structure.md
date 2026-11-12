@@ -1,6 +1,6 @@
 # Block structure: docling, docling-no, docling-rapid, docling-tess, marker, marker2, mineru, mineru-noimg
 
-Run folders: /home/azureuser/blocks/.data/runs/azure-NC24ads_A100_v4-swedencentral. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
+Run folders: `.data/runs/azure-NC24ads_A100_v4-swedencentral`. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
 
 ## Per parser, all documents
 

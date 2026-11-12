@@ -1,6 +1,6 @@
 # Block structure: docling, docling-no, docling-rapid, docling-tess, marker
 
-Run folders: /home/azureuser/blocks/.data/runs/azure-D8as_v6-swedencentral. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
+Run folders: `.data/runs/azure-D8as_v6-swedencentral`. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
 
 ## Per parser, all documents
 

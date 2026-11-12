@@ -1,6 +1,6 @@
 # Block structure: docling-tess, docling-tess-best, docling-tess-egret, docling-tess-nocells, docling-tess-noreng, docling-tess-repair
 
-Run folders: /home/azureuser/blocks/.data/runs/azure-D32as_v6-swedencentral-run2. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
+Run folders: `.data/runs/azure-D32as_v6-swedencentral-run2`. Counts from `blocks.jsonl`; see `normalise.py` for the block format and `compare.py` for each column.
 
 ## Per parser, all documents
 
