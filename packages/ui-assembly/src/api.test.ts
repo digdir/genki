@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { sourceFromWire } from './api.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createGenkiApi, sourceFromWire } from './api.js';
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('a source from the wire', () => {
   it('gives each excerpt without an id one of its own, the same on every read', () => {
@@ -22,5 +24,41 @@ describe('a source from the wire', () => {
 
   it('leaves a missing title empty, for the blocks to name in the reader’s language', () => {
     expect(sourceFromWire({ excerpts: [] }).title).toBe('');
+  });
+});
+
+// The run feedback is sent on, from `task` on a stored message.
+describe('the run behind an answer', () => {
+  const api = () => createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' });
+
+  it('is kept from the stored message for a thread opened again', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't1', topic: 'Tråd', tags: [] },
+          messages: [
+            { id: 'm1', role: 'user', text: 'Hva er fast?', created: 1, chunks: [] },
+            { id: 'm2', role: 'assistant', text: 'Svar.', created: 2, chunks: [], task: 'task-7' },
+          ],
+        }),
+      ),
+    );
+    const { turns } = await api().loadThread('t1');
+    expect(turns[0]?.answer?.runId).toBe('task-7');
+  });
+
+  it('is left out of a stored message that names none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't1', topic: 'Tråd', tags: [] },
+          messages: [{ id: 'm2', role: 'assistant', text: 'Svar.', created: 2, chunks: [] }],
+        }),
+      ),
+    );
+    const { turns } = await api().loadThread('t1');
+    expect(turns[0]?.answer).not.toHaveProperty('runId');
   });
 });
