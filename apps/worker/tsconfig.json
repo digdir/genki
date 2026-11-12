@@ -24,6 +24,9 @@
       "path": "../../packages/port-blob"
     },
     {
+      "path": "../../packages/providers-azure-blob"
+    },
+    {
       "path": "../../packages/definitions"
     },
     {
