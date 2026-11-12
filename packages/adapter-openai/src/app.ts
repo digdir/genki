@@ -31,7 +31,9 @@ import {
   noAnswerOf,
   provenanceOf,
   sourcesOf,
+  type AnswerMarker,
   type OwuiSource,
+  type SourceExcerpt,
   type SourceRecord,
 } from './sources.js';
 import {
@@ -138,6 +140,7 @@ export interface AskTurn {
   text: string;
   chunks?: { chunkId: string; docTitle: string; docNum?: string; contentMarkdown: string }[];
   sources?: StoredSource[];
+  markers?: AnswerMarker[];
   task?: string;
   attachments?: string[];
   input?: Record<string, unknown>;
@@ -148,7 +151,8 @@ export interface StoredSource {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string; position?: number }[];
+  excerpts: SourceExcerpt[];
+  markers?: string[];
 }
 
 export interface AskConversations {
@@ -1223,12 +1227,20 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
 const stepOf = (data: Record<string, unknown>) =>
   Object.fromEntries(stepKeys.filter((k) => data[k] !== undefined).map((k) => [k, data[k]]));
 
+const storedExcerpt = (e: SourceExcerpt): SourceExcerpt => ({
+  chunk_id: e.chunk_id,
+  text: e.text,
+  ...(e.position === undefined ? {} : { position: e.position }),
+  ...(e.markers === undefined ? {} : { markers: e.markers }),
+});
+
 const storedSource = (s: OwuiSource): StoredSource => ({
   ...(s.index === undefined ? {} : { index: s.index }),
   title: s.title,
   ...(s.url === undefined ? {} : { url: s.url }),
   ...(s.document_id === undefined ? {} : { document_id: s.document_id }),
-  excerpts: s.excerpts,
+  excerpts: s.excerpts.map(storedExcerpt),
+  ...(s.markers === undefined ? {} : { markers: s.markers }),
 });
 
 export const datasetOf = (d: ServiceDataset) => ({
@@ -1240,11 +1252,13 @@ export const datasetOf = (d: ServiceDataset) => ({
 
 const assistantTurn = (parts: Part[], task: string): AskTurn => {
   const { sources } = sourcesBundle(parts);
+  const markers = markersOf(parts);
   return {
     role: 'assistant',
     task,
     text: answerOf(parts),
     ...(sources.length ? { sources: sources.map(storedSource) } : {}),
+    ...(markers.length ? { markers } : {}),
     chunks: sourcesOf(parts)
       .slice(0, 20)
       .map((r) => ({
