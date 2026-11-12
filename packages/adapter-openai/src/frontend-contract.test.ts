@@ -412,6 +412,19 @@ describe('/v1 frontend contract: sources', () => {
       ]);
     });
 
+    it('stores each excerpt of a turn exactly as the answer gave it, every field kept', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.excerpts)).toStrictEqual(
+        body.sources.map((s) => s.excerpts),
+      );
+    });
+
     it('keeps the same markers on the stored turn when the answer is streamed', async () => {
       reply = byExcerpt;
       const { ask, stored } = setup();

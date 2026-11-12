@@ -1227,19 +1227,12 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
 const stepOf = (data: Record<string, unknown>) =>
   Object.fromEntries(stepKeys.filter((k) => data[k] !== undefined).map((k) => [k, data[k]]));
 
-const storedExcerpt = (e: SourceExcerpt): SourceExcerpt => ({
-  chunk_id: e.chunk_id,
-  text: e.text,
-  ...(e.position === undefined ? {} : { position: e.position }),
-  ...(e.markers === undefined ? {} : { markers: e.markers }),
-});
-
 const storedSource = (s: OwuiSource): StoredSource => ({
   ...(s.index === undefined ? {} : { index: s.index }),
   title: s.title,
   ...(s.url === undefined ? {} : { url: s.url }),
   ...(s.document_id === undefined ? {} : { document_id: s.document_id }),
-  excerpts: s.excerpts.map(storedExcerpt),
+  excerpts: s.excerpts,
   ...(s.markers === undefined ? {} : { markers: s.markers }),
 });
 

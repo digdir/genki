@@ -427,6 +427,21 @@ describe('conversation routes for frontends', () => {
     expect(answer).toMatchObject({ sources, markers });
   });
 
+  it('returns every field a stored excerpt was given, also one the store does not name', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const excerpt = { chunk_id: 'c1', text: 'Første', markers: ['1'], heading: '1 Innledning' };
+    const sources = [{ index: 1, title: 'Tildelingsbrev', excerpts: [excerpt] }];
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: '[1]', sources });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1) as {
+      sources?: { excerpts: unknown[] }[];
+    };
+
+    expect(answer.sources?.[0]?.excerpts).toStrictEqual([excerpt]);
+  });
+
   it('reads a stored turn from before markers were kept as it was', async () => {
     const { send, store } = setup();
     const { json } = await create(send, 'ka', 'u');
