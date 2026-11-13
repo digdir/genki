@@ -47,7 +47,7 @@ const order: ServiceSection[] = [
   'publish',
 ];
 
-export const availableSections = ({ isNew }: { isNew: boolean }) =>
+export const availableSections = ({ isNew }: { isNew: boolean }): ServiceSection[] =>
   isNew
     ? order.filter(
         (s) =>

@@ -139,8 +139,28 @@ describe('the templates', () => {
 
   it('mark the blocks not built yet as coming in a template’s list', () => {
     render(<WithTemplates />);
-    expect(screen.getByRole('button', { name: 'Bruk Notater i fokus' }).textContent).toContain(
+    expect(screen.getByRole('button', { name: 'Bruk Kunnskapsassistenten' }).textContent).toContain(
       'Notater (kommer)',
     );
+  });
+});
+
+describe('a block that may stand in both its zones', () => {
+  it('stands in the content and the right panel when it is turned on in each, and in one when turned off there', () => {
+    render(<Harness />);
+    expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(true);
+    expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(false);
+    fireEvent.click(switchIn('Høyre panel', 'Fremgangsmåte'));
+    expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(true);
+    expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(true);
+    fireEvent.click(switchIn('Innhold', 'Fremgangsmåte'));
+    expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(false);
+    expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(true);
+  });
+
+  it('draws one set of options for it, under its first zone', () => {
+    render(<Harness />);
+    fireEvent.click(switchIn('Høyre panel', 'Fremgangsmåte'));
+    expect(screen.getAllByText('Valg for Fremgangsmåte')).toHaveLength(1);
   });
 });

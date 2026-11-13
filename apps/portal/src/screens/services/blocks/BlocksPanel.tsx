@@ -10,6 +10,7 @@ import { SchemaForm, type UiSchema, type Value } from '@genai/schema-forms';
 import {
   blockSpec,
   blocksAllowedIn,
+  moveTo,
   nameKey,
   needKey,
   offerOf,
@@ -18,11 +19,12 @@ import {
   optionOfferOf,
   partnersOf,
   placeIn,
+  placesHelpKey,
   settingsOf,
   settingsSchema,
   turnOff,
   withSetting,
-  zoneOf,
+  zonesOf,
   type BlockId,
   type BuilderKey,
   type BuilderState,
@@ -37,6 +39,39 @@ import { useT, type PlainKey, type T } from '../../../i18n';
 export const blockLabel = (id: BlockId) => nameKey(id);
 
 const helpKey = (id: BlockId) => `${nameKey(id)}Help` as BuilderKey;
+
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The block's options schema with the catalogue's words in place of its keys. */
+const wordedSchema = (id: BlockId, t: T): UiSchema => {
+  const schema = settingsSchema(id);
+  return {
+    ...schema,
+    properties: Object.fromEntries(
+      blockSpec(id).options.map((option) => {
+        const key = optionKey(id, option.id);
+        return [
+          option.id,
+          {
+            ...schema.properties[option.id],
+            'x-label': t(key),
+            'x-help': t(`${key}Help` as BuilderKey),
+            ...(option.kind === 'choice'
+              ? {
+                  'x-enumLabels': Object.fromEntries(
+                    option.choices.map((choice) => [
+                      choice,
+                      t(`${key}${capital(choice)}` as BuilderKey),
+                    ]),
+                  ),
+                }
+              : {}),
+          },
+        ];
+      }),
+    ),
+  } as unknown as UiSchema;
+};
 
 export const zoneLabel: Record<Zone, PlainKey> = {
   primary: 'builderBlocks.panelLeft',
@@ -86,7 +121,7 @@ const BlockOptions = ({
       <Details.Content className="stack-sm">
         {offered.length ? (
           <SchemaForm
-            schema={settingsSchema(id) as unknown as UiSchema}
+            schema={wordedSchema(id, t)}
             value={value as Value}
             only={offered.map((o) => o.id)}
             summary={false}
@@ -138,15 +173,27 @@ export const BlocksPanel = ({
               </Heading>
             </Fieldset.Legend>
             {blocksAllowedIn(zone).map((id) => {
-              const at = zoneOf(state.layout, id);
+              const spec = blockSpec(id);
+              const at = zonesOf(state.layout, id);
+              const here = at.includes(zone);
+              // Where else it stands; a block that may stand in both its zones is turned on in each.
+              const elsewhere = at.find((other) => other !== zone);
               const offer = offerOf(id, facts);
               const name = t(blockLabel(id));
               const description =
-                at !== undefined && at !== zone
-                  ? t('builderBlocks.usedIn', { panel: t(zoneLabel[at]).toLowerCase() })
+                elsewhere !== undefined && !here && !spec.both
+                  ? t('builderBlocks.usedIn', { panel: t(zoneLabel[elsewhere]).toLowerCase() })
                   : !offer.offered && !offer.planned
                     ? reasons(t, offer.unmet)
-                    : t(helpKey(id));
+                    : t(spec.both ? placesHelpKey(id) : helpKey(id));
+              const toggled = () =>
+                here
+                  ? elsewhere
+                    ? moveTo(state, id, elsewhere)
+                    : turnOff(state, id)
+                  : elsewhere && spec.both
+                    ? moveTo(state, id, 'both')
+                    : placeIn(state, id, zone);
               return (
                 <Fragment key={id}>
                   <Switch
@@ -154,13 +201,11 @@ export const BlocksPanel = ({
                     position="end"
                     label={offer.planned ? t('builderBlocks.planned', { block: name }) : name}
                     description={description}
-                    checked={at === zone}
-                    disabled={!offer.offered && at !== zone}
-                    onChange={() =>
-                      onChange(at === zone ? turnOff(state, id) : placeIn(state, id, zone))
-                    }
+                    checked={here}
+                    disabled={!offer.offered && !here}
+                    onChange={() => onChange(toggled())}
                   />
-                  {at === zone && blockSpec(id).options.length > 0 ? (
+                  {here && at[0] === zone && spec.options.length > 0 ? (
                     <BlockOptions id={id} state={state} facts={facts} onChange={onChange} />
                   ) : null}
                 </Fragment>

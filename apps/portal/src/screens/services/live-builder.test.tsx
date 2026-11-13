@@ -61,15 +61,22 @@ const startBuilder = async (fetch: typeof globalThis.fetch) => {
   return screen.findByRole('complementary', { name: 'Byggeassistent' });
 };
 
-const openAdvanced = async (page: string, heading: string) => {
-  window.location.hash = `#/services/new/advanced/${page}`;
+const openAdvanced = async (page: string, heading: string, id = 'new') => {
+  window.location.hash = `#/services/${id}/advanced/${page}`;
   window.dispatchEvent(new HashChangeEvent('hashchange'));
   await screen.findByRole('heading', { level: 2, name: heading });
 };
 
-const confirmRisk = async () => {
-  await openAdvanced('safety', 'Sikkerhet og personvern');
+const confirmRisk = async (id?: string) => {
+  await openAdvanced('safety', 'Sikkerhet og personvern', id);
   fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+};
+
+// What a person first tells the assistant about the service.
+const describeService = (panel: HTMLElement) => {
+  const composer = within(panel).getByRole('textbox', { name: 'Skriv til assistenten' });
+  fireEvent.change(composer, { target: { value: 'Svar på spørsmål om permisjon' } });
+  fireEvent.keyDown(composer, { key: 'Enter' });
 };
 
 type Spec = {
@@ -620,6 +627,7 @@ describe('a new service saved as a draft on the server', () => {
   const startNamed = async (name: string) => {
     const recording = recorded();
     const panel = await startBuilder(recording.fetch);
+    describeService(panel);
     await rename(name);
     await savedAs(recording.calls, name);
     return { ...recording, panel, id: idOf(draftWrites(recording.calls, 'PUT')[0]) };
@@ -638,6 +646,7 @@ describe('a new service saved as a draft on the server', () => {
   it('saves nothing while nothing has changed, and saves the first change the person makes', async () => {
     const { calls, fetch } = quiet();
     const panel = await startBuilder(fetch);
+    describeService(panel);
     await within(panel).findAllByText('Jeg venter på mer fra deg.');
     await new Promise((resolve) => setTimeout(resolve, 1000));
     expect(calls.filter((c) => c.url.includes('/draft'))).toEqual([]);
@@ -649,7 +658,7 @@ describe('a new service saved as a draft on the server', () => {
 
   it('saves the work as a draft under its own id from the first change, and moves the address there', async () => {
     const { calls, fetch } = recorded();
-    await startBuilder(fetch);
+    describeService(await startBuilder(fetch));
 
     await waitFor(() => expect(draftWrites(calls, 'PUT').length).toBeGreaterThan(0), {
       timeout: 3000,
@@ -764,9 +773,10 @@ describe('a new service saved as a draft on the server', () => {
 
   it('publishing clears the draft, opens the published service and drops the draft from the list', async () => {
     const { calls, id } = await startNamed('Permisjonssvar');
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    await waitFor(() => expect(window.location.hash).toBe(`#/services/${id}`));
+    await confirmRisk(id);
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
     });
