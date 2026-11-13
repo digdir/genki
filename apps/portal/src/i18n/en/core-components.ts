@@ -9,6 +9,7 @@ import type {
 
 export const components = {
   breadcrumbs: 'Breadcrumbs',
+  backTo: 'Back to {label}',
   notAvailableTitle: 'Not available yet',
   notDecided: 'Not decided',
   steps: 'Steps',

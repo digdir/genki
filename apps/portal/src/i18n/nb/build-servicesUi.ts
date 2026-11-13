@@ -161,6 +161,7 @@ export const servicesUi = {
     tabService: 'Tjenesten',
     close: 'Lukk',
     publishTitle: 'Publiser {name}',
+    publishBack: 'Tilbake til tjenesten',
     publishFallbackName: 'tjenesten',
     publishTestInfo:
       'Publiser til test gjør versjonen tilgjengelig for dem som har testtilgang. Versjonen som er i bruk, endres ikke.',

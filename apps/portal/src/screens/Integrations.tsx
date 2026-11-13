@@ -16,7 +16,7 @@ import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey, type T } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
-import { developerPageFor, IntegrationTab } from './developer-routes';
+import { developerPageFor, IntegrationService, IntegrationTab } from './developer-routes';
 import { CallFromCode, LiveCallFromCode } from './integrations/CallFromCode';
 import { Connections } from './integrations/Connections';
 import { Frontends } from './integrations/Frontends';
@@ -94,6 +94,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const tRef = useRef(t);
   tRef.current = t;
   const only = useContext(IntegrationTab);
+  const forService = useContext(IntegrationService);
   const queryTab = only ?? route.query.get('tab');
   const tab = tabFrom(queryTab);
   const [open, setOpen] = useState<string | undefined>(
@@ -127,14 +128,19 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const say = (text: string, color: Flash['color'] = 'success') => setFlash({ text, color });
   const hrefFor = (next: Tab, id: string) =>
     `#/developer/${developerPageFor(next)}?open=${encodeURIComponent(id)}`;
-  const choose = (next: Tab, id: string) => navigate(hrefFor(next, id));
+  const choose = (next: Tab, id: string) =>
+    forService && next === 'triggers' ? setOpen(id) : navigate(hrefFor(next, id));
 
-  const failingSystems = systems.filter((x) => x.status === 'Feiler');
-  const failingTriggers = triggers.filter((x) => x.status === 'Feiler');
-  const failingLive =
+  const shownTriggers = forService
+    ? triggers.filter((x) => x.service === forService.name)
+    : triggers;
+  const shownLive =
     live && liveTriggers.status === 'ready'
-      ? liveTriggers.data.filter((x) => x.status === 'failing')
+      ? liveTriggers.data.filter((x) => !forService || x.service === forService.id)
       : [];
+  const failingSystems = forService ? [] : systems.filter((x) => x.status === 'Feiler');
+  const failingTriggers = shownTriggers.filter((x) => x.status === 'Feiler');
+  const failingLive = shownLive.filter((x) => x.status === 'failing');
   const problem = (kind: Tab, id: string, text: string) => ({
     text,
     href: hrefFor(kind, id),
@@ -239,7 +245,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
     ],
   }));
 
-  const triggerItems: ItemRowData[] = triggers.map((x) => {
+  const triggerItems: ItemRowData[] = shownTriggers.map((x) => {
     const error: ItemRowData['error'] = x.error
       ? {
           what: x.error.what,
@@ -481,7 +487,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
             <Triggers
               api={api}
               tenant={tenant}
-              triggers={liveTriggers.data}
+              triggers={shownLive}
               open={open}
               onToggle={(id) => setOpen(open === id ? undefined : id)}
               onChanged={() => setTriggerTick((n) => n + 1)}

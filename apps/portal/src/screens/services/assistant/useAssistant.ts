@@ -339,16 +339,16 @@ export const useAssistant = ({ api, tenant, service, definition, onMessage, onAp
         : { status: 'idle' },
     );
 
-  const startImprove = async (current: string) => {
+  const startImprove = async (current: string, purpose = '') => {
     if (improve.status !== 'idle') {
       setImprove({ status: 'idle' });
       return;
     }
     setImprove({ status: 'busy' });
-    showImprove(
-      await ask('improve-instructions', tRef.current('assistant.improveMessage')),
-      current,
-    );
+    const message = current.trim()
+      ? tRef.current('assistant.improveMessage')
+      : tRef.current('assistant.draftInstructionsMessage', { purpose });
+    showImprove(await ask('improve-instructions', message), current);
   };
 
   const showTests = (turn: AssistantTurn | undefined) =>

@@ -49,7 +49,7 @@ describe('the service setup in English', () => {
     render(
       inEnglish(
         <SetupHarness
-          sections={['purpose', 'io', 'guards', 'start']}
+          sections={['purpose', 'io', 'risk', 'guards', 'start']}
           initial={exampleTemplate('drafts')}
         />,
       ),

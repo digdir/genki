@@ -260,6 +260,7 @@ export const AnswerCard = ({
   onSave,
   onShowCall,
   onReply,
+  bare = false,
 }: {
   label?: string;
   result: PlaygroundResult;
@@ -267,6 +268,7 @@ export const AnswerCard = ({
   onSave: () => void;
   onShowCall: () => void;
   onReply?: (text: string) => void;
+  bare?: boolean;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -379,39 +381,43 @@ export const AnswerCard = ({
           {searchNoteText(result.searchNotes.length, t)}
         </p>
       ) : null}
-      <dl className="playground-meta">
-        {meta.map(([l, v]) => (
-          <div key={l}>
-            <dt>{l}</dt>
-            <dd>{v}</dd>
+      {bare ? null : (
+        <>
+          <dl className="playground-meta">
+            {meta.map(([l, v]) => (
+              <div key={l}>
+                <dt>{l}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {byModel.length > 1 ? (
+            <ul className="playground-models" aria-label={t('playground.tokensPerModel')}>
+              {byModel.map((m) => (
+                <li key={m.model}>
+                  <span className="playground-strong">{m.model}</span>
+                  {` · ${t('playground.tokensInOut', {
+                    input: formatCount(m.inputTokens, f),
+                    output: formatCount(m.outputTokens, f),
+                  })} · ${formatKr(m.costNok, f, t)}`}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="playground-answer-actions">
+            <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
+              {t('playground.viewRun')}
+            </Link>
+            <Button variant="tertiary" data-size="sm" aria-expanded={saveExpanded} onClick={onSave}>
+              {t('playground.saveAsTest')}
+            </Button>
+            <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
+              <Icon icon={CodeIcon} size={18} />
+              {t('common.apiCall')}
+            </Button>
           </div>
-        ))}
-      </dl>
-      {byModel.length > 1 ? (
-        <ul className="playground-models" aria-label={t('playground.tokensPerModel')}>
-          {byModel.map((m) => (
-            <li key={m.model}>
-              <span className="playground-strong">{m.model}</span>
-              {` · ${t('playground.tokensInOut', {
-                input: formatCount(m.inputTokens, f),
-                output: formatCount(m.outputTokens, f),
-              })} · ${formatKr(m.costNok, f, t)}`}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <div className="playground-answer-actions">
-        <Link href={`#/log?oppgave=${encodeURIComponent(result.runId)}`}>
-          {t('playground.viewRun')}
-        </Link>
-        <Button variant="tertiary" data-size="sm" aria-expanded={saveExpanded} onClick={onSave}>
-          {t('playground.saveAsTest')}
-        </Button>
-        <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
-          <Icon icon={CodeIcon} size={18} />
-          {t('common.apiCall')}
-        </Button>
-      </div>
+        </>
+      )}
     </article>
   );
 };

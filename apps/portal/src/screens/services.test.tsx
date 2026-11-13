@@ -89,28 +89,40 @@ describe('service list', () => {
 });
 
 describe('new service', () => {
-  it('starts the builder from a job with the assistant asking questions', async () => {
+  it('opens the builder with the form and the assistant straight away', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    expect(screen.getByRole('heading', { name: 'Lag med KI' })).toBeTruthy();
-    expectAccessible();
-
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    expect(await screen.findByText('Satte jobb: henter ut opplysninger')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Lag med KI' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Formål og målgruppe' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
     expectAccessible();
   });
 
-  it('guesses the job from free text', async () => {
+  it('leaves out the comparison with the default instructions', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Utkast til svarbrev på klager' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    expect(await screen.findByText('Satte jobb: lager utkast')).toBeTruthy();
+    expect(screen.queryByText('Sammenlign med standardinstruksjonene')).toBeNull();
+  });
+
+  it('shows the audiences that come later as grey and not selectable', async () => {
+    await renderAt('#/services/new');
+    const later = await screen.findByText(/Andre offentlige virksomheter · Kommer senere/);
+    const chip = later.closest('label') as HTMLElement;
+    expect(chip.getAttribute('data-color')).toBe('neutral');
+    expect(within(chip).getByRole('checkbox').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('publishes on a page of its own, with a way back to the tab the person came from', async () => {
+    await renderAt('#/services/new/blocks');
+    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const page = await screen.findByRole('region', { name: /^Publiser/ });
+    expect(window.location.hash).toBe('#/services/new/publish');
+    expect(screen.queryByRole('navigation', { name: 'Tjenesten' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      within(page).getByRole('link', { name: 'Tilbake til tjenesten' }).getAttribute('href'),
+    ).toBe('#/services/new/blocks');
   });
 });
 
@@ -131,8 +143,7 @@ describe('builder', () => {
       ['Innstillinger', '#/services/rapportassistenten/settings'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
       ['Samlet jobb', '#/services/rapportassistenten/batch'],
-      ['Versjoner', '#/services/rapportassistenten/versions'],
-      ['Logg', '#/services/rapportassistenten/log'],
+      ['Utviklerverktøy', '#/services/rapportassistenten/developer'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 2, name: 'Hva tjenesten gjør' })).toBeTruthy();
@@ -143,7 +154,7 @@ describe('builder', () => {
 
     go('#/services/rapportassistenten/versions');
     expect(await screen.findByText('Versjon 7')).toBeTruthy();
-    expect(navLink('Versjoner').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
     expect(screen.getByText('Versjon 6')).toBeTruthy();
     expect(screen.getByText('Begrunnelse: Strammere krav til kilder')).toBeTruthy();
     expectAccessible();
@@ -153,7 +164,7 @@ describe('builder', () => {
     ['/setup', 'Oppsett', /^Formål og målgruppe/],
     ['/settings', 'Innstillinger', /Eksporter og importer/],
     ['/quality', 'Kvalitet', /Testsett/],
-    ['/log', 'Logg', /Kjøringer/],
+    ['/log', 'Utviklerverktøy', /Kjøringer/],
     ['/channels', 'Kanaler og frontend', /Start og kanaler/],
   ])('deep-links %s inside the same page', async (path, label, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
@@ -187,7 +198,7 @@ describe('builder', () => {
     ['uttrekk-samtale', 'Oppsett'],
     ['uttrekk-inn-og-ut', 'Oppsett'],
     ['uttrekk-prove', 'Test'],
-    ['uttrekk-yaml', 'Versjoner'],
+    ['uttrekk-yaml', 'Utviklerverktøy'],
   ])('reaches the %s tweak', async (tweak, tab) => {
     await renderAt(`#/services?visning=${tweak}`);
     await screen.findByRole('heading', { level: 1, name: 'Søknadsuttrekk' });
@@ -233,7 +244,7 @@ describe('builder', () => {
 describe('risk level and v3 checks', () => {
   const openPurpose = async () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
-    fireEvent.click(screen.getByRole('button', { name: /^Formål og målgruppe/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Risiko og KI-forordningen/ }));
   };
 
   it('lets the user confirm the proposed risk level', async () => {
@@ -242,6 +253,7 @@ describe('risk level and v3 checks', () => {
     expect(
       screen.getByText('Ansatte bruker resultatene, men tjenesten tar ikke beslutninger om folk.'),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Formål og målgruppe/ }));
     const audience = screen.getByLabelText(/Innbyggere og næringsliv · Kommer senere/);
     expect(audience.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
@@ -289,6 +301,26 @@ describe('risk level and v3 checks', () => {
 });
 
 describe('developer view', () => {
+  it('keeps the developer tab technical and leaves what the owner sets up in advanced settings', async () => {
+    await renderAt('#/services/new/developer');
+    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy for tjenesten' });
+    expect(
+      within(menu)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual([
+      'Kall fra kode',
+      'Nøkler',
+      'Utløsere',
+      'Kjøringer og sporing',
+      'Definisjon',
+      'Versjoner',
+    ]);
+    expect(navLink('Avanserte innstillinger')).toBeTruthy();
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
+    expectAccessible();
+  });
+
   it('shows the shared schema YAML and validates it against the API', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/soknadsuttrekk/versions?view=yaml', 'Søknadsuttrekk', fetch);
@@ -313,11 +345,7 @@ describe('developer view', () => {
   });
 
   it('applies and discards YAML edits', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/versions');
+    await renderAt('#/services/new/versions');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     const apply = screen.getByRole('button', { name: 'Bruk endringene' });
     expect(apply.getAttribute('aria-disabled')).toBe('true');
@@ -339,11 +367,7 @@ describe('developer view', () => {
 
 describe('pasting the example definitions', () => {
   it.each(serviceExamples)('applies %s in the builder YAML tab', async (_, text) => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/versions');
+    await renderAt('#/services/new/versions');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     fireEvent.change(yamlField(), { target: { value: text } });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
@@ -374,7 +398,7 @@ describe('versions', () => {
 describe('publishing', () => {
   it('blocks publishing until the risk level is confirmed', async () => {
     await openBuilder('#/services?visning=uttrekk-publiser', 'Søknadsuttrekk');
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(within(dialog).getByRole('heading', { name: 'Publiser Søknadsuttrekk' })).toBeTruthy();
     expect(within(dialog).getByText(/Publiser erstatter versjonen som er i bruk/)).toBeTruthy();
     expect(within(dialog).getByText(/Uten testsett ser du ikke/)).toBeTruthy();
@@ -384,17 +408,17 @@ describe('publishing', () => {
     ).toBe('true');
     expectAccessible();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Gå til risikonivå' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('region', { name: /^Publiser/ })).toBeNull());
     expect(await screen.findByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
   });
 
   it('publishes with a reason through the API', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/rapportassistenten/setup', 'Rapportassistenten', fetch);
-    fireEvent.click(screen.getByRole('button', { name: /^Formål og målgruppe/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Risiko og KI-forordningen/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     const publish = within(dialog).getByRole('button', { name: 'Publiser' });
     fireEvent.click(publish);
     expect(within(dialog).getByText(/minst 10 tegn/)).toBeTruthy();
@@ -418,7 +442,7 @@ describe('publishing', () => {
   it('publishes to test without changing the live version', async () => {
     await openBuilder('#/services/rapportassistenten', 'Rapportassistenten');
     fireEvent.click(screen.getByRole('button', { name: 'Publiser til test' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(within(dialog).getByText(/Publiser til test gjør versjonen tilgjengelig/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser til test' }));
     expect(await screen.findByText('Versjon 8 er publisert til test.')).toBeTruthy();

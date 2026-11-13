@@ -4,7 +4,12 @@ export const playgroundUi = {
   playground: defineNamespace({
     pageTitle: 'Prøveområde',
     pageLead:
-      'Prøv en modell, et datasett, en ferdighet eller et tjenesteutkast uten å publisere noe. Sammenlign to oppsett på samme spørsmål, og lagre gode svar som testtilfeller. Kjøringene teller med i kvoten.',
+      'Prøv grensesnittet i Frontend: hvilke byggeklosser tjenesten har, og hvor. Prøv innholdet i Backend: en modell, et datasett, en ferdighet eller et tjenesteutkast. Ingenting publiseres, og kjøringene teller med i kvoten.',
+    viewsLabel: 'Prøveområdet',
+    tabBackend: 'Backend',
+    tabFrontend: 'Frontend',
+    makeService: 'Lag en tjeneste av dette',
+    frontendAddress: 'ny-tjeneste.genki.no',
     panelLabel: 'Prøv',
     panelTitle: 'Prøv',
     openInPlayground: 'Åpne i prøveområdet',

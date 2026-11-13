@@ -23,27 +23,33 @@ afterEach(cleanup);
 const api = createApiClient({ baseUrl: '/api', fetch: mockFetch(), token: () => 'test' });
 
 describe('the builder in English', () => {
-  it('shows the header, meta line and publish dialog in English', async () => {
-    render(
-      inEnglish(
-        <RightsProvider value={['manage-services']}>
-          <Builder
-            api={api}
-            tenant="digdir"
-            tenantName="Digdir"
-            init={newServiceInit('answers', 'Answer questions')}
-            route={{ segments: ['services', 'new'], query: new URLSearchParams() } as never}
-            section="setup"
-            pane="tjeneste"
-            openPublish={false}
-          />
-        </RightsProvider>,
-      ),
-    );
+  const builder = (section: 'setup' | 'publish') => (
+    <RightsProvider value={['manage-services']}>
+      <Builder
+        api={api}
+        tenant="digdir"
+        tenantName="Digdir"
+        init={newServiceInit('answers', 'Answer questions')}
+        route={{ segments: ['services', 'new'], query: new URLSearchParams() } as never}
+        section={section}
+        pane="tjeneste"
+        openPublish={false}
+      />
+    </RightsProvider>
+  );
+
+  it('shows the header and meta line in English, and Publish opens the publish page', () => {
+    render(inEnglish(builder('setup')));
     expect(screen.getByText('Not published · saved automatically')).toBeTruthy();
     expect(screen.getByText('Draft')).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: 'Publish' })[0] as HTMLElement);
+    expect(window.location.hash).toBe('#/services/new/publish');
+  });
+
+  it('shows the publish page in English, with a way back to the service', async () => {
+    render(inEnglish(builder('publish')));
     await waitFor(() => expect(screen.getByText('Publish the service')).toBeTruthy());
     expect(screen.getByText(/Publishing replaces the version in use/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to the service' })).toBeTruthy();
   });
 });

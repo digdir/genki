@@ -668,7 +668,7 @@ export const cards: Record<string, ChangeCard> = {
   'c-risk': {
     title: 'Foreslo risikonivå: begrenset',
     detail: 'Tjenesten forbereder saken. Saksbehandleren avgjør. Du må bekrefte risikonivået.',
-    section: 'purpose',
+    section: 'risk',
     undo: () => ({ riskClass: undefined, riskConfirmation: undefined }),
   },
   'c-pii': {
