@@ -79,4 +79,27 @@ describe('chunkDocument by page', () => {
 
     expect(texts(chunks)).toEqual(['Side én.', 'Side fire.']);
   });
+
+  it('a long table splits between its rows', () => {
+    const table = Array.from({ length: 40 }, (_, i) => `| Post ${i} | ${i * 1000} kroner |`).join(
+      '\n',
+    );
+    const chunks = chunkDocument('doc', [joinPages([table])], byPage(200));
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks)
+      for (const line of chunk.content_markdown.split('\n'))
+        expect(line).toMatch(/^\| Post \d+ \| \d+ kroner \|$/);
+  });
+
+  it('a page piece is never longer than the maximum length, so no page is dropped', () => {
+    const page = 'Et avsnitt om midlene. '.repeat(10).trim();
+    const chunks = chunkDocument('doc', [joinPages([page])], {
+      ...byPage(4000),
+      maximumLength: 100,
+    });
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.map((c) => c.content_markdown).join(' ')).toBe(page);
+  });
 });

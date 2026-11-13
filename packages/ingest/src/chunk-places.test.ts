@@ -97,16 +97,19 @@ describe('chunks in the knowledge database', () => {
   });
 
   it('every chunk carries its document, file and page, for a document with an attachment and a page split in two', () => {
-    const long =
-      'Første del av en lang side om tildelingen for året. ' +
-      'Andre del av den samme siden, om midlene til fellesløsninger.';
+    // A text-layer page: lines joined by single newlines, no blank line to split at.
+    const long = [
+      'Første setning om tildelingen.',
+      'Andre setning om midlene.',
+      'Tredje setning om rapporteringen for hele året som gikk.',
+    ].join('\n');
     const doc = prepared(
       'kudos:4f1c',
       [
         {
           name: 'tildelingsbrev.pdf',
           sha256: sha('c'),
-          pages: ['# Tildeling\n\nKort side.', long],
+          pages: ['Kort side.', long],
         },
         { name: 'vedlegg.pdf', sha256: sha('d'), pages: ['Vedlegg om rapportering.'] },
       ],
@@ -123,5 +126,19 @@ describe('chunks in the knowledge database', () => {
     ]);
     expect(doc.id).toBe('kudos:4f1c');
     expect(new Set(doc.chunks.map((c) => c.id)).size).toBe(4);
+  });
+
+  it('every piece of a long page without blank lines stays on that page', () => {
+    const table = Array.from({ length: 60 }, (_, i) => `| Post ${i} | ${i * 1000} kroner |`).join(
+      '\n',
+    );
+    const doc = prepared(
+      'kudos:9a2b',
+      [{ name: 'regnskap.pdf', sha256: sha('e'), pages: ['Innledning.', table] }],
+      { ...byPage, strategy: { kind: 'page', splitMaxLength: 400 } },
+    );
+
+    expect(doc.chunks.length).toBeGreaterThan(2);
+    expect(doc.chunks.map((c) => c.pageFrom)).toEqual([1, ...doc.chunks.slice(1).map(() => 2)]);
   });
 });

@@ -36,40 +36,53 @@ export interface Location {
   value: string;
 }
 
-// Parts joined greedily into pieces of at most `max` characters.
-const pack = (parts: string[], joiner: string, max: number): string[] => {
-  const pieces: string[] = [];
-  let current = '';
-  for (const part of parts) {
-    const joined = current === '' ? part : `${current}${joiner}${part}`;
-    if (joined.length <= max || current === '') current = joined;
-    else {
-      pieces.push(current);
-      current = part;
-    }
+/** A slice of a page: pieces are cut from the page as written, so each is found on its page again. */
+type Span = [start: number, end: number];
+
+// The largest unit that fits: paragraphs, then lines, then sentences, then words. A Markdown table has
+// no blank line inside, so it stays whole when it fits, and a longer one splits between its rows.
+const splitLevels = [/\n{2,}/g, /\n/g, /(?<=[.!?])\s+/g, /\s+/g];
+
+/** The parts of a span between the separators of one level, as spans of the page. */
+const partsOf = (page: string, [start, end]: Span, separator: RegExp): Span[] => {
+  const parts: Span[] = [];
+  let from = start;
+  for (const match of page.slice(start, end).matchAll(separator)) {
+    const at = start + (match.index ?? 0);
+    if (at > from) parts.push([from, at]);
+    from = at + match[0].length;
   }
-  return current === '' ? pieces : [...pieces, current];
+  if (end > from) parts.push([from, end]);
+  return parts;
 };
 
-// The largest unit that fits: paragraphs, then sentences, then words. A Markdown table has no blank
-// line inside, so it stays whole unless it alone is longer than the limit.
-const splitLevels: [RegExp, string][] = [
-  [/\n{2,}/, '\n\n'],
-  [/(?<=[.!?])\s+/, ' '],
-  [/\s+/, ' '],
-];
+// Neighbouring spans joined greedily, with what lies between them, into spans of at most `max`.
+const pack = (spans: Span[], max: number): Span[] => {
+  const packed: Span[] = [];
+  for (const span of spans) {
+    const current = packed.at(-1);
+    if (current && span[1] - current[0] <= max) current[1] = span[1];
+    else packed.push([...span]);
+  }
+  return packed;
+};
 
-const pieces = (text: string, max: number, level = 0): string[] => {
-  const split = splitLevels[level];
-  if (text.length <= max) return [text];
-  if (!split) return fixedWidthChunks(text, max, 0).map((chunk) => chunk.content_markdown);
-  const [separator, joiner] = split;
+const spansOf = (page: string, span: Span, max: number, level = 0): Span[] => {
+  if (span[1] - span[0] <= max) return [span];
+  const separator = splitLevels[level];
+  if (!separator) {
+    const cut: Span[] = [];
+    for (let at = span[0]; at < span[1]; at += max) cut.push([at, Math.min(at + max, span[1])]);
+    return cut;
+  }
   return pack(
-    text.split(separator).flatMap((part) => pieces(part, max, level + 1)),
-    joiner,
+    partsOf(page, span, separator).flatMap((part) => spansOf(page, part, max, level + 1)),
     max,
   );
 };
+
+const pieces = (page: string, max: number) =>
+  spansOf(page, [0, page.length], max).map(([start, end]) => page.slice(start, end));
 
 /** Each page on its own, never two in one chunk: a file's pages are joined with the page separator. */
 const pageChunks = (text: string, max: number): RawChunk[] =>
@@ -81,7 +94,10 @@ const pageChunks = (text: string, max: number): RawChunk[] =>
 
 const raw = (config: ChunkDocumentConfig, text: string): RawChunk[] =>
   config.strategy.kind === 'page'
-    ? pageChunks(text, config.strategy.splitMaxLength ?? config.maximumLength)
+    ? pageChunks(
+        text,
+        Math.min(config.strategy.splitMaxLength ?? config.maximumLength, config.maximumLength),
+      )
     : config.strategy.kind === 'fixed-width'
       ? fixedWidthChunks(text, config.strategy.width, config.strategy.overlap)
       : headerBasedChunks(
