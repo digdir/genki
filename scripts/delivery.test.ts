@@ -930,7 +930,9 @@ describe('the weekly summary once a week', () => {
   });
 
   it('does not look at earlier runs when the run is late', async () => {
-    const api = runs([], []);
+    const api = vi.fn(async () => {
+      throw new Error('must not be called');
+    }) as unknown as Api;
     const late = await weeklyDecision({
       schedule: '0 12 * * 5',
       now: () => new Date('2026-11-13T19:17:00Z'),
@@ -939,6 +941,7 @@ describe('the weekly summary once a week', () => {
       runId: 3,
     });
     expect(late.due).toBe(false);
+    expect(api).not.toHaveBeenCalled();
   });
 });
 
