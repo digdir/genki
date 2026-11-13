@@ -1464,6 +1464,32 @@ describe('seeded conversions', () => {
     expect(skipped.find((f) => f.sha256 === badGzip)?.reason).not.toMatch(/missing/);
   }, 60_000);
 
+  it('a conversion whose pages contain U+0000 is stored without it', async () => {
+    const blob = seedContainer();
+    const seeded = shaStarting('f7');
+    await blob.put(seeded, ['Tabell\u0000 1', 'Side\u0000\u0000 to']);
+    const logged: string[] = [];
+    const s = await scenario({ nativeOutputs: blob.store, log: (msg) => logged.push(msg) });
+
+    await seed(s, 'f7');
+    const converted = shaStarting('f8');
+    await conversions.store(
+      {
+        sha256: converted,
+        converter: 'text-layer',
+        version: '1',
+        settings: {},
+        derivation: { name: 'text-layer', version: 1 },
+        pages: ['Arsrapport\u0000 2025'],
+      },
+      async () => null,
+    );
+
+    expect((await doclingRows(seeded)).map((row) => row.pages)).toEqual([['Tabell 1', 'Side to']]);
+    expect((await stored(converted)).map((row) => row.pages)).toEqual([['Arsrapport 2025']]);
+    expect(logged).toContain('a seed batch ended');
+  }, 60_000);
+
   it('an unbound worker seeds nothing', async () => {
     const blob = seedContainer();
     const file = shaStarting('f1');

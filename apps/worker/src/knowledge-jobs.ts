@@ -53,6 +53,8 @@ export interface WorkerJobServers<Pool> {
   /** Wraps the knowledge server's run jobs, so records waiting on a conversion count as open work. */
   knowledgeRunJobs?: (jobs: RunJobs) => RunJobs;
   onError?: (error: unknown) => void;
+  /** Where each failed attempt of a knowledge job is logged. */
+  log?: (msg: string, fields: Record<string, unknown>) => void;
 }
 
 export interface WorkerJobs {
@@ -62,6 +64,48 @@ export interface WorkerJobs {
   runJobs: RunJobs[];
 }
 
+type FailureLog = NonNullable<WorkerJobServers<unknown>['log']>;
+
+/**
+ * A job queue whose `knowledge.*` handlers log each failed attempt before pg-boss records it on the
+ * job (issue 532): the queue, the job id, the attempt, what follows and the error message, never the
+ * job's data, so no source id (ADR 0042). Every `work` goes through it, the night window's too.
+ */
+const loggingFailures = (queue: JobQueue, log: FailureLog): JobQueue =>
+  new Proxy(queue, {
+    get(target, property) {
+      if (property === 'work')
+        return <T extends JobData>(
+          definition: QueueDefinition<T>,
+          handler: (job: Job<T>) => Promise<void>,
+          options?: Parameters<JobQueue['work']>[2],
+        ) =>
+          target.work(
+            definition,
+            definition.name.startsWith('knowledge.')
+              ? async (job: Job<T>) => {
+                  try {
+                    await handler(job);
+                  } catch (error) {
+                    const last = job.retryCount >= definition.retryLimit;
+                    log('a knowledge job failed', {
+                      queue: definition.name,
+                      job: job.id,
+                      attempt: job.retryCount + 1,
+                      next: !last ? 'retry' : definition.deadLetter ? 'dead letter' : 'none',
+                      error: error instanceof Error ? error.message : String(error),
+                    });
+                    throw error;
+                  }
+                }
+              : handler,
+            options,
+          );
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+
 /**
  * Installs the job queues on both servers and works the queues that have handlers on each:
  * `knowledge.ingest` and `knowledge.index` since issue 139; the rest come with #140 and #141.
@@ -70,10 +114,19 @@ export const openWorkerJobs = async <Pool>(
   servers: WorkerJobServers<Pool>,
 ): Promise<WorkerJobs> => {
   const onError = servers.onError ? { onError: servers.onError } : {};
-  const platform = await servers.open(
-    { owner: servers.platform.owner, runtime: servers.platform.worker },
-    [...servers.work.map((w) => w.queue), ...knowledgePlatformQueues],
-    { worker: workerRole, readers: [runtimeRole], senders: [runtimeRole], works: true, ...onError },
+  const logged = (queue: JobQueue) => (servers.log ? loggingFailures(queue, servers.log) : queue);
+  const platform = logged(
+    await servers.open(
+      { owner: servers.platform.owner, runtime: servers.platform.worker },
+      [...servers.work.map((w) => w.queue), ...knowledgePlatformQueues],
+      {
+        worker: workerRole,
+        readers: [runtimeRole],
+        senders: [runtimeRole],
+        works: true,
+        ...onError,
+      },
+    ),
   );
   await workQueues(platform, servers.work);
   const runJobs: RunJobs[] = [
@@ -81,10 +134,12 @@ export const openWorkerJobs = async <Pool>(
   ];
   if (!servers.knowledge) return { platform, runJobs };
   const queues = knowledgeServerQueues(servers.markerTimeoutMs);
-  const knowledge = await servers.open(
-    { owner: servers.knowledge.owner, runtime: servers.knowledge.writer },
-    queues,
-    { worker: knowledgeWriterRole, readers: [knowledgeReaderRole], works: true, ...onError },
+  const knowledge = logged(
+    await servers.open(
+      { owner: servers.knowledge.owner, runtime: servers.knowledge.writer },
+      queues,
+      { worker: knowledgeWriterRole, readers: [knowledgeReaderRole], works: true, ...onError },
+    ),
   );
   await workQueues(knowledge, servers.knowledgeWork ?? []);
   const knowledgeJobs = servers.runJobs(servers.knowledge.writer, knowledge, queues);
