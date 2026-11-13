@@ -91,12 +91,12 @@ const pagesOf = (metadata: Record<string, unknown> | undefined) => {
   return { page_from: from, page_to: typeof to === 'number' && Number.isInteger(to) ? to : from };
 };
 
-/** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
 /** PostgreSQL refuses U+0000 in `text` and `jsonb`, and documents can carry it (issue 532). */
 const withoutNul = (text: string) => text.replaceAll('\u0000', '');
 const jsonWithoutNul = (value: unknown) =>
   JSON.stringify(value, (_, v: unknown) => (typeof v === 'string' ? withoutNul(v) : v));
 
+/** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
 export const replaceDocument = async (
   client: PoolClient,
   target: DocumentTarget,
