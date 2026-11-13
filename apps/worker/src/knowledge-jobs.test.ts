@@ -90,6 +90,7 @@ beforeAll(async () => {
     work: [],
     open: openJobQueue,
     runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
+    log: () => undefined,
   });
   // Only retries change here: the API's right to send comes from openWorkerJobs alone.
   await installJobQueue(worker.pool, withoutRetries(knowledgePlatformQueues), {
