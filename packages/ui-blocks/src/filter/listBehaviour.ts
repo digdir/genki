@@ -1,13 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
-// A list shows what is chosen first. When it opens, the values chosen then come first and the
-// rest follow, each part in the order given. Nothing moves while it is open, so a value chosen or
-// taken off there stays under the pointer; the order is taken again the next time it opens.
-// Changes made with the list shut, as with «Velg alle» and «Tøm», show at the next opening.
+// A list shows what was chosen when it opened first, and nothing moves while it is open.
 
-/** The values the list puts first: those chosen when it opened, or, while it is shut, those
- * chosen now. u-datalist opens and shuts the list with `hidden`. It also keeps where the list
- * was scrolled, which would open the new order part way down, so an opening starts at the top. */
+/** The values the list puts first; an opening starts at the top. */
 export const useChosenFirst = (
   selected: readonly string[],
   list: RefObject<HTMLElement | null>,
@@ -41,13 +36,7 @@ export const chosenFirst = <T>(items: readonly T[], first: (item: T) => boolean)
   ...items.filter((item) => !first(item)),
 ];
 
-// Designsystemet places the list when it opens: below the field, or above it when there is more
-// room there (`flip`), and as high as the room allows (`size`). The height is set once. A choice
-// can add a row of chips and move the field, and the list then follows it at its first height,
-// out of the window or, flipped, over its top edge. So after a change with the list open, it is
-// placed again, starting from the height that fits where it stands: it stays there, and does
-// not jump over the field while the pointer is in it, until less than Designsystemet's least
-// height is left.
+// After a change with the list open, it is placed again from the height that fits there.
 
 /** Designsystemet's own: the room less 20 px, never under 50 px (`size` in its popover.ts). */
 const MARGIN = 20;
@@ -62,9 +51,7 @@ export const useListFollowsField = (
     const element = list.current;
     const input = field.current;
     if (!element || !input || element.hidden) return;
-    // After u-combobox has put the new chips in their row, in its MutationObserver: until then
-    // they stand elsewhere. Before the observers that move the list, so it never shows at the
-    // old height.
+    // After u-combobox has moved the chips, before the observers that move the list.
     queueMicrotask(() => {
       if (!element.isConnected || element.hidden) return;
       const gap = Number.parseFloat(getComputedStyle(element).scrollMarginBottom) || 0;

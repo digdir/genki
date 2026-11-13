@@ -121,7 +121,8 @@
                 value is ticked.
               </li>
               <li>
-                <code>failed</code> and <code>onRetry</code>: the facets could not be fetched.
+                <code>failed</code> and <code>onRetry</code>: the facets could not be fetched. A
+                string in <code>failed</code> says why, in place of «Klarte ikke å hente filtrene.».
               </li>
               <li>
                 <code>locked</code>, <code>thread</code> and <code>onNewThread</code>: a thread's
@@ -131,8 +132,13 @@
                 follows <code>newThreadHref</code>, the browser's.
               </li>
               <li>
-                <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
-                default as in KA. A reader turns them on in the settings, under «Eksperimenter».
+                <code>yearPeriods</code> and <code>compactChips</code>: off by default in the block.
+                The UI assembly always turns both on (they were KA's trials until 13 November 2026).
+                <code>compactChips</code> gathers six or more chosen values in one chip, such as «12
+                virksomheter»; without it, a field that lists two or more values, all chosen, shows
+                one chip anyway. <code>yearFields</code>: the ids of the fields whose values are
+                years, so a filter in force shows its years as periods, «2020–2022», one chip each,
+                even while the facets are missing; removing a period removes all its years.
               </li>
               <li>
                 <code>head</code> and <code>children</code>: the corpus choice over the fields, and
@@ -152,10 +158,45 @@
                 in sight». KA's filter view today draws them after the fields instead, so the facets
                 keep their full size; a host passes them as <code>children</code> for that order.
               </li>
+              <li>
+                <code>variant</code>: <code>fields</code>, the default, or <code>panel</code>, the
+                dev boards' filter beside the threads (dev-filter-panel): «Fjern alle filtre» over
+                the fields, and each field a row with its <code>heading</code> and what is chosen,
+                «Alle» when nothing is, or when it lists two or more values and all are chosen
+                («Alle år» for a field of kind <code>year</code>, whose chosen years read as periods
+                such as «2020–2022, 2025»), that opens one at a time to a checkbox per value with
+                its exact count, in two columns, or as many as
+                <code>--genai-filter-checkboxes-columns</code> says: 1 in a narrow panel. A field
+                with more than 12 values opens to its list with search instead.
+                <code>children</code> stand under the rows with no line.
+              </li>
+              <li>
+                <code>FilterRead</code> and <code>FilterNext</code>: the filter where it is not
+                edited. <code>FilterRead</code> is «Leste fra 8 781 dokumenter:» and the chosen
+                values as chips, alike and not clickable, for <a href="approach.html">Approach</a>'s
+                <code>scope</code>. <code>FilterNext</code> is the line under the field, «Neste
+                spørsmål leser fra 8 781 dokumenter · Evaluering · 2020–2025 – endres i filteret til
+                venstre», drawn only with a <code>count</code>. Both, and the rows, name values with
+                <code>valueLabels</code>, so they never drift apart; <code>documentCount</code>
+                counts exactly from the facets, never «ca.».
+              </li>
+              <li>
+                <code>DocumentsInScope</code>: «Dokumentene som blir med», a box under the panel's
+                rows. Its summary, «Assistenten leser fra 8 781 av 45 778 dokumenter i Kudos», takes
+                <code>count</code>, <code>total</code> and <code>corpus</code>. The list under it,
+                each document with its type, organisation, year, pages and a tick to leave it out,
+                is drawn only when the host passes <code>documents</code> and
+                <code>onIncludedChange</code>; the platform sends neither yet. In a box too narrow
+                for both, «Skjul» goes under the title.
+              </li>
             </ul>
             <h2>Related</h2>
             <ul>
               <li><a href="threads.html">Threads</a>: each thread has its own filter</li>
+              <li>
+                <a href="corpus.html">Corpus choice</a> and <a href="documents.html">Documents</a>:
+                the head and the lists, on pages of their own
+              </li>
               <li><a href="approach.html">Approach</a>: shows the filter for each answer</li>
               <li><a href="sources.html">Sources</a>: the documents that match the filter</li>
               <li>
@@ -209,12 +250,26 @@
                 chips, «Velg alle» and «Tøm», the count of each value in the list, and the state in
                 the description: «Ingen avgrensning», «3 av 12 valgt», «Alle 12 valgt, altså ingen
                 avgrensning». Chosen values come first when the list opens, and nothing moves while
-                it is open. More than 100 chosen in one field says so, with the way out.
+                it is open. More than 100 chosen in one field, with more than 100 left out, says so,
+                with the way out: genki takes at most 100 values, chosen or left out.
+              </li>
+              <li>
+                <strong>One chip for all:</strong> when the field lists two or more values and all
+                are chosen, as after «Velg alle», the field shows one chip, «Alle virksomheter»,
+                instead of one per value, and the list still ticks them all. Removing it clears the
+                field, and ArrowLeft from the field reaches it. A list of one value never becomes
+                «Alle»: when another field narrows the list to one, each chosen value keeps its own
+                chip.
               </li>
               <li>
                 <strong>Years as periods</strong> (<code>yearPeriods</code>): a field of kind
                 <code>year</code> takes «2021», «2023–2028» or «23-28», and years in a row show as
-                one chip.
+                one chip. A period stands for the years in it that the field lists with documents,
+                not every calendar year, so «1800-2015» sends no more values than the collection has
+                years. The list shows a period with those years counted, «1800–2015 (26 år med
+                dokumenter)», since adding the documents per year would count a document with
+                several years more than once; a single year keeps its documents, «2019 (523)». A
+                period with none of them is not offered: «Ingen dokumenter i 1700–1750.»
               </li>
               <li>
                 <strong>Values no field can show</strong>, under «Avgrenset til», removable one by
@@ -440,6 +495,364 @@
                   <td><code>--genai-documents-zone-off-background</code></td>
                   <td><code>--ds-color-surface-tinted</code></td>
                   <td>the drop zone, switched off</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkbox-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: checkbox font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkbox-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: checkbox padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkboxes-columns</code></td>
+                  <td>2</td>
+                  <td>
+                    the panel variant: how many columns a field's ticks stand in, 1 in a narrow
+                    panel
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkboxes-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the panel variant and the filter lines: checkboxes gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the panel variant and the filter lines: chip background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the panel variant and the filter lines: chip color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>the panel variant and the filter lines: chip font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the panel variant and the filter lines: chip line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-padding-block</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the panel variant and the filter lines: chip padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: chip padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-chip-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>the panel variant and the filter lines: chip radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-clear-all-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: clear all font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-clear-all-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the panel variant and the filter lines: clear all font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-clear-all-min-height</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>the panel variant and the filter lines: clear all min height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-count-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: count color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-count-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>the panel variant and the filter lines: count font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: next color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: next font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: next gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-next-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the panel variant and the filter lines: next line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-panel-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the panel variant and the filter lines: panel gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-panel-padding-block-end</code></td>
+                  <td><code>0</code></td>
+                  <td>the panel variant and the filter lines: panel padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: read color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: read font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: read gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-read-lead-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the panel variant and the filter lines: read lead gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the panel variant and the filter lines: row border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the panel variant and the filter lines: row border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-chosen-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: row chosen color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-chosen-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the panel variant and the filter lines: row chosen font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-focus-color</code></td>
+                  <td><code>--ds-color-focus-outer</code></td>
+                  <td>the panel variant and the filter lines: row focus color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-focus-width</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>the panel variant and the filter lines: row focus width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: row gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-icon-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the panel variant and the filter lines: row icon color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the panel variant and the filter lines: row icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the panel variant and the filter lines: row line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-name-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the panel variant and the filter lines: row name color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-name-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the panel variant and the filter lines: row name font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-name-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the panel variant and the filter lines: row name font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the panel variant and the filter lines: row padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-row-padding-inline</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the panel variant and the filter lines: row padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>«Dokumentene som blir med»: scope border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>«Dokumentene som blir med»: scope border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-document-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope document padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-focus-color</code></td>
+                  <td><code>--ds-color-focus-outer</code></td>
+                  <td>«Dokumentene som blir med»: scope focus color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-focus-width</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>«Dokumentene som blir med»: scope focus width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-color</code></td>
+                  <td><code>--ds-color-accent-text-subtle</code></td>
+                  <td>«Dokumentene som blir med»: scope fold color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>«Dokumentene som blir med»: scope fold font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>«Dokumentene som blir med»: scope fold gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-name-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>«Dokumentene som blir med»: scope name font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>«Dokumentene som blir med»: scope padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>«Dokumentene som blir med»: scope padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-quiet-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«Dokumentene som blir med»: scope quiet color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>«Dokumentene som blir med»: scope radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-small-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope small font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope summary padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-padding-inline</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>«Dokumentene som blir med»: scope summary padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-radius</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
+                  <td>«Dokumentene som blir med»: scope summary radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-tiny-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>«Dokumentene som blir med»: scope tiny font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>«Dokumentene som blir med»: scope title color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>«Dokumentene som blir med»: scope title font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>«Dokumentene som blir med»: scope title font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>«Dokumentene som blir med»: scope type background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>«Dokumentene som blir med»: scope type color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>«Dokumentene som blir med»: scope type padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>«Dokumentene som blir med»: scope type radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-background</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>«Dokumentene som blir med»: scope summary background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkbox-size</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>the panel variant: checkbox size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-checkbox-size</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>«Dokumentene som blir med»: scope checkbox size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-search-height</code></td>
+                  <td><code>--ds-size-10</code></td>
+                  <td>«Dokumentene som blir med»: scope search height</td>
                 </tr>
               </tbody>
             </table>

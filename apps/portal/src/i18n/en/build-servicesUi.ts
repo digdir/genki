@@ -124,6 +124,11 @@ export const servicesUi = {
     draftChangedElsewhere:
       'The draft has been changed elsewhere. Reload the page to see the changes.',
     draftSaveFailed: 'Could not save the draft. Try again in a moment.',
+    deleteDraft: 'Delete the draft',
+    deleteDraftQuestion:
+      'Delete the draft of {name}? It is deleted for everyone in the organisation and cannot be undone.',
+    deleteDraftReason: 'Draft deleted from the builder',
+    deleteDraftFailed: 'Could not delete the draft. Try again in a moment.',
     rebaseReason: 'Draft updated with the latest version',
     pickedReason: 'Chose values from the published version',
     riskNoteHigh: '{label}: human approval and extended logging are on.',

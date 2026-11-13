@@ -8,6 +8,6 @@
     "types": ["@digdir/designsystemet-react/react-types"]
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.test-utils.ts"],
   "references": [{ "path": "../i18n" }]
 }

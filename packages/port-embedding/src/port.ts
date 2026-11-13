@@ -35,11 +35,16 @@ export type EmbeddingErrorCode =
   | 'invalid_response';
 
 export class EmbeddingError extends Error {
+  /** For `rate_limited`: how long the provider asked the caller to wait, when it said. */
+  readonly retryAfterMs?: number;
+
   constructor(
     readonly code: EmbeddingErrorCode,
     message: string,
+    options: { retryAfterMs?: number } = {},
   ) {
     super(message);
     this.name = 'EmbeddingError';
+    if (options.retryAfterMs !== undefined) this.retryAfterMs = options.retryAfterMs;
   }
 }

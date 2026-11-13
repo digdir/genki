@@ -7,6 +7,10 @@ import {
   defaultPlatformTenant,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
+  allowOf,
+  pinnedFetch,
+  traceConnectionKind,
+  tracingEgress,
 } from '@genai/composition';
 import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
@@ -49,6 +53,7 @@ import {
   InMemoryEvalRunStore,
   InMemoryFeedbackStore,
   InMemoryLabelStore,
+  InMemorySinkLabelStore,
   InMemoryTestSetStore,
   publishGate,
   retrievalRecall,
@@ -58,10 +63,29 @@ import {
   type FeedbackStore,
   type Gate,
   type LabelStore,
+  type SinkLabelStore,
   type TestSetStore,
+  type WaitOptions,
 } from '@genai/eval';
-import { type TriggerRunStore } from '@genai/jobs';
+import {
+  InMemoryTraceDeliveries,
+  klarsprakChecklist,
+  nynorskReference,
+  type TraceDeliveryStore,
+  type TriggerRunStore,
+} from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
+import {
+  createExperimentRouter,
+  createTraceExporter,
+  datasetName,
+  langfuseDatasets,
+  langfuseJudges,
+  mappedContent,
+  observedEventLog,
+  traceIdFor,
+  type LangfuseJudge,
+} from '@genai/providers-langfuse';
 import {
   deleteConversationDocuments,
   runtimeDocumentStore,
@@ -85,6 +109,7 @@ import {
   grantsOf,
   InMemoryClients,
   isBoundToServices,
+  isTestRunnerKey,
   keyGrantPolicy,
   keyReaches,
   keyReachesMode,
@@ -101,8 +126,6 @@ import {
 } from './frontends.js';
 import { createWebhooks, egressSender, type WebhookSender } from './webhooks.js';
 import { createConfigurables, type ConfigurablesInput } from './configurables.js';
-import { definitionSubject } from './definition-subject.js';
-import { portalGateMetrics, portalGateRuns } from './gate-runs.js';
 import { checkOverrides, serviceOverridesOf } from './settings-runtime.js';
 import { requestLocale, t } from './i18n/index.js';
 import {
@@ -118,6 +141,8 @@ import {
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
 import { publicDatasetState } from './dataset-status.js';
+import { datasetDeleteModule } from './dataset-delete.js';
+import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
@@ -209,11 +234,24 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
+import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
+import {
+  hidingInternalServices,
+  hidingInternalTasks,
+  hidingInternalTestSets,
+  isHiddenService,
+} from './internal-services.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
-import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
+import { evalSlots, type EvalSlotLimits } from './eval-slots.js';
+import {
+  createDraftRunner,
+  usageSummaryOf,
+  type FieldOptionsLookup,
+  type ModelPrice,
+} from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
   decorateWith,
@@ -230,6 +268,9 @@ import {
   withBlockSettings,
 } from './building-blocks.js';
 import { engineSwitchesModule } from './engine-switches.js';
+import { definitionSubject } from './definition-subject.js';
+import { runJudges } from './eval-judges.js';
+import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
@@ -243,6 +284,14 @@ import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
+import {
+  connectionOf,
+  traceConnectionsModule,
+  type TraceConnection,
+  type TraceSinks,
+  type TracingOptions,
+} from './trace-connections.js';
+import { testRunEnvironment, traceDatasets, withTraceDatasets } from './trace-datasets.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
 import { stepOperationsModule } from './step-operations.js';
@@ -253,8 +302,15 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import {
+  allowedEnvironments,
+  chooseEnvironment,
+  serviceEnvironmentsModule,
+  type EnvironmentChoice,
+} from './service-environments.js';
 import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
+import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { operatorOperationsModule } from './operator-operations.js';
@@ -308,9 +364,11 @@ export const platformModules: PlatformModuleFactory[] = [
   stepBlocksModule,
   stepOperationsModule,
   recipesModule,
+  traceConnectionsModule,
   strategyCatalogueModule,
   definitionCompletionModule,
   datasetUploadsModule,
+  datasetDeleteModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
@@ -321,6 +379,7 @@ export const platformModules: PlatformModuleFactory[] = [
   maskinportenClientsModule,
   triggersModule,
   serviceLifecycleModule,
+  serviceEnvironmentsModule,
   operatorModelsModule,
   operatorOperationsModule,
   operationGovernanceModule,
@@ -410,6 +469,14 @@ export interface PlatformInput {
   evaluators?: Map<string, Evaluator>;
   gates?: Map<string, Gate>;
   platformTenant?: string;
+  /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
+  appVersion?: string;
+  /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
+  tracing?: TracingOptions;
+  /** Every trace sent to a tenant's sink, until its delete is confirmed. */
+  traceDeliveries?: TraceDeliveryStore;
+  /** How an eval run waits for a sink's judges' scores; tests poll fast. */
+  evalWait?: WaitOptions;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -438,6 +505,8 @@ export interface PlatformInput {
     candidates: CandidateStore;
   };
   labels?: LabelStore;
+  /** Labels brought back from tenants' trace sinks, pending until an operator accepts them. */
+  sinkLabels?: SinkLabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
@@ -452,6 +521,7 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
   documentConverter?: DocumentConverter;
@@ -518,7 +588,7 @@ export const defaultGates = new Map<string, Gate>([
   ],
 ]);
 
-export { definitionSubject };
+export { definitionSubject } from './definition-subject.js';
 
 const retrievalInput = {
   type: 'object',
@@ -568,6 +638,12 @@ const entryOf = (compiled: CompiledCapability, name: string): ModelEntry => {
 
 export interface ResolverHooks {
   pin?(compiled: CompiledCapability, version: number): Promise<CompiledCapability | undefined>;
+  environment?(
+    principal: Principal,
+    compiled: CompiledCapability,
+    requested: string | undefined,
+    version: number | undefined,
+  ): Promise<EnvironmentChoice>;
   fieldOptions?: FieldOptionsLookup;
   paused?(compiled: CompiledCapability): boolean | Promise<boolean>;
   pauseReason?(compiled: CompiledCapability): string | undefined | Promise<string | undefined>;
@@ -748,7 +824,14 @@ export const capabilityResolver = (
           !keyReachesMode(principal, capabilityModes(compiled.capability.descriptor.id, [name]))
           ? { ok: false, code: 'mode_not_authorized', message: `API key cannot use mode: ${name}` }
           : { ok: false, code: 'agent_not_authorized', message: `not authorized for ${name}` };
-      const wanted = options.version;
+      const environment = await hooks.environment?.(
+        principal,
+        compiled,
+        options.environment,
+        options.version,
+      );
+      if (environment && !environment.ok) return environment;
+      const wanted = options.version ?? (environment?.ok ? environment.version : undefined);
       const chosen =
         wanted === undefined || wanted === compiled.service.version
           ? compiled
@@ -757,7 +840,7 @@ export const capabilityResolver = (
         return {
           ok: false,
           code: 'version_not_found',
-          message: `Tjenesten ${compiled.service.id} har ingen publisert versjon ${wanted}.`,
+          message: t('services.environmentNoVersion', { version: wanted ?? '' }),
         };
       if (await hooks.paused?.(chosen))
         return {
@@ -770,6 +853,7 @@ export const capabilityResolver = (
         entry: await withOptions(principal, chosen, {
           ...entryOf(chosen, name),
           version: chosen.service.version,
+          ...(environment?.ok && environment.name ? { environment: environment.name } : {}),
           ...(hooks.datasets ? { datasets: hooks.datasets(chosen) } : {}),
         }),
       };
@@ -909,10 +993,127 @@ export const askFilterIssues = (
   );
 };
 
+/** A Langfuse judge is advisory (ADR 0040): no gate may read its metric. */
+const advisoryGate = (gate: string, metric: string | undefined) => {
+  const judge = /^langfuse:([^/]+)\/(.+)$/.exec(metric ?? '');
+  return judge
+    ? `the gate ${gate} reads the Langfuse judge ${judge[2]} on the connection ${judge[1]}, which is advisory and never blocks a publish`
+    : undefined;
+};
+
 export const createPlatform = async (input: PlatformInput) => {
   const platformTenant = input.platformTenant ?? defaultPlatformTenant;
   const configEntries = input.configurables?.store ?? new InMemoryConfigEntryStore();
   const vault = new TenantSecretVault(input.tenantSecrets);
+  const tenantSecrets = new TenantSecrets(vault.resolver(input.secrets));
+  const experiments = createExperimentRouter();
+  const sinkEgress = tracingEgress(input.egress ?? {}, input.tracing?.devMode);
+  const traceDeliveries = input.traceDeliveries ?? new InMemoryTraceDeliveries();
+  const langfuseOf = async (tenant: string, connection: TraceConnection) =>
+    langfuseJudges({
+      host: connection.host,
+      publicKey: connection.publicKey,
+      secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+      fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+    });
+  const sinkJudgeOf = (j: LangfuseJudge, connection: TraceConnection) => ({
+    id: j.id,
+    name: j.rule.name,
+    source: `Langfuse (${connection.id})`,
+    ...(j.evaluator.model
+      ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
+      : {}),
+    version: String(j.evaluator.version),
+    dataType: j.evaluator.dataType,
+    fields: j.rule.mapping,
+    // A judge on a connection without answer text would be paid for and judge nothing.
+    ...(j.refused
+      ? { refused: j.refused }
+      : connection.content
+        ? {}
+        : {
+            refused: {
+              reason: 'no-content' as const,
+              connection: connection.id,
+              message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
+            },
+          }),
+    snapshot: j,
+  });
+  const traceSinks: TraceSinks = {
+    traceIdOf: (task) => traceIdFor(task),
+    judges: async (tenant, connection) =>
+      (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) =>
+        sinkJudgeOf(j, connection),
+      ),
+    forRun: async (tenant, connection, run) => {
+      const found = await (
+        await langfuseOf(tenant, connection)
+      ).forRun(connection.id, {
+        tenant,
+        environment: testRunEnvironment,
+        experimentName: `${run.testSet} v${run.version}`,
+        ...(run.dataset ? { dataset: run.dataset } : {}),
+      });
+      return {
+        judges: found.judges.map((j) => sinkJudgeOf(j, connection)),
+        elsewhere: found.elsewhere.map((j) => sinkJudgeOf(j, connection)),
+        refusing: found.refusing,
+      };
+    },
+    sourceOf: (connection) => `Langfuse (${connection.id})`,
+    sharedScores: async (tenant, connection) => (await langfuseOf(tenant, connection)).shared(),
+    judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
+    isSinkJudge: (judge) => judge.startsWith('langfuse:'),
+    annotations: async (tenant, connection) => (await langfuseOf(tenant, connection)).annotations(),
+    // langfuse:<connection>/<rule> calibrates langfuse:<tenant>/<connection>/<rule> (ADR 0040).
+    calibrationKey: (tenant, evaluator) => evaluator.replace(/^langfuse:/, `langfuse:${tenant}/`),
+    experimentUrl: async (tenant, connection, run) =>
+      (await langfuseOf(tenant, connection)).experimentUrl(run),
+    fieldsOf: (judges) => mappedContent(judges.map((j) => j.snapshot as LangfuseJudge)),
+    dataset: async (tenant, connection, service, testSet) =>
+      langfuseDatasets({
+        host: connection.host,
+        publicKey: connection.publicKey,
+        secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+        fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+      }).ensure(datasetName(service, testSet)),
+    open: (run, tenant, connection, beforeSend, fields = [], dataset) =>
+      experiments.open(
+        run,
+        createTraceExporter(
+          {
+            endpoint: new URL('/api/public/otel', connection.host).toString(),
+            auth: {
+              kind: 'langfuse',
+              publicKey: connection.publicKey,
+              secretKey: 'secret://sink/key',
+            },
+            // Only what the run's judges map, and only to a connection that receives content.
+            content: connection.content && fields.length > 0,
+            fields: fields.filter(
+              (f) => f === 'input' || f === 'output' || f === 'expected_output',
+            ),
+            // Every agency's test runs land apart from its live traffic (ADR 0040).
+            environment: testRunEnvironment,
+          },
+          {
+            secrets: {
+              resolve: () =>
+                tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+            },
+            tasks: async (id) => (await taskStore.get(id))?.task,
+            fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+            serviceName: 'genai-eval',
+            ...(beforeSend ? { beforeSend } : {}),
+            experiments: true,
+            ...(dataset ? { dataset } : {}),
+          },
+        ),
+        tenant,
+      ),
+    close: (run) => experiments.close(run),
+  };
   const settings = input.settings ?? new SettingsRegistry(platformSettings);
   const overridePolicy = {
     check: async (
@@ -957,6 +1158,18 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const evalStores = {
     ...baseEvalStores,
+    testSets: hidingInternalTestSets(
+      withTraceDatasets(
+        baseEvalStores.testSets,
+        traceDatasets({
+          configEntries,
+          traceSinks,
+          testSets: baseEvalStores.testSets,
+          ...(input.logger ? { log: input.logger } : {}),
+        }),
+      ),
+      (tenant, id) => isHiddenService(definitions, tenant, id),
+    ),
     feedback: feedbackToModules(
       webhooks.feedback(baseEvalStores.feedback, taskStore),
       taskStore,
@@ -970,10 +1183,12 @@ export const createPlatform = async (input: PlatformInput) => {
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
       ['retrieval', retrievalRecall(10)],
+      ['klarsprak-checklist', klarsprakChecklist()],
+      ['nynorsk-reference', nynorskReference()],
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',
@@ -1027,7 +1242,31 @@ export const createPlatform = async (input: PlatformInput) => {
       evalRunStrategy({
         kernel,
         evaluators,
+        forRun: async (principal, run) => {
+          const own = runJudges(() => modelChoice(moduleDeps))(principal, run);
+          const tenant = principal.tenant;
+          if (!tenant || !run.sink || !run.sinkJudges?.length) return own;
+          const connection = await connectionOf(configEntries, tenant, run.sink);
+          if (!connection) return own;
+          const judges = await langfuseOf(tenant, connection);
+          // A run starts only when every judge that reaches it is in use, so those are the ones
+          // that judge, and bill, each case it sends.
+          judges.expectJudges((run.sinkJudges as LangfuseJudge[]).map((j) => j.rule.id));
+          for (const snapshot of run.sinkJudges as LangfuseJudge[])
+            own.set(
+              snapshot.id,
+              judges.evaluator(snapshot, { tenant, content: connection.content }),
+            );
+          return own;
+        },
+        ...(input.evalWait ? { wait: input.evalWait } : {}),
+        modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
+        meterAnswers: (events) => usageSummaryOf(events, prices),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
+        slots: (tenant, run, onQueue) => {
+          const session = caseSlots.session(run, tenant, onQueue);
+          return { perRun: caseSlots.limits.perRun, acquire: session.acquire, end: session.end };
+        },
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
@@ -1039,7 +1278,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ]),
     platformCapabilities: [evalCapability, enrichmentWork.capability],
     ...(input.state ? { state: input.state } : {}),
-    ...(input.observe ? { observe: input.observe } : {}),
+    observe: (log: EventLog) =>
+      observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
@@ -1128,6 +1368,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestionExecutions ? { executions: input.ingestionExecutions } : {}),
     builtinGates: new Map([...defaultGates, ...(input.gates ?? [])]),
     platformTenant,
+    gateProblem: advisoryGate,
   });
   const databaseGuard = new EgressGuard(input.egress ?? {});
   const ingestSources: IngestSourceConfig = {
@@ -1174,6 +1415,17 @@ export const createPlatform = async (input: PlatformInput) => {
     adapters: { knowledge: knowledgeAdapters },
     embeddingResidency,
     testSets: evalStores.testSets,
+    testSetTaken: async (tenant, id) =>
+      (await baseEvalStores.testSets.get(tenant, id)) !== undefined,
+    usedBy: (dataset) =>
+      datasetReaders(
+        {
+          definitions,
+          configEntries: configurables.store,
+          resolve: (id) => knowledge.resolve(id),
+        },
+        dataset,
+      ),
   });
   if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
@@ -1244,31 +1496,25 @@ export const createPlatform = async (input: PlatformInput) => {
     const unknown = listed.filter((g) => !gates.has(g));
     if (unknown.length > 0)
       return unknown.map((g) => ({ path: 'spec.evaluation.gates', message: `unknown gate ${g}` }));
+    const advisory = listed.flatMap((g) => {
+      const message = advisoryGate(g, gates.get(g)?.metric);
+      return message ? [{ path: 'spec.evaluation.gates', message }] : [];
+    });
+    if (advisory.length > 0) return advisory;
     const current = await store.get('Service', d.metadata.tenant, d.metadata.id);
     if (!current) return undefined;
     const candidate = definitionSubject(d.spec);
-    const testSets = evaluation?.testSets ?? [];
     const decision = await publishGate({
       tenant: d.metadata.tenant,
       service: d.metadata.id,
       candidate,
-      candidateFallback: {
-        runs: await portalGateRuns(
-          configEntries,
-          evalStores.testSets,
-          d.metadata.tenant,
-          d.metadata.id,
-          candidate,
-          testSets,
-        ),
-        metrics: portalGateMetrics,
-      },
       ...(current
         ? { baseline: definitionSubject((current.definition as { spec: unknown }).spec) }
         : {}),
       evaluation: { testSets: evaluation?.testSets ?? [], gates: listed },
       runs: evalStores.runs,
       registry: gates,
+      advisoryJudge: (judge) => judge.startsWith('langfuse:'),
     });
     if (decision.allow) return undefined;
     return [
@@ -1284,20 +1530,26 @@ export const createPlatform = async (input: PlatformInput) => {
     compiled.invalidate();
     await sync();
   };
-  const definitions: DefinitionStore = {
-    get: (...args) => store.get(...args),
-    versions: (...args) => store.versions(...args),
-    list: (...args) => store.list(...args),
-    resolve: (...args) => store.resolve(...args),
-    capabilities: () => compiled.get(),
-    publish: async (...args) => {
-      const problems = await checkBeforePublish(args[0], args[1]);
-      if (problems) return { ok: false, errors: problems };
-      const result = await store.publish(...args);
-      if (result.ok) await resync();
-      return result;
+  const definitions: DefinitionStore = hidingInternalServices(
+    {
+      get: (...args) => store.get(...args),
+      versions: (...args) => store.versions(...args),
+      list: (...args) => store.list(...args),
+      resolve: (...args) => store.resolve(...args),
+      capabilities: () => compiled.get(),
+      publish: async (...args) => {
+        const problems = await checkBeforePublish(args[0], args[1]);
+        if (problems) return { ok: false, errors: problems };
+        const result = await store.publish(...args);
+        if (result.ok) await resync();
+        return result;
+      },
     },
-  };
+    {
+      draftDefinition: async (tenant, id) =>
+        (await serviceDrafts(configurables.store, store).draftOf(tenant, id))?.spec.definition,
+    },
+  );
 
   const pin = async (compiled: CompiledCapability, version: number) => {
     const found = await store.get('Service', compiled.service.tenant, compiled.service.id, version);
@@ -1355,6 +1607,14 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const resolver = capabilityResolver(definitions, kernel, {
     pin,
+    environment: async (principal, compiled, requested, version) =>
+      chooseEnvironment(
+        configEntries,
+        compiled.service,
+        requested,
+        await allowedEnvironments(principal, clients),
+        version === undefined ? undefined : { version, latest: compiled.service.version },
+      ),
     fieldOptions: (principal, tenant, from) =>
       facetOptions(knowledge, optionCache, principal, tenant, from),
     paused: async (compiled) =>
@@ -1422,6 +1682,7 @@ export const createPlatform = async (input: PlatformInput) => {
     }
     return [...used];
   };
+  const testRunnersAllowed = input.lockdown !== undefined && input.environmentTier === 'test';
   const callers = new WeakMap<Request, Promise<Caller | undefined>>();
   const callerOf = (request: Request) => {
     const known = callers.get(request);
@@ -1429,12 +1690,13 @@ export const createPlatform = async (input: PlatformInput) => {
     const found = (async () => {
       const authenticated = await input.authenticate(request);
       if (!authenticated) return undefined;
-      const caller = input.lockdown
-        ? {
-            ...authenticated,
-            principal: withCredentialOrigin(input.lockdown, request, authenticated.principal),
-          }
-        : authenticated;
+      const origin = input.lockdown
+        ? withCredentialOrigin(input.lockdown, request, authenticated.principal)
+        : authenticated.principal;
+      const caller = {
+        ...authenticated,
+        principal: testRunnerView(origin, request, testRunnersAllowed),
+      };
       return (await admitConfined(clients, request, caller.principal)) ? caller : undefined;
     })();
     callers.set(request, found);
@@ -1499,6 +1761,8 @@ export const createPlatform = async (input: PlatformInput) => {
     const value = settings.effective(tenant)[key]?.value;
     return typeof value === 'number' && value > 0 ? value : fallback;
   };
+  // Case slots shared by every test-set run on this instance.
+  const caseSlots = evalSlots(input.evalSlots);
   const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
     const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
     const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
@@ -1572,6 +1836,16 @@ export const createPlatform = async (input: PlatformInput) => {
     registered,
   });
   const labels = input.labels ?? new InMemoryLabelStore();
+  const sinkLabelService = sinkLabels({
+    store: input.sinkLabels ?? new InMemorySinkLabelStore(),
+    runs: evalStores.runs,
+    connection: (tenant, id) => connectionOf(configEntries, tenant, id),
+    connections: async (tenant) =>
+      (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
+        .filter((e) => !e.deleted)
+        .map((e) => e.spec as TraceConnection),
+    sinks: traceSinks,
+  });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
   let adminRef: Admin | undefined;
   const consoleOperator: Principal = { kind: 'operator', issuer: 'platform', subject: 'console' };
@@ -1594,6 +1868,7 @@ export const createPlatform = async (input: PlatformInput) => {
     tenants: async () => (await directory.list()).map((t) => t.orgNumber),
     runs: evalStores.runs,
     labels,
+    sinkLabels: sinkLabelService,
     traces: () => input.traces?.(),
     support: {
       list: () => adminRef?.supportSessions() ?? [],
@@ -1683,13 +1958,27 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
     ingestion: config.ingestion,
-    ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
+    ...(input.lockdown
+      ? {
+          modelAdmission: mayUseModels,
+          readOnly: (p: Principal) => readOnlyInLockdown(p) || isTestRunnerKey(p),
+        }
+      : {}),
     evalStores,
+    evalCapability: evalCapability.descriptor.id,
+    ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    tenantSecrets,
+    traceSinks,
+    sinkLabels: sinkLabelService,
+    traceDeliveries,
+    egressOptions: input.egress ?? {},
+    ...(input.tracing ? { tracing: input.tracing } : {}),
     connections,
     blobs: blobStore,
     prices,
     quota,
     drafts,
+    evalSlots: caseSlots,
     pinService: async (tenant, service, version) => {
       const compiled = (await definitions.capabilities()).find(
         (c) => c.service.tenant === tenant && c.service.id === service,
@@ -1708,7 +1997,7 @@ export const createPlatform = async (input: PlatformInput) => {
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
     tasks: taskIndex,
-    task: async (id) => (await taskStore.get(id))?.task,
+    task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
     webhooks,
     sync: resync,
@@ -1789,7 +2078,7 @@ export const createPlatform = async (input: PlatformInput) => {
       },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys }),
+    ...portalAdminHandlers({ apiKeys, testRunnerKeys: testRunnersAllowed }),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -1830,6 +2119,7 @@ export const createPlatform = async (input: PlatformInput) => {
         tasks: () => taskIndex.running(),
         allTasks: () => taskIndex.all(),
         catalogSkips: input.catalogSkips ?? [],
+        hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,
@@ -1845,7 +2135,7 @@ export const createPlatform = async (input: PlatformInput) => {
         authenticate,
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
-        task: async (id) => (await taskStore.get(id))?.task,
+        task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
         ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
         ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),
@@ -1877,7 +2167,9 @@ export const createPlatform = async (input: PlatformInput) => {
         traces: { enabled: Boolean(input.traces?.()), content: Boolean(input.traces?.()?.content) },
         drafts,
         names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         lifecycle: (tenant, service) => lifecycleOf(configEntries, tenant, service),
+        testRunnerKeys: testRunnersAllowed,
       });
       registerConsoleRoutes(app, { ...consoleDeps, admin, authenticate });
       config.mount(app, admin, authenticate);
@@ -1888,6 +2180,8 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         apiKeys,
         webhooks,
+        names: actorNames(configEntries),
+        ...(input.lockdown ? { lockdown: input.lockdown } : {}),
         ...(input.endpoints ? { endpoints: input.endpoints } : {}),
       });
       const mountDeps = { ...moduleDeps, admin, authenticate, access: tenantAccess(admin) };

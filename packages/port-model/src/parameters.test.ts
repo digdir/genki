@@ -219,6 +219,24 @@ describe('rejected parameters', () => {
     expect(rejectedParameter(400, message, 'reasoning_effort')).toBeUndefined();
   });
 
+  it('reads an extra-inputs error that names temperature as a temperature refusal', () => {
+    const message =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"temperature: Extra inputs are not permitted"}}';
+    expect(rejectedParameter(400, message)).toBe('temperature');
+  });
+
+  it('does not read a temperature refusal from an extra-inputs error that names a token parameter', () => {
+    const message =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: Extra inputs are not permitted (temperature was accepted)"}}';
+    expect(rejectedParameter(400, message)).toBe('max_tokens');
+  });
+
+  it('does not read a temperature refusal from an extra-inputs error that does not name temperature', () => {
+    const message =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"top_k: Extra inputs are not permitted"}}';
+    expect(rejectedParameter(400, message)).toBeUndefined();
+  });
+
   it('does not read a refusal from other statuses', () => {
     expect(rejectedParameter(500, "Unsupported parameter: 'max_tokens'.")).toBeUndefined();
   });

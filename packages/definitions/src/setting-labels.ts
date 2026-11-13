@@ -38,6 +38,10 @@ export const settingSchemaLabels: SchemaLabels = {
       label: 'Regler for automatisk filter',
       help: 'Reglene for automatisk filter, i den rekkefølgen de prøves. Uten agent filtrerer de søket, en agent får dem som et hint.',
     },
+    'retrieval.autoFilter.aliases': {
+      label: 'Andre navn på verdier',
+      help: 'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
+    },
     'retrieval.docTitle.fanout': {
       label: 'Tekstbiter per titteltreff',
       help: 'Antall utdrag som leses per dokument som treffer på tittel.',
@@ -231,6 +235,10 @@ export const settingSchemaLabels: SchemaLabels = {
     'retrieval.autoFilter.rules': {
       label: 'Rules for the automatic filter',
       help: 'The automatic filter rules, in the order they are tried. Without an agent they filter the search; an agent gets them as a hint.',
+    },
+    'retrieval.autoFilter.aliases': {
+      label: 'Other names for values',
+      help: 'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
     },
     'retrieval.docTitle.fanout': {
       label: 'Text chunks per title match',
@@ -439,6 +447,12 @@ export const settingSchemaLabels: SchemaLabels = {
       },
     },
     'retrieval.autoFilter.rules': {
+      'x-group': {
+        nb: 'Søk',
+        en: 'Search',
+      },
+    },
+    'retrieval.autoFilter.aliases': {
       'x-group': {
         nb: 'Søk',
         en: 'Search',

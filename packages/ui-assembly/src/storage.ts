@@ -46,12 +46,14 @@ export const browserStorage = (prefix: string): AssistantStorage => ({
 
 /**
  * A value kept in the storage under `key`, read once and again when another tab changes it.
- * `parse` turns what is stored into the value, or the fallback for anything else.
+ * `parse` turns what is stored into the value, or the fallback for anything else; `store` turns the
+ * value into what is stored, for a value JSON cannot hold as it is, such as a Map.
  */
 export const useStoredValue = <T>(
   storage: AssistantStorage | undefined,
   key: string,
   parse: (stored: unknown) => T,
+  store?: (value: T) => unknown,
 ) => {
   const [value, setValue] = useState<T>(() => parse(storage?.read(key)));
   useEffect(
@@ -62,7 +64,7 @@ export const useStoredValue = <T>(
   const set = useCallback(
     (next: T) => {
       setValue(next);
-      storage?.write(key, next);
+      storage?.write(key, store ? store(next) : next);
     },
     [storage, key],
   );

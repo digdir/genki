@@ -62,11 +62,6 @@ export interface AnswerTimeText {
   title: string;
 }
 
-/**
- * When an answer came, as kunnskapsassistenten writes it: the clock today, «i går», the weekday
- * this week, then day and short month. The short text leaves out the year, so the whole date goes
- * with it. `undefined` for a time that cannot be read: no time is better than «Invalid Date».
- */
 /** The words a time is written with, from the catalogue: no Norwegian in code. */
 export interface AnswerTimeWords {
   yesterday: string;
@@ -74,6 +69,7 @@ export interface AnswerTimeWords {
   dateTime: (date: string, time: string) => string;
 }
 
+/** When an answer came: the clock today, «i går», a weekday, else day and month; or undefined. */
 export const answerTime = (
   value: string | number | Date,
   f: Format,

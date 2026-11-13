@@ -1,6 +1,5 @@
 import type { Locale } from '@genai/i18n';
-import type { ProcedureStep } from '@genai/ui-blocks';
-import type { StreamStep } from './procedure';
+import type { StreamedStep, StreamStep } from './procedure';
 import type { ResultTable } from './ResultTable';
 export interface Organisation {
   orgNumber: string;
@@ -58,6 +57,8 @@ export interface AttachedDocument {
 export interface Source {
   title: string;
   index?: number;
+  /** The document a marker's excerpt is from, when the answer cites excerpts. */
+  document?: string;
   url?: string;
   excerpt?: string;
   version?: string;
@@ -118,7 +119,7 @@ export interface AssistantMessage {
 
 /** How the assistant worked on an answer, from the step frames in the stream. */
 export interface AnswerProcedure {
-  steps: readonly ProcedureStep[];
+  steps: readonly StreamedStep[];
   /** Documents the run reads from in all, when the platform says. */
   read?: number;
   startedAt: number;

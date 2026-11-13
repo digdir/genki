@@ -395,7 +395,14 @@ describe('/v1/chat/completions', () => {
           title: 'Tildelingsbrev 2025',
           url: 'https://kudos.dfo.no/d1',
           document_id: 'd1',
-          excerpts: [{ chunk_id: 'c1', text: 'Digdir skal ...', position: 3 }],
+          excerpts: [
+            {
+              chunk_id: 'c1',
+              text: 'Digdir skal ...',
+              position: 3,
+              heading: 'Tildelingsbrev 2025 › Mål Delmål › Styringsparametere',
+            },
+          ],
         },
         {
           source: { name: 'Årsrapport', id: 'c2', url: 'chunk:c2' },
@@ -404,7 +411,7 @@ describe('/v1/chat/completions', () => {
           excerpt: 'Uten tittel',
           title: 'Årsrapport',
           document_id: 'd2',
-          excerpts: [{ chunk_id: 'c2', text: 'Uten tittel' }],
+          excerpts: [{ chunk_id: 'c2', text: 'Uten tittel', heading: 'Årsrapport' }],
         },
       ],
       ai_generated: true,
@@ -1027,7 +1034,7 @@ describe('AI marking and version pinning', () => {
     expect(tool.status).toBe(503);
   });
 
-  it('documents the marking, the version header and the platform name in the OpenAPI', async () => {
+  it('documents the marking, the version and environment headers and the platform name in the OpenAPI', async () => {
     const { app } = setup();
     const spec = (await (
       await app.request('/api/tools/openapi.json', { headers: { 'x-api-key': 'good' } })
@@ -1048,7 +1055,7 @@ describe('AI marking and version pinning', () => {
     ).json()) as { info: { title: string; description: string } };
     expect(english.info.title).toBe('Generative AI platform for the public sector');
     expect(english.info.description).toMatch(/^Generative AI services for the public sector\./);
-    expect(operation.parameters.map((p) => p.name)).toEqual(['GenAI-Version']);
+    expect(operation.parameters.map((p) => p.name)).toEqual(['GenAI-Version', 'GenAI-Environment']);
     expect(Object.keys(operation.responses['200']?.headers ?? {})).toEqual(
       expect.arrayContaining(['genai-generated-by', 'genai-model', 'genai-service-version']),
     );
@@ -1123,6 +1130,12 @@ describe('sources people can open', () => {
     ]);
 
     expect(bundle.sources[0]).toMatchObject({ version: '3', published_at: '2025-01-15' });
+  });
+
+  it('leaves published_at out for a source without a publish date', () => {
+    const bundle = citationBundle([{ chunkId: 'c1', text: 'Tekst', url: 'https://x.no/a' }]);
+
+    expect(bundle.sources[0]).not.toHaveProperty('published_at');
   });
 });
 

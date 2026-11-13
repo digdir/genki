@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Field,
   Fieldset,
   Heading,
@@ -14,8 +15,10 @@ import {
 } from '@digdir/designsystemet-react';
 import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
+import { ApiError } from '../../api/error';
 import type { CaseSplit, CaseType, ServiceCase, ServiceTestSet } from '../../api/quality';
 import { useAsync } from '../../hooks';
+import { httpStatusOf } from '../../format';
 import { useT, type PlainKey } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
@@ -44,6 +47,86 @@ const blank = (): CaseForm => ({
   split: 'open',
   tried: false,
 });
+
+/**
+ * The Langfuse judges whose filters reach the test set, read when the test set is shown, and the
+ * judges for other test sets apart, collapsed (ADR 0040).
+ */
+const ReachingJudges = ({
+  api,
+  tenant,
+  serviceId,
+  testSet,
+  connection,
+}: {
+  api: ApiClient;
+  tenant: string;
+  serviceId: string;
+  testSet: string;
+  connection: string;
+}) => {
+  const t = useT();
+  const listId = useId();
+  // The judges that reach a test set do not depend on the service's version: the published one's
+  // answer, which every live service has, so one without a draft makes no failed call; the
+  // draft's when nothing is published.
+  const [state] = useAsync(
+    async (signal) => {
+      const missing = (error: unknown) => error instanceof ApiError && error.status === 404;
+      try {
+        return await api.quality
+          .sending(tenant, serviceId, 'published', testSet, signal)
+          .catch((error: unknown) => {
+            if (!missing(error)) throw error;
+            return api.quality.sending(tenant, serviceId, 'draft', testSet, signal);
+          });
+      } catch (error) {
+        return missing(error)
+          ? { none: true as const }
+          : { failed: error instanceof Error ? error.message : '' };
+      }
+    },
+    [api, tenant, serviceId, testSet],
+  );
+  if (state.status !== 'ready' || 'none' in state.data) return null;
+  const notRead = (message: string) => (
+    <p>{t('quality.judgesNotReadForSet', { connection, status: httpStatusOf(message) })}</p>
+  );
+  if ('failed' in state.data) return notRead(state.data.failed);
+  const plan = state.data;
+  const refused = plan.refused;
+  if (refused?.reason === 'judges-unreadable') return notRead(refused.message);
+  const lines = [
+    ...plan.judges.map((j) => t('quality.judgeInUse', { name: j.name })),
+    ...(plan.notInUse ?? []).map((name) => t('quality.judgeNotInUse', { name })),
+    ...(plan.unreadable ?? []).map((name) => t('quality.judgeStopsRuns', { name })),
+  ];
+  const elsewhere = plan.elsewhere ?? [];
+  return (
+    <div className="stack-sm">
+      <p id={listId}>{t('quality.reachingJudges')}</p>
+      {lines.length > 0 ? (
+        <ul aria-labelledby={listId}>
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{t('quality.noReachingJudges')}</p>
+      )}
+      {elsewhere.length > 0 ? (
+        <details>
+          <summary>{t('quality.judgesElsewhere', { count: elsewhere.length })}</summary>
+          <ul>
+            {elsewhere.map((j) => (
+              <li key={j.id}>{j.name}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
+  );
+};
 
 const NewTestSet = ({ onCreate, busy }: { onCreate: (name: string) => void; busy: boolean }) => {
   const t = useT();
@@ -86,10 +169,14 @@ const NewTestSet = ({ onCreate, busy }: { onCreate: (name: string) => void; busy
 const CaseList = ({
   cases,
   busy,
+  marked,
+  onMark,
   onDelete,
 }: {
   cases: ServiceCase[];
   busy: boolean;
+  marked: string[];
+  onMark: (id: string, on: boolean) => void;
   onDelete: (c: ServiceCase) => void;
 }) => {
   const t = useT();
@@ -110,7 +197,15 @@ const CaseList = ({
       {cases.map((c) => (
         <li key={c.id}>
           <div className="live-case">
-            <span className="case-input">{c.input}</span>
+            {canManage ? (
+              <Checkbox
+                label={<span className="case-input">{c.input}</span>}
+                checked={marked.includes(c.id)}
+                onChange={(e) => onMark(c.id, e.target.checked)}
+              />
+            ) : (
+              <span className="case-input">{c.input}</span>
+            )}
             <span className="tag-row">
               <Tag data-size="sm" data-color={c.split === 'locked' ? 'accent' : 'info'}>
                 {t(splitTag[c.split])}
@@ -185,6 +280,8 @@ export const LiveTestSets = ({
   const [chosen, setChosen] = useState<string>();
   const [form, setForm] = useState<CaseForm>();
   const [busy, setBusy] = useState(false);
+  // Marks belong to the test set they were made in, so they do not follow to another set.
+  const [marks, setMarks] = useState<{ set: string; ids: string[] }>();
   const [sets, retrySets] = useAsync(
     (signal) => api.quality.testSets(tenant, serviceId, signal),
     [api, tenant, serviceId, setsRound],
@@ -262,6 +359,14 @@ export const LiveTestSets = ({
 
   const all = cases.status === 'ready' ? cases.data : [];
   const count = (s: CaseSplit) => all.filter((c) => c.split === s).length;
+  const marked = marks?.set === current.id ? marks.ids : [];
+  // While the cases reload, the marks stand as they were, so an open question about them stays.
+  const markedIds =
+    cases.status === 'ready' ? all.filter((c) => marked.includes(c.id)).map((c) => c.id) : marked;
+  const mark = (id: string, on: boolean) => {
+    const rest = marked.filter((x) => x !== id);
+    setMarks({ set: current.id, ids: on ? [...rest, id] : rest });
+  };
   const set = (p: Partial<CaseForm>) => setForm((f) => (f ? { ...f, ...p } : f));
   const inputError = form?.tried && !form.input.trim() ? t('quality.inputProblem') : '';
   const expectedError = form?.tried && !form.expected.trim() ? t('quality.describeGood') : '';
@@ -357,6 +462,21 @@ export const LiveTestSets = ({
       <p className="quality-splits">
         {t.rich('quality.liveSplits', { strong: (c) => <strong>{c}</strong> })}
       </p>
+      {current.dataset ? (
+        <>
+          <p>
+            {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
+            <code>{current.dataset.name}</code>
+          </p>
+          <ReachingJudges
+            api={api}
+            tenant={tenant}
+            serviceId={serviceId}
+            testSet={current.id}
+            connection={current.dataset.connection}
+          />
+        </>
+      ) : null}
 
       {form ? (
         <section aria-labelledby="nc-h" className="quality-panel">
@@ -426,6 +546,8 @@ export const LiveTestSets = ({
         serviceId={serviceId}
         testSet={current}
         cases={all.length}
+        marked={markedIds}
+        onClearMarks={() => setMarks(undefined)}
         setFlash={setFlash}
       />
 
@@ -433,6 +555,9 @@ export const LiveTestSets = ({
         <Heading level={2} data-size="xs" id="cases-h">
           {t('quality.cases')}
         </Heading>
+        {canManage && all.length > 0 ? (
+          <Paragraph data-size="sm">{t('quality.markHint')}</Paragraph>
+        ) : null}
         {cases.status === 'loading' ? (
           <Loading label={t('quality.casesLoading')} />
         ) : cases.status === 'error' ? (
@@ -441,6 +566,8 @@ export const LiveTestSets = ({
           <CaseList
             cases={all}
             busy={busy}
+            marked={markedIds}
+            onMark={mark}
             onDelete={(c) =>
               void act(
                 () =>

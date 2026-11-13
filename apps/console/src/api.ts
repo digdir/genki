@@ -20,6 +20,8 @@ import type {
   PluginSummary,
   QualityOverview,
   LabelItem,
+  SinkLabelBatch,
+  SinkLabels,
   MatrixEstimate,
   MatrixRun,
   MatrixRunDetail,
@@ -491,6 +493,30 @@ export const createApiClient = ({
         body: { item: item.item, judge: item.judge, judgeLabel: item.judgeLabel, humanLabel },
         headers: { 'change-reason': reason },
       }),
+    sinkLabels: (signal?: AbortSignal) =>
+      call<SinkLabels>('GET', '/operator/quality/sink-labels', { signal }),
+    fetchSinkLabels: (tenant: string, connection: string) =>
+      call<{ pending: number; shared?: { name: string; rules: string[] }[] }>(
+        'POST',
+        '/operator/quality/sink-labels/fetch',
+        {
+          body: { tenant, connection },
+        },
+      ),
+    decideSinkLabels: (batch: SinkLabelBatch, decision: 'accept' | 'reject', reason: string) =>
+      call<{ accepted?: number; rejected?: number }>(
+        'POST',
+        `/operator/quality/sink-labels/${decision}`,
+        {
+          body: {
+            tenant: batch.tenant,
+            connection: batch.connection,
+            judge: batch.judge,
+            labels: batch.labels.map((l) => ({ id: l.id, revision: l.revision })),
+          },
+          headers: { 'change-reason': reason },
+        },
+      ),
     tracing: (signal?: AbortSignal) => call<TracingStatus>('GET', '/operator/tracing', { signal }),
     supportSessions: async (signal?: AbortSignal) =>
       (await call<{ data: SupportSessionRow[] }>('GET', '/operator/support-sessions', { signal }))
@@ -513,6 +539,14 @@ export const createApiClient = ({
         )
       ).data;
     },
+    tasks: async (status: string, signal?: AbortSignal) =>
+      (
+        await call<{ data: RunningTask[] }>(
+          'GET',
+          `/operator/tasks?${new URLSearchParams({ status }).toString()}`,
+          { signal },
+        )
+      ).data,
     cancelTask: (task: string, reason: string) =>
       call<{ task: string; cancelled: boolean }>(
         'POST',

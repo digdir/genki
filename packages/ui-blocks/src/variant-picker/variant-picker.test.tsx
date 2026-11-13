@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -28,7 +28,7 @@ const trigger = () => screen.getByRole('button', { name: /^Variant: / });
 // The list is a closed popover in jsdom, so its buttons count as hidden.
 const option = (name: string) =>
   screen.getByRole('button', {
-    name: new RegExp(`^${name.replace(/[()]/g, '\\$&')}`),
+    name: new RegExp(`^${name.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`),
     hidden: true,
   });
 
@@ -61,6 +61,40 @@ describe('the variant picker', () => {
     fireEvent.click(option('Rask (GPT-5 mini)'));
     expect(onChoose).toHaveBeenCalledWith('kunnskapsassistenten__mini');
     expect(document.activeElement).toBe(trigger());
+  });
+
+  it('shows the service, then its variants, and never a variant as a service of its own', () => {
+    const ofKa = variants.map((variant) => ({ ...variant, service: 'Kunnskapsassistenten' }));
+    render(<VariantPicker variants={ofKa} onChange={() => {}} />);
+    const list = screen.getByRole('list', { name: 'Kunnskapsassistenten', hidden: true });
+    const title = document.getElementById(list.getAttribute('aria-labelledby') ?? '');
+    expect(title?.compareDocumentPosition(list)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      within(list)
+        .getAllByRole('button', { hidden: true })
+        .map((button) => button.querySelector('.uib-variant-picker-name')?.textContent),
+    ).toEqual(['Svar med kilder', 'Rask (GPT-5 mini)']);
+    expect(screen.getAllByRole('list', { hidden: true })).toHaveLength(1);
+  });
+
+  it('heads each service’s variants with its own name when the app offers several services', () => {
+    render(
+      <VariantPicker
+        variants={[
+          { id: 'ka__default', title: 'Standard', service: 'Kunnskapsassistenten' },
+          { id: 'other__default', title: 'Standard', service: 'Annen tjeneste' },
+          { id: 'ka__fast', title: 'Rask', service: 'Kunnskapsassistenten' },
+        ]}
+        onChange={() => {}}
+      />,
+    );
+    const names = (service: string) =>
+      within(screen.getByRole('list', { name: service, hidden: true }))
+        .getAllByRole('button', { hidden: true })
+        .map((button) => button.textContent);
+    expect(screen.getAllByRole('list', { hidden: true })).toHaveLength(2);
+    expect(names('Kunnskapsassistenten')).toEqual(['Standard', 'Rask']);
+    expect(names('Annen tjeneste')).toEqual(['Standard']);
   });
 
   it('is not shown when there is nothing to choose between', () => {

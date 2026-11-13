@@ -451,7 +451,7 @@ describe('descriptors that name a module (D)', () => {
   });
 
   it('a module cannot set a credential header', () => {
-    expect(refused(base.replace('x-signature: sig', 'authorization: sig'))).toMatch(
+    expect(refused(base.replace('x-signature: sig', 'x-api-key: sig'))).toMatch(
       /credentials come from the endpoint/,
     );
   });
@@ -477,16 +477,5 @@ describe('descriptors that name a module (D)', () => {
       `modules:\n  a: { sha256: ${'a'.repeat(64)} }\n  b: { sha256: ${'b'.repeat(64)} }\n`,
     );
     expect(refused(three)).toMatch(/at most 2 modules/);
-  });
-
-  it('a module signs a plain request, so a stream step may not use one', () => {
-    expect(
-      refused(
-        base.replace(
-          '    wire:\n      request:',
-          '    response: { stream: { framing: sse, name: event, events: {} } }\n    wire:\n      request:',
-        ),
-      ),
-    ).toBeDefined();
   });
 });

@@ -102,6 +102,8 @@ export interface ConversationProps {
   onStalled?: ((turn: ConversationAnswer) => void) | undefined;
   /** «Kilder brukt i svaret» under a finished answer. */
   sourcesUsed?: boolean | undefined;
+  /** `Answer`'s `documentFootnotes`: marks per cited document until a service cites excerpts. */
+  documentFootnotes?: boolean | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
   closingQuestion?: boolean | undefined;
   /** Who answers, for a screen reader. Without it, the AI assistant. */
@@ -112,6 +114,13 @@ export interface ConversationProps {
   questionColor?: string | undefined;
   /** Designsystemet's `data-color` for each answer, question back and stand-in, when given. */
   answerColor?: string | undefined;
+  /**
+   * `plain`, the dev boards' answer (dev-kilder-hoyre): under the label «Kunnskapsassistenten»,
+   * `assistantName`, over what the `header` puts there, and with no card (`Answer`'s `plain`).
+   */
+  answerVariant?: 'card' | 'plain' | undefined;
+  /** `false` leaves out the label over a `plain` answer, as the newer dev boards draw it. */
+  answerLabel?: boolean | undefined;
   /** Designsystemet's `data-color` for the block, set only when given. */
   color?: string | undefined;
   /** The moment an answer's «i dag» and «i går» are counted from. */
@@ -136,11 +145,16 @@ const questionBefore = (turns: readonly ConversationTurn[], index: number) => {
 // sentence, cut on a word at 80 characters. Such a title says nothing the question under it
 // doesn't, so it stays in the outline and out of sight.
 const titleLength = 80;
+const isStop = (char: string | undefined) => char !== undefined && '.?!…'.includes(char);
+// Read by hand, not by pattern, so a long run of stops takes linear time.
 const firstSentence = (question: string) => {
   const text = question.trim().replace(/\s+/gu, ' ');
-  const end = text.search(/[.?!…]+(?=\s)/u);
-  const sentence = end < 0 ? text : text.slice(0, end + text.slice(end).search(/\s/u));
-  return sentence.replace(/[.?!…]+$/u, '').trimEnd();
+  let space = text.indexOf(' ');
+  while (space > 0 && !isStop(text[space - 1])) space = text.indexOf(' ', space + 1);
+  const sentence = space > 0 ? text.slice(0, space) : text;
+  let end = sentence.length;
+  while (end > 0 && isStop(sentence[end - 1])) end -= 1;
+  return sentence.slice(0, end).trimEnd();
 };
 const shortened = (text: string) => {
   if (text.length <= titleLength) return text;
@@ -198,16 +212,28 @@ export const Conversation = ({
   stalledAfter = STALLED_ANSWER_MS,
   onStalled,
   sourcesUsed,
+  documentFootnotes,
   closingQuestion,
   assistantName,
   headingLevel = 3,
   questionColor,
   answerColor,
+  answerVariant = 'card',
+  answerLabel: labelled = true,
   color,
   now,
   className,
 }: ConversationProps) => {
   const t = useT();
+  const plain = answerVariant === 'plain';
+  // For the eye: the answer's own line, «… svarte:», still tells a screen reader who answered.
+  const answerLabel =
+    plain && labelled ? (
+      // In the answers' family, as the answer it names.
+      <p aria-hidden="true" className="uib-conversation-label" data-color={answerColor}>
+        {assistantName ?? t('answer.assistant')}
+      </p>
+    ) : null;
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
@@ -532,6 +558,7 @@ export const Conversation = ({
     return (
       // Focusable from script only: where focus goes when the button it was on goes away.
       <li key={turn.id} className="uib-conversation-turn ds-focus" data-kind="answer" tabIndex={-1}>
+        {answerLabel}
         {/* Over the card: a fact about the question, not part of the answer. */}
         {scopeLine(turn.scope, t('conversation.answerScope'))}
         {header?.(turn, question)}
@@ -551,6 +578,7 @@ export const Conversation = ({
           target={target?.turnId === turn.id ? answerTarget : undefined}
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
+          documentFootnotes={documentFootnotes}
           closingQuestion={closingQuestion}
           onRegenerate={onRegenerate && (() => regenerate(turn, question))}
           failure={turn.failure}
@@ -558,6 +586,7 @@ export const Conversation = ({
           assistantName={assistantName}
           headingLevel={headingLevel}
           color={answerColor}
+          variant={answerVariant}
         />
       </li>
     );

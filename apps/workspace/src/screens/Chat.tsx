@@ -226,7 +226,7 @@ export const Chat = ({
     inFlight.current = controller;
     setAnnounce('');
     setBusy(true);
-    const startedAt = Date.now();
+    const startedAt = now().getTime();
     let reply: ChatReply;
     try {
       reply = await api.chat(
@@ -275,7 +275,7 @@ export const Chat = ({
             procedure: {
               ...m.procedure,
               steps: allDone(m.procedure.steps),
-              finishedAt: Date.now(),
+              finishedAt: now().getTime(),
             },
           }
         : {},
@@ -584,6 +584,7 @@ export const Chat = ({
           messages={shown}
           organisation={organisation}
           now={now()}
+          clock={now}
           onRetry={retry}
           onFeedback={(input) => api.sendFeedback(input)}
           {...(api.media ? { loadMedia: api.media } : {})}

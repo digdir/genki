@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { propsMissingFromPage } from '../sources/fixtures/docsProps.js';
+import { propsMissingFromPage } from '../docs-props.test-utils.js';
 
 const read = (path: string) => readFileSync(`${import.meta.dirname}/${path}`, 'utf8');
 

@@ -6,6 +6,7 @@ import type {
   PlaygroundRunRequest,
   TestCaseCandidateRequest,
 } from '../../api/playground';
+import { createApiClient } from '../../api';
 import { examplePlaygroundOptions } from '../../data/playground';
 import { mockFetch } from '../../mock';
 import type { PlaygroundMockOptions } from '../../mock/playground';
@@ -460,24 +461,107 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
   });
 
-  it('says what is missing when the API refuses the setup, not that the model was silent', async () => {
+  it('The portal shows a 422 setup refusal as a refusal naming the part of the setup, not as a model that did not answer', async () => {
     await openPage({
-      invalidSetup: [
-        {
-          path: 'setup.spec.purpose',
-          message: 'Too small: expected string to have >=1 characters',
-        },
-      ],
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          {
+            path: 'setup.spec.knowledge.datasets[0].dataset',
+            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+          },
+        ],
+      },
     });
     askSample('Hva sier evalueringene om digital veiledning?');
 
     expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
     expect(
       screen.getByText(
-        /^Oppsettet er ikke klart til å prøves ennå\. Formål og målgruppe: Må fylles ut\. Fyll ut/,
+        /^Kjøringen ble avvist: noe i delen «Kunnskap» passer ikke med dette oppsettet\./,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
+  it('shows the reason the API gives for a 403 that is not a model policy, not the model text', async () => {
+    await openPage({
+      forbidden: {
+        type: 'urn:genai:problem:test-runner-scope',
+        title: 'En testkjørernøkkel kan ikke gjøre dette',
+        detail: 'En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet.',
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/kan ikke brukes i dette oppsettet/)).toBeNull();
+  });
+
+  it('never shows the English title of a 403 that has no detail', async () => {
+    await openPage({ forbidden: { type: 'about:blank', title: 'Forbidden' } });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/kan ikke brukes i dette oppsettet/)).toBeTruthy();
+    expect(screen.queryByText(/Forbidden/)).toBeNull();
+  });
+
+  it('words a model residency refusal in the language of the screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          { path: 'setup.spec.model.primary', message: 'model x runs in global, outside eu' },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/^Kjøringen ble avvist: /)).toBeTruthy();
+    expect(screen.queryByText(/runs in global/)).toBeNull();
+  });
+
+  it('never shows an English validation message on a bokmål screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [{ path: 'setup.spec.model.primary', message: 'model x cannot call tools' }],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: noe i delen «Modell» passer ikke med dette oppsettet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cannot call tools/)).toBeNull();
+  });
+
+  it("compares against a model within the first model's data location", async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'openai/gpt-5', name: 'GPT-5', dataLocation: 'global', status: 'allowed' },
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options, runs });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sammenlign' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål til begge oppsettene' }), {
+      target: { value: 'Hei' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
   });
 
   it('starts on the first service exposed for chat, not the first in the list', async () => {
@@ -554,6 +638,56 @@ describe('Prøveområde', () => {
         data: btoa(String.fromCharCode(...new TextEncoder().encode('Søker: Eksempel IL'))),
       },
     });
+  });
+
+  it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const setup = examplePlaygroundOptions.services[0]?.versions[0]?.setup;
+    if (!setup) throw new Error('example has no service');
+    const published = (version: number) => ({ version, draft: false, inUse: version === 2, setup });
+    const options: PlaygroundOptions = {
+      ...examplePlaygroundOptions,
+      services: [
+        { id: 'smoke', name: 'Smoke', latestVersion: 2, versions: [published(2), published(1)] },
+      ],
+    };
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options, runs }),
+      token: () => 'kari',
+    });
+    const definition = {
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: { output: { kind: 'answer' } },
+    };
+    const { container } = render(
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
+    const picker = container.querySelector<HTMLSelectElement>('select[id$="-ver"]');
+    if (!picker) throw new Error('the setup shows no version picker');
+    expect([...picker.options].map((o) => o.value)).toEqual(['draft', '2', '1']);
+    expect(picker.value).toBe('draft');
+    fireEvent.change(picker, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål' }), {
+      target: { value: 'Hva er smoke?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.service).toEqual({ id: 'smoke', version: 2 });
   });
 
   it.each<PlaygroundState>(['empty', 'answer', 'compare', 'quota', 'not-allowed', 'error'])(

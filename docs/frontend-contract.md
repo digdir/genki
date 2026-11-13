@@ -44,6 +44,8 @@ OpenAPI: the platform document is served at `/openapi.json`; the per-key tool do
 
 Send `GenAI-Version: <n>` to run a published version of the service, or put `"metadata": { "version": "<n>" }` in the body of `POST /v1/chat/completions`. If both are sent they must name the same version, or the call fails with `400 invalid_version`; a version that was never published is `409 version_not_found`. The response carries `genai-service-version`. Per channel: `/v1/chat/completions` reads the header and `metadata.version`; REST `/api/tools/call/{tool}` and MCP `tools/call` read the header; A2A takes no pin and runs the published version, which its agent card names.
 
+A service can have environments (ADR 0004): `prod`, and others such as `test` that its owner adds. Without a pin, a call runs the version its environment points to. Send `GenAI-Environment: <name>` to choose one; without it the call runs `prod`, or the first environment the key or frontend may use when `prod` is not among them. A key or frontend bound to environments is refused one it may not use with `403 environment_not_authorized`, a name the service does not have is `409 environment_not_found`, and a header that is not a name is `400 invalid_environment`. `GenAI-Version` overrides the environment's version, but a key or frontend bound to environments may pin only a version one of them runs, else `403 environment_not_authorized`. Every channel, A2A included, reads the header, and the response carries `genai-environment`. A server that sends its testers to `test` and everyone else to `prod` uses one key allowed both and sets the header per request.
+
 ## Services and their forms
 
 `GET /v1/models` lists only what the credential may use: a service key sees its own service, a tenant key its tenant's services, a browser token what the person may reach. Each entry is an OpenAI model object (`id`, `object`, `created`, `owned_by`) with these extension fields. Apart from `_chat` and `_pickable`, absent fields are left out, so treat them as optional.
@@ -223,7 +225,7 @@ Shapes:
 
 - `service` is a service id or a model `id`; `agent` and `agent-id` are accepted for headless-rag compatibility.
 - `Conversation` is `{ id, topic, serviceId, agentId, userId, tags, created }`; `agentId` is the same as `serviceId`, kept for compatibility; `created` is milliseconds since 1970.
-- `Message` is `{ id, role, text, created, tags, filterValue, chunks, sources?, task?, attachments?, input? }`. `role` is `user` or `assistant`; system prompts are never returned. On a user message, `input` holds the form values and `attachments` the attached file names. On an assistant message, `sources` are the sources as the answer gave them (`{ index?, title, url?, document_id?, excerpts }`, the same shape and rule as Citations and sources, so `[N]` in `text` is the source with `index: N`), and `task` is the id for feedback. `chunks` (`[{ chunkId, docTitle, docNum, contentMarkdown }]`) is the older per-chunk list, kept for headless-rag clients; use `sources`. Messages stored before `sources` existed have only `chunks`.
+- `Message` is `{ id, role, text, created, tags, filterValue, chunks, sources?, markers?, task?, attachments?, input? }`. `role` is `user` or `assistant`; system prompts are never returned. On a user message, `input` holds the form values and `attachments` the attached file names. On an assistant message, `sources` are the sources as the answer gave them (`{ index?, title, url?, document_id?, excerpts, markers? }`, the same shape and rule as Citations and sources, so `[N]` in `text` is the source with `index: N`), `markers` is the answer's `markers` list when the service cites excerpts (ADR 0052), so `[N]` resolves to one excerpt as it did in the answer, and `task` is the id for feedback. A turn answered through MCP has no `sources`; when the service cites excerpts, its `markers` are the tool result's `structuredContent.markers`, and its `task` is the run's id, as on a `/v1` turn. Turns answered through MCP before that id was kept have no `task`. Messages stored before markers were kept have no `markers` list. `chunks` (`[{ chunkId, docTitle, docNum, contentMarkdown }]`) is the older per-chunk list, kept for headless-rag clients; use `sources`. Messages stored before `sources` existed have only `chunks`.
 - `PUT` treats `title` and `topic` as the same field. Any other key answers `400 unknown_field`.
 
 ### Who owns a conversation
@@ -279,7 +281,7 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 
 ### Citations and sources
 
-`[N]` in the answer text always refers to the source with `index: N`. Each source is one document:
+`[N]` in the answer text refers to the source with `index: N`, unless the service cites excerpts (below). Each source is one document:
 
 ```json
 {
@@ -288,16 +290,18 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
   "url": "https://kudos.dfo.no/dokument/d1",
   "document_id": "d1",
   "excerpts": [
-    { "chunk_id": "c1", "text": "…", "position": 0 },
-    { "chunk_id": "c7", "text": "…", "position": 4 }
+    { "chunk_id": "c1", "text": "…", "position": 0, "heading": "1 Innledning" },
+    { "chunk_id": "c7", "text": "…", "position": 4, "heading": "3 Styringsparametere › 3.2 Mål" }
   ]
 }
 ```
 
 - `url` is present only when the platform's public link rule gives an http or https link people can open. Never build a link from `document_id`.
 - `excerpts` holds every retrieved chunk of that document, so a frontend never fetches passage text itself. Per-chunk ids are `excerpts[].chunk_id`.
+- `excerpts[].heading` is that excerpt's own heading path, as plain text with levels joined by `›`; its last level is the excerpt's section. It is present only when the index gives the chunk a heading. The converter's page anchors and its `<u>` and `<sup>` tags are left out, a link to a page keeps only its words, a footnote number is raised (`¹`), and a level with nothing else is left out. Headings stored with a turn before that rule can still carry the markup. `metadata[0].name` stays the first excerpt's path under the document title, in plain text too. Excerpts carry no page number.
 - Existing fields (`source`, `document`, `metadata`, `excerpt`) are kept for OpenAI and Open WebUI clients. Note that `document` there is still the list of passage texts, which is why the document id is `document_id`. The top-level `citations` lists only links people can open, so it does not line up with `sources`; resolve `[N]` by `index`, never by position in `citations`.
 - An answer without citations still lists up to 10 retrieved sources, one per document, without `index`.
+- **When the service cites excerpts** (strategy config `citeBy: excerpt`, ADR 0052), each `[N]` leads to one excerpt, and several markers can lead to the same document. The top-level `markers` lists every marker in the answer in order, as `{ marker, chunk_id, document }`, with `marker` written as in the text without brackets. Resolve `[N]` by `markers`, then show the excerpt with that `chunk_id`. A source's `markers` lists the markers that cite its document, each excerpt's `markers` the ones that cite that excerpt, and `index` is the document's lowest marker. Number the markers for the reader as you like. MCP returns the same list as `structuredContent.markers`.
 - No answer: `no_answer: true` and a `notice` text to show instead of the answer.
 
 ### Media in an answer
@@ -352,7 +356,7 @@ Frames in order for a live stream with a conversation (each line is `data: <json
 
 Without `genai_stream: "live"` the `sources` frame comes before the text and there is no `retract`. A table service sends one frame with `table` before the text. `genai_steps: true` adds `{"genai_step":{...}}` frames between text frames.
 
-Response headers: `genai-task` (use it for feedback), `genai-conversation`, `genai-service-version`, `genai-model`.
+Response headers: `genai-task` (use it for feedback), `genai-conversation`, `genai-service-version`, `genai-environment`, `genai-model`.
 
 ### Feedback
 
@@ -410,6 +414,12 @@ await platform.feedback({ taskId: answer.taskId!, rating: 'up' });
 ```
 
 `platform.stream(request, { steps: true })` returns an async iterator of `conversation`, `text`, `retract`, `step`, `reasoning`, `sources` and `done` events. Errors are `ApiError` with `status`, `code` and `fieldErrors`. In a browser, pass `token: () => getAnsattportenToken()` instead of `apiKey`.
+
+When the service cites excerpts, the answer and the `sources` event carry `markers` as `{ marker, chunkId, documentId }`, `onSources` gets them as its second argument, and each source and excerpt carries the `markers` that cite it. Then resolve `[N]` through `answer.markers`, not with `sourceFor`.
+
+`platform.conversations.get(id)` reads each stored message's `sources` into the same shape as an answer's, and its `markers` when the stored turn carries them.
+
+An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` sends it when the index gives the chunk a heading (see Citations and sources).
 
 ## Without the client (curl)
 

@@ -1,11 +1,12 @@
 import { Alert, Button, Details, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { Procedure } from '@genai/ui-blocks';
+import { Approach } from '@genai/ui-blocks';
 import { useEffect, useId, useState } from 'react';
 import { AnswerText, sourceAnchor } from './AnswerText';
 import { failureCopy } from './failures';
 import { Feedback } from './Feedback';
 import { useT } from './i18n';
+import { inLanguage } from './procedure';
 import type {
   AssistantMessage,
   ChatMessage,
@@ -20,6 +21,8 @@ interface Props {
   messages: ChatMessage[];
   organisation: string;
   now: Date;
+  /** The workspace's clock, for the seconds an answer in progress has taken. */
+  clock?: () => Date;
   onRetry: (message: AssistantMessage) => void;
   onFeedback: (input: FeedbackInput) => Promise<void>;
   onOpenTable?: (message: AssistantMessage) => void;
@@ -111,13 +114,11 @@ const SourceItem = ({ source, id }: { source: Source; id: string }) => {
   );
 };
 
-/** Where «Vis de 38 som ble lest» and «Utdyp hva som mangler» lead is not designed yet. */
-const placeholder = () => undefined;
-
 const Answer = ({
   message,
   organisation,
   now,
+  clock,
   onRetry,
   onFeedback,
   onOpenTable,
@@ -135,18 +136,20 @@ const Answer = ({
     !message.table &&
     (!!message.noAnswer || !message.text.trim());
   const procedure = message.procedure?.steps.length ? message.procedure : undefined;
+  const cited = new Set(
+    message.sources.flatMap((s) => (s.index === undefined ? [] : [s.document ?? s])),
+  ).size;
   return (
     <div className="answer" aria-busy={message.pending || undefined}>
       {procedure ? (
-        <Procedure
-          steps={procedure.steps}
+        <Approach
+          steps={inLanguage(procedure.steps, t)}
           working={!!message.pending}
           startedAt={procedure.startedAt}
+          {...(clock ? { now: () => clock().getTime() } : {})}
           {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
           {...(!message.pending && procedure.read !== undefined ? { read: procedure.read } : {})}
-          onShowRead={placeholder}
-          onExplainMissing={placeholder}
-          {...(!message.pending && message.sources.length ? { used: message.sources.length } : {})}
+          {...(!message.pending && cited ? { used: cited } : {})}
         />
       ) : null}
       {empty ? (

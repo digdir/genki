@@ -2,18 +2,10 @@ import { Heading, Table } from '@digdir/designsystemet-react';
 import { Fragment, type ReactNode } from 'react';
 import { runsIn, type SearchHit } from './textSearch.js';
 
-/**
- * Called with every plain string this renderer puts in the document, in document order. It is how
- * the search marks a hit without the caller having to know the markup: the same walk produces the
- * text that is searched (`visibleLeaves`) and the text that is drawn, so the two can never drift.
- */
+/** Called with every plain string drawn, in order; the search walks the same code, so no drift. */
 export type Leaf = (text: string, key: string) => ReactNode;
 
-/**
- * Called where the drawing breaks a line — between two blocks. Two leaves inside one block have
- * nothing between them on screen, so a query runs straight across a `<strong>`; two blocks have a
- * line, so it cannot run across them. Only the collecting walk uses it.
- */
+/** Called between two blocks, where a query cannot run across; only the collecting walk uses it. */
 export type Gap = () => void;
 
 const plain: Leaf = (text) => text;
@@ -27,9 +19,27 @@ export type Block =
   | { kind: 'code'; text: string }
   | { kind: 'table'; head: string[]; align: Align[]; rows: string[][] };
 
-const bullet = /^\s*[-*+]\s+(.*)$/;
-const numbered = /^\s*(\d{1,9})[.)]\s+(.*)$/;
-const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+// The text starts at its first non-space, so `\s+` and `.*` never share a run: linear time.
+const bullet = /^\s*[-*+]\s+(\S.*)?$/;
+const numbered = /^\s*(\d{1,9})[.)]\s+(\S.*)?$/;
+// A heading's text is what `.` matches: a line break other than `\n` in it makes the line text.
+const oneLine = /^.*$/;
+
+/** A heading's text and depth, without its closing `#` run, read by hand: one pattern is cubic. */
+const headingOf = (line: string): { text: string; depth: number } | undefined => {
+  const marks = line.trimStart();
+  if (line.length - marks.length > 3) return undefined;
+  let level = 0;
+  while (marks[level] === '#') level += 1;
+  const rest = marks.slice(level);
+  const words = rest.trimStart();
+  if (level < 1 || level > 6 || words === rest) return undefined;
+  let end = words.trimEnd().length;
+  while (end > 0 && words[end - 1] === '#') end -= 1;
+  const text = words.slice(0, end).trimEnd();
+  return oneLine.test(text) ? { text, depth: level } : undefined;
+};
+
 const fence = /^\s*```/;
 const delimiterCell = /^\s*:?-+:?\s*$/;
 
@@ -96,12 +106,12 @@ export const blocksOf = (text: string): Block[] => {
       i = table.end - 1;
       continue;
     }
-    const title = heading.exec(line);
+    const title = headingOf(line);
     const item = bullet.exec(line);
     const step = item ? undefined : numbered.exec(line);
-    if (title) {
+    if (title !== undefined) {
       close();
-      blocks.push({ kind: 'heading', text: title[2] ?? '', depth: title[1]?.length ?? 1 });
+      blocks.push({ kind: 'heading', text: title.text, depth: title.depth });
     } else if (item || step) {
       const ordered = Boolean(step);
       const content = (item ? item[1] : step?.[2]) ?? '';
@@ -290,9 +300,7 @@ const holdFootnotes = (nodes: ReactNode[], footnotes: ReadonlySet<number>, key: 
   return out;
 };
 
-// With `links` false, a link is drawn as its words and an autolink as its address. Every piece
-// that comes out of this as a plain string goes through `leaf`, which is what lets the search mark
-// it; a piece the caller turned into an element of its own is the caller's to handle.
+// With `links` false, a link is its words; every plain string goes through `leaf` for the search.
 export const inline = (
   text: string,
   cite: CiteRenderer,
@@ -302,8 +310,7 @@ export const inline = (
 ): ReactNode[] => {
   const footnotes = new Set<number>();
   const nodes = text.split(inlinePattern).map((part, i) => {
-    // One pass, in document order: `markup` can call `inline` again, so a second pass over the
-    // results would hand a nested leaf over before the plain text that comes in front of it.
+    // One pass, so a nested leaf from `markup` never comes before the text in front of it.
     if (i % 2 === 0) {
       const value = decodeEntities(part);
       return value === '' ? '' : leaf(value, `${key}-l${i}`);
@@ -327,21 +334,34 @@ const noCitation: CiteRenderer = () => undefined;
 // `[1, 2]` is drawn as one element, which no leaf sees: as `[1] [2]` each stays as written.
 const citeGroup = /\[(\d+(?:\s*,\s*\d+)+)\]/g;
 
-/**
- * A line's words as this renderer draws them, with none of its inline syntax: emphasis and code
- * as their words, a link as its words and an autolink as its address, `<br>` as a space. Each
- * `[n]` stays as written, for the caller to number or drop.
- */
-export const inlineText = (line: string) => {
+/** What a footnote `[n]` is copied as: another number, nothing, or `undefined` for itself. */
+export type FootnoteLabel = (n: number) => number | null | undefined;
+
+/** A line's words as drawn, without inline syntax; `label` renumbers or drops only footnotes. */
+export const inlineText = (line: string, label?: FootnoteLabel) => {
   let words = '';
+  let before = '';
+  let cited: number | undefined;
   const split = line.replace(/<br\s*\/?>/gi, ' ').replace(citeGroup, (_, list: string) =>
     list
       .split(',')
       .map((n) => `[${n.trim()}]`)
       .join(' '),
   );
-  inline(split, noCitation, 'p', false, (value) => {
-    words += value;
+  const note: CiteRenderer = (n) => {
+    cited = n;
+    return undefined;
+  };
+  inline(split, note, 'p', false, (value) => {
+    const n = cited;
+    cited = undefined;
+    const shown = label && n !== undefined && n < 1000 && value === `[${n}]` ? label(n) : undefined;
+    if (shown === undefined) words += value;
+    // A footnote copied as nothing takes the one blank written right before it along.
+    else if (shown === null && (before.endsWith(' ') || before.endsWith('\t')))
+      words = words.slice(0, -1);
+    else if (shown !== null) words += `[${shown}]`;
+    before = value;
     return value;
   });
   return words;
@@ -368,11 +388,7 @@ const headingSizes = ['md', 'sm', 'xs', '2xs', '2xs', '2xs'] as const;
 
 const wordsOf = (cell: string) => inlineText(cell).trim();
 
-/**
- * The blocks of one text as elements. Pulled out of the component so the search can walk the very
- * same code with a collecting `leaf` (`visibleLeaves`): one walk, so the text that is searched and
- * the text that is drawn cannot drift apart.
- */
+/** The blocks of one text as elements, the same walk the search makes with a collecting `leaf`. */
 export const renderBlocks = (
   text: string,
   cite: CiteRenderer,
@@ -489,12 +505,7 @@ export interface VisibleText {
   offsets: number[];
 }
 
-/**
- * What this text is drawn as, with none of the syntax that produced it. The search indexes this,
- * not the Markdown behind it: `**viktig** tekst` is drawn as «viktig» and « tekst», so a search of
- * the source would find `viktig` at an offset that is nowhere on screen, and would find `**` as
- * text. It is the same walk `Markdown` renders with, so the two cannot drift apart.
- */
+/** The text as drawn, without its syntax, for the search: the same walk `Markdown` renders with. */
 export const visibleText = (markdown: string, links = true): VisibleText => {
   let text = '';
   const offsets: number[] = [];

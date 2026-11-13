@@ -1,0 +1,339 @@
+{
+ "tests": [
+  {
+   "id": "eras-e9bad2e8-p23-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "3.5.2 Different indicators are needed",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "At present, no one knows the socio-economic cost for a nation of having the land infested by mines.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "work can best be measured in terms of the clearance",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "data of the demining units where NPA are involved",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "and destroyed 53.666 anti-personnel mines, 346 anti-tank mines and 352.536 unexploded ordnance.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "provide an annual production of 2.000 tonnes of rice",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Possible agricultural output",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "18.000.000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "CMAC total",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "13.000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t07",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "13.000",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "CMAC total",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Possible resettlement No. of IDP families",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t08",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "513",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "NPA",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "Possible agricultural output Tons of rice",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t09",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "4.620.000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "NPA",
+     "max_diffs": 0
+    },
+    "up": {
+     "text": "18.000.000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t10",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2.000",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "CMAC total",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "13.000",
+     "max_diffs": 0
+    },
+    "down": {
+     "text": "513",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "18.000.000",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t12",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "CMAC total",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "In view of the UN figures, we have calculated that the",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t13",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "the real results of de-mining to the Cambodian society",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "3.6 Sustainability",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "3.6 Sustainability",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-e9bad2e8-p23-t15",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Furthermore, NPA should actively take part in developing the socio-economic aspect of demining.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

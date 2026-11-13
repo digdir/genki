@@ -96,6 +96,22 @@ describe('the thread’s title', () => {
     );
   });
 
+  it('reads the question’s first sentence in linear time, however long its run of stops', () => {
+    const stops = '!'.repeat(100_000);
+    for (const text of [`${stops}x`, `Hva${stops}`, `Hva ${'.?'.repeat(50_000)}x y`]) {
+      cleanup();
+      const started = performance.now();
+      draw({ turns: [{ kind: 'question', id: 'q', text }], title: 'Hva' });
+      expect(performance.now() - started).toBeLessThan(1000);
+    }
+    cleanup();
+    draw({
+      turns: [{ ...question, text: 'Hva rapporterer Nkom om?!… Og mer.' }],
+      title: 'Hva rapporterer Nkom om',
+    });
+    expect(screen.getByRole('heading', { level: 2 }).classList.contains('ds-sr-only')).toBe(true);
+  });
+
   it('is not drawn when the app gives none', () => {
     draw();
     expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
@@ -840,5 +856,37 @@ describe('while the thread is read', () => {
     rerender(<Conversation turns={turns} />);
     expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('');
     expect(container.querySelector('.uib-conversation-loading')).toBeNull();
+  });
+});
+
+describe('the dev boards’ answer, `answerVariant="plain"` (dev-kilder-hoyre)', () => {
+  it('puts the assistant’s name over the header and the answer, for the eye, and the answer has no card', () => {
+    const header = () => <p>Fremgangsmåte</p>;
+    draw({
+      answerVariant: 'plain',
+      assistantName: 'Kunnskapsassistenten',
+      answerColor: 'neutral',
+      header,
+    });
+    const label = document.querySelector('.uib-conversation-label');
+    expect(label?.textContent).toBe('Kunnskapsassistenten');
+    // In the answers' family, as the answer it names.
+    expect(label?.getAttribute('data-color')).toBe('neutral');
+    expect(label?.getAttribute('aria-hidden')).toBe('true');
+    const over = screen.getAllByText('Fremgangsmåte')[0] as HTMLElement;
+    expect(label?.compareDocumentPosition(over)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
+  });
+
+  it('draws no label by default', () => {
+    draw({ assistantName: 'Kunnskapsassistenten' });
+    expect(document.querySelector('.uib-conversation-label')).toBeNull();
+  });
+
+  it('leaves out the label over a plain answer with `answerLabel={false}`, still with no card', () => {
+    draw({ answerVariant: 'plain', answerLabel: false, assistantName: 'Kunnskapsassistenten' });
+    expect(document.querySelector('.uib-conversation-label')).toBeNull();
+    expect(screen.queryByText('Kunnskapsassistenten')).toBeNull();
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
   });
 });

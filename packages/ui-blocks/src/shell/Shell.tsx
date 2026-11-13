@@ -1,4 +1,4 @@
-import { Button, Dialog, SkipLink, Tooltip } from '@digdir/designsystemet-react';
+import { Button, Dialog, Heading, SkipLink, Tooltip } from '@digdir/designsystemet-react';
 import { SidebarLeftIcon, SidebarRightIcon } from '@navikt/aksel-icons';
 import {
   useCallback,
@@ -16,6 +16,9 @@ import { useMedia, useScrollPadding, useScrollTabStop, useViewportWidth } from '
 import { useT } from './i18n.js';
 import {
   breakpoints,
+  cardsGap,
+  cardsInset,
+  cardsRail,
   clampWidth,
   defaultCollapsed,
   defaultGap,
@@ -32,11 +35,13 @@ import {
   shellSides,
   storedLayout,
   widthRange,
-  withAllCollapsed,
+  withChosen,
   withCollapsed,
   withDismissed,
   withOneOpen,
   withWidth,
+  withWindowFold,
+  withWindowRoom,
   yieldingSide,
   type ShellGeometry,
   type ShellLayout,
@@ -48,44 +53,66 @@ import {
 import { Separator } from './Separator.js';
 
 export interface ShellPanel {
-  /**
-   * The panel's name, after what is in it: «Tråder og filter». Read by screen readers as the
-   * landmark's name, and lower-cased in its buttons: «Skjul tråder og filter».
-   */
+  /** The panel's name after what is in it, «Tråder og filter»: the landmark's and its buttons'. */
   label: string;
+  /**
+   * The panel's visible title, an `h2` on its head row, «Tråder» or «Verktøy». Every title the
+   * shell draws looks alike and stands on one line with the main column's (`mainTitle`).
+   */
+  title?: string | undefined;
   /** What the panel holds. It scrolls; the head and a pinned foot stay put. */
   children?: ReactNode;
   /** Controls that belong to the panel, on its head row beside «Skjul». Not on a rail. */
   head?: ReactNode;
   /** Pinned to the top of the panel's scrolling region, such as the view's heading. */
   pinned?: ReactNode;
-  /**
-   * Hands the host the pinned region's element, for a block that draws its own head there, such
-   * as the filter (its `pinIn`), and `null` when it goes. Pass a stable function, such as a state
-   * setter.
-   */
+  /** Hands the host the pinned region's element, `null` when it goes; pass a stable function. */
   pinnedRef?: ((element: HTMLDivElement | null) => void) | undefined;
   /** The panel's foot, such as its links. Not on a rail. */
   foot?: ReactNode;
   /** Keep the foot at the panel's bottom instead of at the end of what scrolls. */
   footPinned?: boolean | undefined;
+  /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
+  railFoot?: ReactNode;
+  /**
+   * What the folded panel shows under its button, such as «Ny tråd» (dev-navbar), on a drawer's
+   * rail as well. Not in the top row.
+   */
+  rail?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
   size?: Partial<ShellPanelSize> | undefined;
   /** Folded when the page opens, until the reader chooses. Primary open, secondary folded. */
   defaultCollapsed?: boolean | undefined;
   /** The landmark: `nav` for the primary panel and `aside` for the secondary one by default. */
   landmark?: 'nav' | 'aside' | undefined;
+  /**
+   * A second column in the panel's card, towards the main column, with a title of its own and the
+   * panel's button: the design's filter beside the threads (dev-filter-panel). It folds with the
+   * panel, and stands under the panel's own column in a drawer.
+   */
+  companion?: ShellCompanion | undefined;
 }
 
-/**
- * Something the host asks of a panel. A new object is acted on once.
- * - `open`: the reader asked for the panel, as by a footnote. It opens, as a drawer in a narrow
- *   window; the other panel folds where both do not fit; and an earlier dismissal is forgotten.
- * - `offer`: content arrived for the panel, as an answer with sources. It opens only where it
- *   fits beside the other panel, never as a drawer, and not once the reader has shut it.
- * - `close-drawers`: shut a panel drawn as a drawer over the main column, as after choosing a
- *   thread. A panel beside the main column stays.
- */
+/** The second column of a panel (`ShellPanel.companion`). */
+export interface ShellCompanion {
+  /** Its region's name, «Filter for tråden». */
+  label: string;
+  /** Its title, alike the panel's, «Filter». */
+  title?: string | undefined;
+  /** A line under the title, «Gjelder neste spørsmål». */
+  subtitle?: ReactNode;
+  /** What it holds. It scrolls on its own. */
+  children?: ReactNode;
+  /**
+   * Its width when the panel has its design width, in CSS pixels. The panel's `size` counts both
+   * columns; the panel's own column keeps the rest, and a narrower panel narrows the companion.
+   */
+  width: number;
+  /** Keeps `width` whatever the panel's width, so the panel's own column takes every change. */
+  keepWidth?: boolean | undefined;
+}
+
+/** Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`. */
 export type ShellRequest =
   { action: 'open' | 'offer'; side: ShellSide } | { action: 'close-drawers' };
 
@@ -98,6 +125,19 @@ export interface ShellProps {
   children?: ReactNode;
   /** Pinned to the top of the main column while it scrolls. */
   mainPinned?: ReactNode;
+  /**
+   * The page's `h1`, at the top of the main column with a line under it and always in sight, such
+   * as the thread's title. It looks like the panels' titles and stands on one line with them.
+   */
+  mainTitle?: string | undefined;
+  /**
+   * `flush`, the default: the panels meet the window's edges and the main column, divided by lines.
+   * `cards`: each panel and the main column is a card on the page's ground, `inset` from the
+   * window and `gap` apart, a rail too (the design's dev-navbar board).
+   */
+  frame?: 'flush' | 'cards' | undefined;
+  /** The cards frame's margin from the window in CSS pixels, 16. Must match `--genai-shell-inset`. */
+  inset?: number | undefined;
   /** The main column's floor and reading width, 640 and 800 by default. */
   mainSize?: Partial<ShellMainSize> | undefined;
   /** The `id` of `<main>`, the target of «Hopp til hovedinnhold». */
@@ -107,19 +147,13 @@ export interface ShellProps {
   /** The reader changed the layout. The host stores it, and passes it back as `initialLayout`. */
   onLayoutChange?: ((layout: ShellLayout) => void) | undefined;
   request?: ShellRequest | undefined;
-  /**
-   * Below two rails and the main column's floor, 774 by default, the rails stand in one row above
-   * the main column, and their buttons open the panels as drawers (kunnskapsassistenten#120). On
-   * by default; `false` keeps the rails at the sides.
-   */
+  /** Below 774 by default the rails stand in a row above the main column; `false` keeps them. */
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
-  /** Drawn in a host's preview this wide: laid out for it, no `<main>`, no skip links. */
-  frameWidth?: number | undefined;
-  /** The gap beside an open panel in CSS pixels. Must match `--genai-shell-gap`. */
+  /** The gap beside an open panel in CSS pixels, 32, or 12 for cards. Must match `--genai-shell-gap`. */
   gap?: number | undefined;
-  /** A folded panel's width in CSS pixels. Must match the rail's button and padding. */
+  /** A folded panel's width in CSS pixels, 67, or 76 for cards. Must match its button and padding. */
   rail?: number | undefined;
   /** Designsystemet's `data-color` for the shell, set only when given. */
   color?: string | undefined;
@@ -134,18 +168,13 @@ const sized = (side: ShellSide, size: Partial<ShellPanelSize> | undefined) => ({
   maxWidth: size?.maxWidth ?? defaultPanelSizes[side].maxWidth,
 });
 
-/**
- * Three columns: a primary panel, the main column and a secondary panel, as in
- * kunnskapsassistenten and VS Code. The panels are slots: the shell knows nothing of what is in
- * them. A panel folds to a rail, is resized by dragging, clicking or the keys, and becomes a
- * drawer over the main column in a narrow window. The shell keeps the layout and reports every
- * change; the host stores it.
- */
+/** Three columns: a primary panel, the main column and a secondary panel, as in VS Code. */
 export const Shell = ({
   primary,
   secondary,
   children,
   mainPinned,
+  mainTitle,
   mainSize,
   mainId = 'main-content',
   initialLayout,
@@ -153,13 +182,18 @@ export const Shell = ({
   request,
   compactBar = true,
   skipLinks,
-  frameWidth,
-  gap = defaultGap,
-  rail = defaultRail,
+  frame = 'flush',
+  inset: givenInset,
+  gap: givenGap,
+  rail: givenRail,
   color,
   className,
 }: ShellProps) => {
   const t = useT();
+  const cards = frame === 'cards';
+  const inset = cards ? (givenInset ?? cardsInset) : 0;
+  const gap = givenGap ?? (cards ? cardsGap : defaultGap);
+  const rail = givenRail ?? (cards ? cardsRail : defaultRail);
   const p = primary ? sized('primary', primary.size) : undefined;
   const s = secondary ? sized('secondary', secondary.size) : undefined;
   const mainMin = mainSize?.minWidth ?? defaultMainSize.minWidth;
@@ -170,6 +204,7 @@ export const Shell = ({
       main: { minWidth: mainMin, maxWidth: mainMax },
       gap,
       rail,
+      ...(cards ? { inset, railGap: true } : {}),
     }),
     // The numbers, not the objects, which are new on every render.
     [
@@ -183,21 +218,18 @@ export const Shell = ({
       mainMax,
       gap,
       rail,
+      cards,
+      inset,
     ],
   );
   const points = breakpoints(geometry);
 
-  const windowWidth = useViewportWidth();
-  const inWindow = {
-    narrow: useMedia(narrowerThan(points.both)),
-    drawer: useMedia(narrowerThan(points.drawer)),
-    compact: useMedia(narrowerThan(points.compact)),
-  };
-  const viewport = frameWidth ?? windowWidth;
-  const below = (point: number) => (frameWidth === undefined ? undefined : frameWidth < point);
-  const narrow = below(points.both) ?? inWindow.narrow;
-  const drawer = below(points.drawer) ?? inWindow.drawer;
-  const compact = (below(points.compact) ?? inWindow.compact) && compactBar;
+  const viewport = useViewportWidth();
+  const narrow = useMedia(narrowerThan(points.both));
+  const drawer = useMedia(narrowerThan(points.drawer));
+  const compact = useMedia(narrowerThan(points.compact)) && compactBar;
+  // In the top row the cards frame has no margins: the row and the main column take the window.
+  const sums = useMemo(() => (compact ? { ...geometry, inset: 0 } : geometry), [compact, geometry]);
 
   const [state, setState] = useState<ShellState>(() =>
     initialState(
@@ -210,8 +242,7 @@ export const Shell = ({
     ),
   );
 
-  // Open or fold a panel, keeping the rule that only one is open where both do not fit: the one
-  // being opened wins.
+  // Open or fold a panel; where both do not fit, the one being opened wins.
   const fitted = (current: ShellState, side: ShellSide, collapsed: boolean) => {
     const next = withCollapsed(current, side, collapsed);
     return collapsed || !narrow ? next : withOneOpen(next, side);
@@ -220,24 +251,36 @@ export const Shell = ({
   const byReader = (side: ShellSide, collapsed: (current: ShellState) => boolean) =>
     setState((current) => {
       const value = collapsed(current);
-      return withDismissed(fitted(current, side, value), side, value);
+      return withChosen(withDismissed(fitted(current, side, value), side, value), side);
     });
 
-  // Too narrow for both: the yielding panel folds. During render, so it is never painted open;
-  // only on the crossing, so the reader may still open it. Starts false so a window that is
-  // already narrow applies it too. Growing back opens nothing.
+  // The panel that stays where only one fits; the other yields.
+  const keep = otherSide(yieldingSide(geometry));
+
+  // Too narrow for both: the yielding panel folds on the crossing, during render. Growing back
+  // opens again what the window folded, unless the reader chose for it meanwhile.
   const [appliedNarrow, setAppliedNarrow] = useState(false);
   if (narrow !== appliedNarrow) {
     setAppliedNarrow(narrow);
-    if (narrow) setState((current) => withOneOpen(current, otherSide(yieldingSide(geometry))));
+    setState((current) => {
+      if (!narrow) return shellSides.reduce(withWindowRoom, current);
+      return current.collapsed[keep] ? current : withWindowFold(current, otherSide(keep));
+    });
   }
 
-  // Entering drawer mode folds both: a drawer is modal, so a panel carried open across would be a
-  // dialog nobody asked for. Crossing back opens nothing.
+  // Entering drawer mode folds both, since a drawer is modal; leaving it opens again what it
+  // folded, as far as the window has room: where only one fits, the one that does not yield.
   const [appliedDrawer, setAppliedDrawer] = useState(false);
   if (drawer !== appliedDrawer) {
     setAppliedDrawer(drawer);
-    if (drawer) setState(withAllCollapsed);
+    setState((current) => {
+      if (drawer) return shellSides.reduce(withWindowFold, current);
+      if (!narrow) return shellSides.reduce(withWindowRoom, current);
+      // A drawer the reader left open keeps the one place; the other waits for a wider window.
+      if (!current.collapsed[otherSide(keep)]) return current;
+      const kept = withWindowRoom(current, keep);
+      return kept.collapsed[keep] ? withWindowRoom(kept, otherSide(keep)) : kept;
+    });
   }
 
   // The host's request, once per object, also one given on the first render.
@@ -246,15 +289,16 @@ export const Shell = ({
     setSeenRequest(request);
     if (request?.action === 'open') {
       const { side } = request;
-      setState((current) => withDismissed(fitted(current, side, false), side, false));
+      setState((current) =>
+        withChosen(withDismissed(fitted(current, side, false), side, false), side),
+      );
     } else if (request?.action === 'offer') {
       const { side } = request;
       setState((current) => {
-        // Never as a drawer, which would cover what just arrived; never over the reader's own
-        // choice; and where both do not fit, never at the cost of the other panel.
+        // Never as a drawer, never over the reader's choice, never at the other panel's cost.
         const room = !narrow || current.collapsed[otherSide(side)];
         if (!current.collapsed[side] || current.dismissed[side] || drawer || !room) return current;
-        return fitted(current, side, false);
+        return withChosen(fitted(current, side, false), side);
       });
     } else if (request?.action === 'close-drawers' && drawer) {
       setState((current) =>
@@ -269,8 +313,7 @@ export const Shell = ({
     }
   }
 
-  // Reported from an effect, not from each setter: the state changes from many places, and one
-  // report per commit misses none. Not on mount, unless a rule changed what the host gave.
+  // Reported once per commit from an effect, not on mount unless a rule changed the layout.
   const stored = storedLayout(geometry, state);
   const storedKey = JSON.stringify(stored);
   const [mountedKey] = useState(storedKey);
@@ -290,8 +333,7 @@ export const Shell = ({
   const [mainElement, setMainElement] = useState<HTMLElement | null>(null);
   const [mainHead, setMainHead] = useState<HTMLDivElement | null>(null);
   useScrollPadding(mainElement, mainHead);
-  // A tab stop while nothing inside can take the keyboard (WCAG 2.1.1), kept while it holds the
-  // focus, or the focus falls to `<body>` above the skip link (2.4.3).
+  // A tab stop while nothing inside takes the keyboard (WCAG 2.1.1), kept while focused.
   const [mainNeedsTabStop, measureMain] = useScrollTabStop();
   const [mainHoldsFocus, setMainHoldsFocus] = useState(false);
   const mainFocusable = mainNeedsTabStop || mainHoldsFocus;
@@ -305,36 +347,45 @@ export const Shell = ({
   );
 
   const sideProps = {
-    geometry,
+    geometry: sums,
     state,
     viewport,
     drawer,
+    cards,
     onToggle: (side: ShellSide) => byReader(side, (current) => !current.collapsed[side]),
     onCollapse: (side: ShellSide, collapsed: boolean) => byReader(side, () => collapsed),
     onWidth: (side: ShellSide, width: number) =>
       setState((current) => withWidth(geometry, current, side, width)),
   };
 
-  // In a host's preview the page and its `<main>` are the host's.
-  const Main = frameWidth === undefined ? 'main' : 'div';
+  // First in the region, so nothing reachable ends up under it once pinned. In the cards frame it
+  // spans the main card, its line from edge to edge; flush, it keeps to the reading width.
+  const mainHeadRegion = (
+    <div className="uib-shell-pinned" ref={setMainHead}>
+      {mainTitle ? (
+        <Heading className="uib-shell-title" data-size="xs" level={1}>
+          {mainTitle}
+        </Heading>
+      ) : null}
+      {mainPinned}
+    </div>
+  );
+
   return (
     <>
-      {frameWidth === undefined ? (
-        <>
-          <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
-          {skipLinks}
-        </>
-      ) : null}
+      <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
+      {skipLinks}
       <div
         className={classes('uib-shell', className)}
         data-compact={compact || undefined}
         data-drawer={drawer || undefined}
-        style={layoutStyle(geometry, state, viewport, drawer, compact) as CSSProperties}
+        data-frame={cards ? 'cards' : undefined}
+        style={layoutStyle(sums, state, viewport, drawer, compact) as CSSProperties}
         {...colored(color)}
       >
         {primary ? <Side side="primary" panel={primary} {...sideProps} /> : null}
 
-        <Main
+        <main
           className={classes('uib-shell-main', mainFocusable && 'ds-focus--inset')}
           id={mainId}
           // Observes only whether the focus is on the region itself.
@@ -347,14 +398,12 @@ export const Shell = ({
           ref={setMain}
           tabIndex={mainFocusable ? 0 : undefined}
         >
+          {cards ? mainHeadRegion : null}
           <div className="uib-shell-column">
-            {/* First in the region, so nothing reachable ends up under it once pinned. */}
-            <div className="uib-shell-pinned" ref={setMainHead}>
-              {mainPinned}
-            </div>
+            {cards ? null : mainHeadRegion}
             {children}
           </div>
-        </Main>
+        </main>
 
         {secondary ? <Side side="secondary" panel={secondary} {...sideProps} /> : null}
       </div>
@@ -370,6 +419,8 @@ interface SideProps {
   viewport: number;
   /** Draw an open panel over the main column rather than beside it. */
   drawer: boolean;
+  /** The cards frame: the panel is a card, its button an icon. */
+  cards: boolean;
   onToggle: (side: ShellSide) => void;
   onCollapse: (side: ShellSide, collapsed: boolean) => void;
   onWidth: (side: ShellSide, width: number) => void;
@@ -383,6 +434,7 @@ const Side = ({
   state,
   viewport,
   drawer,
+  cards,
   onToggle,
   onCollapse,
   onWidth,
@@ -391,6 +443,8 @@ const Side = ({
   const collapsed = state.collapsed[side];
   const name = panel.label.toLocaleLowerCase(t.locale === 'nb' ? 'nb-NO' : 'en-GB');
   const contentId = useId();
+  const { companion } = panel;
+  const companionId = useId();
   const Landmark = panel.landmark ?? (side === 'primary' ? 'nav' : 'aside');
   const Icon = side === 'primary' ? SidebarLeftIcon : SidebarRightIcon;
 
@@ -406,8 +460,7 @@ const Side = ({
     return () => onPinned(null);
   }, [onPinned, pinned]);
 
-  // A tab stop only when the region scrolls with nothing in it to reach (WCAG 2.1.1), kept while
-  // focused (2.4.3). A group, not a region: the panel is a landmark with this name already.
+  // A tab stop while nothing in it is reachable, kept while focused; a group, not a region.
   const [needsTabStop, measureContent] = useScrollTabStop();
   const [holdsFocus, setHoldsFocus] = useState(false);
   const focusable = needsTabStop || holdsFocus;
@@ -419,21 +472,17 @@ const Side = ({
     [measureContent],
   );
 
-  // Whether the focus is in the panel. State, not a ref: the repair below needs the value from
-  // before the change. A null `relatedTarget` counts as leaving, or a resize would steal focus.
+  // Whether focus is in the panel, as state, since the repair below needs the value before.
   const [hasFocus, setHasFocus] = useState(false);
 
-  // A drag that folds the panel goes on until let go, so the separator stays over the rail.
-  // Dropped in drawer mode, where the separator goes and would never hear the drag end.
+  // A drag that folds the panel goes on until let go; dropped in drawer mode.
   const [resizing, setResizing] = useState(false);
   if (resizing && drawer) setResizing(false);
 
-  // Don't drop the focus on `<body>` (WCAG 2.4.3) when the panel folds, the button moves or the
-  // dragged separator goes: send it to the button. Here, since only the panel knows it held it.
+  // Focus that the folding panel held goes to its button, not `<body>` (WCAG 2.4.3).
   useLayoutEffect(() => {
     if (!hasFocus) return;
-    // Gone if nowhere, on a detached node, or still in the folded content: a layout effect runs
-    // before the browser moves it to `<body>`.
+    // Lost if nowhere, detached, or in the folded content; this runs before the browser moves it.
     const active = document.activeElement;
     const lost =
       active === null ||
@@ -443,8 +492,7 @@ const Side = ({
     if (lost) toggle.current?.focus();
   }, [hasFocus, collapsed, resizing, content]);
 
-  // Focus lent to a modal dialog comes back on close; if the panel folded meanwhile, it would be
-  // left in the closed dialog. Then the button. Capture, since `close` does not bubble.
+  // Focus lent to a dialog comes back to the button if the panel folded meanwhile.
   const lentToDialog = useRef(false);
   useEffect(() => {
     const onClose = (event: Event) => {
@@ -465,8 +513,9 @@ const Side = ({
 
   // A rail on the row, folded or in drawer mode, is not a shut panel: the button is an icon.
   const railed = collapsed || drawer;
-  // Only the word: the whole name does not fit beside the head's controls.
-  const showsWord = side === 'primary' && !railed;
+  // Only the word: the whole name does not fit beside the head's controls. A card's title names
+  // the panel already, so its button is an icon, as the design draws the secondary one.
+  const showsWord = side === 'primary' && !railed && !cards;
   // The button stands at the panel's edge towards the main column.
   const toggleLast = side === 'primary';
   // Must equal the tooltip, which Designsystemet otherwise writes over `aria-label`.
@@ -507,18 +556,18 @@ const Side = ({
   const toggleButton = (
     <Tooltip
       content={toggleLabel}
-      // Not `top` for the secondary panel: it would flip over the panel when open, and overflow
-      // the window from the rail at its edge when the text grows.
+      // Not `top` for the secondary panel, which would flip over it or overflow the window.
       placement={side === 'secondary' ? (railed ? 'left' : 'right') : 'top'}
     >
       <Button
-        aria-controls={contentId}
+        aria-controls={companion && !collapsed ? `${contentId} ${companionId}` : contentId}
         aria-expanded={!collapsed}
         aria-label={toggleLabel}
         className={classes('uib-shell-toggle', showsWord && 'uib-shell-hide')}
         // Pinned to neutral, as kunnskapsassistenten draws it: the panel's own control.
         data-color="neutral"
-        data-size="sm"
+        // A card's button is the design's 44, sized from the default size mode's tokens.
+        data-size={cards ? 'md' : 'sm'}
         icon={!showsWord}
         onClick={() => onToggle(side)}
         ref={toggle}
@@ -529,6 +578,39 @@ const Side = ({
       </Button>
     </Tooltip>
   );
+
+  const title = panel.title ? (
+    <Heading className="uib-shell-title" data-size="xs" level={2}>
+      {panel.title}
+    </Heading>
+  ) : null;
+
+  // The companion column takes the panel's button, at the card's edge towards the main column.
+  const companionSection = (button: ReactNode) =>
+    companion ? (
+      <section aria-label={companion.label} className="uib-shell-companion" id={companionId}>
+        <div className="uib-shell-header">
+          <div className="uib-shell-companion-titles">
+            {companion.title ? (
+              <Heading className="uib-shell-title" data-size="xs" level={2}>
+                {companion.title}
+              </Heading>
+            ) : null}
+            {companion.subtitle ? (
+              <p className="uib-shell-companion-subtitle">{companion.subtitle}</p>
+            ) : null}
+          </div>
+          {button}
+        </div>
+        <div className="uib-shell-content">{companion.children}</div>
+      </section>
+    ) : null;
+  const leadWidth = companion?.keepWidth
+    ? `calc(100% - ${companion.width}px)`
+    : companion
+      ? `${Math.max((geometry.panels[side]?.width ?? width) - companion.width, 0)}px`
+      : undefined;
+  const withCompanion = companion !== undefined && !railed;
 
   return (
     <Landmark
@@ -549,19 +631,31 @@ const Side = ({
       ref={element}
     >
       {/* The separator is in the landmark but outside this clipping box. */}
-      <div className="uib-shell-box">
+      <div
+        className="uib-shell-box"
+        data-companion={withCompanion || undefined}
+        style={
+          withCompanion ? ({ '--uib-shell-lead-width': leadWidth } as CSSProperties) : undefined
+        }
+      >
         {/* Outside the scroller, so the button never scrolls out of sight. */}
         <div className="uib-shell-header">
-          {toggleLast ? null : toggleButton}
+          {toggleLast || withCompanion ? null : toggleButton}
+          {railed ? null : title}
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
-          {toggleLast ? toggleButton : null}
+          {toggleLast && !withCompanion ? toggleButton : null}
         </div>
+        {/* On the rail a drawer leaves too, so its parts are one click away in a narrow window. */}
+        {railed && panel.rail != null ? <div className="uib-shell-rail">{panel.rail}</div> : null}
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}
+        {railed && panel.railFoot != null ? (
+          <div className="uib-shell-rail-foot">{panel.railFoot}</div>
+        ) : null}
+        {withCompanion ? companionSection(toggleButton) : null}
       </div>
 
-      {/* A native modal: focus trap, `inert`, Escape and focus return. `onClose` fires only when
-          the reader closes it. Kept mounted, so what is in it keeps its state. */}
+      {/* A native modal dialog, kept mounted so what is in it keeps its state. */}
       {drawer ? (
         <Dialog
           aria-label={panel.label}
@@ -574,10 +668,13 @@ const Side = ({
         >
           <div className="uib-shell-box">
             <div className="uib-shell-header">
+              {title}
               <div className="uib-shell-head">{panel.head}</div>
             </div>
             {panelContent}
             {footScrolls ? null : foot}
+            {/* Under the panel's own column: a drawer is one column wide. */}
+            {companionSection(null)}
           </div>
         </Dialog>
       ) : null}

@@ -17,6 +17,8 @@ import { hasFiles } from '../dom.js';
 import { useT } from './i18n.js';
 import { fileSize, limitText } from './uploadText.js';
 
+export * from './InScope.js';
+
 /** A document behind the answer on screen, from the answer's `sources[]`. */
 export interface DocumentItem {
   id: string;
@@ -30,9 +32,7 @@ export interface DocumentItem {
 }
 
 export interface DocumentsProps {
-  /** The documents behind the answer on screen, in its order. Undefined («no answer yet») and
-   * `[]` both show the sentence that says what comes here. Keep the array's identity while an
-   * answer stands: a new array starts the list over. */
+  /** The documents behind the answer on screen; a new array restarts the list. */
   documents?: readonly DocumentItem[] | undefined;
   /** The collection they come from, which names the list. */
   corpus?: CorpusOption | undefined;
@@ -44,8 +44,7 @@ export interface DocumentsProps {
   className?: string | undefined;
 }
 
-/** The collection's documents behind the answer, apart from `OwnDocuments`. No «Velg dokumenter»:
- * a disabled button cannot be reached by keyboard or say why. */
+/** The collection's documents behind the answer, apart from `OwnDocuments`. */
 export const Documents = ({
   documents,
   corpus,
@@ -59,8 +58,7 @@ export const Documents = ({
   const [expanded, setExpanded] = useState(false);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // A new answer starts the list over. Set during render, not in an effect, so the longer list is
-  // never painted.
+  // A new answer restarts the list, during render so the longer list is never painted.
   const [listed, setListed] = useState(documents);
   if (listed !== documents) {
     setListed(documents);
@@ -72,9 +70,7 @@ export const Documents = ({
   const hidden = expanded ? 0 : Math.max(fromCorpus.length - visible, 0);
   const shown = hidden === 0 ? fromCorpus : fromCorpus.slice(0, visible);
 
-  // «Vis flere dokumenter» removes itself, so focus moves to the list (WCAG 2.4.3), whose heading
-  // tells a screen reader what grew. In an effect, so the rows are in the DOM first; only the
-  // button sets `expanded`, so this never fires on mount.
+  // «Vis flere dokumenter» goes, so focus moves to the list (WCAG 2.4.3) once the rows are in.
   useEffect(() => {
     if (expanded) listRef.current?.focus();
   }, [expanded]);
@@ -82,8 +78,7 @@ export const Documents = ({
   const about = (item: DocumentItem) => {
     const properties = (item.about ?? []).filter(Boolean).join(' · ');
     if (item.url !== undefined) return properties;
-    // Says why a title is not a link, or it reads as broken. After a comma, not « · »: the dots
-    // list what the document is.
+    // Says why a title is not a link, or it reads as broken.
     return properties === ''
       ? t('documents.noLinkAlone')
       : `${properties}, ${t('documents.noLink')}`;
@@ -95,8 +90,7 @@ export const Documents = ({
         {t('documents.title')}
       </Heading>
       {corpusLine}
-      {/* The same short name as the corpus line, so the two never disagree. It also names the
-          list below. */}
+      {/* The corpus line's short name, which also names the list below. */}
       <Heading
         level={Math.min(headingLevel + 1, 6) as 3 | 4 | 5 | 6}
         data-size="2xs"
@@ -109,16 +103,14 @@ export const Documents = ({
         <Paragraph data-size="sm">{t('documents.empty')}</Paragraph>
       ) : (
         <>
-          {/* The documents behind the answer, the only total known here. Only while some are held
-              back. */}
+          {/* The documents behind the answer, the one total known, while some are held back. */}
           {hidden > 0 && (
             <Paragraph data-size="xs" className="uib-documents-count">
               {t('documents.showing', { shown: shown.length, total: fromCorpus.length })}
             </Paragraph>
           )}
 
-          {/* Focusable for «Vis flere dokumenter», not in the tab order. `ds-focus` rings it on
-              :focus-visible only. */}
+          {/* Focusable for «Vis flere dokumenter», not in the tab order. */}
           <List.Unordered
             data-size="sm"
             aria-labelledby={listHeadingId}
@@ -188,9 +180,7 @@ export interface OwnDocument {
 
 export interface OwnDocumentsProps {
   documents: readonly OwnDocument[];
-  /** Uploads one file; the block waits for each before the next, as every upload writes to the
-   * same list. A rejection does not stop the next file: the host shows the failure in the file's
-   * row. Without it the zone is drawn switched off, «Kommer snart». */
+  /** Uploads one file at a time; a rejection is that file's row. Without it, «Kommer snart». */
   onUpload?: ((file: File) => unknown) | undefined;
   onRemove?: ((id: string) => void) | undefined;
   /** The file input's `accept`. */
@@ -230,9 +220,7 @@ export const OwnDocuments = ({
         ? t('documents.wrongType', { types: typeList })
         : t(code === 'unavailable' ? 'documents.unavailable' : 'documents.failed');
 
-  // What the live region says: a file taken in, there, or refused, never the percentage, which
-  // would bury the status (WCAG 4.1.3). Silent on first render: restored documents are not news.
-  // Set during render, not in an effect, which would draw the new row before saying it.
+  // What the live region says: taken in, there or refused, never the percentage (WCAG 4.1.3).
   const [seen, setSeen] = useState<ReadonlyMap<string, OwnDocument['status']>>();
   const [announcement, setAnnouncement] = useState('');
   const now = new Map(documents.map((item) => [item.id, item.status]));
@@ -254,9 +242,7 @@ export const OwnDocuments = ({
     }
   }
 
-  // A remove button that removes itself drops focus to `<body>` (WCAG 2.4.3). It goes to the
-  // next row, else the previous, else the picker. In an effect, because that button exists only
-  // once the shorter list is drawn.
+  // Focus to the next row, else the previous, else the picker, once the button is gone.
   useEffect(() => {
     const target = focusAfterRemove.current;
     if (target === undefined) return;
@@ -277,11 +263,9 @@ export const OwnDocuments = ({
   const choose = async (files: FileList | null) => {
     if (!files || !onUpload) return;
     const picked = Array.from(files);
-    // The same file can be picked again, after a failure or a removal, and an input that still
-    // holds it fires no change event the second time. Emptied first, so a failure cannot skip it.
+    // Emptied first, so the same file can be picked again after a failure or a removal.
     if (inputRef.current) inputRef.current.value = '';
-    // One at a time: every upload writes to the same list, and two in flight would race. A
-    // rejected upload is that file's failure, which its row shows; the next file is still tried.
+    // One at a time, since every upload writes to the same list; a rejection is that file's.
     for (const file of picked) {
       try {
         await onUpload(file);
@@ -291,9 +275,7 @@ export const OwnDocuments = ({
     }
   };
 
-  // Switched off, the zone takes no pointer, so a file dropped on it lands on the section, and
-  // the browser would open it in a new tab. The section takes the drop and says why; `dragover`
-  // too, or the drop never fires. Where upload works, the file input takes the drop itself.
+  // Switched off, the section takes a drop and says why, or the browser would open the file.
   const off = onUpload === undefined;
   const refuse = (event: DragEvent<HTMLElement>) => {
     if (!off || !hasFiles(event)) return;
@@ -317,9 +299,7 @@ export const OwnDocuments = ({
         </Tag>
       </div>
 
-      {/* «Velg filer» is a span: the real control is the file input laid over the zone, and a
-          button would be a second, dead tab stop. Neutral when off, the colours Designsystemet's
-          read-only state would give it. */}
+      {/* «Velg filer» is a span over the real file input; neutral when off, as read-only looks. */}
       <Field>
         <Label>{t('documents.upload')}</Label>
         <FileUpload
@@ -328,15 +308,13 @@ export const OwnDocuments = ({
           className="uib-documents-own-zone"
         >
           <CloudUpIcon aria-hidden="true" className="uib-documents-own-icon" />
-          {/* Off, it says what is coming, not what to do: a zone that asks for a drop it cannot
-              take invites an action that fails. */}
+          {/* Off, it says what is coming, not what to do. */}
           <Field.Description>
             {off
               ? t('documents.uploadSoon', { types: typeList, max })
               : t('documents.uploadHint', { types: typeList, max })}
           </Field.Description>
-          {/* Off, `aria-disabled` marks «Velg filer» as part of a control that is off: text in an
-              inactive control is exempt from 1.4.3, and Designsystemet dims it from it. */}
+          {/* Off, `aria-disabled` marks it part of an inactive control, exempt from 1.4.3. */}
           <Button asChild variant="secondary" data-size="sm" aria-disabled={off || undefined}>
             <span>{t('documents.chooseFiles')}</span>
           </Button>
@@ -359,8 +337,7 @@ export const OwnDocuments = ({
         </Paragraph>
       )}
 
-      {/* Mounted even when silent: a region that appears together with its text is not
-          announced. */}
+      {/* Mounted even when silent: a region that appears with its text is not announced. */}
       <output className="ds-sr-only">{refusal || announcement}</output>
 
       {documents.length > 0 && (

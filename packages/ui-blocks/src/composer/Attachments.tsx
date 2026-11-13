@@ -9,10 +9,10 @@ export const useAttachmentText = (attachments: ComposerAttachments | undefined) 
   const f = useFormat();
   const named = attachments?.types ?? attachments?.fileTypes;
   const types = named?.length ? f.list(named, 'disjunction') : undefined;
-  // Whole megabytes of 1024 × 1024 bytes, as OwnDocuments writes its limit.
+  // Megabytes of 1024 × 1024 bytes, to one decimal.
   const max =
     attachments?.maxBytes !== undefined
-      ? Math.round(attachments.maxBytes / 1024 / 1024)
+      ? Math.round((attachments.maxBytes * 10) / 1024 / 1024) / 10
       : attachments?.maxMegabytes;
   const error = (code: ComposerAttachmentError) => {
     if (code === 'too-large')

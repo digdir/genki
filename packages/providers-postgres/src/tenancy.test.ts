@@ -147,6 +147,52 @@ describe('postgres conversations', () => {
     expect((await conversations.messages(kari, created.id))?.at(-1)?.sources).toEqual(sources);
   });
 
+  it('keeps the markers of an answer that cites excerpts with the message', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c2', document: 'd1' },
+    ];
+    const sources = [
+      {
+        index: 1,
+        title: 'Rapport',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', markers: ['1'] },
+          { chunk_id: 'c2', text: 'Andre', markers: ['2'] },
+        ],
+        markers: ['1', '2'],
+      },
+    ];
+    await conversations.append(kari, created.id, {
+      role: 'assistant',
+      text: '[1] [2]',
+      sources,
+      markers,
+    });
+
+    const stored = (await conversations.messages(kari, created.id))?.at(-1);
+
+    expect(stored?.markers).toEqual(markers);
+    expect(stored?.sources).toEqual(sources);
+  });
+
+  it('reads a message stored without markers as it was, with no markers field', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    const sources = [
+      { index: 1, title: 'Rapport', document_id: 'd1', excerpts: [{ chunk_id: 'c1', text: 'x' }] },
+    ];
+    await conversations.append(kari, created.id, { role: 'assistant', text: '[1]', sources });
+
+    const stored = (await conversations.messages(kari, created.id))?.at(-1);
+
+    expect(stored).not.toHaveProperty('markers');
+    expect(stored?.sources).toStrictEqual(sources);
+  });
+
   it('pages newest first with tag filters, renames, and refuses other owners', async () => {
     let clock = 1_000_000;
     const conversations = new PostgresConversationStore(
@@ -301,6 +347,7 @@ describe('API keys', () => {
       agents: [AGENT],
       prefix: 'hr_',
       lastFour: 'abcd',
+      createdAt: '2026-10-06T11:00:00.000Z',
     });
 
     const found = await keys.findByDigest(digest(1));
@@ -315,6 +362,9 @@ describe('API keys', () => {
       scopes: ['query'],
       datasets: [],
       agents: [AGENT],
+      prefix: 'hr_',
+      lastFour: 'abcd',
+      createdAt: '2026-10-06T11:00:00.000Z',
     });
     expect(await keys.usage(ORG_A, 'key-ka')).toEqual({
       count: 2,
@@ -349,6 +399,46 @@ describe('API keys', () => {
       service: 'kunnskapsassistenten',
     });
     expect(verified.grants.allowedOverrides).toEqual(['retrieval.*', 'answer.language']);
+  });
+
+  it('keeps the environments a service key may use, and confines the key to them', async () => {
+    const keys = new PostgresApiKeys(runtime);
+    await keys.add({
+      id: 'key-environments',
+      name: 'KA-server med test',
+      digest: apiKeyDigest('gp_environment_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    await keys.add({
+      id: 'key-no-environments',
+      name: 'KA-server',
+      digest: apiKeyDigest('gp_plain_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+    });
+
+    expect((await keys.list(ORG_A)).find((k) => k.id === 'key-environments')).toMatchObject({
+      environments: ['prod', 'test'],
+    });
+    expect((await keys.list(ORG_A)).find((k) => k.id === 'key-no-environments')).not.toHaveProperty(
+      'environments',
+    );
+    expect((await verifyApiKey(keys, 'gp_environment_key')).principal.confinedTo).toEqual({
+      tenant: ORG_A,
+      service: 'kunnskapsassistenten',
+      environments: ['prod', 'test'],
+    });
+    expect(await keys.list(ORG_B)).not.toContainEqual(
+      expect.objectContaining({ id: 'key-environments' }),
+    );
   });
 
   it('keeps the calls per minute of a key', async () => {

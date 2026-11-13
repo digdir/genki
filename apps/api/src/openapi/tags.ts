@@ -52,7 +52,7 @@ const rules: [RegExp, ApiTag][] = [
   ],
   [/^\/tenants\/\{tenant\}\/(datasets|knowledge|catalog)(\/|$)/, 'Datasets and knowledge'],
   [
-    /^\/tenants\/\{tenant\}\/(access|api-keys|api-key-policies|clients|maskinporten-clients|me|integrations|tool-connections|secrets|connectors|private-networks|building-blocks|plugins|hooks)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(access|api-keys|api-key-policies|clients|maskinporten-clients|me|integrations|tool-connections|secrets|connectors|private-networks|building-blocks|plugins|hooks|tracing)(\/|$)/,
     'Access and extensions',
   ],
   [
@@ -60,7 +60,7 @@ const rules: [RegExp, ApiTag][] = [
     'Work and quality',
   ],
   [
-    /^\/tenants\/\{tenant\}\/(definitions|services|skills|skill-tools|step-flows|playground|proposals|settings|pins|export|import)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(definitions|services|service-drafts|skills|skill-tools|step-flows|playground|proposals|settings|pins|export|import)(\/|$)/,
     'Services and definitions',
   ],
   [/^\/(definitions|services|settings|shared-services)(\/|$)/, 'Services and definitions'],

@@ -178,6 +178,9 @@ const settings = {
   panelPinnedLayer: 'Pinned',
   panelNewValue: 'New value here',
   panelCannotHere: 'Cannot be set on this layer',
+  panelSetByDigdir: 'Digdir sets this limit',
+  panelSetByDigdirHelp:
+    'The limit protects the cost and capacity of the platform. Contact Digdir if you need a different value.',
   panelSecretStored: 'Stored in Key Vault. Last replaced 2 October by Jonas Lie.',
   panelSecretNotSet: 'Not set',
   panelNewSecret: 'New value',
@@ -437,6 +440,9 @@ const settingDefs = {
   retrieval_autoFilter_enabled_desc:
     'Finds organisations and years the search names. An agent gets them as a hint and chooses whether to filter. Other services rank hits from them higher without leaving anything out.',
   retrieval_autoFilter_rules_label: 'Rules for the automatic filter',
+  retrieval_autoFilter_aliases_label: 'Other names for values',
+  retrieval_autoFilter_aliases_desc:
+    'Names that mean the same as a value in the dataset, such as an abbreviation. Each entry is a group of names. When the search names one of them, it counts as the value as stored in the dataset.',
   retrieval_docTitle_fanout_label: 'Text chunks per title hit',
   retrieval_merge_mode_label: 'Way of merging the searches',
   retrieval_merge_rrfK_label: 'Smoothing when merging (RRF k)',

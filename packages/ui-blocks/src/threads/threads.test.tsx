@@ -9,8 +9,7 @@ import { Threads, type ThreadsProps } from './Threads.js';
 import type { ThreadItem } from './types.js';
 
 document.getAnimations ??= () => [];
-// jsdom cannot follow a link the block left to the browser, and says so; the test only needs to
-// know the block let it through.
+// jsdom cannot follow a link the block left to the browser; the test only checks it did.
 const stayOnPage = (event: Event) => event.preventDefault();
 document.addEventListener('click', stayOnPage);
 /** Whether the block took each click from the browser, read before the guard above. */
@@ -153,6 +152,36 @@ describe('the thread list', () => {
     draw({ foot: <p>Innlogget som Kari</p> });
     expect(screen.getByText('Innlogget som Kari')).toBeTruthy();
   });
+
+  it('still draws a foot passed under its old name, footer', () => {
+    draw({ footer: <p>Innlogget som Ola</p> });
+    expect(screen.getByText('Innlogget som Ola')).toBeTruthy();
+  });
+
+  it('moves focus to the alert region when a retry that held it succeeds and its button goes', () => {
+    const { rerender } = draw({ threads: undefined, failed: true, onRetry: () => {} });
+    const retry = screen.getByRole('button', { name: 'Prøv igjen' });
+    act(() => retry.focus());
+    fireEvent.click(retry);
+    rerender(<Threads threads={threads} threadHref={href} newThreadHref="/" />);
+    expect(document.activeElement).toBe(screen.getByRole('alert'));
+  });
+
+  it('leaves focus where the host moved it during a retry that succeeds', () => {
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    onTestFinished(() => elsewhere.remove());
+    const { rerender } = draw({
+      threads: undefined,
+      failed: true,
+      onRetry: () => elsewhere.focus(),
+    });
+    const retry = screen.getByRole('button', { name: 'Prøv igjen' });
+    act(() => retry.focus());
+    fireEvent.click(retry);
+    rerender(<Threads threads={threads} threadHref={href} newThreadHref="/" />);
+    expect(document.activeElement).toBe(elsewhere);
+  });
 });
 
 describe('the way to a new thread', () => {
@@ -199,6 +228,23 @@ describe('the way to a new thread', () => {
 });
 
 describe('the search', () => {
+  it('forgets the search when the list empties, so the next thread is shown', () => {
+    const { rerender } = draw();
+    search('Måloppnåelse');
+    rerender(<Threads threads={[]} threadHref={href} newThreadHref="/" />);
+    rerender(
+      <Threads
+        threads={[{ id: 'c', title: 'Helt ny tråd', updatedAt: now }]}
+        threadHref={href}
+        newThreadHref="/"
+      />,
+    );
+    expect(screen.getByText('Helt ny tråd')).toBeTruthy();
+    expect(
+      (screen.getByRole('searchbox', { name: 'Søk i tråder' }) as HTMLInputElement).value,
+    ).toBe('');
+  });
+
   it('is not drawn over a list known to be empty, but stays while it loads', () => {
     const { rerender } = draw({ threads: [] });
     expect(screen.queryByRole('search')).toBeNull();

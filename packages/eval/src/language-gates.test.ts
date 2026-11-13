@@ -8,7 +8,16 @@ const result = (id: string, value: number, language?: 'nb' | 'en') => ({
   task: `t-${id}`,
   tags: [],
   ...(language ? { language } : {}),
-  scores: [{ evaluator: 'retrieval', version: '1', metric: 'recall@10', value, applicable: true }],
+  scores: [
+    {
+      evaluator: 'retrieval',
+      version: '1',
+      metric: 'recall@10',
+      value,
+      applicable: true,
+      state: 'scored' as const,
+    },
+  ],
 });
 
 const runOf = (results: EvalRun['results']): EvalRun => ({
@@ -23,6 +32,7 @@ const runOf = (results: EvalRun['results']): EvalRun => ({
   results,
   metrics: {},
   byTag: {},
+  incomplete: [],
 });
 
 const registry = new Map(

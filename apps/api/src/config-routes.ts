@@ -37,6 +37,7 @@ import type { EngineDescription } from './knowledge-engines.js';
 import { rightRefused, seesUsage, type Right } from './rights.js';
 import type { GateRegistry, GuardrailRuleRegistry, ScopedResult } from './scoped-registry.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import type { DatasetReader } from './dataset-readers.js';
 import { datasetStatus } from './dataset-status.js';
 import { candidateRelease, tenantModelRefusal } from './model-access.js';
 import { effectiveResidency, locationOf } from './residency.js';
@@ -47,6 +48,7 @@ export interface ConfigDeps {
   rules: GuardrailRuleRegistry;
   ingestion: IngestionService;
   testSets: TestSetStore;
+  testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
   engines: () => EngineDescription[];
   adapters: KnowledgeAdapter[];
   writers?: IndexWriterRouter;
@@ -61,6 +63,8 @@ export interface ConfigDeps {
     dataset: string,
     pipeline: string,
   ) => Promise<string | undefined>;
+  gateProblem?: (gate: string, metric: string) => string | undefined;
+  usedBy?: (dataset: string) => Promise<DatasetReader[]>;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -221,7 +225,13 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
         ? { movedBySwitch: true }
         : {}),
     });
-    if (!result.ok) return { ok: false, errors: result.errors, target };
+    if (!result.ok)
+      return {
+        ok: false,
+        errors: result.errors,
+        target,
+        ...(result.conflict ? { conflict: true } : {}),
+      };
     return {
       ok: true,
       value: result.item,
@@ -257,6 +267,9 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     const id = String(input.id);
     const target = `gate:${scope}/${id}`;
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to change this gate');
+    const metric = (input.spec as { metric?: unknown } | undefined)?.metric;
+    const problem = typeof metric === 'string' ? deps.gateProblem?.(id, metric) : undefined;
+    if (problem) return { ok: false, errors: [{ path: 'metric', message: problem }], target };
     const result = await deps.gates.save({
       scope,
       id,
@@ -440,6 +453,12 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     if (!/^[a-z0-9][a-z0-9.-]*$/.test(id))
       return { ok: false, errors: [{ path: 'id', message: 'not a valid id' }], target };
     const current = await deps.testSets.get(tenant, id);
+    if (input.op === 'create' && !current && (await deps.testSetTaken?.(tenant, id)))
+      return {
+        ok: false,
+        errors: [{ path: 'id', message: `test set ${id} already exists` }],
+        target,
+      };
     const next = nextSet(current, input, tenant);
     if (!next.ok) return { ok: false, errors: next.errors, target };
     await deps.testSets.put(next.set);
@@ -900,7 +919,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       ...(location.embedding ? { embeddingResidency: location.embedding.residency ?? null } : {}),
       editable: item.scope === tenant,
       ...status,
-      ...(detail ? { skipped } : {}),
+      ...(detail
+        ? {
+            skipped,
+            usedBy: ((await deps.usedBy?.(item.id)) ?? []).filter((r) => r.tenant === tenant),
+          }
+        : {}),
     };
   };
 

@@ -177,6 +177,9 @@ const settings = defineNamespace({
   panelPinnedLayer: 'Festet',
   panelNewValue: 'Ny verdi her',
   panelCannotHere: 'Kan ikke settes på dette laget',
+  panelSetByDigdir: 'Digdir setter denne grensen',
+  panelSetByDigdirHelp:
+    'Grensen beskytter kostnaden og kapasiteten på plattformen. Ta kontakt med Digdir hvis dere trenger en annen verdi.',
   panelSecretStored: 'Lagret i Key Vault. Sist erstattet 2. oktober av Jonas Lie.',
   panelSecretNotSet: 'Ikke satt',
   panelNewSecret: 'Ny verdi',
@@ -429,6 +432,9 @@ const settingDefs = defineNamespace({
   retrieval_autoFilter_enabled_desc:
     'Finner virksomheter og årstall som søket nevner. En agent får dem som et hint og velger selv om den filtrerer. Andre tjenester løfter treff fra dem høyere opp uten å utelate noe.',
   retrieval_autoFilter_rules_label: 'Regler for automatisk filter',
+  retrieval_autoFilter_aliases_label: 'Andre navn på verdier',
+  retrieval_autoFilter_aliases_desc:
+    'Navn som betyr det samme som en verdi i datasettet, for eksempel en forkortelse. Hver oppføring er en gruppe navn. Når søket nevner ett av dem, gjelder det verdien slik den er lagret i datasettet.',
   retrieval_docTitle_fanout_label: 'Tekstbiter per titteltreff',
   retrieval_merge_mode_label: 'Måte å flette søkene på',
   retrieval_merge_rrfK_label: 'Utjevning ved fletting (RRF k)',

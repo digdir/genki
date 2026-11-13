@@ -1292,7 +1292,7 @@ export class RunMapper {
       ...(tokens === undefined ? {} : { tokens }),
       model,
       blocks: [],
-      ...this.rawOf(data),
+      ...(this.usageShown ? this.rawOf(data) : {}),
     });
     step.blocks = [kv(step)];
     this.steps.push(step);

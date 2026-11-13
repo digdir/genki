@@ -1,8 +1,7 @@
 import { intlLocale, type Format, type Locale } from '@genai/i18n';
 import type { ThreadItem } from './types.js';
 
-// The groups and the row's time count the same calendar days, in the zone the platform formats
-// every time in, so a row never contradicts the heading it sits under.
+// Groups and row times count the same days in the same zone, so they never disagree.
 const timeZone = 'Europe/Oslo';
 const msPerDay = 86_400_000;
 
@@ -61,10 +60,7 @@ const bucketOf = (date: Date, today: CalendarDay): Pick<ThreadGroup, 'id' | 'per
 
 const byId = (a: ThreadItem, b: ThreadItem) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-/**
- * Today, the last 7 days, the last 30 days, the months of this year, then the years, newest
- * first. A thread whose time cannot be read comes last, in a group of its own.
- */
+/** Today, 7 days, 30 days, this year's months, then years; an unreadable time comes last. */
 export const groupThreads = (
   threads: readonly ThreadItem[],
   now: Date = new Date(),
@@ -111,11 +107,7 @@ const clockParts = new Intl.DateTimeFormat('en-GB', {
   hourCycle: 'h23',
 });
 
-/**
- * The clock with a colon, «14:32», in every language. kunnskapsassistenten writes it so in its
- * thread list (`components/threadTime.ts`), and its views are the reference for these blocks
- * (decided 2026-11-03), so the row does not take the platform's «14.32».
- */
+/** The clock with a colon, «14:32», in every language, as kunnskapsassistenten writes it. */
 export const clock = (date: Date) => {
   const parts = clockParts.formatToParts(date);
   const part = (type: Intl.DateTimeFormatPartTypes) =>

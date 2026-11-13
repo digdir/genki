@@ -1628,26 +1628,6 @@
                 },
               },
               {
-                to: 'ui-blocks',
-                label: "The builder's block catalogue, layout rules, templates and a draft's facts",
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'apps/portal/src/screens/services/blocks/BlocksPanel.tsx',
-                  imports: '@genai/ui-blocks',
-                },
-              },
-              {
-                to: 'ui-assembly',
-                label: "The assistant a layout describes, in the builder's try view",
-                kind: 'call',
-                target: 'call',
-                witness: {
-                  file: 'apps/portal/src/screens/services/blocks/TryView.tsx',
-                  imports: '@genai/ui-assembly',
-                },
-              },
-              {
                 to: 'docs-content',
                 label: 'Links on the public pages',
                 kind: 'call',
@@ -1948,25 +1928,25 @@
             status: 'Library',
             packages: ['@genai/ui-blocks'],
             summary:
-              "Shared React components for assistants, such as Approach, Sources and Filter, used by the workspace and the portal builder's preview.",
+              "Shared React components for assistants, such as Approach, Sources and Filter, used by the workspace and later the builder's preview.",
             description:
-              "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the portal builder's preview draws the draft with the same components through ui-assembly. Each component has a page in docs/components.",
+              "A shared React package (ADR 0053) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the builder's preview will draw the draft with the same components. Each component has a page in docs/components.",
             responsibilities: [
               'Draw the components assistants are made from with Designsystemet',
               'Texts in bokmål and English',
               'Accessible status and live updates while the assistant works',
               "Pair an answer's footnotes with the excerpts they cite, both ways",
-              'Every token a block uses can be changed through its own CSS variable',
               "Narrow the documents by the dataset's facets, and show the collection and its documents",
+              "Every token a block's stylesheet reads can be changed through its own CSS variable",
             ],
             files: [
-              'packages/ui-blocks/src/procedure/Procedure.tsx',
+              'packages/ui-blocks/src/approach/Approach.tsx',
               'packages/ui-blocks/src/sources/Sources.tsx',
               'packages/ui-blocks/src/sources/pairing.ts',
+              'packages/ui-blocks/src/document-view/DocumentView.tsx',
               'packages/ui-blocks/src/filter/Filter.tsx',
               'packages/ui-blocks/src/corpus/Corpus.tsx',
               'packages/ui-blocks/src/documents/Documents.tsx',
-              'packages/ui-blocks/src/document-view/DocumentView.tsx',
               'packages/ui-blocks/src/i18n.ts',
             ],
             input: 'Steps, sources, footnotes, counts, facets, documents and state as props',
@@ -1982,7 +1962,7 @@
               },
             ],
             keywords:
-              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes filter utvalg corpus documents dokumenter facets document view dokumentvisning designsystemet react',
+              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning filter utvalg corpus documents dokumenter facets designsystemet react',
             schemas: [],
           },
           {
@@ -2716,7 +2696,11 @@
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
+              "Work knowledge.convert, 2 at once, with the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, and send the waiting records' index jobs (ADR 0042)",
+              'Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation, skipping files it cannot read (ADR 0042)',
+              'Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
+              'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
@@ -2733,6 +2717,7 @@
               'apps/worker/src/knowledge-jobs.ts',
               'apps/worker/src/reconciler.ts',
               'apps/worker/src/knowledge-handlers.ts',
+              'apps/worker/src/conversion-seed.ts',
               'apps/worker/src/heavy-work.ts',
               'apps/worker/src/run-progress.ts',
             ],
@@ -2740,6 +2725,16 @@
             output: 'Results written back to blob storage',
             replaces: [],
             edges: [
+              {
+                to: 'providers-azure-blob',
+                label: "Writes converters' native output to the Blob container",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/main.ts',
+                  imports: '@genai/providers-azure-blob',
+                },
+              },
               {
                 to: 'port-usage',
                 label: 'Polls usage sources into usage buckets',
@@ -3964,6 +3959,7 @@
                             { type: 'array', items: { type: 'string', pattern: '^\\d{9}$' } },
                           ],
                         },
+                        visibility: { type: 'string', enum: ['tenant', 'internal'] },
                         triggers: {
                           default: [],
                           type: 'array',
@@ -4653,6 +4649,9 @@
                     },
                     evaluatorTemperature: { type: 'number', minimum: 0, maximum: 2 },
                     noToolCallRetry: { type: 'boolean' },
+                    noAnswerText: { type: 'string', minLength: 1, maxLength: 500 },
+                    instructionsInAnswer: { type: 'boolean' },
+                    citeBy: { type: 'string', enum: ['document', 'excerpt'] },
                     search: {
                       type: 'object',
                       properties: {
@@ -5371,6 +5370,12 @@
                           exclusiveMinimum: 0,
                           maximum: 9007199254740991,
                         },
+                        aliases: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string' },
+                          additionalProperties: { type: 'array', items: { type: 'string' } },
+                        },
                         cacheTtlMs: {
                           default: 300000,
                           type: 'integer',
@@ -5664,7 +5669,9 @@
               'Source loaders and the ingest pipeline. Document ids are derived with valuehash so they match the ids headless-rag gave the same documents, except folder documents on the knowledge database, whose ids name the owner and a hash of the path from the folder root (ADR 0042).',
             responsibilities: [
               'Kudos, website and folder loaders',
-              'Conversion and chunking',
+              'Conversion and chunking: converters return pages, and chunks on the knowledge database name their file, pages and heading path, with ids from document, file, page and position (ADR 0042)',
+              'Pages from a DoclingDocument (doclingPages, derivation docling-pages 1), with heading levels from section numbers',
+              'Read stored conversions in index jobs instead of converting, and fetch one file of a record for a convert job (storedConverter, Listing.file)',
               'Phrase extraction with a model',
               'The pipeline spec and its sources, shared by the API and the worker',
               {
@@ -5675,14 +5682,20 @@
                 'Document records on the knowledge database':
                   "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
               },
+              "Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)",
             ],
             files: [
+              'packages/ingest/src/throttled-embedder.ts',
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
               'packages/ingest/src/chunking.ts',
               'packages/ingest/src/pipeline-sources.ts',
               'packages/ingest/src/document-records.ts',
+              'packages/ingest/src/converter.ts',
+              'packages/ingest/src/chunk-places.ts',
+              'packages/ingest/src/stored-converter.ts',
+              'packages/ingest/src/docling-pages.ts',
             ],
             input: 'Source config',
             output: 'Documents, chunks and phrases',
@@ -5793,7 +5806,7 @@
               'An eval run invokes the service under test like any caller (ADR 0003). Scores and feedback are kernel events. A judge blocks publishing only once it is calibrated against human labels.',
             responsibilities: [
               'Versioned test sets with locked splits',
-              'Deterministic and model-based evaluators',
+              'Deterministic and model-based evaluators, answering at once or later (evaluator@2)',
               'Publishing gates and feedback',
             ],
             files: [
@@ -5863,6 +5876,7 @@
                   $schema: 'https://json-schema.org/draft/2020-12/schema',
                   type: 'object',
                   properties: {
+                    id: { type: 'string', minLength: 1 },
                     capability: { type: 'string', minLength: 1 },
                     testSet: {
                       type: 'object',
@@ -5946,6 +5960,14 @@
                                       },
                                       answerPattern: { type: 'string' },
                                       referenceAnswer: { type: 'string', minLength: 1 },
+                                      criteria: {
+                                        type: 'object',
+                                        propertyNames: {
+                                          type: 'string',
+                                          pattern: '^[a-z][a-z0-9_]*$',
+                                        },
+                                        additionalProperties: { type: 'string', minLength: 1 },
+                                      },
                                       fields: {
                                         type: 'object',
                                         propertyNames: { type: 'string' },
@@ -6002,6 +6024,9 @@
                       required: ['commit', 'data'],
                       additionalProperties: false,
                     },
+                    sink: { type: 'string', minLength: 1 },
+                    avoidAsJudge: { type: 'array', items: { type: 'string' } },
+                    sinkJudges: { type: 'array', items: {} },
                   },
                   required: ['capability', 'testSet', 'evaluators', 'provenance'],
                   additionalProperties: false,
@@ -6022,6 +6047,10 @@
                       anyOf: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'null' }],
                     },
                     applicable: { type: 'boolean' },
+                    state: {
+                      type: 'string',
+                      enum: ['scored', 'not-applicable', 'pending', 'failed', 'missing'],
+                    },
                     reason: { type: 'string' },
                     details: {
                       type: 'object',
@@ -6029,7 +6058,7 @@
                       additionalProperties: {},
                     },
                   },
-                  required: ['evaluator', 'version', 'metric', 'value', 'applicable'],
+                  required: ['evaluator', 'version', 'metric', 'value', 'applicable', 'state'],
                   additionalProperties: false,
                 },
               },
@@ -6059,6 +6088,7 @@
               'packages/jobs/src/trigger-runs.ts',
               'packages/jobs/src/quota.ts',
               'packages/jobs/src/retention.ts',
+              'packages/jobs/src/trace-deliveries.ts',
               'packages/jobs/src/retention-policy.ts',
               'packages/jobs/src/batch.ts',
               'packages/jobs/src/provider-object-sweep.ts',
@@ -6771,6 +6801,22 @@
                                 '^(?![\\d.]+(?::\\d+)?$)(?=.{1,253}(?::\\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\\d{1,5})?$',
                             },
                           },
+                          settings: {
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^[\\x21-\\x7e](?:[\\x20-\\x7e]{0,254}[\\x21-\\x7e])?$',
+                            },
+                          },
+                          keys: {
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
+                            },
+                          },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -7130,9 +7176,12 @@
                           sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
                           keys: {
                             default: [],
-                            maxItems: 1,
+                            maxItems: 4,
                             type: 'array',
-                            items: { type: 'string', enum: ['connection'] },
+                            items: {
+                              type: 'string',
+                              pattern: '^connection(?:\\.[a-z][a-zA-Z0-9_]{0,31})?$',
+                            },
                           },
                         },
                         required: ['sha256'],
@@ -8581,6 +8630,7 @@
               'packages/port-knowledge/src/router.ts',
               'packages/port-knowledge/src/catalog.ts',
               'packages/port-knowledge/src/records.ts',
+              'packages/port-knowledge/src/conversions.ts',
               'packages/port-knowledge/src/tombstone.ts',
             ],
             input: 'Query + filters',
@@ -8916,6 +8966,7 @@
               'Embedding models from the model catalogue, by API id',
               'Dimension checks and batching',
               "Calls through the kernel gate, which applies the endpoint's egress guard",
+              "A 429's requested wait on the error (retryAfterMs), and the SDK's retries per opened embedder",
             ],
             files: [
               'packages/port-embedding/src/port.ts',
@@ -9054,10 +9105,16 @@
             summary:
               'Stores input and output files, with memory and filesystem implementations and folder watching.',
             description:
-              'Used by batch jobs and the worker; Azure Blob comes later behind the same port.',
-            responsibilities: ['Blob store interface', 'Folder watch for triggers', 'Zip export'],
+              "Used by batch jobs and the worker. Uploads are keyed by tenant; converters' native output has a store of its own, keyed by file sha256 with no tenant (ADR 0042), on a folder locally and on Azure Blob storage through providers-azure-blob.",
+            responsibilities: [
+              'Blob store interface',
+              'Native output store keyed by file sha256, converter, version and settings hash',
+              'Folder watch for triggers',
+              'Zip export',
+            ],
             files: [
               'packages/port-blob/src/port.ts',
+              'packages/port-blob/src/native-output.ts',
               'packages/port-blob/src/filesystem.ts',
               'packages/port-blob/src/watch.ts',
             ],
@@ -9457,17 +9514,17 @@
             status: 'Provider',
             packages: ['@genai/providers-documents'],
             summary:
-              'Local converter that turns PDF, Word, text and HTML files into markdown for ingestion.',
+              'The text layer - the local converter that turns PDF, Word, text and HTML files into markdown per page for ingestion.',
             description:
-              "Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process. Scanned PDFs without text are refused with a typed error so ingestion can skip them with a reason.",
+              "Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process, and returns a conversion with one page per PDF page and one for other types, named text-layer version 1. A scanned PDF converts to empty pages, which ingestion skips as no_text and the knowledge database stores, so a scan is converted once (ADR 0042).",
             responsibilities: [
-              'PDF text layer to markdown',
+              'PDF text layer to markdown, one page per PDF page',
               'Word to markdown',
               'Size limit and typed refusals',
             ],
             files: ['packages/providers-documents/src/index.ts'],
             input: 'File bytes',
-            output: 'Markdown',
+            output: 'Markdown per page',
             edges: [
               {
                 to: 'ingest',
@@ -9846,10 +9903,23 @@
               'Exports task events as OTLP spans to Langfuse, metadata only unless opted in.',
             description:
               'Wraps the event log; content goes out only if the connection opts in and the sink can honour erasure (ADR 0011).',
-            responsibilities: ['Build spans from events', 'Export with content opt-in'],
+            responsibilities: [
+              'Build spans from events',
+              'Export with content opt-in',
+              "Send an eval run's cases to the tenant's connection as one experiment (ADR 0040)",
+              "Delete what genki sent, and the judges' traces made from it",
+              "Read a project's experiment judges and score an eval run with the ones a tenant adopted",
+              'Find or make the empty dataset of a test set, which every span of its sent runs names',
+              "Read each rule's filters to tell whether it skips, judges or refuses a run of a test set",
+            ],
             files: [
               'packages/providers-langfuse/src/exporter.ts',
               'packages/providers-langfuse/src/spans.ts',
+              'packages/providers-langfuse/src/experiment.ts',
+              'packages/providers-langfuse/src/sink.ts',
+              'packages/providers-langfuse/src/judges.ts',
+              'packages/providers-langfuse/src/datasets.ts',
+              'packages/providers-langfuse/src/filters.ts',
             ],
             input: 'Kernel events',
             output: 'OTLP spans',
@@ -9863,6 +9933,16 @@
                 witness: {
                   file: 'packages/providers-langfuse/src/config.ts',
                   imports: '@genai/kernel',
+                },
+              },
+              {
+                to: 'eval',
+                label: 'Evaluator contract: Langfuse judges as built-in evaluators',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-langfuse/src/judges.ts',
+                  imports: '@genai/eval',
                 },
               },
               {
@@ -9925,6 +10005,10 @@
                       ],
                     },
                     content: { default: false, type: 'boolean' },
+                    fields: {
+                      type: 'array',
+                      items: { type: 'string', enum: ['input', 'output', 'expected_output'] },
+                    },
                     sampleRate: { default: 1, type: 'number', minimum: 0, maximum: 1 },
                     environment: { type: 'string', minLength: 1 },
                     pseudonymKey: {
@@ -10134,7 +10218,8 @@
             responsibilities: [
               'Install, migrate and grant schema pgboss',
               'Send, work, schedule, cancel and redrive jobs',
-              'Queue counts and dead letters behind platform access',
+              'Queue counts and dead letters behind platform access; a job shared by several organisations shows each only its own part',
+              "Jobs by key for the knowledge server - add an organisation, count, cancel and hand over under a conversion's lock",
               "A run's jobs on one server, for the reconciler",
             ],
             files: ['packages/providers-pgboss/src/index.ts'],
@@ -10179,6 +10264,7 @@
               'Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)',
               'A per-generation advisory lock that writers take shared and VACUUM exclusively',
               'Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample',
+              'Stored conversions on the knowledge server - pages per file, converter and derivation, and the records waiting on them (ADR 0042)',
             ],
             files: [
               'packages/providers-pgvector/src/engine.ts',
@@ -10191,6 +10277,7 @@
               'packages/providers-pgvector/src/read-functions.ts',
               'packages/providers-pgvector/src/knowledge-records.ts',
               'packages/providers-pgvector/src/heavy-work.ts',
+              'packages/providers-pgvector/src/knowledge-conversions.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',
@@ -10251,6 +10338,41 @@
               },
             ],
             keywords: 'parquet hugging face open data file reader hyparquet',
+            schemas: [],
+          },
+          {
+            id: 'providers-azure-blob',
+            plane: 'providers',
+            name: 'Azure Blob conversions',
+            note: 'Blob container',
+            icon: 'source',
+            color: '#8fa8b3',
+            status: 'Provider',
+            packages: ['@genai/providers-azure-blob'],
+            summary: "Keeps converters' native output in the Blob container `conversions`.",
+            description:
+              "Implements the native output container of the Blob port on Azure Blob storage (ADR 0042), with the knowledge worker's managed identity through DefaultAzureCredential and never an account key or SAS token. Without `CONVERSIONS_BLOB_URL` the worker uses a folder under `DATA_DIR` instead. The container deletes an earlier version 30 days after it was written.",
+            responsibilities: [
+              'Write, read, list and delete blobs in the conversions container',
+              'Choose Azure or the local folder from the environment',
+            ],
+            files: ['packages/providers-azure-blob/src/container.ts'],
+            input: 'Conversion paths and bytes',
+            output: 'Stored native output',
+            replaces: [],
+            edges: [
+              {
+                to: 'port-blob',
+                label: 'Implements the native output container',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-azure-blob/src/container.ts',
+                  imports: '@genai/port-blob',
+                },
+              },
+            ],
+            keywords: 'azure blob storage conversions docling native output sha256',
             schemas: [],
           },
           {

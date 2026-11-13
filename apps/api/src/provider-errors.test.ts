@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Event, Principal } from '@genai/contracts';
 import { descriptorRegistry, loadDescriptors, parseDescriptor } from '@genai/operations';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
-import { bootPlatform, digdir } from './testkit.js';
+import { bootPlatform, digdir, readJson } from './testkit.js';
 import { toTimeline } from './timeline.js';
 
 const replyYaml = (id: string, output: string, result: string) => `
@@ -37,6 +37,21 @@ usage:
 stream: none
 `;
 
+const countedYaml = replyYaml('counted', '{ object: { text: text } }', '{ text: $response.text }')
+  .replace(
+    '      text: text\nresult:',
+    `      text: text
+      usage:
+        object:
+          input_tokens: { number: { integer: true, min: 0 } }
+          output_tokens: { number: { integer: true, min: 0 } }
+result:`,
+  )
+  .replace(
+    'usage:\n  requests: 1',
+    'usage:\n  input-token: $response.usage.input_tokens\n  output-token: $response.usage.output_tokens\n  request: 1',
+  );
+
 const caller: Principal = {
   kind: 'agency-system',
   issuer: 'test',
@@ -45,9 +60,26 @@ const caller: Principal = {
   scopes: ['legacy:query'],
 };
 
+const employee = (subject: string, actions: string[]): Principal => ({
+  kind: 'employee',
+  issuer: 'test',
+  subject,
+  tenant: digdir,
+  authorizedFor: [{ org: digdir, actions }],
+});
+
 const people: Record<string, Principal> = {
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
   saksbehandling: caller,
+  forvalter: employee('forvalter', ['use-services', 'manage-services']),
+  bruker: {
+    ...caller,
+    subject: 'bruker',
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
+  leser: employee('leser', ['use-services']),
+  okonomi: employee('okonomi', ['use-services', 'manage-services', 'view-usage']),
+  frontend: { ...caller, subject: 'frontend', confinedTo: { tenant: digdir, service: 'reply' } },
 };
 
 const servers: FakeServer[] = [];
@@ -68,6 +100,7 @@ const boot = async (reply: () => FakeReply) => {
       ...loadDescriptors().list(),
       parseDescriptor(replyYaml('reply', '{ object: { text: text } }', '{ text: $response.text }')),
       parseDescriptor(replyYaml('say', 'text', '$response.text')),
+      parseDescriptor(countedYaml),
     ]),
     models: {
       endpoints: {
@@ -84,12 +117,12 @@ const boot = async (reply: () => FakeReply) => {
           deployment: 'small',
           residency: 'norway',
           capabilities: ['json-schema'],
-          operations: ['chat', 'reply', 'say'],
+          operations: ['chat', 'reply', 'say', 'counted'],
         },
       ],
     },
   });
-  for (const kind of ['reply', 'say'])
+  for (const kind of ['reply', 'say', 'counted'])
     expect(
       (
         await booted.send(`/operator/operation-kinds/${kind}/maturity`, 'drift', {
@@ -172,8 +205,8 @@ const ask = async (booted: Booted, model: string) => {
   return { task: response.headers.get('genai-task') ?? '', text: await response.text() };
 };
 
-const failedRun = async ({ platform }: Booted, model: string) => {
-  const started = await platform.kernel.invoke(caller, `${digdir}/${model.replace('__', '/')}`, {
+const failedRun = async ({ platform }: Booted, model: string, by = caller) => {
+  const started = await platform.kernel.invoke(by, `${digdir}/${model.replace('__', '/')}`, {
     data: { query: 'Hva er klokka?' },
   });
   await started.result.catch(() => undefined);
@@ -269,5 +302,107 @@ describe('a flow that ends on a non-streamed call-operation step', () => {
     const booted = await boot(() => ({ status: 200, json: { text: answer } }));
     const { text } = await ask(booted, await publish(booted, 'example/say@1'));
     expect(contentOf(text)).toBe(answer);
+  });
+});
+
+describe('the run timeline route', () => {
+  const tooLong = 'question is too long';
+  const timelineOf = async (booted: Booted, task: string, as: string) =>
+    booted.send(`/tenants/${digdir}/tasks/${task}/timeline`, as);
+  const errorStep = (timeline: { steps: { type: string; blocks: unknown[] }[] }) =>
+    timeline.steps.find((s) => s.type === 'error');
+
+  it("GET /tenants/{t}/tasks/{id}/timeline shows a service manager the provider's status and body for a run that failed on a provider 400", async () => {
+    const booted = await boot(() => ({ status: 400, text: tooLong }));
+    const task = await failedRun(booted, await publish(booted, 'example/reply@1'));
+
+    const res = await timelineOf(booted, task, 'forvalter');
+
+    expect(res.status).toBe(200);
+    expect(errorStep(await readJson(res))?.blocks).toContainEqual({
+      kind: 'quote',
+      label: 'Leverandøren svarte 400',
+      text: tooLong,
+    });
+  });
+
+  it("GET /tenants/{t}/tasks/{id}/timeline keeps the provider's status, body and error message from a caller without manage-services", async () => {
+    const booted = await boot(() => ({ status: 400, text: tooLong }));
+    const task = await failedRun(
+      booted,
+      await publish(booted, 'example/reply@1'),
+      people.bruker as Principal,
+    );
+
+    const own = await timelineOf(booted, task, 'bruker');
+    const text = await own.text();
+
+    expect(own.status).toBe(200);
+    expect(errorStep(JSON.parse(text) as never)?.blocks).toEqual([]);
+    expect(text).not.toContain(tooLong);
+    expect(text).not.toContain('Leverandøren');
+    expect((await timelineOf(booted, task, 'leser')).status).toBe(403);
+  });
+
+  it('GET /tenants/{t}/tasks/{id}/timeline counts the tokens of each model call once in its stats', async () => {
+    const booted = await boot(() => ({
+      status: 200,
+      json: { text: 'Klokka er tolv.', usage: { input_tokens: 12, output_tokens: 3 } },
+    }));
+    const { task } = await ask(booted, await publish(booted, 'example/counted@1'));
+
+    const timeline = await readJson<{ inputTokens: number; stats: Record<string, unknown> }>(
+      await timelineOf(booted, task, 'okonomi'),
+    );
+
+    expect(timeline.inputTokens).toBe(12);
+    expect(timeline.stats).toMatchObject({
+      inputTokens: 12,
+      outputTokens: 3,
+      byModel: [{ model: 'lab/small', inputTokens: 12, outputTokens: 3, calls: 1 }],
+    });
+  });
+  it('GET /tenants/{t}/tasks/{id}/timeline refuses a service-bound key, for its own run and for runs in its service and in another service', async () => {
+    const booted = await boot(() => ({ status: 400, text: tooLong }));
+    const reply = await publish(booted, 'example/reply@1');
+    const say = await publish(booted, 'example/say@1');
+    const bruker = people.bruker as Principal;
+    const runs = [
+      await failedRun(booted, reply, people.frontend as Principal),
+      await failedRun(booted, reply, bruker),
+      await failedRun(booted, say, bruker),
+    ];
+
+    for (const task of runs) expect((await timelineOf(booted, task, 'frontend')).status).toBe(401);
+    expect((await booted.send(`/tenants/${digdir}/tasks`, 'frontend')).status).toBe(401);
+  });
+
+  it('GET /tenants/{t}/tasks/{id}/timeline shows a service manager the question of a run they did not start, as the run list already does', async () => {
+    const booted = await boot(() => ({ status: 400, text: tooLong }));
+    const task = await failedRun(
+      booted,
+      await publish(booted, 'example/reply@1'),
+      people.bruker as Principal,
+    );
+
+    const timeline = await timelineOf(booted, task, 'forvalter');
+    const runs = await booted.send(`/tenants/${digdir}/tasks`, 'forvalter');
+
+    expect(timeline.status).toBe(200);
+    expect(await timeline.text()).toContain('Hva er klokka?');
+    expect(await runs.text()).toContain('Hva er klokka?');
+  });
+
+  it('GET /tenants/{t}/tasks/{id}/timeline refuses a machine principal without a grant, also for its own run', async () => {
+    const booted = await boot(() => ({ status: 400, text: tooLong }));
+    const reply = await publish(booted, 'example/reply@1');
+    const runs = [
+      await failedRun(booted, reply),
+      await failedRun(booted, reply, people.bruker as Principal),
+    ];
+
+    for (const task of runs)
+      expect((await timelineOf(booted, task, 'saksbehandling')).status).toBe(403);
+    expect((await booted.send(`/tenants/${digdir}/tasks`, 'saksbehandling')).status).toBe(403);
   });
 });

@@ -35,7 +35,7 @@ export const nbFilter = defineNamespace({
   stateYears: { one: '{count} år valgt', other: '{count} år valgt' },
   // The name of the button that opens a field's list. Designsystemet's own is «Valg», in bokmål only.
   listToggle: 'Valg',
-  overLimit: 'Høyst {max} kan brukes i ett felt, og {count} er valgt. Fjern noen, eller velg alle.',
+  overLimit: 'Velg høyst {max}, eller alle unntatt høyst {max}. Nå er {count} av {total} valgt.',
   searchIn: 'Søk i {field}',
   noMatches: 'Ingen treff',
   allChosen: 'Alle {total} {field} er valgt.',
@@ -49,8 +49,9 @@ export const nbFilter = defineNamespace({
   yearNotPeriod:
     'Ikke et år eller en periode. Skriv et år eller en periode, som 2021 eller 2023–2028.',
   yearAlreadyChosen: '{period} er alt valgt.',
-  // u-combobox's texts for the chosen values, which Designsystemet leaves in English. `%d` is
-  // u-combobox's own placeholder for the count.
+  yearNoneIn: 'Ingen dokumenter i {period}.',
+  periodYears: { one: '{count} år med dokumenter', other: '{count} år med dokumenter' },
+  // u-combobox's texts for chosen values, which Designsystemet leaves in English; `%d` counts.
   srItems: 'Valgte verdier',
   srEmpty: 'Ingen verdier er valgt',
   srFound: '%d valgt, naviger bakover for å endre',
@@ -62,6 +63,27 @@ export const nbFilter = defineNamespace({
   srOf: 'av',
   srRemove: 'Trykk for å fjerne fra {field}',
   srRemoveAll: 'Trykk for å fjerne alle fra {field}',
+  // The `panel` variant, the dev boards' filter beside the threads.
+  clearAll: 'Fjern alle filtre',
+  clearedAll: 'Alle filtre er fjernet.',
+  all: 'Alle',
+  allYears: 'Alle år',
+  appliesNext: 'Gjelder neste spørsmål',
+  // The filter in an answer and under the field, its values in the words of the rows.
+  changed: 'filteret er endret',
+  readFrom: { one: 'Leste fra {count} dokument', other: 'Leste fra {count} dokumenter' },
+  readFromNarrowed: {
+    one: 'Leste fra {count} dokument:',
+    other: 'Leste fra {count} dokumenter:',
+  },
+  readFromUncounted: 'Avgrenset til:',
+  inAnswer: 'Filteret dette svaret bygger på',
+  next: {
+    one: 'Neste spørsmål leser fra {count} dokument',
+    other: 'Neste spørsmål leser fra {count} dokumenter',
+  },
+  nextWhere: 'endres i filteret til venstre',
+  nextLine: '{reads} – {where}',
 });
 
 export const enFilter = {
@@ -94,8 +116,7 @@ export const enFilter = {
   stateSome: '{count} of {total} selected',
   stateYears: { one: '{count} year selected', other: '{count} years selected' },
   listToggle: 'Options',
-  overLimit:
-    'At most {max} can be used in one field, and {count} are selected. Remove some, or select all.',
+  overLimit: 'Select at most {max}, or all but at most {max}. {count} of {total} are selected now.',
   searchIn: 'Search {field}',
   noMatches: 'No matches',
   allChosen: 'All {total} {field} are selected.',
@@ -108,6 +129,8 @@ export const enFilter = {
   yearHint: 'Type a year or a period, such as 2021 or 2023–2028',
   yearNotPeriod: 'Not a year or a period. Type a year or a period, such as 2021 or 2023–2028.',
   yearAlreadyChosen: '{period} is already selected.',
+  yearNoneIn: 'No documents in {period}.',
+  periodYears: { one: '{count} year with documents', other: '{count} years with documents' },
   srItems: 'Selected values',
   srEmpty: 'No values are selected',
   srFound: '%d selected, navigate back to change',
@@ -119,13 +142,25 @@ export const enFilter = {
   srOf: 'of',
   srRemove: 'Press to remove from {field}',
   srRemoveAll: 'Press to remove all from {field}',
+  clearAll: 'Remove all filters',
+  clearedAll: 'All filters are removed.',
+  all: 'All',
+  allYears: 'All years',
+  appliesNext: 'Applies to the next question',
+  changed: 'the filter has changed',
+  readFrom: { one: 'Read from {count} document', other: 'Read from {count} documents' },
+  readFromNarrowed: { one: 'Read from {count} document:', other: 'Read from {count} documents:' },
+  readFromUncounted: 'Limited to:',
+  inAnswer: 'The filter this answer builds on',
+  next: {
+    one: 'The next question reads from {count} document',
+    other: 'The next question reads from {count} documents',
+  },
+  nextWhere: 'change it in the filter on the left',
+  nextLine: '{reads} – {where}',
 } satisfies Translation<typeof nbFilter>;
 
-/**
- * The filter's own catalogue. It stays out of the package's shared one, so a host that imports
- * another block, such as Approach, does not load these words. A block that borrows them puts this
- * namespace in its own catalogue.
- */
+/** The filter's own catalogue, apart from the shared one, so a host loads only its words. */
 export const nb = defineCatalogue({ filter: nbFilter });
 export const en = { filter: enFilter } satisfies Translation<typeof nb>;
 

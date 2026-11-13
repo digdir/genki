@@ -8,8 +8,7 @@ import { Sources } from './Sources.js';
 
 afterEach(cleanup);
 
-// Real Kudos chunks, cut short, as Marker converted them; the id in each comment is
-// doc_num/chunk_index. The cases are those of KA's readableText tests.
+// Real Kudos chunks as Marker left them, cut short; each comment's id is doc_num/chunk_index.
 
 /** 372017/1: Marker's page marker between two paragraphs. */
 const PAGE_BREAK =
@@ -51,8 +50,7 @@ const shown = (markdown: string) =>
     .join('\n\n');
 
 describe('excerptMarkdown, headings as Marker gives them', () => {
-  // KA cleans the heading path from chunk metadata; the contract's excerpts have no
-  // path, so the same rules are pinned on heading lines in the text, drawn as lines.
+  // Excerpts carry no heading path, so KA's heading rules are pinned on heading lines here.
   it('drops the page anchor and keeps the heading as a line of its own', () => {
     const container = drawn(
       '# DFØs årsrapport 2024\n## <span id="page-4-0"></span>**1 Leders beretning**',
@@ -451,9 +449,7 @@ describe('excerptMarkdown, what the corpus of 3 November found', () => {
     expect(excerptMarkdown('Tekst.\n\n12 | Årsrapport 2023')).toBe('Tekst.');
   });
 
-  // Measured live: excerpts 2 and 3 of Nkom's 2020 report ended in a
-  // running head that had crossed a page break — two pages' feet on one line, the page numbers in
-  // bold and the title repeated.
+  // Two pages' feet on one line, as in Nkom's 2020 report: numbers in bold, the title twice.
   it('drops a running head that crossed a page break, numbers in bold and title repeated', () => {
     const head =
       '**42** | Nkom årsrapport 2020 Nkom årsrapport 2020 | **43 42** | Nkom årsrapport 2020';
@@ -479,14 +475,12 @@ describe('excerptMarkdown, what the corpus of 3 November found', () => {
     expect([
       // No page number anywhere: a two-column line of prose.
       excerptMarkdown('Kapittel A | kapittel B | kapittel C'),
-      // Numbers only, so there is no running title to go with them — one per cell, and two
-      // in a cell, which is the shape a page break glues together.
+      // Numbers only, with no running title: one per cell, and two glued by a page break.
       excerptMarkdown('42 | 43 | 44'),
       excerptMarkdown('42 | 43 42'),
       // A cell longer than a running head ever is.
       excerptMarkdown(`${long} | 42`),
-      // A row of figures that lost its outer pipes. Two pages of a report are a page apart,
-      // never a hundred, so these numbers are amounts and the line stays.
+      // A row of figures without its outer pipes: numbers far apart are amounts, not pages.
       excerptMarkdown('Husleie | 3 024 010 | 2 900 000'),
       excerptMarkdown('Årsverk | 158 | 162'),
     ]).toEqual([
@@ -612,5 +606,88 @@ describe('Sources, cleaning every excerpt', () => {
         name: 'Årsrapport Direktoratet for forvaltning og økonomistyring 2024',
       }),
     ).toBeTruthy();
+  });
+});
+
+describe('excerptMarkdown on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const N = 100_000;
+
+  it('drops scripts and styles in linear time when no closing tag comes', () => {
+    for (const text of ['<script>'.repeat(N), '<style>'.repeat(N), '<script'.repeat(N)]) {
+      expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    }
+    expect(excerptMarkdown('<script>'.repeat(3))).toBe('');
+  });
+
+  it('keeps an unclosed comment as text, in linear time', () => {
+    const text = '<!--'.repeat(N);
+    expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    expect(excerptMarkdown('<!--'.repeat(3))).toBe('<!--<!--<!--');
+  });
+
+  it('keeps brackets with no link as text, in linear time', () => {
+    for (const text of ['['.repeat(N), `${'['.repeat(N)}a](${'x'.repeat(N)}`]) {
+      expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    }
+    expect(excerptMarkdown('[[[a](xxx')).toBe('[[[a](xxx');
+  });
+
+  it('keeps images with no address as text, in linear time', () => {
+    const text = `${'!['.repeat(N)}a](${'x'.repeat(N)}`;
+    expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    expect(excerptMarkdown('![![![a](xxx')).toBe('![![![a](xxx');
+  });
+
+  it('raises the footnote marks in a long table cell in linear time', () => {
+    const text = `| ${'a1) '.repeat(N)}|`;
+    expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    expect(excerptMarkdown('| a1) a1) a1) |')).toBe('a¹⁾ a¹⁾ a¹⁾');
+  });
+
+  it('reads sup and sub in linear time when no closing tag comes', () => {
+    const text = '<sup>x'.repeat(N);
+    expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    expect(excerptMarkdown('<sup>x<sup>x<sup>x')).toBe('xxx');
+  });
+
+  it('reads a heading in linear time on a long run of spaces inside it', () => {
+    const text = `# a${' '.repeat(N)}x`;
+    expect(quickly(() => excerptMarkdown(text))).toBeLessThan(1000);
+    expect(excerptMarkdown(text)).toBe('a x');
+  });
+});
+
+describe('headingText on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const N = 100_000;
+
+  it('keeps emphasis that never closes as text, in linear time', () => {
+    for (const mark of ['**a ', ' __a ', '~~a ']) {
+      expect(quickly(() => headingText(mark.repeat(N)))).toBeLessThan(1000);
+    }
+    expect(headingText('**a **a **a ')).toBe('**a **a **a');
+  });
+
+  it('keeps links and images that never close as text, in linear time', () => {
+    for (const text of ['[a]('.repeat(N), '['.repeat(N), '!['.repeat(N)]) {
+      expect(quickly(() => headingText(text))).toBeLessThan(1000);
+    }
+    expect(headingText('[a]([a]([a](')).toBe('[a]([a]([a](');
+  });
+
+  it('drops tags that never close in linear time', () => {
+    for (const text of ['<sup>a'.repeat(N), '<script>'.repeat(N), '<!--'.repeat(N)]) {
+      expect(quickly(() => headingText(text))).toBeLessThan(1000);
+    }
+    expect(headingText('<sup>a<sup>a<sup>a')).toBe('aaa');
   });
 });

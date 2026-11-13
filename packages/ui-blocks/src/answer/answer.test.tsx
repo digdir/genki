@@ -363,7 +363,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     render(<Host cites="documents" />);
     expect(footnotes()).toEqual([]);
     expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
-    expect(screen.queryAllByRole('link', { name: /fotnote \d|i Kilder$/i })).toEqual([]);
+    expect(screen.queryAllByRole('link', { name: /(?:fotnote \d.*|i Kilder)$/i })).toEqual([]);
     expect(screen.getByRole('link', { name: nkom.title })).toBeTruthy();
     expect(screen.getByRole('link', { name: tildeling.title })).toBeTruthy();
   });
@@ -818,6 +818,30 @@ describe('the answer as copied', () => {
     );
   });
 
+  it('copies [N] inside code as written, since code is drawn without footnotes', () => {
+    const markdown = 'Kjør `items[1]` først [1].\n\n```\nx[1] = 2\n```';
+    expect(answerCopy(markdown, { sources }).text).toContain('Kjør items[1] først.\n\nx[1] = 2');
+    expect(answerCopy(markdown, { sources, markers }).text).toContain(
+      'Kjør items[1] først [1].\n\nx[1] = 2',
+    );
+    expect(finishedText(`${markdown}\n\nslutt`)).toBe('Kjør items[1] først.\n\nx[1] = 2');
+  });
+
+  it('copies two markers the screen draws as one footnote as that one footnote', () => {
+    const twins = [
+      ...markers,
+      { marker: '4', chunkId: 'kudos::2022-1', documentId: 'kudos::2022' },
+    ];
+    const body = (answer: string) =>
+      answerCopy(answer, { sources, markers: twins }).text.split('\n\nKilder')[0];
+    expect(body('Samme utdrag [1] [4].')).toBe('Samme utdrag [1].');
+    expect(body('Samme utdrag [1][4] og [1]\t[1].')).toBe('Samme utdrag [1] og [1].');
+    // Apart, they are two footnotes on the screen and on the clipboard.
+    expect(body('Først [1], så [4].')).toBe('Først [1], så [1].');
+    draw({ text: 'Samme utdrag [1] [4].', markers: twins });
+    expect(footnotes()).toHaveLength(1);
+  });
+
   it('writes the reference list in the reader’s language', () => {
     expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
       'Sources\n[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2022).',
@@ -825,6 +849,38 @@ describe('the answer as copied', () => {
     expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
       ', p. 12 (2022).',
     );
+  });
+});
+
+describe('the answer on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const blanks = ' '.repeat(100_000);
+
+  it('reads the service’s message for a closing «Prøv igjen» in linear time', () => {
+    for (const message of [`${blanks}x`, `Prøv igjen${blanks}x`]) {
+      cleanup();
+      expect(
+        quickly(() => draw({ status: 'failed', text: '', failure: { kind: 'model', message } })),
+      ).toBeLessThan(1000);
+    }
+    cleanup();
+    draw({
+      status: 'failed',
+      text: '',
+      failure: { kind: 'model', message: 'Feil.  Try again !.' },
+    });
+    expect(screen.getByText(/^Feil\. Dokumentene/)).toBeTruthy();
+  });
+
+  it('drops the blanks at the end of each copied line in linear time', () => {
+    const line = `x${blanks}y`;
+    expect(quickly(() => answerCopy(line, {}))).toBeLessThan(1000);
+    expect(quickly(() => finishedText(`${line}\n\nslutt`))).toBeLessThan(1000);
+    expect(answerCopy('x \t\ny  ', {}).text).toBe('x\ny');
   });
 });
 
@@ -851,5 +907,129 @@ describe('the catalogue', () => {
     expect(sharedNb).not.toHaveProperty('answer');
     // The words it shares with Sources are Sources' own, not a copy.
     expect(nb.sources).toBe(sourcesNb.sources);
+  });
+});
+
+describe('the dev boards’ answer, `variant="plain"` (dev-kilder-hoyre)', () => {
+  it('draws no card around the answer, which the default still does', () => {
+    draw({ variant: 'plain' });
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
+    cleanup();
+    draw();
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(false);
+  });
+
+  it('counts the documents in «Kilder brukt i svaret»’s bar and numbers them, with no excerpt line', () => {
+    draw({ variant: 'plain' });
+    const summary = document.querySelector('.uib-answer-sources-used summary');
+    expect(summary?.textContent).toBe('Kilder· 2 brukt i svaret');
+    // A plain box under its tinted bar, as the board draws it.
+    expect(
+      document.querySelector('.uib-answer-sources-used-card')?.getAttribute('data-variant'),
+    ).toBe('default');
+    const list = document.querySelector('.uib-answer-sources-used-list');
+    expect(list?.tagName).toBe('OL');
+    expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([
+      'Tildelingsbrev Nkom 2022',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    ]);
+  });
+});
+
+describe('marks per document until a service cites excerpts, `documentFootnotes`', () => {
+  // Without markers, [N] is the source with index N: the model cites the second document first.
+  const byDocuments = 'Bevilgningen økte [2]. Rapporteringen er fast [1], som før [2].';
+  const documentMarks = () =>
+    [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].map((mark) => [
+      mark.getAttribute('aria-label'),
+      mark.textContent,
+    ]);
+
+  it('draws a mark per cited document, numbered 1, 2, 3 in the order the answer first cites them', () => {
+    render(<Answer text={byDocuments} sources={sources} documentFootnotes />);
+    expect(documentMarks()).toEqual([
+      ['Kilde 1: Tildelingsbrev Nkom 2022', '[1]'],
+      ['Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021', '[2]'],
+      ['Kilde 1: Tildelingsbrev Nkom 2022', '[1]'],
+    ]);
+  });
+
+  it('leads a mark to its document, not to an excerpt of it, without following the address', () => {
+    const onOpenCitation = vi.fn();
+    render(
+      <Answer
+        text={byDocuments}
+        sources={sources}
+        documentFootnotes
+        onOpenCitation={onOpenCitation}
+        href={(target) => `#kilde-${target.documentId ?? ''}`}
+      />,
+    );
+    const second = screen.getByRole('link', { name: /^Kilde 2: / });
+    expect(second.getAttribute('href')).toBe('#kilde-kudos::2021');
+    expect(fireEvent.click(second)).toBe(false);
+    expect(onOpenCitation).toHaveBeenCalledWith(1, { documentId: 'kudos::2021', index: 1 });
+  });
+
+  it('lists the documents under the answer in the order of their marks', () => {
+    render(<Answer text={byDocuments} sources={sources} documentFootnotes variant="plain" />);
+    const list = document.querySelector('.uib-answer-sources-used-list');
+    expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([
+      'Tildelingsbrev Nkom 2022',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    ]);
+  });
+
+  it('keeps one number per excerpt when the service cites excerpts', () => {
+    draw({ documentFootnotes: true });
+    expect(footnotes().map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Utdrag 1: Tildelingsbrev Nkom 2022',
+      'Utdrag 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Utdrag 3: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Utdrag 1: Tildelingsbrev Nkom 2022',
+    ]);
+  });
+
+  it('draws no mark for a document without it', () => {
+    render(<Answer text={byDocuments} sources={sources} />);
+    expect(document.querySelector('.uib-answer-mark')).toBeNull();
+  });
+
+  it('copies the marks as drawn, with a numbered line per document in the order of the marks', () => {
+    const copied = answerCopy(byDocuments, { sources, documentFootnotes: true });
+    expect(copied.sources).toBe(2);
+    expect(copied.text).toBe(
+      [
+        'Bevilgningen økte [1]. Rapporteringen er fast [2], som før [1].',
+        '',
+        'Kilder',
+        '[1] Tildelingsbrev Nkom 2022.',
+        '[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021',
+      ].join('\n'),
+    );
+  });
+
+  it('pairs with Sources: a mark lands on its document, which Sources opens with a way back', async () => {
+    const onReturn = vi.fn();
+    const Pair = () => {
+      const [target, setTarget] = useState<SourceTarget>();
+      const citations = useMemo(() => answerCitations(byDocuments, sources), []);
+      return (
+        <>
+          <Answer
+            text={byDocuments}
+            sources={sources}
+            documentFootnotes
+            onOpenCitation={(_, goal) => setTarget(goal)}
+          />
+          <Sources sources={sources} citations={citations} target={target} onReturn={onReturn} />
+        </>
+      );
+    };
+    render(<Pair />);
+    fireEvent.click(screen.getAllByRole('link', { name: /^Kilde 1: / })[0] as HTMLElement);
+    await frame();
+    expect(document.activeElement?.textContent).toBe(tildeling.title);
+    expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
   });
 });

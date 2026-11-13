@@ -71,6 +71,11 @@ export const nbSources = defineNamespace({
   detailPart: 'del {n}',
   search: 'Søk i kildene',
   searchPlaceholder: 'Søk',
+  // The `tool` variant's search and the caption over its list, the dev boards' words.
+  searchExcerpts: 'Søk i utdragene',
+  excerptsCaption: 'Utdrag svaret bygger på',
+  otherSources: 'Andre kilder som ble lest ({count})',
+  otherSourcesList: 'Andre kilder som ble lest',
   clearSearch: 'Tøm søket',
   searchMin: 'Skriv minst {n} tegn',
   searchNone: 'Ingen treff',
@@ -152,6 +157,10 @@ export const enSources = {
   detailPart: 'part {n}',
   search: 'Search the sources',
   searchPlaceholder: 'Search',
+  searchExcerpts: 'Search the excerpts',
+  excerptsCaption: 'Excerpts the answer builds on',
+  otherSources: 'Other sources that were read ({count})',
+  otherSourcesList: 'Other sources that were read',
   clearSearch: 'Clear the search',
   searchMin: 'Type at least {n} characters',
   searchNone: 'No matches',
@@ -162,11 +171,7 @@ export const enSources = {
   nextHit: 'Next match',
 } satisfies Translation<typeof nbSources>;
 
-/**
- * Sources' own catalogue. It stays out of the package's shared one, so a host that imports another
- * block, such as Approach, does not load these words. A block that borrows them, as the answer
- * does, puts this namespace in its own catalogue.
- */
+/** Sources' own catalogue, apart from the shared one, so a host loads only its blocks' words. */
 export const nb = defineCatalogue({ sources: nbSources });
 export const en = { sources: enSources } satisfies Translation<typeof nb>;
 

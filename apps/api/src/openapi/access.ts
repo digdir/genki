@@ -71,6 +71,11 @@ const ApiKey = z
     name: z.string(),
     service: z.string().nullable().describe('Set when the key is bound to one service.'),
     client: z.string().nullable(),
+    environments: z
+      .array(z.string())
+      .describe(
+        'Service environments the key may use; empty means any, with prod when no GenAI-Environment is sent.',
+      ),
     lastUsedAt: z.string().nullable(),
     policy: z.string().nullable().describe('Id of the key policy attached to the key.'),
     rotatedFrom: z.string().nullable(),
@@ -82,8 +87,30 @@ const ApiKey = z
     callsPerMinute: z.number().int(),
     allowedOverrides: z.array(z.string()),
     createdAt: z.string().nullable(),
+    createdBy: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        'Who created or last rotated the key, as in the audit log. Listed only for callers with manage-services; null for keys from before it was recorded.',
+      ),
+    createdByName: z
+      .string()
+      .optional()
+      .describe('The name of that person, when the platform knows it.'),
+    modelsInLockdown: z
+      .boolean()
+      .optional()
+      .describe(
+        'Present only in a locked environment: whether the key may use models there (ADR 0033).',
+      ),
     expiresAt: z.string().nullable(),
     revokedAt: z.string().nullable(),
+    testRunner: z
+      .boolean()
+      .describe(
+        'The key has the test-runner grant (ADR 0033); it only takes effect in a locked test environment.',
+      ),
   })
   .openapi('TenantApiKey');
 
@@ -352,6 +379,27 @@ const BuildingBlock = z
     pendingRequest: z
       .object({ id: z.string(), at: z.string(), by: z.string(), reason: z.string() })
       .optional(),
+    judge: z
+      .object({
+        connection: z.string(),
+        model: z.string().optional().describe('provider/model; absent on a default model'),
+        version: z.string(),
+        dataType: z.string(),
+        fields: z.array(
+          z.object({ variable: z.string(), source: z.string(), jsonPath: z.string().optional() }),
+        ),
+        refused: z
+          .object({
+            reason: z.string(),
+            field: z.string().optional(),
+            connection: z.string().optional(),
+            message: z.string(),
+          })
+          .optional()
+          .describe('Why the judge cannot be taken in use'),
+      })
+      .optional()
+      .describe("A judge from the project of one of the tenant's Langfuse connections"),
   })
   .openapi('BuildingBlock');
 
@@ -700,7 +748,167 @@ const definitionKind = z
   .enum(['services', 'step-flows', 'skills'])
   .openapi({ param: { name: 'kind', in: 'path' }, example: 'services' });
 
+const TraceConnection = z
+  .object({
+    id: z.string(),
+    host: z
+      .string()
+      .describe("The Langfuse's base URL; HTTPS, never a private or link-local address"),
+    publicKey: z.string(),
+    secretKey: z.string().describe('A secret://tenant/<tenant>/<name> reference, set for the host'),
+    services: z
+      .array(z.string())
+      .describe("The tenant's services whose eval runs it receives; one connection per service"),
+    residency: z
+      .enum(['norway', 'eu', 'global'])
+      .describe(
+        "Where the host stores data and its judges' models run. Set by an operator on Digdir's Langfuse",
+      ),
+    content: z.boolean().describe('Whether it receives the text its judges map'),
+    erasureDeclared: z
+      .boolean()
+      .describe(
+        "The tenant's declaration that its own Langfuse deletes what genki deletes and keeps raw files at most 7 days",
+      ),
+    labels: z
+      .boolean()
+      .describe(
+        "Whether people's annotations in the project come back as pending calibration labels for its judges",
+      ),
+    instance: z.boolean().describe("Whether the host is Digdir's Langfuse"),
+    removing: z
+      .boolean()
+      .optional()
+      .describe(
+        'Removal asked for: covers no service, and is gone once every trace sent through it is deleted',
+      ),
+    residencySetBy: z.enum(['operator', 'tenant']),
+  })
+  .openapi('TraceConnection');
+
+const connectionId = pathParam('id', 'etaten');
+
+const tracingRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/tracing/connections',
+    summary: "The tenant's Langfuse connections, with secret references only. Any member",
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            TraceConnection.extend({
+              datasets: z
+                .array(
+                  z.object({
+                    service: z.string(),
+                    testSet: z.string(),
+                    name: z.string(),
+                    id: z.string().describe("Langfuse's id for the dataset"),
+                  }),
+                )
+                .describe(
+                  'One Langfuse dataset per test set of the services it covers, which genki made or reused in its project. genki cannot delete them (ADR 0040)',
+                ),
+            }),
+          ),
+          instance: z
+            .object({
+              host: z.string().describe("Digdir's Langfuse, as LANGFUSE_BASE_URL names it"),
+              content: z
+                .boolean()
+                .describe(
+                  'Whether a connection to it may receive text (LANGFUSE_INSTANCE_RECEIVES_CONTENT)',
+                ),
+            })
+            .optional()
+            .describe("Digdir's Langfuse, when LANGFUSE_BASE_URL is set"),
+        }),
+        'Connections',
+      ),
+      404: problem('Not a member of the tenant'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/tenants/{tenant}/tracing/connections/{id}',
+    summary: 'Create or change a Langfuse connection. Needs manage-services',
+    request: {
+      params: z.object({ tenant, id: connectionId }),
+      headers: reason,
+      body: body(
+        TraceConnection.omit({
+          id: true,
+          instance: true,
+          residencySetBy: true,
+          removing: true,
+        }).partial({
+          services: true,
+          residency: true,
+          content: true,
+          erasureDeclared: true,
+          labels: true,
+        }),
+      ),
+    },
+    responses: {
+      200: json(TraceConnection.omit({ instance: true, residencySetBy: true }), 'Saved'),
+      400: problem(
+        'A host that is not HTTPS or is private, a secret of another tenant or not set for the host, a service the tenant does not have or one already covered, or content where erasure is not shown',
+      ),
+      403: problem('Missing manage-services'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/tracing/connections/{id}',
+    summary:
+      'Remove a Langfuse connection: every trace sent through it is deleted first, and it is gone once each delete is confirmed. Needs manage-services',
+    request: { params: z.object({ tenant, id: connectionId }), headers: reason },
+    responses: {
+      200: json(
+        z.union([z.object({ removed: z.string() }), z.object({ removing: z.string() })]),
+        'Removed, or being removed while its traces are deleted',
+      ),
+      400: problem('No such connection'),
+      403: problem('Missing manage-services'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/tracing/connections/{id}/check',
+    summary:
+      "Check a connection's keys against its Langfuse project, through the egress path. Any member",
+    request: { params: z.object({ tenant, id: connectionId }) },
+    responses: {
+      200: json(
+        z.object({ ok: z.literal(true), project: z.object({ id: z.string(), name: z.string() }) }),
+        'The project the keys open',
+      ),
+      404: problem('No such connection'),
+      422: problem('Langfuse refused the keys or could not be reached'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/tracing/connections/{tenant}/{id}/residency',
+    summary: "Set the residency of a tenant's connection to Digdir's Langfuse. Operators only",
+    request: {
+      params: z.object({ tenant, id: connectionId }),
+      headers: reason,
+      body: body(z.object({ residency: z.enum(['norway', 'eu', 'global']) })),
+    },
+    responses: {
+      200: json(TraceConnection.omit({ instance: true, residencySetBy: true }), 'Saved'),
+      400: problem("Not a connection to Digdir's Langfuse"),
+      403: problem('Not an operator'),
+    },
+  }),
+];
+
 export const accessRoutes: RouteConfig[] = [
+  ...tracingRoutes,
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/access',
@@ -718,6 +926,9 @@ export const accessRoutes: RouteConfig[] = [
             }),
           ),
           keys: z.array(ApiKey).describe('Newest first.'),
+          testRunnerKeys: z
+            .boolean()
+            .describe('The caller may create keys with the test-runner grant here.'),
         }),
         'Services and keys',
       ),
@@ -741,6 +952,12 @@ export const accessRoutes: RouteConfig[] = [
           allowedOverrides: overrides,
           expiresInDays: z.number().positive().optional(),
           callsPerMinute: z.number().int().min(1).max(6000).optional(),
+          testRunner: z
+            .boolean()
+            .optional()
+            .describe(
+              'Give the key the test-runner grant (ADR 0033). Only in a locked test environment and only by a trusted Entra ID login (an operator acting in its own organisation).',
+            ),
         }),
       ),
     },
@@ -748,7 +965,9 @@ export const accessRoutes: RouteConfig[] = [
       201: json(NewApiKey, 'Created. No datasets and no agents means the key reaches everything.'),
       400: invalid,
       401: unauthorized,
-      403: problem('Missing right, or an operator (keys are made by the tenant itself)'),
+      403: problem(
+        'Missing right, an operator (keys are made by the tenant itself), or urn:genai:problem:test-runner-refused when the test-runner grant is not allowed',
+      ),
       404: notMember,
     },
   }),
@@ -772,7 +991,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/api-keys/{id}/rotate',
     summary:
-      'Replace an API key with a new one carrying the same grants and revoke the old one (manage-services, audited)',
+      'Replace an API key with a new one carrying the same grants, except the test-runner grant, and revoke the old one (manage-services, audited)',
     request: {
       params: z.object({ tenant, id: pathParam('id', '3f9a1c2b-7d4e-4b8a-9c11-2a6f0e5d8b77') }),
       headers: reason,
@@ -977,6 +1196,13 @@ export const accessRoutes: RouteConfig[] = [
         z.object({
           name: z.string().min(1),
           client: z.string().optional().describe('A client of the same service.'),
+          environments: z
+            .array(z.string())
+            .max(8)
+            .optional()
+            .describe(
+              'Service environments the key may use. A call picks one with GenAI-Environment and gets prod, or the first listed without prod, when it sends none.',
+            ),
           expiresInDays: z.number().positive().optional(),
           allowedOverrides: overrides,
         }),
@@ -984,7 +1210,9 @@ export const accessRoutes: RouteConfig[] = [
     },
     responses: {
       201: json(NewApiKey, 'Created'),
-      400: problem('Missing reason, no name, or a client of another service'),
+      400: problem(
+        'Missing reason, no name, an invalid environment name, or a client of another service',
+      ),
       401: unauthorized,
       403: forbidden,
       404: problem('No such service, or not a member of this tenant'),

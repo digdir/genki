@@ -91,6 +91,11 @@ const pagesOf = (metadata: Record<string, unknown> | undefined) => {
   return { page_from: from, page_to: typeof to === 'number' && Number.isInteger(to) ? to : from };
 };
 
+/** PostgreSQL refuses U+0000 in `text` and `jsonb`, and documents can carry it (issue 532). */
+const withoutNul = (text: string) => text.replaceAll('\u0000', '');
+const jsonWithoutNul = (value: unknown) =>
+  JSON.stringify(value, (_, v: unknown) => (typeof v === 'string' ? withoutNul(v) : v));
+
 /** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
 export const replaceDocument = async (
   client: PoolClient,
@@ -103,6 +108,10 @@ export const replaceDocument = async (
     text: c.text,
     metadata: c.metadata ?? {},
     ...pagesOf(c.metadata),
+    ...(c.pageFrom !== undefined ? { page_from: c.pageFrom, page_to: c.pageTo ?? c.pageFrom } : {}),
+    file: c.file ?? null,
+    file_sha256: c.fileSha256 ?? null,
+    heading_path: c.headingPath ?? null,
     vec: checkedVector(target, c.vector, c.id),
   }));
   const phrases = doc.phrases.map((p) => ({
@@ -118,24 +127,24 @@ export const replaceDocument = async (
      values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig)`,
     [
       ...key,
-      doc.title ?? null,
+      doc.title === undefined ? null : withoutNul(doc.title),
       doc.url ?? null,
-      JSON.stringify(doc.fields),
-      fieldsText(doc.fields),
+      jsonWithoutNul(doc.fields),
+      withoutNul(fieldsText(doc.fields)),
       target.config,
     ],
   );
   await client.query(
-    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, config, vec)
-     select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, $4::regconfig, x.vec::halfvec
-     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, vec text)`,
-    [...key, target.config, JSON.stringify(chunks)],
+    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, file, file_sha256, heading_path, config, vec)
+     select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, x.file, x.file_sha256, x.heading_path, $4::regconfig, x.vec::halfvec
+     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], vec text)`,
+    [...key, target.config, jsonWithoutNul(chunks)],
   );
   await client.query(
     `insert into ${tableOf(target, 'kn_phrases')} (dataset, generation, id, doc_id, chunk_id, text, config, vec)
      select $1, $2, x.id, $3, x.chunk_id, x.text, $4::regconfig, x.vec::halfvec
      from jsonb_to_recordset($5::jsonb) as x(id text, chunk_id text, text text, vec text)`,
-    [...key, target.config, JSON.stringify(phrases)],
+    [...key, target.config, jsonWithoutNul(phrases)],
   );
 };
 

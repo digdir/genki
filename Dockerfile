@@ -16,7 +16,7 @@ RUN mkdir -p /out && \
       mkdir -p "/out/$(dirname "$asset")" && cp -r "$asset" "/out/$asset" || exit 1; \
     done && \
     node scripts/docs-bundle.ts /out/genki-docs && \
-    mkdir -p /out/scripts && cp scripts/knowledge-server-setup.ts scripts/setup.ts /out/scripts/ && \
+    mkdir -p /out/scripts && cp scripts/knowledge-server-setup.ts scripts/setup.ts scripts/conversions-check.ts scripts/conversions-seed.ts /out/scripts/ && \
     cp package.json package-lock.json /out/
 
 FROM ${NODE_IMAGE} AS deps

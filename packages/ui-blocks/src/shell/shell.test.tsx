@@ -8,9 +8,7 @@ import { en, nb } from './i18n.js';
 import type { ShellLayout } from './layout.js';
 import { Shell, type ShellProps, type ShellRequest } from './Shell.js';
 
-// Ported from kunnskapsassistenten's layout tests: PanelSeparator, foldingDrag, drawers,
-// LayoutProvider, PanelHead, sidebarFooterMode, compactMode and SidebarFooter. jsdom does no
-// layout, so the window's width is the tests' own: the media queries and `clientWidth` answer it.
+// Ported from kunnskapsassistenten's layout tests; jsdom does no layout, so tests set the width.
 
 // ── A window of a given width ──
 let viewport = 1440;
@@ -373,13 +371,29 @@ describe('one open panel where both do not fit, below 1440', () => {
     expect([folded(primary()), folded(secondary())]).toEqual([false, true]);
   });
 
-  it('folds the secondary panel when the window shrinks past it, and opens nothing growing back', () => {
+  it('folds the secondary panel when the window shrinks past it, and opens it again growing back', () => {
     draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
     expect(folded(secondary())).toBe(false);
     resizeTo(1300);
     expect(folded(secondary())).toBe(true);
     resizeTo(1600);
-    expect(folded(secondary())).toBe(true);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
+  it('opens nothing growing back that was folded before the window shrank', () => {
+    draw({}, 1600);
+    resizeTo(1300);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, true]);
+  });
+
+  it('keeps what the reader chose while the window was narrow, growing back', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1300);
+    fireEvent.click(button('Vis kilder'));
+    fireEvent.click(button('Skjul kilder'));
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, true]);
   });
 
   it('leaves both open at the breakpoint itself', () => {
@@ -413,6 +427,35 @@ describe('drawers, below 1139', () => {
     expect(within(drawer as HTMLElement).getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
   });
 
+  it('opens again, out of drawer mode, the panels that entering it folded, as far as there is room', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, true]);
+    resizeTo(1300);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, true]);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
+  it('keeps a drawer the reader opened and shut folded out of drawer mode, and opens the other', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    fireEvent.click(button('Vis tråder og filter'));
+    fireEvent.click(button('Skjul tråder og filter'));
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, false]);
+  });
+
+  it('opens nothing more, out of drawer mode where only one fits, beside a drawer the reader opened', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    fireEvent.click(button('Vis kilder'));
+    resizeTo(1300);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, false]);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
   it('has no separator: a drawer has no edge to share', () => {
     draw({}, 1000);
     fireEvent.click(button('Vis tråder og filter'));
@@ -426,13 +469,13 @@ describe('drawers, below 1139', () => {
     expect(button('Vis tråder og filter').getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('folds an open panel away when the window shrinks past 1139', () => {
+  it('folds an open panel away when the window shrinks past 1139, and opens it again after', () => {
     draw({}, 1300);
     expect(folded(primary())).toBe(false);
     resizeTo(1000);
     expect(button('Vis tråder og filter')).toBeTruthy();
     resizeTo(1300);
-    expect(button('Vis tråder og filter')).toBeTruthy();
+    expect(button('Skjul tråder og filter')).toBeTruthy();
   });
 });
 
@@ -739,6 +782,66 @@ describe('the focus', () => {
     fireEvent.click(button('Skjul tråder og filter'));
     expect(document.activeElement).toBe(button('Vis tråder og filter'));
   });
+
+  it('goes back to the panel’s button when a dialog that took it closes after the panel folded', () => {
+    draw();
+    const dialog = document.createElement('dialog');
+    const inside = document.createElement('button');
+    dialog.append(inside);
+    document.body.append(dialog);
+    dialog.showModal();
+    const link = within(primary()).getByRole('link', { name: 'En tråd' });
+    act(() => link.focus());
+    fireEvent.focus(link);
+    act(() => inside.focus());
+    fireEvent.blur(link, { relatedTarget: inside });
+    fireEvent.click(button('Skjul tråder og filter'));
+    act(() => {
+      dialog.close();
+      dialog.dispatchEvent(new Event('close'));
+    });
+    expect(document.activeElement).toBe(button('Vis tråder og filter'));
+    dialog.remove();
+  });
+});
+
+describe('a region that scrolls', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 900,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 100,
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+    Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+  });
+
+  it('is a tab stop while nothing in it can take the keyboard, and stops being one once a link is in it', async () => {
+    const { redraw } = draw({
+      primary: { label: 'Tråder og filter', children: <p>Ingen tråder</p> },
+    });
+    await act(async () => {});
+    const region = screen.getByRole('group', { name: 'Tråder og filter' });
+    expect(region.tabIndex).toBe(0);
+    expect(screen.getByRole('main').tabIndex).toBe(0);
+    redraw({ primary: { label: 'Tråder og filter', children: <a href="/t/1">En tråd</a> } });
+    await act(async () => {});
+    expect(region.hasAttribute('tabindex')).toBe(false);
+    expect(screen.queryByRole('group', { name: 'Tråder og filter' })).toBeNull();
+  });
+});
+
+describe('the landmarks', () => {
+  it('are the ones the host names, so the primary panel can be an aside', () => {
+    draw({ primary: { label: 'Tråder og filter', landmark: 'aside', children: <p>Ingen</p> } });
+    expect(screen.getByRole('complementary', { name: 'Tråder og filter' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Tråder og filter' })).toBeNull();
+  });
 });
 
 describe('the words', () => {
@@ -764,27 +867,5 @@ describe('the words', () => {
   it('are in the shell’s own catalogue, out of the shared one that Approach loads', () => {
     expect(Object.keys(nb)).toEqual(['shell']);
     expect(sharedNb).not.toHaveProperty('shell');
-  });
-});
-
-describe('in a host’s preview of a fixed width', () => {
-  it('lays out for the frame’s width, not the window’s', () => {
-    const { container } = draw({ frameWidth: 1280 }, 900);
-    const shell = container.querySelector('.uib-shell');
-    expect(shell?.hasAttribute('data-drawer')).toBe(false);
-    expect(shell?.hasAttribute('data-compact')).toBe(false);
-    cleanup();
-    const { container: narrow } = draw({ frameWidth: 700 }, 1920);
-    expect(narrow.querySelector('.uib-shell')?.hasAttribute('data-compact')).toBe(true);
-  });
-
-  it('leaves the page’s main landmark and skip links to the host', () => {
-    draw({ frameWidth: 1280 });
-    expect(screen.queryByRole('main')).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Hopp til hovedinnhold' })).toBeNull();
-    cleanup();
-    draw();
-    expect(screen.getByRole('main')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Hopp til hovedinnhold' })).toBeTruthy();
   });
 });

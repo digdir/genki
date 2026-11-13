@@ -5,6 +5,7 @@ import {
   exampleHistory,
   exampleJudges,
   exampleLabelQueue,
+  exampleSinkLabels,
   exampleMatrix,
   exampleModelUsage,
   exampleOnboarding,
@@ -271,6 +272,12 @@ export const exampleRunning: RunningTask[] = [
   },
 ];
 
+export const exampleFinished: RunningTask[] = [
+  { task: 't-090', tenant: '974222333', status: 'completed', at: '2026-10-07T08:12:00Z' },
+  { task: 't-091', tenant: '999888777', status: 'failed', at: '2026-10-07T08:40:00Z' },
+  { task: 't-092', tenant: '983555666', status: 'cancelled', at: '2026-10-07T09:05:00Z' },
+];
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -326,6 +333,7 @@ export const mockFetch = (
   const sessions = new Map<string, SupportSession>();
   let shared = structuredClone(exampleShared);
   let queue = structuredClone(exampleLabelQueue);
+  const sinkLabels = structuredClone(exampleSinkLabels);
   let support = structuredClone(exampleSupport);
   let running = structuredClone(exampleRunning);
   let current = structuredClone(models);
@@ -440,6 +448,8 @@ export const mockFetch = (
             baseURL: 'https://foundry.example',
             families: { openai: '/openai/v1', anthropic: '/anthropic' },
             auth: { kind: 'api-key', secret: 'secret://platform/foundry-key' },
+            settings: { keyId: 'AKID-7' },
+            keys: { signing: 'secret://platform/foundry-signing-key' },
             discovery: [
               {
                 source: 'azure-deployments',
@@ -756,6 +766,8 @@ export const mockFetch = (
         baseURL?: string;
         auth?: { kind?: string; secret?: string };
         discovery?: unknown[];
+        settings?: Record<string, string>;
+        keys?: Record<string, string>;
       };
       const id = editing ?? b.id;
       const list = configs.get(endpointKey) ?? [];
@@ -793,6 +805,8 @@ export const mockFetch = (
             : existing && (existing.spec as Record<string, unknown>).discovery
               ? { discovery: (existing.spec as Record<string, unknown>).discovery }
               : {}),
+          ...(b.settings ? { settings: b.settings } : {}),
+          ...(b.keys ? { keys: b.keys } : {}),
         },
         by: 'operator:entra:lise',
         at: new Date().toISOString(),
@@ -1469,6 +1483,30 @@ export const mockFetch = (
       return json({ ok: true });
     }
     if (path === '/operator/quality/label-queue') return json({ data: queue, total: queue.length });
+    if (path === '/operator/quality/sink-labels' && method === 'GET') return json(sinkLabels);
+    if (path === '/operator/quality/sink-labels/fetch' && method === 'POST')
+      return json({ pending: 0, shared: [] });
+    const sinkDecision = /^\/operator\/quality\/sink-labels\/(accept|reject)$/.exec(path);
+    if (sinkDecision && method === 'POST') {
+      if (!reason) return needReason();
+      const b = body() as { tenant: string; connection: string; judge: string };
+      const found = sinkLabels.batches.find(
+        (x) => x.tenant === b.tenant && x.connection === b.connection && x.judge === b.judge,
+      );
+      if (!found) return notFound();
+      sinkLabels.batches = sinkLabels.batches.filter((x) => x !== found);
+      record(
+        b.tenant,
+        sinkDecision[1] === 'accept' ? 'Godtok etiketter' : 'Avviste etiketter',
+        `judge:${b.judge}`,
+        reason,
+      );
+      return json(
+        sinkDecision[1] === 'accept'
+          ? { accepted: found.labels.length }
+          : { rejected: found.labels.length },
+      );
+    }
     if (path === '/operator/quality/labels' && method === 'POST') {
       if (!reason) return needReason();
       const b = body() as { item: string };
@@ -1547,6 +1585,15 @@ export const mockFetch = (
       return json({
         data: running.filter(
           (t) => (!tenant || t.tenant === tenant) && (!service || t.service === service),
+        ),
+      });
+    }
+    if (path === '/operator/tasks') {
+      const status = url.searchParams.get('status') ?? 'running';
+      const all = [...running, ...exampleFinished];
+      return json({
+        data: all.filter((t) =>
+          status === 'running' ? ['running', 'queued'].includes(t.status) : t.status === status,
         ),
       });
     }

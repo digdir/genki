@@ -27,6 +27,7 @@ const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) => parseYaml(readFileSync(join(config, file), 'utf8')) as unknown;
 const tenant = '991825827';
 const modelId = 'foundry-openai/gpt-4o-2m-tps';
+const euModel = 'foundry-openai/gpt-6-luna';
 
 const people: Record<string, Principal> = {
   kari: {
@@ -128,7 +129,12 @@ const boot = async ({
   taskIndex,
 }: { residencyRule?: boolean; taskIndex?: TaskIndex } = {}) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp(() => ({ status: 200, json: {} }));
+  const search = await fakeHttp((body) => ({
+    status: 200,
+    json: Array.isArray(body.searches)
+      ? { results: body.searches.map(() => ({ found: 0, hits: [] })) }
+      : {},
+  }));
   servers.push(model, search);
   const env = {
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
@@ -332,6 +338,79 @@ describe('the playground', () => {
     });
   });
 
+  it('The portal playground runs a published service whose declared residency is global with an EU model and a global dataset', async () => {
+    const { platform, run } = await boot();
+    const published = service('kudos-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      {
+        ...published,
+        spec: {
+          ...published.spec,
+          strategy: { id: 'rag-single-shot', version: 1, config: { instructions: 'Svar kort.' } },
+          knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+        },
+      },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'kudos-svar', version: 1 }, model: euModel, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ text: 'Bokmålssvar.' });
+  });
+
+  it("tries the chosen model in place of the service's primary, its fallback and the roles that used the primary", async () => {
+    const { platform, run } = await boot({ residencyRule: true });
+    const published = service('med-reserve', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      {
+        ...published,
+        spec: {
+          ...published.spec,
+          model: {
+            primary: modelId,
+            fallback: modelId,
+            roles: { planner: modelId },
+            residency: 'global',
+          },
+        },
+      },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'med-reserve', version: 1 }, model: euModel, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a playground model that runs wider than the residency the service declares', async () => {
+    const { platform, run } = await boot();
+    const published = service('eu-svar', 'Svar på bokmål.');
+    await platform.definitions.publish(
+      { ...published, spec: { ...published.spec, model: { primary: euModel, residency: 'eu' } } },
+      'test',
+      'første',
+    );
+
+    const res = await run({
+      setup: { service: { id: 'eu-svar', version: 1 }, model: modelId, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      errors: [{ message: expect.stringContaining('outside eu') }],
+    });
+  });
+
   it('a service draft with broken YAML is refused with 422 naming the definition', async () => {
     const { run } = await boot();
 
@@ -461,6 +540,7 @@ describe('the playground', () => {
             version: 2,
             draft: false,
             inUse: true,
+            environments: ['prod'],
             setup: expect.objectContaining({ model: modelId }),
           },
           {
@@ -477,6 +557,31 @@ describe('the playground', () => {
     ]);
     expect(options.blocks.every((b) => typeof b.name === 'string')).toBe(true);
     expect(options.quota).toEqual({ usedPercent: 0, monthlyTokens: 50_000_000 });
+  });
+
+  it('marks the version prod runs as in use and names the environments of each version', async () => {
+    const { platform, app, call } = await boot();
+    await platform.definitions.publish(service('svar', 'Svar på nynorsk.'), 'test', 'første');
+    const added = await app.request(`/tenants/${tenant}/services/svar/environments`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer kari',
+        'change-reason': 'Prøver bokmål på testerne',
+      },
+      body: JSON.stringify({ name: 'test' }),
+    });
+    expect(added.status).toBe(201);
+    await platform.definitions.publish(service('svar', 'Svar på bokmål.'), 'test', 'andre');
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const versions = options.services.find((s) => s.id === 'svar')?.versions ?? [];
+
+    expect(versions.map((v) => [v.version, v.inUse, v.environments])).toEqual([
+      [2, false, ['test']],
+      [1, true, ['prod']],
+    ]);
   });
 
   it('an uploaded file is stored in the tenant blob store and read by the run', async () => {
@@ -521,7 +626,9 @@ describe('the playground', () => {
   it('a run is refused with 429 once the monthly tokens are used up', async () => {
     const { settings, blobs, model, call, run } = await boot();
     expect((await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(200);
-    expect(settings.setTenant(tenant, 'usage.monthlyTokens', 10)).toMatchObject({ ok: true });
+    expect(settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator')).toMatchObject({
+      ok: true,
+    });
     const before = model.seen.length;
 
     const res = await run({ setup: own('Svar på bokmål.'), input: { file: { sample: true } } });

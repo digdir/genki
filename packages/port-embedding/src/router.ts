@@ -44,6 +44,11 @@ export interface EmbeddingRouterOptions {
 
 export interface EmbeddingOpenOptions {
   maxResidency?: Residency;
+  /**
+   * The SDK's own retries for this embedder's calls, in place of the router's `maxRetries`. A
+   * knowledge job opens with 0 and retries itself, so a 429 pauses every job at once (#400).
+   */
+  retries?: number;
 }
 
 export interface EmbedderDescription {
@@ -104,11 +109,31 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
       );
     }
     const credentials = new Map<string, Credential>();
-    for (const [name, spec] of Object.entries(result.catalog.connections))
+    const extras = new Map<string, Pick<DescribedEndpoint, 'settings' | 'keys'>>();
+    for (const [name, spec] of Object.entries(result.catalog.connections)) {
       credentials.set(
         name,
         credentialFor(spec.auth, options.secrets, options.tokenProviders, spec.baseURL),
       );
+      extras.set(name, {
+        ...(spec.settings ? { settings: spec.settings } : {}),
+        ...(spec.keys
+          ? {
+              keys: Object.fromEntries(
+                Object.entries(spec.keys).map(([key, ref]) => {
+                  const named = credentialFor(
+                    { kind: 'api-key', secret: ref },
+                    options.secrets,
+                    options.tokenProviders,
+                    spec.baseURL,
+                  );
+                  return [key, named.kind === 'api-key' ? named.key : named.token];
+                }),
+              ),
+            }
+          : {}),
+      });
+    }
     const timeoutMs = options.timeoutMs ?? 60_000;
     const connections = new Map<string, EmbeddingConnection>();
     const routes = new Map<string, Route>();
@@ -141,7 +166,16 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           ? {
               described: {
                 descriptor,
-                endpoint: { baseURL: model.baseURL, credential, fetch, timeoutMs },
+                endpoint: {
+                  baseURL: model.baseURL,
+                  credential,
+                  fetch,
+                  timeoutMs,
+                  ...(options.descriptors?.module
+                    ? { modules: (sha: string) => options.descriptors?.module?.(sha) }
+                    : {}),
+                  ...extras.get(model.endpoint),
+                },
               },
             }
           : {}),
@@ -200,11 +234,20 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
             described.endpoint,
             config.deployment,
             texts,
-            { signal: ctx.signal, fail: embeddingErrorFromStatus },
+            {
+              signal: ctx.signal,
+              fail: (status, message) => embeddingErrorFromStatus(status, message),
+            },
           );
           dropped(answer.dropped);
           result = answer.result;
-        } else if (connection) result = await connection.embed(config, texts, ctx.signal);
+        } else if (connection)
+          result = await connection.embed(
+            config,
+            texts,
+            ctx.signal,
+            request.retries === undefined ? {} : { maxRetries: request.retries },
+          );
         else throw new EmbeddingError('unavailable', `${model.api} has no implementation`);
       } catch (error) {
         if (error instanceof EmbeddingError) throw error;

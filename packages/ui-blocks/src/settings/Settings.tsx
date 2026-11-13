@@ -14,6 +14,14 @@ export interface ColorSchemeToggleProps {
   value?: ColorScheme | undefined;
   /** The reader chose a scheme. The host stores it and sets `data-color-scheme` on its root. */
   onChange: (scheme: ColorScheme) => void;
+  /**
+   * `compact`, the default: «Lys», «Mørk» and «Auto», each with its icon, small. `full`: «Lyst»,
+   * «Mørkt» and «Følg systemet» in words alone, at the text's size, as the settings pages draw it
+   * (the dev-innstillinger-1 board).
+   */
+  look?: 'compact' | 'full' | undefined;
+  /** The `id` of a visible name, such as its row's title; «Fargemodus» names it without one. */
+  labelledBy?: string | undefined;
   className?: string | undefined;
 }
 
@@ -59,18 +67,24 @@ const colored = (color: string | undefined) => (color ? { 'data-color': color } 
 /** The level of a section's heading, one below the block's. */
 const SectionLevel = createContext<HeadingLevel | 6>(3);
 
-/**
- * Light, dark, or follow the operating system. A `ToggleGroup`: three answers and one chosen, read
- * as a radio group. Words beside the icons, since Designsystemet asks for a tooltip on icon-only
- * items. It shows the host's value, not the click: the host decides when the choice is taken.
- */
-export const ColorSchemeToggle = ({ value, onChange, className }: ColorSchemeToggleProps) => {
+/** Light, dark or the system's, as a `ToggleGroup` with words; it shows the host's value. */
+export const ColorSchemeToggle = ({
+  value,
+  onChange,
+  look = 'compact',
+  labelledBy,
+  className,
+}: ColorSchemeToggleProps) => {
   const t = useT();
+  const full = look === 'full';
   return (
     <ToggleGroup
-      aria-label={t('settings.colorScheme')}
+      {...(labelledBy
+        ? { 'aria-labelledby': labelledBy }
+        : { 'aria-label': t('settings.colorScheme') })}
       className={classes('uib-settings-color-scheme', className)}
-      data-size="sm"
+      // The page's look takes the text's size, as the settings pages' other choices do.
+      {...(full ? {} : { 'data-size': 'sm' })}
       onChange={(chosen) => {
         if (isColorScheme(chosen)) onChange(chosen);
       }}
@@ -79,8 +93,8 @@ export const ColorSchemeToggle = ({ value, onChange, className }: ColorSchemeTog
     >
       {choices.map(({ value: scheme, Icon }) => (
         <ToggleGroup.Item key={scheme} value={scheme}>
-          <Icon aria-hidden />
-          {t(`settings.${scheme}`)}
+          {full ? null : <Icon aria-hidden />}
+          {t(full ? `settings.${scheme}Full` : `settings.${scheme}`)}
         </ToggleGroup.Item>
       ))}
     </ToggleGroup>
@@ -101,11 +115,7 @@ export const SettingsSection = ({ title, children, className }: SettingsSectionP
   );
 };
 
-/**
- * «Innstillinger»: the reader's choices, starting with the colour scheme, then how much an answer
- * shows and the trials, when the host has them. Each takes effect at once, so there is no
- * «Lagre». The block draws the choice and reports it; the host stores it and applies it.
- */
+/** «Innstillinger»: the reader's choices, each taking effect at once, stored by the host. */
 export const Settings = ({
   colorScheme,
   onColorSchemeChange,
@@ -126,8 +136,7 @@ export const Settings = ({
         <Heading className="uib-settings-title" data-size="lg" level={headingLevel}>
           {t('settings.title')}
         </Heading>
-        {/* First, as the page's main choice: light and dark mode live here (decided 2026-11-06).
-            The toggle names itself «Fargemodus» to a screen reader; the heading says it to the eye. */}
+        {/* First, the page's main choice; the toggle names itself «Fargemodus». */}
         <SettingsSection title={t('settings.colorScheme')}>
           <ColorSchemeToggle onChange={onColorSchemeChange} value={colorScheme} />
         </SettingsSection>

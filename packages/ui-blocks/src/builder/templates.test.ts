@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { blockSpec, zones } from './catalogue.js';
-import { blocksIn, layoutProblems } from './layout.js';
-import { fromTemplate, templateIds, templates } from './templates.js';
+import { blocksIn, layoutProblems, placedAt } from './layout.js';
+import { fromTemplate, templateIds, templateLook, templates } from './templates.js';
 
 describe('the templates', () => {
-  it('are the design’s eight in its order, then the portal builder’s two the design lacks', () => {
+  it('are the design’s eight, in its order, with Kunnskapsassistenten’s next look after it', () => {
     expect(templateIds).toEqual([
       'knowledge-assistant',
+      'knowledge-assistant-next',
       'sources-only',
       'approach-only',
       'without-filter',
@@ -14,25 +15,7 @@ describe('the templates', () => {
       'without-secondary',
       'without-primary',
       'chat-only',
-      'document-focus',
-      'notes-focus',
     ]);
-  });
-
-  it('put Document view in the content with Chat and Sources in the right panel in «Dokumentvisning i fokus»', () => {
-    const { layout } = fromTemplate('document-focus');
-    expect(blocksIn(layout, 'primary')).toEqual([]);
-    expect(blocksIn(layout, 'main')).toEqual(['document-view']);
-    expect(blocksIn(layout, 'secondary')).toEqual(['chat', 'sources']);
-  });
-
-  it('leave Projects and Notes out of «Notater i fokus» until they are built, and keep Threads and Chat', () => {
-    expect(templates['notes-focus'].primary).toEqual(['projects', 'threads']);
-    expect(templates['notes-focus'].secondary).toEqual(['notes']);
-    const { layout } = fromTemplate('notes-focus');
-    expect(blocksIn(layout, 'primary')).toEqual(['threads']);
-    expect(blocksIn(layout, 'main')).toEqual(['chat']);
-    expect(blocksIn(layout, 'secondary')).toEqual([]);
   });
 
   it('put every block only in a zone it may stand in', () => {
@@ -58,6 +41,22 @@ describe('the templates', () => {
     expect(blocksIn(layout, 'primary')).toEqual(['threads', 'filter', 'settings']);
     expect(blocksIn(layout, 'main')).toEqual(['approach', 'chat']);
     expect(blocksIn(layout, 'secondary')).toEqual(['sources']);
+  });
+
+  it('give Kunnskapsassistenten’s next look the same blocks, with Approach also as the tool', () => {
+    const next = templates['knowledge-assistant-next'];
+    const today = templates['knowledge-assistant'];
+    expect(next.primary).toEqual(today.primary);
+    expect(next.main).toEqual(today.main);
+    expect(next.secondary).toEqual(['approach', ...today.secondary]);
+    expect(placedAt(fromTemplate('knowledge-assistant-next').layout, 'approach')).toBe('both');
+  });
+
+  it('draw the dev boards’ look only for knowledge-assistant-next, and today’s for the rest', () => {
+    expect(templateLook('knowledge-assistant-next')).toBe('next');
+    for (const id of templateIds.filter((one) => one !== 'knowledge-assistant-next'))
+      expect(templateLook(id), id).toBe('current');
+    expect(templateLook(undefined)).toBe('current');
   });
 
   it('put Approach in the secondary panel in «Bare fremgangsmåte»', () => {

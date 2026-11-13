@@ -1,8 +1,4 @@
-/*
-  Shared styles for the component docs (index.html and one page per component).
-  Self-contained on purpose: no external fonts, scripts or styles, so the pages open from disk.
-  Colours mirror the Digdir theme (design-tokens-build/digdir.css), light and dark.
-*/
+/* Shared styles for the component pages, self-contained so the pages open from disk. */
 
 :root {
   color-scheme: light;
@@ -92,9 +88,6 @@ a {
 }
 a:focus-visible,
 .stamp-card:focus-visible {
-  /* stylelint-disable-next-line plugin/browser-compat -- before Safari 16.4
-     the ring does not follow `border-radius`. Visible either way, so the
-     focus requirement is met. Same as .ka-composer in src/views/chat/chat.css. */
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -518,9 +511,6 @@ footer {
   border-color: var(--accent);
 }
 .pager a:focus-visible {
-  /* stylelint-disable-next-line plugin/browser-compat -- before Safari 16.4
-     the ring does not follow `border-radius`. Visible either way, so the
-     focus requirement is met. Same as .ka-composer in src/views/chat/chat.css. */
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

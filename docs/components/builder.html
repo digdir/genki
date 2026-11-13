@@ -6,7 +6,7 @@
     <title>App builder catalogue · Components</title>
     <meta
       name="description"
-      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the ten templates; the layout rules; and the service facts the needs are checked against."
+      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the templates; the layout rules; and the service facts the needs are checked against."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -37,7 +37,7 @@
             <p class="summary">
               The blocks the app builder offers, at the canvas's grain: where each may stand, in
               what order, what it needs from the service, and the options a service owner may set.
-              With them, the ten templates, the rules a layout must keep, and the service facts the
+              With them, the templates, the rules a layout must keep, and the service facts the
               needs are checked against. It draws nothing: the builder page does.
             </p>
             <dl class="facts">
@@ -92,7 +92,7 @@
               </li>
               <li>
                 <strong>The templates</strong>, <code>templates</code> and
-                <code>fromTemplate</code>: the canvas's eight, in its order, then two it lacks.
+                <code>fromTemplate</code>: the canvas's eight, in its order.
               </li>
               <li>
                 <strong>The layout</strong>, <code>AssistantLayout</code>: the blocks per zone, each
@@ -133,7 +133,8 @@
             <h2>The secondary panel's tools</h2>
             <p>
               <code>toolMode</code> is the shell's rule, re-exported here: one tool gives a heading,
-              two give tabs, three or more a dropdown.
+              two give tabs, three or more a dropdown. The builder writes it on the right zone, «To
+              verktøy – faner».
             </p>
           </div>
           <div class="wide">
@@ -144,6 +145,14 @@
               zone is where it stands when it is turned on. A lower order comes first in the zone,
               so the order in a zone is the catalogue's, whatever order the blocks were turned on
               in.
+            </p>
+            <p>
+              A block marked <code>both</code> may also stand in both its zones at once, each
+              drawing it its own way. Only Fremgangsmåte is: the card over each answer in «Innhold»,
+              the detailed tool in «Høyre panel», or both. <code>placesOf</code> lists the places
+              the builder offers a block, its zones and then <code>both</code>;
+              <code>placeKey</code> names each, «Begge steder» for both, and
+              <code>placesHelpKey</code> says what each place draws.
             </p>
             <div class="table-wrap">
               <table>
@@ -210,8 +219,8 @@
                   </tr>
                   <tr>
                     <th scope="row"><code>approach</code> <small>«Fremgangsmåte»</small></th>
-                    <td>main (0), secondary (0)</td>
-                    <td><code>Procedure</code></td>
+                    <td>main (0), secondary (0), or both</td>
+                    <td><code>Approach</code></td>
                     <td><code>service:steps</code></td>
                     <td><code>level</code>: <code>standard</code> or <code>detailed</code></td>
                   </tr>
@@ -265,13 +274,17 @@
           <div class="wide">
             <h2>The templates</h2>
             <p>
-              The canvas's eight, in its order, then «Dokumentvisning i fokus» and «Notater i
-              fokus», which the portal's builder had and the canvas lacks. A template lists the
-              blocks the design puts in each zone, also those not built: the builder shows them
-              marked «kommer», and
+              The canvas's eight, in its order. A template lists the blocks the design puts in each
+              zone, also those not built: the builder shows them marked «kommer», and
               <code>fromTemplate</code> leaves them out, with the blocks the service cannot back.
               Choosing one replaces the layout. «Kunnskapsassistenten» has Innstillinger and no
               Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
+              After it, <code>knowledge-assistant-next</code> has the same blocks in the look of the
+              «_Ready for dev» boards, with Fremgangsmåte in both places, the bar over each answer
+              and the tool, built there step by step: <code>templateLook</code> says
+              <code>next</code> for it and <code>current</code> for every other template, and the
+              assembly draws the new look only for <code>next</code>, so the others draw what they
+              draw today.
             </p>
             <div class="table-wrap">
               <table>
@@ -291,6 +304,15 @@
                     <td>threads, filter, settings</td>
                     <td>approach, chat</td>
                     <td>sources, notes</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>knowledge-assistant-next</code>
+                      <small>«Kunnskapsassistenten, ny utgave»</small>
+                    </th>
+                    <td>threads, filter, settings</td>
+                    <td>approach, chat</td>
+                    <td>approach, sources, notes</td>
                   </tr>
                   <tr>
                     <th scope="row"><code>sources-only</code> <small>«Bare kilder»</small></th>
@@ -340,20 +362,6 @@
                     <td>approach, chat</td>
                     <td>none</td>
                   </tr>
-                  <tr>
-                    <th scope="row">
-                      <code>document-focus</code> <small>«Dokumentvisning i fokus»</small>
-                    </th>
-                    <td>none</td>
-                    <td>document-view</td>
-                    <td>chat, sources</td>
-                  </tr>
-                  <tr>
-                    <th scope="row"><code>notes-focus</code> <small>«Notater i fokus»</small></th>
-                    <td>projects, threads</td>
-                    <td>chat</td>
-                    <td>notes</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -375,8 +383,11 @@
               </li>
               <li>
                 <code>turnOn</code>, <code>turnOff</code>, <code>moveTo</code> and
-                <code>placeIn</code> keep a block in one zone at a time, and refuse a zone it may
-                not stand in. <code>withSetting</code> keeps only what differs from the default;
+                <code>placeIn</code> keep a block in one zone at a time, or in both its zones when
+                given <code>both</code> for a block that allows it, and refuse a place it may not
+                stand in. <code>placedAt</code> says where a block stands as the builder offers it,
+                and <code>zonesOf</code> every zone it stands in. <code>withSetting</code> keeps
+                only what differs from the default, alike in each zone a block stands in;
                 <code>settingsOf</code> fills the defaults in.
               </li>
               <li>
@@ -394,27 +405,12 @@
                 <code>layoutProblems</code> lists every rule a layout breaks, by name:
                 <code>unknown-block</code>, <code>zone-not-allowed</code>,
                 <code>placed-twice</code>, <code>not-built</code>, <code>missing-partner</code> and
-                <code>needs-unmet</code>. An option left at its default asks nothing.
+                <code>needs-unmet</code>. A block marked <code>both</code> in each of its zones once
+                is not placed twice. An option left at its default asks nothing.
               </li>
               <li>
                 <code>settingsSchema</code> gives a block's options as a JSON Schema (2020-12), with
-                ADR 0030's <code>x-label</code> and <code>x-help</code> in both languages and the
-                widgets <code>toggle</code> and <code>select</code>, for
-                <code>@genai/schema-forms</code>.
-              </li>
-            </ul>
-          </div>
-          <div class="wide">
-            <h2>In the portal's builder</h2>
-            <ul>
-              <li>
-                The portal's builder for new services imports <code>@genai/ui-blocks/builder</code>,
-                which holds the catalogue, the layout, the templates and the facts and no React, and
-                keeps a <code>BuilderState</code>.
-              </li>
-              <li>
-                Its words come from the same <code>builder</code> namespace, which the portal adds
-                to its own catalogue.
+                ADR 0030's <code>x-label</code> and <code>x-widget</code>.
               </li>
             </ul>
           </div>
@@ -427,14 +423,6 @@
                 multiselect fields, <code>_documents</code>, and the
                 <code>_pickable</code> variants, of the service or of a family the host names.
                 <code>servicesIn</code> lists each service once.
-              </li>
-              <li>
-                <code>factsFromDefinition(definition, given)</code> reads a draft the same way:
-                <code>modelRowsFromDefinition</code> lists it as the rows genki would give once it
-                is published: a chat when it is exposed to one, its variants, and its datasets. A
-                dataset declares its own filter fields; the host reads them and passes them as
-                <code>filtersOf</code>, since the definition's <code>filters</code> are default
-                values.
               </li>
               <li>
                 The channels come from the host. Whether a service reports steps is not in the row:

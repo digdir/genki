@@ -1,0 +1,12 @@
+{"tests": [
+ {"id": "kudos-185498-p110-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Rambergveien 9", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-185498-p110-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "3103 Tønsberg", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-185498-p110-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "+47 33 41 25 00", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-185498-p110-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "ISBN 978-82-7768-549-6 (PDF)", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-185498-p110-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "postmottak@dsb.no", "max_diffs": 0}, "after": {"text": "September 2024", "max_diffs": 0}}, "settings": {}}
+]}

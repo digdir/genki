@@ -1,6 +1,6 @@
 // The state the blocks share and the events that change it, lifted from the UI blocks preview's
 // App.tsx so any layout can be drawn from it. The blocks stay as they are: data in, events out
-// (#234's ADR). What happens when a partner block is off follows the app builder plan's wiring table:
+// (ADR 0046). What happens when a partner block is off follows the app builder plan's wiring table:
 // - without Tråder, one thread per visit, and a new one from the greeting;
 // - without Filter, the question goes to the collection from the setup, narrowed by nothing, and
 //   there is no «Endre»;
@@ -14,16 +14,21 @@
 import {
   answerCitations,
   blockSpec,
+  documentCount,
   factsFromModels,
+  fieldValueLabels,
   isDisplayLevel,
   isEmptySelection,
   isOn,
   narrowing,
   needMet,
   optionInForce,
+  sameSelection,
   serviceOf,
   settingsOf,
+  templateLook,
   zoneOf,
+  zonesOf,
   type AssistantLayout,
   type BlockId,
   type Channel,
@@ -44,11 +49,14 @@ import {
   type ShellRequest,
   type SourceTarget,
   type VariantOption,
+  type Zone,
 } from '@genai/ui-blocks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
+  FILTER_VALUES_LIMIT,
   filterSet,
+  FilterTooLarge,
   HttpError,
   sourceFromWire,
   type AnswerData,
@@ -63,6 +71,8 @@ import { useStoredValue, type AssistantStorage } from './storage.js';
 
 export interface AssistantFeedback {
   answerId: string;
+  /** genki's run (`task` in `POST /api/feedback`), when given; see the component page. */
+  runId?: string | undefined;
   rating: 'up' | 'down';
   reasons: readonly string[];
   comment?: string | undefined;
@@ -140,13 +150,15 @@ interface Asking {
 }
 
 // kunnskapsassistenten's threadHeading.ts: the first sentence, cut on a word at 80.
+// A stop then a space ends it. One character each and a scan for the stops at its end, never a
+// repeated stop in a pattern, so a question of nothing but «!» is read in linear time.
+const stops = new Set(['.', '?', '!', '…']);
 export const shortTitle = (text: string) => {
   const flat = text.trim().replace(/\s+/g, ' ');
-  const end = flat.search(/[.?!…]+(?=\s)/u);
-  const sentence = (end < 0 ? flat : flat.slice(0, end + flat.slice(end).search(/\s/u))).replace(
-    /[.?!…]+$/u,
-    '',
-  );
+  const space = flat.search(/[.?!…] /u);
+  let end = space < 0 ? flat.length : space + 1;
+  while (end > 0 && stops.has(flat[end - 1] ?? '')) end -= 1;
+  const sentence = flat.slice(0, end);
   if (sentence.length <= 80) return sentence;
   const cut = sentence.lastIndexOf(' ', 80);
   return `${sentence.slice(0, cut > 0 ? cut : 80).trimEnd()} …`;
@@ -167,13 +179,41 @@ const readSelection = (stored: unknown): FilterSelection => {
   );
 };
 
+/**
+ * Each thread's kept filter (the next look), as `readSelection` reads one. A Map, since a thread's
+ * id comes from the address, and an id such as `constructor` must not read an object's own.
+ */
+const readThreadFilters = (stored: unknown): ReadonlyMap<string, FilterSelection> => {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return new Map();
+  return new Map(
+    Object.entries(stored).map(([thread, selection]) => [thread, readSelection(selection)]),
+  );
+};
+const storeThreadFilters = (filters: ReadonlyMap<string, FilterSelection>) =>
+  Object.fromEntries(filters);
+
 /** The first sentence of a service's description, as the picker's line under a variant, if short. */
 const firstSentence = (text: string | undefined) => {
   const sentence = text?.split(/(?<=[.!?])\s/)[0]?.trim();
   return sentence && sentence.length <= 140 ? sentence : undefined;
 };
 
-const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
+/** A thread id as genki makes them (21 of `[A-Za-z0-9_-]`, or a UUID), so `?t=` names no path. */
+const THREAD_ID = /^[\w-]{1,200}$/;
+const threadInAddress = () => {
+  const id = new URLSearchParams(location.search).get('t');
+  return id && THREAD_ID.test(id) ? id : undefined;
+};
+
+/** The answer with the markers its sources came with: `[N]` names an excerpt only with them. */
+const withMarkers = (
+  answer: AnswerData,
+  markers: AnswerData['markers'] | undefined,
+): AnswerData => {
+  const next = { ...answer };
+  delete next.markers;
+  return markers ? { ...next, markers } : next;
+};
 
 export const useAssistant = ({
   api,
@@ -245,6 +285,8 @@ export const useAssistant = ({
     [layout, met],
   );
   const where = (id: BlockId) => (has(id) ? zoneOf(layout, id) : undefined);
+  /** Whether the block stands in the zone, also when it stands in both its zones. */
+  const standsIn = (id: BlockId, zone: Zone) => has(id) && zonesOf(layout, id).includes(zone);
   const option = (id: BlockId, name: string) => has(id) && optionInForce(layout, id, name, met);
 
   const threadsOn = has('threads');
@@ -277,6 +319,7 @@ export const useAssistant = ({
           id: row.id,
           title: row._variant_title ?? row.title ?? row.id,
           ...(description ? { description } : {}),
+          ...(row._service_title ? { service: row._service_title } : {}),
         };
       });
   }, [models, facts]);
@@ -343,7 +386,8 @@ export const useAssistant = ({
   // ── Threads ──
   const [loadedThreads, setThreads] = useState<ThreadRow[]>();
   const [threadsFailed, setThreadsFailed] = useState(false);
-  const [renamed, setRenamed] = useState<Record<string, string>>({});
+  // Maps, as every list here keyed by an id from genki or the address.
+  const [renamed, setRenamed] = useState<ReadonlyMap<string, string>>(new Map());
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   const reloadThreads = useCallback(() => {
     if (!threadsOn) return;
@@ -362,7 +406,9 @@ export const useAssistant = ({
             !deleted.has(thread.id) && (allThreads || !thread.service || inFamily(thread.service)),
         )
         .map((thread) =>
-          renamed[thread.id] ? { ...thread, title: renamed[thread.id] ?? thread.title } : thread,
+          renamed.has(thread.id)
+            ? { ...thread, title: renamed.get(thread.id) ?? thread.title }
+            : thread,
         ),
     [loadedThreads, renamed, deleted, inFamily, allThreads],
   );
@@ -445,6 +491,8 @@ export const useAssistant = ({
   const leave = useCallback(
     (id: string | undefined) => {
       abort.current?.abort();
+      // A thread the reader leaves is read from genki when they come back, whoever made it.
+      ownThread.current = undefined;
       setRequest({ action: 'close-drawers' });
       go(id);
     },
@@ -530,6 +578,8 @@ export const useAssistant = ({
     if (!filterOn || !corpusKey) return;
     let gone = false;
     setFields(undefined);
+    // The values another collection has say nothing of this one's.
+    setBaseFacets(undefined);
     api.loadFields(corpusKey).then(
       (found) => !gone && setFields(found),
       (error: Error) => {
@@ -551,36 +601,67 @@ export const useAssistant = ({
   );
   // Without Filter, nothing narrows the question: the setup's collection as a whole.
   const selection = filterOn ? chosenSelection : {};
+
+  // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
+  // of each thread's last question asked here is kept, and opening the thread brings it back.
+  // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
+  const look = templateLook(layout.template);
+  const threadFiltersOn = look === 'next' && filterOn;
+  const [threadFilters, setThreadFilters] = useStoredValue(
+    storage,
+    'threadFilters',
+    readThreadFilters,
+    storeThreadFilters,
+  );
+  const keepFilter = (thread: string, asked: FilterSelection) => {
+    if (threadFiltersOn) setThreadFilters(new Map(threadFilters).set(thread, asked));
+  };
+  useEffect(() => {
+    if (!threadFiltersOn || !currentId) return;
+    const kept = threadFilters.get(currentId);
+    // Kept as asked, so a field with every value chosen is empty there and means the same.
+    const asked = narrowing(chosenSelection, facets ?? baseFacets);
+    if (kept && !sameSelection(kept, chosenSelection) && !sameSelection(kept, asked))
+      setSelection(kept);
+    // Only when another thread opens: a change made in the thread stays.
+  }, [currentId, threadFiltersOn]);
   const [facets, setFacets] = useState<FilterField[]>();
   const [baseFacets, setBaseFacets] = useState<FilterField[]>();
-  const [facetsFailed, setFacetsFailed] = useState(false);
+  const [facetsFailed, setFacetsFailed] = useState<boolean | string>(false);
+  const tooLarge = (error: FilterTooLarge) =>
+    t('assembly.filterTooLarge', {
+      field: fields?.find((field) => field.id === error.field)?.label ?? error.field,
+      max: FILTER_VALUES_LIMIT,
+    });
   const [facetsKey, setFacetsKey] = useState(0);
   useEffect(() => {
     if (!filterOn || !fields || !corpusKey) return;
     let gone = false;
     setFacetsFailed(false);
-    api.loadFacets(selection, corpusKey, fields).then(
-      (found) => {
-        if (gone) return;
-        setFacets(found);
-        if (isEmptySelection(selection)) setBaseFacets(found);
-      },
+    const load = async () => {
+      if (isEmptySelection(selection)) {
+        const found = await api.loadFacets(selection, corpusKey, fields);
+        if (!gone) setBaseFacets(found);
+        return found;
+      }
+      // A field with every value in the collection (the facets of nothing) chosen narrows nothing.
+      const base = baseFacets ?? (await api.loadFacets({}, corpusKey, fields));
+      if (!gone && !baseFacets) setBaseFacets(base);
+      return api.loadFacets(narrowing(selection, base), corpusKey, fields, base);
+    };
+    load().then(
+      (found) => !gone && setFacets(found),
       (error: Error) => {
         if (gone) return;
         console.error('[assistant] facets', error.message);
-        setFacetsFailed(true);
+        setFacetsFailed(error instanceof FilterTooLarge ? tooLarge(error) : true);
       },
     );
     return () => {
       gone = true;
     };
-    // `selection` is new on every render without Filter; with it, it is the state.
+    // `selection` is new on every render without Filter; `baseFacets` is set here, not a cause.
   }, [api, filterOn, chosenSelection, facetsKey, corpusKey, fields]);
-  useEffect(() => {
-    if (!filterOn || baseFacets || isEmptySelection(chosenSelection) || !fields || !corpusKey)
-      return;
-    api.loadFacets({}, corpusKey, fields).then(setBaseFacets, () => {});
-  }, [api, filterOn, baseFacets, chosenSelection, corpusKey, fields]);
 
   const chooseCorpus = (key: string) => {
     // A new collection starts a new thread with an empty filter (kunnskapsassistenten's useCorpus).
@@ -615,7 +696,7 @@ export const useAssistant = ({
 
   // The line under each title in «Dokumenter», where the profile says how to find it.
   const documentsOn = filterOn && option('filter', 'documents');
-  const [about, setAbout] = useState<Record<string, readonly string[]>>({});
+  const [about, setAbout] = useState<ReadonlyMap<string, readonly string[]>>(new Map());
   const sourceKey =
     documentsOn && corpusKey
       ? (activeAnswer?.sources ?? [])
@@ -628,7 +709,7 @@ export const useAssistant = ({
     let gone = false;
     for (const id of sourceKey.split(','))
       void api.loadAbout(corpusKey, id).then((line) => {
-        if (!gone && line) setAbout((all) => (all[id] ? all : { ...all, [id]: line }));
+        if (!gone && line) setAbout((all) => (all.has(id) ? all : new Map(all).set(id, line)));
       });
     return () => {
       gone = true;
@@ -637,7 +718,7 @@ export const useAssistant = ({
   const documents = useMemo<DocumentItem[] | undefined>(
     () =>
       activeAnswer?.sources?.map((s, i) => {
-        const line = s.documentId ? about[s.documentId] : undefined;
+        const line = s.documentId ? about.get(s.documentId) : undefined;
         return {
           id: s.documentId ?? `${i}-${s.title}`,
           // Documents names no untitled source itself; Sources' word for one.
@@ -700,16 +781,25 @@ export const useAssistant = ({
     const question = aboutTitle
       ? t('assembly.aboutDocument', { title: aboutTitle, question: typed })
       : typed;
+    // A field with every value it lists chosen narrows nothing, so it is neither sent nor said.
+    const narrowed = filterOn ? narrowing(selection, facets ?? baseFacets) : undefined;
     const narrowedTo =
       toDocument && aboutTitle
         ? [aboutTitle]
-        : (facets ?? []).flatMap((field) => [...(selection[field.id] ?? [])]);
-    const filters =
+        : (facets ?? []).flatMap((field) => fieldValueLabels(field, narrowed?.[field.id] ?? []));
+    // Built as the question goes, so a filter genki cannot take fails it before any request.
+    const filtersOf = () =>
       toDocument && documentId
         ? filterSet({ [toDocument.id]: [documentId] }, [toDocument])
-        : filterOn
-          ? filterSet(narrowing(selection, facets), fields ?? [])
+        : narrowed
+          ? filterSet(narrowed, fields ?? [], facets ?? baseFacets)
           : undefined;
+    // What the filter was, and how many documents it read from, for the answer's «Fremgangsmåte».
+    const askedWith = toDocument ? undefined : narrowed;
+    const readFrom = askedWith
+      ? documentCount(facets, askedWith, corpusProfile?.typeField)
+      : undefined;
+    if (askedWith && startedIn) keepFilter(startedIn, askedWith);
     const change = (update: (turn: Turn) => Turn) =>
       setTurns((all) => all.map((t) => (t.id === id ? update(t) : t)));
     const update = (patch: (answer: AnswerData) => AnswerData) =>
@@ -719,6 +809,7 @@ export const useAssistant = ({
         t.approach ? { ...t, approach: { ...t.approach, finishedAt: Date.now() } } : t,
       );
     let frames = 0;
+    let opened = false;
     setWorking(true);
     // Only a question sent from the field empties it, and only of what was sent.
     if (fromField) setDraft((draft) => (draft.trim() === typed.trim() ? '' : draft));
@@ -730,7 +821,12 @@ export const useAssistant = ({
       askedAt: Date.now(),
       answer: { text: '', status: 'streaming', created: Date.now() },
       ...(approachOn ? { approach: { frames: [], startedAt: Date.now() } } : {}),
-      scope: { narrowedTo, ...(corpusKey ? { corpus: corpusKey } : {}) },
+      scope: {
+        narrowedTo,
+        ...(corpusKey ? { corpus: corpusKey } : {}),
+        ...(askedWith ? { selection: askedWith } : {}),
+        ...(readFrom === undefined ? {} : { documents: readFrom }),
+      },
     };
     setTurns((all) =>
       replaces && all.some((t) => t.id === replaces)
@@ -744,13 +840,16 @@ export const useAssistant = ({
         question,
         model,
         conversationId: startedIn,
-        filters,
+        filters: filtersOf(),
         dataset: corpusKey ? { tenant: ownDataset?.tenant || tenant, key: corpusKey } : undefined,
         steps: approachOn,
         signal: controller.signal,
       })) {
         if (!alive.current) break;
-        if (event.type === 'conversation' && !startedIn) {
+        // genki names a new thread twice (POST, then stream): only the first opens it.
+        if (event.type === 'conversation' && !startedIn && !opened) {
+          opened = true;
+          if (askedWith) keepFilter(event.conversationId, askedWith);
           ownThread.current = event.conversationId;
           go(event.conversationId, true);
           reloadThreads();
@@ -765,19 +864,25 @@ export const useAssistant = ({
         } else if (event.type === 'text') update((a) => ({ ...a, text: a.text + event.text }));
         else if (event.type === 'retract') update((a) => ({ ...a, text: '' }));
         else if (event.type === 'sources') {
-          update((a) => ({ ...a, sources: event.sources.map(fromWire) }));
+          update((a) => withMarkers({ ...a, sources: event.sources.map(fromWire) }, event.markers));
           if (sourcesOn && event.sources.length > 0)
             setRequest({ action: 'offer', side: 'secondary' });
         } else if (event.type === 'done') {
           finish();
-          update((a) => ({
-            ...a,
-            text: event.answer.text || a.text,
-            sources: event.answer.sources.map(fromWire),
-            noAnswer: event.answer.noAnswer,
-            status: 'complete',
-            created: Date.now(),
-          }));
+          update((a) =>
+            withMarkers(
+              {
+                ...a,
+                text: event.answer.text || a.text,
+                sources: event.answer.sources.map(fromWire),
+                noAnswer: event.answer.noAnswer,
+                status: 'complete',
+                created: Date.now(),
+                ...(event.answer.taskId ? { runId: event.answer.taskId } : {}),
+              },
+              event.answer.markers,
+            ),
+          );
           if (sourcesOn && event.answer.sources.length > 0)
             setRequest({ action: 'offer', side: 'secondary' });
           if (approachOn) stepsReported.current?.(frames > 0);
@@ -792,7 +897,14 @@ export const useAssistant = ({
         ...a,
         status: aborted ? 'aborted' : 'failed',
         error: (error as Error).message,
-        ...(aborted ? {} : { failure: failureOf(error) }),
+        ...(aborted
+          ? {}
+          : {
+              failure:
+                error instanceof FilterTooLarge
+                  ? { kind: 'filter' as const, message: tooLarge(error) }
+                  : failureOf(error),
+            }),
       }));
       if (!aborted) reloadThreads();
     } finally {
@@ -802,13 +914,15 @@ export const useAssistant = ({
   };
 
   // ── The conversation as the blocks take it ──
+  const filterInApproach = threadFiltersOn && approachOn;
   const conversation = useMemo<ConversationTurn[]>(
     () =>
       turns.flatMap((turn): ConversationTurn[] => {
         const scopeOf = (): { scope?: ConversationScope } => {
           const asked = turn.scope?.corpus ?? threadCorpus;
           const other = asked && asked !== corpusKey ? corpusLabel(asked) : undefined;
-          const narrowedTo = turn.scope?.narrowedTo ?? [];
+          // The next look says the filter inside «Fremgangsmåte», not under the answer.
+          const narrowedTo = filterInApproach ? [] : (turn.scope?.narrowedTo ?? []);
           if (!other && narrowedTo.length === 0) return {};
           return { scope: { narrowedTo, ...(other ? { corpus: other } : {}) } };
         };
@@ -836,7 +950,7 @@ export const useAssistant = ({
         ];
       }),
     // `corpusLabel` reads `corpora` and the profile.
-    [turns, corpusKey, corpora, threadCorpus, footnotes],
+    [turns, corpusKey, corpora, threadCorpus, footnotes, filterInApproach],
   );
 
   const firstQuestion = turns.find((t) => t.question)?.question ?? '';
@@ -847,12 +961,13 @@ export const useAssistant = ({
     view === 'notfound'
       ? t('assembly.threadNotFoundTitle')
       : named || shortTitle(firstQuestion) || t('threads.newThread');
+  // The thread's title as the page names it: the tab, and the next look's `h1`.
+  const threadTitle = repeatsQuestion ? shortTitle(heading) : heading;
   useEffect(() => {
     if (!threadInUrl) return;
-    const name =
-      page === 'settings' ? t('settings.title') : repeatsQuestion ? shortTitle(heading) : heading;
+    const name = page === 'settings' ? t('settings.title') : threadTitle;
     document.title = t('assembly.tabTitle', { page: name, assistant: assistantName });
-  }, [threadInUrl, page, heading, repeatsQuestion, assistantName, t]);
+  }, [threadInUrl, page, threadTitle, assistantName, t]);
 
   // Each row names its collection only when the list mixes several, by the collection's name.
   const threadRows = useMemo(() => {
@@ -980,12 +1095,16 @@ export const useAssistant = ({
   );
   const setFlag = (id: string, on: boolean) =>
     setFlagList(on ? [...new Set([...flagList, id])] : flagList.filter((f) => f !== id));
+  /** «Slå av alle»: every trial the profile offers off, in one write. */
+  const flagsOff = () => setFlagList(flagList.filter((id) => !offered.has(id)));
   // Without Innstillinger, the setup's level stands.
   const level = (settingsOn ? chosenLevel : undefined) ?? defaultLevel;
 
   return {
     // what is placed
     layout,
+    // The template's look: `next` draws the dev boards' frame, titles and profile menu.
+    look,
     facts,
     modelsFailed,
     // From a failed `/v1/models` until the rows come: the failure's region stays drawn while it is
@@ -994,6 +1113,7 @@ export const useAssistant = ({
     retryModels,
     has,
     where,
+    standsIn,
     option,
     footnotes,
     assistantName,
@@ -1014,24 +1134,33 @@ export const useAssistant = ({
     facets,
     baseFacets,
     facetsFailed,
-    retryFacets: () => setFacetsKey((n) => n + 1),
+    // A filter genki cannot take fails the same way again: it is changed, not retried.
+    retryFacets: typeof facetsFailed === 'string' ? undefined : () => setFacetsKey((n) => n + 1),
+    // How many documents the next question reads from, and the collection in all, exactly from the
+    // facets; undefined while a count is missing.
+    readFrom: filterOn
+      ? documentCount(facets, narrowing(selection, facets), corpusProfile?.typeField)
+      : undefined,
+    collectionSize: filterOn ? documentCount(baseFacets, {}, corpusProfile?.typeField) : undefined,
     documents,
     // threads
     threads,
     threadRows,
     // «Logg ut» forgets what this browser kept of the reader's choices, as kunnskapsassistenten's
-    // beforeLogout: the next person on a shared machine starts without them.
+    // beforeLogout: the next person on a shared machine starts without them. Then the host's own.
     signOut: () => {
       storage?.remove('filter');
       storage?.remove('flags');
       storage?.remove('corpus');
+      storage?.remove('threadFilters');
+      profile?.signOut?.onSignOut?.();
     },
     threadsFailed,
     reloadThreads,
     renameThread: onRename
       ? async (thread: ThreadRow, title: string) => {
           await onRename(thread, title);
-          setRenamed((all) => ({ ...all, [thread.id]: title }));
+          setRenamed((all) => new Map(all).set(thread.id, title));
         }
       : undefined,
     deleteThread: onDelete
@@ -1044,6 +1173,7 @@ export const useAssistant = ({
     currentId,
     named,
     repeatsQuestion,
+    threadTitle,
     leave,
     urlThreads,
     newThread: () => {
@@ -1065,6 +1195,8 @@ export const useAssistant = ({
       setRequest({ action: 'close-drawers' });
     },
     settingsHref,
+    /** «Tilbake til trådene» from «Innstillinger»: the thread on screen, its answer left running. */
+    backToThreads: () => go(currentId),
     hrefOf,
     // the thread on screen
     view,
@@ -1137,6 +1269,7 @@ export const useAssistant = ({
     setLevel,
     flags,
     setFlag,
+    flagsOff,
     threadInUrl,
     colorScheme,
     onColorSchemeChange,

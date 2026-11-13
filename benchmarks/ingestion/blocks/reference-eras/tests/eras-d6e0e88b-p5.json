@@ -1,0 +1,149 @@
+{
+ "tests": [
+  {
+   "id": "eras-d6e0e88b-p5-t01",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "English summary",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "On 17 December 2013 an explosion occurred at Drevja",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "On 17 December 2013 an explosion occurred at Drevja in Nordland county, Norway.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "by using methods such as thermal analysis (differential scanning calorimetry (DSC)) combined with fire experiments.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "None of the experiments indicated any serious incompatibility between melted aluminum and AN.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "This is due to the rapid formation of a protective oxide layer on the metal surface caused by AN",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "does not aggravate the already present risk of explosion",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "The thermolysis of AN is especially dependent on temperature",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "melted AN spattered out and landed on the hot steel surfaces, which correlates well with the formation of nitrogen oxides",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-d6e0e88b-p5-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "However, the role and importance of the formation of nitrogen oxides in explosions of AN resulting from fire is yet to be more thoroughly investigated.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

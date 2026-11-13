@@ -4,8 +4,7 @@ export interface FilterOption {
   value: string;
   /** What the reader sees. The value when absent. */
   label?: string | undefined;
-  /** Documents with this value, given the other fields. Not shown when absent: no count beats a
-   * wrong one. */
+  /** Documents with this value, given the other fields; not shown when absent. */
   count?: number | undefined;
 }
 
@@ -15,11 +14,12 @@ export interface FilterField {
   id: string;
   /** The field's name as a plural noun, «Dokumenttyper». It is lower-cased inside sentences. */
   label: string;
+  /** The field's name over its row in the `panel` variant, in the singular: «Dokumenttype». */
+  heading?: string | undefined;
   /** `year` lets `yearPeriods` draw the field as periods. */
   kind?: 'year' | undefined;
   options: readonly FilterOption[];
 }
 
-/** What the reader chose, per field id. An empty or absent list is no narrowing on that field,
- * never «nothing». */
+/** What the reader chose, per field id; an empty or absent list narrows nothing. */
 export type FilterSelection = Readonly<Record<string, readonly string[]>>;

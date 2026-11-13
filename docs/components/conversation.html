@@ -172,15 +172,26 @@
                 answer. Without <code>actions</code>, the row holds the time alone.
               </li>
               <li>
-                <code>search</code>, <code>sourcesUsed</code>, <code>closingQuestion</code>,
-                <code>assistantName</code>, <code>href</code>, <code>citationId</code> and
-                <code>headingLevel</code>.
+                <code>search</code>, <code>sourcesUsed</code>, <code>documentFootnotes</code>,
+                <code>closingQuestion</code>, <code>assistantName</code>, <code>href</code>,
+                <code>citationId</code> and <code>headingLevel</code>.
               </li>
               <li>
                 <code>questionColor</code>, <code>answerColor</code> and <code>color</code> set
                 Designsystemet's <code>data-color</code>, each only when given.
                 Kunnskapsassistenten's look is <code>accent</code> questions and
                 <code>neutral</code> answers.
+              </li>
+              <li>
+                <code>answerVariant</code>: <code>plain</code> is the dev boards' answer
+                (dev-kilder-hoyre): «Kunnskapsassistenten», the <code>assistantName</code>, as a
+                small strong line over what the <code>header</code> puts there, and the answer with
+                no card (<code>Answer</code>'s <code>plain</code>). The line is for the eye; the
+                answer's own «… svarte:» tells a screen reader. <code>card</code>, the default.
+              </li>
+              <li>
+                <code>answerLabel</code>: <code>false</code> leaves out that line over a
+                <code>plain</code> answer, as the newer dev boards draw it. On by default.
               </li>
             </ul>
             <h2>Related</h2>
@@ -296,6 +307,31 @@
                   <td><code>--genai-conversation-scope-font-size</code></td>
                   <td><code>--ds-font-size-minus-1</code></td>
                   <td>its size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-label-spacing</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td><code>plain</code>: under «Kunnskapsassistenten» over the answer</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-label-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td><code>plain</code>: the label's colour</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-label-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td><code>plain</code>: the label's size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-label-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td><code>plain</code>: the label's weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-label-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td><code>plain</code>: the label's line</td>
                 </tr>
                 <tr>
                   <td><code>--genai-conversation-scope-padding-inline</code></td>

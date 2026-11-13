@@ -8,8 +8,9 @@ Mark a finding Important only when the change would:
 
 - let a model call skip the gate that applies budgets, guardrails and the audit log
 - let one tenant read or change another tenant's data, definitions, runs or keys
-- enforce a right, a quota or the tenant on one path and skip it on another path to the same data
+- enforce a rule (a right, a quota, the tenant, a check an ADR promises) on one path and skip it on another path to the same data, model or behaviour
 - put personal data (national identity numbers, names, prompt or answer text) in logs, traces, error bodies or metrics without masking
+- let a key, token or secret reach a log, audit event, error body or recorded exchange unredacted
 - weaken authentication, or let a dev-only setting (dev mode, the mock login, mock rights) take effect outside dev mode
 - change a public contract (a `/v1` route, a field, a problem type, the `GenAI-Version` behaviour) without an ADR that says so
 - make an ADR, the API docs or `docs/development.md` say something the code does not do
@@ -17,14 +18,17 @@ Mark a finding Important only when the change would:
 
 Everything else is Nit at most: naming, structure, style, refactors.
 
+Every finding names the bullet in this file it rests on, as `rule`, and its severity follows that bullet: a finding on a bullet above is Important, a finding on any other rule is Nit.
+
 ## One round
 
 Report every finding in one review. Never hold one back for a later round: the author should fix once. Report Pre-existing problems in lines the pull request did not touch only when they are Important.
 
 ## Do not report
 
-- Anything CI already enforces: Prettier, ESLint, TypeScript, dependency boundaries, size budgets, gitleaks, CodeQL
+- The checks CI runs on the code: Prettier, ESLint, TypeScript, dependency boundaries, size budgets, gitleaks, CodeQL. The CI wiring itself, what a workflow runs and when, stays in scope
 - `package-lock.json` and files written by a generator, such as `docs/architecture/system-atlas.html` from `npm run atlas:build`
+- The size of the pull request: the workflow measures it and posts its own note when it is large
 - Portal mock data under `apps/portal/src/mock`
 - Test code that breaks production rules on purpose
 - A missing community health file such as `SECURITY.md` or a code of conduct: Digdir provides them for every repository from `digdir/.github`

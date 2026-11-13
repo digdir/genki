@@ -150,16 +150,42 @@ const ModelList = z
 
 const Source = z
   .object({
-    index: z.number().int().optional().describe('The N in `[N]` in the answer text.'),
+    index: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'The N in `[N]` in the answer text. When the service cites excerpts, the lowest marker that cites this document; resolve `[N]` through `markers`.',
+      ),
     title: z.string(),
     url: z.string().optional().describe('Present only for an http or https link people can open.'),
     document_id: z.string().optional(),
     excerpts: z.array(
-      z.object({ chunk_id: z.string(), text: z.string(), position: z.number().int().optional() }),
+      z.object({
+        chunk_id: z.string(),
+        text: z.string(),
+        position: z.number().int().optional(),
+        heading: z
+          .string()
+          .optional()
+          .describe(
+            'The section the excerpt is from: its heading path as plain text, levels joined by ` › `. Present only when the index gives the excerpt a heading.',
+          ),
+        markers: z
+          .array(z.string())
+          .optional()
+          .describe('When the service cites excerpts: the markers that cite this excerpt.'),
+      }),
     ),
+    markers: z
+      .array(z.string())
+      .optional()
+      .describe('When the service cites excerpts: the markers that cite this document.'),
   })
   .passthrough()
   .openapi('Source');
+
+const AnswerMarker = z.object({ marker: z.string(), chunk_id: z.string(), document: z.string() });
 
 const ChatRequest = z
   .object({
@@ -217,6 +243,12 @@ const ChatResponse = z
     conversation_id: z.string().optional(),
     citations: z.array(z.string()).optional(),
     sources: z.array(Source).optional(),
+    markers: z
+      .array(AnswerMarker)
+      .optional()
+      .describe(
+        'Present only when the service cites excerpts: every marker in the answer, in order, with the one excerpt and the document it leads to. `marker` is written as in the text, without brackets (ADR 0052).',
+      ),
     attachments: z
       .array(Attachment)
       .optional()
@@ -276,6 +308,12 @@ const StoredMessage = z
       .array(Source)
       .optional()
       .describe('Assistant messages: the sources as the answer gave them, so `[N]` resolves.'),
+    markers: z
+      .array(AnswerMarker)
+      .optional()
+      .describe(
+        'Assistant messages from a service that cites excerpts: the markers as the answer gave them, so `[N]` resolves to one excerpt (ADR 0052). Messages stored before markers were kept have none.',
+      ),
     task: z.string().optional().describe('Assistant messages: the task id to send as feedback.'),
     attachments: z.array(z.string()).optional(),
     input: z.record(z.string(), z.unknown()).optional().describe('User messages: the form values.'),

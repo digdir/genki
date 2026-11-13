@@ -37,22 +37,22 @@ export interface ThreadsProps {
   newThreadHref?: string | undefined;
   /** A plain click on «Ny tråd». */
   onNewThread?: (() => void) | undefined;
-  /**
-   * The person renamed a thread. Return a promise to have the new name shown at once and the old
-   * one put back, with a message, if it rejects. Resolve it with `'gone'` when the thread no longer
-   * exists: its row goes, and the person is told. Without this and `onDelete`, the rows have no menu.
-   */
+  /** A rename, which gives the rows a menu; a rejection puts the name back, `'gone'` drops the row. */
   onRename?: ((thread: ThreadItem, title: string) => unknown) | undefined;
-  /**
-   * The person confirmed a delete. Return a promise to have the row taken away at once and put
-   * back, with a message, if it rejects. A thread that is already gone is deleted: resolve with
-   * `'gone'`, or anything. If it is the thread on screen, the host opens a new one.
-   */
+  /** A confirmed delete; a rejected promise puts the row back, and `'gone'` counts as deleted. */
   onDelete?: ((thread: ThreadItem) => unknown) | undefined;
   /** Shows «Filtrer dokumenter», for a filter that shares the panel. */
   onShowFilters?: (() => void) | undefined;
   /** Moves focus to «Filtrer dokumenter» on mount, when the person just switched here from it. */
   focusShowFilters?: boolean | undefined;
+  /** «Søk i tråder» over the list, as kunnskapsassistenten draws it. `false` leaves it out. */
+  search?: boolean | undefined;
+  /**
+   * `links`, kunnskapsassistenten's: each row a link on one line, with its time under it. `nav`,
+   * the design's: titles in the text colour on one line, with no time, the open row tinted,
+   * small group names, «Ny tråd» across the panel, and a row's «…» only on hover or focus.
+   */
+  variant?: 'links' | 'nav' | undefined;
   /** The level of the list's heading, which is hidden on screen. The groups are one below. */
   headingLevel?: 2 | 3 | 4 | 5 | undefined;
   /** Designsystemet's `data-color` for the block, set only when given. */
@@ -78,6 +78,10 @@ type Pending =
 /** Where focus goes when the row it was on has gone. */
 const newThreadTarget = '\u0000new-thread';
 
+/** The design's «Ny tråd» stands in a row of its own, which the list scrolls under (dev-trader). */
+const NewThreadRow = ({ pinned, children }: { pinned: boolean; children: ReactNode }) =>
+  pinned ? <div className="uib-threads-top">{children}</div> : children;
+
 /** «Tråder»: the person's conversations by period, with search, rename and delete. */
 export const Threads = ({
   threads,
@@ -92,6 +96,8 @@ export const Threads = ({
   onDelete,
   onShowFilters,
   focusShowFilters = false,
+  search = true,
+  variant = 'links',
   headingLevel = 2,
   color,
   foot,
@@ -122,8 +128,7 @@ export const Threads = ({
   const filterRef = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<string | undefined>(undefined);
 
-  // A settled change is dropped once the host's list moves past it: the row gone, or a new title.
-  // Until then it stands, so a read that was already out cannot bring back the old one.
+  // A settled change stands until the host's list moves past it, so a stale read cannot undo it.
   for (const [id, change] of pending.current) {
     if (!change.settled) continue;
     const given = threads?.find((thread) => thread.id === id);
@@ -272,11 +277,75 @@ export const Threads = ({
 
   const hasMenu = Boolean(onRename ?? onDelete);
   const level = Math.min(headingLevel + 1, 6) as 3 | 4 | 5 | 6;
+  const nav = variant === 'nav';
+
+  const groupList = groups.map((group) => (
+    <section key={group.id} className="uib-threads-group">
+      <Heading level={level} data-size="xs" className="uib-threads-group-title">
+        {groupTitle(group)}
+      </Heading>
+      <ul className="uib-threads-list">
+        {group.threads.map((thread) => (
+          <li key={thread.id} className="uib-threads-item">
+            {renaming === thread.id ? (
+              <RenameThread
+                title={thread.title}
+                onSave={(title) => rename(thread, title)}
+                onCancel={() => {
+                  setRenaming(undefined);
+                  focusAfter.current = thread.id;
+                }}
+              />
+            ) : (
+              <div className="uib-threads-row">
+                <ThreadRow
+                  title={titleOf(thread)}
+                  href={threadHref(hostThread(thread.id) ?? thread)}
+                  current={thread.id === currentId}
+                  time={nav ? undefined : rowTime(thread.updatedAt, f, timeWords)}
+                  dataset={thread.dataset}
+                  wrap={nav}
+                  onOpen={
+                    onOpenThread ? () => onOpenThread(hostThread(thread.id) ?? thread) : undefined
+                  }
+                />
+                {hasMenu ? (
+                  <ThreadMenu
+                    title={titleOf(thread)}
+                    ref={(button) => {
+                      menuRefs.current.set(thread.id, button);
+                    }}
+                    onRename={
+                      onRename
+                        ? () => {
+                            setActionError(undefined);
+                            setRenaming(thread.id);
+                          }
+                        : undefined
+                    }
+                    onDelete={
+                      onDelete
+                        ? () => {
+                            setActionError(undefined);
+                            setDeleting(thread);
+                          }
+                        : undefined
+                    }
+                  />
+                ) : null}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ));
 
   return (
     <div
       className={classes('uib-threads', className)}
       data-color={color}
+      data-variant={nav ? 'nav' : undefined}
       aria-busy={loading || undefined}
     >
       {onShowFilters ? (
@@ -295,20 +364,24 @@ export const Threads = ({
 
       {/* No aria-current: «Ny tråd» is an action, not a place like the rows. */}
       {newThreadHref !== undefined ? (
-        <Button asChild>
-          <a
-            href={newThreadHref}
-            ref={newThreadRef}
-            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-              if (!onNewThread || !plainClick(event)) return;
-              event.preventDefault();
-              onNewThread();
-            }}
-          >
-            {empty ? t('threads.firstThread') : t('threads.newThread')}
-            <PencilWritingIcon aria-hidden="true" />
-          </a>
-        </Button>
+        <NewThreadRow pinned={nav}>
+          <Button asChild>
+            <a
+              href={newThreadHref}
+              ref={newThreadRef}
+              className="uib-threads-new"
+              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                if (!onNewThread || !plainClick(event)) return;
+                event.preventDefault();
+                onNewThread();
+              }}
+            >
+              {empty ? t('threads.firstThread') : t('threads.newThread')}
+              {/* The design's button is its words alone. */}
+              {nav ? null : <PencilWritingIcon aria-hidden="true" />}
+            </a>
+          </Button>
+        </NewThreadRow>
       ) : null}
 
       {/* Hidden on screen, where the groups name themselves; kept so the outline does not jump. */}
@@ -323,7 +396,7 @@ export const Threads = ({
       </Heading>
 
       {/* The form makes Search.Clear (a reset) work; the list filters as the person types. */}
-      {empty ? null : (
+      {empty || !search ? null : (
         <search className="uib-threads-search">
           <form onSubmit={(event) => event.preventDefault()} onReset={() => setQuery('')}>
             <Search>
@@ -339,12 +412,15 @@ export const Threads = ({
         </search>
       )}
 
-      {/* Always rendered: a live region announces only changes inside a region that exists. */}
-      <Paragraph asChild data-size="sm">
-        <output id={statusId} className="uib-threads-search-status">
-          {needle ? t('threads.matches', { count: matches.length }) : ''}
-        </output>
-      </Paragraph>
+      {/* Always rendered with the search: a live region announces only changes inside a region
+          that exists. Without the search there is nothing to count. */}
+      {search ? (
+        <Paragraph asChild data-size="sm">
+          <output id={statusId} className="uib-threads-search-status">
+            {needle ? t('threads.matches', { count: matches.length }) : ''}
+          </output>
+        </Paragraph>
+      ) : null}
 
       {/* One alert region, with «Prøv igjen» for the list only: a failed change is put back. */}
       <ErrorRegion
@@ -375,68 +451,12 @@ export const Threads = ({
         </div>
       ) : null}
 
-      {groups.map((group) => (
-        <section key={group.id} className="uib-threads-group">
-          <Heading level={level} data-size="xs" className="uib-threads-group-title">
-            {groupTitle(group)}
-          </Heading>
-          <ul className="uib-threads-list">
-            {group.threads.map((thread) => (
-              <li key={thread.id} className="uib-threads-item">
-                {renaming === thread.id ? (
-                  <RenameThread
-                    title={thread.title}
-                    onSave={(title) => rename(thread, title)}
-                    onCancel={() => {
-                      setRenaming(undefined);
-                      focusAfter.current = thread.id;
-                    }}
-                  />
-                ) : (
-                  <div className="uib-threads-row">
-                    <ThreadRow
-                      title={titleOf(thread)}
-                      href={threadHref(hostThread(thread.id) ?? thread)}
-                      current={thread.id === currentId}
-                      time={rowTime(thread.updatedAt, f, timeWords)}
-                      dataset={thread.dataset}
-                      onOpen={
-                        onOpenThread
-                          ? () => onOpenThread(hostThread(thread.id) ?? thread)
-                          : undefined
-                      }
-                    />
-                    {hasMenu ? (
-                      <ThreadMenu
-                        title={titleOf(thread)}
-                        ref={(button) => {
-                          menuRefs.current.set(thread.id, button);
-                        }}
-                        onRename={
-                          onRename
-                            ? () => {
-                                setActionError(undefined);
-                                setRenaming(thread.id);
-                              }
-                            : undefined
-                        }
-                        onDelete={
-                          onDelete
-                            ? () => {
-                                setActionError(undefined);
-                                setDeleting(thread);
-                              }
-                            : undefined
-                        }
-                      />
-                    ) : null}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {/* The design's groups are one list, the space above each heading, none between them. */}
+      {nav && groupList.length > 0 ? (
+        <div className="uib-threads-groups">{groupList}</div>
+      ) : (
+        groupList
+      )}
 
       {foot ?? footer}
 
@@ -454,11 +474,7 @@ export const Threads = ({
   );
 };
 
-/**
- * Always rendered, with the message coming and going: role="alert" announces only content added to
- * a region that exists. It also takes focus when a successful retry takes the button away.
- * TODO: use the shared error state from the states block when it lands.
- */
+/** Always rendered: role="alert" announces only content added to an existing region. */
 const ErrorRegion = ({
   message,
   onRetry,

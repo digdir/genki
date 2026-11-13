@@ -24,6 +24,14 @@ export interface IndexChunk {
   text: string;
   metadata?: Record<string, unknown>;
   vector?: number[];
+  /** The file the chunk was cut from, by its name in the record, and that file's sha256. */
+  file?: string;
+  fileSha256?: string;
+  /** The first and last page of its file the chunk spans, from 1. */
+  pageFrom?: number;
+  pageTo?: number;
+  /** The headings above the chunk, outermost first, when the converter gives headings. */
+  headingPath?: string[];
 }
 
 export interface IndexPhrase {
@@ -206,8 +214,8 @@ export class IndexWriterRouter {
   }
 
   async #refuseServed(id: string, engine: string, generation: string, context: IndexWriterContext) {
-    const served = this.#required(id);
-    if (this.#catalog.endpoints[served.endpoint]?.engine !== engine) return;
+    const served = this.#dataset(id);
+    if (!served || this.#catalog.endpoints[served.endpoint]?.engine !== engine) return;
     let active: string | undefined;
     try {
       const route = this.open(id, context);

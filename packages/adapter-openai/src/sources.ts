@@ -1,4 +1,10 @@
-import { plainHeading, publicSourceUrl, sourceBreadcrumb, type Part } from '@genai/contracts';
+import {
+  plainHeading,
+  plainHeadingLevel,
+  publicSourceUrl,
+  sourceBreadcrumb,
+  type Part,
+} from '@genai/contracts';
 
 export const SOURCES_MIME = 'application/vnd.genai.sources+json';
 
@@ -24,6 +30,7 @@ export interface OwuiSource {
   url?: string;
   document_id?: string;
   excerpts: SourceExcerpt[];
+  markers?: string[];
   version?: string;
   published_at?: string;
 }
@@ -32,6 +39,14 @@ export interface SourceExcerpt {
   chunk_id: string;
   text: string;
   position?: number;
+  heading?: string;
+  markers?: string[];
+}
+
+export interface AnswerMarker {
+  marker: string;
+  chunk_id: string;
+  document: string;
 }
 
 export const excerptLength = 300;
@@ -76,27 +91,84 @@ export const sourcesOf = (parts: Part[]): SourceRecord[] =>
 export interface CitedRecord {
   record: SourceRecord;
   index?: number;
+  markers?: string[];
+  excerptMarkers?: Map<string, string[]>;
 }
 
-const citedWithIndex = (parts: Part[]): CitedRecord[] => {
-  const records = sourcesOf(parts);
-  const marked = parts.find(
+interface PartCitation {
+  index: number;
+  chunkId: string;
+  document?: string;
+}
+
+const markedPart = (parts: Part[]) =>
+  parts.find(
     (p) =>
       p.mime !== SOURCES_MIME &&
       Array.isArray((p.meta as { citations?: unknown } | undefined)?.citations),
   );
-  if (!marked) return records.map((record) => ({ record }));
-  const citations = (marked.meta as { citations: unknown[] }).citations
+
+const citationsIn = (part: Part): PartCitation[] =>
+  (part.meta as { citations: unknown[] }).citations
     .filter(
-      (c): c is { index: number; chunkId: string } =>
+      (c): c is PartCitation =>
         typeof c === 'object' &&
         c !== null &&
         typeof (c as { chunkId?: unknown }).chunkId === 'string' &&
         typeof (c as { index?: unknown }).index === 'number',
     )
     .sort((a, b) => a.index - b.index);
+
+const citesExcerpts = (part: Part) => (part.meta as { citeBy?: unknown }).citeBy === 'excerpt';
+
+export const markersOf = (parts: Part[]): AnswerMarker[] => {
+  const marked = markedPart(parts);
+  if (!marked || !citesExcerpts(marked)) return [];
+  const byId = new Map(sourcesOf(parts).map((r) => [r.chunkId, r]));
+  return citationsIn(marked).flatMap((c) => {
+    const found = byId.get(c.chunkId);
+    return found
+      ? [
+          {
+            marker: String(c.index),
+            chunk_id: c.chunkId,
+            document: c.document ?? found.document ?? c.chunkId,
+          },
+        ]
+      : [];
+  });
+};
+
+const citedByDocument = (parts: Part[]): CitedRecord[] => {
+  const byId = new Map(sourcesOf(parts).map((r) => [r.chunkId, r]));
+  const groups = new Map<
+    string,
+    Required<Omit<CitedRecord, 'record'>> & { record: SourceRecord }
+  >();
+  for (const m of markersOf(parts)) {
+    const group = groups.get(m.document) ?? {
+      record: byId.get(m.chunk_id) as SourceRecord,
+      index: Number(m.marker),
+      markers: [],
+      excerptMarkers: new Map<string, string[]>(),
+    };
+    group.markers.push(m.marker);
+    group.excerptMarkers.set(m.chunk_id, [
+      ...(group.excerptMarkers.get(m.chunk_id) ?? []),
+      m.marker,
+    ]);
+    groups.set(m.document, group);
+  }
+  return [...groups.values()];
+};
+
+const citedWithIndex = (parts: Part[]): CitedRecord[] => {
+  const records = sourcesOf(parts);
+  const marked = markedPart(parts);
+  if (!marked) return records.map((record) => ({ record }));
+  if (citesExcerpts(marked)) return citedByDocument(parts);
   const byId = new Map(records.map((r) => [r.chunkId, r]));
-  return citations.flatMap((c) => {
+  return citationsIn(marked).flatMap((c) => {
     const found = byId.get(c.chunkId);
     return found ? [{ record: found, index: c.index }] : [];
   });
@@ -156,24 +228,35 @@ export const noAnswerOf = (parts: Part[]) => answerOf(parts).trim() === '';
 export const noAnswerMarker = (parts: Part[]) =>
   noAnswerOf(parts) ? { no_answer: true as const, notice: NO_ANSWER_NOTICE } : {};
 
-const excerptsOf = (record: SourceRecord, pool: SourceRecord[]): SourceExcerpt[] => {
+const markersFor = (marked: Map<string, string[]> | undefined, chunkId: string) => {
+  const found = marked?.get(chunkId);
+  return found ? { markers: found } : {};
+};
+
+const excerptsOf = (
+  record: SourceRecord,
+  pool: SourceRecord[],
+  marked?: Map<string, string[]>,
+): SourceExcerpt[] => {
   const siblings =
     record.document === undefined
       ? []
       : pool
           .filter((p) => p.document === record.document && p.chunkId !== record.chunkId)
           .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-  return [record, ...siblings].flatMap((r) =>
-    r.text === undefined || r.text.trim() === ''
-      ? []
-      : [
-          {
-            chunk_id: r.chunkId,
-            text: r.text,
-            ...(r.position === undefined ? {} : { position: r.position }),
-          },
-        ],
-  );
+  return [record, ...siblings].flatMap((r) => {
+    if (r.text === undefined || r.text.trim() === '') return [];
+    const heading = sourceBreadcrumb(r.headers);
+    return [
+      {
+        chunk_id: r.chunkId,
+        text: r.text,
+        ...(r.position === undefined ? {} : { position: r.position }),
+        ...(heading === undefined ? {} : { heading }),
+        ...markersFor(marked, r.chunkId),
+      },
+    ];
+  });
 };
 
 export const citationBundle = (
@@ -181,8 +264,16 @@ export const citationBundle = (
   pool: SourceRecord[] = [],
 ): CitationBundle => {
   const resolved = records.map((entry) => {
-    const { record: r, index } = 'record' in entry ? entry : { record: entry, index: undefined };
-    const title = plainHeading(r.title ?? r.headers?.[0] ?? '') || 'Untitled source';
+    const {
+      record: r,
+      index,
+      markers,
+      excerptMarkers,
+    } = 'record' in entry ? entry : { record: entry, index: undefined };
+    const title =
+      (r.title === undefined
+        ? r.headers?.map(plainHeadingLevel).find((h) => h.length > 0)
+        : plainHeading(r.title)) || 'Untitled source';
     return {
       index,
       chunkId: r.chunkId,
@@ -194,7 +285,8 @@ export const citationBundle = (
       provenance: provenanceOf(r),
       publicUrl: openable(publicSourceUrl(r)),
       documentId: r.document,
-      excerpts: excerptsOf(r, pool),
+      excerpts: excerptsOf(r, pool, excerptMarkers),
+      markers,
     };
   });
   return {
@@ -221,6 +313,7 @@ export const citationBundle = (
       ...(r.publicUrl === undefined ? {} : { url: r.publicUrl }),
       ...(r.documentId === undefined ? {} : { document_id: r.documentId }),
       excerpts: r.excerpts,
+      ...(r.markers === undefined ? {} : { markers: r.markers }),
       ...r.provenance,
     })),
   };

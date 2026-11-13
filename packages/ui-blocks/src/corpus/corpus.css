@@ -1,8 +1,4 @@
-/* ADR V2-0009: after Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-corpus-* variable at the point of use, listed on docs/components/filter.html.
-
-   Pinned to neutral on purpose: the line's muted text, so it stays grey whatever family its
-   link follows. */
+/* After Designsystemet's layers, tokens via --genai-corpus-*; muted text pinned neutral. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
@@ -11,15 +7,13 @@
     font-family: var(--genai-corpus-font-family, var(--ds-font-family)), sans-serif;
   }
 
-  /* Muted: context for the documents. A flex row, so «Vis mer» ends the name's line instead of
-     taking a row; it wraps, since a long name is not cut. */
+  /* Muted context, in a row that wraps, so «Vis mer» ends the name's line. */
   .uib-corpus-line {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     column-gap: var(--genai-corpus-line-column-gap, var(--ds-size-2));
-    /* Only between the line and the opened detail. It keeps the detail clear of the toggle's
-       hit area. */
+    /* Only between the line and the opened detail, clear of the toggle's hit area. */
     row-gap: var(--genai-corpus-line-row-gap, var(--ds-size-1));
     color: var(--genai-corpus-line-color, var(--ds-color-neutral-text-subtle));
   }
@@ -27,9 +21,7 @@
     display: none;
   }
 
-  /* WCAG 2.5.8 asks for a 24 px target, and the line is shorter. Padding grows the hit area
-     downward, over the detail text (not a target), and a negative margin gives the pixels back,
-     so the row keeps the line's height. */
+  /* A 24 px target (WCAG 2.5.8): padding grows it, a negative margin keeps the row's height. */
   .uib-corpus-toggle {
     padding-block-end: var(--genai-corpus-toggle-padding-block-end, var(--ds-size-1));
     margin-block-end: calc(-1 * var(--genai-corpus-toggle-padding-block-end, var(--ds-size-1)));

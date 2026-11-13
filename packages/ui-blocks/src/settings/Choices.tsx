@@ -13,11 +13,7 @@ export interface DisplayLevelChoiceProps {
   className?: string | undefined;
 }
 
-/**
- * «Standard» or «Detaljert»: how much an answer shows of how it was made. Radio buttons with a
- * line each, since the two differ by what they add, which a label alone cannot say. It shows the
- * host's value, not the click.
- */
+/** «Standard» or «Detaljert», as radios with a line each; it shows the host's value. */
 export const DisplayLevelChoice = ({ value, onChange, className }: DisplayLevelChoiceProps) => {
   const t = useT();
   const name = useId();
@@ -61,10 +57,7 @@ export interface ExperimentSwitchesProps {
   className?: string | undefined;
 }
 
-/**
- * One switch per trial, each with its line and a link to where it is discussed. A switch, as it
- * takes effect at once, which is what Designsystemet says a switch is for.
- */
+/** One switch per trial, with its line and a link, since a switch takes effect at once. */
 export const ExperimentSwitches = ({
   experiments,
   onChange,

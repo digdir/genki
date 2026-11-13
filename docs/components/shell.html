@@ -104,6 +104,13 @@
                 above the main column (kunnskapsassistenten#120). <code>compactBar={false}</code>
                 keeps them at the sides.
               </li>
+              <li>
+                <strong>Cards,</strong> <code>frame="cards"</code>, the design's dev-navbar board:
+                each panel and the main column is a rounded card on the page's ground, 16 from the
+                window and 12 apart, with no top bar. A rail is a card of 76 with the same gap, and
+                the panel's button is a 44 icon. Not in the top row, which stays as it is. Flush,
+                the default, is what kunnskapsassistenten draws today.
+              </li>
             </ul>
           </div>
           <div>
@@ -120,13 +127,43 @@
                 its own head under it; the main column's <code>mainPinned</code> does the same),
                 <code>pinnedRef</code> (that region's element, for a block that draws its own head
                 there, such as the filter's <code>pinIn</code>; a stable function),
-                <code>foot</code> and <code>footPinned</code>,
+                <code>foot</code> and <code>footPinned</code>, <code>railFoot</code> (what the
+                folded panel shows at its bottom, such as the reader's avatar; not in the top row),
+                <code>rail</code> (what the folded panel shows under its button, such as «Ny tråd»,
+                dev-navbar, on a drawer's rail too; not in the top row), <code>title</code> (the
+                panel's visible name, an <code>h2</code> on its row: «Tråder», «Verktøy»),
                 <code>size</code> (<code>width</code>, <code>minWidth</code>,
-                <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>.
+                <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>. A
+                host may change a panel's <code>size</code> while the page is open, as the next
+                look's primary panel goes from the threads with their filter to the settings menu:
+                the panel is then drawn within its new floor and ceiling, and the width it had comes
+                back with its old size.
+              </li>
+              <li>
+                <code>companion</code>: a second column in the panel's card, towards the main
+                column, as the dev boards draw the filter beside the threads (dev-filter-panel). It
+                has its own <code>title</code>, a <code>subtitle</code> under it, its
+                <code>children</code>, which scroll on their own, and its <code>width</code>; its
+                <code>label</code> names its region. The panel's <code>size</code> counts both
+                columns, and the panel's own column keeps its width less the companion's. With
+                <code>keepWidth</code> it is the other way round: the companion keeps its
+                <code>width</code>, and the panel's own column takes every resize, so the panel's
+                <code>size.minWidth</code> is the own column's floor plus the companion's width. The
+                panel's button stands on the companion's row, at the card's edge, and folds both. In
+                a drawer the companion stands under the panel's own column.
               </li>
               <li>
                 <code>children</code> and <code>mainPinned</code>: the main column, and what stays
-                at its top. <code>mainSize</code>: its floor and reading width, 640 and 800.
+                at its top. <code>mainTitle</code>: the page's <code>h1</code>, such as the thread's
+                title, pinned at the top of the main column with a line under it; in the cards frame
+                it spans the card. Every title the shell draws looks alike, Heading xs on one line
+                cut with «…», and its text stands on the same line in every panel.
+                <code>mainSize</code>: its floor and reading width, 640 and 800.
+              </li>
+              <li>
+                <code>frame</code>: <code>flush</code>, the default, or <code>cards</code>.
+                <code>inset</code>: the cards' margin from the window, 16; it must match
+                <code>--genai-shell-inset</code>.
               </li>
               <li>
                 <code>initialLayout</code> and <code>onLayoutChange</code>: which panels are folded,
@@ -148,13 +185,10 @@
                 til skrivefeltet».
               </li>
               <li>
-                <code>frameWidth</code>: drawn in a host's preview of that width, as the portal's
-                builder draws it. The shell lays out for that width, not the window's, and leaves
-                the page's <code>&lt;main&gt;</code> and skip links to the host.
-              </li>
-              <li>
-                <code>gap</code> and <code>rail</code>: 32 and 67 by default. The sums use them, so
-                they must match <code>--genai-shell-gap</code> and the rail's button and padding.
+                <code>gap</code> and <code>rail</code>: 32 and 67 by default, 12 and 76 for cards.
+                The sums use them, so they must match <code>--genai-shell-gap</code> and the rail's
+                button and padding. In the cards frame the breakpoints count the margins and each
+                rail's gap too.
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the shell, set only
@@ -169,7 +203,32 @@
                 dropdown, the design's tool rule (board 3, kunnskapsassistenten#168). The tabs
                 follow the tabs pattern: one tab stop, the arrows choose, Home and End go to the
                 ends. The dropdown is Designsystemet's <code>Select</code>. Every tool stays mounted
-                while hidden.
+                while hidden. A tool's <code>icon</code> stands beside its name in the tinted
+                switcher. <code>variant</code>: <code>tinted</code> is the dev boards' switcher
+                (dev-verktoy-2 and -3): two tools as joined buttons on the host family's tinted
+                ground, the chosen one plain with a border, as Designsystemet's ToggleGroup; three
+                or more as a tinted button as wide as the panel, «Fremgangsmåte, velg verktøy», that
+                opens Designsystemet's <code>Dropdown</code> with the tools, the one shown marked
+                <code>aria-current</code>. In the cards frame the tools card's parts stand 12 apart,
+                with no line under the switcher, and its folded button has a ground of its own.
+              </li>
+              <li>
+                <code>ShellProfile</code>, for the primary panel's pinned <code>foot</code> and,
+                with <code>compact</code>, its <code>railFoot</code>: the reader as one full-width
+                tertiary, neutral button with an accent avatar (xs, initials) and the
+                <code>name</code>, cut with «…», the whole name in <code>aria-label</code> and
+                <code>title</code>; on a rail, the avatar alone. It opens the profile menu above
+                itself, Designsystemet's <code>Dropdown</code>: the avatar, the name and the
+                <code>organisation</code> at the top; then <code>settings</code> («Innstillinger»),
+                <code>feedback</code> («Gi tilbakemelding»), <code>changelog</code> («Endringslogg»,
+                with a dot when <code>news</code>), <code>about</code> («Om tjenesten») and
+                <code>contact</code> («Kontakt {to}»), with Aksel's icons; then <code>extra</code>,
+                the host's own entries in its order, each with an <code>id</code>, its own
+                <code>label</code> in the reader's language and an optional <code>icon</code>,
+                hidden from screen readers; a line; and <code>signOut</code> («Logg ut», a link,
+                with <code>onSignOut</code> first). Each entry is an <code>href</code>, an
+                <code>onSelect</code> or both; one the host does not give, or one with neither, is
+                not drawn. There is no cog. Nothing is drawn without a name.
               </li>
             </ul>
             <h2>Related</h2>
@@ -220,14 +279,16 @@
               <li>
                 <strong>One panel below 1440:</strong> where both do not fit, opening one folds the
                 other, and a window that shrinks past 1440 folds the secondary panel. Growing back
-                opens nothing (14 September).
+                opens it again, unless the reader opened or folded a panel in the meantime (12
+                November; until then growing back opened nothing).
               </li>
               <li>
                 <strong>Drawers below 1139:</strong> both panels stand as rails, and an open panel
                 is Designsystemet's modal <code>Dialog</code> over the main column, in from its own
                 edge, at the design's width and never wider than the window: focus is trapped,
                 Escape closes it, focus goes back, and it has «Lukk …». Entering drawer mode folds
-                both, so nothing opens over the answer by itself (17 September).
+                both, so nothing opens over the answer by itself (17 September); leaving it opens
+                again what it folded, where only one fits the one that does not yield (12 November).
               </li>
               <li>
                 <strong>The top row below 774</strong> (kunnskapsassistenten#120): two rails and a
@@ -268,12 +329,14 @@
               The block sits in <code>@layer genai.components</code>, after Designsystemet's layers,
               follows <code>data-color</code>, <code>data-color-scheme</code> and
               <code>data-size</code>, and reads every token through its own variable, with the token
-              as the fallback. Six are pinned to the neutral family on purpose, as
-              kunnskapsassistenten's shell: the page, the panels, the rails, the top row, the drawer
-              and the borders stay grey whatever <code>data-color</code> the app sets, because
-              accent belongs to the content and to what can be pressed. The separator's line takes
-              the accent role without a family. The widths are not tokens: the shell sets them from
-              its own sums.
+              as the fallback. The chrome is pinned to the neutral family on purpose, as
+              kunnskapsassistenten's shell: the page, the panels, the cards, the rails, the top row,
+              the drawer, the borders and lines, the titles and the profile menu's top stay grey
+              whatever <code>data-color</code> the app sets, because accent belongs to the content
+              and to what can be pressed. The avatars and the dot on «Endringslogg» are accent, as
+              the design draws them, by <code>data-color</code> in the markup. The separator's line
+              takes the accent role without a family. The widths are not tokens: the shell sets them
+              from its own sums.
             </p>
             <div class="table-wrap">
               <table>
@@ -299,6 +362,108 @@
                     <td><code>--genai-shell-rail-background</code></td>
                     <td><code>--ds-color-neutral-surface-default</code></td>
                     <td>a folded panel's rail (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the buttons under a folded panel's own (<code>rail</code>)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-toggle-background</code></td>
+                    <td><code>--ds-color-background-tinted</code></td>
+                    <td>the folded tools card's own button, in the cards frame</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-card-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between the tools card's head, switcher and tool, in the cards frame</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-background</code></td>
+                    <td><code>--ds-color-surface-tinted</code></td>
+                    <td>the tinted switcher's ground, the joined buttons' and the dropdown's</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-hover-background</code></td>
+                    <td><code>--ds-color-surface-hover</code></td>
+                    <td>a tinted button under the pointer, and the dropdown open</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-selected-background</code></td>
+                    <td><code>--ds-color-surface-default</code></td>
+                    <td>the chosen joined button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-selected-border-color</code></td>
+                    <td><code>--ds-color-border-default</code></td>
+                    <td>the chosen joined button's border</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-color</code></td>
+                    <td><code>--ds-color-text-default</code></td>
+                    <td>the tinted switcher's words and icons</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-radius</code></td>
+                    <td><code>--ds-border-radius-default</code></td>
+                    <td>the tinted switcher's corners</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-height</code></td>
+                    <td><code>--ds-size-12</code></td>
+                    <td>a tinted button, and a tool in the menu: the design's 48</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between a tool's icon and its name</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>a joined button's sides</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-font-size</code></td>
+                    <td><code>--ds-font-size-4</code></td>
+                    <td>
+                      a tool's name in the tinted switcher and its menu, 18 at the default size
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tinted-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>a tool's name in the tinted switcher</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-icon-size</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>a tool's icon in the tinted switcher and its menu</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-chevron-size</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>the dropdown's chevron</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-color</code></td>
+                    <td><code>--ds-color-text-subtle</code></td>
+                    <td>a tool in the dropdown's menu (neutral, as the menu)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-font-weight</code></td>
+                    <td><code>--ds-font-weight-regular</code></td>
+                    <td>a tool in the menu</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-current-background</code></td>
+                    <td><code>--ds-color-surface-tinted</code></td>
+                    <td>the tool shown, in the menu</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-menu-current-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the tool shown, in the menu</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-bar-background</code></td>
@@ -327,8 +492,10 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-gap</code></td>
-                    <td><code>--ds-size-8</code></td>
-                    <td>beside an open panel; must match the <code>gap</code> prop</td>
+                    <td><code>--ds-size-8</code>; <code>--ds-size-3</code> for cards</td>
+                    <td>
+                      beside an open panel, and a card's rail; must match the <code>gap</code> prop
+                    </td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-padding-block</code></td>
@@ -407,8 +574,8 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-main-padding-block-start</code></td>
-                    <td><code>--ds-size-8</code></td>
-                    <td>above the main column</td>
+                    <td><code>--ds-size-8</code>; <code>--ds-size-6</code> for cards</td>
+                    <td>above the main column; under the main title for cards</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-main-padding-block-end</code></td>
@@ -515,6 +682,203 @@
                     <td><code>--ds-font-weight-medium</code></td>
                     <td>the chosen tab's text</td>
                   </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>every title the shell draws (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-font-size</code></td>
+                    <td><code>--ds-heading-xs-font-size</code></td>
+                    <td>every title, 21 at the default size</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>every title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-line-height</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>every title's line, so its text stands 3 under the line's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-margin-block-end</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>under the primary card's title, 48 to its content with the box's gap</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-title-inset</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>before the primary card's title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-inset</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>
+                      the cards' margin from the window; must match the <code>inset</code> prop
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the main card and the secondary one (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-radius</code></td>
+                    <td><code>--ds-border-radius-xl</code></td>
+                    <td>each card</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-shadow</code></td>
+                    <td><code>--ds-shadow-xs</code></td>
+                    <td>each card</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-padding-block</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>above and below a card's content, and above the main title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-primary-card-padding-inline</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>beside the primary card's content and foot</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>beside the secondary card's content, and a rail's button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-card-foot-padding-block-start</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between a card's foot and the line over it</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-title-padding-inline</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>beside the main card's title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-divider-color</code></td>
+                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td>
+                      the lines under the main card's title, over a card's foot and under the
+                      profile menu's top (pinned)
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-button-size</code></td>
+                    <td><code>--ds-size-11</code></td>
+                    <td>
+                      a card's button and the avatar's on a rail; part of the <code>rail</code>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-name-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>the name on the profile button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the avatar and the name at the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-padding-block-start</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>above the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-padding-block-end</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the menu's top and its line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-padding-inline</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>beside the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-margin-block-end</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>between the menu's top and its entries</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>the name at the menu's top (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-font-size</code></td>
+                    <td><code>--ds-body-sm-font-size</code></td>
+                    <td>the name at the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-who-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the name at the menu's top</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-organisation-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the organisation under it (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-organisation-font-size</code></td>
+                    <td><code>--ds-body-xs-font-size</code></td>
+                    <td>the organisation under it</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-news-size</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>the dot on «Endringslogg»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-news-radius</code></td>
+                    <td><code>--ds-border-radius-full</code></td>
+                    <td>the dot on «Endringslogg»</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-profile-news-color</code></td>
+                    <td><code>--ds-color-base-default</code></td>
+                    <td>the dot on «Endringslogg», accent from its <code>data-color</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the companion column: companion background</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-button-inset</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>the companion column: companion button inset</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>the companion column: companion gap</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-padding-inline</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>the companion column: companion padding inline</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-subtitle-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the companion column: companion subtitle color</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-subtitle-font-size</code></td>
+                    <td><code>--ds-font-size-2</code></td>
+                    <td>the companion column: companion subtitle font size</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-companion-subtitle-line-height</code></td>
+                    <td><code>--ds-line-height-md</code></td>
+                    <td>the companion column: companion subtitle line height</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -565,6 +929,12 @@
                 Moving a view to the other panel: kunnskapsassistenten's model can, but it has no
                 control for it. The vision says the reader should choose, later.
               </li>
+              <li>
+                kunnskapsassistenten#168 asks the secondary panel to switch between tools with tabs
+                for two and a menu for three or more. Kunnskapsassistenten has no such switch, so it
+                is not built; an app can put one in the panel's <code>head</code>.
+              </li>
+              <li>The app builder (genki#210) would place blocks in the shell's panels.</li>
             </ul>
           </div>
         </div>

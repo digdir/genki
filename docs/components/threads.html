@@ -92,6 +92,18 @@
                 <strong>Thread menu:</strong> rename and delete, each only when the host can. Moving
                 a thread waits for <a href="projects.html">Projects</a>.
               </li>
+              <li>
+                <strong>The design's list</strong> (<code>variant="nav"</code>, the dev-trader
+                board): titles in the text colour on one line, the whole title in a box on hover or
+                focus, with no time; the open row on the host colour's tinted background, in that
+                colour's text; the group names small and grey, <code>--ds-size-6</code> above them;
+                «Ny tråd» across the panel, its words alone, in a row of its own that stays in view
+                while the list scrolls under it, a row reached by keyboard stopping below it. A
+                row's «…» stands over the row's end on hover or focus, and always beside it where
+                nothing can hover. A cut title's box opens down over the row, at its width, and
+                moves up as far as it must to stay inside the box the list scrolls in, so it never
+                covers what is pinned under the list, such as the reader at the panel's foot.
+              </li>
             </ul>
             <h2>What it does</h2>
             <ul>
@@ -101,8 +113,10 @@
                 briefly as its heading allows.
               </li>
               <li>
-                One line per title; a cut title shows the whole row in a box on hover or focus (WCAG
-                1.4.13). The link's name is the title alone.
+                One line per title, cut with «…» where the row ends, not after the last whole word;
+                in <code>nav</code> a host's <code>--genai-threads-title-lines</code> of 2 or more
+                wraps it to that many lines instead. A cut title shows the whole row in a box on
+                hover or focus (WCAG 1.4.13). The link's name is the title alone.
               </li>
               <li>
                 «Søk i tråder» filters as the person types and counts what is left. Over an empty
@@ -137,9 +151,11 @@
               <li>
                 <code>onShowFilters</code> and <code>focusShowFilters</code>: «Filtrer dokumenter»
                 over the list, for a filter that shares the panel, with focus on it when the person
-                just came from the filter. <code>headingLevel</code>, 2 by default, for the list's
-                hidden heading, with the groups one below. <code>color</code>: Designsystemet's
-                <code>data-color</code>, set only when given.
+                just came from the filter. <code>search</code>: «Søk i tråder», drawn unless it is
+                <code>false</code>. <code>variant</code>: <code>links</code>, kunnskapsassistenten's
+                rows and the default, or <code>nav</code>, the design's. <code>headingLevel</code>,
+                2 by default, for the list's hidden heading, with the groups one below.
+                <code>color</code>: Designsystemet's <code>data-color</code>, set only when given.
               </li>
               <li>
                 <code>failed</code> and <code>onRetry</code>, <code>currentId</code>,
@@ -150,10 +166,11 @@
               <li>
                 <code>SignedIn</code>, for the <code>foot</code>: the reader's <code>name</code>,
                 with the <code>email</code> on hover, and «Logg ut», a plain link to
-                <code>signOutHref</code>. <code>onSignOut</code> comes before the browser leaves, a
-                middle click included, so the host can forget what this browser kept for the reader:
-                the filter, the collection, the experiments. It stands after the last row and
-                scrolls with the list, so it never covers a row the keyboard has reached.
+                <code>signOutHref</code>, drawn only when the host gives one.
+                <code>onSignOut</code> comes before the browser leaves, a middle click included, so
+                the host can forget what this browser kept for the reader: the filter, the
+                collection, the experiments. It stands after the last row and scrolls with the list,
+                so it never covers a row the keyboard has reached.
               </li>
             </ul>
             <p>
@@ -176,7 +193,10 @@
               and reads every token through its own variable, with the token as the fallback. Set
               one on any ancestor to change that detail only. Four are pinned to neutral on purpose,
               as the reference draws them: the group headings, the time and dataset under a title,
-              «Ingen treff», and the line above who is signed in.
+              «Ingen treff», and the line above who is signed in. In <code>nav</code> a row's text
+              and its hover are pinned to neutral too, as the board draws them, and the open row
+              takes the host's colour. Where a variable's default differs in <code>nav</code>, the
+              table says so; those marked <em>nav</em> style only that variant.
             </p>
             <table>
               <thead>
@@ -194,7 +214,10 @@
                 </tr>
                 <tr>
                   <td><code>--genai-threads-current-background</code></td>
-                  <td><code>--ds-color-surface-active</code></td>
+                  <td>
+                    <code>--ds-color-surface-active</code>;
+                    <code>--ds-color-background-tinted</code> in <code>nav</code>
+                  </td>
                   <td>the open thread's row</td>
                 </tr>
                 <tr>
@@ -204,7 +227,10 @@
                 </tr>
                 <tr>
                   <td><code>--genai-threads-current-font-weight</code></td>
-                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>
+                    <code>--ds-font-weight-semibold</code>; <code>--ds-font-weight-medium</code> in
+                    <code>nav</code>
+                  </td>
                   <td>the open thread's title</td>
                 </tr>
                 <tr>
@@ -224,7 +250,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-threads-gap</code></td>
-                  <td><code>--ds-size-6</code></td>
+                  <td><code>--ds-size-6</code>; <code>--ds-size-4</code> in <code>nav</code></td>
                   <td>gap between the block's parts</td>
                 </tr>
                 <tr>
@@ -234,18 +260,65 @@
                 </tr>
                 <tr>
                   <td><code>--genai-threads-group-title-color</code></td>
-                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>
+                    <code>--ds-color-neutral-text-default</code>;
+                    <code>--ds-color-neutral-text-subtle</code> in <code>nav</code>
+                  </td>
                   <td>group headings, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-title-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>group headings (<em>nav</em>)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>group headings (<em>nav</em>)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-title-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>group headings (<em>nav</em>)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-title-padding-block-end</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space under a group heading (<em>nav</em>)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-group-title-padding-block-start</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>space above a group heading (<em>nav</em>)</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-list-gap</code></td>
                   <td><code>--ds-size-1</code></td>
-                  <td>gap between rows</td>
+                  <td>gap between rows, and in <code>nav</code> under a group heading</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-loading-gap</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>gap between the loading lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-menu-hover-background</code></td>
+                  <td><code>--ds-color-surface-hover</code></td>
+                  <td>
+                    a row's «…» under the pointer, where it stands over the row (<em>nav</em>)
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-menu-inset</code></td>
+                  <td><code>--ds-size-0</code></td>
+                  <td>
+                    a row's «…» from the row's edges, where it stands over the row (<em>nav</em>)
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-menu-size</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>a row's «…», and the room a cut title's box keeps for it (<em>nav</em>)</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-meta-color</code></td>
@@ -261,6 +334,24 @@
                   <td><code>--genai-threads-meta-gap</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>gap between the time and the dataset</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-new-band-background</code></td>
+                  <td><code>--ds-color-neutral-surface-default</code></td>
+                  <td>
+                    the band under «Ny tråd» that the list scrolls under (<em>nav</em>), pinned to
+                    neutral as the shell's card is
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-new-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>«Ny tråd» (<em>nav</em>)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-new-size</code></td>
+                  <td><code>--ds-size-11</code></td>
+                  <td>«Ny tråd»'s height (<em>nav</em>)</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-no-matches-color</code></td>
@@ -334,23 +425,52 @@
                 </tr>
                 <tr>
                   <td><code>--genai-threads-thread-border-radius</code></td>
-                  <td><code>--ds-border-radius-md</code></td>
-                  <td>a row's and the box's corners</td>
+                  <td>
+                    <code>--ds-border-radius-md</code>; <code>--ds-border-radius-xl</code> in
+                    <code>nav</code>
+                  </td>
+                  <td>a row's and the box's corners, and in <code>nav</code> «Ny tråd»'s</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>a row's title, pinned to neutral (<em>nav</em>)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>a row's title (<em>nav</em>)</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-thread-hover-background</code></td>
-                  <td><code>--ds-color-surface-hover</code></td>
-                  <td>a row under the pointer</td>
+                  <td>
+                    <code>--ds-color-surface-hover</code>;
+                    <code>--ds-color-neutral-surface-hover</code> in <code>nav</code>, pinned
+                  </td>
+                  <td>a row under the pointer, and in <code>nav</code> in focus</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-thread-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>a row's title (<em>nav</em>)</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-thread-padding-block</code></td>
                   <td><code>--ds-size-1</code></td>
-                  <td>a row's padding above the title</td>
+                  <td>a row's padding above the title, and in <code>nav</code> under it</td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-thread-padding-inline</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>a row's padding at the sides</td>
+                  <td><code>--ds-size-2</code>; <code>--ds-size-3</code> in <code>nav</code></td>
+                  <td>a row's padding at the sides, and in <code>nav</code> a heading's</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-title-lines</code></td>
+                  <td>1</td>
+                  <td>
+                    the lines a title takes before «…»: one is cut where the row ends, two or more
+                    after a word (<em>nav</em>)
+                  </td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-user-gap</code></td>

@@ -17,8 +17,12 @@ import {
   compareRuns,
   compilePattern,
   contractAssertions,
+  defaultObserve,
+  criteriaJudge,
+  evalRun,
   evalRunStrategy,
   evaluateGates,
+  evaluatorOfJudge,
   gate,
   kernelTarget,
   mean,
@@ -30,11 +34,13 @@ import {
   retrievalRecall,
   rubricJudge,
   runEval,
+  score,
   type EvalContext,
   type EvalRun,
   type Evaluator,
   type JudgeModel,
   type Observation,
+  type PendingScore,
   type Score,
   type TestCase,
   type TestSet,
@@ -189,6 +195,85 @@ describe('evaluators', () => {
     expect(values(miss)).toEqual({ 'non-empty-answer': 1, 'answer-pattern': 0 });
     expect(values(refusal)).toEqual({ refusal: 1, 'answer-pattern': 'n/a' });
     expect(values(fields)['fields-match']).toBe(0.5);
+  });
+
+  it("counts an empty answer beside the guard's provenance part as a refusal, never as fields", async () => {
+    const contract = contractAssertions();
+    const guarded = defaultObserve(
+      [
+        { mime: 'text/plain', body: { kind: 'text', text: '' } },
+        {
+          mime: 'application/vnd.genai.provenance+json',
+          body: { kind: 'json', json: { aiDisclosure: 'Svaret er laget med KI.' } },
+        },
+      ],
+      [],
+    );
+
+    expect(guarded.fields).toBeUndefined();
+    expect(
+      values(await contract.evaluate(caseOf({ id: 'm', type: 'must_reject' }), guarded, ctx)),
+    ).toMatchObject({ refusal: 1 });
+  });
+
+  it('checks the case types a person writes: exact text, which fails without its text, and a refusal that may be no answer at all, but never a structured answer', async () => {
+    const contract = contractAssertions();
+
+    const exact = (answer: string) =>
+      contract.evaluate(
+        caseOf({ id: 'e', type: 'exact', expected: { sources: [], referenceAnswer: '1. mai' } }),
+        observation({ answer }),
+        ctx,
+      );
+    const rejected = (answer: string) =>
+      contract.evaluate(caseOf({ id: 'm', type: 'must_reject' }), observation({ answer }), ctx);
+
+    expect(contract.version).toBe('2');
+    expect(values(await exact('Fristen er 1.  MAI.'))['exact-text']).toBe(1);
+    expect(values(await exact('Snart.'))['exact-text']).toBe(0);
+    expect(values(await rejected(''))).toMatchObject({ refusal: 1 });
+    expect(values(await rejected('Her er svaret.'))).toMatchObject({ refusal: 0 });
+    // A RAG answer with no text still carries its sources and retrieval parts beside it.
+    const rag = defaultObserve(
+      [
+        { mime: 'text/plain', body: { kind: 'text', text: '' } },
+        {
+          mime: 'application/vnd.genai.sources+json',
+          body: { kind: 'json', json: { sources: [] } },
+        },
+        {
+          mime: 'application/vnd.genai.retrieval+json',
+          body: { kind: 'json', json: { hits: [] } },
+        },
+      ],
+      [],
+    );
+    expect(
+      values(await contract.evaluate(caseOf({ id: 'm', type: 'must_reject' }), rag, ctx)),
+    ).toMatchObject({ refusal: 1 });
+    expect(
+      values(
+        await contract.evaluate(
+          caseOf({ id: 'e', type: 'exact', expected: { sources: [] } }),
+          observation({ answer: 'Fristen er 1. mai.' }),
+          ctx,
+        ),
+      )['exact-text'],
+    ).toBe(0);
+    expect(
+      values(
+        await contract.evaluate(
+          caseOf({ id: 'm', type: 'must_reject' }),
+          observation({ answer: '', fields: { personnummer: '01017012345' } }),
+          ctx,
+        ),
+      ),
+    ).toMatchObject({ refusal: 0 });
+    expect(
+      values(await contract.evaluate(caseOf({ id: 'c' }), observation({ answer: 'x' }), ctx))[
+        'exact-text'
+      ],
+    ).toBeUndefined();
   });
 
   it('scores recall at k and whether citations are inside what was retrieved', async () => {
@@ -444,6 +529,153 @@ describe('eval runner', () => {
     );
   });
 
+  it('checks a judge against the models that wrote the answer, never an embedder that only searched', async () => {
+    const embedder = {
+      kind: 'embedder',
+      id: 'foundry/text-embedding-3-large',
+      tenant: '991825827',
+    };
+    const searching: Strategy = {
+      id: 'searching-rag',
+      version: '1',
+      requires: { kernel: 1, ports: ['model', 'embedding'], features: [] },
+      run: async function* (c) {
+        await (await c.use<{ answer(): Promise<void> }>('embedding', embedder)).answer();
+        await (await c.use<{ answer(): Promise<void> }>('model', model)).answer();
+        yield {
+          type: 'kernel.result',
+          data: [{ mime: 'text/plain', body: { kind: 'text', text: 'Filen blir publisert.' } }],
+        };
+      },
+    };
+    const kernel = createKernel({
+      strategies: [searching],
+      capabilities: [
+        {
+          ...answerCapability,
+          strategy: { id: 'searching-rag', version: '1' },
+          grants: [...answerCapability.grants, { port: 'embedding', ref: embedder }],
+        },
+      ],
+      ports: { model: fakeModels, embedding: fakeModels },
+      policy: { decide: async () => ({ allow: true }) },
+    });
+    const checked: string[][] = [];
+    const watching: Evaluator = {
+      id: 'watching',
+      version: '1',
+      kind: 'model',
+      evaluate: async (_c, _o, context) => {
+        checked.push(context.servedModels);
+        return [];
+      },
+    };
+
+    const run = await runEval({
+      target: kernelTarget(kernel, kari, 'answer'),
+      testSet: setOf(),
+      evaluators: [watching],
+      provenance: { commit: 'abc', data: 'd' },
+    });
+
+    expect(checked).toEqual([['foundry/gpt-4o'], ['foundry/gpt-4o']]);
+    expect(run.provenance.servedModels).toEqual([
+      'foundry/gpt-4o',
+      'foundry/text-embedding-3-large',
+    ]);
+  });
+
+  it('reports each finished case once with its progress, never the cases before it again', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const reported: [number, string | undefined][] = [];
+
+    const run = await runEval({
+      testSet: setOf(),
+      evaluators,
+      provenance: { commit: 'abc', data: 'd' },
+      target: kernelTarget(kernel, kari, 'answer'),
+      onProgress: (done, _total, _usage, result) => reported.push([done, result?.case]),
+    });
+
+    expect(reported).toEqual(run.results.map((r, i) => [i + 1, r.case]));
+  });
+
+  it('scores a case no model answered, such as a refusal before the model, and reports usage so far with its progress', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const answer = kernelTarget(kernel, kari, 'answer');
+    const progress: [number, unknown][] = [];
+
+    const run = await runEval({
+      testSet: setOf(),
+      evaluators,
+      provenance: { commit: 'abc', data: 'd' },
+      target: {
+        ...answer,
+        invoke: async (input) => {
+          const outcome = await answer.invoke(input);
+          return progress.length === 0 ? { ...outcome, servedModels: [] } : outcome;
+        },
+      },
+      meterAnswers: () => ({ inputTokens: 10, outputTokens: 2, costMicroNok: 5 }),
+      onProgress: (done, _total, usage) => progress.push([done, usage]),
+    });
+
+    expect(run.results).toHaveLength(2);
+    expect(run.provenance.servedModels).toEqual(['foundry/gpt-4o']);
+    expect(progress).toEqual([
+      [1, { answers: { inputTokens: 10, outputTokens: 2, costMicroNok: 5 } }],
+      [2, { answers: { inputTokens: 20, outputTokens: 4, costMicroNok: 10 } }],
+    ]);
+  });
+
+  it("checks the judge's family only against language models the run used", async () => {
+    const others = [
+      { kind: 'embedder', id: 'foundry/text-embedding-3-small', tenant: '991825827' },
+      { kind: 'reranker', id: 'colbert', tenant: '991825827' },
+      { kind: 'transcriber', id: 'foundry/whisper', tenant: '991825827' },
+    ];
+    const mixed: Strategy = {
+      ...answering(),
+      run: async function* (c, input) {
+        for (const ref of others)
+          await (await c.use<{ answer(): Promise<void> }>('model', ref)).answer();
+        yield* answering().run(c, input, {});
+      },
+    };
+    const kernel = kernelWith(
+      [mixed],
+      [
+        {
+          ...answerCapability,
+          grants: [model, ...others].map((ref) => ({ port: 'model', ref })),
+        },
+      ],
+    );
+    const families: Record<string, string> = { 'foundry/gpt-4o': 'openai' };
+    const judging = (family: string): JudgeModel => ({
+      id: `${family}-judge`,
+      family,
+      complete: async () =>
+        '{"scores": {"correctness": 5, "completeness": 5, "language": 5}, "rationale": "Riktig."}',
+    });
+    const run = (family: string) =>
+      runEval({
+        target: kernelTarget(kernel, kari, 'answer'),
+        testSet: setOf(),
+        evaluators: [rubricJudge(judging(family), bundledJudge('answer-quality'))],
+        provenance: { commit: 'abc', data: 'd' },
+        modelFamily: (m) => families[m],
+      });
+
+    expect((await run('anthropic')).provenance.servedModels).toEqual([
+      'colbert',
+      'foundry/gpt-4o',
+      'foundry/text-embedding-3-small',
+      'foundry/whisper',
+    ]);
+    await expect(run('openai')).rejects.toThrow(/same family \(openai\)/);
+  });
+
   it('fails loudly on missing provenance, a run without a served model, and a failing evaluator', async () => {
     const kernel = kernelWith([answering()], [answerCapability]);
     const silent = kernelWith([answering(false)], [answerCapability]);
@@ -464,13 +696,737 @@ describe('eval runner', () => {
     ).rejects.toThrow(/commit/);
     await expect(
       runEval({ ...base, target: kernelTarget(silent, kari, 'answer') }),
-    ).rejects.toThrow(/case a recorded no served model/);
+    ).rejects.toThrow(/the run recorded no served model/);
     await expect(
       runEval({ ...base, target: kernelTarget(kernel, kari, 'answer'), evaluators: [broken] }),
     ).rejects.toThrow(/evaluator broken failed on case a: boom/);
     await expect(
       runEval({ ...base, target: kernelTarget(kernel, kari, 'missing') }),
     ).rejects.toThrow(/case a failed/);
+  });
+});
+
+const scoredAs = (item: PendingScore, value: number): Score => ({
+  evaluator: item.score.evaluator,
+  version: item.score.version,
+  metric: item.score.metric,
+  value,
+  applicable: true,
+  state: 'scored',
+});
+
+const settledAs = (
+  item: PendingScore,
+  state: 'failed' | 'not-applicable',
+  reason: string,
+): Score => ({
+  evaluator: item.score.evaluator,
+  version: item.score.version,
+  metric: item.score.metric,
+  value: null,
+  applicable: state !== 'not-applicable',
+  state,
+  reason,
+});
+
+const later = (deliver: (item: PendingScore, attempt: number) => Score | undefined) => {
+  const calls: number[] = [];
+  const self: Evaluator = {
+    id: 'judge:later',
+    version: '1',
+    kind: 'model',
+    judge: 'foundry/claude-later',
+    evaluate: async (c) => [
+      {
+        evaluator: self.id,
+        version: self.version,
+        metric: 'judge.later',
+        value: null,
+        applicable: true,
+        state: 'pending',
+        details: { ticket: c.id },
+      },
+    ],
+    collect: async (pending) => {
+      calls.push(pending.length);
+      return pending.flatMap((item) => {
+        const delivered = deliver(item, calls.length);
+        return delivered ? [{ case: item.case, repeat: item.repeat, score: delivered }] : [];
+      });
+    },
+  };
+  return { evaluator: self, calls };
+};
+
+const fakeClock = () => {
+  const started = Date.UTC(2026, 9, 29, 12);
+  let at = started;
+  return {
+    now: () => new Date(at),
+    sleep: async (ms: number) => {
+      at += ms;
+    },
+    pass: (ms: number) => {
+      at += ms;
+    },
+    waited: () => at - started,
+  };
+};
+
+const judged = (run: EvalRun, metric = 'judge.later') =>
+  run.results.map((r) => r.scores.find((s) => s.metric === metric));
+
+describe('deferred judges (evaluator@2)', () => {
+  const kernel = kernelWith([answering()], [answerCapability]);
+  const base = { testSet: setOf(), provenance: { commit: 'abc', data: 'd' } };
+
+  it("lands a pending judge's scores in the run and its metrics once they are collected", async () => {
+    const clock = fakeClock();
+    const { evaluator, calls } = later((item, attempt) =>
+      attempt < 2 ? undefined : scoredAs(item, item.case === 'a' ? 1 : 0),
+    );
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [contractAssertions(), evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(calls).toEqual([2, 2]);
+    expect(judged(run)).toMatchObject([
+      { state: 'scored', value: 1 },
+      { state: 'scored', value: 0 },
+    ]);
+    expect(run.metrics['judge.later']).toMatchObject({ mean: 0.5, n: 2 });
+    expect(run.incomplete).toEqual([]);
+    expect(run.provenance.judges).toEqual(['foundry/claude-later']);
+    const audit: Event[] = [];
+    for await (const e of await kernel.events(kari, run.results[0]?.task as string, {
+      audience: 'audit',
+    }))
+      audit.push(e);
+    expect(
+      audit
+        .filter((e) => e.type === 'kernel.score')
+        .map((e) => e.data as Score)
+        .filter((s) => s.metric === 'judge.later'),
+    ).toMatchObject([{ state: 'scored', value: 1 }]);
+  });
+
+  it('records a score still missing 5 minutes after the last case was sent as missing, naming the judge and the count', async () => {
+    const clock = fakeClock();
+    const { evaluator, calls } = later((item) =>
+      item.case === 'a' ? scoredAs(item, 1) : undefined,
+    );
+    const answer = kernelTarget(kernel, kari, 'answer');
+
+    const run = await runEval({
+      ...base,
+      target: {
+        ...answer,
+        invoke: async (input) => {
+          clock.pass(60_000);
+          return answer.invoke(input);
+        },
+      },
+      evaluators: [evaluator],
+      repeats: 2,
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(clock.waited()).toBe(4 * 60_000 + 5 * 60_000);
+    // Every 5 seconds before the deadline, none at it.
+    expect(calls).toHaveLength(59);
+    expect(judged(run)).toMatchObject([
+      { state: 'scored', value: 1 },
+      { state: 'missing', value: null, reason: 'no score within 5 minutes of the last case' },
+      { state: 'scored', value: 1 },
+      { state: 'missing', value: null, reason: 'no score within 5 minutes of the last case' },
+    ]);
+    expect(run.metrics['judge.later']).toMatchObject({ mean: 1, n: 1 });
+    expect(run.incomplete).toEqual([
+      {
+        evaluator: 'judge:later',
+        missing: 2,
+        failed: 0,
+        of: 4,
+        reason: 'no score from judge:later for 2 of 4 cases',
+      },
+    ]);
+  });
+
+  it('keeps waiting when collecting fails, and names the last error on what never arrived', async () => {
+    const clock = fakeClock();
+    const { evaluator } = later(() => {
+      throw new Error('the evaluator answered HTTP 503');
+    });
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(clock.waited()).toBe(5 * 60_000);
+    expect(judged(run)).toMatchObject([
+      {
+        state: 'missing',
+        reason:
+          'no score within 5 minutes of the last case (last error: the evaluator answered HTTP 503)',
+      },
+      { state: 'missing' },
+    ]);
+  });
+
+  it('takes no score that arrives after the deadline, and bounds each collect by the time left', async () => {
+    const clock = fakeClock();
+    const signals: (AbortSignal | undefined)[] = [];
+    const { evaluator } = later((item) => {
+      clock.pass(6 * 60_000);
+      return scoredAs(item, 1);
+    });
+    const collect = evaluator.collect?.bind(evaluator);
+    evaluator.collect = async (pending, options) => {
+      signals.push(options?.signal);
+      return (await collect?.(pending, options)) ?? [];
+    };
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(judged(run)).toMatchObject([
+      { state: 'missing', reason: 'no score within 5 minutes of the last case' },
+      { state: 'missing' },
+    ]);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
+
+  it('fails the run when a collected score cannot be recorded on its case, as for an immediate score', async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => scoredAs(item, 1));
+    const answer = kernelTarget(kernel, kari, 'answer');
+
+    await expect(
+      runEval({
+        ...base,
+        target: {
+          ...answer,
+          annotate: async (_task, s) => {
+            if (s.metric === 'judge.later' && s.state === 'scored')
+              throw new Error('the audit log is down');
+          },
+        },
+        evaluators: [evaluator],
+        now: clock.now,
+        wait: { sleep: clock.sleep },
+      }),
+    ).rejects.toThrow('the audit log is down');
+  });
+
+  it('stops waiting for scores when the eval run is cancelled', async () => {
+    const clock = fakeClock();
+    const cancel = new AbortController();
+    const { evaluator, calls } = later(() => {
+      cancel.abort(new Error('cancelled by Kari'));
+      return undefined;
+    });
+
+    await expect(
+      runEval({
+        ...base,
+        target: kernelTarget(kernel, kari, 'answer'),
+        evaluators: [evaluator],
+        now: clock.now,
+        wait: { sleep: clock.sleep },
+        signal: cancel.signal,
+      }),
+    ).rejects.toThrow('cancelled by Kari');
+    expect(calls).toEqual([2]);
+  });
+
+  it('stops running cases once the eval run is cancelled', async () => {
+    const cancel = new AbortController();
+    const answer = kernelTarget(kernel, kari, 'answer');
+    let invoked = 0;
+
+    await expect(
+      runEval({
+        ...base,
+        evaluators: [contractAssertions()],
+        target: {
+          ...answer,
+          invoke: async (input) => {
+            invoked += 1;
+            cancel.abort(new Error('cancelled by Kari'));
+            return answer.invoke(input);
+          },
+        },
+        signal: cancel.signal,
+      }),
+    ).rejects.toThrow('cancelled by Kari');
+    expect(invoked).toBe(1);
+  });
+
+  it('cuts a pause for scores short when the eval run is cancelled', async () => {
+    const cancel = new AbortController();
+    const { evaluator } = later(() => undefined);
+    const started = Date.now();
+    setTimeout(() => cancel.abort(new Error('cancelled by Kari')), 50);
+
+    await expect(
+      runEval({
+        ...base,
+        target: kernelTarget(kernel, kari, 'answer'),
+        evaluators: [evaluator],
+        wait: { everyMs: 60_000, deadlineMs: 120_000 },
+        signal: cancel.signal,
+      }),
+    ).rejects.toThrow('cancelled by Kari');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('cancels a collect call still open at the deadline', async () => {
+    let aborted = false;
+    const { evaluator } = later(() => undefined);
+    evaluator.collect = (_pending, options) =>
+      new Promise((resolve) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            resolve([]);
+          },
+          { once: true },
+        );
+      });
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      wait: { everyMs: 1, deadlineMs: 300 },
+    });
+
+    expect(aborted).toBe(true);
+    expect(judged(run)).toMatchObject([{ state: 'missing' }, { state: 'missing' }]);
+  }, 3_000);
+
+  it('records nothing for a score the judge answers pending again', async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item, attempt) =>
+      attempt < 2 ? { ...item.score } : scoredAs(item, 1),
+    );
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    const audit: Event[] = [];
+    for await (const e of await kernel.events(kari, run.results[0]?.task as string, {
+      audience: 'audit',
+    }))
+      audit.push(e);
+    expect(
+      audit.filter((e) => e.type === 'kernel.score').map((e) => (e.data as Score).state),
+    ).toEqual(['scored']);
+  });
+
+  it('stops asking the judge once the eval task is cancelled', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const { evaluator, calls } = later(() => undefined);
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map([[evaluator.id, evaluator]]),
+      wait: { everyMs: 1, deadlineMs: 60_000 },
+    });
+    const k = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+
+    const run = await k.invoke(kari, 'eval', {
+      data: {
+        capability: 'answer',
+        testSet: setOf(),
+        evaluators: ['judge:later'],
+        provenance: { commit: 'abc', data: 'd1' },
+      },
+    });
+    while (calls.length === 0) await new Promise((r) => setTimeout(r, 5));
+    await k.cancel(kari, run.task);
+    await run.result.catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 20));
+    const after = calls.length;
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(calls.length).toBe(after);
+  }, 5_000);
+
+  it('reads a run stored before scores had a state, or before incomplete existed', () => {
+    const shape = { evaluator: 'contract', version: '1', metric: 'refusal' };
+    const stored: Partial<EvalRun> = fakeRun({ a: 1 });
+    delete stored.incomplete;
+
+    expect(score.parse({ ...shape, value: 1, applicable: true }).state).toBe('scored');
+    expect(score.parse({ ...shape, value: null, applicable: false }).state).toBe('not-applicable');
+    expect(score.parse({ ...shape, value: null, applicable: true }).state).toBe('failed');
+    expect(evalRun.parse(stored).incomplete).toEqual([]);
+  });
+
+  it('keeps pending, failed and not applicable apart', async () => {
+    const shape = { evaluator: 'judge:later', version: '1', metric: 'judge.later' };
+    const parses = (s: Record<string, unknown>) => score.safeParse({ ...shape, ...s }).success;
+    expect(parses({ value: null, applicable: true, state: 'pending' })).toBe(true);
+    expect(parses({ value: null, applicable: true, state: 'failed' })).toBe(true);
+    expect(parses({ value: null, applicable: false, state: 'not-applicable' })).toBe(true);
+    expect(parses({ value: null, applicable: false, state: 'pending' })).toBe(false);
+    expect(parses({ value: null, applicable: true, state: 'not-applicable' })).toBe(false);
+    expect(parses({ value: 0.5, applicable: true, state: 'failed' })).toBe(false);
+    expect(parses({ value: null, applicable: true, state: 'scored' })).toBe(false);
+
+    const clock = fakeClock();
+    const { evaluator } = later((item) =>
+      item.case === 'a'
+        ? settledAs(item, 'failed', 'the judge model timed out')
+        : settledAs(item, 'not-applicable', 'the case has no criteria'),
+    );
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(judged(run)).toMatchObject([
+      { state: 'failed', applicable: true, reason: 'the judge model timed out' },
+      { state: 'not-applicable', applicable: false },
+    ]);
+    expect(run.metrics['judge.later']).toBeUndefined();
+    expect(run.incomplete).toEqual([
+      {
+        evaluator: 'judge:later',
+        missing: 0,
+        failed: 1,
+        of: 1,
+        reason: 'judge:later failed on 1 of 1 cases',
+      },
+    ]);
+  });
+
+  it('waits for nothing when every judge answers at once', async () => {
+    const clock = fakeClock();
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators,
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(clock.waited()).toBe(0);
+    expect(run.results.flatMap((r) => r.scores.map((s) => s.state))).not.toContain('pending');
+  });
+
+  it('fails a run whose evaluator answers pending but cannot be collected', async () => {
+    const { evaluator } = later(() => undefined);
+    const uncollectable: Evaluator = {
+      id: evaluator.id,
+      version: evaluator.version,
+      kind: evaluator.kind,
+      evaluate: evaluator.evaluate,
+    };
+
+    await expect(
+      runEval({
+        ...base,
+        target: kernelTarget(kernel, kari, 'answer'),
+        evaluators: [uncollectable],
+      }),
+    ).rejects.toThrow(/evaluator judge:later answered pending on case a but cannot be collected/);
+  });
+
+  it("keeps an advisory judge's scores on its cases but out of the run's metrics", async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => scoredAs(item, 1));
+    evaluator.advisory = true;
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(judged(run)).toMatchObject([{ state: 'scored', value: 1 }, { state: 'scored' }]);
+    expect(run.metrics).not.toHaveProperty('judge.later');
+    expect(Object.values(run.byTag).some((m) => 'judge.later' in m)).toBe(false);
+  });
+
+  it('gives a sink judge a last read once the wait for scores is over, and stores what it reports then', async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => scoredAs(item, 1));
+    let settled = false;
+    evaluator.settle = async () => {
+      settled = true;
+    };
+    evaluator.reportedUsage = () =>
+      settled
+        ? {
+            'judge.later': {
+              inputTokens: 7,
+              outputTokens: 3,
+              costUsd: 0.01,
+              unpriced: 0,
+              unread: 0,
+            },
+          }
+        : {};
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+      meterAnswers: () => ({ inputTokens: 0, outputTokens: 0, costMicroNok: 0 }),
+    });
+
+    expect(run.usage?.reported).toEqual({
+      'judge.later': { inputTokens: 7, outputTokens: 3, costUsd: 0.01, unpriced: 0, unread: 0 },
+    });
+  });
+
+  it("purges a judge's reason with the case, as its retention says", async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => ({
+      ...scoredAs(item, 1),
+      reason: 'Svaret siterer saksnummeret 2026/41.',
+    }));
+    evaluator.reasonsOnTheCase = true;
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+    const onTheCase: Score[] = [];
+    for await (const e of await kernel.events(kari, run.results[0]?.task as string, {
+      audience: 'audit',
+    }))
+      if (e.type === 'kernel.score') onTheCase.push(e.data as Score);
+
+    // The run outlives the case's task; the reason lives only on the task, so it goes with it.
+    expect(judged(run)).toMatchObject([{ state: 'scored', value: 1 }, { state: 'scored' }]);
+    expect(JSON.stringify(run)).not.toContain('saksnummeret');
+    expect(onTheCase).toMatchObject([
+      { state: 'scored', value: 1, reason: 'Svaret siterer saksnummeret 2026/41.' },
+    ]);
+  });
+});
+
+describe('the criteria judge', () => {
+  const claude: JudgeModel = {
+    id: 'foundry/claude-sonnet',
+    family: 'anthropic',
+    complete: async (messages) =>
+      messages[1]?.content.includes('Nevner fristen')
+        ? '{"scores": {"criteria": 1}, "rationale": "Fristen er nevnt."}'
+        : '{"scores": {"criteria": 0}, "rationale": "Fristen mangler."}',
+  };
+  const criteriaCase = caseOf({
+    id: 'k',
+    type: 'criteria',
+    expected: { sources: [], criteria: { criteria: 'Nevner fristen' } },
+  });
+
+  it('scores a criteria case on its criteria under its own identity, with its model in the version', async () => {
+    const picked: string[][] = [];
+    const judge = criteriaJudge(async (writers) => {
+      picked.push(writers);
+      return claude;
+    });
+
+    const scores = await judge.evaluate(criteriaCase, observation({ answer: '1. mai' }), ctx);
+    await judge.evaluate({ ...criteriaCase, id: 'k2' }, observation({ answer: '1. mai' }), ctx);
+
+    expect(scores).toEqual([
+      {
+        evaluator: 'judge:criteria',
+        version: '2+foundry/claude-sonnet',
+        metric: 'judge.criteria',
+        value: 1,
+        applicable: true,
+        state: 'scored',
+        reason: 'Fristen er nevnt.',
+      },
+    ]);
+    expect(judge.judge).toBe('judge:criteria@2+foundry/claude-sonnet');
+    expect(picked).toEqual([['foundry/gpt-4o']]);
+  });
+
+  it('gives the judge the sources the answer cited and the run retrieved, within the cap', async () => {
+    const asked: string[] = [];
+    const judge = criteriaJudge(async () => ({
+      ...claude,
+      complete: async (messages) => {
+        asked.push(messages[1]?.content ?? '');
+        return '{"scores": {"criteria": 1}, "rationale": "Fristen er nevnt."}';
+      },
+    }));
+    const retrieved = {
+      chunkId: 'law-2026',
+      title: 'Policy Register 2026',
+      text: 'Deadline 1 May 2026. ' + 'x'.repeat(50_000),
+    };
+
+    await judge.evaluate(
+      criteriaCase,
+      observation({
+        answer: '1. mai',
+        citations: [{ chunkId: 'law-2026' }],
+        retrieved: [retrieved],
+      }),
+      ctx,
+    );
+
+    const section = (asked[0] ?? '').slice((asked[0] ?? '').indexOf('\n\nSources from the run'));
+    expect(section).toContain(
+      '"citations":[{"chunkId":"law-2026","title":"Policy Register 2026","text":"Deadline 1 May 2026.',
+    );
+    expect(section).toContain('"retrieved":[{"chunkId":"law-2026"');
+    expect(section.length).toBeLessThanOrEqual(16_000);
+  });
+
+  it('judges a fields-only answer on its fields, and scores an empty answer 0 without asking the model', async () => {
+    const asked: string[] = [];
+    const judge = criteriaJudge(async () => ({
+      ...claude,
+      complete: async (messages) => {
+        asked.push(messages[1]?.content ?? '');
+        return claude.complete(messages);
+      },
+    }));
+
+    const fieldsOnly = await judge.evaluate(
+      criteriaCase,
+      observation({ answer: '', fields: { text: 'Fristen er 1. mai.', changes: [] } }),
+      ctx,
+    );
+    const empty = await judge.evaluate(criteriaCase, observation({ answer: '  ' }), ctx);
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('Fristen er 1. mai.');
+    expect(fieldsOnly).toMatchObject([{ state: 'scored', value: 1, reason: 'Fristen er nevnt.' }]);
+    expect(empty).toMatchObject([
+      { state: 'scored', value: 0, reason: 'the answer is empty, so it meets no criterion' },
+    ]);
+  });
+
+  it('is not applicable to exact and must_reject cases, or to a case without criteria', async () => {
+    const judge = criteriaJudge(async () => claude);
+    const states = async (c: TestCase) =>
+      (await judge.evaluate(c, observation({ answer: 'x' }), ctx)).map((s) => [s.state, s.reason]);
+
+    expect(await states(caseOf({ id: 'e', type: 'exact' }))).toEqual([
+      ['not-applicable', 'the case is exact, not criteria'],
+    ]);
+    expect(await states(caseOf({ id: 'm', type: 'must_reject' }))).toEqual([
+      ['not-applicable', 'the case is must_reject, not criteria'],
+    ]);
+    expect(await states(caseOf({ id: 'n', type: 'criteria' }))).toEqual([
+      ['not-applicable', 'the case has no criteria'],
+    ]);
+    expect(judge.judge).toBeUndefined();
+  });
+
+  it('picks the judge again once a case has writers, if the first case reached no model', async () => {
+    const picked: string[][] = [];
+    const judge = criteriaJudge(async (writers) => {
+      picked.push(writers);
+      return claude;
+    });
+
+    // A guardrail answered the first case before any model did.
+    await judge.evaluate(criteriaCase, observation({ answer: 'Jeg kan ikke svare på det.' }), {
+      ...ctx,
+      servedModels: [],
+    });
+    await judge.evaluate(criteriaCase, observation({ answer: 'x' }), ctx);
+    await judge.evaluate(criteriaCase, observation({ answer: 'y' }), ctx);
+
+    expect(picked).toEqual([[], ['foundry/gpt-4o']]);
+  });
+
+  it('records a failed score when no judge model is available, picking one fails, or the judge call fails', async () => {
+    const none = criteriaJudge(async () => undefined);
+    const broken = criteriaJudge(async () => ({
+      ...claude,
+      complete: async () => Promise.reject(new Error('the model answered HTTP 429')),
+    }));
+
+    expect(await none.evaluate(criteriaCase, observation({ answer: 'x' }), ctx)).toMatchObject([
+      { state: 'failed', reason: 'no judge model from another family than foundry/gpt-4o' },
+    ]);
+    expect(await broken.evaluate(criteriaCase, observation({ answer: 'x' }), ctx)).toMatchObject([
+      { state: 'failed', reason: 'the model answered HTTP 429' },
+    ]);
+    const unpickable = criteriaJudge(() => Promise.reject(new Error('the policy store is down')));
+    expect(
+      await unpickable.evaluate(criteriaCase, observation({ answer: 'x' }), ctx),
+    ).toMatchObject([{ state: 'failed', reason: 'the policy store is down' }]);
+  });
+
+  it('puts its identity with version and model in the provenance of the run', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const set = setOf();
+    const run = await runEval({
+      target: kernelTarget(kernel, kari, 'answer'),
+      testSet: {
+        ...set,
+        spec: {
+          ...set.spec,
+          cases: set.spec.cases.map((c) => ({
+            ...c,
+            type: 'criteria' as const,
+            expected: { ...c.expected, criteria: { criteria: 'Nevner fristen' } },
+          })),
+        },
+      },
+      evaluators: [criteriaJudge(async () => claude)],
+      provenance: { commit: 'abc', data: 'd' },
+      modelFamily: ctx.modelFamily,
+    });
+
+    expect(run.provenance.judges).toEqual(['judge:criteria@2+foundry/claude-sonnet']);
+    expect(run.metrics['judge.criteria']).toMatchObject({ mean: 1, n: 2 });
   });
 });
 
@@ -486,13 +1442,21 @@ const fakeRun = (
     task: `t-${c}`,
     tags: tags[c] ?? [],
     scores: [
-      { evaluator: 'retrieval', version: '1', metric: 'recall@10', value, applicable: true },
+      {
+        evaluator: 'retrieval',
+        version: '1',
+        metric: 'recall@10',
+        value,
+        applicable: true,
+        state: 'scored' as const,
+      },
       {
         evaluator: 'judge:answer-quality',
         version: '1',
         metric: 'judge.overall',
         value,
         applicable: true,
+        state: 'scored' as const,
       },
     ],
   }));
@@ -515,6 +1479,7 @@ const fakeRun = (
     results,
     metrics: {},
     byTag: {},
+    incomplete: [],
   };
 };
 
@@ -610,6 +1575,72 @@ describe('publishing gates', () => {
     expect(calibrated.pass).toBe(false);
   });
 
+  it('reads the calibration of a judge that names its version and model from its evaluator', () => {
+    const run = fakeRun(
+      cases(10, () => 0.5),
+      { judges: ['judge:criteria@1+foundry/claude'] },
+    );
+    const outcome = evaluateGates({
+      evaluation: evaluation(['judge-quality']),
+      registry,
+      candidate: new Map([['ka-kudos', run]]),
+      judgeAgreement: new Map([['judge:criteria', 0.72]]),
+    });
+
+    expect(evaluatorOfJudge('judge:criteria@1+foundry/claude')).toBe('judge:criteria');
+    expect(evaluatorOfJudge('anthropic-judge')).toBe('anthropic-judge');
+    expect(outcome.results[0]).toMatchObject({ blocking: true });
+  });
+
+  it("checks a gate's calibration only against the judges that scored its metric", () => {
+    const run = fakeRun(
+      cases(10, () => 0.5),
+      {
+        judges: [
+          'judge:answer-quality@1+foundry/claude',
+          'langfuse:dfo/kudos/regel@v1+openai/gpt-4.1',
+        ],
+      },
+    );
+    const outcome = evaluateGates({
+      evaluation: evaluation(['judge-quality']),
+      registry,
+      candidate: new Map([['ka-kudos', run]]),
+      judgeAgreement: new Map([['judge:answer-quality', 0.72]]),
+    });
+
+    // The second judge scored no judge.overall, so its missing calibration cannot weaken the gate.
+    expect(outcome.results[0]).toMatchObject({ pass: false, blocking: true });
+    expect(outcome.results[0]?.reason).not.toContain('advisory');
+  });
+
+  it('leaves an advisory judge out of every gate, so a judge taken in use since the baseline never fails a publish', () => {
+    const advisory = 'langfuse:dfo/kudos/regel@v1+openai/gpt-4.1';
+    const baseline = fakeRun(cases(10, () => 0.8));
+    const candidate = fakeRun(
+      cases(10, () => 0.8),
+      {
+        judges: ['anthropic-judge', advisory],
+      },
+    );
+    const gates = (advisoryJudge?: (judge: string) => boolean) =>
+      evaluateGates({
+        evaluation: evaluation(['no-tag-regression', 'judge-quality']),
+        registry,
+        candidate: new Map([['ka-kudos', candidate]]),
+        baseline: new Map([['ka-kudos', baseline]]),
+        judgeAgreement: new Map([['anthropic-judge', 0.72]]),
+        ...(advisoryJudge ? { advisoryJudge } : {}),
+      });
+
+    expect(() => gates()).toThrow(/runs differ in judges/);
+    const outcome = gates((judge) => judge === advisory);
+    expect(outcome.results.map((r) => [r.gate, r.pass, r.blocking])).toEqual([
+      ['no-tag-regression', true, true],
+      ['judge-quality', false, true],
+    ]);
+  });
+
   it('catches a regression in one tag that the overall number hides', () => {
     const tags = Object.fromEntries(
       Array.from({ length: 40 }, (_, i) => [`c${i}`, [i < 20 ? 'broker' : 'events']]),
@@ -642,6 +1673,60 @@ describe('publishing gates', () => {
         candidate: new Map([['ka-kudos', candidate]]),
       }).results[0]?.reason,
     ).toBe('no baseline run for test set ka-kudos');
+  });
+
+  it('fails a gate whose metric has a missing or failed score in its split, in the run or its baseline, naming the count', () => {
+    const unsettle = (
+      run: EvalRun,
+      metric: string,
+      split: 'train' | 'validation' = 'validation',
+    ) => ({
+      ...run,
+      results: run.results.map((r, i) =>
+        i < 2
+          ? {
+              ...r,
+              split,
+              scores: r.scores.map((s): Score =>
+                s.metric === metric
+                  ? { ...s, value: null, state: i === 0 ? 'missing' : 'failed' }
+                  : s,
+              ),
+            }
+          : r,
+      ),
+    });
+    const calibrated = new Map([['anthropic-judge', 0.72]]);
+    const gated = (gates: string[], candidate: EvalRun, baseline?: EvalRun) =>
+      evaluateGates({
+        evaluation: evaluation(gates),
+        registry,
+        candidate: new Map([['ka-kudos', candidate]]),
+        ...(baseline ? { baseline: new Map([['ka-kudos', baseline]]) } : {}),
+        judgeAgreement: calibrated,
+      });
+    const all = fakeRun(cases(10, () => 1));
+
+    const threshold = gated(['judge-quality'], unsettle(all, 'judge.overall'));
+    const regression = gated(['no-tag-regression'], unsettle(all, 'recall@10'), all);
+    const otherSplit = gated(['judge-quality'], unsettle(all, 'judge.overall', 'train'));
+
+    expect(threshold.pass).toBe(false);
+    expect(threshold.results[0]).toMatchObject({
+      pass: false,
+      blocking: true,
+      reason: 'judge.overall: no score for 2 of 10 cases',
+    });
+    expect(regression.results[0]).toMatchObject({
+      pass: false,
+      reason: 'recall@10: no score for 2 of 10 cases',
+    });
+    expect(otherSplit.pass).toBe(true);
+    const baseline = gated(['no-tag-regression'], all, unsettle(all, 'recall@10'));
+    expect(baseline.results[0]).toMatchObject({
+      pass: false,
+      reason: 'recall@10: no score in the baseline for 2 of 10 cases',
+    });
   });
 });
 
@@ -752,6 +1837,182 @@ describe('platform.eval.run', () => {
 
     await expect(run.result).rejects.toThrow();
     expect((await kernel.task(kari, run.task)).status).toBe('failed');
+  });
+
+  it('tells whoever follows the eval task that it is waiting for scores, and for how many', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const { evaluator } = later((item, attempt) => (attempt < 2 ? undefined : scoredAs(item, 1)));
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map([[evaluator.id, evaluator]]),
+      wait: { everyMs: 1 },
+    });
+    const kernel = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+
+    const run = await kernel.invoke(kari, 'eval', {
+      data: {
+        capability: 'answer',
+        testSet: setOf(),
+        evaluators: ['judge:later'],
+        provenance: { commit: 'abc', data: 'd1' },
+      },
+    });
+    const events: Event[] = [];
+    for await (const e of run.events) events.push(e);
+    const [part] = await run.result;
+
+    const notices = events
+      .filter((e) => e.type === 'kernel.notice')
+      .map((e) => e.data as { kind: string; pending?: number; until?: string });
+    expect(notices.map((n) => n.kind)).toEqual(['eval.progress', 'eval.progress', 'eval.waiting']);
+    expect(notices[2]).toMatchObject({ pending: 2, until: expect.any(String) });
+    const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
+    expect(result?.metrics['judge.later']?.mean).toBe(1);
+  });
+
+  it('gives each run its own evaluators, so a judge picked for one run is never reused by the next', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const picks: string[] = [];
+    const claude: JudgeModel = {
+      id: 'foundry/claude-sonnet',
+      family: 'anthropic',
+      complete: async () => '{"scores": {"criteria": 1}, "rationale": "ok"}',
+    };
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map(),
+      modelFamily: ctx.modelFamily,
+      forRun: (principal) =>
+        new Map([
+          [
+            'judge:criteria',
+            criteriaJudge(async () => {
+              picks.push(principal.subject);
+              return claude;
+            }),
+          ],
+        ]),
+    });
+    const kernel = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+    const set = setOf();
+    const criteriaSet = {
+      ...set,
+      spec: {
+        ...set.spec,
+        cases: set.spec.cases.map((c) => ({
+          ...c,
+          type: 'criteria' as const,
+          expected: { ...c.expected, criteria: { criteria: 'Nevner fristen' } },
+        })),
+      },
+    };
+    const evaluate = async () => {
+      const run = await kernel.invoke(kari, 'eval', {
+        data: {
+          capability: 'answer',
+          testSet: criteriaSet,
+          evaluators: ['judge:criteria'],
+          provenance: { commit: 'abc', data: 'd1' },
+        },
+      });
+      const [part] = await run.result;
+      return part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
+    };
+
+    const first = await evaluate();
+    const second = await evaluate();
+
+    expect(picks).toEqual(['kari', 'kari']);
+    expect(first?.provenance.judges).toEqual(['judge:criteria@2+foundry/claude-sonnet']);
+    expect(second?.metrics['judge.criteria']?.mean).toBe(1);
+  });
+
+  it('tells each case but the holdout which run, case and repeat it answers when the run goes to a sink', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map(evaluators.map((e) => [e.id, e])),
+    });
+    const kernel = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+
+    const run = await kernel.invoke(kari, 'eval', {
+      data: {
+        id: 'run-1',
+        capability: 'answer',
+        testSet: setOf(),
+        evaluators: ['contract'],
+        provenance: { commit: 'abc', data: 'd1' },
+        splits: ['train', 'validation', 'holdout'],
+        repeats: 2,
+        sink: 'etaten',
+      },
+    });
+    const [part] = await run.result;
+    const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
+    const contexts: unknown[] = [];
+    for (const r of result?.results ?? []) {
+      for await (const e of await kernel.events(kari, r.task, { audience: 'audit' }))
+        if (e.type === 'kernel.task.input')
+          contexts.push((e.data as { evaluation?: unknown }).evaluation ?? `${r.case}: none`);
+    }
+
+    expect(contexts).toEqual([
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'a', repeat: 0, split: 'train' },
+        sink: 'etaten',
+      },
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'b', repeat: 0, split: 'validation' },
+        sink: 'etaten',
+      },
+      'h: none',
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'a', repeat: 1, split: 'train' },
+        sink: 'etaten',
+      },
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'b', repeat: 1, split: 'validation' },
+        sink: 'etaten',
+      },
+      'h: none',
+    ]);
   });
 });
 

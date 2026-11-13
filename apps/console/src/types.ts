@@ -118,6 +118,7 @@ export interface DescriptorUpload {
 
 export interface WireExchange {
   deployment: string;
+  settings?: Record<string, string>;
   input: unknown;
   request: { method: string; path: string; query?: Record<string, string>; body: unknown };
   response: { status: number; body: unknown };
@@ -495,6 +496,33 @@ export interface QualityOverview {
 
 export type Verdict = 'Ja' | 'Delvis' | 'Nei';
 
+/** The pending labels of one trace connection and judge, brought back from Langfuse. */
+export interface SinkLabelBatch {
+  tenant: string;
+  connection: string;
+  judge: string;
+  name: string;
+  labels: {
+    id: string;
+    revision: string;
+    run: string;
+    case: string;
+    repeat: number;
+    humanLabel: string;
+    judgeLabel?: string;
+    labeller: string;
+  }[];
+  paired: number;
+  alike: number;
+  unpaired: number;
+  labellers: number;
+}
+
+export interface SinkLabels {
+  connections: { tenant: string; connection: string; labels: boolean }[];
+  batches: SinkLabelBatch[];
+}
+
 export interface LabelItem {
   item: string;
   judge: string;
@@ -729,6 +757,7 @@ export interface TenantDefinition {
   publishedBy: string | null;
   publishedByName?: string;
   state?: 'active' | 'paused' | 'archived';
+  internal?: boolean;
 }
 
 export interface VersionSummary {
@@ -1076,6 +1105,8 @@ export interface ModelEndpointInput {
   auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
   families: Record<string, string>;
   discovery?: DiscoveryRule[];
+  settings?: Record<string, string>;
+  keys?: Record<string, string>;
 }
 
 export interface ModelSettings {

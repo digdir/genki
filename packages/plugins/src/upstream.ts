@@ -13,6 +13,8 @@ export interface FakeReply {
   text?: string;
   sse?: { event?: string; data: unknown }[];
   delayMs?: number;
+  /** Response headers beside the content type, such as `retry-after-ms`. */
+  headers?: Record<string, string>;
 }
 
 export interface FakeServer {
@@ -22,19 +24,23 @@ export interface FakeServer {
 }
 
 export const fakeHttp = async (
-  reply: (body: Record<string, unknown>, attempt: number, path: string) => FakeReply,
+  reply: (
+    body: Record<string, unknown>,
+    attempt: number,
+    path: string,
+  ) => FakeReply | Promise<FakeReply>,
 ): Promise<FakeServer> => {
   const seen: SeenRequest[] = [];
   const server: Server = createServer((req, res) => {
     let raw = '';
     req.on('data', (c: Buffer) => (raw += c.toString()));
-    req.on('end', () => {
+    req.on('end', async () => {
       const body = JSON.parse(raw || '{}') as Record<string, unknown>;
       seen.push({ path: req.url ?? '', headers: req.headers, body });
-      const r = reply(body, seen.length, req.url ?? '');
+      const r = await reply(body, seen.length, req.url ?? '');
       setTimeout(() => {
         if (r.sse) {
-          res.writeHead(r.status, { 'content-type': 'text/event-stream' });
+          res.writeHead(r.status, { ...r.headers, 'content-type': 'text/event-stream' });
           for (const frame of r.sse) {
             const data = typeof frame.data === 'string' ? frame.data : JSON.stringify(frame.data);
             res.write(`${frame.event ? `event: ${frame.event}\n` : ''}data: ${data}\n\n`);
@@ -43,11 +49,11 @@ export const fakeHttp = async (
           return;
         }
         if (r.text !== undefined) {
-          res.writeHead(r.status, { 'content-type': 'text/plain' });
+          res.writeHead(r.status, { ...r.headers, 'content-type': 'text/plain' });
           res.end(r.text);
           return;
         }
-        res.writeHead(r.status, { 'content-type': 'application/json' });
+        res.writeHead(r.status, { ...r.headers, 'content-type': 'application/json' });
         res.end(JSON.stringify(r.json ?? {}));
       }, r.delayMs ?? 0);
     });

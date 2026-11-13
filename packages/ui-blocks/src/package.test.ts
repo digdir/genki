@@ -10,8 +10,7 @@ const modules = readdirSync(import.meta.dirname, { recursive: true, encoding: 'u
 
 describe('the package, as a host bundles it', () => {
   it('declares only its stylesheets as side effects, so a host bundles only the blocks it imports', () => {
-    // Without it, a bundler keeps every module the index reaches that has a call at its top,
-    // even when the host imports one block.
+    // Without it, a bundler keeps every module with a call at its top that the index reaches.
     expect(pkg.sideEffects).toEqual(['**/*.css']);
   });
 

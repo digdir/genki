@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translator } from './i18n';
-import { allDone, withStep, type ProcedureState } from './procedure';
+import { allDone, inLanguage, withStep, type ProcedureState, type StreamStep } from './procedure';
 
 const t = translator('nb');
 const empty: ProcedureState = { steps: [] };
@@ -26,9 +26,34 @@ describe('the approach from the stream', () => {
     expect(withStep(start, { event: 'agent/iteration-started', iteration: 2 }, t)).toBe(start);
   });
 
+  it('uses its own title for the tool when the label the platform sends is not text', () => {
+    const frame = JSON.parse('{"tool":"search","label":42}') as StreamStep;
+    expect(withStep(empty, frame, t).steps[0]?.title).toBe(
+      'Lette etter steder som handler om spørsmålet',
+    );
+  });
+
+  it('leaves out a tool named like a property every object has, such as toString', () => {
+    const start = withStep(empty, { tool: 'search' }, t);
+    for (const tool of ['toString', 'constructor', '__proto__', 'hasOwnProperty'])
+      expect(withStep(start, { tool }, t)).toBe(start);
+  });
+
   it('keeps one step when the same tool is called again in a row', () => {
     const start = withStep(empty, { tool: 'search' }, t);
     expect(withStep(start, { tool: 'search', iteration: 2 }, t)).toBe(start);
+  });
+
+  it('keeps one step when a tool used earlier is called again twice in a row', () => {
+    const state = ['search', 'read_chunks', 'search', 'search'].reduce(
+      (s, tool) => withStep(s, { tool }, t),
+      empty,
+    );
+    expect(shown(state)).toEqual([
+      ['Lette etter steder som handler om spørsmålet', 'done'],
+      ['Leste de relevante delene nøye', 'done'],
+      ['Lette etter steder som handler om spørsmålet', 'active'],
+    ]);
   });
 
   it('shows the planned steps as waiting, and moves through them in order', () => {
@@ -78,6 +103,17 @@ describe('the approach from the stream', () => {
     const state = withStep(empty, { tool: 'search', plan: ['search', 'report_gaps'] }, t);
     expect(allDone(state.steps).map((s) => [s.title, s.status])).toEqual([
       ['Lette etter steder som handler om spørsmålet', 'done'],
+    ]);
+  });
+
+  it('shows a tool step in the language the person switched to, and a label as sent', () => {
+    const state = [
+      { tool: 'search' },
+      { tool: 'read_chunks', label: 'Leste årsrapportene' },
+    ].reduce((s, frame) => withStep(s, frame, t), empty);
+    expect(inLanguage(state.steps, translator('en')).map((s) => s.title)).toEqual([
+      'Looked for passages about the question',
+      'Leste årsrapportene',
     ]);
   });
 

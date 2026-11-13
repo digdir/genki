@@ -6,7 +6,7 @@
     <title>Approach · Components</title>
     <meta
       name="description"
-      content="Shows how the assistant works on a question: the steps it takes, what it read, and which filter the answer is based on. Working name, may be renamed before it is built."
+      content="Shows how the assistant works on a question: the steps it takes, what it read, and which filter the answer is based on. Working name, may still be renamed."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -35,7 +35,7 @@
             </div>
             <p class="summary">
               Shows how the assistant works on a question: the steps it takes, what it read, and
-              which filter the answer is based on. Working name, may be renamed before it is built.
+              which filter the answer is based on. Working name, may still be renamed.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
@@ -49,7 +49,7 @@
                 >
               </dd>
               <dt>Code</dt>
-              <dd><code>Procedure</code> in <code>packages/ui-blocks</code></dd>
+              <dd><code>Approach</code> in <code>packages/ui-blocks</code></dd>
               <dt>Canvas</dt>
               <dd>00-Fremgangsmåte (FM-1, FM-2, FM-3, FMA-0 to FMA-4)</dd>
             </dl>
@@ -79,11 +79,101 @@
                 <strong>A, card above the answer:</strong> can be collapsed and expanded. A4 has the
                 filter for each answer inside the card.
               </li>
-              <li><strong>B, in the tools panel:</strong> as one of the tools.</li>
+              <li>
+                <strong>B, in the tools panel:</strong> as one of the tools, the detailed one: each
+                step's time, the filter the answer read from, the totals and, at the detailed level,
+                the step frames. The app builder places it as A, as B, or both; beside B, A keeps
+                only the steps, the totals, «filteret er endret» and, in the next look, how many
+                documents the answer read from.
+              </li>
               <li><strong>What is missing:</strong> a section of its own (A3, A3b).</li>
             </ul>
           </div>
           <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>steps</code>: the steps in order. A run of steps with the same title one after
+                another is one line with a count, «Leste de relevante delene nøye (4 ganger)», that
+                shows the last step's description, documents and links. The same step again after
+                another one is a line of its own, and a step that waits is never part of a run.
+              </li>
+              <li>
+                <code>working</code>, <code>startedAt</code> and <code>finishedAt</code>: while it
+                works, and when it started and finished, in milliseconds since the epoch.
+              </li>
+              <li>
+                <code>now</code>: the host's clock, for the seconds while it works, so they count
+                from the same clock as <code>startedAt</code>. Without it, the browser's.
+              </li>
+              <li>
+                <code>read</code> and <code>used</code>: the documents read and the sources used,
+                for the line at the bottom once the answer is done. The list draws that line only
+                when one of them is given.
+              </li>
+              <li>
+                <code>open</code> and <code>onOpenChange</code>: a host that keeps the card open or
+                shut passes <code>open</code>, and hears through <code>onOpenChange</code> when the
+                person opens or shuts it. Without <code>open</code> the card keeps its own state:
+                open while it works, shut when the answer is done, and as the person left it.
+              </li>
+              <li>
+                <code>onShowRead</code> and <code>onExplainMissing</code>: the links «Vis de 17 som
+                er lest» and «Utdyp hva som mangler», shown only when the app can open them.
+              </li>
+              <li>
+                <code>summary</code>: <code>totals</code> puts «Leste 44 dokumenter, brukte 4»
+                beside the title once the answer is done, so the folded card says it in one line,
+                and the foot keeps only «Tok 41 sekunder». The card is then the dev boards' bar
+                (dev-filter-panel): tinted, under a hairline, its chevron at the end. Left out, the
+                card is as before.
+              </li>
+              <li>
+                <code>note</code>: after the totals in the head, stronger: «· filteret er endret»,
+                which the host passes only when the answer's filter differs from the previous
+                answer's. In the list it is a line of its own under the caption.
+              </li>
+              <li>
+                <code>scope</code>: at the top of the open card, or of the list, before the steps,
+                such as the filter's <code>FilterRead</code>: «Leste fra 8 781 dokumenter:» and the
+                chosen values as chips.
+              </li>
+              <li>
+                <code>variant</code>: <code>list</code> draws the steps as the dev boards'
+                «Fremgangsmåte» tool in the secondary panel (dev-verktoy-1 to -3), with no card and
+                nothing that folds: the caption «Slik jobbet assistenten med svaret», then each step
+                with a mark (a check on success's tint when done, a spinner while it works), its
+                title, and a grey line under it: its <code>description</code>, or «Leste 11 utdrag
+                nøye» for the excerpts it read. Given a <code>note</code>, a <code>scope</code>, or
+                <code>read</code> or <code>used</code>, it draws those as well, and each step's time
+                when the steps carry one. <code>card</code>, the default, is the card above the
+                answer.
+              </li>
+            </ul>
+            <h3>A step</h3>
+            <ul>
+              <li>
+                <code>id</code>, <code>title</code> and <code>status</code>: <code>done</code>,
+                <code>active</code> or <code>waiting</code>.
+              </li>
+              <li><code>description</code>: a line under the title.</li>
+              <li>
+                <code>documents</code> and <code>documentsRead</code>: the first documents the step
+                read, each a <code>title</code> with a <code>detail</code> saying where in it, and
+                how many it read in all.
+              </li>
+              <li>
+                <code>excerptsRead</code>: the excerpts the step read closely. A run of such steps
+                adds them up, and its line says «Leste 12 utdrag nøye» in place of the title.
+              </li>
+              <li><code>sourcesUsed</code>: the source numbers the answer used.</li>
+              <li><code>missing</code>: the step says what the assistant did not find.</li>
+              <li>
+                <code>duration</code>: how long the step took, in milliseconds, when the platform
+                said. The line shows it, «2,4 s», after the title in the card and at the end of the
+                row in the list, as a <code>&lt;time&gt;</code>; a run adds its steps' times up.
+              </li>
+            </ul>
             <h2>Related</h2>
             <ul>
               <li>
@@ -92,6 +182,325 @@
               <li><a href="filter.html">Filter</a>: shows the filter used for each answer</li>
               <li><a href="sources.html">Sources</a>: the steps show which sources were used</li>
             </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color-scheme</code> and <code>data-size</code>, and its stylesheet reads
+              every token through its own variable, with the token as the fallback. Set one on any
+              ancestor to change that detail only. The card is pinned to
+              <code>data-color="neutral"</code> and its grey lines to neutral tokens, as
+              kunnskapsassistenten draws them. Its words are in its own catalogue,
+              <code>approach</code>.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-approach-card-padding</code></td>
+                  <td><code>0</code></td>
+                  <td>the card's padding; the summary and the content hold their own</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-summary-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the robot and «Fremgangsmåte»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-waiting-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>a waiting step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-waiting-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a waiting step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-status-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>«· pågår» and «· venter»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-status-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«· pågår» and «· venter»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-status-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>«· pågår» and «· venter»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-spacing</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space over a step's description, documents and links</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-description-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>a step's description and «Brukt i svaret: …»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-description-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>a step's description and «Brukt i svaret: …»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-documents-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the documents a step read</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-link-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>«Vis de 17 som er lest» and «Utdyp hva som mangler»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-footer-spacing</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>space over the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-footer-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-footer-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the line at the bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the totals bar: bar border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the totals bar: bar font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: bar gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-ground</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>the totals bar: bar ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-icon-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the totals bar: bar icon color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the totals bar: bar icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: bar padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-block-end</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the totals bar: bar padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the totals bar: bar padding inline</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>the totals bar: bar radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-note-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>the totals bar: note color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-note-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the totals bar: note font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the totals bar: scope border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-margin-block-end</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: scope margin block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-scope-padding-block-end</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the totals bar: scope padding block end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the list: between the caption and the steps</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the list: «Slik jobbet assistenten med svaret» (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-caption-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-item-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the list: between a step's mark and its words</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-item-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the list: above and below a step</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-divider-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the list: the hairline over each step (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the list: a step's round mark</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>the list: the mark's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-background</code></td>
+                  <td><code>--ds-color-success-surface-tinted</code></td>
+                  <td>the list: a done step's mark (pinned to success, the design's green)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-color</code></td>
+                  <td><code>--ds-color-success-text-subtle</code></td>
+                  <td>the list: a done step's check (pinned to success)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-icon-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the list: the check</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-pending-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the list: a step's mark while it works or waits (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-mark-pending-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the list: the spinner (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-entry-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the list: between a step's title and its line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>the list: a step's title (pinned)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-title-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the list: the grey line under a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-note-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: the note under the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-time-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>a step's time</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-time-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>a step's time</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-time-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a step's time</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-subtitle-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the totals bar: subtitle color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-subtitle-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>the totals bar: subtitle font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>the totals bar: title font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-background</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>the totals bar: bar background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-bar-hover-background</code></td>
+                  <td><code>--ds-color-neutral-surface-hover</code></td>
+                  <td>the totals bar: bar hover background</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <div class="wide">
             <h2>What we have learned</h2>
@@ -125,7 +534,14 @@
               </li>
               <li>
                 Open while the assistant works, closed when the answer is done. If the person closes
-                it while the assistant works, it stays closed. It can be opened again.
+                it while the assistant works, it stays closed. It can be opened again. A host that
+                passes <code>open</code> keeps it open or shut instead.
+              </li>
+              <li>
+                A run of the same step one after another is one line with a count, «Lette etter
+                steder som handler om spørsmålet (2 ganger)», or, for a reading run that knows its
+                excerpts, «Leste 12 utdrag nøye». The workspace already sends a tool called again in
+                a row as one step, so it draws no count.
               </li>
               <li>
                 Each step is done, in progress or waiting. The status is always text: «· pågår» and
@@ -146,9 +562,12 @@
               </li>
               <li>
                 The steps come from the platform, never from the component. The workspace asks for
-                <code>genai_steps</code>, shows a label as sent, and translates known tool names
-                (plan, search, read, rerank, write). Frames a person cannot read are left out, and
-                there is no card without steps.
+                <code>genai_steps</code>, shows a label as sent, and translates the tool names it
+                knows (<code>plan_queries</code>, <code>inspect_filters</code>, <code>search</code>,
+                <code>read_chunks</code>, <code>rerank_results</code>, <code>report_gaps</code>,
+                <code>generate_response</code>) in the person's language, also after a switch.
+                Frames a person cannot read are left out, a tool called again in a row stays one
+                step, and there is no card without steps.
               </li>
             </ul>
           </div>
@@ -164,8 +583,8 @@
                 with the text from the design, so it can be seen and tested in full.
               </li>
               <li>
-                «Vis de 38 som ble lest» and «Utdyp hva som mangler» are placeholders. Where they
-                lead is not designed yet.
+                Where «Vis de 38 som ble lest» and «Utdyp hva som mangler» lead is not designed yet,
+                so the workspace shows neither link.
               </li>
             </ul>
             <h3>Proposed step frame</h3>
@@ -191,8 +610,8 @@
               </li>
               <li><code>sources-used</code>: the source numbers the answer used.</li>
               <li>
-                <code>missing</code>: the step says what was not found. The tool name
-                <code>report_gaps</code> is reserved for this step.
+                <code>missing</code>: the step says what was not found. The workspace titles a tool
+                named <code>report_gaps</code> as this step; no strategy has that tool yet.
               </li>
             </ul>
           </div>
@@ -203,8 +622,8 @@
               <li>
                 <strong>Relevant later: «Det jeg ikke fant» has no data.</strong> The step and its
                 link «Utdyp hva som mangler» need the platform to say what it looked for and did not
-                find, and where it looked. No strategy sends this today, so the first version leaves
-                the step out. Built when the platform can send it.
+                find, and where it looked. No strategy sends this today, so only the example data
+                shows the step. Built when the platform can send it.
               </li>
             </ul>
           </div>

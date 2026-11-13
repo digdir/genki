@@ -112,6 +112,16 @@ export const serviceDrafts = (
   const latestVersion = async (tenant: string, service: string) =>
     (await definitions.get('Service', tenant, service))?.version;
 
+  const list = async (tenant: string) =>
+    (
+      (await entries.latest({
+        kind: serviceDraftKind,
+        scope: tenant,
+      })) as ConfigEntry<ServiceDraft>[]
+    )
+      .filter((entry) => !entry.deleted)
+      .sort((a, b) => b.at.localeCompare(a.at));
+
   const write = async (
     principal: Principal | string,
     tenant: string,
@@ -257,7 +267,7 @@ export const serviceDrafts = (
     return write(actor, tenant, service, result.draft, false, reason, draft.version);
   };
 
-  return { draftOf, latestVersion, save, remove, outdated, rebase, followPublish };
+  return { draftOf, latestVersion, list, save, remove, outdated, rebase, followPublish };
 };
 
 export type ServiceDrafts = ReturnType<typeof serviceDrafts>;

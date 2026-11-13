@@ -11,6 +11,8 @@ export interface ServiceTestSet {
   name: string;
   cases: number;
   split?: { locked: number; open: number };
+  /** The Langfuse dataset its sent runs are linked to, in the connection covering the service. */
+  dataset?: { connection: string; name: string };
 }
 
 export interface ServiceCase {
@@ -21,19 +23,104 @@ export interface ServiceCase {
   split: CaseSplit;
 }
 
-export type NewServiceCase = Omit<ServiceCase, 'id'>;
+/** A reference answer and named criteria, as a judge reads them. */
+export interface CaseExpectation {
+  referenceAnswer?: string;
+  criteria?: Record<string, string>;
+}
+
+export type NewServiceCase = Omit<ServiceCase, 'id' | 'expected'> & {
+  expected: string | CaseExpectation;
+};
+
+export interface MetricSummary {
+  mean: number;
+  ci: [number, number];
+  n: number;
+}
 
 export interface EvalRun {
   id: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | (string & {});
+  status: 'running' | 'waiting-for-scores' | 'completed' | 'failed' | 'interrupted' | (string & {});
   testSet: string;
   version: RunVersion;
+  model?: string;
+  selected?: string[];
   startedAt: string;
   endedAt?: string | null;
   score?: number | null;
   passed?: number | null;
   total?: number | null;
+  finished?: number;
+  queuePlace?: number;
   cost?: number | null;
+  metrics?: Record<string, MetricSummary>;
+  incomplete?: {
+    evaluator: string;
+    reason: string;
+    missing?: number;
+    failed?: number;
+    of?: number;
+  }[];
+  judges?: string[];
+  /** Why a failed or interrupted run stopped. */
+  error?: string;
+  /** Langfuse judges: advisory, shown apart from genki's metrics. */
+  sinkJudges?: SinkJudgeSummary[];
+  /** Where Langfuse shows the run as an experiment. */
+  experiment?: string;
+  /** The USD/NOK rate the run shows reported costs with, and its day. */
+  usdNok?: { rate: number; date: string };
+  /** What Langfuse judges the run did not use cost on its cases, such as one switched on during it. */
+  sinkOthers?: ReportedCost;
+  /** The Langfuse judges in use that did not score the run, because it was not sent. */
+  unsentJudges?: { id: string; name: string }[];
+}
+
+export interface SinkJudgeSummary {
+  id: string;
+  name: string;
+  version: string;
+  dataType?: string;
+  metric?: MetricSummary;
+  categories?: Record<string, number>;
+  notApplicable: number;
+  missing: number;
+  failed: number;
+  of: number;
+  /** What changed in the judge since the run started; empty when nothing did. */
+  changed: string[];
+  /** What Langfuse reports the judge's own calls used; only for those who see usage. */
+  reported?: ReportedCost;
+  /** Agreement with the accepted labels of the same judge (tenant, connection, name). */
+  labels?: SinkAgreement;
+}
+
+/** Cohen's kappa and the share alike over accepted labels; how many another version scored. */
+export interface SinkAgreement {
+  n: number;
+  kappa?: number;
+  observed?: number;
+  otherVersions: number;
+  unpaired: number;
+}
+
+/** What Langfuse reports judge calls cost: tokens, USD where priced, and calls not yet reported. */
+export interface ReportedCost {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
+  unpriced: number;
+  unread?: number;
+}
+
+export interface CaseJudgement {
+  judge: string;
+  state: 'scored' | 'not-applicable' | 'pending' | 'failed' | 'missing';
+  value: number | null;
+  dataType?: string;
+  asItCame?: unknown;
+  reason?: string;
 }
 
 export interface EvalCaseResult {
@@ -43,6 +130,27 @@ export interface EvalCaseResult {
   output: string;
   pass: boolean;
   reason?: string;
+  judges?: CaseJudgement[];
+}
+
+export type RunResidency = 'norway' | 'eu' | 'global';
+
+/** Where a run would be sent and which Langfuse judges would score it, before it starts. */
+export interface RunSending {
+  connection?: { id: string; residency: RunResidency };
+  judges: { id: string; name: string }[];
+  /** Judges in the project whose filters leave the test set out, such as another test set's. */
+  elsewhere?: { id: string; name: string }[];
+  /** Judges that reach the test set and are not taken in use, whatever else refuses the run. */
+  notInUse?: string[];
+  /** Rules that reach the test set and refuse a sent run, whatever else refuses it. */
+  unreadable?: string[];
+  refused?:
+    | { reason: 'residency'; service: RunResidency; connection: RunResidency }
+    | { reason: 'covered-twice'; connections: string[] }
+    | { reason: 'no-content'; connection: string }
+    | { reason: 'judges-differ'; connection: string; notInUse: string[]; unreadable: string[] }
+    | { reason: 'judges-unreadable'; connection: string; message: string };
 }
 
 export interface EvalRunDetail extends EvalRun {
@@ -106,6 +214,18 @@ export interface ServiceDraft {
   latestVersion?: number;
 }
 
+export interface ServiceDraftSummary {
+  id: string;
+  name: string | null;
+  purpose: string;
+  outputKind: string;
+  latestVersion: number | null;
+  revision: number;
+  at: string;
+  by: string;
+  byName?: string;
+}
+
 export interface DraftConflict {
   path: string;
   published: unknown;
@@ -124,7 +244,7 @@ export interface DraftRebase {
   applied: boolean;
 }
 
-const isFinished = (r: EvalRun) => r.status === 'succeeded' && typeof r.total === 'number';
+const isFinished = (r: EvalRun) => r.status === 'completed' && typeof r.total === 'number';
 
 export const latestRunFact = (runs: EvalRun[], t: T = translator('nb')) => {
   const done = runs.filter(isFinished).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
@@ -146,6 +266,9 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
   const why = (reason: string) => ({ 'change-reason': reason });
 
   const api = {
+    drafts: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data: ServiceDraftSummary[] }>(`${tenantPath(tenant)}/service-drafts`, signal))
+        .data,
     draft: async (tenant: string, id: string, signal?: AbortSignal) => {
       try {
         const draft = await get<Partial<ServiceDraft> | undefined>(
@@ -243,11 +366,31 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     startRun: (
       tenant: string,
       id: string,
-      body: { testSet: string; version?: RunVersion },
+      body: {
+        testSet: string;
+        version?: RunVersion;
+        split?: CaseSplit;
+        cases?: string[];
+        trace?: boolean;
+      },
       reason: string,
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>
       (await get<{ data: EvalRun[] }>(`${service(tenant, id)}/eval-runs`, signal)).data,
+    /** What a run of the test set sent to Langfuse would meet there, before it starts. */
+    sending: (
+      tenant: string,
+      id: string,
+      version: RunVersion,
+      testSet: string,
+      signal?: AbortSignal,
+    ) =>
+      get<RunSending>(
+        `${service(tenant, id)}/eval-runs/sending?${
+          version === 'published' ? '' : `version=${encodeURIComponent(String(version))}&`
+        }testSet=${encodeURIComponent(testSet)}`,
+        signal,
+      ),
     run: (tenant: string, runId: string, signal?: AbortSignal) =>
       get<EvalRunDetail>(`${tenantPath(tenant)}/eval-runs/${encodeURIComponent(runId)}`, signal),
     candidates: async (tenant: string, id: string, signal?: AbortSignal) =>

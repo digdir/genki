@@ -1,11 +1,9 @@
 import { intlLocale, type Locale } from '@genai/i18n';
 
-/** A size limit in words, in mebibytes like the check a host makes; `fileSize` counts in decimal
- * units and would say «21 MB» for 20 MiB. */
+/** A size limit in words, in mebibytes like the host's check. */
 export const limitText = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
 
-/** A file size in decimal units, as file managers count, so the numbers match. One decimal from
- * MB up; below that the whole number is exact enough. Empty for a size that is not one. */
+/** A file size in decimal units, as file managers count; empty for a size that is not one. */
 export const fileSize = (bytes: number, locale: Locale): string => {
   if (!Number.isFinite(bytes) || bytes < 0) return '';
   if (bytes < 1000) return `${Math.round(bytes)} B`;

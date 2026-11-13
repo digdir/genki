@@ -174,6 +174,7 @@ export interface SettingInfo {
   sensitivity: 'normal' | 'secret';
   default: unknown;
   settableAt: string[];
+  operatorOnly?: boolean;
   schema?: Record<string, unknown>;
 }
 
@@ -216,10 +217,11 @@ export type Split = 'train' | 'validation' | 'holdout';
 export interface TestCaseSummary {
   id: string;
   split: Split;
+  type?: string;
   input: string | { data?: unknown; parts?: unknown[] };
   tags: string[];
   needsReview: boolean;
-  expected: { referenceAnswer?: string; sources?: unknown[] };
+  expected: { referenceAnswer?: string; criteria?: Record<string, string>; sources?: unknown[] };
 }
 
 export interface TestSet {
@@ -355,8 +357,12 @@ export interface ApiKeyView {
   service?: string | null;
   policy?: string | null;
   createdAt: string | null;
+  createdBy?: string | null;
+  createdByName?: string;
+  modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;
+  testRunner?: boolean;
 }
 
 export type ClientChannel = 'mcp' | 'openai' | 'rest' | 'conversations' | 'feedback' | 'facets';
@@ -421,6 +427,7 @@ export interface AccessView {
     requirement: { resource: string; action: string; scope?: string };
   }[];
   keys: ApiKeyView[];
+  testRunnerKeys?: boolean;
 }
 
 export interface UsageReport {

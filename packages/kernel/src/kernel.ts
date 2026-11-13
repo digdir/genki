@@ -666,9 +666,15 @@ export const createKernel = (options: KernelOptions): Kernel => {
         };
         return provider.open(ref, portContext) as P;
       },
-      invoke: async (capabilityId, input) => {
+      invoke: async (capabilityId, input, options = {}) => {
         requireFeature(l, 'subinvoke');
-        return invoke(l.principal, capabilityId, input, {}, l);
+        return invoke(
+          l.principal,
+          capabilityId,
+          input,
+          options.evaluation ? { evaluation: options.evaluation } : {},
+          l,
+        );
       },
     };
   };
@@ -729,6 +735,9 @@ export const createKernel = (options: KernelOptions): Kernel => {
           capability: { id: capability.descriptor.id, version: capability.descriptor.version },
           strategy: { id: strategy.id, version: strategy.version },
           configHash,
+          ...(invokeOptions.environment === undefined
+            ? {}
+            : { environment: invokeOptions.environment }),
         },
         principal: principalRef(principal),
         tenant,
@@ -777,7 +786,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     await emit(l, { type: 'kernel.task.status', data: { status: 'queued' } }, 'kernel');
     await emit(
       l,
-      { type: 'kernel.task.input', data: { input }, audience: 'audit' },
+      {
+        type: 'kernel.task.input',
+        data: {
+          input,
+          ...(invokeOptions.evaluation ? { evaluation: invokeOptions.evaluation } : {}),
+        },
+        audience: 'audit',
+      },
       principalRef(principal),
     );
     await persist(l);

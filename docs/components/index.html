@@ -8,17 +8,7 @@
       name="description"
       content="Working document: the components assistants in the shared solution are built from, with variants and what we have learned."
     />
-    <!--
-      A working document for the team building the component library (digdir/kunnskapsassistenten#171,
-      part of digdir/kunnskapsassistenten#167). Moved to genki from kunnskapsassistenten, since the
-      components are built in genki and shared by the workspace and the builder's preview.
-      Maintained by Claude as part of the component work. This page is the landing
-      page; each component listed in #167 has a page of its own (chat.html, sources.html, ...),
-      all with the same sections in the same order, and an <article class="component"> with
-      data-component, data-phase and data-optional so people and agents read them the same way.
-      When a component changes: update its page and its badges here, and add a line to the change
-      log at the bottom of this page.
-    -->
+    <!-- When a component changes, update its page, its badges here and the change log below. -->
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -32,7 +22,7 @@
           variants, and what we learn as we build and test.
         </p>
         <p class="meta-line">
-          Last updated 2 November 2026 · Grows as we build · Not meant for service owners yet.
+          Last updated 11 November 2026 · Grows as we build · Not meant for service owners yet.
         </p>
       </header>
 
@@ -41,14 +31,80 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
-            <strong>9 November 2026:</strong> The app builder's catalogue has a page:
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a> always
+            draws years as periods and many chosen values as one chip: KA's trials «year-ranges» and
+            «compact-filter-chips» are now the standard. The <a href="filter.html">Filter</a>'s
+            panel row for a year field says «Alle år» with nothing chosen. A typed period stands for
+            the years in it that the field lists, not every calendar year, so «1800-2015» no longer
+            passes genki's 100 values per field; the list counts a period in years with documents
+            rather than a sum of documents that can pass the total.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a>
+            leaves a filter field with every value chosen out of the facets, the question and
+            «Avgrenset til», so «Velg alle» in a field of hundreds of values, with nothing else
+            chosen, no longer stops the other fields from loading. A field with more than 100 chosen
+            goes as the values left out when they are 100 or fewer; otherwise the
+            <a href="filter.html">Filter</a> says so and nothing is sent. «Avgrenset til» names
+            years in a row as one period.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a>'s next
+            look hides the <a href="welcome.html">Welcome</a> greeting and suggestions while the
+            question field holds text, and shows them again when it is emptied.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> <a href="answer-actions.html">Answer actions</a>
+            sends the rating on the click on «Ja» or «Nei». The reasons and comment are optional and
+            come after, sent with the rating again; the other thumb changes the rating.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> <a href="filter.html">Filter</a> shows one chip,
+            «Alle virksomheter», when the field lists two or more values and all are chosen, as
+            after «Velg alle», for every host. The panel variant's row says «Alle» then, instead of
+            every name.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="variant-picker.html">Variant picker</a>
+            shows the service, then its variants: its list is headed by the service's name, as the
+            frontend contract asks.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> Three blocks have pages of their own,
+            <a href="welcome.html">Welcome</a>, <a href="corpus.html">Corpus choice</a> and
+            <a href="documents.html">Documents</a>, which only the Chat and Filter pages described
+            until now. <a href="states.html">States</a> records its side-by-side check with
+            Kunnskapsassistenten, and the error heading's level is no longer an open question.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The UI assembly offers the trial
+            <code>compact-filter</code>: the next look's filter 230 px wide with its ticks in one
+            column, and the threads taking the rest of the card. Shell's companion can keep its
+            width (<code>keepWidth</code>), and Filter takes its columns of ticks from
+            <code>--genai-filter-checkboxes-columns</code>.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> Threads cuts a one-line title in the next look where
+            the row ends, not after its last whole word, so «Hva sier…» no longer leaves the row
+            half empty.
+          </li>
+          <li>
+            <strong>11 November 2026:</strong> A page for the UI assembly,
+            <a href="ui-assembly.html">UI assembly</a>: how <code>@genai/ui-assembly</code> puts the
+            blocks together from a layout, and the variables of its own sheet.
+          </li>
+          <li>
+            <strong>11 November 2026:</strong> The app builder's catalogue has a page:
             <a href="builder.html">App builder catalogue</a>, with the blocks, the templates, the
             layout rules and the service facts.
           </li>
           <li>
-            <strong>9 November 2026:</strong> A page for the UI assembly,
-            <a href="ui-assembly.html">UI assembly</a>: how <code>@genai/ui-assembly</code> puts the
-            blocks together from a layout, and the variables of its own sheet.
+            <strong>10 November 2026:</strong> Approach shows its step titles in the person's
+            language, keeps a tool called again in a row as one step, counts only cited sources as
+            used, and shows no link until the app has somewhere for it to lead. It follows the
+            package's rules (ADR 0053): every token its stylesheet reads can be changed through a
+            <code>--genai-approach-*</code> variable, its words are in a catalogue of its own, and a
+            host can keep it open or shut.
           </li>
           <li>
             <strong>9 November 2026:</strong> Document view is in the Building phase, in
@@ -56,10 +112,6 @@
             excerpt the reader came for marked, «Utdrag i svaret» to jump straight to each cited
             excerpt, and a question for the thread. genki has no route for a document's whole text
             yet.
-          </li>
-          <li>
-            <strong>6 November 2026:</strong> Shell is in the Building phase: the three columns that
-            hold the other blocks, which fold, resize and become drawers.
           </li>
           <li>
             <strong>6 November 2026:</strong> The conversation in Chat is in the Building phase, as
@@ -76,6 +128,10 @@
             <code>@genai/ui-blocks</code>: only cited excerpts are numbered, each linked both ways
             with its footnotes, and every token it uses can be changed through a
             <code>--genai-sources-*</code> variable. No app draws it yet.
+          </li>
+          <li>
+            <strong>6 November 2026:</strong> Shell is in the Building phase: the three columns that
+            hold the other blocks, which fold, resize and become drawers.
           </li>
           <li>
             <strong>6 November 2026:</strong> Two blocks that sit inside others are in the Building
@@ -115,8 +171,8 @@
           <li>
             <strong>2 November 2026:</strong> The pages moved to genki, in
             <code>docs/components/</code>, from kunnskapsassistenten. The components are built in
-            genki and shared by the workspace and the builder's preview. Issue numbers still point
-            to kunnskapsassistenten. Approach notes that «Det jeg ikke fant» has no data yet.
+            genki, used by the workspace and later by the builder's preview. Issue numbers still
+            point to kunnskapsassistenten. Approach notes that «Det jeg ikke fant» has no data yet.
           </li>
           <li>
             <strong>19 October 2026:</strong> Each component has a page of its own. This page is the
@@ -177,6 +233,27 @@
               <span class="badges"
                 ><span class="badge phase">Building</span
                 ><span class="badge">Always included?</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="welcome.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="22" width="44" height="7" rx="3.5" />
+                <rect class="s-bar" x="28" y="34" width="70" height="7" rx="3.5" />
+                <rect class="s-soft" x="28" y="48" width="104" height="14" rx="7" />
+                <rect class="s-accent" x="28" y="68" width="22" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="77" width="6" height="7" rx="1.5" />
+                <rect class="s-bar" x="40" y="78.5" width="78" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="90" width="6" height="7" rx="1.5" />
+                <rect class="s-bar" x="40" y="91.5" width="64" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Welcome</span>
+              <span class="stamp-desc">A greeting, and questions to start from.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span
+                ><span class="badge">Inside Chat</span></span
               >
             </a>
           </li>
@@ -312,6 +389,64 @@
               </svg>
               <span class="stamp-name">Filter</span>
               <span class="stamp-desc">Choose which documents a thread reads from.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="corpus.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="20" y="22" width="52" height="5" rx="2.5" />
+                <rect class="s-soft" x="20" y="31" width="90" height="16" rx="5" />
+                <rect class="s-bar" x="26" y="36.5" width="40" height="5" rx="2.5" />
+                <path class="s-accent" d="M99 37l3 3 3-3z" />
+                <rect class="s-bar" x="20" y="58" width="58" height="5" rx="2.5" />
+                <rect class="s-accent" x="82" y="58" width="22" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="70" width="84" height="4" rx="2" />
+                <rect class="s-bar" x="20" y="80" width="62" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Corpus choice</span>
+              <span class="stamp-desc">Which collection is searched, and a switch.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="documents.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="20" y="21" width="40" height="6" rx="3" />
+                <rect class="s-accent" x="20" y="33" width="66" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="41" width="44" height="4" rx="2" />
+                <rect class="s-accent" x="20" y="51" width="58" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="59" width="38" height="4" rx="2" />
+                <rect class="s-soft" x="18" y="72" width="94" height="30" rx="6" />
+                <path class="s-accent" d="M60 82l5-5 5 5h-3v5h-4v-5z" />
+                <rect class="s-bar" x="44" y="92" width="42" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Documents</span>
+              <span class="stamp-desc">The answer's documents, and the reader's own.</span>
               <span class="badges"
                 ><span class="badge phase">Building</span><span class="badge">Optional</span></span
               >
@@ -615,11 +750,11 @@
               <li><strong>Ready:</strong> can be chosen when an assistant is set up.</li>
             </ul>
             <p>
-              All components are drafts for now. The list of components follows
+              Each component's badge shows its phase. The list of components follows
               <a href="https://github.com/digdir/kunnskapsassistenten/issues/167"
                 >kunnskapsassistenten#167</a
-              >. What we have learned comes from the canvas
-              <a href="https://claude.ai/artifact/WTXEnA5VYmCiJwzCMjpZNM">Fellesløsningen</a>.
+              >. What we have learned comes from the design canvas «Fellesløsningen», which is not
+              public.
             </p>
           </section>
         </div>
@@ -744,7 +879,6 @@
 
       <footer>
         <p>
-          Canvas: <a href="https://claude.ai/artifact/WTXEnA5VYmCiJwzCMjpZNM">Fellesløsningen</a> ·
           Inspiration:
           <a href="https://designsystemet.no/no/components">designsystemet.no/no/components</a>
         </p>

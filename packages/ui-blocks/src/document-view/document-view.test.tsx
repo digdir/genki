@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { en, nb } from './i18n.js';
-import { propsMissingFromPage } from '../sources/fixtures/docsProps.js';
+import { propsMissingFromPage } from '../docs-props.test-utils.js';
 import type { SourceCitation } from '../sources/pairing.js';
 import { Sources } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
@@ -638,7 +638,9 @@ describe('the document view styles', () => {
 
   it('flow «Utdrag i svaret» as one line of text that wraps, so a document’s long name shares its line with its chips', () => {
     const rule = (selector: string) =>
-      css.match(new RegExp(`${selector.replace(/\./g, '\\.')} \\{([^}]*)\\}`))?.[1] ?? '';
+      css.match(
+        new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`),
+      )?.[1] ?? '';
     // No flex box on the way: each would put a name that wraps on a line of its own.
     expect(rule('.uib-document-view-jumps')).not.toContain('display');
     expect(rule('.uib-document-view-jump-list')).toContain('display: inline;');

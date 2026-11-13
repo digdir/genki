@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   breakpoints,
+  cardsGap,
+  cardsInset,
+  cardsRail,
   clampWidth,
   defaultCollapsed,
   defaultGap,
@@ -90,6 +93,22 @@ describe('the widths drawn in a window', () => {
   it('never squeeze a rail', () => {
     const folded = withAllCollapsed(start);
     expect(fittedWidths(geometry, folded, 400)).toEqual({ primary: 67, secondary: 67 });
+  });
+
+  it('keep a panel within its floor and ceiling as they are now, after the host changes its size', () => {
+    // The next look's primary panel: the threads with the filter's column, then the settings menu.
+    const threads = { width: 660, minWidth: 660, maxWidth: Number.POSITIVE_INFINITY };
+    const menu = { width: 220, minWidth: 220, maxWidth: 220 };
+    const before = { ...geometry, panels: { primary: threads } };
+    const after = { ...geometry, panels: { primary: menu } };
+    const held = initialState(before, defaultCollapsed, undefined);
+    expect(fittedWidths(after, held, 1720).primary).toBe(220);
+    // Not a width the reader dragged, so nothing for the host to keep.
+    expect(storedLayout(after, held).widths).toEqual({});
+    // A width dragged in the threads' card is still theirs when they come back.
+    const dragged = withWidth(before, held, 'primary', 700);
+    expect(fittedWidths(after, dragged, 1720).primary).toBe(220);
+    expect(fittedWidths(before, dragged, 1720).primary).toBe(700);
   });
 });
 
@@ -203,9 +222,7 @@ describe('drawers', () => {
   });
 });
 
-// Every width from 280 to 2000, every reachable state, and widths from the design, from a drag as
-// far as it goes and from storage with numbers far too big: the row never scrolls sideways
-// (WCAG 1.4.10). As kunnskapsassistenten's viewportFit.test.ts.
+// Every width from 280 to 2000 and every reachable state: no sideways scroll (WCAG 1.4.10).
 describe('the row and the window, from 280 to 2000 px', () => {
   const points = breakpoints(geometry);
   const windows = Array.from({ length: 2000 - 280 + 1 }, (_, index) => 280 + index);
@@ -300,5 +317,57 @@ describe('the row and the window, from 280 to 2000 px', () => {
     const style = layoutStyle(geometry, withAllCollapsed(start), 390, true, true);
     expect(style['--uib-shell-main-min-width']).toBe('390px');
     expect(style['--uib-shell-main-max-width']).toBe('800px');
+  });
+});
+
+// The design's dev-navbar board at 1720: cards 16 from the window and 12 apart, threads 220, the
+// main column 1064 and the tools 380, and a rail of 76 that keeps its gap.
+describe('the cards frame’s sums', () => {
+  const cards: ShellGeometry = {
+    panels: {
+      primary: { width: 220, minWidth: 220, maxWidth: Number.POSITIVE_INFINITY },
+      secondary: { width: 380, minWidth: 336, maxWidth: Number.POSITIVE_INFINITY },
+    },
+    main: defaultMainSize,
+    gap: cardsGap,
+    rail: cardsRail,
+    inset: cardsInset,
+    railGap: true,
+  };
+  const both = open(initialState(cards, defaultCollapsed, undefined));
+  const mainAt = (state: ShellState, viewport: number) => {
+    const widths = fittedWidths(cards, state, viewport);
+    const taken = (side: (typeof shellSides)[number]) =>
+      state.collapsed[side] ? cardsRail : widths[side];
+    return viewport - 2 * cardsInset - taken('primary') - taken('secondary') - 2 * cardsGap;
+  };
+
+  it('are the board’s: 16 from the window, 12 apart, and a 76 rail of a 44 button with 16 each side', () => {
+    expect([cardsInset, cardsGap, cardsRail]).toEqual([16, 12, 76]);
+    expect(cardsRail).toBe(16 + 44 + 16);
+  });
+
+  it('leave the main column 1064 at 1720 with both panels open at the board’s widths', () => {
+    expect(fittedWidths(cards, both, 1720)).toEqual({ primary: 220, secondary: 380 });
+    expect(mainAt(both, 1720)).toBe(1064);
+  });
+
+  it('count the frame’s margins and a rail’s gap in every breakpoint', () => {
+    expect(breakpoints(cards)).toEqual({
+      both: 16 + 220 + 12 + 640 + 12 + 336 + 16,
+      drawer: 16 + 336 + 12 + 640 + 76 + 12 + 16,
+      compact: 16 + 76 + 12 + 640 + 12 + 76 + 16,
+    });
+  });
+
+  it('let a panel beside a rail grow only to what the margins, the rail and both gaps leave', () => {
+    const railed = withCollapsed(both, 'primary', true);
+    expect(widthRange(cards, railed, 'secondary', 1720).max).toBe(
+      1720 - 2 * 16 - 76 - 12 - 12 - 640,
+    );
+  });
+
+  it('leave a flush frame’s sums as they were: no margins, and a rail with no gap', () => {
+    expect(breakpoints({ ...geometry, inset: 0, railGap: false })).toEqual(breakpoints(geometry));
   });
 });

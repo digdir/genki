@@ -5,10 +5,7 @@ import { widthStep, widthStride, type ShellSide, type WidthRange } from './layou
 /** Pointer travel still counted as a click; 4 px is where Windows starts a drag (`SM_CXDRAG`). */
 const clickSlop = 4;
 
-/**
- * How far back past the fold line a drag must come to reopen the panel it folded, so a hand held
- * still on the line does not make it blink. The arrow key's step.
- */
+/** How far back past the fold line a drag must come to reopen; also the arrow key's step. */
 const reopenMargin = 16;
 
 export interface SeparatorProps {
@@ -32,11 +29,7 @@ export interface SeparatorProps {
   onDraggingChange: (dragging: boolean) => void;
 }
 
-/**
- * The movable edge between an open panel and the main column; Designsystemet has no splitter.
- * Drag, click (WCAG 2.5.7: no drag needed) or keys (2.1.1). A screen reader reads
- * `aria-valuenow` as the width; no live region, which would talk over it on every key.
- */
+/** The movable edge between a panel and the main column: drag, click (WCAG 2.5.7) or keys. */
 export const Separator = ({
   side,
   name,
@@ -63,9 +56,7 @@ export const Separator = ({
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     // The main button, a touch or a pen; a right click is a menu, not a drag.
     if (event.button !== 0) return;
-    // Stops text selection on either side while the pointer travels (`touch-action: none` in the
-    // stylesheet stops a touch from scrolling). That also stops the default focus, so it is moved
-    // here by hand: the arrow keys carry on from where the pointer let go.
+    // No text selection while dragging, so focus is moved here by hand for the arrow keys.
     event.preventDefault();
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -78,8 +69,7 @@ export const Separator = ({
     const travel = event.clientX - origin.current.x;
     if (Math.abs(travel) > clickSlop) origin.current.moved = true;
     const wanted = origin.current.width + direction * travel;
-    // Past half its floor the panel folds instead of stopping there, as in VS Code: too narrow to
-    // read is a state nobody wants (kunnskapsassistenten#80).
+    // Past half its floor the panel folds instead of stopping there, as in VS Code.
     const line = range.min / 2;
 
     // The drag goes on after folding; back past the line it reopens at the floor.
@@ -105,8 +95,7 @@ export const Separator = ({
     setDragging(false);
   };
 
-  // A press that did not travel goes between the widest the window allows and the design's width.
-  // On `click`, so a cancelled press does nothing; a drag ends in a click too, hence `moved`.
+  // A press that did not travel toggles between the widest allowed and the design's width.
   const onClick = () => {
     if (origin.current.moved) return;
     if (width < range.max) onResize(range.max);
@@ -115,8 +104,7 @@ export const Separator = ({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? widthStride : widthStep;
-    // The arrows are the platform's key names; which panel grows is `direction`'s business. Home
-    // and End are about the VALUE: Home is the narrowest the panel may be, wherever it stands.
+    // Home and End are about the value: Home is the narrowest the panel may be.
     const next = (() => {
       switch (event.key) {
         case 'ArrowLeft':
@@ -141,8 +129,7 @@ export const Separator = ({
     onResize(next);
   };
 
-  // Not drawn when there is no edge to move: the grip would promise a drag that cannot happen.
-  // Never mid-drag, which would drop the pointer capture and leave the drag with no end.
+  // Not drawn with no edge to move, and never removed mid-drag.
   if (fixed && !dragging) return null;
 
   return (

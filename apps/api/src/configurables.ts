@@ -13,6 +13,7 @@ import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
 import { connectorSecretOf } from './connectors.js';
+import type { DatasetReader } from './dataset-readers.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -40,6 +41,8 @@ export interface ConfigurablesInput {
   /** Runs of these datasets are knowledge jobs (ADR 0042). */
   jobRuns?: JobRuns;
   onWarning?: (message: string) => void;
+  /** Why a gate on this metric cannot be saved, when it cannot. */
+  gateProblem?: (gate: string, metric: string) => string | undefined;
 }
 
 const countTtlMs = 5 * 60_000;
@@ -98,6 +101,8 @@ export const createConfigurables = (
     adapters: { knowledge: KnowledgeAdapter[] };
     embeddingResidency?: (model: string) => Residency | undefined;
     testSets: TestSetStore;
+    testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
+    usedBy?: (dataset: string) => Promise<DatasetReader[]>;
   }) => {
     const { catalog } = deps;
     const ingestion = new IngestionService({
@@ -122,12 +127,15 @@ export const createConfigurables = (
       rules,
       ingestion,
       testSets: deps.testSets,
+      ...(deps.testSetTaken ? { testSetTaken: deps.testSetTaken } : {}),
       engines: deps.engines ?? (() => []),
       adapters: deps.adapters.knowledge,
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
+      ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorSecret: connectorSecretOf(store),
+      ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
     };
 
     const publishProblems = async (definition: Definition) => {

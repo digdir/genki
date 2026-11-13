@@ -1,10 +1,10 @@
 import type { Locale } from '@genai/i18n';
-import { cellsOf, inlineText } from '../markdown/Markdown.js';
+import { cellsOf, inlineText, type FootnoteLabel } from '../markdown/Markdown.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import { documentKeys } from '../sources/pairing.js';
 import { distinctNames, sectionOf } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
-import { readFootnotes, type AnswerMarker } from './citations.js';
+import { documentNumbers, readFootnotes, type AnswerMarker } from './citations.js';
 import { translator } from './i18n.js';
 
 export interface AnswerCopyOptions {
@@ -14,6 +14,8 @@ export interface AnswerCopyOptions {
   markers?: readonly AnswerMarker[] | undefined;
   /** The language of the reference list's words, «s.» or «p.». */
   locale?: Locale | undefined;
+  /** As the answer's `documentFootnotes`: footnotes that name documents keep their numbers. */
+  documentFootnotes?: boolean | undefined;
 }
 
 export interface AnswerCopy {
@@ -23,9 +25,6 @@ export interface AnswerCopy {
   sources: number;
 }
 
-// A footnote and the space before it: the space goes with it, or «kvartalsvis [1].» is pasted as
-// «kvartalsvis .».
-const footnote = /([ \t]?)\[(\d{1,3})\]/g;
 const blockSyntax = /^(#{1,6}\s+|[-*]\s+|\d+\.\s+|>\s?)/;
 
 /** What a `[N]` becomes: a new number, nothing (it leads nowhere), or itself (it is prose). */
@@ -34,13 +33,20 @@ type Label = number | null | undefined;
 const fence = /^\s*```/;
 const tableRule = /^\|[\s:|-]+\|$/;
 
-/** One line of prose or of a table as the words drawn, with no Markdown left in it. */
-const words = (line: string) =>
+/** One line of prose or of a table as the words drawn, its footnotes as `label` says. */
+const words = (line: string, label: FootnoteLabel) =>
   line.startsWith('|')
     ? cellsOf(line)
-        .map((cell) => inlineText(cell).trim())
+        .map((cell) => inlineText(cell, label).trim())
         .join('\t')
-    : inlineText(line.replace(blockSyntax, ''));
+    : inlineText(line.replace(blockSyntax, ''), label);
+
+// By hand: `/[ \t]+\n/` rescans a long run of blanks from each of its characters.
+const withoutTrailingBlanks = (line: string) => {
+  let end = line.length;
+  while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1;
+  return line.slice(0, end);
+};
 
 /**
  * Markdown stripped to the words a reader sees, for the clipboard and for a live region: no block
@@ -53,15 +59,11 @@ const plain = (markdown: string, label: (n: number) => Label) => {
   for (const raw of markdown.split('\n')) {
     if (fence.test(raw)) code = !code;
     else if (code) lines.push(raw);
-    else if (!tableRule.test(raw.trim())) lines.push(words(raw.trim()));
+    else if (!tableRule.test(raw.trim())) lines.push(words(raw.trim(), label));
   }
   return lines
+    .map(withoutTrailingBlanks)
     .join('\n')
-    .replace(footnote, (whole, space: string, n: string) => {
-      const shown = label(Number(n));
-      return shown === undefined ? whole : shown === null ? '' : `${space}[${shown}]`;
-    })
-    .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
@@ -98,15 +100,17 @@ export const finishedText = (markdown: string) => {
  * its footnotes, and a reference list under it, since an answer must not leave the app without
  * where it came from. One line per numbered excerpt, and two from one report told apart by their
  * page, section or first words. An answer whose footnotes name only documents is drawn without
- * footnotes, so it is copied without them, with one unnumbered line per cited document. Each part
- * is left out when the source lacks it. With no sources, the clean text alone.
+ * footnotes, so it is copied without them, with one unnumbered line per cited document; with
+ * `documentFootnotes` both keep the documents' numbers, as drawn. Each part is left out when the
+ * source lacks it. With no sources, the clean text alone.
  */
 export const answerCopy = (text: string, options: AnswerCopyOptions = {}): AnswerCopy => {
-  const { sources = [], markers, locale = 'nb' } = options;
+  const { sources = [], markers, locale = 'nb', documentFootnotes = false } = options;
   const t = translator(locale);
-  const { pairing } = readFootnotes(text, sources, markers);
+  const { pairing, met } = readFootnotes(text, sources, markers);
   const byExcerpt = pairing.mode === 'excerpt';
   const keys = documentKeys(sources);
+  const byDocument = documentFootnotes ? documentNumbers(pairing) : new Map<string, number>();
   const names = distinctNames(sources, (title, id) => t('sources.sameTitle', { title, id })).map(
     (name) => name || t('sources.untitled'),
   );
@@ -162,9 +166,19 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
 
   const references = byExcerpt
     ? cited.map((c) => line(c.n, c.title, c.excerpt.page, c.source, partOf(c)))
-    : sources.flatMap((source, i) =>
-        pairing.uses.has(keys[i] ?? '') ? [line(undefined, names[i] ?? '', undefined, source)] : [],
-      );
+    : byDocument.size
+      ? sources
+          .flatMap((source, i) => {
+            const n = byDocument.get(keys[i] ?? '');
+            return n === undefined ? [] : [{ n, text: line(n, names[i] ?? '', undefined, source) }];
+          })
+          .toSorted((a, b) => a.n - b.n)
+          .map((reference) => reference.text)
+      : sources.flatMap((source, i) =>
+          pairing.uses.has(keys[i] ?? '')
+            ? [line(undefined, names[i] ?? '', undefined, source)]
+            : [],
+        );
 
   // Where a written `[N]` leads, by the contract's rule: the marker it names, or the source with
   // `index: N`. One that names nothing is prose, such as a list number, and stays.
@@ -182,11 +196,25 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
         : -1
       : sources.findIndex((s) => s.index === n);
     if ((markers && !marker) || (!markers && at < 0)) return undefined;
+    if (!byExcerpt && byDocument.size) return byDocument.get(keys[at] ?? '') ?? null;
     // One that names only a document is drawn as nothing, so it is copied as nothing.
     return (byExcerpt && marker && pairing.numbers.get(marker.chunkId)) || null;
   };
 
-  const body = plain(text, label);
+  // A footnote the screen drops, such as a repeat beside its twin, is copied as nothing too.
+  const seen: number[] = [];
+  plain(text, (n) => {
+    seen.push(n);
+    return undefined;
+  });
+  const drawn = met.filter((m) => m.n < 1000);
+  const inStep = seen.length === drawn.length && seen.every((n, i) => drawn[i]?.n === n);
+  let at = 0;
+  const body = plain(text, (n) => {
+    const dropped = inStep && drawn[at]?.dropped;
+    at += 1;
+    return dropped ? null : label(n);
+  });
   return references.length === 0
     ? { text: body, sources: 0 }
     : {

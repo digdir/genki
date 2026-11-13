@@ -1,9 +1,4 @@
-// Chips drawn for several values at once, over Suggestion's chip per value. Suggestion still
-// holds every chosen value as a `<data>` chip of its own, which CSS hides (filter.css), so
-// u-combobox ticks the options, takes one value off when a ticked option is chosen, and reads
-// out and counts single values. The drawn chips come last, as `<data>` too: u-combobox gives
-// ArrowLeft and Backspace from the field to the last chip, and a hidden one cannot take focus.
-// `compactChips` draws one chip for the whole field; `yearPeriods` draws one per period.
+// Chips drawn for several values over Suggestion's own, which CSS hides (filter.css).
 
 import type { ReactNode } from 'react';
 
@@ -33,8 +28,7 @@ export const withDrawnChips = (items: Item[], drawn: readonly DrawnChip[]): Item
   ...drawn.map((chip) => ({ value: valueOf(chip), label: chip.label })),
 ];
 
-/** The values after a change from Suggestion: what it holds, less the values of a drawn chip it
- * no longer holds. A ticked option chosen again takes its own chip off, as without drawn chips. */
+/** The values after a change, less those of a drawn chip Suggestion no longer holds. */
 export const valuesAfter = (
   items: readonly { value: string }[],
   drawn: readonly DrawnChip[],
@@ -61,8 +55,7 @@ export const chipValues = (values: readonly string[], drawn: readonly DrawnChip[
   ...drawn.map(valueOf),
 ];
 
-/** How many chips come or go between two selections. u-combobox reads a change out itself only
- * when it is one; then the field must not say it too, or it is heard twice. */
+/** How many chips come or go; u-combobox reads out a change of one itself. */
 export const changedChips = (before: readonly string[], after: readonly string[]): number => {
   const was = new Set(before);
   const is = new Set(after);
@@ -72,9 +65,7 @@ export const changedChips = (before: readonly string[], after: readonly string[]
   );
 };
 
-/** Focus after a drawn chip that held it goes. u-combobox moves it to the chip before, as it does
- * for its own; before the first drawn chip stands a hidden one, which cannot take it. Then to the
- * next drawn chip that stays, else the field. */
+/** Focus after a drawn chip that held it goes: the next drawn chip that stays, else the field. */
 export const keepFocusFromDrawnChip = (
   items: readonly { value: string }[],
   drawn: readonly DrawnChip[],

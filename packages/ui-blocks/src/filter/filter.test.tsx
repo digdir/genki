@@ -10,8 +10,7 @@ import { Filter, narrowing, type FilterProps } from './Filter.js';
 import { en, nb, translator } from './i18n.js';
 import type { FilterField, FilterSelection } from './types.js';
 
-// Ported from KA's FiltersView, FiltersView.unavailable, FiltersView.corpus and filterInThread
-// tests. The host's part (fetching, the thread, the lock) is a harness here: data in, events out.
+// Ported from KA's filter tests; the host's part is a harness here: data in, events out.
 
 document.getAnimations ??= () => [];
 afterEach(cleanup);
@@ -205,6 +204,16 @@ describe('a chosen value no field can show', () => {
       expect(screen.queryByText('Du kan stille spørsmål uten å avgrense dokumentene.')).toBeNull();
     });
 
+    it('shows a year field’s years as periods, one chip each, and removes a period whole', () => {
+      const years = { type: ['Årsrapport'], year: ['2020', '2021', '2022', '2025'] };
+      const { seen } = draw({ fields: [], initial: years, yearFields: ['year'] });
+      expect(chip('2020–2022')).toBeTruthy();
+      expect(chip('2025')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Fjern filter: 2021' })).toBeNull();
+      fireEvent.click(chip('2020–2022'));
+      expect(seen.at(-1)).toEqual({ type: ['Årsrapport'], year: ['2025'] });
+    });
+
     it('removes one value, keeps the rest, moves focus to the next chip and says what went', () => {
       const { seen, region } = draw({ fields: [], initial: stored });
       const first = chip('Årsrapport');
@@ -312,6 +321,11 @@ describe('a chosen value no field can show', () => {
       expect(screen.queryByRole('heading', { name: 'Avgrenset til' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Prøv igjen' })).toBeNull();
     });
+
+    it('says the host’s reason in place of its own when it is given one', () => {
+      draw({ failed: 'Virksomheter: for mange er valgt.' });
+      expect(screen.getByRole('alert').textContent).toBe('Virksomheter: for mange er valgt.');
+    });
   });
 });
 
@@ -395,7 +409,8 @@ describe('a thread on screen', () => {
 describe('the live region', () => {
   it('speaks again when the same words come twice in a row', () => {
     const { region } = draw({
-      fields: [types],
+      // A third type, so two picked are not all of them and bring no «Alle» chip.
+      fields: [{ ...types, options: [...types.options, { value: 'Evaluering', count: 1 }] }],
       initial: { type: ['Årsrapport', 'Tildelingsbrev'] },
     });
     const field = screen.getByPlaceholderText('Søk i dokumenttyper') as HTMLInputElement;
@@ -438,8 +453,9 @@ describe('the live region', () => {
       );
     });
     const value =
-      screen.getByRole('option', { name: '2023–2024 (2)', hidden: true }).getAttribute('value') ??
-      '';
+      screen
+        .getByRole('option', { name: '2023–2024 (2 år med dokumenter)', hidden: true })
+        .getAttribute('value') ?? '';
     act(() => {
       field.value = value;
       field.dispatchEvent(
@@ -448,6 +464,35 @@ describe('the live region', () => {
     });
     expect(container.querySelector('output')?.textContent).toBe('2023–2024 er alt valgt.');
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('sends the years a typed period has documents in, not every calendar year in it', () => {
+    const onChange = vi.fn();
+    const known: FilterField = {
+      ...years,
+      options: ['1990', '2014', '2015', '2016'].map((value) => ({ value, count: 400 })),
+    };
+    render(<Filter fields={[known]} yearPeriods selection={{}} onChange={onChange} />);
+    const field = screen.getByPlaceholderText('Skriv et år eller en periode') as HTMLInputElement;
+    act(() => {
+      field.value = '1800-2015';
+      field.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '1800-2015' }),
+      );
+    });
+    // Three years with documents, not their 1,200 documents, which may hold one document twice.
+    const option = screen.getByRole('option', {
+      name: '1800–2015 (3 år med dokumenter)',
+      hidden: true,
+    });
+    const value = option.getAttribute('value') ?? '';
+    act(() => {
+      field.value = value;
+      field.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: value }),
+      );
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ year: ['1990', '2014', '2015'] });
   });
 
   it('carries the corpus choice in its head, after «Henter filtre», with the reset said', () => {
@@ -527,6 +572,57 @@ describe('the live region', () => {
   it('draws no head while the pinned element it is given is not there yet', () => {
     render(<Filter fields={fields} selection={{}} onChange={() => {}} pinIn={null} />);
     expect(screen.queryByRole('heading', { name: 'Filtrering' })).toBeNull();
+  });
+});
+
+describe('a field another field narrows', () => {
+  const organisations: FilterField = {
+    id: 'organisation',
+    label: 'Virksomheter',
+    options: ['Nav', 'Skatteetaten', 'Datatilsynet'].map((value) => ({ value, count: 1 })),
+  };
+  // The facets as they come back once a type is chosen: one organisation has that type.
+  const narrowed = [types, { ...organisations, options: organisations.options.slice(0, 1) }];
+  // What the reader sees: CSS hides the chips per value under a drawn one, which jsdom does not.
+  const shownChips = () => {
+    const field = fieldInput('Virksomheter').closest('ds-suggestion');
+    const all = [...(field?.querySelectorAll(':scope > data') ?? [])];
+    const drawn = all.filter((chip) => chip.querySelector('.uib-filter-drawn-chip'));
+    return (drawn.length > 0 ? drawn : all).map((chip) => chip.textContent);
+  };
+
+  it('keeps its own chip for the only value a narrowed field lists', () => {
+    for (const compactChips of [false, true]) {
+      const props = { onChange: () => {}, compactChips };
+      const { rerender, unmount } = render(
+        <Filter fields={[types, organisations]} selection={{ organisation: ['Nav'] }} {...props} />,
+      );
+      rerender(
+        <Filter
+          fields={narrowed}
+          {...props}
+          selection={{ type: ['Årsrapport'], organisation: ['Nav'] }}
+        />,
+      );
+      expect(shownChips()).toEqual(['Nav']);
+      unmount();
+    }
+  });
+
+  it('keeps a chip per chosen value when another field narrows the list to one of them', () => {
+    const selection = { type: ['Årsrapport'], organisation: ['Nav', 'Skatteetaten'] };
+    for (const compactChips of [false, true]) {
+      const { unmount } = render(
+        <Filter
+          fields={narrowed}
+          selection={selection}
+          onChange={() => {}}
+          compactChips={compactChips}
+        />,
+      );
+      expect(shownChips()).toEqual(['Nav', 'Skatteetaten']);
+      unmount();
+    }
   });
 });
 

@@ -30,8 +30,34 @@ describe('the error kinds', () => {
   it('say what happened and what the reader can do, in two sentences', () => {
     render(<ErrorState kind="timeout" />);
     expect(alertText()).toContain(
-      'Spørsmålet ble avbrutt fordi svaret brukte for lang tid. Et mer avgrenset spørsmål, eller et smalere filter, går som regel raskere.',
+      'Spørsmålet ble avbrutt fordi svaret brukte for lang tid. Et mer avgrenset spørsmål går som regel raskere.',
     );
+  });
+
+  it('give advice that names no panel, list or button one service has, in both languages', () => {
+    const Advice = ({ kind }: { kind: (typeof errorKinds)[number] }) => (
+      <p>{useErrorText()(kind).advice}</p>
+    );
+    for (const locale of ['nb', 'en'] as const)
+      for (const kind of errorKinds) {
+        const { container } = render(
+          <InLocale locale={locale}>
+            <Advice kind={kind} />
+          </InLocale>,
+        );
+        expect(container.textContent).not.toMatch(
+          /panel|lista|list\b|«|“|dokumentene|documents|smalere filter|narrower filter/i,
+        );
+        cleanup();
+      }
+  });
+
+  it('take the host’s own advice in place of the kind’s', () => {
+    render(<ErrorState kind="thread-not-found" advice="Velg «Ny tråd» øverst i lista." />);
+    expect(alertText()).toContain(
+      'Tråden finnes ikke lenger, kanskje fordi den er slettet et annet sted. Velg «Ny tråd» øverst i lista.',
+    );
+    expect(alertText()).not.toContain('Start en ny tråd');
   });
 
   it('name the assistant where a sentence needs a subject, «Assistenten» when the app gives none', () => {

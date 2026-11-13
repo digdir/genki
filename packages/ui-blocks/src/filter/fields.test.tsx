@@ -79,8 +79,7 @@ const Harness = ({
 
 const input = () => screen.getByRole('combobox') as HTMLInputElement;
 
-/** The chips as the reader sees them: a drawn chip hides the chip per value (filter.css, which
- * jsdom does not apply), so with one drawn, only the drawn ones. */
+/** The chips the reader sees: jsdom applies no filter.css, so a drawn chip hides none here. */
 const chips = (container: HTMLElement) => {
   const all = [...container.querySelectorAll('ds-suggestion > data')];
   const drawn = all.filter((chip) => chip.querySelector('.uib-filter-drawn-chip'));
@@ -97,10 +96,7 @@ const ticked = (container: HTMLElement) =>
 const offered = (container: HTMLElement) =>
   [...container.querySelectorAll('u-datalist u-option')].map((option) => option.textContent ?? '');
 
-/* Typing and choosing, the way the browser tells u-combobox about them. An `InputEvent` with no
-   `inputType` is taken for a click in the list, so typing says `insertText`; a choice in the list
-   is `insertReplacementText` with the option's value, as u-datalist sends it. The list is a
-   closed popover in jsdom, so its options are found with `hidden`. */
+/* Typing and choosing as the browser tells u-combobox: `insertText`, then a replacement. */
 const type = (text: string) =>
   act(() => {
     input().value = text;
@@ -175,10 +171,10 @@ describe('a field', () => {
     const many: FilterField = {
       id: 'organisation',
       label: 'Virksomheter',
-      options: Array.from({ length: 150 }, (_, index) => ({ value: `Virksomhet ${index + 1}` })),
+      options: Array.from({ length: 202 }, (_, index) => ({ value: `Virksomhet ${index + 1}` })),
     };
     const first = (count: number) => many.options.slice(0, count).map((option) => option.value);
-    const warning = /^Høyst 100 kan brukes i ett felt/;
+    const warning = /^Velg høyst 100, eller alle unntatt høyst 100\./;
     const draw = (selected: string[]) =>
       render(
         <FacetField
@@ -190,13 +186,16 @@ describe('a field', () => {
         />,
       );
 
-    it('says so, with the way out, when more than the limit are chosen', () => {
+    it('says so, with the way out, when more than the limit are chosen and more than the limit left out', () => {
       draw(first(101));
       expect(
-        screen.getByText(
-          'Høyst 100 kan brukes i ett felt, og 101 er valgt. Fjern noen, eller velg alle.',
-        ),
+        screen.getByText('Velg høyst 100, eller alle unntatt høyst 100. Nå er 101 av 202 valgt.'),
       ).toBeTruthy();
+    });
+
+    it('says nothing when more than the limit are chosen and at most the limit left out', () => {
+      draw(first(102));
+      expect(document.querySelector('.ds-validation-message')).toBeNull();
     });
 
     it('says nothing at the limit', () => {
@@ -204,10 +203,37 @@ describe('a field', () => {
       expect(screen.queryByText(warning)).toBeNull();
     });
 
+    it('says the same of a year field with periods, by its years', () => {
+      const years = Array.from({ length: 202 }, (_, index) => String(1800 + index));
+      const yearField: FilterField = {
+        id: 'year',
+        label: 'År',
+        kind: 'year',
+        options: years.map((value) => ({ value })),
+      };
+      const drawYears = (selected: string[]) =>
+        render(
+          <YearRangeField
+            field={yearField}
+            selected={selected}
+            compact={false}
+            max={100}
+            onChange={() => {}}
+          />,
+        );
+      const { unmount } = drawYears(years.slice(0, 102));
+      expect(document.querySelector('.ds-validation-message')).toBeNull();
+      unmount();
+      drawYears(years.slice(0, 101));
+      expect(
+        screen.getByText('Velg høyst 100, eller alle unntatt høyst 100. Nå er 101 av 202 valgt.'),
+      ).toBeTruthy();
+    });
+
     it('says nothing when all are chosen, which is no narrowing and is not sent', () => {
-      draw(first(150));
+      draw(first(202));
       expect(screen.queryByText(warning)).toBeNull();
-      expect(screen.getByText('Alle 150 valgt, altså ingen avgrensning')).toBeTruthy();
+      expect(screen.getByText('Alle 202 valgt, altså ingen avgrensning')).toBeTruthy();
     });
   });
 
@@ -230,7 +256,7 @@ describe('a field', () => {
         />,
       );
       expect(screen.getByText('Alle 136 valgt, altså ingen avgrensning')).toBeTruthy();
-      expect(screen.queryByText(/^Høyst 100 kan brukes i ett felt/)).toBeNull();
+      expect(screen.queryByText(/^Velg høyst 100, eller alle unntatt/)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Velg alle virksomheter' })).toBeNull();
     });
 
@@ -298,8 +324,7 @@ describe('a field with chosen values first in its list', () => {
     [...document.querySelectorAll('u-datalist u-option:not([data-empty])')]
       .filter((option) => !option.hasAttribute('disabled'))
       .map((option) => option.getAttribute('label') ?? '');
-  /* u-datalist opens on a click in the field and shuts on Escape, with `hidden`; the field sees
-     it in a MutationObserver, hence the async act. */
+  /* u-datalist opens and shuts with `hidden`, which the field observes, hence the async act. */
   const open = async () => {
     fireEvent.click(input());
     await act(async () => {});
@@ -407,10 +432,12 @@ describe('a year field with periods', () => {
     expect(screen.getByText('4 år valgt')).toBeTruthy();
   });
 
-  it('offers the period the text reads as, with its documents counted from the facets', () => {
+  it('offers the period the text reads as, with the years in it that have documents', () => {
     render(<Years />);
     type('20-22');
-    expect(screen.getByRole('option', { name: '2020–2022 (9)', hidden: true })).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: '2020–2022 (3 år med dokumenter)', hidden: true }),
+    ).toBeTruthy();
   });
 
   it('offers a year with no documents with 0, and it can be chosen', () => {
@@ -426,7 +453,7 @@ describe('a year field with periods', () => {
     const seen: string[][] = [];
     const { container } = render(<Years initial={['2019', '2020']} seen={seen} />);
     type('21-23');
-    choose('2021–2023 (12)');
+    choose('2021–2023 (3 år med dokumenter)');
     expect(seen.at(-1)).toEqual(['2019', '2020', '2021', '2022', '2023']);
     expect(chips(container)).toEqual(['2019–2023']);
   });
@@ -464,10 +491,10 @@ describe('a year field with periods', () => {
     const { container } = render(<Years />);
     type('2020-2');
     expect(offered(container)).toEqual([
-      '2020–2021 (5)',
-      '2020–2022 (9)',
-      '2020–2023 (14)',
-      '2020–2024 (20)',
+      '2020–2021 (2 år med dokumenter)',
+      '2020–2022 (3 år med dokumenter)',
+      '2020–2023 (4 år med dokumenter)',
+      '2020–2024 (5 år med dokumenter)',
     ]);
   });
 
@@ -539,7 +566,7 @@ describe('a year field with periods', () => {
     choose('2023 (5)');
     expect(said.at(-1)).toBe('Lagt til 2023');
     type('19-21');
-    choose('2019–2021 (6)');
+    choose('2019–2021 (3 år med dokumenter)');
     expect(said.at(-1)).toBe('Lagt til 2019–2021');
   });
 
@@ -548,10 +575,52 @@ describe('a year field with periods', () => {
     const said: Said = [];
     render(<Years initial={['2020', '2021', '2022', '2023']} seen={seen} said={said} />);
     type('21-22');
-    choose('2021–2022 (7)');
+    choose('2021–2022 (2 år med dokumenter)');
     expect(seen).toEqual([['2020', '2021', '2022', '2023']]);
     expect(said).toEqual(['2021–2022 er alt valgt.']);
     expect(input().value).toBe('');
+  });
+
+  it('takes only the years in a period that the field lists, not every calendar year', () => {
+    const seen: string[][] = [];
+    const field = { ...years, options: [...years.options, { value: '1950', count: 2 }] };
+    const { container } = render(<Years field={field} seen={seen} />);
+    type('1800-2020');
+    choose('1800–2020 (3 år med dokumenter)');
+    expect(seen.at(-1)).toEqual(['1950', '2019', '2020']);
+    expect(chips(container)).toEqual(['1950', '2019–2020']);
+  });
+
+  it('keeps a long period under the limit of values a field can send', () => {
+    const seen: string[][] = [];
+    render(<Years seen={seen} />);
+    typeThenEnter('1800-2200');
+    expect(seen.at(-1)).toEqual(['2019', '2020', '2021', '2022', '2023', '2024']);
+    expect(screen.queryByText(/Høyst 100/u)).toBeNull();
+  });
+
+  it('keeps a chosen year the list no longer has when a period is added', () => {
+    const seen: string[][] = [];
+    render(<Years initial={['2030']} seen={seen} />);
+    type('23-24');
+    choose('2023–2024 (2 år med dokumenter)');
+    expect(seen.at(-1)).toEqual(['2023', '2024', '2030']);
+  });
+
+  it('counts a period in years with documents, never a sum that can pass the documents there are', () => {
+    const { container } = render(<Years />);
+    type('2019-2024');
+    // The counts per year add up to 21, but a document with several years is in several.
+    expect(offered(container)).toEqual(['2019–2024 (6 år med dokumenter)']);
+  });
+
+  it('says a period with no listed years has no documents, and chooses nothing on Enter', () => {
+    const seen: string[][] = [];
+    const { container } = render(<Years seen={seen} />);
+    typeThenEnter('1700-1750');
+    expect(offered(container)).toEqual(['Ingen dokumenter i 1700–1750.']);
+    expect(seen).toEqual([]);
+    expect(input().value).toBe('1700-1750');
   });
 
   it('counts the years for a screen reader, not the chips', () => {
@@ -626,6 +695,12 @@ describe('a field with compact chips', () => {
     expect(chips(container)).toEqual(first(5));
   });
 
+  it('counts the chosen values, never «Alle», when another field narrows the list to one of them', () => {
+    const one: FilterField = { ...organisations, options: organisations.options.slice(0, 1) };
+    const { container } = render(<Harness field={one} compact initial={first(6)} />);
+    expect(chips(container)).toEqual(['6 virksomheter']);
+  });
+
   it('removes the whole choice when the one chip is removed', () => {
     const seen: string[][] = [];
     const { container } = render(<Organisations initial={first(12)} seen={seen} />);
@@ -677,6 +752,70 @@ describe('a field with compact chips', () => {
   });
 });
 
+describe('a field with every value it lists chosen, without compact chips', () => {
+  const all = organisations.options.map((option) => option.value);
+  const one: FilterField = { ...organisations, options: organisations.options.slice(0, 1) };
+
+  it('shows one «Alle …» chip when every value in a field is chosen', async () => {
+    const { container } = render(<Harness field={organisations} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Velg alle virksomheter' }));
+    expect(chips(container)).toEqual(['Alle virksomheter']);
+    // u-combobox ticks the options from the chips it observes, hence the async act.
+    await act(async () => {});
+    expect(ticked(container)).toEqual(all);
+  });
+
+  it("keeps a single chosen value's own chip", () => {
+    for (const compact of [false, true]) {
+      const { container, unmount } = render(
+        <FacetField
+          field={one}
+          selected={all.slice(0, 1)}
+          compact={compact}
+          max={100}
+          onChange={() => {}}
+        />,
+      );
+      expect(chips(container)).toEqual(['Virksomhet 1']);
+      unmount();
+    }
+  });
+
+  it('clears the field when the «Alle …» chip is removed', () => {
+    const seen: string[][] = [];
+    const { container } = render(<Harness field={organisations} initial={all} seen={seen} />);
+    fireEvent.click(
+      screen.getByRole('option', { name: /^Alle virksomheter, Trykk for å fjerne alle/u }),
+    );
+    expect(seen.at(-1)).toEqual([]);
+    expect(chips(container)).toEqual([]);
+  });
+
+  it('reaches the «Alle …» chip from the field by keyboard, and moves focus back when it goes', () => {
+    const said: Said = [];
+    render(<Harness field={organisations} initial={all} said={said} />);
+    act(() => input().focus());
+    fireEvent.keyDown(input(), { key: 'ArrowLeft' });
+    const chip = screen.getByRole('option', {
+      name: /^Alle virksomheter, Trykk for å fjerne alle/u,
+    });
+    expect(document.activeElement).toBe(chip);
+    fireEvent.keyDown(chip, { key: 'Backspace' });
+    expect(said.at(-1)).toBe('Ingen virksomheter er valgt.');
+    expect(document.activeElement).toBe(input());
+  });
+
+  it('counts the values behind the «Alle …» chip for a screen reader, not the chip', () => {
+    const { container } = render(<Harness field={organisations} initial={all} />);
+    expect(input().getAttribute('aria-description')).toBe(
+      '20 valgt, naviger bakover for å fjerne alle',
+    );
+    expect(container.querySelector('ds-suggestion')?.getAttribute('data-sr-remove')).toBe(
+      'Trykk for å fjerne alle fra virksomheter',
+    );
+  });
+});
+
 describe('«Velg alle» and «Tøm» for a screen reader', () => {
   const all = organisations.options.map((option) => option.value);
 
@@ -689,17 +828,18 @@ describe('«Velg alle» and «Tøm» for a screen reader', () => {
     expect(said.at(-1)).toBe('Ingen virksomheter er valgt.');
   });
 
-  it('leave it to u-combobox when only one value changes, so it is not heard twice', () => {
+  it('leave it to u-combobox when «Tøm» removes one value, so it is not heard twice', () => {
     const said: Said = [];
-    const { unmount } = render(
-      <Harness field={organisations} initial={all.slice(0, 1)} said={said} />,
-    );
+    render(<Harness field={organisations} initial={all.slice(0, 1)} said={said} />);
     fireEvent.click(screen.getByRole('button', { name: 'Tøm virksomheter' }));
     expect(said).toEqual([undefined]);
-    unmount();
+  });
+
+  it('say «Velg alle» from all but one, since the «Alle …» chip comes as well', () => {
+    const said: Said = [];
     render(<Harness field={organisations} initial={all.slice(1)} said={said} />);
     fireEvent.click(screen.getByRole('button', { name: 'Velg alle virksomheter' }));
-    expect(said).toEqual([undefined, undefined]);
+    expect(said).toEqual(['Alle 20 virksomheter er valgt.']);
   });
 
   it('tell it when the one chip comes, even if only one value came', () => {

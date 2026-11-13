@@ -94,6 +94,15 @@ const tenantRows: Record<string, (tenant: string, key: string) => [string, unkno
     `insert into eval_test_sets (tenant, id, version, body) values ($1, $2, 1, '{}')`,
     [tenant, key],
   ],
+  sink_labels: (tenant, key) => [
+    `insert into sink_labels (tenant, id, revision, connection, judge, label)
+     values ($1, $2, 'r1', 'lokal', 'langfuse:x', '{}')`,
+    [tenant, key],
+  ],
+  sink_label_keys: (tenant, key) => [
+    `insert into sink_label_keys (tenant, key) values ($1, $2)`,
+    [tenant, key],
+  ],
   eval_runs: (tenant, key) => [
     `insert into eval_runs (id, tenant, task, test_set, ended_at, body)
      values ($2, $1, 't', 's', '2026-10-07', '{}')`,
@@ -475,6 +484,27 @@ describe('cross-tenant definer functions', () => {
     expect(await stores.apiKeys.findByDigest('ef'.repeat(32))).not.toHaveProperty(
       'admittedInLockdown',
     );
+  });
+
+  it('keeps the test-runner grant of an API key, and none on keys stored without it', async () => {
+    const add = (id: string, digest: string, testRunner?: boolean) =>
+      stores.apiKeys.add({
+        id,
+        name: 'n',
+        digest,
+        tenant: ORG_A,
+        scopes: ['query'],
+        datasets: [],
+        agents: [],
+        ...(testRunner ? { testRunner: true } : {}),
+      });
+    await add('key-test-runner', '12'.repeat(32), true);
+    await add('key-no-test-runner', '34'.repeat(32));
+
+    expect(await stores.apiKeys.findByDigest('12'.repeat(32))).toMatchObject({
+      testRunner: true,
+    });
+    expect(await stores.apiKeys.findByDigest('34'.repeat(32))).not.toHaveProperty('testRunner');
   });
 
   it('serves the platform reads of the stores through the runtime role', async () => {

@@ -39,6 +39,9 @@ describe('the assembly’s styles', () => {
   it('hold no literal colour, only Designsystemet tokens', () => {
     expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
     expect(css.match(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi) ?? []).toEqual([]);
+    expect(
+      css.match(/:\s*(?:white|black|red|blue|green|gr[ae]y|orange|yellow|purple)\b/gi) ?? [],
+    ).toEqual([]);
   });
 
   it('hold no literal size outside a --genai- fallback', () => {
@@ -68,6 +71,12 @@ describe('the assembly’s styles', () => {
     const selectors = css.replace(/@layer[^;{]*[;{]/g, '');
     const classes = [...new Set(selectors.match(/\.[a-z][\w-]*/g) ?? [])];
     expect(classes.filter((name) => !name.startsWith('.uia-'))).toEqual([]);
+  });
+
+  it('hide the next look’s greeting and suggestions while a question is written, keeping their room', () => {
+    expect(flat).toContain(
+      '.uia-chat[data-typing] .uia-welcome, .uia-chat[data-typing] .uia-suggestions { visibility: hidden; }',
+    );
   });
 
   it('sit in one layer after Designsystemet’s, so a host’s own CSS wins', () => {

@@ -33,11 +33,17 @@ export const numbersIn = (text: string): string[] =>
 export const intersect = <T>(a: Set<T>, b: Set<T>): Set<T> =>
   new Set([...a].filter((x) => b.has(x)));
 
-const fold = (s: string) => s.normalize('NFC').toLowerCase();
+export const foldCase = (s: string) => s.normalize('NFC').toLowerCase();
 
-export const containsWord = (text: string, value: string): boolean => {
-  const haystack = fold(text);
-  const needle = fold(value);
+const nordicLetters: Record<string, string> = { æ: 'ae', ø: 'o', å: 'a' };
+
+export const foldNordic = (s: string) =>
+  foldCase(s).replace(/[æøå]/gu, (c) => nordicLetters[c] ?? c);
+
+export const containsWord = (text: string, value: string): boolean =>
+  containsFoldedWord(foldCase(text), foldCase(value));
+
+export const containsFoldedWord = (haystack: string, needle: string): boolean => {
   if (needle === '') return false;
   for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
     const end = at + needle.length;

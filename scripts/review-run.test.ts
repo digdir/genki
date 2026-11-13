@@ -14,6 +14,7 @@ const input = (over: Partial<RunInput> = {}): RunInput => ({
   authorKind: 'human_ai',
   filesChanged: 3,
   linesChanged: 120,
+  oversized: false,
   startedAt: '2026-11-09T10:00:00Z',
   output: {
     findings: [
@@ -85,6 +86,13 @@ describe('the run record', () => {
       cost_usd: null,
       findings: [],
     });
+  });
+
+  it('says whether the pull request was over the size limit, apart from its findings', () => {
+    const record = runRecord(input({ oversized: true }));
+    expect(record.oversized).toBe(true);
+    expect(record.findings).toHaveLength(1);
+    expect(runRecord(input({ oversized: null })).oversized).toBeNull();
   });
 
   it('holds no author name, only the kind of author', () => {

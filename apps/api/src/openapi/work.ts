@@ -5,9 +5,11 @@ import {
   caseSplits,
   caseTypes,
   evalRun,
+  evalRunStates,
   gate,
   judgeLabel,
   metricSummary,
+  scoreStates,
   splits,
   testCase,
 } from '@genai/eval';
@@ -15,6 +17,10 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
+import { sinkJudgeFields } from './services.js';
+
+/** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
+const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
 
 const pathParam = (name: string, example: string) =>
   z.string().openapi({ param: { name, in: 'path' }, example });
@@ -166,6 +172,11 @@ const OperationFixture = z
     name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
     source: z.string().optional().describe('Where the recording comes from'),
     deployment: z.string(),
+    at: z.string().optional().describe('The time a module signs with, when the descriptor has one'),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe("The descriptor's typed input"),
     request: z.object({
       method: z.string(),
@@ -188,6 +199,10 @@ const OperationFixture = z
 const WireExchange = z
   .object({
     deployment: z.string(),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe('The typed input as it was sent, masked'),
     request: z.object({
       method: z.string(),
@@ -214,6 +229,12 @@ const TaskBase = z.object({
   service: z.string(),
   capability: z.string(),
   version: z.number().int().nullable(),
+  environment: z
+    .string()
+    .nullable()
+    .describe(
+      'The service environment that ran the version; prod for runs before environments, null for a pinned version no environment ran',
+    ),
   createdAt: z.string(),
   endedAt: z.string().nullable(),
 });
@@ -885,6 +906,7 @@ const taskRoutes: RouteConfig[] = [
           .describe('playground lists playground runs instead of service runs'),
         status: taskStatus.optional(),
         service: z.string().optional(),
+        environment: z.string().optional().describe('Only runs in this service environment'),
         from: z.string().optional().describe('ISO time, inclusive'),
         to: z.string().optional().describe('ISO time, inclusive'),
         limit: z.string().optional().describe('1 to 500, default 100'),
@@ -1126,6 +1148,12 @@ const Candidate = z
 const RunStatus = z
   .union([
     z.object({ state: z.literal('running'), task: z.string() }),
+    z.object({
+      state: z.literal('waiting-for-scores'),
+      task: z.string(),
+      pending: z.number().int(),
+      until: z.string(),
+    }),
     z.object({ state: z.literal('completed'), task: z.string(), run: z.string() }),
     z.object({ state: z.literal('failed'), task: z.string(), error: z.string() }),
   ])
@@ -1134,22 +1162,67 @@ const RunStatus = z
 const ServiceEvalRun = z
   .object({
     id: z.string(),
-    service: z.string(),
-    status: z.enum(['queued', 'running', 'succeeded', 'failed']),
+    status: z.enum(evalRunStates),
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    variant: z.string().optional(),
+    environment: z
+      .string()
+      .optional()
+      .describe('The service environment the version was taken from, when no version was named'),
     split: z.enum(caseSplits).optional(),
+    model: z
+      .string()
+      .optional()
+      .describe("The model the run answers with: the variant's own model, else the primary model"),
+    selected: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'The cases the run was limited to; such a run does not stand for the whole test set',
+      ),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
-    score: z.number().nullable(),
+    score: z
+      .number()
+      .nullable()
+      .describe(
+        'Share of cases that pass on their type: the criteria judge, the exact text or the refusal',
+      ),
     passed: z.number().int(),
     total: z.number().int(),
-    cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
+    finished: z
+      .number()
+      .int()
+      .optional()
+      .describe('The cases done so far, while the run is not completed; passed counts only these'),
+    queuePlace: z
+      .number()
+      .int()
+      .optional()
+      .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
+    progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
+    metrics: z.record(z.string(), metricSummary),
+    incomplete: z.array(
+      z.object({
+        evaluator: z.string(),
+        missing: z.number().int(),
+        failed: z.number().int(),
+        of: z.number().int(),
+        reason: z.string(),
+      }),
+    ),
+    judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+    cost: z
+      .number()
+      .nullable()
+      .optional()
+      .describe('Micro-NOK for the answers and the judges; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
-    owner: z.string().optional(),
-    heartbeatAt: z.string().optional(),
+    ...sinkJudgeFields,
+    byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
     cases: z.array(
       z.object({
         caseId: z.string(),
@@ -1160,6 +1233,22 @@ const ServiceEvalRun = z
         output: z.string(),
         pass: z.boolean(),
         reason: z.string().optional(),
+        judges: z
+          .array(
+            z.object({
+              judge: z.string(),
+              state: z.enum(scoreStates),
+              value: z.number().nullable(),
+              dataType: z.string().optional(),
+              asItCame: z.unknown().optional(),
+              reason: z
+                .string()
+                .optional()
+                .describe("The judge's reason, while the case's task keeps it"),
+            }),
+          )
+          .optional()
+          .describe("Each Langfuse judge's verdict on the case"),
       }),
     ),
   })
@@ -1299,7 +1388,18 @@ const evalRoutes: RouteConfig[] = [
         z.object({
           id: z.string().optional().describe('Lowercase letters, digits and dashes'),
           input: z.string(),
-          expected: z.string().optional().describe('Required unless type is must_reject'),
+          expected: z
+            .union([
+              z.string(),
+              z.object({
+                referenceAnswer: z.string().optional(),
+                criteria: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.string()).optional(),
+              }),
+            ])
+            .optional()
+            .describe(
+              'Required unless type is must_reject: a text, read as the criteria of a criteria case and the reference answer otherwise, or a reference answer and named criteria such as criteria and supporting_quotes',
+            ),
           type: z.enum(caseTypes).optional(),
           split: z.enum(caseSplits).optional(),
           reason: z.string().optional(),
@@ -1324,7 +1424,7 @@ const evalRoutes: RouteConfig[] = [
       headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
-    responses: { 200: json(z.object({ data: z.array(evalRun) }), 'Runs'), ...memberRead },
+    responses: { 200: json(z.object({ data: z.array(shownEvalRun) }), 'Runs'), ...memberRead },
   }),
   createRoute({
     method: 'post',
@@ -1374,7 +1474,7 @@ const evalRoutes: RouteConfig[] = [
           ServiceEvalRun.extend({ kind: z.literal('service') }),
           z.object({
             kind: z.literal('kernel'),
-            run: evalRun,
+            run: shownEvalRun,
             provenance: evalRun.shape.provenance,
             metrics: z.record(z.string(), metricSummary),
             byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
@@ -1392,7 +1492,7 @@ const evalRoutes: RouteConfig[] = [
     description: described(
       'The tenant that started it; an operator needs a support session',
       notAudited,
-      'Read from the task and the stored run, so every instance answers the same.',
+      'Read from the task and the stored run, so every instance answers the same, except waiting-for-scores: only the instance running the eval knows its judges have not delivered, and the others answer running.',
     ),
     request: { params: z.object({ task }), headers: readHeaders },
     responses: { 200: json(RunStatus, 'Status'), ...evalProblems },
@@ -1436,7 +1536,7 @@ const evalRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          run: evalRun,
+          run: shownEvalRun,
           provenance: evalRun.shape.provenance,
           metrics: z.record(z.string(), metricSummary),
           byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
@@ -2068,6 +2168,121 @@ const qualityRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/operator/quality/sink-labels',
+    summary:
+      "Every tenant's trace connections and the labels brought back from them that wait for a decision",
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({
+          connections: z.array(
+            z.object({ tenant: z.string(), connection: z.string(), labels: z.boolean() }),
+          ),
+          batches: z.array(
+            z
+              .object({
+                tenant: z.string(),
+                connection: z.string(),
+                judge: z
+                  .string()
+                  .describe(
+                    'The judge the labels calibrate, such as langfuse:<tenant>/<connection>/<rule>',
+                  ),
+                name: z.string(),
+                labels: z.array(
+                  z.object({
+                    id: z.string(),
+                    revision: z.string(),
+                    run: z.string(),
+                    case: z.string(),
+                    repeat: z.number().int(),
+                    humanLabel: z.string(),
+                    judgeLabel: z
+                      .string()
+                      .optional()
+                      .describe("The judge's own verdict; absent when it did not score the case"),
+                    labeller: z.string().describe('A pseudonym, per agency'),
+                  }),
+                ),
+                paired: z.number().int(),
+                alike: z.number().int(),
+                unpaired: z.number().int(),
+                labellers: z.number().int(),
+              })
+              .describe('The pending labels of one connection and judge'),
+          ),
+        }),
+        'Sink labels',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/quality/sink-labels/fetch',
+    summary:
+      "Read what people labelled in a tenant's trace connection: new labels and edits on cases genki sent wait as pending, deleted ones stop counting",
+    description: described(operator, notAudited),
+    request: { body: body(z.object({ tenant: z.string(), connection: z.string() })) },
+    responses: {
+      200: json(
+        z.object({
+          pending: z.number().int(),
+          shared: z
+            .array(z.object({ name: z.string(), rules: z.array(z.string()) }))
+            .describe(
+              'Scores that two or more rules write under one name, so their labels cannot be told apart and none is made',
+            ),
+        }),
+        'Fetched',
+      ),
+      400: problem('Tenant or connection missing'),
+      404: problem('No such tenant or connection'),
+      409: problem('The connection does not bring labels back'),
+      502: problem(
+        'Langfuse refused or failed; nothing changed, and the error says what it answered',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  ...(['accept', 'reject'] as const).map((decision) =>
+    createRoute({
+      method: 'post',
+      path: `/operator/quality/sink-labels/${decision}`,
+      summary:
+        decision === 'accept'
+          ? "Accept a connection's pending labels for one judge, so they count in its agreement"
+          : "Reject a connection's pending labels for one judge; they come back only if edited",
+      description: described(operator, audited),
+      request: {
+        headers: operatorWriteHeaders,
+        body: body(
+          z.object({
+            tenant: z.string(),
+            connection: z.string(),
+            judge: z.string(),
+            labels: z
+              .array(z.object({ id: z.string(), revision: z.string() }))
+              .optional()
+              .describe('The labels the operator was shown; without it, every pending one'),
+          }),
+        ),
+      },
+      responses: {
+        200: json(
+          decision === 'accept'
+            ? z.object({ accepted: z.number().int() })
+            : z.object({ rejected: z.number().int() }),
+          decision === 'accept' ? 'Accepted' : 'Rejected',
+        ),
+        400: problem('Missing change reason, or labels that are not a list'),
+        404: problem('No pending labels for that connection and judge'),
+        ...operatorOnly,
+      },
+    }),
+  ),
+  createRoute({
     method: 'post',
     path: '/operator/quality/matrix/estimate',
     summary: 'Estimate the cost of running every affected test set on a new model',
@@ -2459,7 +2674,11 @@ const TenantUsage = z
       .optional()
       .describe("The AI gateway's rows per owner, in the currency it charged"),
     byProject: z.array(z.object({ project: z.string(), usage: UsageWithRuns, name: z.string() })),
+    byEnvironment: z
+      .array(z.object({ environment: z.string(), usage: UsageWithRuns }))
+      .describe('Service runs per service environment'),
     project: z.string().optional(),
+    environment: z.string().optional(),
     ingestion: z.object({
       usage: Usage,
       byDataset: z.array(z.object({ dataset: z.string(), usage: Usage })),
@@ -2490,7 +2709,7 @@ const operationsRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/usage',
-    summary: 'Tokens, requests and cost per day, service, model and project',
+    summary: 'Tokens, requests and cost per day, service, model, project and environment',
     description: described('view-usage', notAudited),
     request: {
       params: z.object({ tenant }),
@@ -2498,6 +2717,10 @@ const operationsRoutes: RouteConfig[] = [
       query: z.object({
         days: z.string().optional().describe('1 to 366, default 30'),
         project: z.string().optional().describe('Only runs in this project; leaves out ingestion'),
+        environment: z
+          .string()
+          .optional()
+          .describe('Only service runs in this environment; leaves out ingestion and testing'),
       }),
     },
     responses: { 200: json(TenantUsage, 'Usage'), 403: problem('Missing right'), ...memberRead },
@@ -2883,6 +3106,13 @@ const versionHeader = z
   .optional()
   .describe('Pin a published version of the service; a positive whole number');
 
+const environmentHeader = z
+  .string()
+  .optional()
+  .describe(
+    'Run the version this service environment points to, such as test. Without it, prod, or the first environment the key or frontend may use. A key or frontend bound to environments may pin with GenAI-Version only a version one of them runs',
+  );
+
 const ToolResult = z
   .object({
     answer: z.string(),
@@ -3021,6 +3251,7 @@ const protocolRoutes: RouteConfig[] = [
       headers: apiKeyHeaders.extend({
         'mcp-protocol-version': z.string().optional(),
         'genai-version': versionHeader,
+        'genai-environment': environmentHeader,
       }),
       body: body(JsonRpcRequest),
     },
@@ -3065,7 +3296,10 @@ const protocolRoutes: RouteConfig[] = [
     description: described('An API key or token allowed to use the service', notAudited),
     request: {
       params: z.object({ tool: pathParam('tool', '991825827__kudos') }),
-      headers: apiKeyHeaders.extend({ 'genai-version': versionHeader }),
+      headers: apiKeyHeaders.extend({
+        'genai-version': versionHeader,
+        'genai-environment': environmentHeader,
+      }),
       body: body(
         z
           .object({

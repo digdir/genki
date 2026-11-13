@@ -1,20 +1,79 @@
+import { createHash } from 'node:crypto';
 import { extname } from 'node:path';
 import {
   DocumentTooLargeError,
-  NoTextLayerError,
   htmlToMarkdown,
-  markerPageSeparator,
+  onePage,
+  textLayer,
   type DocumentConverter,
   type DocumentFile,
 } from '@genai/ingest';
 import mammoth from 'mammoth';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+/** A PDF page the text layer could not read, named by the file's sha256 and the page, counted from 1. */
+export interface UnreadablePage {
+  sha256: string;
+  page: number;
+  error: string;
+}
+
 export interface LocalConverterOptions {
   maxBytes?: number;
   maxUnzippedBytes?: number;
   maxPages?: number;
+  /** Told of each PDF page left empty because it could not be read. */
+  onUnreadablePage?: (page: UnreadablePage) => void;
 }
+
+/**
+ * Reads pages 1 to `count`: a page that cannot be read is left empty and reported, and the rest are
+ * kept; a file none of whose pages can be read fails with the first page's error.
+ */
+export const readEachPage = async (
+  count: number,
+  read: (page: number) => Promise<string>,
+  unreadable: (page: number, error: unknown) => void = () => undefined,
+): Promise<string[]> => {
+  const pages: string[] = [];
+  const failed: { page: number; error: unknown }[] = [];
+  for (let n = 1; n <= count; n += 1) {
+    try {
+      pages.push(await read(n));
+    } catch (error) {
+      failed.push({ page: n, error });
+      pages.push('');
+    }
+  }
+  if (count > 0 && failed.length === count) throw failed[0]?.error;
+  for (const { page, error } of failed) unreadable(page, error);
+  return pages;
+};
+
+// The parse errors pdf.js raises for a broken object; a page it cannot read can leave one unhandled.
+const pdfParseErrors = new Set(['FormatError', 'UnknownErrorException', 'InvalidPDFException']);
+
+/** Whether an unhandled rejection is a parse error pdf.js left behind for a page it could not read. */
+export const isPdfParseLeak = (reason: unknown): boolean =>
+  typeof reason === 'object' &&
+  reason !== null &&
+  pdfParseErrors.has(String((reason as { name?: unknown }).name));
+
+/**
+ * Keeps the process alive when pdf.js leaves a page's parse error unhandled: the page has already
+ * failed and been left empty. Any other unhandled rejection is thrown again, so it still ends the
+ * process as it would without a handler.
+ */
+export const guardPdfParseLeaks = (
+  log: (msg: string, fields: Record<string, unknown>) => void,
+  target: Pick<NodeJS.Process, 'on'> = process,
+) => {
+  target.on('unhandledRejection', (reason) => {
+    if (!isPdfParseLeak(reason)) throw reason;
+    const { name, message } = reason as Error;
+    log('pdf.js left a parse error unhandled', { error: `${name}: ${message}` });
+  });
+};
 
 export const localConverterExtensions = ['.pdf', '.docx', '.md', '.txt', '.html', '.htm'];
 
@@ -101,7 +160,12 @@ const pageText = (items: object[]) => {
     .trim();
 };
 
-const pdfToMarkdown = async (file: DocumentFile, maxPages: number) => {
+/** One markdown string per PDF page; a page with no text layer is empty. */
+const pdfPages = async (
+  file: DocumentFile,
+  maxPages: number,
+  onUnreadablePage?: (page: UnreadablePage) => void,
+) => {
   const task = getDocument({
     data: new Uint8Array(file.bytes),
     disableFontFace: true,
@@ -112,14 +176,23 @@ const pdfToMarkdown = async (file: DocumentFile, maxPages: number) => {
   try {
     const pdf = await task.promise;
     if (pdf.numPages > maxPages) throw new TooManyPagesError(file.name, maxPages);
-    const pages: string[] = [];
-    for (let n = 1; n <= pdf.numPages; n += 1) {
-      const page = await pdf.getPage(n);
-      pages.push(pageText((await page.getTextContent()).items));
-      page.cleanup();
-    }
-    if (pages.every((p) => p === '')) throw new NoTextLayerError(file.name);
-    return pages.join(markerPageSeparator);
+    return await readEachPage(
+      pdf.numPages,
+      async (n) => {
+        const page = await pdf.getPage(n);
+        try {
+          return pageText((await page.getTextContent()).items);
+        } finally {
+          page.cleanup();
+        }
+      },
+      (page, error) =>
+        onUnreadablePage?.({
+          sha256: createHash('sha256').update(file.bytes).digest('hex'),
+          page,
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        }),
+    );
   } finally {
     await task.destroy();
   }
@@ -145,14 +218,18 @@ export const createLocalConverter = (options: LocalConverterOptions = {}): Docum
   const maxPages = options.maxPages ?? 2000;
   return {
     extensions: localConverterExtensions,
-    toMarkdown: async (file) => {
+    convert: async (file) => {
       if (file.bytes.byteLength > maxBytes) throw new DocumentTooLargeError(file.name, maxBytes);
       const kind = kindOf(file);
-      if (kind === '.pdf') return pdfToMarkdown(file, maxPages);
-      if (kind === '.docx') return docxToMarkdown(file, maxUnzippedBytes);
+      if (kind === '.pdf')
+        return {
+          pages: await pdfPages(file, maxPages, options.onUnreadablePage),
+          converter: textLayer,
+        };
+      if (kind === '.docx') return onePage(await docxToMarkdown(file, maxUnzippedBytes));
       if (kind === '.html' || kind === '.htm')
-        return htmlToMarkdown(new TextDecoder().decode(file.bytes));
-      if (kind === '.md' || kind === '.txt') return new TextDecoder().decode(file.bytes);
+        return onePage(htmlToMarkdown(new TextDecoder().decode(file.bytes)));
+      if (kind === '.md' || kind === '.txt') return onePage(new TextDecoder().decode(file.bytes));
       throw new UnsupportedDocumentError(file.name);
     },
   };

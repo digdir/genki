@@ -39,6 +39,8 @@ export interface ComposerProps {
   onScrollToBottom?: (() => void) | undefined;
   /** The host's controls beside the send button, such as the variant picker. */
   actions?: ReactNode;
+  /** A line right under the field, docked with it, such as what the next question reads from. */
+  note?: ReactNode;
   /** Ctrl+/ or Cmd+/ anywhere on the page puts the caret in the field. On unless switched off. */
   shortcut?: boolean | undefined;
   /**
@@ -103,6 +105,7 @@ export const Composer = ({
   attachments,
   onScrollToBottom,
   actions,
+  note,
   shortcut = true,
   sticky = false,
   color = 'neutral',
@@ -153,7 +156,9 @@ export const Composer = ({
 
   const focusField = () => field.current?.focus();
 
-  // Focus that was on «Avbryt» goes to the field once it turns back into the send button.
+  // «Avbryt» turns back into a send button that is disabled until the next question, and the
+  // focus on it falls to the page. The field takes it instead, where the next question is written.
+  // Only focus that was on «Avbryt»: a reader who moved on is left where they are.
   const cancelHeldFocus = useRef(false);
   useEffect(() => {
     if (working || !cancelHeldFocus.current) return;
@@ -324,7 +329,7 @@ export const Composer = ({
               className="uib-composer-send"
               data-color={actionColor}
               onBlur={(event) => {
-                // Focus moved to something the reader chose. Gone, it moves to nothing.
+                // Focus moved to something the reader chose. Disabled or gone, it moves to nothing.
                 if (event.relatedTarget) cancelHeldFocus.current = false;
               }}
               onClick={() => {
@@ -345,7 +350,7 @@ export const Composer = ({
               aria-label={t('composer.send')}
               className="uib-composer-send"
               data-color={actionColor}
-              aria-disabled={value.trim().length === 0 || working || undefined}
+              disabled={value.trim().length === 0 || working}
               icon
               onClick={() => trySubmit(value)}
               ref={sendRef}
@@ -355,6 +360,8 @@ export const Composer = ({
           )}
         </div>
       </div>
+
+      {note ? <div className="uib-composer-note">{note}</div> : null}
 
       {dragDepth > 0 && !unavailable ? (
         <p aria-hidden="true" className="uib-composer-drop-hint">

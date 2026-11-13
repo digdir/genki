@@ -13,6 +13,8 @@ export interface SettingDefinition<T = unknown> {
   schema: z.ZodType<T>;
   default: T;
   settableAt: Layer[];
+  /** At the tenant layer, set, removed and pinned only by an operator. */
+  operatorOnly?: boolean;
 }
 
 export type LayerValues = Partial<Record<Layer, Record<string, unknown>>>;

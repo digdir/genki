@@ -21,10 +21,15 @@ describe('the Filter styles', () => {
   it('give the line over the documents the same air as the fields on each side', () => {
     expect(rule('.uib-filter-divider')).toContain(`margin-block: ${gap};`);
   });
+
+  it('lay a field’s ticks out in two columns, or as many as the host’s --genai-filter-checkboxes-columns', () => {
+    expect(rule('.uib-filter-checkboxes')).toContain(
+      'grid-template-columns: repeat(var(--genai-filter-checkboxes-columns, 2), minmax(0, 1fr));',
+    );
+  });
 });
 
-// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
-// each is named here and justified by the comment on the line above it.
+// A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.
 const markupPins: Record<string, string[]> = {
   '../documents/Documents.tsx': ['Loads more', 'documents.remove'],
   'FacetField.tsx': ['filter.selectAllIn', 'filter.clearIn'],

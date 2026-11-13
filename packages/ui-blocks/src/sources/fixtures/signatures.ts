@@ -1,15 +1,4 @@
-/**
- * Leftovers from a source format in text a reader sees: one shared list.
- *
- * A block's tests scan what it draws for what the source format left behind.
- * Kudos chunks are Marker's Markdown from PDFs, so the list is Marker's
- * leftovers and Markdown's syntax: what no reader should meet in an excerpt.
- * Framework-free, so a browser test or a script can read it too.
- *
- * Built for rendered, visible text (`innerText`). It also runs on raw chunk
- * text, for a census, where most signatures are expected to hit. A line can
- * hit more than one signature; each signature counts its own.
- */
+// Marker's leftovers and Markdown's syntax, which no reader should meet in drawn text.
 
 export type SignatureName =
   | 'page-marker'
@@ -52,11 +41,7 @@ export type Scan = Readonly<Record<SignatureName, readonly Hit[]>>;
 /** `|:---|---:|`, with or without the outer pipes, and nothing else on the line. */
 const DELIMITER_ROW = /^(?=[^\n]*\|)(?=[^\n]*-)[ \t|:-]+$/u;
 
-/**
- * Element names an HTML or MathML document uses, so `<span id=…>` counts and
- * a placeholder like «<navn på virksomhet>» does not. A custom element (a name
- * with a hyphen) counts too.
- */
+/** HTML and MathML element names, so `<span id=…>` counts and «<navn på virksomhet>» does not. */
 const ELEMENTS = `
   a abbr address article aside audio b big blockquote body br button caption center cite
   code col colgroup dd del details dfn div dl dt em embed figcaption figure font footer
@@ -80,15 +65,7 @@ function insideParentheses(line: string, column: number): boolean {
   return depth > 0;
 }
 
-/**
- * The document's own footnote mark in stars, one to three: before a space at
- * the start of a line, that is the note («** Antall ansatte og antall avtalte
- * årsverk …», chunk a2bbe7b471a5, `<sup>\*\*</sup>` in the raw text); right
- * after a word or a number, the reference to it («årsverk**»). Allowed, not a
- * leftover: they are the document's words, Unicode has no raised star, and
- * the reference view draws them flat. A part may keep them in a `sup`
- * element instead; it may not drop them. Any other lone `**` still counts.
- */
+/** The document's own footnote stars, «** Antall …» or «årsverk**»: its words, not a leftover. */
 function isFootnoteStars(match: string, line: string, column: number): boolean {
   if (!/^\*{1,3}$/u.test(match)) return false;
   const before = line.slice(0, column);
@@ -100,22 +77,7 @@ function isFootnoteStars(match: string, line: string, column: number): boolean {
 /** A cell's value or a page number: digits, and the signs an amount or a date has. */
 const NUMBER_ONLY = /^[\d\s.,:%+\-−–()]+$/u;
 
-/**
- * A web page's title kept as a link's words, the document's own: «… nettsiden
- * Sertifisering etter ISO 27001 | Digdir hvor …» (with «[27001 |
- * Digdir](https://www.digdir.no/…)» in the raw text). Allowed, not a leftover,
- * like the footnote stars: the reference view draws the same words. Only as «word | word» in a line with no
- * other «|», one space on each side.
- *
- * Still a leftover:
- * - a row: two pipes, an outer pipe, or a pipe with no space or with padding;
- * - a label and its value, where one side is only a number or an amount
- *   («Husleie | 3 024 010», «Dato | 31.12.2024»);
- * - a page's running head: a side that is only the page number («4 |
- *   Årsrapport 2024»), as above, or one of 80 characters or less after the pipe
- *   that ends in it («Årsrapport 2024 | side 4»). It counts as `running-head`
- *   (see `isRunningHead`), not as a row.
- */
+/** A web page's title in prose, «ISO 27001 | Digdir»: one «word | word», no number on a side. */
 function isTitleSeparator(line: string): boolean {
   const sides = line.split('|');
   if (sides.length !== 2) return false;
@@ -142,21 +104,7 @@ function unemphasised(cell: string): string {
   return marked ? (marked[2] ?? '').trim() : trimmed;
 }
 
-/**
- * A page's running head or foot left as a line of text: «Årsrapport 2024 |
- * 4», or two pages' run onto one line where a chunk crossed a page break,
- * «**42** | Nkom årsrapport 2020 Nkom årsrapport 2020 | **43 42** | Nkom
- * årsrapport 2020» (Nkom's 2020 report).
- *
- * The shape from `isRunningHead` in excerptMarkdown.ts: every part is a page number or one short piece of
- * text, with at least one of each. A table row's outer pipes leave an empty
- * part, so it is never one. Tighter on numbers, measured on that function: a part of digits
- * that is not a page number is an amount and makes the line a row
- * («Husleie | 3 024 010 | 2 900 000», «Driftsutgifter | 232 100»), and the
- * page numbers on one line lie within two of each other, as a spread's do,
- * so «Årsverk | 158 | 162» is a row too. A running head without a pipe looks
- * like prose that ends in a number, and is not looked for.
- */
+/** A page's running head as text, «Årsrapport 2024 | 4»: pages within two, as `isRunningHead`. */
 function isRunningHead(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed.includes('|')) return false;
@@ -188,8 +136,7 @@ export const SIGNATURES: readonly Signature[] = [
   {
     name: 'rule-line',
     what: 'a line of dashes, stars, underscores or equals signs, or a long run of one inside a line',
-    // A line of three or more (spaces allowed between, as Markdown reads a
-    // thematic break), or a run of five or more of one character anywhere.
+    // A thematic break of three or more, or a run of five or more of one character anywhere.
     pattern: /^[ \t]*([-*_=])(?:[ \t]*\1){2,}[ \t]*$|([-*_=])\2{4,}|[–—―─]{3,}/gmu,
     // On a table line it is the table's leftover, counted there.
     isLeftover: (_match, line) => !line.includes('|'),
@@ -197,9 +144,7 @@ export const SIGNATURES: readonly Signature[] = [
   {
     name: 'table-pipe',
     what: 'a table row as text: a line with a «|», one hit per line, but a web page title in prose',
-    // A table in an excerpt is drawn as rows, one per line, its cells joined
-    // by « · ». So no «|» is left on screen, not even one between two cells. The
-    // one exception is a web page's title in prose (see `isTitleSeparator`).
+    // Cells are joined by « · », so no «|» is left but in a web page's title (`isTitleSeparator`).
     pattern: /^[^\n]*\|[^\n]*$/gmu,
     isLeftover: (_match, line) =>
       !DELIMITER_ROW.test(line) && !isTitleSeparator(line) && !isRunningHead(line),
@@ -232,10 +177,7 @@ export const SIGNATURES: readonly Signature[] = [
   {
     name: 'md-emphasis',
     what: 'Markdown emphasis: «**bold**», «*italic*», «__bold__», «_italic_», «~~struck~~», or a lone «**»',
-    // `*` counts only with no space just inside it, so «5 * 3» keeps its
-    // star; `_` only at a word's edge, so `snake_case` keeps its. A lone
-    // run of stars that is the document's own footnote mark is not counted
-    // (see `isFootnoteStars`).
+    // «5 * 3» and `snake_case` keep theirs, and so do footnote stars (`isFootnoteStars`).
     pattern: new RegExp(
       [
         String.raw`\*\*(?=\S)[^\n]*?\S\*\*`,
@@ -277,10 +219,7 @@ export const SIGNATURES: readonly Signature[] = [
   {
     name: 'glued-footnote',
     what: 'a footnote mark glued to a word at the end of a cell: «Husleie1)»',
-    // The mark Marker leaves in a table cell, where it lost its raise. In
-    // prose the shape can mean something else («Q4)», «CO2)»), so it counts
-    // only after two lowercase letters, before the end of a cell or line,
-    // and not where it closes a `(` (the cleaner draws the same line).
+    // After two lowercase letters at a cell's end and not closing a `(`, so «CO2)» is prose.
     pattern: /(?<=\p{Ll}{2})\d{1,2}\)(?=[ \t]*(?:$|\t|·|\|))/gmu,
     isLeftover: (_match, line, column) => !insideParentheses(line, column),
   },

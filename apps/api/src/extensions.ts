@@ -1,3 +1,4 @@
+import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
 import type { Event, Principal, Task, TaskStatus } from '@genai/contracts';
 import {
@@ -51,7 +52,9 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
+import { backgroundLeases } from './background-lease.js';
+import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 
 export interface TrackedTask {
@@ -367,6 +370,7 @@ export interface ExtensionRouteDeps {
   catalogSkips: string[];
   eval: EvalDeps;
   platformTenant?: string;
+  hiddenService?: (tenant: string, service: string) => Promise<boolean>;
 }
 
 const param = (c: Context, name: string) => c.req.param(name) ?? '';
@@ -648,6 +652,21 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     return c.json({ data: (await deps.allTasks()).filter((task) => task.status === status) });
   });
 
+  // Judges a run abandoned by staleness alone, which every instance reads the same.
+  const readLeases = backgroundLeases();
+  const hiddenService = (tenant: string, service: string | undefined) =>
+    service === undefined
+      ? Promise.resolve(false)
+      : (deps.hiddenService?.(tenant, service) ?? Promise.resolve(false));
+  const hiddenRun = async (id: string) => {
+    if (!hidesInternalServices()) return false;
+    const stored = await deps.eval.runs.get(id);
+    return stored !== undefined && hiddenService(stored.tenant, stored.service);
+  };
+  const shownOnly = async <T>(items: T[], hidden: (item: T) => Promise<boolean>) => {
+    const refused = await Promise.all(items.map(hidden));
+    return items.filter((_, i) => !refused[i]);
+  };
   const evalGuard = async (c: Context, tenant: string, right?: Right) => {
     const principal = await who(c);
     if (!principal) return { response: problem(c, 401, 'Unauthorized') };
@@ -657,7 +676,10 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const tenant = param(c, 'tenant');
     const guard = await evalGuard(c, tenant);
     if ('response' in guard) return guard.response;
-    return c.json({ data: await deps.eval.testSets.list(tenant, c.req.query('service')) });
+    const sets = await deps.eval.testSets.list(tenant, c.req.query('service'));
+    return c.json({
+      data: await shownOnly(sets, (set) => hiddenService(tenant, set.spec.service)),
+    });
   });
   app.get('/tenants/:tenant/eval-runs', async (c) => {
     const tenant = param(c, 'tenant');
@@ -665,7 +687,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
     const runs = await deps.eval.runs.list({ tenant, ...(service ? { service } : {}) });
-    return c.json({ data: runs.map((s) => s.run) });
+    const usage = seesUsage(guard.principal, tenant);
+    const shown = await shownOnly(runs, (s) => hiddenService(tenant, s.service));
+    return c.json({
+      data: shown.map((s) => shownRun(interruptedIfAbandoned(tenant, s.run, readLeases), usage)),
+    });
   });
   app.post('/tenants/:tenant/eval-runs', async (c) => {
     const tenant = param(c, 'tenant');
@@ -706,6 +732,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   app.get('/eval-runs/compare', async (c) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
+    if (
+      (await hiddenRun(c.req.query('baseline') ?? '')) ||
+      (await hiddenRun(c.req.query('candidate') ?? ''))
+    )
+      return problem(c, 404, 'Not found');
     try {
       return c.json(
         await evalService.compare(
@@ -722,8 +753,17 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   app.get('/eval-runs/:id', async (c) => {
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
+    if (await hiddenRun(param(c, 'id'))) return problem(c, 404, 'Not found');
     try {
-      return c.json(await evalService.getRun(actingFor(c, principal), param(c, 'id')));
+      const found = await evalService.getRun(actingFor(c, principal), param(c, 'id'));
+      const owner = found.run.testSet.tenant;
+      return c.json({
+        ...found,
+        run: shownRun(
+          interruptedIfAbandoned(owner, found.run, readLeases),
+          seesUsage(principal, owner),
+        ),
+      });
     } catch (error) {
       return evalProblem(c, error);
     }
@@ -733,7 +773,20 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const guard = await evalGuard(c, tenant);
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
-    const records = await deps.eval.feedback.list(tenant);
+    const records = await shownOnly(await deps.eval.feedback.list(tenant), async (record) => {
+      if (record.capability !== undefined) {
+        const [owner, id] = record.capability.split('/');
+        return owner !== undefined && hiddenService(owner, id);
+      }
+      if (!deps.hiddenService || !hidesInternalServices()) return false;
+      try {
+        const task = await deps.eval.kernel.task(guard.principal, record.task);
+        const [owner, id] = task.service.capability.id.split('/');
+        return owner !== undefined && hiddenService(owner, id);
+      } catch {
+        return true;
+      }
+    });
     if (!service) return c.json({ data: anonymousFeedback(records) });
     const prefix = `${tenant}/${service}/`;
     const kept = [];
@@ -914,7 +967,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const guard = await evalGuard(c, tenant);
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
-    const data = (await deps.eval.candidates.list(tenant))
+    const data = (
+      await shownOnly(await deps.eval.candidates.list(tenant), (candidate) =>
+        hiddenService(tenant, candidate.service),
+      )
+    )
       .filter((candidate) => !service || candidate.service === service)
       .flatMap((candidate) => candidateView(candidate) ?? []);
     return c.json({ data });

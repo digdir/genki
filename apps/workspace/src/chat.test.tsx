@@ -198,6 +198,24 @@ describe('chat', () => {
     expect(source.textContent).toBe('Årsrapport 2025 · 1. mars 2026');
   });
 
+  it('shows no date for a source without a publish date', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async () => ({
+        text: 'Ventetida gjekk ned.',
+        task: 't-1',
+        sources: [{ title: 'Årsrapport 2025' }],
+      }),
+    };
+    await renderApp('#/chat', { api, initialMessages: [] });
+    fireEvent.change(await screen.findByLabelText(/Still et spørsmål/), {
+      target: { value: 'Kva seier rapportane?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const source = (await screen.findByText('Årsrapport 2025')).closest('li') as HTMLElement;
+    expect(source.textContent).toBe('Årsrapport 2025');
+  });
+
   it('tags every answer as made with AI, lists sources and marks nynorsk text with lang="nn"', async () => {
     await renderApp('#/chat');
     await screen.findByRole('list', { name: 'Samtale' });
@@ -331,7 +349,10 @@ describe('chat', () => {
           finish = resolve;
         });
         onDelta('Ventetida gjekk ned [1].');
-        return { text: 'Ventetida gjekk ned [1].', sources: [{ title: 'Årsrapport 2025' }] };
+        return {
+          text: 'Ventetida gjekk ned [1].',
+          sources: [{ title: 'Årsrapport 2025', index: 1 }],
+        };
       },
     };
     const { container } = await renderApp('#/chat', { api });
@@ -355,6 +376,50 @@ describe('chat', () => {
     expect(screen.getByText(/Brukte 1 kilde · tok \d+ sekund/)).toBeTruthy();
   });
 
+  it('marks every step done once the answer is there, and times it by the workspace clock', async () => {
+    let clock = Date.parse('2026-10-07T10:00:00Z');
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'search' });
+        clock += 41_000;
+        return { text: 'Ja.', sources: [{ title: 'Årsrapport 2025', index: 1 }] };
+      },
+    };
+    await renderApp('#/chat', { api, now: () => new Date(clock) });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ja.');
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    const step = screen.getByText('Lette etter steder som handler om spørsmålet').closest('li');
+    expect(step?.getAttribute('aria-current')).toBeNull();
+    expect(screen.getByText('Brukte 1 kilde · tok 41 sekunder')).toBeTruthy();
+  });
+
+  it('counts the seconds of an answer in progress by the workspace clock', async () => {
+    let clock = Date.parse('2026-10-07T10:00:00Z');
+    let finish: () => void = () => undefined;
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        clock += 12_000;
+        onStep?.({ tool: 'search' });
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return { text: 'Ja.', sources: [] };
+      },
+    };
+    await renderApp('#/chat', { api, now: () => new Date(clock) });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Har jobbet i 12 sekunder')).toBeTruthy();
+    finish();
+    await screen.findByText('Ja.');
+  });
+
   it('shows no approach when the service sends no steps a person can read', async () => {
     const api: WorkspaceApi = {
       ...mockWorkspaceApi(),
@@ -369,6 +434,47 @@ describe('chat', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Ja.');
     expect(screen.queryByText('Fremgangsmåte')).toBeNull();
+  });
+
+  it('counts as used only the sources the answer cites, not the ones it was given', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'search' });
+        return {
+          text: 'Ingen av kildene svarer på det.',
+          sources: [{ title: 'Årsrapport 2025' }, { title: 'Tildelingsbrev 2025' }],
+        };
+      },
+    };
+    await renderApp('#/chat', { api });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ingen av kildene svarer på det.');
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    expect(screen.getByText(/^Tok \d+ sekund/)).toBeTruthy();
+    expect(screen.queryByText(/Brukte/)).toBeNull();
+  });
+
+  it('offers no link to what a step read or missed while the workspace has nowhere to show it', async () => {
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'read_chunks', 'documents-read': 17 });
+        onStep?.({ tool: 'report_gaps', description: 'Ingen sier hvor mange.', missing: true });
+        return { text: 'Ja.', sources: [] };
+      },
+    };
+    await renderApp('#/chat', { api });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ja.');
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    expect(screen.getByText('Ingen sier hvor mange.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /som ble lest/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Utdyp hva som mangler' })).toBeNull();
   });
 
   it('shows a table answer as a summary that opens the table with its sources', async () => {

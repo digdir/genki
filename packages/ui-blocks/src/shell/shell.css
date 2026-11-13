@@ -1,21 +1,8 @@
-/* ADR V2-0009: after Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-shell-* variable at the point of use, listed on docs/components/shell.html.
-
-   The widths come from the shell's own sums as inline --uib-shell-* properties on .uib-shell
-   (layoutStyle() in layout.ts), so a panel can fold, resize or become a drawer without the
-   stylesheet knowing. They are not tokens and not the host's to set.
-
-   The chrome is pinned to the neutral family on purpose, as kunnskapsassistenten's shell: the
-   page, the panels, the rails, the bar and the borders stay grey whatever data-color the host
-   sets, because accent belongs to the content and to what can be pressed. Six pins, each named
-   in shell-css.test.ts, and four for the secondary panel's tool tabs, its chrome too. The
-   separator's line is the one exception: it is interactive, so it
-   takes the accent role without a family. */
+/* After Designsystemet's layers, tokens via --genai-shell-*; the chrome is pinned neutral. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
-  /* The page is tinted, not white: white cards on a light grey page. Each region keeps its ground
-     in --_shell-region, so a pinned head hides what scrolls under it in the right colour. */
+  /* A tinted page; each region keeps its ground in --_shell-region for its pinned head. */
   .uib-shell {
     --_shell-region: var(--genai-shell-background, var(--ds-color-neutral-background-tinted));
 
@@ -26,31 +13,26 @@
     font-family: var(--genai-shell-font-family, var(--ds-font-family)), sans-serif;
   }
 
-  /* `border-box`, so a panel is exactly the width the sums say, padding included. Positioned for
-     the separator, with no `overflow`, so its focus ring is not clipped. A container, so what is
-     in it can ask the panel's width. */
+  /* `border-box` and positioned, with no `overflow`, so the separator's ring is not clipped. */
   .uib-shell-side {
     box-sizing: border-box;
     position: relative;
     container-type: inline-size;
   }
 
-  /* Only these `flex` values decide who gives way: the main column first, to its floor, then
-     the secondary panel. `0 1`, not `0 0`, only for the pixel a fractional window leaves. */
+  /* Only these `flex` values decide who gives way: the main column first, then the secondary. */
   .uib-shell-side[data-side='primary'] {
     flex: 0 1 var(--uib-shell-primary-width);
     min-inline-size: var(--uib-shell-primary-min-width);
   }
 
-  /* Explicit, because a flex item's minimum is its content: a long word would hold the panel too
-     wide, and an empty panel would collapse. */
+  /* Explicit, since a flex item's minimum is its content. */
   .uib-shell-side[data-side='secondary'] {
     flex: 0 1 var(--uib-shell-secondary-width);
     min-inline-size: var(--uib-shell-secondary-min-width);
   }
 
-  /* A margin, not `gap`: the space belongs beside an OPEN panel; a rail sits flush against the
-     main column, or it reads as a hole. Must match the shell's `gap` prop. */
+  /* A margin, not `gap`, so a rail sits flush; it must match the shell's `gap` prop. */
   .uib-shell-side[data-side='primary']:not([data-collapsed]) {
     margin-inline-end: var(--genai-shell-gap, var(--ds-size-8));
   }
@@ -59,9 +41,7 @@
     margin-inline-start: var(--genai-shell-gap, var(--ds-size-8));
   }
 
-  /* The panel's box, apart from the landmark, because the separator cannot be inside it:
-     `overflow: hidden` would clip its focus ring. Only the content scrolls, so the button never
-     scrolls away. */
+  /* The panel's box, apart from the landmark, so `overflow: hidden` cannot clip the separator. */
   .uib-shell-box {
     box-sizing: border-box;
     display: flex;
@@ -82,16 +62,13 @@
       var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
   }
 
-  /* No ground of its own while open, on purpose: the secondary panel shares the main column's.
-     `border-default`, not `border-subtle`, which does not reach 3:1 (WCAG 1.4.11) here. */
+  /* No ground of its own while open; `border-default`, which reaches 3:1 (WCAG 1.4.11). */
   .uib-shell-side[data-side='secondary'] > .uib-shell-box {
     border-inline-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
       var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
   }
 
-  /* A rail keeps a panel's ground, so it reads as a folded column, not a hole. The padding is
-     part of the rail's width in the sums: change both or neither. `> .uib-shell-box`, so only the
-     row's box, not the one in an open drawer. */
+  /* A rail keeps a panel's ground; its padding is part of the rail's width in the sums. */
   .uib-shell-side[data-collapsed] > .uib-shell-box {
     align-items: center;
     background: var(--genai-shell-rail-background, var(--ds-color-neutral-surface-default));
@@ -117,8 +94,7 @@
     justify-content: space-between;
   }
 
-  /* The host's controls on the panel's row. An auto margin, not a wrapper: three items in a
-     `space-between` row would put this one in the middle. */
+  /* The host's controls on the panel's row, pushed by an auto margin. */
   .uib-shell-head {
     display: flex;
     gap: var(--genai-shell-header-gap, var(--ds-size-2));
@@ -139,12 +115,35 @@
   }
 
   /* An empty head row in a drawer takes no room: a zero-height flex item still gets the gap. */
-  .uib-shell-drawer .uib-shell-header:has(> .uib-shell-head:empty) {
+  .uib-shell-drawer .uib-shell-header:has(> .uib-shell-head:empty):not(:has(> .uib-shell-title)) {
     display: none;
   }
 
-  /* The panel's only scroller. `min-block-size: 0`, or the flex item grows to its content and
-     the panel clips with nothing to scroll. Positioned for the reason given at `.uib-shell-main`. */
+  /* Every title the shell draws looks alike, the panels' and the main column's (dev-navbar): one
+     line, cut with «…». Its line is `--ds-size-8` tall, so the text stands 3 under its top, as the
+     design's titles do. */
+  .uib-shell-title {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--genai-shell-title-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-shell-title-font-size, var(--ds-heading-xs-font-size));
+    font-weight: var(--genai-shell-title-font-weight, var(--ds-font-weight-medium));
+    line-height: var(--genai-shell-title-line-height, var(--ds-size-8));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* What a folded panel shows at its bottom, such as the reader's avatar. */
+  .uib-shell-rail-foot {
+    display: flex;
+    justify-content: center;
+    inline-size: 100%;
+    margin-block-start: auto;
+  }
+
+  /* The panel's only scroller; `min-block-size: 0`, or it grows to its content. */
   .uib-shell-content {
     display: flex;
     flex: 1 1 auto;
@@ -157,8 +156,7 @@
     padding-block-end: var(--genai-shell-padding-block, var(--ds-size-8));
   }
 
-  /* Pinned while its region scrolls, on the region's ground; the gap is tight, because pinned room
-     is reading room lost. */
+  /* Pinned while its region scrolls, on the region's ground, with a tight gap. */
   .uib-shell-pinned {
     position: sticky;
     inset-block-start: 0;
@@ -188,8 +186,7 @@
       var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
   }
 
-  /* At the end of the scroller, which has the inline padding already; the end paddings would
-     otherwise add up. */
+  /* At the end of the scroller, which has the inline padding already. */
   .uib-shell-content > .uib-shell-foot {
     padding-inline: 0;
     margin-block-start: var(--genai-shell-foot-margin-block-start, var(--ds-size-6));
@@ -205,8 +202,7 @@
     padding-block-end: var(--genai-shell-foot-padding-block-start, var(--ds-size-4));
   }
 
-  /* The movable edge, inside the landmark and over the panel's border, so it takes no part in
-     the row's widths. Centred on the border, which is the edge the reader sees. */
+  /* The movable edge, centred on the panel's border, taking no part in the row's widths. */
   .uib-shell-separator {
     position: absolute;
     inset-block: 0;
@@ -257,10 +253,7 @@
     background: var(--genai-shell-separator-line-color, var(--ds-color-base-default));
   }
 
-  /* Positioned, so an absolutely placed descendant such as a visually hidden heading is placed
-     against the scroller, not the page, which would then grow a scrollbar of its own. `main`
-     scrolls and fills the field between the panels, so the wheel works in the margins. The end
-     padding is on the scroller, where a sticky compose field measures its offset from. */
+  /* Positioned, so a hidden heading is placed in the scroller; `main` fills the field. */
   .uib-shell-main {
     --_shell-region: var(--genai-shell-background, var(--ds-color-neutral-background-tinted));
 
@@ -273,10 +266,7 @@
     );
   }
 
-  /* The centred reading width, at least as tall as the scroller, so a view that grows can keep
-     its compose field at the bottom. The last child is the host's view, and grows. The inline
-     padding is the gap on a desktop and narrows to 16 px on a phone, where the column is the
-     window. */
+  /* The centred reading width, at least as tall as the scroller; 16 px padding on a phone. */
   .uib-shell-column {
     box-sizing: border-box;
     display: flex;
@@ -296,11 +286,123 @@
     flex-grow: 1;
   }
 
+  /* ── The cards frame (`frame="cards"`), the design's dev-navbar board ── */
+
+  /* The cards stand inset from the window; it must match the shell's `inset`. Not in the top row. */
+  .uib-shell[data-frame='cards']:not([data-compact]) {
+    box-sizing: border-box;
+    padding: var(--genai-shell-inset, var(--ds-size-4));
+  }
+
+  /* The gap between the cards, a rail's too, since a rail is a card; it must match the `gap`. */
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='primary'] {
+    margin-inline-end: var(--genai-shell-gap, var(--ds-size-3));
+  }
+
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side[data-side='secondary'] {
+    margin-inline-start: var(--genai-shell-gap, var(--ds-size-3));
+  }
+
+  /* Rounded and lifted off the page's ground, with no lines between them. */
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side > .uib-shell-box,
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-main {
+    border-radius: var(--genai-shell-card-radius, var(--ds-border-radius-xl));
+    box-shadow: var(--genai-shell-card-shadow, var(--ds-shadow-xs));
+  }
+
+  .uib-shell[data-frame='cards']:not([data-compact]) > .uib-shell-side > .uib-shell-box {
+    padding-block: var(--genai-shell-card-padding-block, var(--ds-size-4));
+    border-inline: 0;
+  }
+
+  .uib-shell[data-frame='cards']:not([data-compact])
+    > .uib-shell-side[data-side='secondary']
+    > .uib-shell-box {
+    --_shell-region: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+
+    background: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+  }
+
+  /* The title's text on the head's top line, whatever the button beside it. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header {
+    align-items: start;
+  }
+
+  /* The primary card's edge, 12 as the design's thread list; the secondary one and a rail 16. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='primary'] > .uib-shell-box > * {
+    padding-inline: var(--genai-shell-primary-card-padding-inline, var(--ds-size-3));
+  }
+
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='secondary'] > .uib-shell-box > *,
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side[data-collapsed]
+    > .uib-shell-box
+    > .uib-shell-header {
+    padding-inline: var(--genai-shell-card-padding-inline, var(--ds-size-4));
+  }
+
+  /* The panel's name over its list, its text on the design's line: «Tråder», 48 above «Ny tråd». */
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='primary'] .uib-shell-title {
+    margin-block-end: var(--genai-shell-title-margin-block-end, var(--ds-size-8));
+    padding-inline-start: var(--genai-shell-title-inset, var(--ds-size-1));
+  }
+
+  /* The panel's button is the design's 44, so a rail is 16 + 44 + 16. */
+  .uib-shell[data-frame='cards'] .uib-shell-toggle {
+    --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
+  }
+
+  /* The foot under a line inside the card's edges, as the design's profile. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-foot {
+    align-self: stretch;
+    inline-size: auto;
+    margin-inline: var(--genai-shell-card-padding-inline, var(--ds-size-4));
+    padding-inline: 0;
+    padding-block-start: var(--genai-shell-card-foot-padding-block-start, var(--ds-size-3));
+    border-block-start-color: var(
+      --genai-shell-divider-color,
+      var(--ds-color-neutral-surface-tinted)
+    );
+  }
+
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side[data-side='primary']
+    > .uib-shell-box
+    > .uib-shell-foot {
+    margin-inline: var(--genai-shell-primary-card-padding-inline, var(--ds-size-3));
+  }
+
+  /* The main card: a column whose title stays at its top, over the whole card. */
+  .uib-shell[data-frame='cards'] > .uib-shell-main {
+    --_shell-region: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+
+    display: flex;
+    flex-direction: column;
+    background: var(--genai-shell-card-background, var(--ds-color-neutral-surface-default));
+  }
+
+  .uib-shell[data-frame='cards'] > .uib-shell-main > .uib-shell-pinned {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    padding-block-start: var(--genai-shell-card-padding-block, var(--ds-size-4));
+    padding-inline: var(--genai-shell-main-title-padding-inline, var(--ds-size-6));
+    border-block-end-color: var(
+      --genai-shell-divider-color,
+      var(--ds-color-neutral-surface-tinted)
+    );
+  }
+
+  /* What the title leaves, filled: not 100 % under it, which would always scroll. */
+  .uib-shell[data-frame='cards'] > .uib-shell-main > .uib-shell-column {
+    flex: 1 0 auto;
+    inline-size: 100%;
+    min-block-size: 0;
+    padding-block-start: var(--genai-shell-main-padding-block-start, var(--ds-size-6));
+  }
+
   /* ── The top row, below 774 unless the host sets `compactBar` to false ── */
 
-  /* The rails become one row above the main column (kunnskapsassistenten#120). Grid placement,
-     not other markup, so what is in the panels keeps its state and the tab order stays primary
-     button, main column, secondary button. */
+  /* The rails as one row above the main column, by grid placement, keeping the tab order. */
   .uib-shell[data-compact] {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -332,13 +434,15 @@
     grid-column: 1 / -1;
   }
 
-  /* In the row a rail is as wide as its button plus the text edge on each side, not a side rail's
-     67. With size containment its `auto` column took the rail's floor, so the secondary button
-     stood 9 px from the window's edge at 390 and was clipped from 667. The drawer it holds is a
-     container of its own. */
+  /* In the row a rail is its button plus the text edge on each side, not 67 px. */
   .uib-shell[data-compact] > .uib-shell-side {
     container-type: normal;
     min-inline-size: 0;
+  }
+
+  /* The row holds the panels' buttons only; what a rail shows at its bottom is in the drawer. */
+  .uib-shell[data-compact] .uib-shell-rail-foot {
+    display: none;
   }
 
   /* In the bar a rail is just its button. */
@@ -359,9 +463,7 @@
 
   /* ── Drawers, where an open panel does not fit beside the main column ── */
 
-  /* Designsystemet's `Dialog`. `[open]` is load-bearing: without it this `display` beats the
-     browser's `dialog:not([open]) { display: none }`, and the drawer would never close. A
-     container of its own, so what is in it asks the drawer's width, not the rail's. */
+  /* Designsystemet's `Dialog`; `[open]` is load-bearing, or the drawer never closes. */
   .uib-shell-drawer {
     --dsc-dialog-background: var(
       --genai-shell-drawer-background,
@@ -377,8 +479,7 @@
     flex-direction: column;
   }
 
-  /* The design's width, not a dragged one: a width chosen beside the main column says nothing
-     about a drawer over it. */
+  /* The design's width, not a dragged one, for a drawer. */
   .uib-shell-drawer[data-side='primary'] {
     --dsc-dialog-placement-inline-max-width: var(--uib-shell-primary-drawer-width);
   }
@@ -395,8 +496,7 @@
     margin-inline: 0 var(--genai-shell-drawer-close-margin, var(--ds-size-3));
   }
 
-  /* Takes what the close button leaves; `min-block-size: 0` lets the content scroll instead of
-     pushing the drawer taller than the screen. */
+  /* Takes what the close button leaves; `min-block-size: 0` lets the content scroll. */
   .uib-shell-drawer > .uib-shell-box {
     --_shell-region: var(--genai-shell-drawer-background, var(--ds-color-neutral-surface-default));
 
@@ -465,5 +565,304 @@
 
   .uib-shell-tools-choice {
     inline-size: 100%;
+  }
+
+  /* `tinted`, the dev boards' switcher (dev-verktoy-2): two joined buttons on the host family's
+     tinted ground, as Designsystemet's ToggleGroup draws them, each as wide as its words at least. */
+  .uib-shell-tools-tabs[data-variant='tinted'] {
+    gap: 0;
+    padding: 0;
+    overflow-x: auto;
+    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-default));
+    background: var(--genai-shell-tools-tinted-background, var(--ds-color-surface-tinted));
+  }
+
+  .uib-shell-tools-tabs[data-variant='tinted'] > .uib-shell-tools-tab {
+    display: inline-flex;
+    flex: 1 1 0;
+    gap: var(--genai-shell-tools-tinted-gap, var(--ds-size-2));
+    align-items: center;
+    justify-content: center;
+    min-inline-size: fit-content;
+    min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
+    padding-inline: var(--genai-shell-tools-tinted-padding-inline, var(--ds-size-4));
+    border: var(--genai-shell-border-width, var(--ds-border-width-default)) solid transparent;
+    border-radius: inherit;
+    color: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+    font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
+    font-weight: var(--genai-shell-tools-tinted-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-tabs[data-variant='tinted'] > .uib-shell-tools-tab:hover {
+    background: var(--genai-shell-tools-tinted-hover-background, var(--ds-color-surface-hover));
+  }
+
+  .uib-shell-tools-tabs[data-variant='tinted'] > .uib-shell-tools-tab[aria-selected='true'] {
+    background: var(
+      --genai-shell-tools-tinted-selected-background,
+      var(--ds-color-surface-default)
+    );
+    border-color: var(
+      --genai-shell-tools-tinted-selected-border-color,
+      var(--ds-color-border-default)
+    );
+    box-shadow: none;
+  }
+
+  /* The tool's icon beside its name, in the tabs, the button and the menu. */
+  :is(.uib-shell-tools-tab, .uib-shell-tools-trigger) > svg {
+    flex: none;
+    font-size: var(--genai-shell-tools-icon-size, var(--ds-size-6));
+  }
+
+  .uib-shell-tools-label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Three or more (dev-verktoy-3): a button as wide as the panel, on the tinted ground. */
+  .uib-shell-tools-trigger {
+    --dsc-button-background: var(
+      --genai-shell-tools-tinted-background,
+      var(--ds-color-surface-tinted)
+    );
+    --dsc-button-background--hover: var(
+      --genai-shell-tools-tinted-hover-background,
+      var(--ds-color-surface-hover)
+    );
+    --dsc-button-background--active: var(
+      --genai-shell-tools-tinted-hover-background,
+      var(--ds-color-surface-hover)
+    );
+    --dsc-button-color: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+    --dsc-button-color--hover: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+
+    justify-content: start;
+    gap: var(--genai-shell-tools-tinted-gap, var(--ds-size-2));
+    inline-size: 100%;
+    min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
+    border-radius: var(--genai-shell-tools-tinted-radius, var(--ds-border-radius-default));
+    font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
+    font-weight: var(--genai-shell-tools-tinted-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-trigger[aria-expanded='true'] {
+    --dsc-button-background: var(
+      --genai-shell-tools-tinted-hover-background,
+      var(--ds-color-surface-hover)
+    );
+  }
+
+  .uib-shell-tools-trigger > .uib-shell-tools-chevron {
+    margin-inline-start: auto;
+    font-size: var(--genai-shell-tools-chevron-size, var(--ds-size-6));
+  }
+
+  .uib-shell-tools-trigger[aria-expanded='true'] > .uib-shell-tools-chevron {
+    rotate: 180deg;
+  }
+
+  /* The menu's tools, grey, the one shown on its tinted ground. */
+  .uib-shell-tools-menu :is(a, button) {
+    --dsc-button-color: var(--genai-shell-tools-menu-color, var(--ds-color-text-subtle));
+
+    min-block-size: var(--genai-shell-tools-tinted-height, var(--ds-size-12));
+    font-size: var(--genai-shell-tools-tinted-font-size, var(--ds-font-size-4));
+    font-weight: var(--genai-shell-tools-menu-font-weight, var(--ds-font-weight-regular));
+  }
+
+  .uib-shell-tools-menu :is(a, button)[aria-current='true'] {
+    --dsc-button-background: var(
+      --genai-shell-tools-menu-current-background,
+      var(--ds-color-surface-tinted)
+    );
+
+    font-weight: var(--genai-shell-tools-menu-current-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-menu :is(a, button) > svg {
+    flex: none;
+    font-size: var(--genai-shell-tools-icon-size, var(--ds-size-6));
+  }
+
+  /* ── What a folded panel shows under its button (`rail`), dev-verktoy-4 ── */
+
+  .uib-shell-rail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-rail-gap, var(--ds-size-2));
+    align-items: center;
+    inline-size: 100%;
+  }
+
+  .uib-shell[data-compact] .uib-shell-rail {
+    display: none;
+  }
+
+  /* As big as the panel's own button, the design's 44 in a card. */
+  .uib-shell[data-frame='cards'] .uib-shell-rail :is(a, button) {
+    --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
+  }
+
+  /* The tools card (dev-verktoy-1 to -4): its parts 12 apart, and no line under the switcher. */
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='secondary'] > .uib-shell-box {
+    gap: var(--genai-shell-tools-card-gap, var(--ds-size-3));
+  }
+
+  .uib-shell[data-frame='cards'] > .uib-shell-side[data-side='secondary'] .uib-shell-pinned {
+    padding-block-end: 0;
+    border-block-end: 0;
+  }
+
+  /* The folded tools card's own button stands apart from the tools' on a ground of its own. */
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side[data-side='secondary'][data-collapsed]
+    .uib-shell-toggle {
+    --dsc-button-background: var(
+      --genai-shell-rail-toggle-background,
+      var(--ds-color-background-tinted)
+    );
+  }
+
+  /* ── The reader at the panel's foot, and the profile menu (ShellProfile), dev-navbar ── */
+
+  /* One full-width button: the avatar, then the name, cut with «…». */
+  .uib-shell-profile {
+    justify-content: start;
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  .uib-shell-profile-name {
+    min-inline-size: 0;
+    overflow: hidden;
+    font-size: var(--genai-shell-profile-name-font-size, var(--ds-body-xs-font-size));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* On a rail, the avatar alone, on a button as big as the panel's. */
+  .uib-shell-profile-rail {
+    --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
+  }
+
+  /* The menu's top: who is signed in, over a line. */
+  .uib-shell-profile-who {
+    display: flex;
+    gap: var(--genai-shell-profile-who-gap, var(--ds-size-2));
+    align-items: center;
+    margin-block-end: var(--genai-shell-profile-who-margin-block-end, var(--ds-size-1));
+    padding-block: var(--genai-shell-profile-who-padding-block-start, var(--ds-size-1))
+      var(--genai-shell-profile-who-padding-block-end, var(--ds-size-2));
+    padding-inline: var(--genai-shell-profile-who-padding-inline, var(--ds-size-2));
+    border-block-end: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  .uib-shell-profile-who-text {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .uib-shell-profile-who-name {
+    color: var(--genai-shell-profile-who-color, var(--ds-color-neutral-text-default));
+    font-size: var(--genai-shell-profile-who-font-size, var(--ds-body-sm-font-size));
+    font-weight: var(--genai-shell-profile-who-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-profile-who-organisation {
+    color: var(--genai-shell-profile-organisation-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-shell-profile-organisation-font-size, var(--ds-body-xs-font-size));
+  }
+
+  /* A host's own icon, hidden from screen readers: its box sits where the menu's icons do. */
+  .uib-shell-profile-icon {
+    display: flex;
+    flex: 0 0 auto;
+  }
+
+  /* The entry's words take the room, so the dot stands at the end. */
+  .uib-shell-profile-label {
+    flex: 1 1 auto;
+  }
+
+  /* ── A panel's companion column (`companion`), the design's filter beside the threads ── */
+
+  /* The panel's own column keeps its design width; the companion stands over the rest, full height. */
+  .uib-shell-box[data-companion] {
+    position: relative;
+    padding-inline-end: calc(100% - var(--uib-shell-lead-width));
+  }
+
+  .uib-shell-side > .uib-shell-box > .uib-shell-companion,
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-companion {
+    box-sizing: border-box;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-companion-gap, var(--ds-size-3));
+    inline-size: calc(100% - var(--uib-shell-lead-width));
+    padding: 0;
+    background: var(--genai-shell-companion-background, var(--ds-color-neutral-surface-default));
+    border-inline-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  /* Its title on the line of the panel's, the button at the card's edge. */
+  .uib-shell-companion > .uib-shell-header {
+    align-items: start;
+    padding-block-start: var(--genai-shell-card-padding-block, var(--ds-size-4));
+    padding-inline: var(--genai-shell-companion-padding-inline, var(--ds-size-4))
+      var(--genai-shell-companion-button-inset, var(--ds-size-3));
+  }
+
+  .uib-shell-companion-titles {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .uib-shell[data-frame] > .uib-shell-side .uib-shell-companion .uib-shell-title,
+  .uib-shell-companion .uib-shell-title {
+    margin-block-end: 0;
+    padding-inline-start: 0;
+  }
+
+  .uib-shell-companion-subtitle {
+    margin: 0;
+    color: var(--genai-shell-companion-subtitle-color, var(--ds-color-neutral-text-subtle));
+    font-size: var(--genai-shell-companion-subtitle-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-shell-companion-subtitle-line-height, var(--ds-line-height-md));
+  }
+
+  .uib-shell-companion > .uib-shell-content {
+    padding-inline: var(--genai-shell-companion-padding-inline, var(--ds-size-4));
+    padding-block-end: var(--genai-shell-card-padding-block, var(--ds-size-4));
+  }
+
+  /* In a drawer, one column: the companion under the panel's own, in the flow. */
+  .uib-shell-drawer .uib-shell-companion {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+    inline-size: 100%;
+    border-block-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+  }
+
+  /* Something new in «Endringslogg»: the accent's dot. */
+  .uib-shell-profile-news {
+    flex: 0 0 auto;
+    inline-size: var(--genai-shell-profile-news-size, var(--ds-size-2));
+    block-size: var(--genai-shell-profile-news-size, var(--ds-size-2));
+    border-radius: var(--genai-shell-profile-news-radius, var(--ds-border-radius-full));
+    background: var(--genai-shell-profile-news-color, var(--ds-color-base-default));
   }
 }

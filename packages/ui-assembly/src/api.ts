@@ -26,6 +26,8 @@ export interface AnswerData {
   error?: string | undefined;
   /** Why it failed, for the answer block's heading and advice. */
   failure?: AnswerFailure | undefined;
+  /** genki's id for the run that gave the answer (`genai-task`), which feedback is sent on. */
+  runId?: string | undefined;
 }
 
 export interface Turn {
@@ -40,7 +42,16 @@ export interface Turn {
    * What the question was narrowed to, and the collection asked, if any: genki keeps no filter with
    * a turn.
    */
-  scope?: { narrowedTo: readonly string[]; corpus?: string | undefined } | undefined;
+  scope?:
+    | {
+        narrowedTo: readonly string[];
+        corpus?: string | undefined;
+        /** The filter it was asked with, as the question narrowed it (the next look). */
+        selection?: FilterSelection | undefined;
+        /** How many documents that filter read from, counted from the facets. */
+        documents?: number | undefined;
+      }
+    | undefined;
 }
 
 /** A thread in the list, with the service it was made for. */
@@ -70,6 +81,8 @@ export interface AssistantApi {
     selection: FilterSelection,
     dataset: string,
     fields: readonly FieldSpec[],
+    /** The values each field has, for a field with more chosen than genki takes. */
+    lists?: readonly FilterField[],
   ): Promise<FilterField[]>;
   /** The line under a document's title in «Dokumenter», where the profile says how to find it. */
   loadAbout(dataset: string, documentId: string): Promise<readonly string[] | undefined>;
@@ -109,21 +122,48 @@ export const failureOf = (error: unknown): AnswerFailure => {
   }
 };
 
-/** The fields the question is narrowed by, in genki's filter shape. */
+/** The longest facets address sent: Node answers 431 past 16 KB of headers, token included. */
+export const FACETS_URL_LIMIT = 8_000;
+
+/** The most values genki's filter takes in a field (`maxOptions` in adapter-rest). */
+export const FILTER_VALUES_LIMIT = 100;
+
+/** A field with more values chosen, and more left out, than genki's filter takes. */
+export class FilterTooLarge extends Error {
+  constructor(readonly field: string) {
+    super(`filter field ${field} has too many values chosen and left out to send`);
+  }
+}
+
+/** The fields asked with, in genki's shape; past the limit, the values `lists` has left out. */
 export const filterSet = (
   selection: FilterSelection,
   fields: readonly FieldSpec[],
+  lists?: readonly FilterField[],
 ): FilterSet | undefined => {
-  const chosen = fields
-    .filter((f) => (selection[f.id]?.length ?? 0) > 0)
-    .map((f) => ({
-      field: f.id,
-      type: 'multiselect' as const,
-      'value-type': f.integer ? ('integer' as const) : ('string' as const),
-      'selected-options': f.integer
-        ? (selection[f.id] ?? []).map(Number)
-        : [...(selection[f.id] ?? [])],
-    }));
+  const chosen = fields.flatMap((f) => {
+    const values = selection[f.id] ?? [];
+    if (values.length === 0) return [];
+    const ticked = new Set(values);
+    const leftOut = lists
+      ?.find((list) => list.id === f.id)
+      ?.options.map((option) => option.value)
+      .filter((value) => !ticked.has(value));
+    const asLeftOut = values.length > FILTER_VALUES_LIMIT;
+    if (asLeftOut && (!leftOut || leftOut.length > FILTER_VALUES_LIMIT))
+      throw new FilterTooLarge(f.id);
+    // Every value it has is chosen: it narrows nothing.
+    if (asLeftOut && leftOut?.length === 0) return [];
+    const sent = asLeftOut && leftOut ? leftOut : values;
+    return [
+      {
+        field: f.id,
+        type: asLeftOut ? ('not-in-set' as const) : ('multiselect' as const),
+        'value-type': f.integer ? ('integer' as const) : ('string' as const),
+        'selected-options': f.integer ? sent.map(Number) : [...sent],
+      },
+    ];
+  });
   return chosen.length > 0 ? { fields: chosen } : undefined;
 };
 
@@ -143,7 +183,16 @@ interface WireSource {
   url?: string;
   document_id?: string;
   documentId?: string;
-  excerpts?: { chunk_id?: string; chunkId?: string; text?: string; position?: number }[];
+  excerpts?: {
+    chunk_id?: string;
+    chunkId?: string;
+    text?: string;
+    position?: number;
+    /** Its own section path, which the Sources block titles the excerpt by. */
+    heading?: string;
+    /** The markers that cite this excerpt, from a service that cites excerpts. */
+    markers?: string[];
+  }[];
   version?: string;
   publishedAt?: string;
 }
@@ -162,6 +211,10 @@ interface ApiMessage {
   created: number;
   chunks: ApiChunk[];
   sources?: WireSource[];
+  /** The answer's markers, `{ marker, chunk_id, document }`, when the stored turn carries them. */
+  markers?: unknown;
+  /** The assistant message's run, the id feedback is sent on. */
+  task?: string;
 }
 
 /** The collection a thread was made in, from its `corpus:` tag. */
@@ -188,30 +241,31 @@ export const sourceFromWire = (raw: WireSource, corpus?: CorpusProfile, at = 0):
     ...(raw.publishedAt ? { publishedAt: raw.publishedAt } : {}),
     excerpts: (raw.excerpts ?? []).map((e, i) => {
       const text = e.text ?? '';
+      const heading: unknown = e.heading;
       return {
         chunkId: e.chunkId || e.chunk_id || minted(i),
         text,
         ...(e.position !== undefined ? { position: e.position } : {}),
+        ...(typeof heading === 'string' ? { heading } : {}),
         ...(text ? {} : { textUnavailable: true }),
       };
     }),
   };
 };
 
-// A stored answer without `sources`: its chunks, in ranking order, are what `[n]` counts, one
-// excerpt each (kunnskapsassistenten's sourcesFromChunks).
-const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile) => {
+// A stored answer without `sources` or markers cites by document: `[n]` is its n-th document.
+const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile): SourceDocument[] => {
   const documents = new Map<
     string,
     SourceDocument & { excerpts: SourceDocument['excerpts'][number][] }
   >();
-  const markers: AnswerMarker[] = [];
   chunks.forEach((chunk, i) => {
     const documentId = chunk.docNum ?? chunk.chunkId;
     let document = documents.get(documentId);
     if (!document) {
       const url = chunk.docNum ? corpus?.documentUrl?.(chunk.docNum) : undefined;
       document = {
+        index: documents.size + 1,
         title: chunk.docTitle?.trim() ?? '',
         documentId,
         ...(url ? { url } : {}),
@@ -220,24 +274,65 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile) => {
       documents.set(documentId, document);
     }
     document.excerpts.push({ chunkId: chunk.chunkId, text: chunk.contentMarkdown, position: i });
-    markers.push({ marker: String(i + 1), chunkId: chunk.chunkId, documentId });
   });
-  return { sources: [...documents.values()], markers };
+  return [...documents.values()];
+};
+
+// The turn's own list; a marker that does not name its excerpt and document is left out.
+const storedMarkers = (raw: unknown): AnswerMarker[] | undefined => {
+  const found = (Array.isArray(raw) ? (raw as unknown[]) : []).flatMap((m) => {
+    if (typeof m !== 'object' || m === null) return [];
+    const { marker, chunk_id: chunkId, document: documentId } = m as Record<string, unknown>;
+    return typeof marker === 'string' &&
+      typeof chunkId === 'string' &&
+      typeof documentId === 'string'
+      ? [{ marker, chunkId, documentId }]
+      : [];
+  });
+  return found.length > 0 ? found : undefined;
+};
+
+// A turn stored with markers only on its excerpts: each leads to the excerpt as drawn.
+const markersFromSources = (
+  wire: readonly WireSource[],
+  drawn: readonly SourceDocument[],
+): AnswerMarker[] | undefined => {
+  const found = wire.flatMap((source, s) =>
+    (source.excerpts ?? []).flatMap((excerpt, e) => {
+      const shown = drawn[s]?.excerpts[e];
+      const markers: unknown = excerpt.markers;
+      if (!shown || !Array.isArray(markers)) return [];
+      const documentId = drawn[s]?.documentId;
+      return markers
+        .filter((marker): marker is string => typeof marker === 'string')
+        .map((marker) => ({
+          marker,
+          chunkId: shown.chunkId,
+          ...(documentId ? { documentId } : {}),
+        }));
+    }),
+  );
+  return found.length > 0 ? found : undefined;
 };
 
 const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerData => {
-  if (message.sources && message.sources.length > 0)
-    return {
-      text: message.text,
-      status: 'complete',
-      sources: message.sources.map((s, at) => sourceFromWire(s, corpus, at)),
-      created: message.created,
-    };
-  if (message.chunks.length > 0) {
-    const { sources, markers } = fromChunks(message.chunks, corpus);
-    return { text: message.text, status: 'complete', sources, markers, created: message.created };
+  const keptMarkers = storedMarkers(message.markers);
+  const stored = {
+    text: message.text,
+    status: 'complete' as const,
+    created: message.created,
+    ...(message.task ? { runId: message.task } : {}),
+  };
+  if (message.sources && message.sources.length > 0) {
+    const sources = message.sources.map((s, at) => sourceFromWire(s, corpus, at));
+    const markers = keptMarkers ?? markersFromSources(message.sources, sources);
+    return { ...stored, sources, ...(markers ? { markers } : {}) };
   }
-  return { text: message.text, status: 'complete', created: message.created };
+  if (message.chunks.length > 0) {
+    const sources = fromChunks(message.chunks, corpus);
+    return { ...stored, sources, ...(keptMarkers ? { markers: keptMarkers } : {}) };
+  }
+  return stored;
 };
 
 /**
@@ -295,13 +390,21 @@ export const createGenkiApi = ({
     return (await response.json()) as T;
   };
 
-  const facetsQuery = (dataset: string, fields: string, filter?: FilterSet | object) =>
-    new URLSearchParams({
+  const getFacets = <T>(dataset: string, fields: string, filter?: FilterSet | object) => {
+    const query = new URLSearchParams({
       tenant,
       'dataset-config-key': dataset,
       fields,
       ...(filter ? { filter: JSON.stringify(filter) } : {}),
     });
+    const path = `/api/facets?${query}`;
+    const length = `${baseUrl}${path}`.length;
+    if (length > FACETS_URL_LIMIT)
+      return Promise.reject(
+        new HttpError(431, `facets address of ${length} characters, over ${FACETS_URL_LIMIT}`),
+      );
+    return getJson<T>(path);
+  };
 
   const aboutCache = new Map<string, Promise<readonly string[] | undefined>>();
 
@@ -387,15 +490,15 @@ export const createGenkiApi = ({
     },
 
     // One call per field, narrowed by the other fields only: each count is «given the others».
-    loadFacets: (selection, dataset, fields) =>
+    loadFacets: (selection, dataset, fields, lists) =>
       Promise.all(
         fields.map(async (field) => {
           const others = Object.fromEntries(
             Object.entries(selection).filter(([id]) => id !== field.id),
           );
-          const body = await getJson<{
+          const body = await getFacets<{
             fields: { field: string; options: { value: string; count: number }[] }[];
-          }>(`/api/facets?${facetsQuery(dataset, field.id, filterSet(others, fields))}`);
+          }>(dataset, field.id, filterSet(others, fields, lists));
           const options = (body.fields.find((f) => f.field === field.id)?.options ?? []).map(
             (o) => ({
               value: String(o.value),
@@ -405,6 +508,7 @@ export const createGenkiApi = ({
           return {
             id: field.id,
             label: field.label,
+            ...(field.heading ? { heading: field.heading } : {}),
             ...(field.kind ? { kind: field.kind } : {}),
             options,
           };
@@ -428,9 +532,9 @@ export const createGenkiApi = ({
           },
         ],
       };
-      const found = getJson<{
+      const found = getFacets<{
         fields: { field: string; options: { value: string | number; count: number }[] }[];
-      }>(`/api/facets?${facetsQuery(dataset, about.fields.join(','), filter)}`).then(
+      }>(dataset, about.fields.join(','), filter).then(
         (body) => {
           const values = (field: string) =>
             (body.fields.find((f) => f.field === field)?.options ?? [])

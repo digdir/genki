@@ -50,6 +50,7 @@ export interface RunInput {
   authorKind: AuthorKind;
   filesChanged: number;
   linesChanged: number;
+  oversized: boolean | null;
   startedAt: string;
   output: { findings?: Finding[] } | null;
   execution: ExecutionMessage[];
@@ -86,6 +87,7 @@ export function runRecord(input: RunInput) {
     author_kind: input.authorKind,
     files_changed: input.filesChanged,
     lines_changed: input.linesChanged,
+    oversized: input.oversized,
     findings: findings.map((f) => ({
       severity: f.severity.toLowerCase().replace('-', ''),
       category: f.category ?? null,
@@ -138,6 +140,7 @@ function main() {
     authorKind: authorKind(env('USER_TYPE'), env('USER_LOGIN'), trailers),
     filesChanged: Number(env('FILES_CHANGED')),
     linesChanged: Number(env('ADDITIONS')) + Number(env('DELETIONS')),
+    oversized: env('OVERSIZED') === '' ? null : env('OVERSIZED') === 'true',
     startedAt: env('STARTED_AT'),
     output: env('OUT') ? JSON.parse(env('OUT')) : null,
     execution,

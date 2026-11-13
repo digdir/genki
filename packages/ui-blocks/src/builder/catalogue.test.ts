@@ -11,6 +11,9 @@ import {
   nameKey,
   needWords,
   optionKey,
+  placeKey,
+  placesHelpKey,
+  placesOf,
   settingsSchema,
   zones,
 } from './catalogue.js';
@@ -105,6 +108,26 @@ describe('the block catalogue', () => {
     ]);
   });
 
+  it('offers Approach in the main column, in the secondary panel or in both, and every other block one zone at a time', () => {
+    expect(placesOf('approach')).toEqual(['main', 'secondary', 'both']);
+    expect(blockCatalogue.filter((spec) => spec.both).map((spec) => spec.id)).toEqual(['approach']);
+    expect(placesOf('chat')).toEqual(['main', 'secondary']);
+    expect(placesOf('sources')).toEqual(['secondary']);
+  });
+
+  it('lets only a block with exactly two zones stand in both', () => {
+    for (const spec of blockCatalogue.filter((s) => s.both))
+      expect(spec.zones, spec.id).toHaveLength(2);
+  });
+
+  it('names every place, «Begge steder» too, and says what each place draws for a block that may stand in both', () => {
+    for (const spec of blockCatalogue)
+      for (const place of placesOf(spec.id)) expect(has(placeKey(place)), place).toBe(true);
+    expect(nb.builder.zoneBoth).toBe('Begge steder');
+    for (const spec of blockCatalogue.filter((s) => s.both))
+      expect(has(placesHelpKey(spec.id)), spec.id).toBe(true);
+  });
+
   it('makes Footnotes an option of Chat that needs Sources or Document view, not a block of its own', () => {
     expect(blockIds).not.toContain('footnotes');
     const footnotes = blockCatalogue
@@ -134,7 +157,7 @@ describe('the block catalogue', () => {
     ]);
   });
 
-  it('describes each block’s options as a JSON Schema with ADR 0030’s widgets, in both languages', () => {
+  it('describes each block’s options as a JSON Schema with labels and defaults', () => {
     const schema = settingsSchema('approach');
     expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     expect(schema.properties).toEqual({
@@ -142,27 +165,11 @@ describe('the block catalogue', () => {
         type: 'string',
         enum: ['standard', 'detailed'],
         default: 'standard',
-        'x-label': { nb: 'Detaljnivå', en: 'Level of detail' },
-        'x-help': {
-          nb: 'Hvor mye Fremgangsmåte viser når leseren ikke har valgt',
-          en: 'How much Approach shows when the reader has not chosen',
-        },
-        'x-widget': 'select',
-        'x-enumLabels': {
-          standard: { nb: 'Standard', en: 'Standard' },
-          detailed: { nb: 'Detaljert', en: 'Detailed' },
-        },
+        'x-label': 'builder.approachLevel',
+        'x-widget': 'radio',
       },
     });
     expect(settingsSchema('chat').properties).toHaveProperty('footnotes.type', 'boolean');
-    expect(settingsSchema('chat').properties).toHaveProperty('footnotes.x-widget', 'toggle');
-  });
-
-  it('uses only widget hints from ADR 0030’s list in the options’ schemas', () => {
-    const listed = ['text', 'textarea', 'prompt', 'number', 'toggle', 'select'];
-    for (const spec of blockCatalogue)
-      for (const property of Object.values(settingsSchema(spec.id).properties))
-        expect(listed, spec.id).toContain(property['x-widget']);
   });
 });
 

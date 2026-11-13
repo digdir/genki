@@ -1,12 +1,18 @@
+import { shownKeys } from './internal-services.js';
 import { randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
-import { boundService, type KeyPolicy, type LegacyKeyScope } from '@genai/identity';
+import {
+  boundService,
+  KEY_SCOPE_RIGHTS,
+  type KeyPolicy,
+  type LegacyKeyScope,
+} from '@genai/identity';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
 import type { AdminHandler, AdminOutcome } from './admin.js';
 import { changeReasonOf, isReasonLongEnough, minimumReasonLength } from './http.js';
 import { t } from './i18n/index.js';
-import { carriesAltinnActions, type Right, rights, rightsOf } from './rights.js';
+import { type Right, rightsAreChecked, rightsOf } from './rights.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import type { KeyPolicyStore, TenantApiKeys, TenantKeyPolicy } from './routes/portal-routes.js';
 
@@ -97,11 +103,14 @@ const failed = (target: string, path: string, message: string): AdminOutcome => 
 const tenantOnly = (principal: Principal, tenant: string) =>
   principal.kind !== 'operator' && !principal.actor && principal.tenant === tenant;
 
-const impliedRights = (scopes: readonly string[]): readonly Right[] =>
-  scopes.includes('admin') ? rights : scopes.includes('ingest') ? ['manage-datasets'] : [];
+const impliedRights = (scopes: readonly string[]): readonly Right[] => [
+  ...new Set(
+    scopes.flatMap((s) => (Object.hasOwn(KEY_SCOPE_RIGHTS, s) && KEY_SCOPE_RIGHTS[s]) || []),
+  ),
+];
 
 const rightBeyondHolder = (principal: Principal, tenant: string, scopes: readonly string[]) => {
-  if (!carriesAltinnActions(principal)) return undefined;
+  if (!rightsAreChecked(principal)) return undefined;
   const held = rightsOf(principal, tenant);
   return impliedRights(scopes).find((r) => !held.has(r));
 };
@@ -118,11 +127,12 @@ const problem = (
 
 export const createKeyPoliciesModule =
   (input: KeyPoliciesDeps): PlatformModuleFactory =>
-  () => {
+  (deps) => {
     const { policies, keys } = input;
     const inUse = async (tenant: string, id: string) =>
       (await keys.list(tenant)).filter((k) => k.policy?.id === id);
-    const idsOf = async (tenant: string, id: string) => (await inUse(tenant, id)).map((k) => k.id);
+    const idsOf = async (tenant: string, id: string) =>
+      (await shownKeys(deps.definitions, tenant, await inUse(tenant, id))).map((k) => k.id);
 
     const handlers: Record<string, AdminHandler> = {
       [keyPolicySaveAction]: async (data, principal) => {
@@ -286,7 +296,11 @@ export const createKeyPoliciesModule =
         app.get(base, async (c) => {
           const guard = await entered(c);
           if ('response' in guard) return guard.response;
-          const all = await keys.list(guard.tenant);
+          const all = await shownKeys(
+            deps.definitions,
+            guard.tenant,
+            await keys.list(guard.tenant),
+          );
           const found = await policies.listPolicies(guard.tenant);
           return c.json({
             data: found.map((p) =>

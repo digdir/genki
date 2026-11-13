@@ -325,10 +325,7 @@ const reply = (text: string, sources: ChatReply['sources']): ChatReply => ({
   task: `task-${Math.random().toString(36).slice(2, 10)}`,
 });
 
-/**
- * The approach as the platform should send it, from the design. The platform sends only tool
- * names today (ADR 0053); this lets the card be seen in full.
- */
+/** The approach as the design has it; the platform sends only tool names today (ADR 0053). */
 const exampleSteps: StreamStep[] = [
   {
     tool: 'plan_queries',

@@ -1,6 +1,7 @@
 import { defineCatalogue, type Translation } from '@genai/i18n';
 import * as answerActions from './answer-actions/i18n.js';
 import * as answer from './answer/i18n.js';
+import * as approach from './approach/i18n.js';
 import * as composer from './composer/i18n.js';
 import * as conversation from './conversation/i18n.js';
 import * as corpus from './corpus/i18n.js';
@@ -23,6 +24,7 @@ import * as welcome from './welcome/i18n.js';
  */
 export const nb = defineCatalogue({
   ...shared.nb,
+  ...approach.nb,
   ...sources.nb,
   ...answer.nb,
   ...conversation.nb,
@@ -41,6 +43,7 @@ export const nb = defineCatalogue({
 });
 export const en = {
   ...shared.en,
+  ...approach.en,
   ...sources.en,
   ...answer.en,
   ...conversation.en,

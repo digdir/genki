@@ -6,8 +6,7 @@ const strip = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 const flatten = (css: string) =>
   css.replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/,? \)/g, ')');
 
-// Every block's own stylesheet, branded the Designsystemet way. ui-blocks.css still
-// holds Approach, which joins when it moves into a folder of its own.
+// Every block's own stylesheet, branded the Designsystemet way.
 const sheets = readdirSync(import.meta.dirname, { recursive: true, encoding: 'utf8' })
   .filter((path) => path.endsWith('.css') && path.includes('/'))
   .sort()
@@ -43,8 +42,7 @@ const genaiUses = (text: string) => {
   return uses;
 };
 
-// A value no token has, such as a width, a viewport height or a line count, is allowed as the
-// fallback of a block's own variable, so a host can still change it.
+// A value no token has, such as a width, may be the fallback of a block's own variable.
 const literal = /^(?:\d*\.?\d+(?:px|rem|em|r?lh|ch|%|[dsl]?vh|vw)?)$/;
 const isLiteralFallback = (use: { fallback: string }) => literal.test(use.fallback);
 
@@ -59,6 +57,11 @@ const literalSizes = (flat: string) => {
     []
   );
 };
+
+const bareWeights = (css: string) => css.match(/font-weight:(?!\s*var\()[^;}]*/g) ?? [];
+
+// A style query reads a variable, as in `@container style(--genai-block-lines: 1)`.
+const variablesSet = (css: string) => css.match(/(?<!style\()--genai-[a-z-]+\s*:/g) ?? [];
 
 // Pinned to a colour family on purpose, each with a comment in the CSS.
 const accentPins = [
@@ -75,7 +78,7 @@ const warningPins = [
   '--genai-sources-mark-current-color',
 ];
 
-describe.each(sheets)('the styles in $path', ({ css, flat }) => {
+describe.each(sheets)('the styles in $path', ({ path, css, flat }) => {
   it('hold no literal colour, only Designsystemet tokens', () => {
     expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
     expect(css.match(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi) ?? []).toEqual([]);
@@ -86,7 +89,13 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
 
   it('hold no literal size or weight outside a --genai- fallback, but the container query', () => {
     expect(literalSizes(flat)).toEqual([]);
-    expect(css.match(/font-weight:\s*\d/g) ?? []).toEqual([]);
+    expect(bareWeights(css)).toEqual([]);
+  });
+
+  it('name every variable after the block whose folder holds the sheet', () => {
+    const block = path.slice(0, path.indexOf('/'));
+    const names = genaiUses(flat).map((use) => use.name);
+    expect(names.filter((name) => !name.startsWith(`--genai-${block}-`))).toEqual([]);
   });
 
   it('read every token through a --genai- variable, with the token as the fallback', () => {
@@ -109,7 +118,7 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
   });
 
   it('never set a --genai- variable, which is the host’s to set', () => {
-    expect(css).not.toMatch(/--genai-[a-z-]+\s*:/);
+    expect(variablesSet(css)).toEqual([]);
   });
 
   it('sit in one layer after Designsystemet’s, so a host’s own CSS wins', () => {
@@ -131,10 +140,41 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
 });
 
 describe('the lint', () => {
-  it('reads every block stylesheet, Sources and the shared Markdown among them', () => {
+  it('reads the stylesheets in the blocks’ folders, Approach’s, Sources’ and Markdown’s among them', () => {
     expect(sheets.map((sheet) => sheet.path)).toEqual(
-      expect.arrayContaining(['markdown/markdown.css', 'sources/sources.css']),
+      expect.arrayContaining([
+        'approach/approach.css',
+        'markdown/markdown.css',
+        'sources/sources.css',
+      ]),
     );
+  });
+
+  it.each(['bold', '600', 'normal'])(
+    'refuses font-weight: %s bare, and takes it behind a variable',
+    (value) => {
+      expect(bareWeights(`a { font-weight: ${value}; }`)).toEqual([`font-weight: ${value}`]);
+      expect(bareWeights(`a { font-weight: var(--genai-block-weight, ${value}); }`)).toEqual([]);
+    },
+  );
+
+  it('finds every block stylesheet imported by ui-blocks.css, which hosts load', () => {
+    const entry = read('ui-blocks.css');
+    expect(sheets.filter(({ path }) => !entry.includes(`@import './${path}';`))).toEqual([]);
+  });
+
+  it('leaves ui-blocks.css, which it does not read, nothing but the imports and the hidden text', () => {
+    const rest = strip(read('ui-blocks.css'))
+      .replace(/@import '[^']+';/g, '')
+      .replace(/\.uib-visually-hidden \{[^}]*\}/, '');
+    expect(rest.trim()).toBe('');
+  });
+
+  it('takes a style query on a --genai- variable as a read, and a declaration of one as a set', () => {
+    expect(variablesSet('@container style(--genai-block-lines: 1) { a { color: red; } }')).toEqual(
+      [],
+    );
+    expect(variablesSet('a { --genai-block-lines: 1; }')).toEqual(['--genai-block-lines:']);
   });
 
   it.each([

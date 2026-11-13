@@ -155,11 +155,26 @@
                 <code>assistantName</code> names who asked back, «KI-assistenten» without it.
               </li>
               <li>
-                <code>variant</code>: <code>panel</code> (the default) or <code>compact</code>.
+                <code>variant</code>: <code>panel</code> (the default), <code>compact</code>, or
+                <code>tool</code>, the dev boards' «Kilder» tool (dev-kilder-hoyre): the search with
+                «Søk i utdragene» as its placeholder and name, the caption «Utdrag svaret bygger på»
+                naming the list, each excerpt titled by the last step of its <code>heading</code>
+                where it has one, with its links back after it, else «Utdrag N», a document's
+                excerpts in its card even when the footnotes name only documents, and a closed
+                excerpt as two lines of its text, the last fading out.
                 <code>search</code> draws the search over the excerpts, on in the panel.
                 <code>title</code> is the heading, «Kilder», or <code>false</code> for none.
                 <code>headingLevel</code> is each document's heading level, 2 to 5, 3 by default.
                 <code>documentsClosed</code> starts every card closed.
+              </li>
+              <li>
+                <code>foldUncited</code>: the documents the answer read but cites nowhere stand
+                after the cited ones, in a Designsystemet <code>Details</code>, «Andre kilder som
+                ble lest (N)», closed. A search hit or a target in one of them opens it, and the
+                search steps through the hits in the order drawn. An answer that cites none of them,
+                which genki sends up to 10 read documents for, has all of them folded and no list
+                over them. Nothing is folded without <code>citations</code>, or while the answer
+                streams.
               </li>
               <li>
                 <code>corpus</code> names the collection in the disclaimer and the links, «Les
@@ -460,6 +475,51 @@
                   <td><code>--genai-sources-preview-lines</code></td>
                   <td><code>2</code></td>
                   <td>preview lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-preview-block-size</code></td>
+                  <td><code>2lh</code></td>
+                  <td><code>tool</code>: a closed excerpt's height, two of its lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-preview-fade-block-size</code></td>
+                  <td><code>1lh</code></td>
+                  <td><code>tool</code>: the fade over a closed excerpt's last line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-tool-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td><code>tool</code>: between the search, the caption and the list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-caption-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td><code>tool</code>: «Utdrag svaret bygger på»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-caption-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td><code>tool</code>: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-caption-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td><code>tool</code>: the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-tool-excerpt-title-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td><code>tool</code>: an excerpt's title, its section or «Utdrag N»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-tool-excerpt-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td><code>tool</code>: an excerpt's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-tool-excerpt-title-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td><code>tool</code>: an excerpt's title</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-quote-font-size</code></td>

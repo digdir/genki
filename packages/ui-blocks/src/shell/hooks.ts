@@ -5,11 +5,7 @@ const onResize = (change: () => void) => {
   return () => window.removeEventListener('resize', change);
 };
 
-/**
- * The layout viewport's width, for fitting dragged panels. `clientWidth`, not `innerWidth`: on a
- * phone that is the visual viewport, which zooms out when the page is too wide and stays so. Not
- * a ResizeObserver on the shell, whose width depends on this number and would loop.
- */
+/** The layout viewport's width, `clientWidth`, since `innerWidth` zooms out on a phone. */
 export const useViewportWidth = () =>
   useSyncExternalStore(
     onResize,
@@ -17,24 +13,17 @@ export const useViewportWidth = () =>
     () => Number.POSITIVE_INFINITY,
   );
 
-/**
- * Whether a media query matches, read during render so the first paint is already right. A media
- * query, not CSS, wherever the answer changes what a button reports (`aria-expanded`).
- */
+/** Whether a media query matches, read during render so the first paint is right. */
 export const useMedia = (query: string) =>
   useSyncExternalStore(
     (change) => {
-      const list = mediaList(query);
-      list?.addEventListener('change', change);
-      return () => list?.removeEventListener('change', change);
+      const list = window.matchMedia(query);
+      list.addEventListener('change', change);
+      return () => list.removeEventListener('change', change);
     },
-    () => mediaList(query)?.matches ?? false,
+    () => window.matchMedia(query).matches,
     () => false,
   );
-
-// Where there is no `matchMedia`, as in a host's test DOM, no query matches.
-const mediaList = (query: string) =>
-  typeof window.matchMedia === 'function' ? window.matchMedia(query) : undefined;
 
 // What Tab can land on, by attribute rather than layout, so browsers and tests agree.
 const tabbable = [
@@ -61,11 +50,7 @@ const hasTabbable = (region: HTMLElement) => {
   return false;
 };
 
-/**
- * Whether a scrolling region needs a tab stop of its own: it scrolls and holds nothing the
- * keyboard can reach (WCAG 2.1.1, axe `scrollable-region-focusable`). Measured again on resize and
- * on every change of content; a callback ref, since the region moves into a drawer and back.
- */
+/** Whether a region scrolls with nothing the keyboard can reach (WCAG 2.1.1), kept measured. */
 export const useScrollTabStop = (): [boolean, (element: HTMLElement | null) => void] => {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const [scrolls, setScrolls] = useState(false);
@@ -116,14 +101,7 @@ export const useScrollTabStop = (): [boolean, (element: HTMLElement | null) => v
 /** The pinned head's height, set on the region under it, for a block that pins its own head below. */
 const pinnedSizeProperty = '--uib-shell-pinned-block-size';
 
-/**
- * Scroll padding as tall as a pinned head, or scrolling into view and focus land under it (WCAG
- * 2.4.11), and the same height as `pinnedSizeProperty`. Observed, because the head changes with
- * its content. Also set at once whenever the region is shown: an observer reports after the next
- * frame's callbacks, so a block that scrolls to its target there, in a panel that just opened,
- * would land under the head. The effect runs after its children's, so a drawer's dialog is
- * already open when the head is measured.
- */
+/** Scroll padding as tall as a pinned head, so focus never lands under it (WCAG 2.4.11). */
 export const useScrollPadding = (
   region: HTMLElement | null,
   head: HTMLElement | null,

@@ -247,6 +247,35 @@ describe('the VACUUM workaround for pgvector 0.8.2', () => {
   });
 });
 
+describe('the knowledge writer', () => {
+  it('a document with U+0000 in its title, fields, chunks and phrases is written without it', async () => {
+    const generation = `g-heavy-${++generations}`;
+    const d = dataset(`digdir/heavy-${generations}`);
+    await prepareGeneration(owner, d, generation);
+    const writer = knowledgeWriterOf(owner, async () => undefined, new AbortController().signal);
+
+    await writer.store(d, generation, {
+      id: 'nul',
+      title: 'Tittel\u0000 med nulltegn',
+      fields: { kind: 'rap\u0000port' },
+      chunks: [{ id: 'nul#0', position: 0, text: 'Tekst\u0000 her', vector: vector(1) }],
+      phrases: [{ id: 'nul#p0', chunkId: 'nul#0', text: 'Fra\u0000se', vector: vector(2) }],
+    });
+
+    const read = async (sql: string) => JSON.stringify((await admin.query(sql)).rows);
+    const docs = await read(
+      `select title, fields, fields_text from ${partitionOf('kn_docs', generation)}`,
+    );
+    const chunks = await read(`select text from ${partitionOf('kn_chunks', generation)}`);
+    const phrases = await read(`select text from ${partitionOf('kn_phrases', generation)}`);
+    expect(docs).toContain('Tittel med nulltegn');
+    expect(docs).toContain('rapport');
+    expect(chunks).toContain('Tekst her');
+    expect(phrases).toContain('Frase');
+    expect(docs + chunks + phrases).not.toContain('\\u0000');
+  });
+});
+
 describe('builds the worker watches', () => {
   it("a build's progress is read and the build cancelled from the worker's owner login", async () => {
     // A slow index expression keeps CREATE INDEX running long enough to watch and cancel it.

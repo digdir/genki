@@ -1,4 +1,12 @@
-import { Button, Card, Heading, Link, Paragraph, Skeleton } from '@digdir/designsystemet-react';
+import {
+  Button,
+  Card,
+  Details,
+  Heading,
+  Link,
+  Paragraph,
+  Skeleton,
+} from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import {
   ArrowLeftIcon,
@@ -37,7 +45,12 @@ import {
 import { SourcesSearch } from './SourcesSearch.js';
 import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } from './types.js';
 
-export type SourcesVariant = 'panel' | 'compact';
+/**
+ * `panel`, kunnskapsassistenten's «Kilder»; `compact`, tighter; `tool`, the dev boards' «Kilder»
+ * tool (dev-kilder-hoyre): the search «Søk i utdragene» with its caption, «Utdrag svaret bygger
+ * på», each excerpt titled by its section where it has one, and its closed text fading out.
+ */
+export type SourcesVariant = 'panel' | 'compact' | 'tool';
 
 /** What became of the answer the sources belong to, or `unasked` before the first question. */
 export type SourcesAnswerStatus =
@@ -45,11 +58,7 @@ export type SourcesAnswerStatus =
 
 export interface SourcesProps {
   sources?: readonly SourceDocument[] | undefined;
-  /**
-   * What became of the answer, so a panel with no sources says why: nothing asked yet, stopped
-   * before the sources came, failed, or waiting on a question back. `streaming` is the loading
-   * state until sources arrive.
-   */
+  /** What became of the answer, so an empty panel says why; `streaming` until sources come. */
   answerStatus?: SourcesAnswerStatus | undefined;
   /** The app's store keeps no sources with a turn, so an empty list is not known to mean none. */
   sourcesNotStored?: boolean | undefined;
@@ -61,17 +70,9 @@ export interface SourcesProps {
   answerCount?: number | undefined;
   /** The reader stepped to another answer: its index. The app passes that answer's sources. */
   onAnswerChange?: ((index: number) => void) | undefined;
-  /**
-   * The answer's footnotes in order. Without them nothing is numbered and nothing links back.
-   * Excerpts are numbered only when every footnote names its excerpt; footnotes that name only
-   * documents number nothing.
-   */
+  /** The answer's footnotes in order; excerpts are numbered only when every footnote names one. */
   citations?: readonly SourceCitation[] | undefined;
-  /**
-   * A link back to the answer was followed: that footnote's index in `citations`. Beside a cited
-   * excerpt's title, «Utdrag N», stands one link per footnote that cites it, drawn when this or
-   * `citationHref` is given.
-   */
+  /** A link back to the answer was followed: that footnote's index in `citations`. */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
   /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
   citationHref?: ((citation: number) => string | undefined) | undefined;
@@ -88,6 +89,8 @@ export interface SourcesProps {
   hasOwnDocuments?: boolean | undefined;
   search?: boolean | undefined;
   documentsClosed?: boolean | undefined;
+  /** The documents the answer cites nowhere, last and folded: «Andre kilder som ble lest (N)». */
+  foldUncited?: boolean | undefined;
   headingLevel?: 2 | 3 | 4 | 5 | undefined;
   /** Back to the footnote the reader followed. */
   onReturn?: (() => void) | undefined;
@@ -216,15 +219,7 @@ export interface BackTo {
   onShow: ((citation: number) => void) | undefined;
 }
 
-/**
- * «Utdrag N» over a cited excerpt, a title and not a link, and right beside it the way back to
- * the answer: one small link per footnote that cites the excerpt, 1, 2, 3 in the order they
- * stand in the answer, as Wikipedia's back-references. Each is a real link, so a reader can tab
- * to, or open, any one of them. Its name starts with the number seen (WCAG 2.5.3) and says which
- * footnote and which place it leads to: «1: fotnote 2, første sted i svaret». Decided
- * 6 November 2026, in place of a control that cycled, a row on the card's head, a title that was
- * itself the first link, and round marks like the answer's. The document view draws the same.
- */
+/** «Utdrag N» and one link back to each footnote that cites the excerpt, in answer order. */
 export const ExcerptNumber = ({
   n,
   label,
@@ -257,8 +252,7 @@ export const ExcerptNumber = ({
       <span className="uib-sources-excerpt-number">{label}</span>
       <span className="uib-sources-uses">
         {uses.map((citation, place) => (
-          // Named by `aria-label`: hidden spans inside a link are boxes of their own to a
-          // browser, which then reads «1 , fotnote 2».
+          // Named by `aria-label`: hidden spans in a link make a browser read «1 , fotnote 2».
           <Link
             key={citation}
             href={href?.(citation) ?? '#'}
@@ -282,12 +276,7 @@ export const ExcerptNumber = ({
   );
 };
 
-/**
- * An excerpt's title: «Utdrag N» with its links back and its section when the answer cites it, or
- * else its section or a plain «Utdrag», with no number from its place. Named as a heading by what
- * it says: the number stands on a line of its own, which a browser reads without the colon, and
- * the links in it have names of their own. Sources and the document view draw the same.
- */
+/** An excerpt's title: «Utdrag N», links back and section when cited; else section or «Utdrag». */
 export const ExcerptTitle = ({
   id,
   level,
@@ -296,6 +285,7 @@ export const ExcerptTitle = ({
   section,
   uses,
   back,
+  sectionFirst,
 }: {
   id?: string | undefined;
   level: number;
@@ -305,21 +295,28 @@ export const ExcerptTitle = ({
   section: string | undefined;
   uses: readonly number[];
   back: BackTo | undefined;
+  /**
+   * The section is the title, in the number's place, with the links back after it: the dev
+   * boards' excerpt (dev-kilder-hoyre). Without a section, «Utdrag N» as before.
+   */
+  sectionFirst?: boolean | undefined;
 }) => {
   const t = useT();
   const number = n === undefined ? undefined : t('sources.excerptNumber', { n });
+  const bySection = sectionFirst && section !== undefined;
   return (
     <Heading
       id={id}
       level={level as Level}
       data-size="2xs"
       className={className}
+      // Named by what it says: a browser reads the number's line without its colon.
       aria-label={number && (section ? `${number}: ${section}` : number)}
     >
       {n === undefined || !number ? null : (
-        <ExcerptNumber n={n} label={number} uses={uses} back={back} />
+        <ExcerptNumber n={n} label={bySection ? section : number} uses={uses} back={back} />
       )}
-      {section ? <span>{section}</span> : null}
+      {section && !(bySection && n !== undefined) ? <span>{section}</span> : null}
       {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
     </Heading>
   );
@@ -336,10 +333,7 @@ export const useExcerptName = () => {
         : t('sources.excerptNameUnnumbered');
 };
 
-/**
- * «Les side N på Kudos», to the excerpt's page, named in one piece with which excerpt and which
- * document: a hidden box after the words would make a browser read a space before the comma.
- */
+/** «Les side N på Kudos», named in one piece: a hidden box would add a space before a comma. */
 export const PageLink = ({
   href,
   page,
@@ -368,19 +362,14 @@ export const PageLink = ({
       className={className}
       aria-label={`${read}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets the
-          icon off from the words, as kunnskapsassistenten draws it. */}
+      {/* The words in a span, so Designsystemet sets the icon off from them. */}
       <span>{read}</span>
       <ExternalLinkIcon aria-hidden />
     </Link>
   );
 };
 
-/**
- * «Kilder til svar 2 av 3», which keeps «Utdrag 2» unambiguous: every answer numbers its excerpts
- * from 1. The count is for the eye; the block's live region says it. `aria-disabled` and not
- * `disabled` at the ends, so focus stays on the button the reader pressed.
- */
+/** «Kilder til svar 2 av 3»; `aria-disabled` at the ends keeps focus on the button pressed. */
 const AnswerSwitcher = ({
   label,
   index,
@@ -429,10 +418,7 @@ const AnswerSwitcher = ({
 type EmptyKind =
   'unasked' | 'none' | 'aborted' | 'failed' | 'clarification' | 'notStored' | 'notKept';
 
-/**
- * Why an answer has no sources. A finished answer whose footnotes cite something lost its sources
- * on the way to the store; one from a store that keeps none is unknown, not empty.
- */
+/** Why an answer has no sources; from a store that keeps none, they are unknown, not empty. */
 const emptyKind = (
   status: SourcesAnswerStatus | undefined,
   citationCount: number,
@@ -493,10 +479,7 @@ const EmptyState = ({
   );
 };
 
-/**
- * The line under a document's title: the host's own, or the reader's own document, or the
- * collection, the publication date and the version. Sources and the document view draw the same.
- */
+/** A document's subtitle: the host's, the own-document line, or collection, date and version. */
 export const useSourceSubtitle = (source: SourceDocument): string => {
   const t = useT();
   const f = useFormat();
@@ -515,10 +498,7 @@ export const useSourceSubtitle = (source: SourceDocument): string => {
     .join(' · ');
 };
 
-/**
- * «Les dokumentet på Kudos», named apart by the title and opening in a new tab; or why there is no
- * link: the reader's own document, or none the platform can share.
- */
+/** «Les dokumentet på Kudos» in a new tab, or why there is no link to the document. */
 export const DocumentLink = ({
   source,
   title,
@@ -543,8 +523,7 @@ export const DocumentLink = ({
     );
   const readDocument = corpus ? t('sources.readDocumentOn', { corpus }) : t('sources.readDocument');
   return (
-    // Named in one piece, its words and then which document: a hidden box after the words would
-    // make a browser read a space before the comma.
+    // Named in one piece: a hidden box after the words makes a browser read a space before a comma.
     <Link
       href={source.url}
       target="_blank"
@@ -554,8 +533,7 @@ export const DocumentLink = ({
       onClick={onFollow}
       aria-label={`${readDocument}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets the
-          icon off from the words, as kunnskapsassistenten draws it. */}
+      {/* The words in a span, so Designsystemet sets the icon off from them. */}
       <span>{readDocument}</span>
       <ExternalLinkIcon aria-hidden />
     </Link>
@@ -605,6 +583,11 @@ type ItemProps = Pick<
   applied: WeakSet<SourceTarget>;
   hits: readonly SearchHit[];
   currentHit: SearchHit | undefined;
+  /**
+   * The `tool` variant: an excerpt is titled by its section where it has one, and a document's
+   * excerpts stand in the card even when the footnotes name only documents, as the board draws.
+   */
+  sectionFirst: boolean;
 };
 
 const SourceItem = ({
@@ -621,6 +604,7 @@ const SourceItem = ({
   applied,
   hits,
   currentHit,
+  sectionFirst,
   details,
   target,
   onSelect,
@@ -643,9 +627,7 @@ const SourceItem = ({
   const title = given || t('sources.untitled');
   const active = target?.chunkId && holds(source, target) ? target.chunkId : undefined;
   const byExcerpt = pairing?.mode === 'excerpt';
-  // While the footnotes name only documents, nothing is numbered: footnotes are numbered by
-  // excerpt, never by document. The passages, which nothing cites alone, wait behind «Vis utdrag
-  // fra dokumentet», and a document no footnote names says so.
+  // Footnotes that name only documents number nothing; the passages wait behind a button.
   const byDocument = pairing?.mode === 'document';
   const documentUncited = byDocument && !pairing.uses.has(documentKey);
   const passagesId = useId();
@@ -656,8 +638,7 @@ const SourceItem = ({
     };
 
   useEffect(() => {
-    // Once per target the app passes: new sources remount every card, and a target the app
-    // still holds must not move focus again.
+    // Once per target: new sources remount every card, and a held target must not move focus.
     if (!target || applied.has(target)) return;
     applied.add(target);
     if (target.chunkId && holds(source, target)) {
@@ -684,7 +665,7 @@ const SourceItem = ({
   const excerptName = useExcerptName();
   // A document's passages, which nothing cites alone, behind one button in document mode.
   const passages = (drawn: ReactNode[]) =>
-    byDocument && drawn.length ? (
+    byDocument && drawn.length && !sectionFirst ? (
       <>
         <Button
           type="button"
@@ -717,10 +698,7 @@ const SourceItem = ({
     : undefined;
 
   return (
-    // Designsystemet's card, but not its `Card`: that one makes a click anywhere on the card
-    // click the first link in a heading, here an excerpt's first link back, so a click on an
-    // excerpt nothing cites went to that footnote. Only a cited excerpt's links lead back.
-    // Listens for Escape only, when a footnote sent the reader here.
+    // Not `Card`, which sends any click to a heading's first link; Escape works after a footnote.
     <div
       ref={card}
       className="ds-card uib-sources-document ds-focus"
@@ -815,8 +793,7 @@ const SourceItem = ({
             const isOpen = openRows.has(key);
             const rowHits = hitsFor(hits, key);
             const here = excerpt !== undefined && excerpt.chunkId === active;
-            // Only a cited excerpt has a number and uses, and only its links lead back to the
-            // answer. One that nothing cites is unnumbered, last in its card, and says so.
+            // Only a cited excerpt is numbered and links back; an uncited one comes last, says so.
             const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
             const uses =
               n !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
@@ -866,6 +843,7 @@ const SourceItem = ({
                     section={section}
                     uses={uses}
                     back={excerpt ? backFor(excerpt) : undefined}
+                    sectionFirst={sectionFirst}
                   />
                   <div className="uib-sources-excerpt-controls">
                     <Button
@@ -984,6 +962,7 @@ export const Sources = ({
   onTargetMissing,
   search,
   documentsClosed = false,
+  foldUncited = false,
   headingLevel = 3,
   itemId,
   children,
@@ -993,6 +972,7 @@ export const Sources = ({
   const t = useT();
   const titleId = useId();
   const madeId = useId();
+  const captionId = useId();
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(new Set());
   const [openCards, setOpenCards] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [openPassages, setOpenPassages] = useState<ReadonlySet<string>>(new Set());
@@ -1006,8 +986,7 @@ export const Sources = ({
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
-  // The cards, and the excerpts in each, in the order of their numbers, 1, 2, 3, as the footnotes
-  // run; the search steps through them in the same order.
+  // Cards and excerpts in the footnotes' order, 1, 2, 3, which the search steps through too.
   const order = useMemo(() => readingOrder(sources ?? [], pairing), [sources, pairing]);
   const prepared = useMemo(
     () =>
@@ -1019,15 +998,33 @@ export const Sources = ({
       ),
     [sources, order, t, itemId],
   );
+  // With `foldUncited`, the documents nothing in the finished answer cites.
+  const uncited = useMemo(() => {
+    if (!foldUncited || !pairing || answerStatus === 'streaming') return new Set<number>();
+    const cited = (i: number) =>
+      pairing.mode === 'excerpt'
+        ? (sources?.[i]?.excerpts ?? []).some((e) => pairing.numbers.has(e.chunkId))
+        : pairing.uses.has(prepared[i]?.key ?? '');
+    return new Set(order.documents.filter((i) => !cited(i)));
+  }, [foldUncited, pairing, answerStatus, sources, prepared, order]);
+  // The documents as drawn: the cited ones, then the folded ones, which the search follows.
+  const shown = useMemo(
+    () => [
+      ...order.documents.filter((i) => !uncited.has(i)),
+      ...order.documents.filter((i) => uncited.has(i)),
+    ],
+    [order, uncited],
+  );
+  const othersRef = useRef<HTMLDetailsElement>(null);
   const index = useMemo<SearchableItem[]>(
     () =>
-      order.documents.flatMap(
+      shown.flatMap(
         (i) =>
           prepared[i]?.rows
             .filter((row) => row.flat)
             .map((row) => ({ id: row.key, text: row.flat })) ?? [],
       ),
-    [prepared, order],
+    [prepared, shown],
   );
   const cardOfRow = useMemo(
     () =>
@@ -1053,9 +1050,22 @@ export const Sources = ({
     if (missing && item.target) onTargetMissing?.(item.target);
   }, [item.target, missing]);
 
+  const openOthers = (cards: readonly string[]) => {
+    const folded = new Set([...uncited].map((i) => prepared[i]?.key));
+    if (othersRef.current && cards.some((card) => folded.has(card))) othersRef.current.open = true;
+  };
+  // A target in the folded documents, such as the way back from Dokumentvisning, unfolds them.
+  useEffect(() => {
+    if (uncited.has(targetPosition(sources ?? [], item.target)) && othersRef.current)
+      othersRef.current.open = true;
+  }, [item.target, uncited]);
+  // So do search hits already found when the fold appears, as the answer ends.
+  useEffect(() => openOthers(hits.flatMap((hit) => cardOfRow.get(hit.itemId) ?? [])), [uncited]);
+
   const reveal = (keys: readonly string[]) => {
     if (keys.length === 0) return;
     const cards = keys.flatMap((key) => cardOfRow.get(key) ?? []);
+    openOthers(cards);
     setOpenRows((was) => new Set([...was, ...keys]));
     setOpenCards((was) => {
       const next = new Map(was);
@@ -1128,8 +1138,7 @@ export const Sources = ({
   const listKey = (sources ?? [])
     .map((s, i) => `${prepared[i]?.key}:${s.excerpts.map((e) => e.chunkId).join(',')}`)
     .join('|');
-  // A heading one level over the documents', as kunnskapsassistenten's «Kilder» is the h2 over
-  // its h3 cards, so the cards sit under it in the outline.
+  // One level over the cards' headings, so they sit under it in the outline.
   const heading =
     title === false ? null : (
       <Heading
@@ -1141,15 +1150,61 @@ export const Sources = ({
         {title ?? t('sources.title')}
       </Heading>
     );
-  const named = heading ? { 'aria-labelledby': titleId } : { 'aria-label': t('sources.title') };
+  // The tool's caption names the list it stands over, «Utdrag svaret bygger på».
+  const tool = variant === 'tool';
+  const captioned = tool && !waiting && !empty && (sources?.length ?? 0) > uncited.size;
+  const named = captioned
+    ? { 'aria-labelledby': captionId }
+    : heading
+      ? { 'aria-labelledby': titleId }
+      : { 'aria-label': t('sources.title') };
   const own = hasOwnDocuments ?? sources?.some(isOwn) ?? false;
-  const searching = (search ?? variant === 'panel') && !empty && Boolean(sources?.length);
+  const searching = (search ?? variant !== 'compact') && !empty && Boolean(sources?.length);
   const describedBy = disclaimer && sources?.length ? (disclaimerId ?? madeId) : undefined;
+  const items = (indexes: readonly number[]) =>
+    indexes.flatMap((i) => {
+      const document = prepared[i];
+      if (!document) return [];
+      return [
+        <li key={document.key}>
+          <SourceItem
+            document={document}
+            level={headingLevel}
+            pairing={pairing}
+            openRows={openRows}
+            onRowOpenChange={setRowOpen}
+            open={cardOpen(document.key)}
+            onOpenChange={(now) => setCardOpen(document.key, now)}
+            passagesOpen={openPassages.has(document.key)}
+            onPassagesOpenChange={(now) =>
+              setOpenPassages((was) => {
+                const next = new Set(was);
+                if (now) next.add(document.key);
+                else next.delete(document.key);
+                return next;
+              })
+            }
+            rowRefs={rowRefs.current}
+            applied={applied.current}
+            hits={hits}
+            currentHit={currentHit}
+            sectionFirst={variant === 'tool'}
+            corpus={corpus}
+            headerColor={headerColor}
+            back={back}
+            {...item}
+            target={i === hit ? item.target : undefined}
+          />
+        </li>,
+      ];
+    });
+  const others = shown.filter((i) => uncited.has(i));
+  const cited = shown.filter((i) => !uncited.has(i));
   return (
     <div className={classes('uib-sources', className)} data-variant={variant} data-color={color}>
       {/* In the page from the first render: a live region announces only a change to it. */}
       {onAnswerChange ? <output className="ds-sr-only">{answerLabel}</output> : null}
-      {heading || searching || stepping ? (
+      {heading || searching || stepping || captioned ? (
         <div className="uib-sources-head">
           {heading}
           {/* Also when this answer has no sources: stepping back is the point. */}
@@ -1169,7 +1224,19 @@ export const Sources = ({
               currentHitIndex={hitIndex}
               onStep={stepToHit}
               describedBy={describedBy}
+              {...(tool
+                ? {
+                    label: t('sources.searchExcerpts'),
+                    placeholder: t('sources.searchExcerpts'),
+                    labelHidden: true,
+                  }
+                : {})}
             />
+          ) : null}
+          {captioned ? (
+            <p id={captionId} className="uib-sources-caption">
+              {t('sources.excerptsCaption')}
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -1195,43 +1262,25 @@ export const Sources = ({
           assistantName={assistantName}
         />
       ) : sources?.length ? (
-        <ol key={listKey} className="uib-sources-documents" {...named}>
-          {order.documents.flatMap((i) => {
-            const document = prepared[i];
-            if (!document) return [];
-            return [
-              <li key={document.key}>
-                <SourceItem
-                  document={document}
-                  level={headingLevel}
-                  pairing={pairing}
-                  openRows={openRows}
-                  onRowOpenChange={setRowOpen}
-                  open={cardOpen(document.key)}
-                  onOpenChange={(now) => setCardOpen(document.key, now)}
-                  passagesOpen={openPassages.has(document.key)}
-                  onPassagesOpenChange={(now) =>
-                    setOpenPassages((was) => {
-                      const next = new Set(was);
-                      if (now) next.add(document.key);
-                      else next.delete(document.key);
-                      return next;
-                    })
-                  }
-                  rowRefs={rowRefs.current}
-                  applied={applied.current}
-                  hits={hits}
-                  currentHit={currentHit}
-                  corpus={corpus}
-                  headerColor={headerColor}
-                  back={back}
-                  {...item}
-                  target={i === hit ? item.target : undefined}
-                />
-              </li>,
-            ];
-          })}
-        </ol>
+        <>
+          {cited.length > 0 ? (
+            <ol key={listKey} className="uib-sources-documents" {...named}>
+              {items(cited)}
+            </ol>
+          ) : null}
+          {others.length > 0 ? (
+            <Details key={`others:${listKey}`} ref={othersRef} className="uib-sources-others">
+              <Details.Summary>
+                {t('sources.otherSources', { count: others.length })}
+              </Details.Summary>
+              <Details.Content>
+                <ol className="uib-sources-documents" aria-label={t('sources.otherSourcesList')}>
+                  {items(others)}
+                </ol>
+              </Details.Content>
+            </Details>
+          ) : null}
+        </>
       ) : null}
       {children}
     </div>

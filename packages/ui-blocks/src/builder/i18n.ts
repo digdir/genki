@@ -6,6 +6,7 @@ export const nbBuilder = defineNamespace({
   zonePrimary: 'Venstre panel',
   zoneMain: 'Innhold',
   zoneSecondary: 'Høyre panel',
+  zoneBoth: 'Begge steder',
   planned: 'kommer',
 
   projects: 'Prosjekter',
@@ -20,6 +21,8 @@ export const nbBuilder = defineNamespace({
   filterHelp: 'Hvilke dokumenter tråden leser fra',
   approach: 'Fremgangsmåte',
   approachHelp: 'Hvordan assistenten jobbet',
+  approachPlacesHelp:
+    'Som kort over hvert svar i innholdet, som verktøy med flere detaljer i høyre panel, eller begge steder',
   sources: 'Kilder',
   sourcesHelp: 'Utdragene svaret bygger på',
   documentView: 'Dokumentvisning',
@@ -59,6 +62,7 @@ export const nbBuilder = defineNamespace({
   approachLevelDetailed: 'Detaljert',
 
   templateKnowledgeAssistant: 'Kunnskapsassistenten',
+  templateKnowledgeAssistantNext: 'Kunnskapsassistenten, ny utgave',
   templateSourcesOnly: 'Bare kilder',
   templateApproachOnly: 'Bare fremgangsmåte',
   templateWithoutFilter: 'Uten filter',
@@ -66,8 +70,6 @@ export const nbBuilder = defineNamespace({
   templateWithoutSecondary: 'Uten høyre sidepanel',
   templateWithoutPrimary: 'Uten venstre sidepanel',
   templateChatOnly: 'Bare chat',
-  templateDocumentFocus: 'Dokumentvisning i fokus',
-  templateNotesFocus: 'Notater i fokus',
 
   // Why a block or an option is not offered, one per need the service does not meet.
   needServiceChat: 'Tjenesten svarer ikke i en chat.',
@@ -87,6 +89,7 @@ export const enBuilder = {
   zonePrimary: 'Left panel',
   zoneMain: 'Content',
   zoneSecondary: 'Right panel',
+  zoneBoth: 'Both places',
   planned: 'coming',
 
   projects: 'Projects',
@@ -101,6 +104,8 @@ export const enBuilder = {
   filterHelp: 'Which documents the thread reads from',
   approach: 'Approach',
   approachHelp: 'How the assistant worked',
+  approachPlacesHelp:
+    'As a card over each answer in the content, as a tool with more detail in the right panel, or both',
   sources: 'Sources',
   sourcesHelp: 'The excerpts the answer builds on',
   documentView: 'Document view',
@@ -140,6 +145,7 @@ export const enBuilder = {
   approachLevelDetailed: 'Detailed',
 
   templateKnowledgeAssistant: 'Knowledge assistant',
+  templateKnowledgeAssistantNext: 'Knowledge assistant, next edition',
   templateSourcesOnly: 'Sources only',
   templateApproachOnly: 'Approach only',
   templateWithoutFilter: 'Without filter',
@@ -147,8 +153,6 @@ export const enBuilder = {
   templateWithoutSecondary: 'Without right panel',
   templateWithoutPrimary: 'Without left panel',
   templateChatOnly: 'Chat only',
-  templateDocumentFocus: 'Document view in focus',
-  templateNotesFocus: 'Notes in focus',
 
   needServiceChat: 'The service does not answer in a chat.',
   needServiceSources: 'The service does not search documents.',

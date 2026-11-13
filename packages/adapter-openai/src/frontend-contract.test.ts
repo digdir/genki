@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Part, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Emitted, type Strategy } from '@genai/kernel';
 import {
@@ -33,8 +33,20 @@ const chunks: SourceRecord[] = [
     position: 4,
   },
 ];
+let pool = chunks;
 
 const seen: { history?: unknown; overrides?: unknown } = {};
+
+const byDocument = {
+  answer: 'Svar [1] og [2].',
+  meta: {
+    citations: [
+      { index: 1, chunkId: 'c1' },
+      { index: 2, chunkId: 'c2' },
+    ],
+  } as Record<string, unknown>,
+};
+let reply = byDocument;
 
 const strategy: Strategy = {
   id: 'echo',
@@ -46,19 +58,10 @@ const strategy: Strategy = {
     seen.overrides = data.overrides;
     yield { type: 'kernel.notice', data: { event: 'agent/iteration-started', iteration: 1 } };
     yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: 3 } };
-    const answer = 'Svar [1] og [2].';
-    yield { type: 'kernel.part.delta', data: { text: answer } };
+    yield { type: 'kernel.part.delta', data: { text: reply.answer } };
     const parts: Part[] = [
-      {
-        ...textPart(answer),
-        meta: {
-          citations: [
-            { index: 1, chunkId: 'c1' },
-            { index: 2, chunkId: 'c2' },
-          ],
-        },
-      },
-      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: chunks } } },
+      { ...textPart(reply.answer), meta: reply.meta },
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: pool } } },
     ];
     yield { type: 'kernel.result', data: parts };
   },
@@ -210,6 +213,33 @@ describe('/v1 frontend contract: conversations', () => {
     expect(stored.get('conv-1')?.[1]?.sources?.[1]).not.toHaveProperty('url');
   });
 
+  it('stores a turn that cites documents as before, with no markers on the turn, its sources or their excerpts', async () => {
+    const { ask, stored } = setup();
+
+    await ask({ genai_conversation: true });
+    const turn = stored.get('conv-1')?.[1];
+
+    expect(turn).not.toHaveProperty('markers');
+    expect(turn?.sources).toStrictEqual([
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        url: 'https://x.no/d1',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', position: 0 },
+          { chunk_id: 'c1b', text: 'Tredje', position: 4 },
+        ],
+      },
+      {
+        index: 2,
+        title: 'Årsrapport',
+        document_id: 'd2',
+        excerpts: [{ chunk_id: 'c2', text: 'Andre', position: 0 }],
+      },
+    ]);
+  });
+
   it('creates no conversation when the request fails validation', async () => {
     const { ask, stored } = setup();
 
@@ -313,6 +343,263 @@ describe('/v1 frontend contract: sources', () => {
     });
     expect(body.sources[1]).toMatchObject({ title: 'Årsrapport', document_id: 'd2' });
     expect(body.sources[1]).not.toHaveProperty('url');
+    expect(body).not.toHaveProperty('markers');
+  });
+
+  describe('when the answer cites excerpts', () => {
+    afterEach(() => {
+      reply = byDocument;
+    });
+    const byExcerpt = {
+      answer: 'Første [1], tredje [2] og andre [3].',
+      meta: {
+        citations: [
+          { index: 1, chunkId: 'c1', document: 'd1' },
+          { index: 2, chunkId: 'c1b', document: 'd1' },
+          { index: 3, chunkId: 'c2', document: 'd2' },
+        ],
+        citeBy: 'excerpt',
+      },
+    };
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c1b', document: 'd1' },
+      { marker: '3', chunk_id: 'c2', document: 'd2' },
+    ];
+
+    it('resolves every marker to one excerpt, and lists on each excerpt the markers that cite it', async () => {
+      reply = byExcerpt;
+      const body = (await (await setup().ask({})).json()) as {
+        sources: (Source & { markers?: string[] })[];
+        markers?: unknown;
+      };
+
+      expect(body.markers).toEqual(markers);
+      expect(body.sources.map((s) => [s.document_id, s.index, s.markers])).toEqual([
+        ['d1', 1, ['1', '2']],
+        ['d2', 3, ['3']],
+      ]);
+      expect(body.sources[0]?.excerpts).toEqual([
+        { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, markers: ['2'] },
+      ]);
+    });
+
+    it('sends the same markers when the answer is streamed', async () => {
+      reply = byExcerpt;
+      const text = await (await setup().ask({ stream: true })).text();
+
+      expect(text).toContain(`"markers":${JSON.stringify(markers)}`);
+    });
+
+    it('keeps the markers of an answer that cites excerpts when the turn is stored', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        markers?: unknown;
+      };
+      const turn = stored.get('conv-1')?.[1];
+
+      expect(turn?.markers).toEqual(markers);
+      expect(turn?.markers).toEqual(body.markers);
+      expect(turn?.sources?.map((s) => [s.document_id, s.index, s.markers])).toEqual([
+        ['d1', 1, ['1', '2']],
+        ['d2', 3, ['3']],
+      ]);
+      expect(turn?.sources?.[0]?.excerpts).toStrictEqual([
+        { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, markers: ['2'] },
+      ]);
+    });
+
+    it('stores each excerpt of a turn exactly as the answer gave it, every field kept', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      expect(stored.get('conv-1')?.[1]?.sources?.map((s) => s.excerpts)).toStrictEqual(
+        body.sources.map((s) => s.excerpts),
+      );
+    });
+
+    it('keeps the same markers on the stored turn when the answer is streamed', async () => {
+      reply = byExcerpt;
+      const { ask, stored } = setup();
+
+      await (await ask({ genai_conversation: true, stream: true })).text();
+      const turn = stored.get('conv-1')?.[1];
+
+      expect(turn?.markers).toEqual(markers);
+      expect(turn?.sources?.map((s) => s.markers)).toEqual([['1', '2'], ['3']]);
+      expect(turn?.sources?.[0]?.excerpts.map((e) => e.markers)).toEqual([['1'], ['2']]);
+    });
+  });
+
+  describe('when the chunks carry section headings', () => {
+    afterEach(() => {
+      pool = chunks;
+    });
+    const headed: SourceRecord[] = [
+      { ...chunks[0], chunkId: 'c1', headers: ['# **1 Innledning**'] },
+      { ...chunks[1], chunkId: 'c2' },
+      { ...chunks[2], chunkId: 'c1b', headers: ['## **3 Styringsparametere**', '3.2 Mål'] },
+    ];
+    type Headed = Omit<Source, 'excerpts'> & {
+      metadata: { name?: string }[];
+      excerpts: { chunk_id: string; text: string; heading?: string }[];
+    };
+    const answer = async () => {
+      pool = headed;
+      return ((await (await setup().ask({})).json()) as { sources: Headed[] }).sources;
+    };
+
+    it("gives each excerpt its own heading, not the first excerpt's", async () => {
+      const sources = await answer();
+
+      expect(sources[0]?.excerpts.map((e) => [e.chunk_id, e.heading])).toEqual([
+        ['c1', '1 Innledning'],
+        ['c1b', '3 Styringsparametere › 3.2 Mål'],
+      ]);
+    });
+
+    it('writes the heading as the document breadcrumb is written, plain levels joined by ›', async () => {
+      const [first] = await answer();
+
+      expect(first?.excerpts[1]?.heading).toBe('3 Styringsparametere › 3.2 Mål');
+      expect(first?.metadata[0]?.name).toBe(`Tildelingsbrev › ${first?.excerpts[0]?.heading}`);
+    });
+
+    it('leaves the heading out when the chunk has no headers', async () => {
+      const sources = await answer();
+
+      expect(sources[1]?.excerpts).toHaveLength(1);
+      expect(sources[1]?.excerpts[0]).not.toHaveProperty('heading');
+    });
+
+    it("keeps the document breadcrumb as it was, the first excerpt's under the title", async () => {
+      const sources = await answer();
+
+      expect(sources[0]?.metadata).toEqual([
+        { source: 'c1', chunk_id: 'c1', name: 'Tildelingsbrev › 1 Innledning' },
+      ]);
+      expect(sources[1]?.metadata).toEqual([{ source: 'c2', chunk_id: 'c2' }]);
+    });
+
+    it('sends each excerpt its heading when the answer is streamed', async () => {
+      pool = headed;
+      const text = await (await setup().ask({ stream: true })).text();
+
+      expect(text).toContain('"heading":"1 Innledning"');
+      expect(text).toContain('"heading":"3 Styringsparametere › 3.2 Mål"');
+    });
+  });
+
+  describe("when the headings carry Marker's page anchors", () => {
+    afterEach(() => {
+      pool = chunks;
+    });
+    const anchored: SourceRecord[] = [
+      { ...chunks[0], chunkId: 'c1', headers: ['<span id="page-2-0"></span>1. Innledning'] },
+      {
+        ...chunks[1],
+        chunkId: 'c2',
+        headers: ['[DEL 3 – Aktiviteter og](#page-12-0) [resultater i 2024](#page-12-0)'],
+      },
+      {
+        ...chunks[2],
+        chunkId: 'c1b',
+        headers: ['<span id="page-8-3"></span>', '5.2 Tildelingsbrev'],
+      },
+    ];
+    type Headed = Omit<Source, 'excerpts'> & {
+      metadata: { name?: string }[];
+      excerpts: { chunk_id: string; heading?: string }[];
+    };
+    const answer = async (records: SourceRecord[]) => {
+      pool = records;
+      return ((await (await setup().ask({})).json()) as { sources: Headed[] }).sources;
+    };
+
+    it("gives a heading without Marker's page anchors", async () => {
+      const [first] = await answer(anchored);
+
+      expect(first?.excerpts[0]?.heading).toBe('1. Innledning');
+    });
+
+    it("gives a heading without Marker's links to its page anchors", async () => {
+      const sources = await answer(anchored);
+
+      expect(sources[1]?.excerpts[0]?.heading).toBe('DEL 3 – Aktiviteter og resultater i 2024');
+    });
+
+    it("gives a heading without Marker's underline and superscript tags", async () => {
+      const [first] = await answer([
+        { ...chunks[0], chunkId: 'c1', headers: ['<u>Styrken til porteføljen</u>'] },
+        { ...chunks[2], chunkId: 'c1b', headers: ['Note <sup>a)</sup>'] },
+      ]);
+
+      expect(first?.excerpts.map((e) => e.heading)).toEqual(['Styrken til porteføljen', 'Note a)']);
+    });
+
+    it('raises a footnote number in a heading, written as a superscript or as a link to its page', async () => {
+      const [first] = await answer([
+        {
+          ...chunks[0],
+          chunkId: 'c1',
+          headers: ['Tilgang i året <sup>1</sup>', 'KOSTRA – Gruppering[[11]](#page-35-0)'],
+        },
+        {
+          ...chunks[2],
+          chunkId: 'c1b',
+          headers: ['Mål[\\[2\\]](#page-4-0) og tiltak[3](#page-5-1)'],
+        },
+      ]);
+
+      expect(first?.excerpts.map((e) => e.heading)).toEqual([
+        'Tilgang i året ¹ › KOSTRA – Gruppering¹¹',
+        'Mål² og tiltak³',
+      ]);
+    });
+
+    it('leaves out a heading level that is only markup', async () => {
+      const [first] = await answer(anchored);
+      const [bare] = await answer([
+        { ...chunks[0], chunkId: 'c1', headers: ['<span id="page-3-0"></span>'] },
+      ]);
+      const [untitled] = await answer([
+        {
+          chunkId: 'c9',
+          text: 'Niende',
+          document: 'd9',
+          headers: ['<span id="page-1-0"></span>', 'Mål'],
+        },
+      ]);
+
+      expect(first?.excerpts[1]?.heading).toBe('5.2 Tildelingsbrev');
+      expect(bare?.excerpts[0]).not.toHaveProperty('heading');
+      expect(bare?.metadata).toEqual([{ source: 'c1', chunk_id: 'c1' }]);
+      expect(untitled?.title).toBe('Mål');
+    });
+
+    it('keeps the breadcrumb plain text', async () => {
+      const [first] = await answer(anchored);
+      const [untitled] = await answer([
+        {
+          chunkId: 'c9',
+          text: 'Niende',
+          document: 'd9',
+          headers: ['<span id="page-2-0"></span>1. Innledning', '1.1 Mål'],
+        },
+      ]);
+
+      expect(first?.metadata[0]?.name).toBe('Tildelingsbrev › 1. Innledning');
+      expect(untitled?.title).toBe('1. Innledning');
+      expect(untitled?.metadata[0]?.name).toBe('1. Innledning › 1.1 Mål');
+    });
   });
 });
 

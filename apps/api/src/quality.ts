@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import { isInternalService } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import {
+  caseExpectation,
   caseFrom,
   caseView,
   isCaseSplit,
@@ -11,19 +13,27 @@ import {
 } from '@genai/eval';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant } from './access.js';
+import { actorNames } from './actor-names.js';
 import { AdminRefused, refusedBy, routeOnly } from './admin.js';
 import type { LeaseOptions } from './background-lease.js';
 import { VersionConflict, type ConfigEntry } from './config-store.js';
 import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
+import { t } from './i18n/index.js';
+import { hidesInternalServices, isHiddenService } from './internal-services.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
+import { connectionsCovering } from './trace-connections.js';
+import { datasetsOf } from './trace-datasets.js';
 import {
+  runDetail,
+  casesIn,
   runSummary,
-  runView,
+  RunRefused,
   serviceEval,
+  shownRun,
+  TraceRefused,
   type ServiceDraft,
-  type ServiceRun,
 } from './service-eval.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
@@ -74,14 +84,25 @@ const setSummary = (set: TestSet) => {
   };
 };
 
-const costless =
-  <T extends { cost?: unknown; tokens?: unknown }>(view: (run: ServiceRun) => T) =>
-  (run: ServiceRun) => {
-    const shown: Partial<T> = { ...view(run) };
-    delete shown.cost;
-    delete shown.tokens;
-    return shown;
-  };
+const costless = <
+  T extends { cost?: unknown; tokens?: unknown; usdNok?: unknown; sinkJudges?: object[] },
+>(
+  view: T,
+) => {
+  const shown: Partial<T> = { ...view };
+  delete shown.cost;
+  delete shown.tokens;
+  delete shown.usdNok;
+  delete (shown as { sinkOthers?: unknown }).sinkOthers;
+  // What a sink reports its judges' calls cost is usage too.
+  if (view.sinkJudges)
+    shown.sinkJudges = view.sinkJudges.map((j) => {
+      const rest = { ...(j as { reported?: unknown }) };
+      delete rest.reported;
+      return rest;
+    }) as T['sinkJudges'];
+  return shown;
+};
 
 export const serviceDraftActions = [
   'platform.service.draft.save',
@@ -95,12 +116,12 @@ export const createQualityModule =
   ): PlatformModuleFactory =>
   (deps) => {
     const evals = serviceEval(deps, options.leases);
+    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
     const improving = improvements(deps, evals);
     const background = (work: Promise<void>) => {
       work.catch(() => undefined);
       options.onBackground?.(work);
     };
-    background(evals.recoverRuns());
     background(improving.recover());
 
     return {
@@ -214,6 +235,36 @@ export const createQualityModule =
           };
         };
 
+        app.get('/tenants/:tenant/service-drafts', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const drafts = await evals.drafts.list(guard.tenant);
+          const hidden = await Promise.all(
+            drafts.map((d) => isHiddenService(deps.definitions, guard.tenant, d.id)),
+          );
+          const found = drafts.filter((_, i) => !hidden[i]);
+          const people = await actorNames(deps.configEntries).namesOf(found.map((d) => d.by));
+          const data = await Promise.all(
+            found.map(async (draft) => {
+              const { metadata, spec } = draft.spec.definition;
+              const output = isRecord(spec) ? spec.output : undefined;
+              const byName = people.get(draft.by);
+              return {
+                id: draft.id,
+                name: (isRecord(metadata) && text(metadata.name)) || null,
+                purpose: (isRecord(spec) && text(spec.purpose)) || '',
+                outputKind: (isRecord(output) && text(output.kind)) || 'answer',
+                latestVersion: (await evals.drafts.latestVersion(guard.tenant, draft.id)) ?? null,
+                revision: draft.version,
+                at: draft.at,
+                by: draft.by,
+                ...(byName ? { byName } : {}),
+              };
+            }),
+          );
+          return c.json({ data });
+        });
+
         // 200 with a JSON null body when the service has no draft
         app.get('/tenants/:tenant/services/:id/draft', async (c) => {
           const guard = await member(c);
@@ -237,6 +288,14 @@ export const createQualityModule =
           if (!isRecord(data.definition))
             return problem(c, 400, 'Ugyldig forespørsel', [
               { path: 'definition', message: 'a definition is required' },
+            ]);
+          if (
+            hidesInternalServices() &&
+            isInternalService(data.definition) &&
+            !isInternalService((await evals.draftOf(guard.tenant, param(c, 'id')))?.spec.definition)
+          )
+            return problem(c, 422, 'Ugyldig forespørsel', [
+              { path: 'definition.spec.visibility', message: t('problems.internalOperatorOnly') },
             ]);
           const service = param(c, 'id');
           const latest = (await evals.drafts.latestVersion(guard.tenant, service)) ?? 0;
@@ -359,8 +418,27 @@ export const createQualityModule =
         app.get('/tenants/:tenant/services/:id/test-sets', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
-          const sets = await deps.evalStores.testSets.list(guard.tenant, param(c, 'id'));
-          return c.json({ data: sets.map(setSummary) });
+          const service = param(c, 'id');
+          const sets = await deps.evalStores.testSets.list(guard.tenant, service);
+          // The Langfuse dataset an agency points its judges at, in the covering connection.
+          const covering = await connectionsCovering(deps.configEntries, guard.tenant, service);
+          const made = (
+            await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant)
+          ).filter(
+            (d) =>
+              covering.length === 1 && d.connection === covering[0]?.id && d.service === service,
+          );
+          return c.json({
+            data: sets.map((set) => {
+              const dataset = made.find((d) => d.testSet === set.metadata.id);
+              return {
+                ...setSummary(set),
+                ...(dataset
+                  ? { dataset: { connection: dataset.connection, name: dataset.name } }
+                  : {}),
+              };
+            }),
+          });
         });
 
         app.get('/tenants/:tenant/test-sets/:setId/cases', async (c) => {
@@ -379,7 +457,14 @@ export const createQualityModule =
           if (!set) return problem(c, 404, 'Fant ikke');
           const data = await body(c);
           const input = text(data.input);
-          const expected = text(data.expected);
+          const structured = isRecord(data.expected)
+            ? caseExpectation.safeParse(data.expected)
+            : undefined;
+          const expected = structured ? structured.data : text(data.expected);
+          const described =
+            typeof expected === 'string' ||
+            expected?.referenceAnswer !== undefined ||
+            Object.keys(expected?.criteria ?? {}).length > 0;
           const type = data.type ?? 'criteria';
           const errors = [
             ...(input ? [] : [{ path: 'input', message: 'the input is required' }]),
@@ -389,9 +474,26 @@ export const createQualityModule =
             ...(data.split === undefined || isCaseSplit(data.split)
               ? []
               : [{ path: 'split', message: 'split is locked or open' }]),
-            ...(type !== 'must_reject' && !expected
-              ? [{ path: 'expected', message: 'the expected answer or criteria are required' }]
-              : []),
+            ...(structured && !structured.success
+              ? [
+                  {
+                    path: 'expected',
+                    message: 'expected is a text, or a reference answer and named criteria',
+                  },
+                ]
+              : type !== 'must_reject' && !described
+                ? [{ path: 'expected', message: 'the expected answer or criteria are required' }]
+                : // Given as fields, a case needs the one its type is judged on.
+                  structured?.success && type === 'criteria' && !structured.data.criteria
+                  ? [{ path: 'expected.criteria', message: 'a criteria case needs criteria' }]
+                  : structured?.success && type === 'exact' && !structured.data.referenceAnswer
+                    ? [
+                        {
+                          path: 'expected.referenceAnswer',
+                          message: 'an exact case needs the text to find',
+                        },
+                      ]
+                    : []),
             ...(data.id === undefined || (typeof data.id === 'string' && slug.test(data.id))
               ? []
               : [{ path: 'id', message: 'lowercase letters, digits and dashes' }]),
@@ -405,7 +507,7 @@ export const createQualityModule =
             id,
             input,
             type,
-            ...(expected ? { expected } : {}),
+            ...(expected && described ? { expected } : {}),
             ...(isCaseSplit(data.split) ? { split: data.split } : {}),
           });
           const result = await mountDeps.admin.perform(guard.principal, 'platform.testset.save', {
@@ -439,11 +541,29 @@ export const createQualityModule =
             return problem(c, 400, 'Ugyldig forespørsel', [
               { path: 'split', message: 'split is locked or open' },
             ]);
+          const only =
+            Array.isArray(data.cases) &&
+            data.cases.length > 0 &&
+            data.cases.every((id) => typeof id === 'string')
+              ? (data.cases as string[])
+              : undefined;
+          if (data.cases !== undefined && !only)
+            return problem(c, 400, 'Ugyldig forespørsel', [
+              { path: 'cases', message: 'cases is a non-empty list of case ids' },
+            ]);
           const set = await deps.evalStores.testSets.get(tenant, setId);
           if (!set || (set.spec.service !== undefined && set.spec.service !== service))
             return problem(c, 404, 'Fant ikke testsettet', [
               { path: 'testSet', message: `no test set ${setId} for ${service}` },
             ]);
+          const unknown = (only ?? []).filter((id) => !set.spec.cases.some((x) => x.id === id));
+          if (unknown.length > 0)
+            return problem(
+              c,
+              400,
+              'Ugyldig forespørsel',
+              unknown.map((id) => ({ path: 'cases', message: `no case ${id} in ${setId}` })),
+            );
           const found = await evals.subjectOf(tenant, service, data.version, data);
           if (!found)
             return problem(
@@ -461,40 +581,107 @@ export const createQualityModule =
             ]);
           const subject = variant ? { ...found, variant } : found;
           const split = isCaseSplit(data.split) ? data.split : undefined;
-          const cases = split
-            ? set.spec.cases.filter((x) => caseView(x).split === split)
-            : set.spec.cases;
-          if (cases.length === 0)
+          if (casesIn(set, split, only).length === 0)
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
               { path: 'testSet', message: 'no cases to run' },
             ]);
-          const started = await evals.startRun(principal, tenant, service, set, subject, split);
-          background(started.done);
-          return c.json({ id: started.run.id }, 202);
+          try {
+            const started = await evals.startRun(
+              principal,
+              tenant,
+              service,
+              set,
+              subject,
+              split,
+              only,
+              { trace: data.trace === true },
+            );
+            background(started.done);
+            return c.json({ id: started.run.id }, 202);
+          } catch (error) {
+            if (error instanceof RunRefused)
+              return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
+            if (!(error instanceof TraceRefused)) throw error;
+            return problem(
+              c,
+              409,
+              'Testkjøringen kan ikke sendes til sporing',
+              error.messages.map((message) => ({ path: 'trace', message })),
+            );
+          }
+        });
+
+        app.get('/tenants/:tenant/services/:id/eval-runs/sending', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const service = param(c, 'id');
+          const version = c.req.query('version');
+          const found = await evals.subjectOf(
+            guard.tenant,
+            service,
+            version === 'draft' ? 'draft' : version ? Number(version) : undefined,
+          );
+          if (!found)
+            return problem(c, 404, 'Fant ikke', [
+              { path: 'version', message: `no ${version ?? 'published'} version` },
+            ]);
+          // The judges that reach a run depend on its test set, by its dataset and its name.
+          const testSet = c.req.query('testSet');
+          const set = testSet
+            ? (await deps.evalStores.testSets.list(guard.tenant, service)).find(
+                (s) => s.metadata.id === testSet,
+              )
+            : undefined;
+          if (!set)
+            return problem(c, 404, 'Fant ikke', [
+              { path: 'testSet', message: `no test set ${testSet ?? ''} in the service` },
+            ]);
+          return c.json(await evals.sendingOf(guard.tenant, service, found, set));
         });
 
         app.get('/tenants/:tenant/services/:id/eval-runs', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
-          const shown = seesUsage(guard.principal, guard.tenant)
-            ? runSummary
-            : costless(runSummary);
-          return c.json({ data: runs.map(shown) });
+          const usage = seesUsage(guard.principal, guard.tenant);
+          const agreementsOf = await deps.sinkLabels?.agreementsFor(guard.tenant);
+          return c.json({
+            data: runs.map((s) => {
+              const summary = runSummary(s.run, isSinkJudge, agreementsOf?.(s.run));
+              return usage ? summary : costless(summary);
+            }),
+          });
         });
 
         app.get('/tenants/:tenant/eval-runs/:runId', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
-          const id = param(c, 'runId');
-          const run = await evals.runOf(guard.tenant, id);
-          const shown = seesUsage(guard.principal, guard.tenant) ? runView : costless(runView);
-          if (run) return c.json({ kind: 'service' as const, ...shown(run) });
-          const stored = await deps.evalStores.runs.get(id);
-          if (stored?.tenant !== guard.tenant) return problem(c, 404, 'Fant ikke');
+          const stored = await evals.runOf(guard.tenant, param(c, 'runId'));
+          if (
+            !stored ||
+            (stored.service !== undefined &&
+              (await isHiddenService(deps.definitions, guard.tenant, stored.service)))
+          )
+            return problem(c, 404, 'Fant ikke');
+          if (stored.run.tested) {
+            const set = await deps.evalStores.testSets.get(
+              guard.tenant,
+              stored.run.testSet.id,
+              stored.run.testSet.version,
+            );
+            const detail = runDetail(stored.run, set, await evals.answersOf(stored.run), {
+              isSinkJudge,
+              reasons: await evals.judgeReasonsOf(stored.run, isSinkJudge),
+              ...(deps.sinkLabels
+                ? { agreements: await deps.sinkLabels.agreements(guard.tenant, stored.run) }
+                : {}),
+            });
+            const shown = seesUsage(guard.principal, guard.tenant) ? detail : costless(detail);
+            return c.json({ kind: 'service' as const, ...shown });
+          }
           return c.json({
             kind: 'kernel' as const,
-            run: stored.run,
+            run: shownRun(stored.run, seesUsage(guard.principal, guard.tenant)),
             provenance: stored.run.provenance,
             metrics: stored.run.metrics,
             byTag: stored.run.byTag,

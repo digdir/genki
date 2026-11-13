@@ -121,6 +121,26 @@ export const ConnectionDetail = ({ api, data, done, id }: AreaProps & { id: stri
             <br />
             <span className="meta">{t('connections.keyStored')}</span>
           </dd>
+          <dt>{t('endpoints.settings')}</dt>
+          <dd>
+            {Object.keys(spec.settings).length === 0
+              ? t('endpoints.noSettings')
+              : Object.entries(spec.settings).map(([name, value]) => (
+                  <div key={name}>
+                    <code>{name}</code> = {value}
+                  </div>
+                ))}
+          </dd>
+          <dt>{t('endpoints.keys')}</dt>
+          <dd>
+            {Object.keys(spec.keys).length === 0
+              ? t('endpoints.noKeys')
+              : Object.entries(spec.keys).map(([name, secret]) => (
+                  <div key={name}>
+                    <code>{name}</code>: {secret}
+                  </div>
+                ))}
+          </dd>
         </dl>
       </section>
       <section className="card stack" aria-labelledby="connection-record-h">

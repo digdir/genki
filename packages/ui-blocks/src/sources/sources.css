@@ -1,5 +1,4 @@
-/* After Designsystemet's layers, so a host's own CSS wins, and every token read
-   through a --genai-sources-* variable at the point of use, listed on docs/components/sources.html. */
+/* After Designsystemet's layers, every token read through a --genai-sources-* variable. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
@@ -107,8 +106,7 @@
     --dsc-card-block-border-width: 0;
     background: transparent;
   }
-  /* The title has the card's whole width, and the app's controls stand under it: beside it, a
-     long title is squeezed into a narrow column at the panel's 336 px. */
+  /* The controls under the title, so a long title keeps the card's width in a 336 px panel. */
   .uib-sources-document-head {
     display: flex;
     flex-direction: column;
@@ -223,18 +221,14 @@
     margin: 0;
     min-inline-size: 0;
   }
-  /* «Utdrag 1» on a line of its own over the section: a title, at kunnskapsassistenten's heading
-     size (18 px, as its «Utdrag N» in heading-2xs) and a weight over it, two size steps and two
-     weight steps from the links back beside it (14 px, regular), so the two are told apart at a
-     glance. */
+  /* Two size and weight steps over the links back beside it, so the two are told apart. */
   .uib-sources-excerpt-number {
     display: block;
     font-size: var(--genai-sources-excerpt-number-font-size, var(--ds-body-md-font-size));
     font-weight: var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-semibold));
     color: var(--genai-sources-excerpt-number-color, var(--ds-color-text-subtle));
   }
-  /* The title and, right beside it, one link back per footnote that cites the excerpt, as
-     Wikipedia's back-references. */
+  /* The title, then one link back per footnote that cites the excerpt. */
   .uib-sources-excerpt-line {
     display: flex;
     flex-wrap: wrap;
@@ -252,9 +246,7 @@
     font-size: var(--genai-sources-uses-font-size, var(--ds-body-xs-font-size));
     font-weight: var(--genai-sources-uses-font-weight, var(--ds-font-weight-regular));
   }
-  /* A number alone is a small target: each link is at least 24 px both ways (WCAG 2.5.8). A
-     literal, since Designsystemet's size tokens shrink under a data-size: --ds-size-6 comes to
-     21 px under "sm". */
+  /* At least 24 px each way (WCAG 2.5.8); a literal, as size tokens shrink under data-size. */
   .uib-sources-use {
     display: inline-flex;
     align-items: center;
@@ -348,6 +340,65 @@
     margin: 0;
     overflow-wrap: anywhere;
   }
+  /* ── `variant="tool"`: the dev boards' «Kilder» tool (dev-kilder-hoyre) ── */
+
+  .uib-sources[data-variant='tool'],
+  .uib-sources[data-variant='tool'] > .uib-sources-head {
+    gap: var(--genai-sources-tool-gap, var(--ds-size-3));
+  }
+
+  /* The field alone: the line for the hits takes room only once there is something to say. */
+  .uib-sources[data-variant='tool'] .uib-sources-search-form {
+    gap: 0;
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-search-results:not([data-empty]) {
+    margin-block-start: var(--genai-sources-search-gap, var(--ds-size-2));
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-search-results[data-empty] {
+    min-block-size: 0;
+  }
+
+  /* «Utdrag svaret bygger på», a quiet line over the list. */
+  .uib-sources-caption {
+    margin: 0;
+    color: var(--genai-sources-caption-color, var(--ds-color-text-subtle));
+    font-size: var(--genai-sources-caption-font-size, var(--ds-font-size-2));
+    line-height: var(--genai-sources-caption-line-height, var(--ds-line-height-md));
+  }
+
+  /* An excerpt's title, its section or «Utdrag N», bold in the text's own colour. */
+  .uib-sources[data-variant='tool'] :is(.uib-sources-excerpt-title, .uib-sources-excerpt-number) {
+    font-size: var(--genai-sources-tool-excerpt-title-font-size, var(--ds-font-size-3));
+    font-weight: var(
+      --genai-sources-tool-excerpt-title-font-weight,
+      var(--ds-font-weight-semibold)
+    );
+    color: var(--genai-sources-tool-excerpt-title-color, var(--ds-color-text-default));
+  }
+
+  /* A closed excerpt is two lines of its text, its paragraphs run together, and the last line
+     fades into the excerpt's ground. */
+  .uib-sources[data-variant='tool'] .uib-sources-preview {
+    position: relative;
+    max-block-size: var(--genai-sources-preview-block-size, 2lh);
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-preview > * {
+    margin-block-end: 0;
+  }
+  .uib-sources[data-variant='tool'] .uib-sources-preview::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: var(--genai-sources-preview-fade-block-size, 1lh);
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--genai-sources-excerpt-background, var(--ds-color-surface-default))
+    );
+    pointer-events: none;
+  }
+
   @container uib-sources (inline-size >= 410px) {
     .uib-sources:not([data-variant='compact']) .uib-sources-document {
       --_head-padding: var(--ds-size-4);

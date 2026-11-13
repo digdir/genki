@@ -1,11 +1,7 @@
-import type { ProcedureStep } from '@genai/ui-blocks';
+import type { ApproachStep } from '@genai/ui-blocks';
 import type { PlainKey, T } from './i18n';
 
-/**
- * A `genai_step` frame from the stream. `event`, `stage`, `label`, `tool` and `iteration` are in
- * docs/frontend-contract.md. The rest is what the approach card needs and the platform does not
- * send yet; only the example data in the workspace sends it, so the card can be designed in full.
- */
+/** A `genai_step` frame. Members not in docs/frontend-contract.md come only from the example data. */
 export interface StreamStep {
   event?: string;
   stage?: string;
@@ -23,8 +19,15 @@ export interface StreamStep {
   missing?: boolean;
 }
 
+/** A step as the workspace keeps it; `key` names the tool or label it came from. */
+export interface StreamedStep extends ApproachStep {
+  key: string;
+  /** The tool whose title the step shows, or none when it shows the platform's label. */
+  titleTool: string | undefined;
+}
+
 export interface ProcedureState {
-  steps: readonly ProcedureStep[];
+  steps: readonly StreamedStep[];
   read?: number;
 }
 
@@ -39,15 +42,20 @@ const toolTitles: Readonly<Record<string, PlainKey>> = {
 };
 
 const toolTitle = (tool: string | undefined, t: T) => {
-  const key = tool ? toolTitles[tool] : undefined;
+  const key = tool && Object.hasOwn(toolTitles, tool) ? toolTitles[tool] : undefined;
   return key ? t(key) : undefined;
 };
 
-const titleOf = (frame: StreamStep, t: T) => frame.label?.trim() || toolTitle(frame.tool, t);
+const labelOf = (frame: StreamStep) =>
+  (typeof frame.label === 'string' && frame.label.trim()) || undefined;
 
-const idOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
+const titleOf = (frame: StreamStep, t: T) => labelOf(frame) ?? toolTitle(frame.tool, t);
 
-const detailsOf = (frame: StreamStep): Partial<ProcedureStep> => ({
+const titleToolOf = (frame: StreamStep) => (labelOf(frame) ? undefined : frame.tool);
+
+const keyOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
+
+const detailsOf = (frame: StreamStep): Partial<ApproachStep> => ({
   ...(frame.description ? { description: frame.description } : {}),
   ...(frame.documents?.length
     ? {
@@ -62,53 +70,51 @@ const detailsOf = (frame: StreamStep): Partial<ProcedureStep> => ({
   ...(frame.missing ? { missing: true } : {}),
 });
 
-const planned = (steps: readonly ProcedureStep[], plan: string[] | undefined, t: T) => {
+const planned = (steps: readonly StreamedStep[], plan: string[] | undefined, t: T) => {
   if (!plan?.length) return steps;
   const waiting = plan.flatMap((tool) => {
     const title = toolTitle(tool, t);
-    const id = `tool:${tool}`;
-    return title && !steps.some((s) => s.id === id)
-      ? [{ id, title, status: 'waiting' as const }]
+    const key = `tool:${tool}`;
+    return title && !steps.some((s) => s.key === key)
+      ? [{ id: key, key, title, titleTool: tool, status: 'waiting' as const }]
       : [];
   });
   return waiting.length ? [...steps, ...waiting] : steps;
 };
 
-/**
- * The approach after one more step frame. The step it names is in progress and the ones before it
- * are done. A planned step moves from waiting to in progress; a step not in the plan is added after
- * the others. A frame with nothing a person can read changes nothing.
- */
+/** The approach after one more frame: the step it names is in progress, the ones before it done. */
 export const withStep = (state: ProcedureState, frame: StreamStep, t: T): ProcedureState => {
   const read = frame['documents-total'];
   const withRead = read !== undefined && read !== state.read ? { ...state, read } : state;
   const steps = planned(withRead.steps, frame.plan, t);
   const title = titleOf(frame, t);
   if (!title) return steps === withRead.steps ? withRead : { ...withRead, steps };
-  const id = idOf(frame, title);
+  const key = keyOf(frame, title);
   const details = detailsOf(frame);
-  const at = steps.findIndex((s) => s.id === id && s.status !== 'done');
+  const at = steps.findIndex((s) => s.key === key && s.status !== 'done');
   const current = steps[at];
   if (current?.status === 'active' && !Object.keys(details).length)
     return steps === withRead.steps ? withRead : { ...withRead, steps };
-  const added: ProcedureStep = {
-    id: steps.some((s) => s.id === id) ? `${id}:${steps.length}` : id,
+  const added: StreamedStep = {
+    id: steps.some((s) => s.key === key) ? `${key}:${steps.length}` : key,
+    key,
     title,
+    titleTool: titleToolOf(frame),
     status: 'active',
     ...details,
   };
-  const done = (s: ProcedureStep): ProcedureStep =>
+  const done = (s: StreamedStep): StreamedStep =>
     s.status === 'active' ? { ...s, status: 'done' } : s;
-  const next: ProcedureStep[] =
+  const next: StreamedStep[] =
     at === -1
       ? [
           ...steps.filter((s) => s.status !== 'waiting').map(done),
           added,
           ...steps.filter((s) => s.status === 'waiting'),
         ]
-      : steps.map((s, i): ProcedureStep =>
+      : steps.map((s, i): StreamedStep =>
           i === at
-            ? { ...s, title, ...details, status: 'active' }
+            ? { ...s, title, titleTool: titleToolOf(frame), ...details, status: 'active' }
             : i < at
               ? { ...s, status: 'done' }
               : s,
@@ -116,8 +122,15 @@ export const withStep = (state: ProcedureState, frame: StreamStep, t: T): Proced
   return { ...withRead, steps: next };
 };
 
+/** The steps with each tool's title in the language the person reads now. */
+export const inLanguage = (steps: readonly StreamedStep[], t: T): readonly StreamedStep[] =>
+  steps.map((s) => {
+    const title = toolTitle(s.titleTool, t);
+    return title && title !== s.title ? { ...s, title } : s;
+  });
+
 /** The steps when the answer is done: all done, without planned steps the run never reached. */
-export const allDone = (steps: readonly ProcedureStep[]): readonly ProcedureStep[] =>
+export const allDone = <S extends ApproachStep>(steps: readonly S[]): readonly S[] =>
   steps.flatMap((s) =>
     s.status === 'waiting' ? [] : s.status === 'done' ? [s] : [{ ...s, status: 'done' as const }],
   );

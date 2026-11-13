@@ -28,10 +28,7 @@ const sourceOf = (raw: Wire): SourceDocument => ({
   })),
 });
 
-/**
- * The answer's footnotes as a host reads them: by excerpt when its `[n]` count chunks (a stored
- * answer's `markers`), or else by document, the contract's `[N]` for the source with `index: N`.
- */
+/** The answer's footnotes as a host reads them: by excerpt with `markers`, else by document. */
 const citationsOf = (raw: Wire): SourceCitation[] => {
   const marks = [...(str(raw.answer) ?? '').matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
   const markers = raw.markers as { marker: string; chunkId: string }[] | undefined;
@@ -61,8 +58,7 @@ const marker: Answer = {
   })),
 };
 
-// Captured answers from a test environment, one JSON file each with the stream's `sources`, as
-// Sources' corpus test reads them.
+// Captured answers, one JSON file each, as Sources' corpus test reads them.
 const corpora = (process.env.GENAI_QA_CORPUS?.split(delimiter) ?? []).filter(existsSync);
 const captured = corpora.flatMap((folder) =>
   readdirSync(folder)

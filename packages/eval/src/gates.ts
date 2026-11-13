@@ -1,6 +1,6 @@
-import { EvalError } from './evaluators.js';
-import { compareRuns, perCaseMeans, type ComparableField } from './runner.js';
-import type { EvalRun, Gate } from './schema.js';
+import { EvalError, evaluatorOfJudge } from './evaluators.js';
+import { compareRuns, perCaseMeans, unscoredIn, type ComparableField } from './runner.js';
+import { runState, type EvalRun, type Gate } from './schema.js';
 import type { EvalRunStore } from './store.js';
 import { mean, type BootstrapOptions } from './stats.js';
 
@@ -20,16 +20,12 @@ export interface GateInput {
   evaluation: { testSets: string[]; gates: string[] };
   registry: Map<string, Gate>;
   candidate: Map<string, EvalRun>;
-  fallback?: GateFallback;
   baseline?: Map<string, EvalRun>;
   judgeAgreement?: Map<string, number>;
   allowDifferent?: ComparableField[];
   bootstrap?: BootstrapOptions;
-}
-
-export interface GateFallback {
-  runs: Map<string, EvalRun>;
-  metrics: string[];
+  /** Judges whose scores never gate: left out of comparisons and calibration. */
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export interface GateOutcome {
@@ -65,11 +61,7 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
     );
     for (const { set, language } of scopes) {
       const testSet = language ? `${set} (${language})` : set;
-      const fallback =
-        gate.kind === 'threshold' && input.fallback?.metrics.includes(gate.metric)
-          ? input.fallback.runs.get(set)
-          : undefined;
-      const run = inLanguage(input.candidate.get(set) ?? fallback, language);
+      const run = inLanguage(input.candidate.get(set), language);
       const base = { gate: name, testSet };
       if (!run) {
         results.push({
@@ -92,13 +84,35 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
       let blocking = true;
       let note = '';
       if (usesJudge(gate.metric)) {
-        const uncalibrated = run.provenance.judges.filter(
-          (j) => (input.judgeAgreement?.get(j) ?? 0) < minimumJudgeAgreement,
+        // Only the judges that scored the gate's metric; a run whose judges cannot be told apart keeps them all.
+        const scoredBy = new Set(
+          run.results.flatMap((r) =>
+            r.scores.filter((s) => s.metric === gate.metric).map((s) => s.evaluator),
+          ),
         );
-        if (run.provenance.judges.length === 0 || uncalibrated.length > 0) {
+        const own = run.provenance.judges.filter((j) => scoredBy.has(evaluatorOfJudge(j)));
+        const judges = (own.length > 0 ? own : run.provenance.judges).filter(
+          (j) => !input.advisoryJudge?.(j),
+        );
+        const uncalibrated = judges.filter(
+          (j) =>
+            (input.judgeAgreement?.get(j) ?? input.judgeAgreement?.get(evaluatorOfJudge(j)) ?? 0) <
+            minimumJudgeAgreement,
+        );
+        if (judges.length === 0 || uncalibrated.length > 0) {
           blocking = false;
           note = ` (advisory: judge ${uncalibrated.join(', ') || 'unknown'} is not calibrated to ${minimumJudgeAgreement})`;
         }
+      }
+      const unscored = unscoredIn(run, gate.metric, gate.split);
+      if (unscored.missing > 0) {
+        results.push({
+          ...base,
+          pass: false,
+          blocking,
+          reason: `${gate.metric}: no score for ${unscored.missing} of ${unscored.of} cases${note}`,
+        });
+        continue;
       }
       if (gate.kind === 'threshold') {
         const values = [...perCaseMeans(run, gate.metric, undefined, gate.split).values()];
@@ -132,6 +146,16 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
         });
         continue;
       }
+      const baselineUnscored = unscoredIn(previous, gate.metric, gate.split);
+      if (baselineUnscored.missing > 0) {
+        results.push({
+          ...base,
+          pass: false,
+          blocking,
+          reason: `${gate.metric}: no score in the baseline for ${baselineUnscored.missing} of ${baselineUnscored.of} cases${note}`,
+        });
+        continue;
+      }
       const tags = [
         undefined,
         ...(gate.perTag ? tagsOf(run).filter((t) => tagsOf(previous).includes(t)) : []),
@@ -144,6 +168,7 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
             ...input.bootstrap,
             split: gate.split,
             allowDifferent: input.allowDifferent ?? ['commit', 'services', 'servedModels'],
+            ...(input.advisoryJudge ? { advisoryJudge: input.advisoryJudge } : {}),
             ...(tag === undefined ? {} : { tag }),
           });
           if (tag === undefined) overall = { difference: c.difference, ci: c.ci };
@@ -178,10 +203,10 @@ export interface PublishGateInput {
   baseline?: string;
   evaluation: { testSets: string[]; gates: string[] };
   runs: EvalRunStore;
-  candidateFallback?: GateFallback;
   registry: Map<string, Gate>;
   judgeAgreement?: Map<string, number>;
   bootstrap?: BootstrapOptions;
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export interface PublishDecision {
@@ -200,7 +225,10 @@ const latestBySet = async (
 ) => {
   const found = new Map<string, EvalRun>();
   for (const testSet of testSets) {
-    const [latest] = await runs.list({ tenant, service, subject, testSet });
+    const latest = (await runs.list({ tenant, service, subject, testSet })).find(
+      // A run of a few marked cases does not show how the whole test set does.
+      (s) => runState(s.run) === 'completed' && !s.run.tested?.selected,
+    );
     if (latest) found.set(testSet, latest.run);
   }
   return found;
@@ -229,10 +257,10 @@ export const publishGate = async (input: PublishGateInput): Promise<PublishDecis
     evaluation: input.evaluation,
     registry: input.registry,
     candidate,
-    ...(input.candidateFallback ? { fallback: input.candidateFallback } : {}),
     ...(baseline ? { baseline } : {}),
     ...(input.judgeAgreement ? { judgeAgreement: input.judgeAgreement } : {}),
     ...(input.bootstrap ? { bootstrap: input.bootstrap } : {}),
+    ...(input.advisoryJudge ? { advisoryJudge: input.advisoryJudge } : {}),
   });
   const label = (r: GateResult) => `${r.gate} on ${r.testSet}: ${r.reason}`;
   return {

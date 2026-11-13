@@ -10,6 +10,7 @@ import {
 } from '@genai/port-model';
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
+import { datasetInUseType, datasetRunOpenType } from '../dataset-delete.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
 import { switchStates } from '../engine-switches.js';
 import { changeReason, Problem, problemContent } from '../http.js';
@@ -169,9 +170,41 @@ const DatasetWithStatus = Dataset.extend({
   nextRunAt: z.string().nullable(),
 }).openapi('DatasetWithStatus');
 
+const DatasetReader = z
+  .object({
+    kind: z.enum(['service', 'adoption']),
+    tenant: z.string(),
+    id: z.string(),
+    name: z.string(),
+  })
+  .openapi('DatasetReader');
+
 const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
+  usedBy: z
+    .array(DatasetReader)
+    .describe('The published services and adopted building blocks of the tenant that read it'),
 }).openapi('DatasetDetail');
+
+const DatasetDeleteResult = z
+  .object({
+    deleted: z.string(),
+    removed: z.object({
+      catalogEntry: z.literal(true),
+      pipelines: z.array(z.string()),
+      uploads: z.array(z.string()),
+      generations: z.array(z.string()),
+    }),
+    kept: z.object({
+      knowledgeRecords: z
+        .boolean()
+        .describe(
+          'True for a dataset on the knowledge database: its records and partitions stay until the drop job exists (issue 250), and its id is held',
+        ),
+      generations: z.array(z.string()).describe('Generations the engine refused to drop'),
+    }),
+  })
+  .openapi('DatasetDeleteResult');
 
 const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
   description:
@@ -352,6 +385,11 @@ const EndpointInUse = Problem.extend({
     z.object({ dataset: z.string(), name: z.string(), tenant: z.string(), tenantName: z.string() }),
   ),
 }).openapi('KnowledgeEndpointInUse');
+
+const DatasetInUse = Problem.extend({ type: z.literal(datasetInUseType) }).openapi('DatasetInUse');
+const DatasetRunOpen = Problem.extend({ type: z.literal(datasetRunOpenType) }).openapi(
+  'DatasetRunOpen',
+);
 
 const Range = z.object({ min: z.number(), max: z.number() });
 const Side = z.object({ first: z.string().optional(), rank: z.number().nullable() });
@@ -613,6 +651,22 @@ const ModelEndpointFields = {
       description:
         "Hosts besides the connection's own that an answer link of a descriptor may lead to, each with an optional port; only the operator sets them, and a change is audited",
       example: ['files.provider.example'],
+    }),
+  settings: z
+    .record(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,31}$/), z.string().max(256))
+    .optional()
+    .openapi({
+      description:
+        'Non-secret values a descriptor reads as $connection.<name> in headers, the query and module input, never in the host, the path or the body; at most 20, only the operator sets them, and a change is audited',
+      example: { keyId: 'AKID-7', region: 'eu-north-1' },
+    }),
+  keys: z
+    .record(z.string().regex(/^[a-z][a-zA-Z0-9_]{0,31}$/), z.string())
+    .optional()
+    .openapi({
+      description:
+        'Named extra keys, each a platform secret reference; only a descriptor module reaches them, as connection.<name>, and no request carries them; at most 4, only the operator sets them, and a change is audited',
+      example: { signing: 'secret://platform/provider-signing-key' },
     }),
 };
 const ModelEndpointInput = z
@@ -1579,6 +1633,29 @@ const operatorCatalogRoutes: RouteConfig[] = [
   }),
 ];
 
+const deleteRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
+  createRoute({
+    method: 'delete',
+    path: `${base.path}/datasets/{id}`,
+    summary: `Delete a dataset: its catalog entry, pipelines, uploads and generations; on the knowledge database the records and partitions stay until the drop job exists (${who(base, 'manage-datasets')}, audited)`,
+    request: {
+      params: z.object({ ...base.params, id: param('sider') }),
+      headers: reasonHeader,
+    },
+    responses: {
+      200: audited(DatasetDeleteResult, 'What was removed and what stays'),
+      400: either('A missing reason'),
+      ...guarded(base, 'manage-datasets'),
+      409: {
+        description: `${datasetInUseType}: a published service or an adopted building block reads the dataset, a delete of it is already going, or the catalog refused to remove it; ${datasetRunOpenType}: a run of the dataset is open`,
+        content: {
+          'application/problem+json': { schema: z.union([DatasetInUse, DatasetRunOpen]) },
+        },
+      },
+    },
+  }),
+);
+
 export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
@@ -1592,6 +1669,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'knowledge-endpoints': knowledgeEndpointRoutes,
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
+  'dataset-delete': deleteRoutes,
   'dataset-enrichment': enrichmentRoutes,
   'operator-models': operatorModelRoutes,
   'operator-catalog': operatorCatalogRoutes,

@@ -2,11 +2,14 @@
 // suggested questions, and per collection the labels of its filter fields and where a document
 // lives. kunnskapsassistenten's own choices are one such profile; without one, the assembly uses
 // genki's names as they come.
+import type { ShellProfileProps } from '@genai/ui-blocks';
 
 /** One filter field as the reader sees it. */
 export interface FieldSpec {
   id: string;
   label: string;
+  /** The field's name over its row in the next look's filter, singular: «Dokumenttype». */
+  heading?: string | undefined;
   kind?: 'year' | undefined;
   /** The values are integers on the wire. */
   integer?: boolean | undefined;
@@ -40,8 +43,25 @@ export interface AssistantProfile {
   followUps?: readonly string[] | undefined;
   /** Per collection, by its key. */
   corpora?: Readonly<Record<string, CorpusProfile>> | undefined;
-  /** Who the reader is, for «Innlogget som» under the threads. */
+  /**
+   * Who the reader is: «Innlogget som» under the threads, or in the template's next look the name
+   * on the profile button at the primary panel's foot, which opens the profile menu.
+   */
   signedInAs?: string | undefined;
+  /** The reader's organisation, under their name at the top of the profile menu (next look). */
+  organisation?: string | undefined;
+  /**
+   * The host's pages in the profile menu (next look), each a link or an action, after
+   * «Innstillinger». One not given is not drawn, and «Endringslogg» has its dot only when `news`
+   * says something is new. `extra` holds the host's own entries, in its words, before «Logg ut».
+   */
+  menu?:
+    Pick<ShellProfileProps, 'feedback' | 'changelog' | 'about' | 'contact' | 'extra'> | undefined;
+  /**
+   * «Logg ut»: the host's sign-out, a full navigation to `href`. The assembly first forgets the
+   * reader's choices kept in this browser, then calls `onSignOut`. Without it, no «Logg ut» is drawn.
+   */
+  signOut?: { href: string; onSignOut?: (() => void) | undefined } | undefined;
   /**
    * The services the reader may switch between as variants, and whose threads are listed, when
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
@@ -49,8 +69,10 @@ export interface AssistantProfile {
   family?: ((service: string) => boolean) | undefined;
   /**
    * The trials the reader may turn on in «Innstillinger», «Eksperimenter». The assembly knows what
-   * kunnskapsassistenten's do: `year-ranges` and `compact-filter-chips` in the filter, and
-   * `filters-right-panel`, which puts the filter over the sources in the secondary panel.
+   * kunnskapsassistenten's do: `filters-right-panel`, which puts the filter over the sources in the
+   * secondary panel, and `compact-filter`, the next look's filter panel 230 px wide with the
+   * threads taking the rest. Years as periods and many values as one chip are no longer trials:
+   * the filter always draws them.
    */
   experiments?: readonly AssistantExperiment[] | undefined;
   /** The note at the foot of «Innstillinger». */

@@ -1,0 +1,43 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '312521172', id: smoke, name: Røyktest }
+spec:
+  purpose: Fast røyktest av plattformen etter hver utrulling til genki-test. Ingen andre tjenester, frontender eller nøkler skal bruke den.
+  audience: [employees]
+  riskClass: minimal
+  visibility: internal
+  variants:
+    - id: default
+      title: { nb: Agent, en: Agent }
+    - id: retrieve-only
+      title: { nb: Bare søk, en: Search only }
+      chat: false
+      strategy: { id: rag-single-shot, version: 1, config: { generate: false } }
+    - id: model-gpt-5-4-mini
+      chat: false
+      model: foundry-openai/gpt-5.4-mini
+      overrides: { budget: { searches: 1, reads: 1, readChars: 2000 }, maxIterations: 3 }
+    - id: model-gpt-5-6-terra
+      chat: false
+      model: foundry-openai/gpt-5.6-terra
+      overrides: { budget: { searches: 1, reads: 1, readChars: 2000 }, maxIterations: 3 }
+    - id: model-claude-haiku-5-5
+      chat: false
+      model: foundry-claude/claude-haiku-5-5
+      overrides: { budget: { searches: 1, reads: 1, readChars: 2000 }, maxIterations: 3 }
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: agent-loop
+    version: 1
+    config:
+      budget: { searches: 2, reads: 3, readChars: 6000 }
+      maxIterations: 6
+      temperature: 0.3
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos
+    reranker: colbert
+    retrieval: { maxPerDocument: 10, rerank: { enabled: true } }
+  model: { primary: foundry-openai/gpt-5.4-mini, residency: global }
+  exposure: { openai: true }

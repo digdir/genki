@@ -113,17 +113,20 @@
             <ul>
               <li>
                 <code>Composer</code>: <code>value</code>, <code>onChange</code> and
-                <code>onSubmit(question)</code>, which every way of sending goes through: Enter, the
-                send button and a follow-up. <code>working</code> holds sending, and with
+                <code>onSubmit</code> with the question, which every way of sending goes through:
+                Enter, the send button and a follow-up. <code>working</code> holds sending, and with
                 <code>onCancel</code> the send button becomes «Avbryt».
               </li>
               <li>
-                <code>attachments</code>: the files as the host tracks them (uploading, ready or
-                failed) with <code>onAdd</code>, <code>onRemove</code> and <code>onRetry</code>, and
-                <code>types</code> and <code>maxBytes</code> for what it takes, named as in
-                <code>OwnDocuments</code> (<code>fileTypes</code> and
-                <code>maxMegabytes</code> still work until hosts have moved). Uploading is the
-                host's; the block draws and refuses.
+                <code>attachments</code>: the files as the host tracks them, in <code>items</code>,
+                each with an <code>id</code>, its <code>name</code>, a
+                <code>status</code> (uploading, ready or failed), <code>progress</code> from 0 to
+                100 while uploading and an <code>error</code> if it failed; with <code>onAdd</code>,
+                <code>onRemove</code> and <code>onRetry</code>, <code>accept</code> for the file
+                picker, and <code>types</code> and <code>maxBytes</code> (shown in megabytes to one
+                decimal) for what it takes, named as in <code>OwnDocuments</code>. The old names,
+                <code>fileTypes</code> and <code>maxMegabytes</code>, still work until hosts have
+                moved. Uploading is the host's; the block draws and refuses.
               </li>
               <li>
                 <code>followUps</code>, <code>onScrollToBottom</code>, <code>actions</code> (a slot
@@ -134,9 +137,16 @@
                 hides the focus (WCAG 2.4.11), as kunnskapsassistenten does.
               </li>
               <li>
-                <code>fieldRef</code> and <code>sendRef</code>: refs to the field and the send
-                button, for a host that moves focus there, such as a skip link.
+                <code>note</code>: a line right under the field, docked with it, such as the
+                filter's <code>FilterNext</code>: «Neste spørsmål leser fra 8 781 dokumenter ·
+                Evaluering – endres i filteret til venstre» (dev-filter-panel).
               </li>
+              <li>
+                <code>fieldRef</code> and <code>sendRef</code>: refs to the field and the send
+                button, for a host that moves focus there, such as a skip link. <code>ref</code> is
+                the block's root.
+              </li>
+              <li>Every block here takes a <code>className</code> for its root, beside its own.</li>
               <li>
                 <code>actions</code> is where the variant picker goes: kunnskapsassistenten decided
                 on 6 October 2026 that the choice of who answers sits in the question field, like
@@ -169,6 +179,10 @@
             <h2>Related</h2>
             <ul>
               <li><a href="conversation.html">Conversation</a>: the turns, built as a block</li>
+              <li>
+                <a href="welcome.html">Welcome</a>: the greeting and the suggestions, on a page of
+                their own
+              </li>
               <li><a href="threads.html">Threads</a>: the selected thread is shown in the chat</li>
               <li><a href="approach.html">Approach</a>: the plan before and during an answer</li>
               <li>

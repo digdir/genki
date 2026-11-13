@@ -31,6 +31,7 @@ import { ApiError, type ApiClient } from '../api';
 import { useT, type Format, type PlainKey, type T } from '../i18n';
 import { navigate, useAsync } from '../hooks';
 import { EmptyState, ErrorState, Loading } from '../states';
+import { SinkLabels } from './SinkLabels';
 import type {
   JudgeCalibration,
   LabelItem,
@@ -1094,6 +1095,7 @@ const titles: Record<string, [PlainKey, PlainKey]> = {
   matrix: ['qualityMatrix.matrixTitle', 'qualityMatrix.matrixPageIntro'],
   judges: ['qualityMatrix.judgesTitle', 'qualityMatrix.judgesPageIntro'],
   rate: ['qualityMatrix.rateTitle', 'qualityMatrix.ratePageIntro'],
+  sink: ['qualityMatrix.sinkTitle', 'qualityMatrix.sinkPageIntro'],
 };
 
 export const QualityMatrix = ({
@@ -1142,6 +1144,7 @@ export const QualityMatrix = ({
             <TabsTab value="matrix">{t('qualityMatrix.tabMatrix')}</TabsTab>
             <TabsTab value="judges">{t('qualityMatrix.tabJudges')}</TabsTab>
             <TabsTab value="rate">{t('qualityMatrix.tabRate')}</TabsTab>
+            <TabsTab value="sink">{t('qualityMatrix.tabSink')}</TabsTab>
           </TabsList>
           <TabsPanel value="matrix">
             <MatrixView api={api} quality={state.data} threshold={threshold} onRefresh={retry} />
@@ -1165,6 +1168,9 @@ export const QualityMatrix = ({
               judge={judge ?? state.data.judges[0]?.judge ?? ''}
               onJudge={setJudge}
             />
+          </TabsPanel>
+          <TabsPanel value="sink">
+            <SinkLabels api={api} />
           </TabsPanel>
         </Tabs>
       )}

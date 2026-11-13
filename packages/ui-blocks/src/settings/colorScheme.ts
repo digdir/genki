@@ -1,7 +1,4 @@
-/**
- * The values of Designsystemet's `data-color-scheme`. `auto` follows the operating system, and is
- * the scheme until the reader chooses another.
- */
+/** Designsystemet's `data-color-scheme` values; `auto` follows the system until a choice. */
 export const colorSchemes = ['light', 'dark', 'auto'] as const;
 
 export type ColorScheme = (typeof colorSchemes)[number];

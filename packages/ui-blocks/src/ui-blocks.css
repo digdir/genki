@@ -1,7 +1,10 @@
-@import './shell/shell.css';
+@import './approach/approach.css';
 @import './markdown/markdown.css';
 @import './sources/sources.css';
 @import './answer/answer.css';
+@import './conversation/conversation.css';
+@import './document-view/document-view.css';
+@import './shell/shell.css';
 @import './states/states.css';
 @import './variant-picker/variant-picker.css';
 @import './threads/threads.css';
@@ -12,8 +15,6 @@
 @import './documents/documents.css';
 @import './settings/settings.css';
 @import './answer-actions/answer-actions.css';
-@import './conversation/conversation.css';
-@import './document-view/document-view.css';
 
 .uib-visually-hidden {
   position: absolute;
@@ -22,58 +23,4 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.uib-procedure-card {
-  padding: 0;
-  overflow: hidden;
-}
-
-.uib-procedure-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ds-size-2);
-}
-
-.uib-procedure-steps {
-  margin: 0;
-}
-
-.uib-procedure-steps > li[data-status='waiting'] .uib-step-title {
-  color: var(--ds-color-neutral-text-subtle);
-}
-
-.uib-step-title {
-  font-weight: 500;
-}
-
-.uib-procedure-steps > li[data-status='waiting'] .uib-step-title,
-.uib-step-status {
-  font-weight: 400;
-}
-
-.uib-step-status,
-.uib-step-description,
-.uib-procedure-footer {
-  color: var(--ds-color-neutral-text-subtle);
-  font-size: var(--ds-font-size-2);
-}
-
-.uib-step-description {
-  margin: var(--ds-size-1) 0 0;
-}
-
-.uib-step-documents {
-  margin-top: var(--ds-size-1);
-  font-size: var(--ds-font-size-2);
-}
-
-.uib-step-link {
-  display: inline-block;
-  margin-top: var(--ds-size-1);
-  font-size: var(--ds-font-size-2);
-}
-
-.uib-procedure-footer {
-  margin: var(--ds-size-3) 0 0;
 }

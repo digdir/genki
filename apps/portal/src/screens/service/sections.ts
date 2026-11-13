@@ -107,7 +107,7 @@ export const locate = (
   allowed: ServiceSection[],
 ): ServiceLocation => {
   const [, , raw, detail] = segments;
-  const fallback: ServiceSection = id === 'new' ? 'setup' : 'overview';
+  const fallback: ServiceSection = allowed.includes('overview') ? 'overview' : 'setup';
   const tab = query.get('tab');
   const legacy = !raw && tab ? legacyTabs[tab] : undefined;
   const keep = new URLSearchParams(query);

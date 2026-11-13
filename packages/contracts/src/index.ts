@@ -59,6 +59,7 @@ export interface Confinement {
   tenant: string;
   service?: string;
   client?: string;
+  environments?: string[];
 }
 
 export type Interaction = 'unary' | 'stream' | 'async' | 'duplex';
@@ -288,8 +289,22 @@ export interface ServiceProvenance {
   capability: { id: string; version: string };
   strategy: { id: string; version: string };
   configHash: string;
+  environment?: string;
   models?: ModelProvenance[];
   indexes?: IndexProvenance[];
+}
+
+/** Which eval run, case and repeat a task answers, and where its trace goes. Audit only. */
+export interface EvaluationContext {
+  run: { id: string; name: string };
+  case: {
+    id: string;
+    repeat: number;
+    split: 'train' | 'validation' | 'holdout';
+    /** What the case expects, its criteria, for a judge in the sink that maps them. */
+    expected?: Record<string, string> | undefined;
+  };
+  sink?: string | undefined;
 }
 
 export interface Task {

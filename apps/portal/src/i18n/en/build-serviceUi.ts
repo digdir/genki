@@ -289,6 +289,10 @@ export const serviceUi = {
     active: 'Active',
     revokedTag: 'Revoked',
     created: ' · created {when}',
+    createdBy: ' · created {when} by {who}',
+    modelsAllowed: 'Can use models in the locked environment',
+    modelsRefused:
+      'Cannot use models in the locked environment: created by a login that is not admitted. Rotate it while signed in with Entra ID.',
     unknownDate: 'unknown date',
     rotated: ' · rotated',
     clientLine: 'Frontend: {client}',

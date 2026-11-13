@@ -3,7 +3,7 @@
 // from the UI blocks preview. Only what genki sends: a step's label or its tool's title, in
 // progress until the next one starts.
 import type { Locale } from '@genai/i18n';
-import type { ProcedureStep } from '@genai/ui-blocks';
+import type { ApproachStep } from '@genai/ui-blocks';
 import { translator, type AssemblyTranslator } from './i18n.js';
 
 export type StepFrame = {
@@ -49,50 +49,65 @@ const passagesRead = (frame: StepFrame) => {
   }, 0);
 };
 
+/** The milliseconds genki says each tool call of a turn took, by the call's tool. */
+const callTimes = (frame: StepFrame) => {
+  const calls = frame['tool-calls'];
+  if (!Array.isArray(calls)) return [];
+  return calls.flatMap((call: unknown) => {
+    const { tool, 'duration-ms': ms } = (call ?? {}) as { tool?: unknown; 'duration-ms'?: unknown };
+    return typeof tool === 'string' && typeof ms === 'number' && Number.isFinite(ms) && ms >= 0
+      ? [{ tool, ms }]
+      : [];
+  });
+};
+
 /**
- * The steps so far. Each frame with a title starts a step and ends the one before. A run of the
- * same step one after another is one step with a count, «Leste de relevante delene nøye (4
- * ganger)», or, when genki says how many passages were read, «Leste 12 utdrag nøye». The same
- * step again after another one stays its own: searching again after reading is worth seeing.
- * Done here, not in Approach (#234), until its maintainer agrees to the same in the block.
+ * The steps so far. Each frame with a title starts a step and ends the one before. A reading step
+ * carries the passages genki says it read, as `excerptsRead`. Approach draws a run of the same
+ * step as one line with a count, or with the passages the run read.
  */
 export const stepsOf = (
   approach: Approach,
   working: boolean,
   locale: Locale = 'nb',
-): ProcedureStep[] => {
+  /** Each step with the time genki says its tool calls took, as `duration`. */
+  timed = false,
+): ApproachStep[] => {
   const t = translator(locale);
-  const runs: { id: string; title: string; tool?: string; count: number; passages: number }[] = [];
+  const steps: { id: string; title: string; tool?: string; passages: number; ms?: number }[] = [];
+  // Where the turn being reported began: its calls are timed in the order its steps were.
+  let turnFrom = 0;
   for (const frame of approach.frames) {
     const read = passagesRead(frame);
     if (read > 0) {
-      const reading = runs.findLast((run) => run.tool === 'read_chunks');
+      const reading = steps.findLast((step) => step.tool === 'read_chunks');
       if (reading) reading.passages += read;
+    }
+    if (Array.isArray(frame['tool-calls'])) {
+      const turn = steps.slice(turnFrom);
+      for (const call of callTimes(frame)) {
+        const ran =
+          turn.find((step) => step.tool === call.tool && step.ms === undefined) ??
+          steps.findLast((step) => step.tool === call.tool);
+        if (ran) ran.ms = (ran.ms ?? 0) + call.ms;
+      }
+      turnFrom = steps.length;
     }
     const title = titleOf(frame, t);
     if (!title) continue;
-    const last = runs.at(-1);
-    if (last && last.title === title) {
-      last.count += 1;
-      continue;
-    }
     const id = frame.tool ? `tool:${frame.tool}` : title;
-    runs.push({
-      id: runs.some((run) => run.id === id) ? `${id}:${runs.length}` : id,
+    steps.push({
+      id: steps.some((step) => step.id === id) ? `${id}:${steps.length}` : id,
       title,
       ...(frame.tool ? { tool: frame.tool } : {}),
-      count: 1,
       passages: 0,
     });
   }
-  return runs.map((run, at) => ({
-    id: run.id,
-    title:
-      run.tool === 'read_chunks' && run.passages > 0
-        ? t('assembly.stepPassages', { count: run.passages })
-        : run.count > 1
-          ? t('assembly.stepRepeated', { title: run.title, count: run.count })
-          : run.title,
-    status: working && at === runs.length - 1 ? 'active' : 'done',
+  return steps.map((step, at) => ({
+    id: step.id,
+    title: step.title,
+    ...(step.passages > 0 ? { excerptsRead: step.passages } : {}),
+    ...(timed && step.ms !== undefined ? { duration: step.ms } : {}),
+    status: working && at === steps.length - 1 ? 'active' : 'done',
   }));
 };

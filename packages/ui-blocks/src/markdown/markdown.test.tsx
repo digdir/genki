@@ -203,9 +203,7 @@ describe('Markdown', () => {
   });
 
   it('counts its leaves in the order it draws them, so a mark lands where the hit is', () => {
-    // Everything that puts a plain string in the document: text, emphasis, a code span, an entity,
-    // an escape, an image's alt text, a link drawn as its words, a table cell, a list item, a
-    // fenced block and an uncited [1].
+    // Every kind of markup that puts a plain string in the document.
     const text = [
       '# Tittel med **fet**',
       'Tekst &amp; \\* `kode` ![bilde](x.png) [ord](https://a.no) <https://b.no> [1]',
@@ -221,8 +219,7 @@ describe('Markdown', () => {
     const { text: flat, offsets } = visibleText(text, false);
     const { container } = render(<Markdown text={text} links={false} />);
 
-    // The drawn text and the collected text are the same walk: same pieces, same order. Newlines
-    // go from both sides, since a fenced block holds real ones and a block gap is one of ours.
+    // Same pieces in the same order; newlines go from both, as a fenced block holds real ones.
     expect(flat.replace(/\n/g, '')).toBe((container.textContent ?? '').replace(/\n/g, ''));
     // Every offset points at a real place, and they only move forward.
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
@@ -343,5 +340,107 @@ describe('Markdown', () => {
       { kind: 'list', ordered: false, start: 1, items: ['a fortsatt', 'b'] },
       { kind: 'code', text: 'kode' },
     ]);
+  });
+});
+
+// The text of the one heading a line is read as, or undefined when it is read as anything else.
+const headingText = (line: string) => {
+  const [block, ...more] = blocksOf(line);
+  return block?.kind === 'heading' && more.length === 0 ? block.text : undefined;
+};
+
+describe('Markdown headings and list items', () => {
+  const text = (line: string) => [{ kind: 'paragraph', lines: [line] }];
+
+  it('reads a heading as up to three spaces, one to six #, at least one space and the text', () => {
+    expect(headingText('# Mål')).toBe('Mål');
+    expect(headingText('###### Seks')).toBe('Seks');
+    expect(headingText('   ## Tre foran')).toBe('Tre foran');
+    expect(headingText('#\tTab\t')).toBe('Tab');
+    expect(headingText('#   ')).toBe('');
+  });
+
+  it('leaves a closing run of # and the spaces around it out of a heading, and keeps a # inside it', () => {
+    expect(headingText('## Tittel ##')).toBe('Tittel');
+    expect(headingText('## Tittel ##   ')).toBe('Tittel');
+    expect(headingText('## Tittel#')).toBe('Tittel');
+    expect(headingText('## Tittel # ## ')).toBe('Tittel #');
+    expect(headingText('# a # b')).toBe('a # b');
+    expect(headingText('# #')).toBe('');
+  });
+
+  it('reads a bullet as -, * or + and at least one space, and keeps what follows as it is', () => {
+    expect(blocksOf('- a\n* b\n+ c\n  -\tinnrykket\n-   d  \n- ')).toEqual([
+      { kind: 'list', ordered: false, start: 1, items: ['a', 'b', 'c', 'innrykket', 'd  ', ''] },
+    ]);
+  });
+
+  it('reads a numbered item as up to nine digits, a . or ) and at least one space', () => {
+    expect(blocksOf('7. sju\n8)\tåtte\n9. ')).toEqual([
+      { kind: 'list', ordered: true, start: 7, items: ['sju', 'åtte', ''] },
+    ]);
+    expect(blocksOf('123456789. ni sifre')).toEqual([
+      { kind: 'list', ordered: true, start: 123456789, items: ['ni sifre'] },
+    ]);
+  });
+
+  it('reads a line that is nearly a heading or an item as text', () => {
+    for (const line of [
+      '#',
+      '#uten mellomrom',
+      '####### Sju',
+      '    # Fire foran',
+      '-',
+      '-a',
+      '1.',
+      '1.a',
+      '1234567890. ti sifre',
+      '# a\u{2029}b',
+      '- a\rb',
+      '1. a\u{2028}b',
+    ])
+      expect(blocksOf(line)).toEqual(text(line));
+  });
+
+  it('reads long runs of tabs, spaces and digits as it reads short ones', () => {
+    const tabs = '\t'.repeat(500);
+    const spaces = ' '.repeat(500);
+    expect(headingText(`# x${tabs}y`)).toBe(`x${tabs}y`);
+    expect(headingText(`#${spaces}x${spaces}#${spaces}`)).toBe('x');
+    expect(blocksOf(`*${tabs}x`)).toEqual([
+      { kind: 'list', ordered: false, start: 1, items: ['x'] },
+    ]);
+    expect(blocksOf(`1.${spaces}x${spaces}`)).toEqual([
+      { kind: 'list', ordered: true, start: 1, items: [`x${spaces}`] },
+    ]);
+    expect(blocksOf(`*${tabs}x\r`)).toEqual(text(`*${tabs}x\r`));
+    expect(blocksOf(`${'9'.repeat(500)}. x`)).toEqual(text(`${'9'.repeat(500)}. x`));
+  });
+});
+
+describe('Markdown headings and list items on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const tabs = '\t'.repeat(100_000);
+
+  it('reads a heading in linear time on a long run of tabs inside it', () => {
+    const line = `# x${tabs}y`;
+    expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
+    expect(headingText(line)).toBe(`x${tabs}y`);
+  });
+
+  it('reads a bullet in linear time on a long run of tabs before a line break', () => {
+    const line = `*${tabs}x\r`;
+    expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
+    expect(blocksOf(line)).toEqual([{ kind: 'paragraph', lines: [line] }]);
+  });
+
+  it('reads a numbered item in linear time on a long run of tabs before a line break', () => {
+    const line = `1.${tabs}x\r`;
+    expect(quickly(() => blocksOf(line))).toBeLessThan(1000);
+    expect(blocksOf(line)).toEqual([{ kind: 'paragraph', lines: [line] }]);
   });
 });

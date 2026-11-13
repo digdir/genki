@@ -978,6 +978,18 @@ describe('retrieval details in structuredContent', () => {
     expect(structuredContent(structured, 'c1')).toEqual({ conversation_id: 'c1', fields });
   });
 
+  it('gives a chunk published_at only when its source has a publish date', () => {
+    const sources = [{ chunkId: 'c1', publishedAt: '2025-01-15' }, { chunkId: 'c2' }];
+    const { structured } = defaultOutput([
+      { mime: SOURCES_MIME, body: { kind: 'json', json: { sources } } },
+    ]);
+
+    expect(structuredContent(structured, 'c1').chunks).toEqual([
+      { chunk_id: 'c1', published_at: '2025-01-15' },
+      { chunk_id: 'c2' },
+    ]);
+  });
+
   it('keeps filters the strategy already reported in its sources part', () => {
     const own = [{ filter: { fields: [] }, source: 'explicit' }];
     const { structured } = defaultOutput([
@@ -1230,6 +1242,24 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
       ['stored-1', 'assistant', 'Svar på: hei'],
     ]);
     expect(turns[1]?.chunks).toHaveLength(3);
+  });
+
+  it('stores the run id on the assistant turn, the id feedback on the answer names', async () => {
+    const turns: { role: string; task?: string }[] = [];
+    const { app } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-2', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn);
+        },
+      },
+    });
+
+    await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(turns.map((t) => t.role)).toEqual(['user', 'assistant']);
+    expect(turns[0]).not.toHaveProperty('task');
+    expect(turns[1]?.task).toBe(tasks.at(-1));
   });
 
   it('answers the conversation store refusal as a tool error without running the service', async () => {

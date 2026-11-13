@@ -38,7 +38,9 @@ import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
+import { guardPdfParseLeaks } from '@genai/providers-documents';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
+import { evalSlotLimitsFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
@@ -82,14 +84,20 @@ import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
-import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
+import {
+  bootProblems,
+  devModeWarning,
+  isDevMode,
+  knowledgeServerProblems,
+  tracesContent,
+} from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
-import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
+import { employeeClientIds, isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
 
 /**
  * Runs that run as knowledge jobs (ADR 0042) send their jobs only to the platform server, as
@@ -125,6 +133,8 @@ const configDir = process.env.CONFIG_DIR ?? join(import.meta.dirname, '..', 'con
 const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-genai-platform';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
+// pdf.js can leave a page's parse error unhandled; that page is already left empty (ADR 0042).
+guardPdfParseLeaks(log);
 
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
 const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
@@ -246,6 +256,7 @@ if (!mock && bareSubjects > 0)
 const reservedClientIds = [
   ...(testData.clients ?? []).map((c) => c.clientId),
   ...operatorClientIds(process.env),
+  ...employeeClientIds(process.env),
 ];
 const verifier = operators.watch(
   asPlatformResource(
@@ -321,7 +332,7 @@ const traces = process.env.TRACES_ENDPOINT
               secretKey: 'secret://env/langfuse-secret-key',
             }
           : { kind: 'none' },
-        content: process.env.TRACES_CONTENT === 'true',
+        content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
       { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-api' },
@@ -330,7 +341,7 @@ const traces = process.env.TRACES_ENDPOINT
 const traceResidency = residencies.includes(process.env.TRACES_RESIDENCY as Residency)
   ? (process.env.TRACES_RESIDENCY as Residency)
   : 'global';
-log('traces', { enabled: Boolean(traces), content: process.env.TRACES_CONTENT === 'true' });
+log('traces', { enabled: Boolean(traces), content: tracesContent(process.env) });
 
 const catalogs = {
   models: loadCatalog(configDir, 'models.yaml', 'models'),
@@ -403,7 +414,7 @@ const seedList = (file: string) => {
   return raw.items ?? [];
 };
 
-const documentConverter = documentConverterFrom(process.env, secrets);
+const documentConverter = documentConverterFrom(process.env, secrets, log);
 const phraseArchive = phraseArchiveFrom(process.env, log);
 log('document converter', { converter: process.env.DOCUMENT_CONVERTER ?? 'local' });
 
@@ -439,6 +450,12 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const platform = await createPlatform({
   platformTenant,
+  appVersion: version,
+  tracing: {
+    ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
+    instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',
+    devMode: isDevMode(process.env),
+  },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
   processorRecords,
@@ -448,6 +465,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
+  ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
   ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock
@@ -474,7 +492,7 @@ const platform = await createPlatform({
     traces && process.env.TRACES_ENDPOINT
       ? {
           endpoint: process.env.TRACES_ENDPOINT.split('?')[0] ?? '',
-          content: process.env.TRACES_CONTENT === 'true',
+          content: tracesContent(process.env),
           residency: traceResidency,
           stats: traces.stats(),
         }
@@ -548,6 +566,7 @@ const platform = await createPlatform({
         connections: db.connections,
         evalStores: db.eval,
         labels: db.labels,
+        sinkLabels: db.sinkLabels,
       }
     : {}),
   policy: allowWorker(
@@ -564,6 +583,7 @@ const platform = await createPlatform({
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
+  evalSlots: evalSlotLimitsFromEnv(process.env),
   ...(documentConverter ? { documentConverter } : {}),
   ...(phraseArchive ? { phraseArchive } : {}),
 });

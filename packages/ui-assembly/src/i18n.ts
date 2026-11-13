@@ -22,6 +22,10 @@ const nbAssembly = defineNamespace({
   technicalDetails: 'Tekniske detaljer',
   stripChange: 'Endre',
   stripClose: 'Lukk',
+  // The next look's filter panel beside the threads, as dev-filter-panel names its region.
+  filterForThread: 'Filter for tråden',
+  // The next look's secondary panel, as the dev-verktoy boards name it: «Skjul verktøypanelet».
+  toolsPanel: 'Verktøypanelet',
   approachEmpty: 'Fremgangsmåten vises her når du stiller et spørsmål.',
   approachNotKept:
     'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
@@ -33,6 +37,7 @@ const nbAssembly = defineNamespace({
   corpusChanged: 'Byttet til {corpus}. Du har fått en ny tråd, og filteret er tømt.',
   tabTitle: '{page} – {assistant}',
   aboutDocument: 'Om «{title}»: {question}',
+  filterTooLarge: '{field}: for mange er valgt. Velg høyst {max}, eller alle unntatt høyst {max}.',
   // What a host that only tries the assistant says in place of sending (`useLogOnly`).
   logOnlyFeedback: 'Ville sendt tilbakemelding: {rating}. Ikke sendt i forhåndsvisningen.',
   logOnlyFeedbackReasons:
@@ -50,8 +55,6 @@ const nbAssembly = defineNamespace({
   stepRerankResults: 'Valgte ut det som svarer på spørsmålet',
   stepReportGaps: 'Det jeg ikke fant',
   stepGenerateResponse: 'Skrev svaret',
-  stepPassages: { one: 'Leste {count} utdrag nøye', other: 'Leste {count} utdrag nøye' },
-  stepRepeated: { one: '{title} ({count} gang)', other: '{title} ({count} ganger)' },
 });
 
 const enAssembly = {
@@ -69,6 +72,8 @@ const enAssembly = {
   technicalDetails: 'Technical details',
   stripChange: 'Change',
   stripClose: 'Close',
+  filterForThread: 'The thread’s filter',
+  toolsPanel: 'Tool panel',
   approachEmpty: 'The approach shows here when you ask a question.',
   approachNotKept:
     'The approach is not kept with the answers in the thread. It shows here when you ask a new question.',
@@ -80,6 +85,7 @@ const enAssembly = {
   corpusChanged: 'Switched to {corpus}. You have a new thread, and the filter is cleared.',
   tabTitle: '{page} – {assistant}',
   aboutDocument: 'About “{title}”: {question}',
+  filterTooLarge: '{field}: too many are selected. Select at most {max}, or all but at most {max}.',
   logOnlyFeedback: 'Would have sent feedback: {rating}. Not sent in the preview.',
   logOnlyFeedbackReasons:
     'Would have sent feedback: {rating} ({reasons}). Not sent in the preview.',
@@ -96,8 +102,6 @@ const enAssembly = {
   stepRerankResults: 'Picked what answers the question',
   stepReportGaps: 'What I did not find',
   stepGenerateResponse: 'Wrote the answer',
-  stepPassages: { one: 'Read {count} excerpt closely', other: 'Read {count} excerpts closely' },
-  stepRepeated: { one: '{title} ({count} time)', other: '{title} ({count} times)' },
 } satisfies Translation<typeof nbAssembly>;
 
 export const nb = defineCatalogue({ ...uiBlocksNb, assembly: nbAssembly });

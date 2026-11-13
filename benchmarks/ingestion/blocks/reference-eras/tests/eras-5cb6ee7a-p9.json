@@ -1,0 +1,205 @@
+{
+ "tests": [
+  {
+   "id": "eras-5cb6ee7a-p9-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "ILOs konvensjoner og erklæringer – arbeidstakerrettigheter",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "ILO har vedtatt 189 konvensjoner.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "skal myndighetene støtte aktsomhetsvurderinger i privat og offentlig sektor for å forebygge og avbøte risikoen for tvangsarbeid.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "ILOs erklæring om grunnleggende prinsipper og rettigheter",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "som 48 regjeringer har forpliktet seg til å fremme",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Retningslinjene støttes av en unik mekanisme i nasjonale kontaktpunkt, som fremmer retningslinjene og behandler klager om mulige brudd på disse.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Etter OECDs retningslinjer forventes selskapene å opptre i tråd med lover og normer lokalt.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "OECD har utarbeidet sektorveiledninger for institusjonelle investorer, konfliktmineraler, landbruk, tekstil- og sko og utvinningsindustrien",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "FNs bærekraftsmål 8 omhandler anstendig arbeid for alle",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Follow-up to the resolution concerning decent work in global supply chains: Roadmap for the programme of action",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "ikke-statlig eller statlig enhet som har en direkte tilknytning til selskapets forretningsvirksomhet",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-5cb6ee7a-p9-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Prioritering gjøres på bakgrunn av",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Med et anstendig arbeidsliv menes det at grunnleggende",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

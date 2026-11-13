@@ -1087,6 +1087,246 @@ describe('Byggeklosser: API-format', () => {
   });
 });
 
+describe('Byggeklosser: Langfuse-dommere', () => {
+  const rule = 'svar_oppfyller_kriteriene-eksperimenter';
+  const judgeBlock = (over: Partial<CatalogItem> = {}): CatalogItem => ({
+    id: `langfuse:kudos/${rule}`,
+    kind: 'judge',
+    name: rule,
+    description: '',
+    publisher: { type: 'own', name: 'Testetaten' },
+    version: '1',
+    dataLocation: 'global',
+    status: 'available',
+    capabilities: [],
+    permissions: [],
+    usedBy: [],
+    scores: [],
+    settingsSchema: { type: 'object', properties: {} },
+    tenantOverrides: {},
+    settingsVersion: 0,
+    right: 'manage-services',
+    judge: {
+      connection: 'kudos',
+      model: 'foundry-claude/claude-sonnet-5',
+      version: '1',
+      dataType: 'BOOLEAN',
+      fields: [
+        { variable: 'input', source: 'input' },
+        { variable: 'output', source: 'output' },
+        { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
+      ],
+    },
+    ...over,
+  });
+  const detailOf = (block: CatalogItem) =>
+    `#/building-blocks/judge/${encodeURIComponent(block.id)}`;
+
+  it("shows each active experiment rule of a connection's project as a judge block with its model, evaluator version, data type and mapped fields, and adds it only with Ta i bruk and a reason", async () => {
+    const short = judgeBlock({
+      id: 'langfuse:kudos/svar_er_kort-eksperimenter',
+      name: 'svar_er_kort-eksperimenter',
+    });
+    const items = [judgeBlock(), short];
+
+    await open('#/building-blocks', { items });
+    fireEvent.click(await screen.findByRole('tab', { name: /Katalog/ }));
+    expect(await screen.findByRole('link', { name: rule })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'svar_er_kort-eksperimenter' })).toBeTruthy();
+    cleanup();
+
+    await open(detailOf(judgeBlock()), { items });
+    await screen.findByRole('heading', { level: 1, name: rule });
+    expect(
+      screen.getByText(
+        'Langfuse-dommer i koblingen kudos. Den er rådgivende og stopper aldri en publisering.',
+      ),
+    ).toBeTruthy();
+    const fact = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(fact('Modell')).toBe('foundry-claude/claude-sonnet-5');
+    expect(fact('Dommerversjon')).toBe('1');
+    expect(fact('Svartype')).toBe('Ja eller nei');
+    expect(fact('Leser')).toBe(
+      'input ← input, output ← output, criteria ← expected_output $.criteria',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk' }));
+    expect(screen.getByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Kudos-teamet bruker denne dommeren i Langfuse' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk' }));
+    expect(
+      await screen.findByText(new RegExp(`${rule} er tatt i bruk hos Testetaten`)),
+    ).toBeTruthy();
+    expectAccessible();
+  });
+
+  it("shows why a Langfuse judge block is refused: the project's default model, or a field genki does not send", async () => {
+    const defaultModel = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: {
+        rule: 'refused',
+        ownedBy: 'Testetaten',
+        text: `${rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API`,
+      },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        model: undefined,
+        refused: {
+          reason: 'default-model',
+          message: `${rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API`,
+        },
+      },
+    });
+    const toolCalls = judgeBlock({
+      id: 'langfuse:kudos/verktøy-eksperimenter',
+      name: 'verktøy-eksperimenter',
+      status: 'not_allowed',
+      policyBlock: {
+        rule: 'refused',
+        ownedBy: 'Testetaten',
+        text: 'verktøy-eksperimenter reads tool_calls, which genki does not send',
+      },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: {
+          reason: 'unsent-field',
+          field: 'tool_calls',
+          message: 'verktøy-eksperimenter reads tool_calls, which genki does not send',
+        },
+      },
+    });
+
+    await open(detailOf(defaultModel), { items: [defaultModel, toolCalls] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+    const refusal = screen
+      .getByText(
+        'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
+      )
+      .closest('.ds-alert');
+    expect(refusal?.getAttribute('data-color')).toBe('danger');
+    expect(screen.getByText('Modell').nextElementSibling?.textContent).toBe(
+      'Prosjektets standardmodell',
+    );
+    expect(screen.queryByText(/default model/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    cleanup();
+
+    await open(detailOf(toolCalls), { items: [defaultModel, toolCalls] });
+    await screen.findByRole('heading', { level: 1, name: 'verktøy-eksperimenter' });
+    expect(screen.getByText('Dommeren leser tool_calls, som genki ikke sender.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    expectAccessible();
+  });
+
+  it('says in Byggeklosser which filter genki cannot read', async () => {
+    const message = `${rule} has a filter on level that genki cannot read`;
+    const filtered = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'filtered', field: 'level', message },
+      },
+    });
+
+    await open(detailOf(filtered), { items: [filtered] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Dommeren har et filter på level, som genki ikke kan lese før kjøringen. Fjern det filteret i Langfuse, eller hold testkjøringene utenfor med et annet filter.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows that a Langfuse judge on a connection without answer text cannot be taken in use', async () => {
+    const message = `${rule} has nothing to judge: the connection kudos gets no answer text`;
+    const silent = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'no-content', connection: 'kudos', message },
+      },
+    });
+
+    await open(detailOf(silent), { items: [silent] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Koblingen kudos får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Utviklerverktøy, Sporing og evaluering, for å ta den i bruk.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+  it('shows that a Langfuse judge whose rule shares its name with another cannot be taken in use', async () => {
+    const message = `${rule} is the name of more than one rule in the project, so genki cannot tell them apart`;
+    const twin = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'same-name', message },
+      },
+    });
+
+    await open(detailOf(twin), { items: [twin] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Flere regler i prosjektet har dette navnet, så genki kan ikke skille dem fra hverandre. Gi reglene ulike navn i Langfuse for å ta dem i bruk.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+
+  it('shows a connection whose Langfuse judges cannot be read as a refused block saying why', async () => {
+    const message =
+      'the judges of the connection kudos could not be read: Langfuse answered HTTP 404 for /api/public/v2/evaluation-rules';
+    const unreadable = judgeBlock({
+      id: 'sink-judges:kudos',
+      name: 'Dommerne i Langfuse (kudos)',
+      version: '',
+      // As the API gives it: where runs go, and no field or model.
+      permissions: [
+        {
+          type: 'network',
+          value: 'https://langfuse.etaten.example.no',
+          note: 'Hit sendes testkjøringene',
+        },
+      ],
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        connection: 'kudos',
+        version: '',
+        dataType: '',
+        fields: [],
+        refused: { reason: 'unreadable', connection: 'kudos', message },
+      },
+    });
+
+    await open(detailOf(unreadable), { items: [unreadable] });
+    await screen.findByRole('heading', { level: 1, name: 'Dommerne i Langfuse (kudos)' });
+
+    const refusal = screen
+      .getByText(
+        'Dommerne i prosjektet til koblingen kudos kunne ikke leses (HTTP 404). Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
+      )
+      .closest('.ds-alert');
+    expect(refusal?.getAttribute('data-color')).toBe('danger');
+    // It is no judge: nothing to say about a model, version or fields.
+    expect(screen.queryByText('Modell')).toBeNull();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    expectAccessible();
+  });
+});
+
 describe('a step flow in Byggeklosser', () => {
   const flow = exampleBlocks.find((b) => b.id === 'sf-vedtak') as CatalogItem;
   const stepType: CatalogItem = { ...flow, id: 'call-operation@1', name: 'Kall en operasjon' };
