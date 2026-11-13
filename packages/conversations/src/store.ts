@@ -39,6 +39,9 @@ export interface MessageMarker {
   document: string;
 }
 
+/** One `genai_step` object as the answer's stream sent it. */
+export type MessageStep = Record<string, unknown>;
+
 export interface Message {
   id: string;
   role?: string;
@@ -49,6 +52,7 @@ export interface Message {
   chunks: MessageChunk[];
   sources?: MessageSource[];
   markers?: MessageMarker[];
+  steps?: MessageStep[];
   diagnostics?: unknown;
   parentId?: string;
   task?: string;
@@ -72,6 +76,7 @@ export interface NewMessage {
   chunks?: MessageChunk[];
   sources?: MessageSource[];
   markers?: MessageMarker[];
+  steps?: MessageStep[];
   diagnostics?: unknown;
   parentId?: string;
   task?: string;
@@ -219,6 +224,7 @@ export class InMemoryConversationStore implements ConversationStore {
       chunks: input.chunks ?? [],
       ...(input.sources?.length ? { sources: input.sources } : {}),
       ...(input.markers?.length ? { markers: input.markers } : {}),
+      ...(input.steps?.length ? { steps: input.steps } : {}),
       ...(input.diagnostics === undefined ? {} : { diagnostics: input.diagnostics }),
       ...(input.task === undefined ? {} : { task: input.task }),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),

@@ -433,6 +433,88 @@ describe('the assistant a layout describes', () => {
     }
   });
 
+  it('shows the Approach after a reload as it showed live', async () => {
+    const steps = [
+      { event: 'agent/iteration-started', iteration: 1, 'max-iterations': 10 },
+      { stage: 'tool', tool: 'search', iteration: 1, event: 'tool/call' },
+      { stage: 'tool', tool: 'read_chunks', iteration: 2, event: 'tool/call' },
+      {
+        event: 'agent/turn-completed',
+        iteration: 2,
+        'tool-calls': [{ tool: 'read_chunks', args: { chunk_ids: ['c1', 'c2'] } }],
+      },
+      { stage: 'tool', tool: 'generate_response', iteration: 3, event: 'tool/call' },
+    ];
+    const frames = [
+      ...steps.map((step) => ({ id: 'a1', choices: [{ delta: {} }], genai_step: step })),
+      { id: 'a1', choices: [{ delta: { content: answer } }] },
+      { id: 'a1', sources: [headedSource] },
+    ];
+    const drawnSteps = async () => {
+      await waitFor(() => {
+        expect(document.querySelector('.uib-approach-steps')).toBeTruthy();
+        expect(document.querySelector('.uib-approach-steps [data-status="active"]')).toBeNull();
+      });
+      return document.querySelector('.uib-approach-steps')?.outerHTML;
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/api/conversations')
+          ? Response.json({ conversation: { id: 't1' } })
+          : new Response(
+              [...frames.map((f) => JSON.stringify(f)), '[DONE]']
+                .map((f) => `data: ${f}\n\n`)
+                .join(''),
+              { headers: { 'content-type': 'text/event-stream' } },
+            ),
+      ),
+    );
+    let live: string | undefined;
+    try {
+      const { api } = fakeApi();
+      api.ask = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).ask;
+      draw(state('knowledge-assistant').layout, api);
+      await ask();
+      live = await drawnSteps();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    cleanup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          conversation: { id: 't-old', topic: 'En gammel tråd', tags: [], created: 1 },
+          messages: [
+            { id: 'q', role: 'user', text: 'Hva er fast?', created: 1_000, chunks: [] },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: answer,
+              created: 1_400,
+              chunks: [],
+              sources: [headedSource],
+              steps,
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      const { api } = fakeApi();
+      api.loadThread = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).loadThread;
+      history.replaceState(null, '', '/?t=t-old');
+      draw(state('knowledge-assistant').layout, api, true);
+      const reloaded = await drawnSteps();
+      expect(live).toContain('Leste 2 utdrag nøye');
+      expect(live).toContain('Skrev svaret');
+      expect(reloaded).toBe(live);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('draws each footnote of a reloaded chunks-only answer at the excerpt its stored marker names', async () => {
     const chunk = (chunkId: string, docTitle: string, docNum: string, contentMarkdown: string) => ({
       chunkId,
@@ -2339,11 +2421,11 @@ describe('the page around the blocks', () => {
     ).toBeTruthy();
   });
 
-  it('says in Fremgangsmåte’s panel that stored answers keep no steps, on a thread that has answers', async () => {
+  it('says in Fremgangsmåte’s panel that the steps were not kept with this answer, for a stored answer without them', async () => {
     await openStored(turnOn(state('approach-only'), 'sources').layout);
     expect(
       screen.getByText(
-        'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
+        'Fremgangsmåten ble ikke lagret med dette svaret. Den vises her når du stiller et nytt spørsmål.',
       ),
     ).toBeTruthy();
   });

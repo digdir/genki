@@ -491,6 +491,24 @@ describe('openapi.json for a frontend', () => {
     );
   });
 
+  it('describes the steps a stored message keeps as an optional list of step objects', async () => {
+    const { request } = await boot();
+    const spec = (await (
+      await request('/openapi.json', undefined, undefined, { key: '' })
+    ).json()) as {
+      components: {
+        schemas: Record<string, { properties: Record<string, unknown>; required?: string[] }>;
+      };
+    };
+    const stored = spec.components.schemas.StoredMessage;
+
+    expect(stored?.properties.steps).toMatchObject({ type: 'array', items: { type: 'object' } });
+    expect(stored?.required ?? []).not.toContain('steps');
+    expect((stored?.properties.steps as { description?: string }).description).toContain(
+      '`genai_step`',
+    );
+  });
+
   it("describes each excerpt's own heading as an optional string", async () => {
     const { request } = await boot();
     const spec = (await (

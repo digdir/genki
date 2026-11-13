@@ -35,7 +35,7 @@ export interface Turn {
   question: string;
   askedAt: number;
   answer?: AnswerData | undefined;
-  /** The step frames of a question asked here, for «Fremgangsmåte». */
+  /** The answer's step frames for «Fremgangsmåte», as streamed here or as stored with the turn. */
   approach?:
     { frames: StepFrame[]; startedAt: number; finishedAt?: number | undefined } | undefined;
   /**
@@ -184,6 +184,8 @@ interface ApiMessage {
   sources?: WireSource[];
   /** The answer's markers, `{ marker, chunk_id, document }`, when the stored turn carries them. */
   markers?: unknown;
+  /** The `genai_step` frames the answer streamed, when the stored turn carries them. */
+  steps?: unknown;
   /** The assistant message's run, the id feedback is sent on. */
   task?: string;
 }
@@ -306,6 +308,17 @@ const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerD
   return stored;
 };
 
+// The turn's step frames for «Fremgangsmåte», from the question to the answer; none without frames.
+const approachFromMessage = (message: ApiMessage, askedAt: number): Turn['approach'] => {
+  const frames = (Array.isArray(message.steps) ? (message.steps as unknown[]) : []).filter(
+    (frame): frame is StepFrame =>
+      typeof frame === 'object' && frame !== null && !Array.isArray(frame),
+  );
+  return frames.length > 0
+    ? { frames, startedAt: askedAt, finishedAt: message.created }
+    : undefined;
+};
+
 /**
  * The latest attempt per question, as kunnskapsassistenten's `withoutRetriedAttempts`: genki stores
  * a retry as a new turn, so a reload would show a retried question two or three times.
@@ -413,14 +426,21 @@ export const createGenkiApi = ({
         } else if (message.role === 'assistant') {
           const last = turns.at(-1);
           // An answer after an answer is a later run for the same question: the latest stands.
-          if (last) last.answer = answerFromMessage(message, own);
-          else
+          if (last) {
+            last.answer = answerFromMessage(message, own);
+            const approach = approachFromMessage(message, last.askedAt);
+            if (approach) last.approach = approach;
+            else delete last.approach;
+          } else {
+            const approach = approachFromMessage(message, message.created);
             turns.push({
               id: message.id,
               question: '',
               askedAt: message.created,
               answer: answerFromMessage(message, own),
+              ...(approach ? { approach } : {}),
             });
+          }
         }
       }
       return { title: body.conversation.topic ?? '', turns, ...(corpus ? { corpus } : {}) };

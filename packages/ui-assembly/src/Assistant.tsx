@@ -190,7 +190,7 @@ const AnswerRow = ({
 };
 
 /**
- * «Fremgangsmåte» for one turn asked here, at the reader's level. Stored turns carry no steps.
+ * «Fremgangsmåte» for one turn, at the reader's level: asked here, or stored with its steps.
  * `list` is the next look's tool in the secondary panel (dev-verktoy-1 to -3): the steps alone.
  */
 const approachOf = (
@@ -933,7 +933,7 @@ export const AssistantView = ({
       headingLevel={3}
     />
   );
-  // Stored answers carry no steps, so a thread that has some says why none are shown.
+  // A stored answer kept without steps shows none, so the panel says why.
   const approachSteps = approachOf(a, a.active?.id, t);
   const approachNote = (
     <Paragraph data-size="sm" className="uia-quiet">
