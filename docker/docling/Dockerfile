@@ -23,8 +23,7 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 # CPU torch from PyTorch's own index first, then every other package at the version in requirements.txt, so each
 # build installs the same code. requirements.txt is what PyPI offered when the benchmark run started (see its header).
-# setuptools comes with torch and is not in the lock (`pip freeze` leaves it out), so it is pinned here.
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0+cpu torchvision==0.29.2+cpu setuptools==78.1.0
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0+cpu torchvision==0.29.2+cpu
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-deps -r /tmp/requirements.txt && pip check \
     && python -c "import torch, sys; sys.exit(0 if torch.__version__ == '2.15.0+cpu' else 'torch replaced: ' + torch.__version__)"

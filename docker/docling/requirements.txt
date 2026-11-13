@@ -3,6 +3,8 @@
 #   pip install --uploaded-prior-to 2026-11-11T15:53:38Z docling==2.146.0 docling-slim==2.146.0 \
 #     docling-core==2.105.0 docling-ibm-models==4.0.4 docling-serve==1.38.2
 #   pip freeze --all
+# leaving out pip, wheel, torch and torchvision. setuptools, which torch needs, is the newest on PyPI before the
+# cut-off (84.2.1); PyTorch's index has only 78.1.0, which has known advisories.
 # The cut-off is when the parser benchmark's winner started converting: the first `started` (1794412418) in
 # benchmarks/ingestion/blocks/results/azure-D32as_v6-swedencentral-run2/docling-tess/timings.jsonl. So the versions
 # the benchmark did not record, such as docling-parse, are the ones PyPI offered it. Remake it the same way
@@ -212,6 +214,7 @@ scalar-fastapi==1.9.1
 scipy==1.18.1
 semchunk==3.2.5
 sentry-sdk==2.74.0
+setuptools==84.2.1
 shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0

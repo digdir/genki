@@ -332,7 +332,7 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
           ]
         }
       ]
-      // A replica stopped while it converts (scale-in, a new revision) gets the longest grace Container Apps allows
+      // A replica stopped while it converts (scale-in, a new revision) gets 10 minutes to finish; not checked in Azure
       terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 0

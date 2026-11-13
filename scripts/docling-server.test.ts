@@ -56,8 +56,7 @@ describe('the Docling server image', () => {
     expect(dockerfile).toMatch(
       /^RUN pip install --no-deps -r \/tmp\/requirements\.txt && pip check/m,
     );
-    // the torch step pulls in setuptools, which the lock leaves out
-    expect(dockerfile).toMatch(/torchvision==[\d.]+\+cpu setuptools==[\d.]+$/m);
+    expect(read('docker/docling/requirements.txt')).toMatch(/^setuptools==[\d.]+$/m);
     const lines = read('docker/docling/requirements.txt')
       .split('\n')
       .filter((l) => l && !l.startsWith('#'));
