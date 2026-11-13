@@ -488,6 +488,8 @@ export const useAssistant = ({
   const leave = useCallback(
     (id: string | undefined) => {
       abort.current?.abort();
+      // A thread the reader leaves is read from genki when they come back, whoever made it.
+      ownThread.current = undefined;
       setRequest({ action: 'close-drawers' });
       go(id);
     },
@@ -789,6 +791,7 @@ export const useAssistant = ({
         t.approach ? { ...t, approach: { ...t.approach, finishedAt: Date.now() } } : t,
       );
     let frames = 0;
+    let opened = false;
     setWorking(true);
     // Only a question sent from the field empties it, and only of what was sent.
     if (fromField) setDraft((draft) => (draft.trim() === typed.trim() ? '' : draft));
@@ -825,7 +828,9 @@ export const useAssistant = ({
         signal: controller.signal,
       })) {
         if (!alive.current) break;
-        if (event.type === 'conversation' && !startedIn) {
+        // genki names a new thread twice (POST, then stream): only the first opens it.
+        if (event.type === 'conversation' && !startedIn && !opened) {
+          opened = true;
           if (askedWith) keepFilter(event.conversationId, askedWith);
           ownThread.current = event.conversationId;
           go(event.conversationId, true);
