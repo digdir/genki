@@ -206,7 +206,7 @@ const approachOf = (
   const tool = place === 'tool';
   const steps = stepsOf(approach, busy, t.locale, tool);
   if (steps.length === 0) return null;
-  // The next look says the filter inside «Fremgangsmåte» (dev-filter-panel; «9 · Filtrering» B):
+  // The next look's card and every tool say the filter (dev-filter-panel; «9 · Filtrering» B):
   // the totals and «filteret er endret» when folded, what the answer read from when open. Only for
   // a question asked here, since genki keeps no filter with a turn.
   const next = a.look === 'next';

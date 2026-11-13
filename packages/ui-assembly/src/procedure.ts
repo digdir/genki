@@ -75,15 +75,23 @@ export const stepsOf = (
 ): ApproachStep[] => {
   const t = translator(locale);
   const steps: { id: string; title: string; tool?: string; passages: number; ms?: number }[] = [];
+  // Where the turn being reported began: its calls are timed in the order its steps were.
+  let turnFrom = 0;
   for (const frame of approach.frames) {
     const read = passagesRead(frame);
     if (read > 0) {
       const reading = steps.findLast((step) => step.tool === 'read_chunks');
       if (reading) reading.passages += read;
     }
-    for (const call of callTimes(frame)) {
-      const ran = steps.findLast((step) => step.tool === call.tool);
-      if (ran) ran.ms = (ran.ms ?? 0) + call.ms;
+    if (Array.isArray(frame['tool-calls'])) {
+      const turn = steps.slice(turnFrom);
+      for (const call of callTimes(frame)) {
+        const ran =
+          turn.find((step) => step.tool === call.tool && step.ms === undefined) ??
+          steps.findLast((step) => step.tool === call.tool);
+        if (ran) ran.ms = (ran.ms ?? 0) + call.ms;
+      }
+      turnFrom = steps.length;
     }
     const title = titleOf(frame, t);
     if (!title) continue;

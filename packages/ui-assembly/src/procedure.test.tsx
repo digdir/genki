@@ -74,6 +74,29 @@ describe('the steps from genki’s frames', () => {
     );
   });
 
+  it('time each call of a tool called twice in one turn on its own step, in the turn’s order', () => {
+    const turns: StepFrame[] = [
+      { stage: 'tool', tool: 'search', event: 'tool/call' },
+      {
+        event: 'agent/turn-completed',
+        'tool-calls': [{ tool: 'search', 'duration-ms': 100 }],
+      },
+      { stage: 'tool', tool: 'search', event: 'tool/call' },
+      { stage: 'tool', tool: 'read_chunks', event: 'tool/call' },
+      { stage: 'tool', tool: 'search', event: 'tool/call' },
+      {
+        event: 'agent/turn-completed',
+        'tool-calls': [
+          { tool: 'search', 'duration-ms': 1000 },
+          { tool: 'read_chunks', 'duration-ms': 200 },
+          { tool: 'search', 'duration-ms': 3000 },
+        ],
+      },
+    ];
+    const timed = stepsOf({ frames: turns, startedAt: 0 }, false, 'nb', true);
+    expect(timed.map((step) => step.duration)).toEqual([100, 1000, 200, 3000]);
+  });
+
   it('read in Approach as they did when the assembly joined the runs itself', () => {
     render(<Approach steps={stepsOf(approach, false)} working={false} startedAt={0} open />);
     const lines = [...document.querySelectorAll('.uib-approach-step-title')].map(
