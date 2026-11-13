@@ -1,6 +1,6 @@
 # 0027 Platform rights
 
-Status: accepted, 2026-10-12 (built; test-runner keys in the locked test environment, ADR 0033, 2026-11-10; keys and clients get only granted rights, 2026-11-11). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; test-runner keys in the locked test environment, ADR 0033, 2026-11-10; keys and clients get only granted rights, 2026-11-11; limits set by operators, 2026-11-12). Proposed 2026-10-07
 
 ## Decision
 
@@ -19,6 +19,7 @@ Access within a tenant is split into five rights, each an action on the platform
 - **Routes check rights after tenant access.** A route first checks that the principal may act for the tenant at all (404 otherwise), then the right for that action (403 "Du trenger rettigheten «…»").
 - **Invoking a service requires `use-services`.** The playground needs Administrere tjenester or Administrere datasett, because it runs drafts.
 - **Operators** get every right, but reach a tenant's data only through a support session with a reason (0010).
+- **Administrere tjenester does not cover the limits Digdir sets.** The settings marked `operatorOnly` (ADR 0006), such as the monthly token quota, are set, removed and pinned for a tenant only by an operator in a support session.
 - **Keys and clients get only the rights they were granted.** A system principal (an API key, a Maskinporten client or a system user) has no right by default; a missing or empty grant means nothing. An API key's scopes are its grant in its own tenant: `admin` gives all five rights and `ingest` gives Administrere datasett. A Maskinporten client's registration grants the services it may call (ADR 0008), never a platform right. Only people, operators and the platform's own principals (issuer `platform` or `urn:genai:worker`) are exempt from this rule, and people get their rights from Altinn as above. `platformRightsOf` in `packages/identity/src/platform-rights.ts` holds the rule.
 
 ## Why

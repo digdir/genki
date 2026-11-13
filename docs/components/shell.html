@@ -219,10 +219,13 @@
                 <code>organisation</code> at the top; then <code>settings</code> («Innstillinger»),
                 <code>feedback</code> («Gi tilbakemelding»), <code>changelog</code> («Endringslogg»,
                 with a dot when <code>news</code>), <code>about</code> («Om tjenesten») and
-                <code>contact</code> («Kontakt {to}»), with Aksel's icons; a line; and
-                <code>signOut</code> («Logg ut», a link, with <code>onSignOut</code> first). Each
-                entry is an <code>href</code>, an <code>onSelect</code> or both; one the host does
-                not give is not drawn. There is no cog. Nothing is drawn without a name.
+                <code>contact</code> («Kontakt {to}»), with Aksel's icons; then <code>extra</code>,
+                the host's own entries in its order, each with an <code>id</code>, its own
+                <code>label</code> in the reader's language and an optional <code>icon</code>,
+                hidden from screen readers; a line; and <code>signOut</code> («Logg ut», a link,
+                with <code>onSignOut</code> first). Each entry is an <code>href</code>, an
+                <code>onSelect</code> or both; one the host does not give, or one with neither, is
+                not drawn. There is no cog. Nothing is drawn without a name.
               </li>
             </ul>
             <h2>Related</h2>

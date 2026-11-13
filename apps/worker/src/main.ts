@@ -44,6 +44,7 @@ import {
   defaultMarkerTimeoutMs,
   InMemoryJobQueue,
   workQueues,
+  type RunJobs,
 } from '@genai/jobs';
 import {
   envSecrets,
@@ -56,11 +57,16 @@ import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
+import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 import { createLocalConverter } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
-import { knowledgeHeavyWork, prepareGeneration } from '@genai/providers-pgvector';
+import {
+  knowledgeConversionsOf,
+  knowledgeHeavyWork,
+  prepareGeneration,
+} from '@genai/providers-pgvector';
 import {
   createPostgresStores,
   executionScope,
@@ -90,7 +96,7 @@ import {
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
 import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
-import { openWorkerJobs } from './knowledge-jobs.js';
+import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
 import { runProgress } from './run-progress.js';
@@ -342,6 +348,15 @@ const knowledgeRunRecords = db
     )
   : undefined;
 const knowledgeProgress = runProgress(log);
+// Converters' native output, in the Blob container CONVERSIONS_BLOB_URL names, or a folder locally (ADR 0042).
+const nativeOutputs = knowledgeWriter
+  ? (
+      await nativeOutputStoreFromEnv(
+        process.env,
+        process.env.DATA_DIR ?? join(root, 'apps', 'api', '.data'),
+      )
+    ).store
+  : undefined;
 const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
@@ -352,7 +367,13 @@ const knowledgeHandlers =
         knowledge: {
           send: (queue, data, options) => openedKnowledge().send(queue, data, options),
           sendAgain: (queue, job, options) => openedKnowledge().sendAgain(queue, job, options),
+          serveAlso: (queue, key, tenant, options) =>
+            openedKnowledge().serveAlso?.(queue, key, tenant, options) ?? Promise.resolve(),
         },
+        // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
+        conversions: knowledgeConversionsOf(knowledgeWriter),
+        converter: createLocalConverter(),
+        ...(nativeOutputs ? { nativeOutputs } : {}),
         heavy: heavySettings,
         runs: knowledgeRunRecords,
         pipeline: async (run) =>
@@ -392,12 +413,12 @@ const knowledgeHandlers =
                 ),
             }
           : {}),
-        listingOf: (spec, scope, signal) =>
+        listingOf: (spec, scope, signal, converter) =>
           knowledgeListingOf(
             spec,
             {
               uploads: new FileSystemBlobStore(blobDir),
-              converter: createLocalConverter(),
+              converter: converter ?? createLocalConverter(),
               ...(process.env.INGEST_FOLDER_ROOT
                 ? { folderRoot: process.env.INGEST_FOLDER_ROOT }
                 : {}),
@@ -490,6 +511,12 @@ const workerJobs = db
         : {}),
       open: openJobQueue,
       runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
+      ...(knowledgeWriter
+        ? {
+            knowledgeRunJobs: (jobs: RunJobs) =>
+              conversionRunJobs(jobs, knowledgeConversionsOf(knowledgeWriter)),
+          }
+        : {}),
       onError: jobError,
     })
   : undefined;
