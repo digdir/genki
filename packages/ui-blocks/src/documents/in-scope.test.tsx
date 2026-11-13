@@ -13,19 +13,15 @@ const documents: DocumentInScope[] = [
   {
     id: '1',
     title: 'Evaluering av KI-piloter i staten',
-    type: 'Evaluering',
     organisation: 'Digitaliseringsdirektoratet',
     year: 2024,
-    pages: 52,
     included: true,
   },
   {
     id: '2',
     title: 'Tilsyn med automatiserte vedtak',
-    type: 'Tilsynsrapport',
     organisation: 'Datatilsynet',
     year: 2023,
-    pages: 41,
     included: false,
   },
 ];
@@ -60,7 +56,7 @@ describe('DocumentsInScope', () => {
     expect(toggle.textContent).toContain('Vis');
   });
 
-  it('lists the host’s documents with their type, organisation, year and pages, each a tick', () => {
+  it('lists the host’s documents with «Virksomhet, år» under each title, each a tick', () => {
     const changed: [string, boolean][] = [];
     render(
       <DocumentsInScope
@@ -72,7 +68,7 @@ describe('DocumentsInScope', () => {
     );
     const first = screen.getByRole('checkbox', { name: /Evaluering av KI-piloter/ });
     expect(first.closest('.uib-documents-scope-document')?.textContent).toBe(
-      'Evaluering av KI-piloter i statenEvalueringDigitaliseringsdirektoratet · 2024 · 52 sider',
+      'Evaluering av KI-piloter i statenDigitaliseringsdirektoratet, 2024',
     );
     fireEvent.click(first);
     expect(changed).toEqual([['1', false]]);
@@ -99,10 +95,34 @@ describe('DocumentsInScope', () => {
     expect(within(list).getByText('Tilsyn med automatiserte vedtak')).toBeTruthy();
   });
 
-  it('keeps the ticks still without a handler, so no tick seems to work that does not', () => {
+  it('lists the documents without ticks or the tick hint when the host cannot leave one out', () => {
     render(<DocumentsInScope count={2} corpus={kudos} documents={documents} />);
-    expect(screen.getAllByRole('checkbox').every((box) => (box as HTMLInputElement).disabled)).toBe(
-      true,
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByText(/Fjern haken/)).toBeNull();
+    const list = screen.getByRole('list', { name: 'Dokumentene som blir med' });
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([
+      'Evaluering av KI-piloter i statenDigitaliseringsdirektoratet, 2024',
+      'Tilsyn med automatiserte vedtakDatatilsynet, 2023',
+    ]);
+  });
+
+  it('makes a title a link that opens in a new tab where the host has the document’s address', () => {
+    render(
+      <DocumentsInScope
+        count={2}
+        corpus={kudos}
+        documents={documents.map((d) =>
+          d.id === '1' ? { ...d, href: 'https://kudos.dfo.no/dokument/1' } : d,
+        )}
+      />,
     );
+    const link = screen.getByRole('link', { name: 'Evaluering av KI-piloter i staten' });
+    expect(link.getAttribute('href')).toBe('https://kudos.dfo.no/dokument/1');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(screen.queryByRole('link', { name: 'Tilsyn med automatiserte vedtak' })).toBeNull();
   });
 });

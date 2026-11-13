@@ -18,6 +18,7 @@ import {
   withSetting,
   type AssistantLayout,
   type BuilderState,
+  type FilterSelection,
   type ModelRow,
 } from '@genai/ui-blocks';
 import type { AnswerMarker, StreamEvent } from '@genai/client';
@@ -1384,6 +1385,62 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     expect(document.querySelector('.uib-documents-scope-summary')?.textContent).toBe(
       'Assistenten leser fra 5 av 5 dokumenter i Kudos',
     );
+  });
+
+  it('lists the documents the filter keeps, without ticks, and again when the filter changes', async () => {
+    const fake = counted();
+    const loadDocuments = vi.fn(async (selection: FilterSelection) => ({
+      documents: (selection.type?.includes('Årsrapport')
+        ? ['a1', 'a2', 'a3']
+        : ['a1', 'a2', 'a3', 't1', 't2']
+      ).map((id) => ({
+        id,
+        title: `Dokument ${id}`,
+        href: `https://kudos.example/${id}`,
+        included: true,
+      })),
+    }));
+    fake.api.loadDocuments = loadDocuments;
+    drawNext(fake.api);
+    const scope = await screen.findByRole('region', { name: 'Dokumentene som blir med' });
+    await waitFor(() => expect(within(scope).getAllByRole('link')).toHaveLength(5));
+    expect(within(scope).queryByRole('checkbox')).toBeNull();
+    await tick(/^Årsrapport/);
+    await waitFor(() =>
+      expect(
+        within(scope)
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(['Dokument a1', 'Dokument a2', 'Dokument a3']),
+    );
+    expect(loadDocuments).toHaveBeenLastCalledWith(
+      { type: ['Årsrapport'] },
+      'kudos',
+      expect.anything(),
+      50,
+    );
+  });
+
+  it('lists no documents while the filter keeps more than 50, only how many', async () => {
+    const fake = counted();
+    fake.api.loadFacets = vi.fn(async () => [
+      {
+        id: 'type',
+        label: 'Dokumenttyper',
+        heading: 'Dokumenttype',
+        options: [{ value: 'Årsrapport', count: 51 }],
+      },
+    ]);
+    const loadDocuments = vi.fn(async () => ({ documents: [] }));
+    fake.api.loadDocuments = loadDocuments;
+    drawNext(fake.api);
+    await waitFor(() =>
+      expect(document.querySelector('.uib-documents-scope-summary')?.textContent).toBe(
+        'Assistenten leser fra 51 av 51 dokumenter i Kudos',
+      ),
+    );
+    expect(loadDocuments).not.toHaveBeenCalled();
+    expect(screen.queryByRole('list', { name: 'Dokumentene som blir med' })).toBeNull();
   });
 
   it('says under the field how many documents the next question reads from, and its values', async () => {
