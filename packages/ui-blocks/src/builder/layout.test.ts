@@ -5,8 +5,10 @@ import {
   defaultLayout,
   emptyLayout,
   fitService,
+  isAssistantLayout,
   isOn,
   layoutProblems,
+  lookOf,
   moveTo,
   normalised,
   optionInForce,
@@ -17,6 +19,7 @@ import {
   toolMode,
   turnOff,
   turnOn,
+  withLook,
   withSetting,
   zoneOf,
   zonesOf,
@@ -244,6 +247,48 @@ describe('the options on a block', () => {
   it('never puts an option in force that is not built yet', () => {
     const chat = withSetting(turnOn(empty, 'chat'), 'chat', 'attachments', true);
     expect(optionInForce(chat.layout, 'chat', 'attachments')).toBe(false);
+  });
+
+  it('puts follow-ups in force only in the current look, since the next look draws none', () => {
+    const chat = turnOn(empty, 'chat');
+    expect(optionInForce(chat.layout, 'chat', 'followUps')).toBe(true);
+    expect(optionInForce(withLook(chat, 'next').layout, 'chat', 'followUps')).toBe(false);
+    const stored = { ...chat.layout, template: 'knowledge-assistant-next' };
+    expect(optionInForce(stored, 'chat', 'followUps')).toBe(false);
+  });
+});
+
+describe('the look of a layout', () => {
+  it('draws a layout without a look in its template’s, as before the look was a setting', () => {
+    expect(lookOf({ ...emptyLayout, template: 'knowledge-assistant-next' })).toBe('next');
+    expect(lookOf({ ...emptyLayout, template: 'knowledge-assistant' })).toBe('current');
+    expect(lookOf(emptyLayout)).toBe('current');
+  });
+
+  it('draws a layout in its own look, whatever its template', () => {
+    expect(lookOf({ ...emptyLayout, template: 'chat-only', look: 'next' })).toBe('next');
+    expect(lookOf({ ...emptyLayout, template: 'knowledge-assistant-next', look: 'current' })).toBe(
+      'current',
+    );
+  });
+
+  it('keeps the look through every change to the blocks and their options', () => {
+    let state = withLook(empty, 'next');
+    state = on(state, 'chat', 'sources', 'filter');
+    state = moveTo(state, 'filter', 'main');
+    state = turnOff(state, 'sources');
+    state = withSetting(state, 'chat', 'copy', false);
+    state = fitService(state, (id) => id !== 'filter').state;
+    expect(state.layout.look).toBe('next');
+    expect(normalised(state.layout).look).toBe('next');
+  });
+
+  it('reads a stored layout with a known look, and refuses one with a look it does not know', () => {
+    expect(isAssistantLayout({ ...emptyLayout, look: 'next' })).toBe(true);
+    expect(isAssistantLayout({ ...emptyLayout, look: 'current' })).toBe(true);
+    expect(isAssistantLayout(emptyLayout)).toBe(true);
+    expect(isAssistantLayout({ ...emptyLayout, look: 'shiny' })).toBe(false);
+    expect(isAssistantLayout({ ...emptyLayout, look: 1 })).toBe(false);
   });
 });
 
