@@ -2145,6 +2145,63 @@ describe('copying from an answer', () => {
   });
 });
 
+describe('Kilder in the next look', () => {
+  const read = {
+    index: 2,
+    title: 'Årsrapport 2021',
+    documentId: '43',
+    excerpts: [{ chunkId: 'c2', text: 'Lest, men ikke brukt i svaret.' }],
+  };
+  const drawStored = (template: 'knowledge-assistant' | 'knowledge-assistant-next') => {
+    const { api } = fakeApi();
+    api.loadThread = vi.fn(async () => ({
+      title: 'En gammel tråd',
+      turns: [
+        {
+          id: 'm1',
+          question: 'Hva er fast?',
+          askedAt: 1,
+          answer: {
+            text: answer,
+            status: 'complete' as const,
+            sources: [read, source],
+            markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+            created: 2,
+          },
+        },
+      ],
+    }));
+    history.replaceState(null, '', '/?t=t-old');
+    draw(fromTemplate(template).layout, api, true);
+  };
+  const showKilder = async () => {
+    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    const shown = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
+    if (shown) fireEvent.click(shown);
+    const tab = screen.queryByRole('tab', { name: 'Kilder' });
+    if (tab) fireEvent.click(tab);
+  };
+  const fold = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
+
+  it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)»', async () => {
+    drawStored('knowledge-assistant-next');
+    await showKilder();
+    expect(fold()?.open).toBe(false);
+    expect(fold()?.querySelector('summary')?.textContent).toBe('Andre kilder som ble lest (1)');
+    expect(within(fold() as HTMLElement).getByRole('heading', { name: read.title })).toBeTruthy();
+    const cited = screen.getByRole('list', { name: 'Utdrag svaret bygger på' });
+    expect(within(cited).getByRole('heading', { name: source.title })).toBeTruthy();
+    expect(within(cited).queryByRole('heading', { name: read.title })).toBeNull();
+  });
+
+  it('leaves «Kunnskapsassistenten»’s Kilder listing every source together', async () => {
+    drawStored('knowledge-assistant');
+    await showKilder();
+    await screen.findByRole('heading', { name: read.title });
+    expect(fold()).toBeNull();
+  });
+});
+
 // genki takes feedback on a run, so the host is handed the run behind the answer it is on.
 describe('feedback on an answer', () => {
   const withFeedback = withSetting(state('knowledge-assistant'), 'chat', 'feedback', true).layout;

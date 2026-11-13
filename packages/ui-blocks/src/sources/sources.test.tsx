@@ -504,6 +504,85 @@ describe('footnotes that name only documents', () => {
   });
 });
 
+describe('the documents the answer read but cites nowhere, `foldUncited`', () => {
+  const report: SourceDocument = {
+    index: 3,
+    title: 'Tildelingsbrev Nkom 2022',
+    documentId: 'kudos::2022',
+    excerpts: [{ chunkId: 'kudos::2022-1', text: 'Nkom skal rapportere kvartalsvis.' }],
+  };
+  const others = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
+  const titlesIn = (element: Element | null | undefined) =>
+    [...(element?.querySelectorAll('.uib-sources-document-toggle') ?? [])].map(
+      (title) => title.textContent,
+    );
+
+  it('folds them under «Andre kilder som ble lest (N)», closed, after the documents it cites', () => {
+    draw({ sources: [memo, nkom, report], citations: cite('kudos::2021-1'), foldUncited: true });
+    const fold = others();
+    expect(fold?.open).toBe(false);
+    expect(fold?.querySelector('summary')?.textContent).toBe('Andre kilder som ble lest (2)');
+    expect(titlesIn(fold)).toEqual([memo.title, report.title]);
+    const cited = screen.getByRole('list', { name: 'Kilder' });
+    expect(titlesIn(cited)).toEqual([nkom.title]);
+    expect(screen.getByRole('list', { name: 'Andre kilder som ble lest' })).toBeTruthy();
+  });
+
+  it('folds them by document when the footnotes name only documents, the cited ones first', () => {
+    draw({ sources: [memo, report, nkom], citations: [{ index: 1 }], foldUncited: true });
+    expect(titlesIn(screen.getByRole('list', { name: 'Kilder' }))).toEqual([nkom.title]);
+    expect(titlesIn(others())).toEqual([memo.title, report.title]);
+  });
+
+  it('steps through a search’s hits in the order drawn, the cited documents first', () => {
+    draw({ sources: [report, nkom], citations: [{ index: 1 }], foldUncited: true });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Nkom' } });
+    const current = document.querySelector('.uib-sources-mark[data-current="true"]');
+    expect(current?.closest('details')).toBeNull();
+    expect(current?.closest('.uib-sources-document')?.textContent).toContain(nkom.title);
+  });
+
+  it('folds nothing when the answer cites none of them, or without its footnotes', () => {
+    draw({ citations: [], foldUncited: true });
+    expect(others()).toBeNull();
+    expect(titlesIn(screen.getByRole('list', { name: 'Kilder' }))).toEqual([
+      nkom.title,
+      memo.title,
+    ]);
+    cleanup();
+    draw({ foldUncited: true });
+    expect(others()).toBeNull();
+  });
+
+  it('unfolds them for a search hit in one of them, and not for a hit in a cited one', () => {
+    draw({ sources: [memo, nkom], citations: [{ index: 1 }], foldUncited: true });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Nkom' } });
+    expect(others()?.open).toBe(false);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'rutinen' } });
+    expect(others()?.open).toBe(true);
+  });
+
+  it('unfolds them for a target in one of them, and moves focus there', async () => {
+    draw({
+      citations: cite('kudos::2021-1'),
+      target: { chunkId: 'attached:abc:0' },
+      foldUncited: true,
+    });
+    await frame();
+    expect(others()?.open).toBe(true);
+    expect(document.activeElement?.closest('details')).toBe(others());
+  });
+
+  it('lists every document together without it, as before', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    expect(others()).toBeNull();
+    expect(titlesIn(screen.getByRole('list', { name: 'Kilder' }))).toEqual([
+      nkom.title,
+      memo.title,
+    ]);
+  });
+});
+
 describe('following a footnote', () => {
   it('opens and marks the excerpt it names, moves focus there, and goes back on Escape', async () => {
     const onReturn = vi.fn();

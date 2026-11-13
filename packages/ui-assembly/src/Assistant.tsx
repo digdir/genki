@@ -862,6 +862,7 @@ export const AssistantView = ({
             variant: 'tool' as const,
             headerColor: 'brand3',
             disclaimer: false,
+            foldUncited: true,
           }
         : {
             onAnswerChange: a.showAnswer,
