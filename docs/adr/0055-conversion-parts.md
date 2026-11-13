@@ -1,6 +1,6 @@
 # 0055 Conversion parts
 
-Status: proposed, 2026-11-13 (units and places for every format, 2026-11-13; documents with more than one file, 2026-11-13)
+Status: proposed, 2026-11-13 (units and places for every format, 2026-11-13; documents with more than one file, 2026-11-13; citation links to the source's own copy of a file, 2026-11-13)
 
 Left: drawing a cited box on the page image, printed page labels in roman numerals, heading levels from a PDF's outline, and a check of reading order. Parts for formats other than PDF are built later, each in an issue of its own; this record says what they become (Formats, below). How an answer quotes the words it rests on is recorded in ADR 0052 when it is built (Citations, below).
 
