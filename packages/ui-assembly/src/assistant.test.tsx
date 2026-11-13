@@ -1311,6 +1311,50 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     ).toBe('var(--genai-shell-card-background, var(--ds-color-neutral-surface-default))');
   });
 
+  it('offers no follow-up questions under an answer, which «Kunnskapsassistenten» still offers', async () => {
+    const followUps = { ...reader, followUps: ['Kan du utdype?'] };
+    const { unmount } = drawNext(followUps, fromTemplate('knowledge-assistant').layout);
+    await ask();
+    expect(await screen.findByRole('button', { name: 'Kan du utdype?' })).toBeTruthy();
+    unmount();
+    history.replaceState(null, '', '/');
+    drawNext(followUps);
+    await ask();
+    await screen.findByRole('button', { name: 'Kopier svaret' });
+    expect(screen.queryByRole('button', { name: 'Kan du utdype?' })).toBeNull();
+    expect(document.querySelector('.uib-composer-follow-ups')).toBeNull();
+  });
+
+  it('copies the thread’s link with no note that it works only here, and keeps the answer’s time', async () => {
+    const clipboard: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+    history.replaceState(null, '', '/?t=t-old');
+    drawNext();
+    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    expect(copyLink.hasAttribute('aria-describedby')).toBe(false);
+    expect(document.querySelector('.uib-answer-actions [hidden]')).toBeNull();
+    expect(document.querySelector('.uib-answer-actions time')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(copyLink);
+    });
+    expect(clipboard).toEqual([new URL('/?t=t-old', location.href).href]);
+    expect(document.querySelector('.uib-answer-actions-receipt')?.textContent).toBe(
+      'Lenken til tråden er kopiert.',
+    );
+    expect(document.body.textContent).not.toContain('Virker bare for deg');
+  });
+
+  it('leaves «Kunnskapsassistenten»’s note on the thread’s link as it was', async () => {
+    history.replaceState(null, '', '/?t=t-old');
+    drawNext(reader, fromTemplate('knowledge-assistant').layout);
+    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    const note = document.getElementById(copyLink.getAttribute('aria-describedby') ?? '');
+    expect(note?.textContent).toBe('Virker bare for deg, i denne nettleseren.');
+  });
+
   it('leaves «Kunnskapsassistenten» as it was: flush, the hidden name as the h1, the filter first, the links in the foot', async () => {
     drawNext(reader, fromTemplate('knowledge-assistant').layout);
     await opened();
