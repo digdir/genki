@@ -380,6 +380,12 @@ export const LiveTestSets = ({
       <p className="quality-splits">
         {t.rich('quality.liveSplits', { strong: (c) => <strong>{c}</strong> })}
       </p>
+      {current.dataset ? (
+        <p>
+          {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
+          <code>{current.dataset.name}</code>
+        </p>
+      ) : null}
 
       {form ? (
         <section aria-labelledby="nc-h" className="quality-panel">

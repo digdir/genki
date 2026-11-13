@@ -17,6 +17,7 @@ import { appendVersion, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, problem, reasonTooShort } from './http.js';
 import type { TraceDeliveryStore } from '@genai/jobs';
 import type { PlatformModuleFactory } from './platform-modules.js';
+import { datasetsOf, traceDatasets } from './trace-datasets.js';
 
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
@@ -470,7 +471,19 @@ export interface TraceSinks {
     connection: TraceConnection,
     beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>,
     fields?: string[],
+    /** The Langfuse dataset of the run's test set, which every span names. */
+    dataset?: string,
   ): void;
+  /**
+   * The test set's dataset in the connection's project: found by its name, or made when there is
+   * none (ADR 0040).
+   */
+  dataset?(
+    tenant: string,
+    connection: TraceConnection,
+    service: string,
+    testSet: string,
+  ): Promise<{ id: string; name: string }>;
   /** The judges of the connection's project that can score an eval run. */
   judges?(tenant: string, connection: TraceConnection): Promise<SinkJudge[]>;
   /** The names of the project's other active rules, which judge what is sent but no run reads. */
@@ -529,10 +542,23 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
     options,
   );
   const shown = view(connections);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+    ...(deps.logger ? { log: deps.logger } : {}),
+  });
+  /** Each test set of the services it covers gets its dataset, so judges can be set up first. */
+  const save: AdminHandler = async (input, principal) => {
+    const saved = await connections.save(input, principal);
+    if (saved.ok)
+      await datasets.forConnection(String(input.tenant ?? ''), saved.value as TraceConnection);
+    return saved;
+  };
   return {
     id: 'trace-connections',
     handlers: {
-      'platform.tracing.connection.save': connections.save,
+      'platform.tracing.connection.save': save,
       'platform.tracing.connection.remove': connections.remove,
       'platform.tracing.connection.residency': connections.setResidency,
     },
@@ -573,7 +599,15 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
       app.get('/tenants/:tenant/tracing/connections', async (c) => {
         const guard = await member(c);
         if ('response' in guard) return guard.response;
-        return c.json({ data: (await connections.list(guard.tenant)).map(shown) });
+        const made = await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant);
+        return c.json({
+          data: (await connections.list(guard.tenant)).map((connection) => ({
+            ...shown(connection),
+            datasets: made
+              .filter((d) => d.connection === connection.id)
+              .map(({ service, testSet, name, id }) => ({ service, testSet, name, id })),
+          })),
+        });
       });
 
       app.put('/tenants/:tenant/tracing/connections/:id', async (c) => {

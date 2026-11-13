@@ -275,6 +275,8 @@ export const qualityArea = {
     deleteCaseLabel: 'Slett testtilfellet «{input}»',
     delete: 'Slett',
     setsLoading: 'Henter testsett',
+    langfuseDataset:
+      'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen {connection}:',
     newSetReason: 'Nytt testsett for {service}',
     setCreated: 'Testsettet {name} er laget.',
     noSets: 'Tjenesten har ikke testsett ennå',

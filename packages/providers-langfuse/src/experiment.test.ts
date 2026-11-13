@@ -129,17 +129,25 @@ const boot = (
   return { kernel, router };
 };
 
-const exporterFor = (url: string, tasks: InMemoryTaskStore, content = false, experiments = true) =>
+const exporterFor = (
+  url: string,
+  tasks: InMemoryTaskStore,
+  content = false,
+  experiments = true,
+  more: { dataset?: string; environment?: string } = {},
+) =>
   createTraceExporter(
     {
       endpoint: url,
       content,
       auth: { kind: 'langfuse', publicKey: 'pk', secretKey: 'secret://env/sk' },
+      ...(more.environment ? { environment: more.environment } : {}),
     },
     {
       secrets: envSecrets({ SK: 'sk' }),
       tasks: async (id) => (await tasks.get(id))?.task,
       experiments,
+      ...(more.dataset ? { dataset: more.dataset } : {}),
     },
   );
 
@@ -175,6 +183,31 @@ describe('eval runs as Langfuse experiments', () => {
     expect(sink.raw()).not.toContain('etaten');
     expect(sent).toHaveLength(2);
     expect(new Set(roots.map((s) => attr(s, 'genai.task.id')))).toEqual(new Set(sent));
+  });
+
+  it("marks every span of a run's case with the test set's dataset and the run's environment", async () => {
+    const sink = await collector();
+    const { kernel, router } = boot((r, tasks) =>
+      r.open(
+        'run-1',
+        exporterFor(sink.url, tasks, false, true, {
+          dataset: 'ds-klarsprak-brev',
+          environment: 'genki-test-runs',
+        }),
+      ),
+    );
+
+    await (
+      await kernel.invoke(kari, 'eval', { data: { items: [evaluation('run-1', 'o1')] } })
+    ).result;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await router.close('run-1');
+
+    expect(sink.spans.map((s) => s.name).sort()).toEqual(['answer', 'lookup']);
+    for (const span of sink.spans) {
+      expect(attr(span, 'langfuse.experiment.dataset.id')).toBe('ds-klarsprak-brev');
+      expect(attr(span, 'deployment.environment.name')).toBe('genki-test-runs');
+    }
   });
 
   it("sends each run only to its own sink and tenant, so one tenant's run never reaches another's", async () => {

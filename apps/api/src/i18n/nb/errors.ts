@@ -145,6 +145,8 @@ export const catalogErrors = defineNamespace({
     'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
   sinkJudgeNoContent: '{rule} har ingenting å vurdere: koblingen {connection} får ikke svartekst',
   sinkJudgesUnreadable: 'dommerne til koblingen {connection} kunne ikke leses: {error}',
+  sinkDatasetUnavailable:
+    'datasettet til testsettet {testSet} kunne verken finnes eller lages i prosjektet til koblingen {connection}: {error}',
   sinkJudgesDiffer:
     'prosjektet til koblingen {connection} har aktive dommere som genki ikke leser: {judges}; ta dem i bruk eller slå dem av i Langfuse',
   sinkJudgeNotAModel:

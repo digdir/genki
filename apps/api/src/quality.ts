@@ -20,6 +20,8 @@ import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
+import { connectionsCovering } from './trace-connections.js';
+import { datasetsOf } from './trace-datasets.js';
 import {
   runDetail,
   casesIn,
@@ -401,8 +403,27 @@ export const createQualityModule =
         app.get('/tenants/:tenant/services/:id/test-sets', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
-          const sets = await deps.evalStores.testSets.list(guard.tenant, param(c, 'id'));
-          return c.json({ data: sets.map(setSummary) });
+          const service = param(c, 'id');
+          const sets = await deps.evalStores.testSets.list(guard.tenant, service);
+          // The Langfuse dataset an agency points its judges at, in the covering connection.
+          const covering = await connectionsCovering(deps.configEntries, guard.tenant, service);
+          const made = (
+            await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant)
+          ).filter(
+            (d) =>
+              covering.length === 1 && d.connection === covering[0]?.id && d.service === service,
+          );
+          return c.json({
+            data: sets.map((set) => {
+              const dataset = made.find((d) => d.testSet === set.metadata.id);
+              return {
+                ...setSummary(set),
+                ...(dataset
+                  ? { dataset: { connection: dataset.connection, name: dataset.name } }
+                  : {}),
+              };
+            }),
+          });
         });
 
         app.get('/tenants/:tenant/test-sets/:setId/cases', async (c) => {

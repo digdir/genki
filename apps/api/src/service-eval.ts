@@ -41,6 +41,7 @@ import {
   type TraceConnection,
 } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
+import { traceDatasets } from './trace-datasets.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import { evalSlots, type QueueWatch } from './eval-slots.js';
 import { markedNotFound } from './not-found.js';
@@ -415,6 +416,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   const choice = modelChoice(deps);
   const slots = deps.evalSlots ?? evalSlots();
   const leases = backgroundLeases(leaseOptions);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+  });
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
   const draftOf = drafts.draftOf;
@@ -844,6 +850,15 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         );
       }
     }
+    // Looked up only after the run's checks pass, so a refused run writes nothing (ADR 0040).
+    const dataset = sink
+      ? await datasets.ensure(tenant, sink, service, set.metadata.id).catch((error: unknown) => {
+          prepared.release();
+          throw new TraceRefused(
+            `the dataset of the test set ${set.metadata.id} could not be found or made in the project of the connection ${sink.id}: ${messageOf(error)}`,
+          );
+        })
+      : undefined;
     const cases = casesIn(set, split, only);
     // A finished case takes its place in the test set's order, repeat by repeat.
     const order = new Map(cases.map((c, i) => [c.id, i]));
@@ -921,6 +936,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             })
           : undefined,
         deps.traceSinks.fieldsOf?.(sinkJudges) ?? [],
+        dataset?.id,
       );
     const done = (async () => {
       try {

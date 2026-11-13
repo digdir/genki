@@ -11,6 +11,8 @@ export interface ServiceTestSet {
   name: string;
   cases: number;
   split?: { locked: number; open: number };
+  /** The Langfuse dataset its sent runs are linked to, in the connection covering the service. */
+  dataset?: { connection: string; name: string };
 }
 
 export interface ServiceCase {

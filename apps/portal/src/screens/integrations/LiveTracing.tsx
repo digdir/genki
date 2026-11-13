@@ -264,6 +264,21 @@ export const LiveTracing = ({
                   {t('integLangfuse.labelsOn')}
                 </Tag>
               ) : null}
+              {c.datasets?.length ? (
+                <>
+                  <Heading level={5} data-size="2xs" id={`datasets-${c.id}`}>
+                    {t('integLangfuse.datasets')}
+                  </Heading>
+                  <Paragraph data-size="sm">{t('integLangfuse.datasetsHelp')}</Paragraph>
+                  <ul className="plain-list" aria-labelledby={`datasets-${c.id}`}>
+                    {c.datasets.map((d) => (
+                      <li key={d.id}>
+                        <code>{d.name}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
               {checked[c.id] ? <Paragraph data-size="sm">{checked[c.id]}</Paragraph> : null}
               <div className="row-gap">
                 <Button variant="secondary" data-size="sm" onClick={() => void check(c.id)}>

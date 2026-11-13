@@ -31,6 +31,8 @@ export interface ExporterDeps {
   beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>;
   /** Export eval run cases as experiment items: only a run's own sink does. */
   experiments?: boolean;
+  /** The Langfuse dataset of the run's test set: every experiment span names it (ADR 0040). */
+  dataset?: string;
 }
 
 interface Open {
@@ -105,7 +107,11 @@ export const createTraceExporter = (
   const track = (event: Event) => {
     const evaluation = deps.experiments ? evaluationIn(event) : undefined;
     if (evaluation && experiments.size < config.limits.openTasks)
-      experiments.set(event.task, { ...evaluation, rootTask: event.task });
+      experiments.set(event.task, {
+        ...evaluation,
+        rootTask: event.task,
+        ...(deps.dataset ? { dataset: deps.dataset } : {}),
+      });
     if (event.type !== 'kernel.task.spawned') return;
     const parent = experiments.get(event.task);
     const child = (event.data as { child?: unknown } | undefined)?.child;
