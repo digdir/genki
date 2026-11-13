@@ -13,6 +13,7 @@ import type {
   SourceDocument,
   ThreadItem,
 } from '@genai/ui-blocks';
+import { documentLink } from './links.js';
 import type { AssistantProfile, CorpusProfile, FieldSpec } from './profile.js';
 import type { StepFrame } from './procedure.js';
 
@@ -230,7 +231,7 @@ const corpusOf = (tags: readonly string[]) =>
  */
 export const sourceFromWire = (raw: WireSource, corpus?: CorpusProfile, at = 0): SourceDocument => {
   const documentId = raw.documentId ?? raw.document_id;
-  const url = raw.url ?? (documentId ? corpus?.documentUrl?.(documentId) : undefined);
+  const url = raw.url ?? (documentId ? documentLink(corpus, documentId) : undefined);
   const minted = (excerpt: number) => `minted:${documentId ?? `source-${at}`}:${excerpt}`;
   return {
     ...(raw.index !== undefined ? { index: raw.index } : {}),
@@ -263,7 +264,7 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile): Source
     const documentId = chunk.docNum ?? chunk.chunkId;
     let document = documents.get(documentId);
     if (!document) {
-      const url = chunk.docNum ? corpus?.documentUrl?.(chunk.docNum) : undefined;
+      const url = chunk.docNum ? documentLink(corpus, chunk.docNum) : undefined;
       document = {
         index: documents.size + 1,
         title: chunk.docTitle?.trim() ?? '',

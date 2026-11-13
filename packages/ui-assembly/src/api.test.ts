@@ -313,6 +313,42 @@ describe('a source from the wire', () => {
     });
     expect(excerpts.map((excerpt) => 'heading' in excerpt)).toEqual([true, false, false]);
   });
+
+  it('links a source without a link of its own from the collection’s templates, and keeps one it has', () => {
+    const corpus = { documentLinks: { digits: 'https://example.org/documents/{id}' } };
+    expect(sourceFromWire({ document_id: '7', excerpts: [] }, corpus).url).toBe(
+      'https://example.org/documents/7',
+    );
+    expect(
+      sourceFromWire({ document_id: '7', url: 'https://source.example/7', excerpts: [] }, corpus)
+        .url,
+    ).toBe('https://source.example/7');
+  });
+
+  it('links each document of a stored turn of chunks from the collection’s templates', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        json({
+          conversation: { id: 't1', topic: 'Ansatte', tags: ['corpus:kudos'], created: 1 },
+          messages: [
+            { id: 'q', role: 'user', text: 'Ansatte?', created: 1, chunks: [] },
+            { id: 'a', role: 'assistant', text: '176 [1].', created: 2, chunks },
+          ],
+        }),
+      ),
+    );
+    const linked = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: { corpora: { kudos: { documentLinks: { any: 'https://example.org/d/{id}' } } } },
+    });
+    const sources = (await linked.loadThread('t1')).turns[0]?.answer?.sources;
+    expect(sources?.map((source) => source.url)).toEqual([
+      'https://example.org/d/d20',
+      'https://example.org/d/d22',
+    ]);
+  });
 });
 
 // The run feedback is sent on, from `task` on a stored message.

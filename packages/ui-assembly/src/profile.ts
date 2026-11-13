@@ -25,8 +25,18 @@ export interface CorpusProfile {
   typePlurals?: Readonly<Record<string, string>> | undefined;
   /** The field the document type is in, for the line above. */
   typeField?: string | undefined;
-  /** Where a document lives, from its number, when the source carries no link. */
+  /**
+   * Where a document lives, from its number, when the source carries no link. A host's code;
+   * `documentLinks` says the same as data. Where both are given, this goes first.
+   */
   documentUrl?: ((documentId: string) => string | undefined) | undefined;
+  /**
+   * Where a document lives, as data a layout or a stored profile can hold: an address per kind of
+   * number, with `{id}` where the number goes, such as
+   * `{ digits: 'https://example.org/documents/{id}' }`. A number takes the first that fits, in the
+   * order `digits`, `uuid`, `any`. Only an http or https address becomes a link.
+   */
+  documentLinks?: Readonly<Partial<Record<DocumentIdPattern, string>>> | undefined;
   /**
    * The facets that describe one document, read by its number for the line under its title in
    * «Dokumenter»: the field holding the number, and the fields to show.
@@ -87,3 +97,9 @@ export interface AssistantExperiment {
   href?: string | undefined;
   hrefLabel?: string | undefined;
 }
+
+/**
+ * The kinds of document number a link is chosen by: only digits, a UUID, or any number. Fixed
+ * names, so a stored profile never brings a pattern of its own.
+ */
+export type DocumentIdPattern = 'digits' | 'uuid' | 'any';
