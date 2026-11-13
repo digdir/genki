@@ -960,7 +960,10 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   });
 
   it('makes one tool’s name the panel’s title, with no switcher (dev-verktoy-1)', async () => {
-    drawNext(reader, { ...nextLayout, zones: { ...nextLayout.zones, secondary: [] } });
+    drawNext(reader, {
+      ...nextLayout,
+      zones: { ...nextLayout.zones, secondary: [{ block: 'approach' }] },
+    });
     await opened();
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
@@ -1494,6 +1497,44 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     expect(asked).toHaveLength(3);
     // Not said again under the answer: the filter is in Fremgangsmåte.
     expect(screen.queryByText(/Avgrenset til/)).toBeNull();
+  });
+
+  it('says the filter in full in the tool, and only how many it read from in the bar beside it', async () => {
+    drawNext(counted().api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    await askMore('Hva er fast?');
+    const scopes = () =>
+      [...document.querySelectorAll('.uib-approach-scope')].map((scope) => [
+        scope.closest('aside') ? 'tool' : 'bar',
+        scope.textContent,
+      ]);
+    await waitFor(() => expect(scopes()).toHaveLength(2));
+    expect(scopes()).toEqual([
+      ['bar', 'Leste fra 3 dokumenter'],
+      ['tool', 'Leste fra 3 dokumenter:Årsrapport'],
+    ]);
+    const tool = document.querySelector('aside .uib-approach[data-variant="list"]');
+    expect(tool?.querySelector('.uib-approach-footer')?.textContent).toMatch(/^Brukte 1 kilde/);
+  });
+
+  it('draws the bar alone, with the filter in full, when the layout puts Fremgangsmåte only in the main column', async () => {
+    const barOnly = {
+      ...nextLayout,
+      zones: {
+        ...nextLayout.zones,
+        secondary: nextLayout.zones.secondary.filter((placed) => placed.block !== 'approach'),
+      },
+    };
+    drawNext(counted().api, barOnly);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    await askMore('Hva er fast?');
+    await waitFor(() => expect(bars()).toEqual(['FremgangsmåteBrukte 1 kilde']));
+    expect(document.querySelector('aside .uib-approach')).toBeNull();
+    expect(document.querySelector('.uib-approach-scope')?.textContent).toBe(
+      'Leste fra 3 dokumenter:Årsrapport',
+    );
   });
 
   it('brings back a thread’s last filter when the thread is opened again', async () => {
@@ -2785,5 +2826,94 @@ describe('the assistant in English', () => {
     );
     expect(await screen.findByRole('heading', { name: 'Thread not found' })).toBeTruthy();
     expect(document.title).toMatch(/^Thread not found – /);
+  });
+});
+
+describe('Fremgangsmåte as the card, the tool or both', () => {
+  // genki's agent loop says how long each tool call took when the turn completes.
+  const timedApi = () => {
+    const fake = fakeApi();
+    const plain = fake.api.ask;
+    fake.api.ask = async function* (params) {
+      for await (const event of plain(params)) {
+        if (event.type === 'text' && params.steps)
+          yield {
+            type: 'step',
+            step: {
+              event: 'agent/turn-completed',
+              'tool-calls': [
+                { tool: 'search', 'duration-ms': 2400 },
+                { tool: 'generate_response', 'duration-ms': 900 },
+              ],
+            },
+          };
+        yield event;
+      }
+    };
+    return fake;
+  };
+  const inMain = () =>
+    [...document.querySelectorAll('.uib-approach')].filter((one) => one.closest('main'));
+  const inPanel = () =>
+    [...document.querySelectorAll('.uib-approach')].filter((one) => one.closest('aside'));
+  const times = (root: Element) =>
+    [...root.querySelectorAll('.uib-approach-step-time')].map((time) => time.textContent);
+  const frames = (root: Element) =>
+    root.parentElement?.querySelector('.uia-frames') ? 'frames' : 'none';
+
+  it('draws the card alone, as before, when Fremgangsmåte stands only in the main column', async () => {
+    draw(state('knowledge-assistant').layout, timedApi().api);
+    await ask();
+    expect(inMain()).toHaveLength(1);
+    expect(inPanel()).toHaveLength(0);
+    expect(screen.queryByRole('tab', { name: 'Fremgangsmåte', hidden: true })).toBeNull();
+    const [card] = inMain();
+    if (!card) throw new Error('no card');
+    expect(times(card)).toEqual([]);
+    expect(card.querySelector('.uib-approach-footer')?.textContent).toMatch(
+      /^Brukte 1 kilde · tok/,
+    );
+  });
+
+  it('draws the tool alone, with each step’s time and the totals, when it stands only in the secondary panel', async () => {
+    draw(turnOn(state('approach-only'), 'sources').layout, timedApi().api);
+    await ask();
+    expect(inMain()).toHaveLength(0);
+    expect(inPanel()).toHaveLength(1);
+    const [tool] = inPanel();
+    if (!tool) throw new Error('no tool');
+    expect(times(tool)).toEqual([' · 2,4 s', ' · 0,9 s']);
+    expect(tool.querySelector('.uib-approach-footer')?.textContent).toMatch(
+      /^Brukte 1 kilde · tok/,
+    );
+  });
+
+  it('draws both when it stands in both, the card compact and the tool with the detail', async () => {
+    const both = withSetting(
+      placeIn(state('knowledge-assistant'), 'approach', 'both'),
+      'approach',
+      'level',
+      'detailed',
+    );
+    draw(both.layout, timedApi().api);
+    await ask();
+    const [card] = inMain();
+    const [tool] = inPanel();
+    if (!card || !tool) throw new Error('not in both places');
+    expect(card.closest('.uib-conversation')).not.toBeNull();
+    expect(times(card)).toEqual([]);
+    expect(frames(card)).toBe('none');
+    expect(times(tool)).toEqual([' · 2,4 s', ' · 0,9 s']);
+    expect(frames(tool)).toBe('frames');
+    expect(screen.getByRole('tab', { name: 'Fremgangsmåte', hidden: true })).toBeTruthy();
+  });
+
+  it('keeps the frames in the card at the detailed level when the card stands alone', async () => {
+    const alone = withSetting(state('knowledge-assistant'), 'approach', 'level', 'detailed');
+    draw(alone.layout, timedApi().api);
+    await ask();
+    const [card] = inMain();
+    if (!card) throw new Error('no card');
+    expect(frames(card)).toBe('frames');
   });
 });

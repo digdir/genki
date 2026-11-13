@@ -193,41 +193,40 @@ const AnswerRow = ({
 
 /**
  * «Fremgangsmåte» for one turn asked here, at the reader's level. Stored turns carry no steps.
- * `list` is the next look's tool in the secondary panel (dev-verktoy-1 to -3): the steps alone.
+ * `card` stands over the answer, `compact` beside the tool, and `tool` has every detail.
  */
 const approachOf = (
   a: AssistantState,
   turnId: string | undefined,
   t: AssemblyTranslator,
-  variant: 'card' | 'list' = 'card',
+  place: 'card' | 'compact' | 'tool' = 'card',
 ) => {
   const turn = a.turns.find((one) => one.id === turnId);
   const approach = turn?.approach;
   if (!turn || !approach) return null;
   const busy = turn.answer?.status === 'streaming';
-  const steps = stepsOf(approach, busy, t.locale);
+  const tool = place === 'tool';
+  const steps = stepsOf(approach, busy, t.locale, tool);
   if (steps.length === 0) return null;
-  if (variant === 'list')
-    return (
-      <Approach
-        variant="list"
-        steps={steps}
-        working={busy}
-        startedAt={approach.startedAt}
-        {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
-      />
-    );
-  // The next look says the filter inside «Fremgangsmåte» (dev-filter-panel; «9 · Filtrering» B):
+  // The next look's card and every tool say the filter (dev-filter-panel; «9 · Filtrering» B):
   // the totals and «filteret er endret» when folded, what the answer read from when open. Only for
   // a question asked here, since genki keeps no filter with a turn.
   const next = a.look === 'next';
-  const asked = next ? turn.scope?.selection : undefined;
+  const asked = next || tool ? turn.scope?.selection : undefined;
   const before = a.turns
     .slice(0, a.turns.indexOf(turn))
     .reverse()
     .find((one) => one.answer && one.scope?.selection);
   const changed =
     asked && before?.scope?.selection ? !sameSelection(before.scope.selection, asked) : false;
+  const count = turn.scope?.documents;
+  // Beside the tool, the card says only how many documents the answer read from.
+  const scope =
+    asked && place !== 'compact' ? (
+      <FilterRead selection={asked} fields={a.facets} count={count} />
+    ) : asked && count !== undefined ? (
+      <FilterRead selection={{}} count={count} />
+    ) : undefined;
   return (
     <>
       <Approach
@@ -236,17 +235,12 @@ const approachOf = (
         startedAt={approach.startedAt}
         {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
         {...(turn.answer?.sources ? { used: turn.answer.sources.length } : {})}
-        {...(next ? { summary: 'totals' as const } : {})}
+        // The next look's tool is the dev-verktoy boards' list; its card is their bar.
+        {...(next ? (tool ? { variant: 'list' as const } : { summary: 'totals' as const }) : {})}
         {...(changed ? { note: t('filter.changed') } : {})}
-        {...(asked
-          ? {
-              scope: (
-                <FilterRead selection={asked} fields={a.facets} count={turn.scope?.documents} />
-              ),
-            }
-          : {})}
+        {...(scope ? { scope } : {})}
       />
-      {a.level === 'detailed' ? (
+      {a.level === 'detailed' && place !== 'compact' ? (
         // No block draws the detailed level yet: the step frames as genki sent them, for now.
         <Details data-size="sm">
           <Details.Summary>{t('assembly.technicalDetails')}</Details.Summary>
@@ -285,7 +279,10 @@ export const AssistantView = ({
   const t = useT();
   const approachHeadingId = useId();
   const chatZone = a.where('chat');
-  const approachZone = a.where('approach');
+  // Fremgangsmåte as the card in the main column, the tool in the secondary panel, or both.
+  const approachCard = a.standsIn('approach', 'main');
+  const approachTool = a.standsIn('approach', 'secondary');
+  const cardPlace = approachTool ? 'compact' : 'card';
   const filterZone = a.where('filter');
   const threadsOn = a.has('threads');
   const sourcesOn = a.has('sources');
@@ -422,8 +419,8 @@ export const AssistantView = ({
           {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
           header={(turn) =>
-            turn.kind === 'answer' && approachZone === 'main' && chatZone === 'main'
-              ? approachOf(a, turn.id, t)
+            turn.kind === 'answer' && approachCard && chatZone === 'main'
+              ? approachOf(a, turn.id, t, cardPlace)
               : null
           }
           {...(a.footnotes
@@ -940,7 +937,7 @@ export const AssistantView = ({
     />
   );
   // Stored answers carry no steps, so a thread that has some says why none are shown.
-  const approachSteps = approachOf(a, a.active?.id, t);
+  const approachSteps = approachOf(a, a.active?.id, t, cardPlace);
   const approachNote = (
     <Paragraph data-size="sm" className="uia-quiet">
       {a.working
@@ -950,12 +947,8 @@ export const AssistantView = ({
           : t('assembly.approachEmpty')}
     </Paragraph>
   );
-  // The next look draws the steps as the tool's list (dev-verktoy-1 to -3), not as the card.
-  const approachPanel =
-    (next ? approachOf(a, a.active?.id, t, 'list') : approachSteps) ?? approachNote;
-  // The next look offers «Fremgangsmåte» as a tool too, beside its bar over each answer: the bar
-  // is dev-filter-panel's, the tool the dev-verktoy boards' (gaps.md row 25).
-  const approachTool = approachZone === 'secondary' || (next && approachZone === 'main');
+  // The tool is the detailed one, the next look's as the list of the dev-verktoy boards.
+  const approachPanel = approachOf(a, a.active?.id, t, 'tool') ?? approachNote;
   // Each tool's icon, as the dev-verktoy boards draw it, in the switcher and on the folded panel.
   const icon = (id: string) =>
     next ? { icon: toolIcons[id] ?? <FileTextIcon aria-hidden /> } : {};
@@ -1137,7 +1130,7 @@ export const AssistantView = ({
     // Without Chat beside it, Fremgangsmåte has the column's head, as wide as the strip under it.
     // Its note is named by a heading, as the secondary panel's switcher names it there; the steps
     // name themselves on their own summary.
-    if (approachZone === 'main' && chatZone !== 'main')
+    if (approachCard && chatZone !== 'main')
       parts.push(
         approachSteps ? (
           <div key="approach" className="uia-main-approach">

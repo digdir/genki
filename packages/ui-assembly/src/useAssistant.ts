@@ -27,6 +27,7 @@ import {
   settingsOf,
   templateLook,
   zoneOf,
+  zonesOf,
   type AssistantLayout,
   type BlockId,
   type Channel,
@@ -47,6 +48,7 @@ import {
   type ShellRequest,
   type SourceTarget,
   type VariantOption,
+  type Zone,
 } from '@genai/ui-blocks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -280,6 +282,8 @@ export const useAssistant = ({
     [layout, met],
   );
   const where = (id: BlockId) => (has(id) ? zoneOf(layout, id) : undefined);
+  /** Whether the block stands in the zone, also when it stands in both its zones. */
+  const standsIn = (id: BlockId, zone: Zone) => has(id) && zonesOf(layout, id).includes(zone);
   const option = (id: BlockId, name: string) => has(id) && optionInForce(layout, id, name, met);
 
   const threadsOn = has('threads');
@@ -1079,6 +1083,7 @@ export const useAssistant = ({
     retryModels,
     has,
     where,
+    standsIn,
     option,
     footnotes,
     assistantName,
