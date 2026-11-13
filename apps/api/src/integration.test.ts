@@ -635,7 +635,7 @@ describe('the integrated platform', () => {
       throw new Error('the test run did not finish');
     };
 
-    expect((await testRun('Noe helt annet.')).status).toBe('succeeded');
+    expect((await testRun('Noe helt annet.')).status).toBe('completed');
     const poorRun = await publish();
     await testRun('Viss du er usamd i vedtaket, kan du klage.');
     const goodRun = await publish();

@@ -1,28 +1,47 @@
 import { randomUUID } from 'node:crypto';
-import { variantId, variantModelOf, type Variant } from '@genai/definitions';
-import type { Principal } from '@genai/contracts';
+import { adoptionKind, blockKey, latestUsdNok } from '@genai/composition';
+import type { Part, Principal } from '@genai/contracts';
+import { validateDefinition, variantId, variantModelOf, type Variant } from '@genai/definitions';
+import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
+  answerText,
+  bootstrapMean,
   caseTypeOf,
   caseView,
+  criteriaJudgeId,
   defaultObserve,
+  evalRun,
   gradeAnswer,
+  mean,
+  perCaseMeans,
   judgedAgainst,
+  runState,
   splitsFor,
+  sumUsage,
   type CaseSplit,
   type CaseType,
+  type EvalRun,
+  type Score,
+  type StoredRun,
   type TestCase,
   type TestSet,
+  type SinkAgreement,
 } from '@genai/eval';
-import { publishedSubject } from './definition-subject.js';
-import { actorOf } from './admin.js';
 import {
   backgroundLeases,
   restartMessage,
-  type Leased,
+  type BackgroundLeases,
   type LeaseOptions,
 } from './background-lease.js';
-import { appendVersion, type ConfigEntry } from './config-store.js';
+import { definitionSubject } from './definition-subject.js';
+import {
+  connectionsCovering,
+  deliveryGate,
+  type SinkRun,
+  type TraceConnection,
+} from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
+import { traceDatasets } from './trace-datasets.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import { evalSlots, type QueueWatch } from './eval-slots.js';
 import { markedNotFound } from './not-found.js';
@@ -33,13 +52,20 @@ import { chooseEnvironment } from './service-environments.js';
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter(judgedAgainst).map((m) => m.model);
 
-export const serviceRunKind = 'service-eval-run';
-export const serviceRunCaseKind = 'service-eval-case';
 export const quotaStopMessage = 'Stoppet fordi månedskvoten for tokens er brukt opp';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
-export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export type RunVersion = 'draft' | number;
+
+/** A sink judge's verdict on one case, with its reason while the case's task keeps it. */
+export interface CaseJudgement {
+  judge: string;
+  state: Score['state'];
+  value: number | null;
+  dataType?: string;
+  asItCame?: unknown;
+  reason?: string;
+}
 
 export interface CaseResult {
   caseId: string;
@@ -50,37 +76,92 @@ export interface CaseResult {
   output: string;
   pass: boolean;
   reason?: string;
+  judges?: CaseJudgement[];
 }
 
-export interface ServiceRun extends Leased {
-  id: string;
-  service: string;
-  status: RunStatus;
-  testSet: string;
-  testSetVersion: number;
-  version: RunVersion;
-  environment?: string;
-  subject?: string;
-  variant?: string;
-  // The model the run is set to answer with.
-  model?: string;
-  split?: CaseSplit;
-  // The cases the run was limited to.
-  selected?: string[];
-  startedAt: string;
-  endedAt: string | null;
-  score: number | null;
-  passed: number;
-  total: number;
-  finished?: number;
-  doneCases?: number[];
-  queuePlace?: number;
-  cost: number | null;
-  tokens: { input: number; output: number };
-  error?: string;
-  interrupted?: boolean;
-  cases: CaseResult[];
+/** Whether an evaluator is a sink's judge: advisory, shown apart from the platform's metrics. */
+export type IsSinkJudge = (evaluator: string) => boolean;
+const noSinkJudge: IsSinkJudge = () => false;
+
+/** Each sink judge of a run: its score, what it could not judge, and whether it changed. */
+export const sinkJudgesOf = (
+  run: EvalRun,
+  isSinkJudge: IsSinkJudge,
+  agreements?: Map<string, SinkAgreement>,
+) =>
+  [...new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)).filter(isSinkJudge))]
+    .sort()
+    .map((id) => {
+      const scores = run.results.flatMap((r) => r.scores.filter((s) => s.evaluator === id));
+      const applicable = scores.filter((s) => s.state !== 'not-applicable');
+      const gap = run.incomplete.find((i) => i.evaluator === id);
+      const changed = [
+        ...new Set(
+          scores.flatMap((s) =>
+            Array.isArray(s.details?.judgeChanged) ? (s.details.judgeChanged as string[]) : [],
+          ),
+        ),
+      ];
+      const categories: Record<string, number> = {};
+      for (const s of scores)
+        if (s.state === 'scored' && s.value === null && s.details?.asItCame !== undefined) {
+          const key = String(s.details.asItCame);
+          categories[key] = (categories[key] ?? 0) + 1;
+        }
+      // Advisory scores stay out of the run's metrics, so the judge's own summary is made here.
+      const values = [...perCaseMeans(run, id).values()];
+      const metric =
+        values.length > 0
+          ? { mean: mean(values), ci: bootstrapMean(values), n: values.length }
+          : undefined;
+      const reported = run.usage?.reported?.[id];
+      const labels = agreements?.get(id);
+      const dataType = scores.find((s) => typeof s.details?.dataType === 'string')?.details
+        ?.dataType as string | undefined;
+      return {
+        id,
+        name: id.slice(id.indexOf('/') + 1),
+        version: scores[0]?.version ?? '',
+        ...(dataType ? { dataType } : {}),
+        ...(metric ? { metric } : {}),
+        ...(reported ? { reported } : {}),
+        ...(labels ? { labels } : {}),
+        ...(Object.keys(categories).length > 0 ? { categories } : {}),
+        notApplicable: scores.length - applicable.length,
+        missing: gap?.missing ?? applicable.filter((s) => s.state === 'pending').length,
+        failed: gap?.failed ?? 0,
+        of: applicable.length,
+        changed,
+      };
+    });
+
+/** The draft or version cannot be run, for the reasons the draft runner gives. */
+export class RunRefused extends Error {
+  constructor(readonly errors: { path: string; message: string }[]) {
+    super(errors.map((e) => e.message).join('; '));
+    this.name = 'RunRefused';
+  }
 }
+
+/** Sending a run's traces is refused: no connection covers the service, or residency forbids it. */
+export class TraceRefused extends Error {
+  /** Every reason the run is refused, the first being the message. */
+  readonly messages: string[];
+  constructor(message: string, more: string[] = []) {
+    super(message);
+    this.name = 'TraceRefused';
+    this.messages = [message, ...more];
+  }
+}
+
+const residencyOf = (definition: Record<string, unknown>): Residency => {
+  const residency = (
+    isRecord(definition.spec) && isRecord(definition.spec.model)
+      ? definition.spec.model.residency
+      : undefined
+  ) as unknown;
+  return residencies.includes(residency as Residency) ? (residency as Residency) : 'global';
+};
 
 export interface Subject {
   definition: Record<string, unknown>;
@@ -117,26 +198,203 @@ export const summarize = (results: CaseResult[]): Outcome => {
   };
 };
 
-export const runView = (run: ServiceRun) => {
-  const shown: Partial<ServiceRun> = { ...run };
+/** In this order: a criteria case that must also refuse is still decided by its criteria. */
+const verdictMetrics = ['judge.criteria', 'exact-text', 'refusal'];
+
+/** A case passes on its case type's own metric: the criteria judge, the exact text or the refusal. */
+const verdictOf = (scores: Score[]) =>
+  verdictMetrics
+    .map((m) => scores.find((s) => s.metric === m && s.state !== 'not-applicable'))
+    .find((s) => s !== undefined);
+
+const passes = (scores: Score[]) => {
+  const verdict = verdictOf(scores);
+  return verdict?.state === 'scored' && verdict.value === 1;
+};
+
+/** A case's answer as the portal shows it: its text, or a structured answer's fields as JSON. */
+export const answerOfParts = (parts: unknown) =>
+  Array.isArray(parts) ? answerText(defaultObserve(parts as Part[], [])) : '';
+
+/** What a sink reports judges the run did not use cost, such as one switched on during the run. */
+const sinkOthersOf = (run: EvalRun, isSinkJudge: IsSinkJudge) => {
+  const judges = new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)));
+  const others = Object.entries(run.usage?.reported ?? {}).filter(
+    ([key]) => isSinkJudge(key) && !judges.has(key),
+  );
+  return others.length > 0 ? { sinkOthers: others[0]?.[1] } : {};
+};
+
+/** A test run as the portal lists it, read from the eval run. */
+export const runSummary = (
+  run: EvalRun,
+  isSinkJudge: IsSinkJudge = noSinkJudge,
+  agreements?: Map<string, SinkAgreement>,
+) => {
+  const state = runState(run);
+  // Every case counts, as the case list shows it: one without a verdict did not pass.
+  const counted = run.results;
+  const passed = counted.filter((r) => passes(r.scores)).length;
+  const used = [run.usage?.answers, run.usage?.judges].filter((u) => u !== undefined);
+  const usage = used.length > 0 ? sumUsage(used) : undefined;
+  return {
+    id: run.id,
+    status: state,
+    testSet: run.testSet.id,
+    testSetVersion: run.testSet.version,
+    version: run.tested?.version ?? 'draft',
+    ...(run.tested?.variant ? { variant: run.tested.variant } : {}),
+    ...(run.tested?.split ? { split: run.tested.split } : {}),
+    ...(run.tested?.environment ? { environment: run.tested.environment } : {}),
+    ...(run.tested?.model ? { model: run.tested.model } : {}),
+    ...(run.tested?.selected ? { selected: run.tested.selected } : {}),
+    ...(run.queuePlace ? { queuePlace: run.queuePlace } : {}),
+    startedAt: run.startedAt,
+    endedAt: state === 'running' || state === 'waiting-for-scores' ? null : run.endedAt,
+    score: state === 'completed' && counted.length > 0 ? passed / counted.length : null,
+    passed,
+    total: state === 'completed' ? counted.length : (run.progress?.total ?? 0),
+    ...(state === 'completed' ? {} : { finished: counted.length }),
+    ...(run.progress ? { progress: run.progress } : {}),
+    metrics: run.metrics,
+    incomplete: run.incomplete,
+    judges: run.provenance.judges,
+    cost: usage ? usage.costMicroNok : null,
+    tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
+    ...(run.error ? { error: run.error } : {}),
+    sinkJudges: sinkJudgesOf(run, isSinkJudge, agreements),
+    ...sinkOthersOf(run, isSinkJudge),
+    ...(run.usage?.usdNok ? { usdNok: run.usage.usdNok } : {}),
+    ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
+    ...(run.tested?.unsentJudges
+      ? {
+          unsentJudges: run.tested.unsentJudges.map((id) => ({
+            id,
+            name: id.slice(id.indexOf('/') + 1),
+          })),
+        }
+      : {}),
+  };
+};
+
+/** One test run with each case as a person reads it: what it asked, answered and why it passed. */
+export const runDetail = (
+  run: EvalRun,
+  set: TestSet | undefined,
+  answers: Map<string, string>,
+  sink: {
+    isSinkJudge: IsSinkJudge;
+    reasons?: Map<string, Map<string, string>>;
+    agreements?: Map<string, SinkAgreement>;
+  } = {
+    isSinkJudge: noSinkJudge,
+  },
+) => ({
+  ...runSummary(run, sink.isSinkJudge, sink.agreements),
+  byTag: run.byTag,
+  cases: run.results.map((r): CaseResult => {
+    const found = set?.spec.cases.find((c) => c.id === r.case);
+    const view = found ? caseView(found) : undefined;
+    const reason = verdictOf(r.scores)?.reason;
+    const said = sink.reasons?.get(`${r.case}#${r.repeat}`);
+    const judges = r.scores
+      .filter((s) => sink.isSinkJudge(s.evaluator))
+      .map((s): CaseJudgement => {
+        const why = s.reason ?? said?.get(s.evaluator);
+        return {
+          judge: s.evaluator,
+          state: s.state,
+          value: s.value,
+          ...(typeof s.details?.dataType === 'string' ? { dataType: s.details.dataType } : {}),
+          ...(s.details?.asItCame !== undefined ? { asItCame: s.details.asItCame } : {}),
+          ...(why ? { reason: why } : {}),
+        };
+      });
+    return {
+      caseId: r.case,
+      input: view?.input ?? '',
+      expected: view?.expected ?? '',
+      type: view?.type ?? 'criteria',
+      split: view?.split ?? 'open',
+      output: answers.get(`${r.case}#${r.repeat}`) ?? '',
+      pass: passes(r.scores),
+      ...(reason ? { reason } : {}),
+      ...(judges.length > 0 ? { judges } : {}),
+    };
+  }),
+});
+
+/**
+ * A run left running by an instance that stopped is interrupted, ended at its last heartbeat. Any
+ * reader can tell, since a live run's heartbeat is never older than the lease allows.
+ */
+export const interruptedIfAbandoned = (
+  tenant: string,
+  run: EvalRun,
+  leases: Pick<BackgroundLeases, 'abandoned'>,
+): EvalRun => {
+  const state = runState(run);
+  if (state !== 'running' && state !== 'waiting-for-scores') return run;
+  if (!leases.abandoned(`${tenant}/${run.id}`, run, run.startedAt)) return run;
+  const rest = { ...run };
+  // It waits for nothing any more.
+  delete rest.queuePlace;
+  return {
+    ...rest,
+    status: 'interrupted',
+    endedAt: run.heartbeatAt ?? run.startedAt,
+    error: restartMessage,
+  };
+};
+
+/** A run as a reader sees it: never its lease, and what it used only with view-usage. */
+export const shownRun = (run: EvalRun, usage: boolean): EvalRun => {
+  const shown = { ...run };
   delete shown.owner;
   delete shown.heartbeatAt;
-  delete shown.doneCases;
-  if (run.error === restartMessage) shown.interrupted = true;
+  if (!usage) delete shown.usage;
   return shown;
 };
 
-const withoutPlace = (run: ServiceRun): ServiceRun => {
+const finished = (run: EvalRun) => {
+  const state = runState(run);
+  return state !== 'running' && state !== 'waiting-for-scores';
+};
+
+/**
+ * Progress from the eval task; a run that has finished keeps what it finished with. The case just
+ * finished joins the ones before it, in the order rank gives (the test set's).
+ */
+export const progressed = (
+  run: EvalRun,
+  progress: { done: number; total: number },
+  usage?: EvalRun['usage'],
+  result?: EvalRun['results'][number],
+  rank: (r: EvalRun['results'][number]) => number = () => 0,
+): EvalRun => {
+  if (finished(run)) return run;
+  const rest = { ...run };
+  // A case has started, so the run no longer waits in line.
+  delete rest.queuePlace;
+  const results = result
+    ? [
+        ...run.results.filter((r) => r.case !== result.case || r.repeat !== result.repeat),
+        result,
+      ].sort((a, b) => rank(a) - rank(b))
+    : run.results;
+  return { ...rest, progress, ...(usage ? { usage } : {}), results };
+};
+
+/** The run's place in line for a case slot, or none once a slot is free. */
+export const queued = (run: EvalRun, place: number | undefined): EvalRun => {
+  if (finished(run)) return run;
   const rest = { ...run };
   delete rest.queuePlace;
-  return rest;
+  return place === undefined ? rest : { ...rest, queuePlace: place };
 };
 
-export const runSummary = (run: ServiceRun) => {
-  const shown = runView(run);
-  delete shown.cases;
-  return shown;
-};
+export const waitingForScores = (run: EvalRun): EvalRun =>
+  finished(run) ? run : { ...run, status: 'waiting-for-scores' };
 
 const modelsOf = (definition: Record<string, unknown>) => {
   const model = (isRecord(definition.spec) ? definition.spec.model : undefined) as
@@ -156,6 +414,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   const choice = modelChoice(deps);
   const slots = deps.evalSlots ?? evalSlots();
   const leases = backgroundLeases(leaseOptions);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+  });
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
   const draftOf = drafts.draftOf;
@@ -333,94 +596,252 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     return summarize(results.filter((r): r is CaseResult => r !== undefined));
   };
 
-  const saveRun = (actor: string, tenant: string, run: ServiceRun, reason: string) =>
-    appendVersion<ServiceRun>(deps.configEntries, {
-      kind: serviceRunKind,
-      scope: tenant,
-      id: run.id,
-      spec: run,
-      deleted: false,
-      by: actor,
-      reason,
-    });
-
-  const caseKey = (run: string, index: number) => `${run}/${index}`;
-
-  const saveCase = (
-    actor: string,
-    tenant: string,
-    run: string,
-    index: number,
-    result: CaseResult,
-  ) =>
-    appendVersion<CaseResult>(deps.configEntries, {
-      kind: serviceRunCaseKind,
-      scope: tenant,
-      id: caseKey(run, index),
-      spec: result,
-      deleted: false,
-      by: actor,
-      reason: `Testtilfelle ${index + 1}`,
-    });
-
-  const finishedCases = async (tenant: string, run: ServiceRun) => {
-    if (run.cases.length > 0 || !run.finished) return run.cases;
-    const indexes = run.doneCases ?? Array.from({ length: run.finished }, (_, index) => index);
-    const found = await Promise.all(
-      indexes.map(async (index) =>
-        (await deps.configEntries.history(serviceRunCaseKind, tenant, caseKey(run.id, index))).at(
-          -1,
-        ),
-      ),
-    );
-    return found.flatMap((e) => (e ? [e.spec as CaseResult] : []));
+  /** The deterministic evaluators that compute a publishing gate's metric from the answers alone. */
+  const gateEvaluators: Record<string, string> = {
+    'klarsprak-overall': 'klarsprak-checklist',
+    'nynorsk-chrf': 'nynorsk-reference',
   };
 
-  const settled = async (entry: ConfigEntry<ServiceRun>) => {
-    const run = entry.spec;
-    if (run.status !== 'queued' && run.status !== 'running') return run;
-    if (!leases.abandoned(`${entry.scope}/${run.id}`, run, run.startedAt)) return run;
-    const failed: ServiceRun = {
-      ...withoutPlace(run),
-      status: 'failed',
-      endedAt: leases.now().toISOString(),
-      error: restartMessage,
-      interrupted: true,
-      cases: await finishedCases(entry.scope, run),
-    };
-    await appendVersion<ServiceRun>(deps.configEntries, {
-      kind: serviceRunKind,
-      scope: entry.scope,
-      id: run.id,
-      spec: failed,
-      deleted: false,
-      by: 'platform:restart',
-      reason: restartMessage,
-      ifVersion: entry.version,
-    }).catch(() => undefined);
-    return failed;
+  /** The gates a definition lists, so a run of it scores what those gates read. */
+  const gatesOf = (spec: unknown): string[] => {
+    const gates = (spec as { evaluation?: { gates?: unknown } } | undefined)?.evaluation?.gates;
+    return Array.isArray(gates) ? gates.filter((g): g is string => typeof g === 'string') : [];
+  };
+
+  const evaluatorsFor = (cases: TestCase[], gates: string[] = []) => [
+    'contract',
+    ...(cases.some((c) => c.expected.sources.length > 0) ? ['retrieval'] : []),
+    ...(cases.some((c) => caseTypeOf(c) === 'criteria') ? [criteriaJudgeId] : []),
+    ...new Set(gates.flatMap((g) => (gateEvaluators[g] ? [gateEvaluators[g]] : []))),
+  ];
+
+  const save = (stored: StoredRun) => deps.evalStores.runs.save(stored);
+
+  /** A run whose instance stopped without settling it is interrupted, as other background work. */
+  const settled = async (stored: StoredRun): Promise<StoredRun> => {
+    const run = interruptedIfAbandoned(stored.tenant, stored.run, leases);
+    if (run === stored.run) return stored;
+    const interrupted: StoredRun = { ...stored, run };
+    const replaced = await deps.evalStores.runs
+      .replace(interrupted, { status: stored.run.status, heartbeatAt: stored.run.heartbeatAt })
+      .catch(() => false);
+    if (replaced) return interrupted;
+    // The owner saved the run after it was read: show what it saved.
+    return (await deps.evalStores.runs.get(stored.run.id)) ?? stored;
   };
 
   const runOf = async (tenant: string, id: string) => {
-    const entry = (await deps.configEntries.history(serviceRunKind, tenant, id)).at(-1) as
-      ConfigEntry<ServiceRun> | undefined;
-    if (!entry) return undefined;
-    const run = await settled(entry);
-    return { ...run, cases: await finishedCases(tenant, run) };
+    const stored = await deps.evalStores.runs.get(id);
+    return stored?.tenant === tenant ? settled(stored) : undefined;
   };
 
   const runsOf = async (tenant: string, service: string) =>
-    (
-      await Promise.all(
-        (await deps.configEntries.latest({ kind: serviceRunKind, scope: tenant }))
-          .filter((e) => (e.spec as ServiceRun).service === service)
-          .map((e) => settled(e as ConfigEntry<ServiceRun>)),
-      )
-    ).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    Promise.all(
+      (await deps.evalStores.runs.list({ tenant, service }))
+        .filter((s) => s.run.tested !== undefined)
+        .map(settled),
+    );
 
-  const recoverRuns = async () => {
-    for (const entry of await deps.configEntries.latest({ kind: serviceRunKind }))
-      await settled(entry as ConfigEntry<ServiceRun>);
+  const latestCompleted = async (tenant: string, service: string, testSet?: string) =>
+    (await runsOf(tenant, service)).find(
+      (s) =>
+        runState(s.run) === 'completed' &&
+        // A run of a few marked cases does not show how the whole test set does.
+        !s.run.tested?.selected &&
+        (testSet === undefined || s.run.testSet.id === testSet),
+    );
+
+  /** What each case answered, read from its task; empty once the task's content is erased. */
+  const answersOf = async (run: EvalRun) => {
+    const answers = new Map<string, string>();
+    for (const r of run.results) {
+      let answer = '';
+      try {
+        for await (const event of deps.events(r.task))
+          if (event.type === 'kernel.result') answer = answerOfParts(event.data);
+      } catch {
+        answer = '';
+      }
+      answers.set(`${r.case}#${r.repeat}`, answer);
+    }
+    return answers;
+  };
+
+  /** The judges of a connection that the tenant has taken in use as building blocks. */
+  const adoptedJudges = async (tenant: string, connection: string) => {
+    const judgeOf = deps.traceSinks?.judgeOf;
+    if (!judgeOf) return [];
+    const prefix = blockKey('judge', '');
+    return (await deps.configEntries.latest({ kind: adoptionKind, scope: tenant }))
+      .filter(
+        (e) =>
+          !e.deleted &&
+          (e.spec as { status?: string }).status === 'in_use' &&
+          e.id.startsWith(prefix) &&
+          judgeOf(connection, e.id.slice(prefix.length)),
+      )
+      .map((e) => e.id.slice(prefix.length))
+      .sort();
+  };
+
+  /**
+   * The rules of the connection's project as they meet a run of the test set (ADR 0040): the
+   * adopted judges that reach it, and what refuses it. A judge whose filters leave the test set
+   * out is no part of the run; a refused judge that reaches it, one not taken in use, and a rule
+   * that would judge every span or that genki cannot read, refuse it.
+   */
+  const reachOf = async (
+    tenant: string,
+    connection: TraceConnection,
+    adopted: string[],
+    run: SinkRun,
+  ) => {
+    const sinks = deps.traceSinks;
+    if (!sinks?.forRun) return undefined;
+    const found = await sinks.forRun(tenant, connection, run);
+    const reaching = found.judges.filter((j) => j.refused?.reason !== 'paused');
+    return {
+      ...found,
+      used: found.judges.filter((j) => adopted.includes(j.id)),
+      notInUse: reaching.filter((j) => !adopted.includes(j.id) && !j.refused),
+      refused: reaching.filter((j) => !adopted.includes(j.id) && j.refused),
+      unreadable: [
+        ...reaching.filter((j) => !adopted.includes(j.id) && j.refused).map((j) => j.name),
+        ...found.refusing.map((r) => r.name),
+      ],
+      gone: adopted.filter(
+        (id) => !found.judges.some((j) => j.id === id) && !found.elsewhere.some((j) => j.id === id),
+      ),
+    };
+  };
+
+  /** The adopted judges that reach the run, as the project has them now; throws when it is refused. */
+  const snapshotJudges = async (
+    tenant: string,
+    connection: TraceConnection,
+    adopted: string[],
+    run: SinkRun,
+  ) => {
+    const found = await reachOf(tenant, connection, adopted, run).catch((error: unknown) => {
+      throw new TraceRefused(
+        `the judges of the connection ${connection.id} could not be read: ${messageOf(error)}`,
+      );
+    });
+    if (!found) return [];
+    // Each refusal names its judge or rule, and reads in the person's language on its own.
+    const unread = [...found.notInUse, ...found.refused].map((j) => j.name);
+    const messages = [
+      ...found.used.flatMap((j) => (j.refused ? [j.refused.message] : [])),
+      ...(unread.length > 0
+        ? [
+            `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
+          ]
+        : []),
+      // A judge taken in use that now judges every span is refused for that, not as gone.
+      ...found.refusing.map((r) => r.message),
+      ...found.gone
+        .filter((id) => !found.refusing.some((r) => id.endsWith(`/${r.name}`)))
+        .map(
+          (id) =>
+            `the judge ${id} is no longer an active experiment judge in the project of the connection ${connection.id}`,
+        ),
+    ];
+    const [first, ...more] = messages;
+    if (first) throw new TraceRefused(first, more);
+    return found.used;
+  };
+
+  /** The sink judges' reasons, kept only on each case's task for as long as its retention keeps them. */
+  const judgeReasonsOf = async (run: EvalRun, isSinkJudge: IsSinkJudge) => {
+    const reasons = new Map<string, Map<string, string>>();
+    for (const r of run.results) {
+      if (!r.scores.some((s) => isSinkJudge(s.evaluator) && s.state === 'scored')) continue;
+      const said = new Map<string, string>();
+      try {
+        for await (const event of deps.events(r.task)) {
+          const score = event.type === 'kernel.score' ? (event.data as Partial<Score>) : undefined;
+          if (score?.evaluator && isSinkJudge(score.evaluator) && typeof score.reason === 'string')
+            said.set(score.evaluator, score.reason);
+        }
+      } catch {
+        continue;
+      }
+      reasons.set(`${r.case}#${r.repeat}`, said);
+    }
+    return reasons;
+  };
+
+  /** The residency a run of the definition has: as stated, or its primary model's. */
+  const runResidency = (definition: Record<string, unknown>): Residency => {
+    const stated = (
+      isRecord(definition.spec) && isRecord(definition.spec.model)
+        ? definition.spec.model.residency
+        : undefined
+    ) as Residency | undefined;
+    if (stated && residencies.includes(stated)) return stated;
+    const primary = modelsOf(definition)[0];
+    return primary ? choice.residencyOf(primary) : 'global';
+  };
+
+  /**
+   * Where a run of the subject on the test set would be sent and which sink judges would score
+   * it, before it starts, with the judges of other test sets apart.
+   */
+  const sendingOf = async (tenant: string, service: string, subject: Subject, set: TestSet) => {
+    const covering = await connectionsCovering(deps.configEntries, tenant, service);
+    const sink = covering[0];
+    if (!sink) return { judges: [] };
+    const adopted = await adoptedJudges(tenant, sink.id);
+    const residency = runResidency(subject.definition);
+    const dataset = await datasets.recorded(tenant, sink, service, set.metadata.id);
+    const run: SinkRun = {
+      testSet: set.metadata.id,
+      version: set.metadata.version,
+      ...(dataset ? { dataset: dataset.id } : {}),
+    };
+    // Judges that cannot be read refuse the run when it starts: say so before.
+    const read = await reachOf(tenant, sink, adopted, run).catch((error: unknown) => ({
+      error: messageOf(error),
+    }));
+    const unread = () => {
+      if (!read) return undefined;
+      if ('error' in read)
+        return {
+          reason: 'judges-unreadable' as const,
+          connection: sink.id,
+          message: read.error,
+        };
+      return read.notInUse.length + read.unreadable.length > 0
+        ? {
+            reason: 'judges-differ' as const,
+            connection: sink.id,
+            notInUse: read.notInUse.map((j) => j.name),
+            unreadable: read.unreadable,
+          }
+        : undefined;
+    };
+    const reached = read && !('error' in read) ? read : undefined;
+    const refused =
+      covering.length > 1
+        ? { reason: 'covered-twice' as const, connections: covering.map((c) => c.id) }
+        : !residencyAllows(residency, sink.residency)
+          ? { reason: 'residency' as const, service: residency, connection: sink.residency }
+          : adopted.length > 0 && !sink.content
+            ? { reason: 'no-content' as const, connection: sink.id }
+            : unread();
+    const named = (id: string) => ({ id, name: id.slice(id.indexOf('/') + 1) });
+    return {
+      connection: { id: sink.id, residency: sink.residency },
+      // What reaches the test set, whatever else refuses the run.
+      ...(reached
+        ? { notInUse: reached.notInUse.map((j) => j.name), unreadable: reached.unreadable }
+        : {}),
+      judges: reached ? reached.used.map((j) => named(j.id)) : adopted.map(named),
+      ...(reached && reached.elsewhere.length > 0
+        ? { elsewhere: reached.elsewhere.map((j) => named(j.id)) }
+        : {}),
+      ...(refused ? { refused } : {}),
+    };
   };
 
   const startRun = async (
@@ -431,125 +852,246 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     split?: CaseSplit,
     only?: string[],
+    options: { trace?: boolean } = {},
   ) => {
-    const actor = actorOf(principal.actor ?? principal);
-    const model = answeringModel(subject);
-    const queued: ServiceRun = {
-      id: randomUUID(),
-      service,
-      status: 'queued',
-      testSet: set.metadata.id,
-      testSetVersion: set.metadata.version,
-      version: subject.version,
-      ...(subject.environment ? { environment: subject.environment } : {}),
-      subject: publishedSubject(subject.definition, deps.plugins),
+    if (!deps.evalCapability) throw new Error('the platform has no eval capability');
+    // Locked cases never leave the platform, so a run of them alone sends nothing anywhere.
+    const sendable = split !== 'locked';
+    const covering = sendable ? await connectionsCovering(deps.configEntries, tenant, service) : [];
+    const adopted = new Map(
+      await Promise.all(
+        covering.map(async (c) => [c.id, await adoptedJudges(tenant, c.id)] as const),
+      ),
+    );
+    // A run goes to a sink only when it asks, and the sink's judges score only a run sent there.
+    const traced = sendable && options.trace === true;
+    const unsentJudges = traced ? [] : [...adopted.values()].flat();
+    const sink = traced ? covering[0] : undefined;
+    if (traced) {
+      if (!sink || !deps.traceSinks)
+        throw new TraceRefused(`no trace connection covers the service ${service}`);
+      if (covering.length > 1)
+        throw new TraceRefused(
+          `two trace connections cover the service ${service}: ${covering.map((c) => c.id).join(', ')}`,
+        );
+    }
+    const prepared = await deps.drafts.prepare({
+      principal,
+      tenant,
+      definition: subject.definition,
+      files: subject.files,
+      origin: 'builder',
+      ...(typeof subject.version === 'number' ? { version: subject.version } : {}),
       ...(subject.variant ? { variant: subject.variant } : {}),
-      ...(model ? { model } : {}),
-      ...(split ? { split } : {}),
-      ...(only ? { selected: only } : {}),
-      startedAt: new Date().toISOString(),
-      endedAt: null,
-      score: null,
-      passed: 0,
-      total: casesIn(set, split, only).length,
-      finished: 0,
-      cost: 0,
-      tokens: { input: 0, output: 0 },
-      cases: [],
+    });
+    if (!prepared.ok) throw new RunRefused(prepared.errors);
+    if (sink) {
+      // The residency the run has, filled from its model when the draft leaves it out.
+      const residency = residencyOf(prepared.definition);
+      if (!residencyAllows(residency, sink.residency)) {
+        prepared.release();
+        throw new TraceRefused(
+          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+        );
+      }
+    }
+    // Looked up only after the run's checks pass, so a refused run writes nothing (ADR 0040).
+    const dataset = sink
+      ? await datasets.ensure(tenant, sink, service, set.metadata.id).catch((error: unknown) => {
+          prepared.release();
+          throw new TraceRefused(
+            `the dataset of the test set ${set.metadata.id} could not be found or made in the project of the connection ${sink.id}: ${messageOf(error)}`,
+          );
+        })
+      : undefined;
+    const sinkJudges = sink
+      ? await snapshotJudges(tenant, sink, adopted.get(sink.id) ?? [], {
+          testSet: set.metadata.id,
+          version: set.metadata.version,
+          ...(dataset ? { dataset: dataset.id } : {}),
+        }).catch((error: unknown) => {
+          prepared.release();
+          throw error;
+        })
+      : [];
+    const cases = casesIn(set, split, only);
+    // A finished case takes its place in the test set's order, repeat by repeat.
+    const order = new Map(cases.map((c, i) => [c.id, i]));
+    const rankOf = (r: EvalRun['results'][number]) =>
+      r.repeat * cases.length + (order.get(r.case) ?? cases.length);
+    const model = answeringModel(subject);
+    const runId = randomUUID();
+    // Where the sink shows the run's experiment; a run is no less valid without the link.
+    const experiment =
+      sink && deps.traceSinks?.experimentUrl
+        ? await deps.traceSinks.experimentUrl(tenant, sink, runId).catch(() => undefined)
+        : undefined;
+    const startedAt = leases.now().toISOString();
+    const first: EvalRun = {
+      id: runId,
+      testSet: { tenant, id: set.metadata.id, version: set.metadata.version },
+      capability: prepared.capability,
+      splits: split ? splitsFor(split) : ['train', 'validation', 'holdout'],
+      repeats: 1,
+      startedAt,
+      endedAt: startedAt,
+      provenance: {
+        commit: deps.appVersion ?? 'dev',
+        data: 'live',
+        servedModels: [],
+        judges: [],
+        services: [],
+      },
+      results: [],
+      metrics: {},
+      byTag: {},
+      incomplete: [],
+      status: 'running',
+      progress: { done: 0, total: cases.length },
+      tested: {
+        version: subject.version,
+        ...(subject.variant ? { variant: subject.variant } : {}),
+        ...(split ? { split } : {}),
+        ...(sink ? { sink: sink.id } : {}),
+        ...(experiment ? { experiment } : {}),
+        ...(unsentJudges.length > 0 ? { unsentJudges } : {}),
+        ...(subject.environment ? { environment: subject.environment } : {}),
+        ...(model ? { model } : {}),
+        ...(only ? { selected: only } : {}),
+      },
       ...leases.stamp(),
     };
-    const lease = leases.hold(`${tenant}/${queued.id}`, queued, (run, reason) =>
-      saveRun(actor, tenant, run, reason),
+    const validated = validateDefinition(subject.definition, deps.plugins);
+    const spec = validated.ok ? validated.definition.spec : subject.definition.spec;
+    const record = { tenant, service, subject: definitionSubject(spec) };
+    let task = '';
+    const lease = leases.hold(`${tenant}/${first.id}`, first, (run) =>
+      save({ ...record, task, run }),
     );
     try {
-      await lease.update((run) => run, `Testkjøring av ${set.metadata.id}`);
+      await lease.update((run) => run, 'started');
     } catch (error) {
       lease.release();
+      prepared.release();
       throw error;
     }
+    if (sink)
+      deps.traceSinks?.open(
+        first.id,
+        tenant,
+        sink,
+        deps.traceDeliveries
+          ? deliveryGate({
+              configEntries: deps.configEntries,
+              deliveries: deps.traceDeliveries,
+              tenant,
+              sink: sink.id,
+              opened: { host: sink.host, publicKey: sink.publicKey },
+              now: () => leases.now().toISOString(),
+            })
+          : undefined,
+        deps.traceSinks.fieldsOf?.(sinkJudges) ?? [],
+        dataset?.id,
+      );
     const done = (async () => {
-      const meter = choice.meter();
-      const saved = new Map<number, CaseResult>();
-      const completed = new Map<number, CaseResult>();
-      const inOrder = () => [...saved.keys()].sort((a, b) => a - b);
-      const progress = (run: ServiceRun): ServiceRun => {
-        const doneCases = inOrder();
-        const { passed, score } = summarize(doneCases.map((i) => saved.get(i) as CaseResult));
-        return {
-          ...run,
-          passed,
-          score,
-          finished: doneCases.length,
-          doneCases,
-          cost: meter.costMicroNok(),
-          tokens: { input: meter.inputTokens, output: meter.outputTokens },
-        };
-      };
-      const onCase = async (index: number, result: CaseResult) => {
-        completed.set(index, result);
-        await saveCase(actor, tenant, queued.id, index, result)
-          .then(() => {
-            saved.set(index, result);
-            return lease.update(progress, `Testtilfelle ${saved.size} av ${queued.total}`);
-          })
-          .catch(() => undefined);
-      };
-      const onCaseStart = () => {
-        if (started) return;
-        started = true;
-        void lease
-          .update((run) => ({ ...withoutPlace(run), status: 'running' }), 'Kjører')
-          .catch(() => undefined);
-      };
-      const onQueue = (place: number | undefined) => {
-        void lease
-          .update(
-            (run) => (place === undefined ? withoutPlace(run) : { ...run, queuePlace: place }),
-            place === undefined ? 'Kjører' : `Venter på ledig plass, nr. ${place}`,
-          )
-          .catch(() => undefined);
-      };
-      let started = false;
       try {
-        const outcome = await runCases(
-          principal,
-          tenant,
-          subject,
-          casesIn(set, split, only),
-          meter,
-          { run: queued.id, onCase, onCaseStart, onQueue },
+        const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
+          data: {
+            id: first.id,
+            capability: prepared.capability,
+            // Only the marked cases, when the run was limited to them.
+            testSet: only ? { ...set, spec: { ...set.spec, cases } } : set,
+            evaluators: [...evaluatorsFor(cases, gatesOf(spec)), ...sinkJudges.map((j) => j.id)],
+            provenance: { commit: first.provenance.commit, data: first.provenance.data },
+            splits: first.splits,
+            ...(sink ? { sink: sink.id } : {}),
+            ...(sinkJudges.length > 0 ? { sinkJudges: sinkJudges.map((j) => j.snapshot) } : {}),
+            // The judge is picked outside every model the service may answer with, fallback too.
+            avoidAsJudge: modelsOf(subject.definition),
+          },
+        });
+        task = invoked.task;
+        // Notices are applied in order to the latest state, and never reopen a finished run.
+        void (async () => {
+          for await (const event of invoked.events) {
+            const data = event.data as
+              | {
+                  kind?: string;
+                  done?: number;
+                  total?: number;
+                  usage?: unknown;
+                  result?: unknown;
+                  place?: number;
+                }
+              | undefined;
+            if (event.type !== 'kernel.notice') continue;
+            if (data?.kind === 'eval.progress' && data.done !== undefined) {
+              const usage = evalRun.shape.usage.safeParse(data.usage);
+              const result = evalRun.shape.results.element.safeParse(data.result);
+              await lease.update(
+                (run) =>
+                  progressed(
+                    run,
+                    { done: data.done ?? 0, total: data.total ?? 0 },
+                    usage.success ? usage.data : undefined,
+                    result.success ? result.data : undefined,
+                    rankOf,
+                  ),
+                'progress',
+              );
+            }
+            if (data?.kind === 'eval.queued')
+              await lease.update((run) => queued(run, data.place), 'queued');
+            if (data?.kind === 'eval.waiting') await lease.update(waitingForScores, 'waiting');
+          }
+        })().catch(() => undefined);
+        const parts = await invoked.result;
+        const json = parts.find((p) => p.body.kind === 'json')?.body;
+        const result = evalRun.parse(json?.kind === 'json' ? json.json : undefined);
+        // The draft's capability lives for one run; the service it tests is what runs compare by.
+        const services = result.provenance.services.map((s) =>
+          s.startsWith(`${prepared.capability}@`)
+            ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
+            : s,
         );
+        // A cost a sink reports in USD is shown with the rate of its day, kept with the run.
+        const usdNok =
+          result.usage?.reported && Object.keys(result.usage.reported).length > 0
+            ? await latestUsdNok(deps.configEntries).catch(() => undefined)
+            : undefined;
         await lease.update(
-          (run) => ({
-            ...withoutPlace(progress(run)),
-            status: 'succeeded',
-            endedAt: new Date().toISOString(),
-            passed: outcome.passed,
-            score: outcome.score,
-            finished: outcome.total,
-            total: outcome.total,
-            cases: outcome.results,
+          () => ({
+            ...result,
+            ...(usdNok && result.usage ? { usage: { ...result.usage, usdNok } } : {}),
+            provenance: { ...result.provenance, services },
+            ...(first.tested ? { tested: first.tested } : {}),
+            progress: { done: cases.length, total: cases.length },
           }),
-          'Ferdig',
+          'completed',
         );
       } catch (error) {
-        await lease.update(
-          (run) => ({
-            ...withoutPlace(progress(run)),
-            status: 'failed',
-            endedAt: new Date().toISOString(),
-            error: messageOf(error),
-            cases: [...completed.keys()]
-              .sort((a, b) => a - b)
-              .map((i) => completed.get(i) as CaseResult),
-          }),
-          'Feilet',
-        );
+        await lease
+          .update(
+            (run) => ({
+              ...run,
+              status: 'failed',
+              endedAt: leases.now().toISOString(),
+              // The eval run stops at the quota before a case; say so as the portal's runs do.
+              error: messageOf(error).endsWith('the monthly token quota is used up')
+                ? quotaStopMessage
+                : messageOf(error),
+            }),
+            'failed',
+          )
+          .catch(() => undefined);
       } finally {
         lease.release();
+        prepared.release();
+        // Deliveries are recorded before each batch goes out (deliveryGate); closing only flushes.
+        if (sink) await deps.traceSinks?.close(first.id).catch(() => []);
       }
     })();
-    return { run: queued, done };
+    return { run: first, done };
   };
 
   return {
@@ -563,7 +1105,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     runCases,
     runOf,
     runsOf,
-    recoverRuns,
+    latestCompleted,
+    answersOf,
+    judgeReasonsOf,
+    sendingOf,
     leases,
     startRun,
   };

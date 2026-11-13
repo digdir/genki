@@ -1,23 +1,71 @@
 import { untrustedData } from '@genai/port-model';
 import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
-import type { Score, TestCase } from './schema.js';
+import type { ReportedUsage, Score, TestCase, UsageSummary } from './schema.js';
 
 export interface EvalContext {
   servedModels: string[];
   modelFamily(model: string): string | undefined;
+  /** Aborts when the eval run is cancelled. */
+  signal?: AbortSignal;
+  /** The eval run and the case's task, for a judge that scores the trace the case sent. */
+  run?: string;
+  task?: string;
 }
 
 export const judgedAgainst = (model: { kind?: unknown }) =>
   model.kind === undefined || model.kind === 'model';
 
+export interface PendingScore {
+  case: string;
+  repeat: number;
+  task: string;
+  score: Score;
+}
+
+export interface CollectedScore {
+  case: string;
+  repeat: number;
+  score: Score;
+}
+
+/**
+ * evaluator@2: scores come back at once, or as pending, which the runner asks for again with
+ * collect. What is not ready yet is left out or answered pending again.
+ */
 export interface Evaluator {
   id: string;
   version: string;
   kind: 'deterministic' | 'model' | 'human';
-  judge?: string;
+  judge?: string | undefined;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
+  /** The signal aborts when the run's wait for scores ends or the run is cancelled. */
+  collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
+  /** What the evaluator's own model calls used, for a judge that calls one. */
+  usage?(): UsageSummary;
+  /**
+   * Its reasons may quote the answer, so they are kept only on the case's task, whose retention
+   * purges them with the case; the run keeps its scores without them.
+   */
+  reasonsOnTheCase?: boolean;
+  /** Its scores are shown apart and never count in the run's metrics or its gates. */
+  advisory?: boolean;
+  /**
+   * What a sink reports its judges' calls on the run's cases used, outside the platform's
+   * metering: per evaluator, and under the sink's own key for its judges the run does not use.
+   */
+  reportedUsage?(): Record<string, ReportedUsage>;
+  /**
+   * For a judge in a sink: whether it can judge the case at all, known before the case is
+   * answered. A case none of a run's sink judges can read is not sent, so it is not billed.
+   */
+  canRead?(testCase: TestCase): boolean;
+  /** Once the run's wait for scores is over: a last read of what a sink reports, before the run ends. */
+  settle?(options?: { signal?: AbortSignal }): Promise<void>;
 }
+
+/** The evaluator of a provenance judge: judge:criteria@2+foundry/claude is judge:criteria. */
+export const evaluatorOfJudge = (judge: string) => /^([^@+]+)@[^+]+\+/.exec(judge)?.[1] ?? judge;
 
 export class EvalError extends Error {
   constructor(message: string) {
@@ -37,6 +85,7 @@ const scored = (
   metric,
   value,
   applicable: true,
+  state: 'scored',
   ...(details ? { details } : {}),
 });
 
@@ -46,6 +95,7 @@ const skipped = (evaluator: Evaluator, metric: string, reason: string): Score =>
   metric,
   value: null,
   applicable: false,
+  state: 'not-applicable',
   reason,
 });
 
@@ -54,16 +104,26 @@ export const defaultRefusalPatterns = [
   "(?i)\\b(i don't know|i do not know|could not find|couldn't find|no information|cannot answer|not covered)\\b",
 ];
 
+const normalized = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** What a judge reads as the answer: its text, or a structured answer's fields as JSON. */
+export const answerText = (o: Observation) =>
+  o.answer.trim() === '' && o.fields !== undefined ? JSON.stringify(o.fields, null, 2) : o.answer;
+
+/** v2: an exact case's text, and an empty answer counts as a refusal, as the portal graded them. */
 export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Evaluator => {
   const refusals = refusalPatterns.map(compilePattern);
   const self: Evaluator = {
     id: 'contract',
-    version: '1',
+    version: '2',
     kind: 'deterministic',
     evaluate: async (c, o) => {
       const scores: Score[] = [];
-      const refused = refusals.some((r) => r.test(o.answer));
-      if (c.grounding === 'refusal-expected') {
+      // No answer at all is a refusal; a structured answer has no text but is still an answer.
+      const refused =
+        (o.answer.trim() === '' && o.fields === undefined) ||
+        refusals.some((r) => r.test(o.answer));
+      if (c.grounding === 'refusal-expected' || c.type === 'must_reject') {
         scores.push(scored(self, 'refusal', refused ? 1 : 0));
         scores.push(skipped(self, 'answer-pattern', 'a refusal is expected'));
       } else {
@@ -75,6 +135,19 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
                 self,
                 'answer-pattern',
                 compilePattern(c.expected.answerPattern).test(o.answer) ? 1 : 0,
+              ),
+        );
+      }
+      if (c.type === 'exact') {
+        const expected = c.expected.referenceAnswer ?? c.expected.answerPattern;
+        // An exact case without its text cannot pass, as the portal grades it.
+        scores.push(
+          expected === undefined || expected.trim() === ''
+            ? { ...scored(self, 'exact-text', 0), reason: 'the case has no text to find' }
+            : scored(
+                self,
+                'exact-text',
+                normalized(o.answer).includes(normalized(expected)) ? 1 : 0,
               ),
         );
       }
@@ -248,7 +321,7 @@ export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator =
           role: 'user',
           content: fill(prompt.template, {
             question,
-            answer: o.answer,
+            answer: answerText(o),
             criteria: criteriaText(prompt),
             sources: judgeSources(o),
             min: String(prompt.scale.min),

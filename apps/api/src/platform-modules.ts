@@ -37,7 +37,14 @@ import type { createWebhooks } from './webhooks.js';
 import type { HookRuntime } from './hooks.js';
 import type { ContractSetup, PluginRegistry } from '@genai/plugins';
 import type { ExternalPlugin, PluginRuntime } from './external-plugins.js';
-import type { ConnectionToolSource } from '@genai/providers-mcp-client';
+import type {
+  ConnectionToolSource,
+  EgressOptions,
+  TenantSecrets,
+} from '@genai/providers-mcp-client';
+import type { TraceDeliveryStore } from '@genai/jobs';
+import type { TraceSinks, TracingOptions } from './trace-connections.js';
+import type { SinkLabels } from './sink-labels.js';
 import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
@@ -68,6 +75,19 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     options?: { fresh?: boolean },
   ): Promise<{ usedTokens: number; monthlyTokens: number; exhausted: boolean }>;
   drafts: DraftRunner;
+  /** The capability that runs an eval as a kernel task (`platform.eval.run`). */
+  evalCapability?: string;
+  /** The platform's own version, recorded as the commit of the eval runs it starts. */
+  appVersion?: string;
+  /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
+  tenantSecrets?: TenantSecrets;
+  /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */
+  egressOptions?: EgressOptions;
+  tracing?: TracingOptions;
+  traceSinks?: TraceSinks;
+  /** Labels brought back from trace sinks, and each sink judge's agreement with them. */
+  sinkLabels?: SinkLabels;
+  traceDeliveries?: TraceDeliveryStore;
   evalSlots?: EvalSlots;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;

@@ -9,15 +9,23 @@ import {
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
   followChanges,
+  exchangeRateGuard,
   isLockdown,
   knowledgeRecordsOf,
+  latestUsdNok,
   loadCatalog,
   mayUseModels,
   openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
+  readUsdNok,
   runtimeBlocksOf,
+  saveUsdNok,
+  scheduleUsdNok,
   TenantSecretVault,
+  traceSinkAccess,
+  tracesContent,
+  tracingEgress,
   withBlockSettings,
 } from '@genai/composition';
 import {
@@ -31,6 +39,7 @@ import {
 import {
   assistantCapabilityPrefix,
   costOf,
+  deleteSinkTraces,
   InMemoryTriggerRuns,
   monthlyQuotaGate,
   recordTriggerRuns,
@@ -59,7 +68,11 @@ import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/provider
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 import { createLocalConverter, guardPdfParseLeaks } from '@genai/providers-documents';
-import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
+import {
+  createTraceExporter,
+  langfuseTraceSink,
+  observedEventLog,
+} from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
@@ -576,7 +589,7 @@ const traces = process.env.TRACES_ENDPOINT
               secretKey: 'secret://env/langfuse-secret-key',
             }
           : { kind: 'none' },
-        content: process.env.TRACES_CONTENT === 'true',
+        content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
       { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-worker' },
@@ -602,6 +615,7 @@ const lockdown = isLockdown(process.env);
 if (lockdown) log('lockdown: the worker runs no triggers and refuses every model call');
 
 const blob = new FileSystemBlobStore(blobDir);
+const vault = new TenantSecretVault(db?.tenantSecrets);
 const eventLog = db?.log ?? new InMemoryEventLog();
 const runtime = await createRuntime({
   platformTenant,
@@ -612,7 +626,7 @@ const runtime = await createRuntime({
     embeddings: catalogs.embeddings.catalog,
   },
   secrets,
-  vault: new TenantSecretVault(db?.tenantSecrets),
+  vault,
   settings,
   ...(db ? { configEntries: db.configEntries } : {}),
   definitions: (plugins, sharedSkill) =>
@@ -795,6 +809,18 @@ const stopFollowingChanges = db
   : undefined;
 
 const retentionLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-retention') : undefined;
+const sinkAccess = db
+  ? traceSinkAccess({
+      configEntries: db.configEntries,
+      secrets: vault.resolver(secrets),
+      egress: tracingEgress(
+        {
+          platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)],
+        },
+        isDevMode(process.env),
+      ),
+    })
+  : async () => undefined;
 const retention = db
   ? scheduleRetention({
       store: db.retention,
@@ -804,8 +830,9 @@ const retention = db
       outsideRun: db.outsideRunRetention,
       documents: blob,
       tenants: async () => (await db.tenants.list()).map((t) => t.orgNumber),
+      deliveries: db.traceDeliveries,
       ...(retentionLease ? { active: () => retentionLease.tryAcquire() } : {}),
-      onRun: (run) =>
+      onRun: (run) => {
         log('retention purged', {
           payloads: run.payloads,
           envelopes: run.envelopes,
@@ -813,11 +840,60 @@ const retention = db
           documents: run.documents,
           outsideRunDays: run.outsideRunDays,
           groups: run.groups.length,
-        }),
+          traceDeletes: run.traceDeletes,
+        });
+      },
+      // After every purge, also one that failed, for up to three hours a night.
+      afterPurge: () =>
+        deleteSinkTraces({
+          deliveries: db.traceDeliveries,
+          sinkFor: async (tenant, sink) => {
+            const access = await sinkAccess(tenant, sink);
+            return access && langfuseTraceSink(access);
+          },
+          budgetMs: 3 * 60 * 60_000,
+        })
+          .then((deleted) => {
+            log('trace sink deletes', { deleted: deleted.deleted, failed: deleted.failed });
+            if (deleted.failing.length > 0)
+              log('trace sink deletes keep failing', {
+                failing: deleted.failing.map((d) => ({
+                  tenant: d.tenant,
+                  sink: d.sink,
+                  trace: d.trace,
+                  attempts: d.attempts,
+                  error: d.lastError,
+                })),
+              });
+          })
+          .catch((error: unknown) => log('trace sink deletes failed', { error: String(error) })),
       onError: (error) => log('retention purge failed', { error: String(error) }),
     })
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
+
+// Norges Bank's USD/NOK rate, read once a day through the egress guard, shows a judge's reported cost in kroner.
+const rateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-exchange-rate') : undefined;
+const rateGuard = exchangeRateGuard();
+const exchangeRate = db
+  ? scheduleUsdNok({
+      configEntries: db.configEntries,
+      guard: rateGuard,
+      ...(rateLease ? { active: () => rateLease.tryAcquire() } : {}),
+      onRead: (rate) => log('usd/nok rate', { ...rate }),
+      onError: (error) => log('usd/nok rate failed', { error: String(error) }),
+    })
+  : undefined;
+if (db)
+  void latestUsdNok(db.configEntries)
+    .then(async (known) => {
+      // One replica reads it, as the daily job does.
+      if (known || (rateLease && !(await rateLease.tryAcquire()))) return;
+      const rate = await readUsdNok(rateGuard);
+      await saveUsdNok(db.configEntries, rate, new Date());
+      log('usd/nok rate', { ...rate });
+    })
+    .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
 
 const sweepLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
@@ -905,6 +981,7 @@ const knowledgeReconciler = knowledgeRunRecords
 const stop = () => {
   knowledgeProgress.stop();
   retention?.stop();
+  exchangeRate?.stop();
   providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);

@@ -94,6 +94,15 @@ const tenantRows: Record<string, (tenant: string, key: string) => [string, unkno
     `insert into eval_test_sets (tenant, id, version, body) values ($1, $2, 1, '{}')`,
     [tenant, key],
   ],
+  sink_labels: (tenant, key) => [
+    `insert into sink_labels (tenant, id, revision, connection, judge, label)
+     values ($1, $2, 'r1', 'lokal', 'langfuse:x', '{}')`,
+    [tenant, key],
+  ],
+  sink_label_keys: (tenant, key) => [
+    `insert into sink_label_keys (tenant, key) values ($1, $2)`,
+    [tenant, key],
+  ],
   eval_runs: (tenant, key) => [
     `insert into eval_runs (id, tenant, task, test_set, ended_at, body)
      values ($2, $1, 't', 's', '2026-10-07', '{}')`,

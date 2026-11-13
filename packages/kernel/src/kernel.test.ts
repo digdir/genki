@@ -159,6 +159,53 @@ describe('kernel: running a task', () => {
     expect(task.service.configHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('records the evaluation context beside a sub-task input, never in it, and never gives it to the strategy', async () => {
+    const seen: unknown[] = [];
+    const answer = {
+      ...strategy('answer', async function* () {
+        yield { type: 'kernel.result', data: [] };
+      }),
+      run: async function* (_ctx: unknown, input: unknown) {
+        seen.push(input);
+        yield { type: 'kernel.result' as const, data: [textPart('Fristen er 1. mai.')] };
+      },
+    };
+    const evaluation = {
+      run: { id: 'run-1', name: 'svar-frister v1' },
+      case: { id: 'o1', repeat: 0, split: 'train' as const },
+      sink: 'etaten',
+    };
+    const evalRun = strategy('eval', async function* (ctx) {
+      const child = await ctx.invoke(
+        'ka',
+        { parts: [textPart('Når er fristen?')] },
+        { evaluation },
+      );
+      yield { type: 'kernel.result', data: await child.result };
+    });
+    const kernel = kernelWith({
+      strategies: [
+        answer,
+        { ...evalRun, requires: { kernel: 1, ports: [], features: ['subinvoke'] } },
+      ],
+      capabilities: [capability('ka', 'answer'), capability('eval', 'eval')],
+    });
+
+    const run = await kernel.invoke(kari, 'eval', {});
+    await run.result;
+    const spawned = (
+      await collect(await kernel.events(kari, run.task, { audience: 'audit' }))
+    ).find((e) => e.type === 'kernel.task.spawned');
+    const child = String((spawned?.data as { child?: unknown } | undefined)?.child);
+    const audit = await collect(await kernel.events(kari, child, { audience: 'audit' }));
+
+    expect(audit.find((e) => e.type === 'kernel.task.input')?.data).toEqual({
+      input: { parts: [textPart('Når er fristen?')] },
+      evaluation,
+    });
+    expect(seen).toEqual([{ parts: [textPart('Når er fristen?')] }]);
+  });
+
   it('fails a task whose strategy throws before it yields anything, and ends its readers', async () => {
     const broken = strategy('broken', () => {
       throw new Error('boom');

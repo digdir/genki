@@ -530,7 +530,7 @@ export interface ScreenObservation {
   app: 'portal' | 'console';
   path: string;
   status: number;
-  api: { path: string; status: number; problem?: string }[];
+  api: { path: string; status: number; problem?: string; why?: string }[];
   pageErrors: string[];
   alerts: string[];
   heading: boolean;
@@ -571,7 +571,11 @@ export const assessPlaygroundScreen = (
   plan: Pick<Plan, 'unsafePlaygroundText'>,
 ): Verdict => {
   const runs = o.api.filter((a) => a.path.includes('/playground/runs'));
-  if (runs.length === 0) return { ok: false, detail: 'no playground run was sent' };
+  if (runs.length === 0)
+    return {
+      ok: false,
+      detail: `no playground run was sent${o.pageErrors[0] ? `: ${clip(o.pageErrors[0], 120)}` : ''}`,
+    };
   const refused = runs.find((r) => r.status >= 400);
   const timeoutText = firstOf(o.text, plan.unsafePlaygroundText);
   if (refused && refused.status < 500 && timeoutText)
@@ -579,7 +583,17 @@ export const assessPlaygroundScreen = (
       ok: false,
       detail: `the API answered ${refused.status} and the page says "${clip(timeoutText, 60)}"`,
     };
-  if (refused) return { ok: false, detail: `the playground run answered ${refused.status}` };
+  if (refused)
+    return {
+      ok: false,
+      detail: [
+        `the playground run answered ${refused.status}`,
+        refused.problem,
+        refused.why && clip(refused.why, 120),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    };
   if (o.pageErrors.length)
     return { ok: false, detail: `page error ${clip(o.pageErrors[0] ?? '', 120)}` };
   if (o.alerts.length) return { ok: false, detail: `error shown: ${clip(o.alerts[0] ?? '', 120)}` };

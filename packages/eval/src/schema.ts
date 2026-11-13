@@ -38,30 +38,59 @@ export const sourceRef = z
   );
 export type SourceRef = z.infer<typeof sourceRef>;
 
-export const testCase = z.strictObject({
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
-  split: z.enum(splits),
-  input: z.union([
-    z.string().min(1),
-    z.strictObject({ data: z.unknown().optional(), parts: z.array(z.unknown()).optional() }),
-  ]),
-  expected: z
-    .strictObject({
-      sources: z.array(sourceRef).default([]),
-      answerPattern: pattern.optional(),
-      referenceAnswer: z.string().min(1).optional(),
-      fields: z.record(z.string(), z.unknown()).optional(),
-    })
-    .prefault({}),
-  grounding: z.enum(groundings).default('sources-and-answer'),
-  type: z.enum(caseTypes).optional(),
-  language: z.enum(caseLanguages).optional(),
-  tags: z.array(z.string()).default([]),
-  origin: z.record(z.string(), z.string()).optional(),
-  needsReview: z.boolean().default(false),
-  notes: z.string().optional(),
-});
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Before expected.criteria, a criteria case kept its criteria in referenceAnswer (ADR 0003). */
+const withCriteriaMoved = (raw: unknown) => {
+  if (!isRecord(raw) || raw.type !== 'criteria' || !isRecord(raw.expected)) return raw;
+  const { referenceAnswer, criteria, ...expected } = raw.expected;
+  if (criteria !== undefined || typeof referenceAnswer !== 'string') return raw;
+  return { ...raw, expected: { ...expected, criteria: { criteria: referenceAnswer } } };
+};
+
+/** A criteria field, named as judges read it: criteria, supporting_quotes. */
+export const criterionName = z.string().regex(/^[a-z][a-z0-9_]*$/);
+
+export const testCase = z.preprocess(
+  withCriteriaMoved,
+  z.strictObject({
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+    split: z.enum(splits),
+    input: z.union([
+      z.string().min(1),
+      z.strictObject({ data: z.unknown().optional(), parts: z.array(z.unknown()).optional() }),
+    ]),
+    expected: z
+      .strictObject({
+        sources: z.array(sourceRef).default([]),
+        answerPattern: pattern.optional(),
+        referenceAnswer: z.string().min(1).optional(),
+        criteria: z.record(criterionName, z.string().min(1)).optional(),
+        fields: z.record(z.string(), z.unknown()).optional(),
+      })
+      .prefault({}),
+    grounding: z.enum(groundings).default('sources-and-answer'),
+    type: z.enum(caseTypes).optional(),
+    language: z.enum(caseLanguages).optional(),
+    tags: z.array(z.string()).default([]),
+    origin: z.record(z.string(), z.string()).optional(),
+    needsReview: z.boolean().default(false),
+    notes: z.string().optional(),
+  }),
+);
 export type TestCase = z.infer<typeof testCase>;
+
+/** What a case in the portal's simple form may expect besides a text: an answer and named criteria. */
+export const caseExpectation = z.strictObject({
+  referenceAnswer: z.string().trim().min(1).optional(),
+  criteria: z.record(criterionName, z.string().trim().min(1)).optional(),
+});
+export type CaseExpectation = z.infer<typeof caseExpectation>;
+
+/** One text for a new case: a criteria case's criteria, otherwise its reference answer. */
+export const expectedFor = (type: CaseType, text: string | undefined) =>
+  !text ? {} : type === 'criteria' ? { criteria: { criteria: text } } : { referenceAnswer: text };
 
 export const testSet = z
   .strictObject({
@@ -94,15 +123,47 @@ export const testSet = z
   });
 export type TestSet = z.infer<typeof testSet>;
 
-export const score = z.strictObject({
-  evaluator: z.string(),
-  version: z.string(),
-  metric: z.string(),
-  value: z.number().min(0).max(1).nullable(),
-  applicable: z.boolean(),
-  reason: z.string().optional(),
-  details: z.record(z.string(), z.unknown()).optional(),
-});
+/**
+ * Only a scored score has a value. Pending waits to be collected, missing never arrived in time,
+ * failed is the evaluator's own failure; all three still apply to the case, unlike not-applicable.
+ * A scored score without a value keeps what came in details.asItCame, as a Langfuse judge's
+ * category does: it is shown, never averaged.
+ */
+export const scoreStates = ['scored', 'not-applicable', 'pending', 'failed', 'missing'] as const;
+export type ScoreState = (typeof scoreStates)[number];
+
+/** A score stored before scores had a state: a value is scored, otherwise it failed or did not apply. */
+const withState = (raw: unknown) => {
+  if (typeof raw !== 'object' || raw === null || 'state' in raw) return raw;
+  const s = raw as { value?: unknown; applicable?: unknown };
+  return {
+    ...raw,
+    state:
+      typeof s.value === 'number' ? 'scored' : s.applicable === false ? 'not-applicable' : 'failed',
+  };
+};
+
+export const score = z.preprocess(
+  withState,
+  z
+    .strictObject({
+      evaluator: z.string(),
+      version: z.string(),
+      metric: z.string(),
+      value: z.number().min(0).max(1).nullable(),
+      applicable: z.boolean(),
+      state: z.enum(scoreStates),
+      reason: z.string().optional(),
+      details: z.record(z.string(), z.unknown()).optional(),
+    })
+    .refine(
+      (s) =>
+        (s.state === 'scored'
+          ? s.value !== null || s.details?.asItCame !== undefined
+          : s.value === null) && (s.state === 'not-applicable') === !s.applicable,
+      'only a scored score has a value, and only a not-applicable one does not apply',
+    ),
+);
 export type Score = z.infer<typeof score>;
 
 export const feedback = z.strictObject({
@@ -139,6 +200,35 @@ export const metricSummary = z.strictObject({
 });
 export type MetricSummary = z.infer<typeof metricSummary>;
 
+export const evalRunStates = [
+  'running',
+  'waiting-for-scores',
+  'completed',
+  'failed',
+  'interrupted',
+] as const;
+export type EvalRunState = (typeof evalRunStates)[number];
+
+export const usageSummary = z.strictObject({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  costMicroNok: z.number().nonnegative().nullable(),
+});
+export type UsageSummary = z.infer<typeof usageSummary>;
+
+/** A sink's own report of an evaluator's calls: tokens, and its cost in USD where it priced them. */
+export const reportedUsage = z.strictObject({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  /** null when the sink priced none of the calls. */
+  costUsd: z.number().nonnegative().nullable(),
+  /** Calls the sink had no price for: their tokens count, their cost is unknown. */
+  unpriced: z.number().int().nonnegative(),
+  /** Calls whose cost the sink had not reported when the run read it: the totals are at least this. */
+  unread: z.number().int().nonnegative().default(0),
+});
+export type ReportedUsage = z.infer<typeof reportedUsage>;
+
 export const evalRun = z.strictObject({
   id: z.string(),
   testSet: z.strictObject({ tenant: z.string(), id: z.string(), version: z.number() }),
@@ -167,8 +257,67 @@ export const evalRun = z.strictObject({
   ),
   metrics: z.record(z.string(), metricSummary),
   byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
+  incomplete: z
+    .array(
+      z.strictObject({
+        evaluator: z.string(),
+        missing: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        of: z.number().int().nonnegative(),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
+  /** Absent on runs stored before runs kept their state: those are completed. */
+  status: z.enum(evalRunStates).optional(),
+  error: z.string().optional(),
+  progress: z.strictObject({ done: z.number().int(), total: z.number().int() }).optional(),
+  /** Set while the run waits for a free case slot with no case running; 1 is next in line. */
+  queuePlace: z.number().int().positive().optional(),
+  usage: z
+    .strictObject({
+      answers: usageSummary,
+      judges: usageSummary.optional(),
+      /** Per evaluator, what a sink reports its own calls used: shown, never metered. */
+      reported: z.record(z.string(), reportedUsage).optional(),
+      /** The USD/NOK rate the run shows reported costs with, and the day it is from. */
+      usdNok: z.strictObject({ rate: z.number().positive(), date: z.string().min(1) }).optional(),
+    })
+    .optional(),
+  /** For a run started from a service: the version or draft, variant and split it tested. */
+  tested: z
+    .strictObject({
+      version: z.union([z.number().int().positive(), z.literal('draft')]),
+      variant: z.string().optional(),
+      split: z.enum(['locked', 'open']).optional(),
+      /** The tenant's trace connection the run's cases were sent to. */
+      sink: z.string().optional(),
+      /** Where the sink shows the run as an experiment. */
+      experiment: z.string().optional(),
+      /** The sink judges in use that did not score the run, because it was not sent. */
+      unsentJudges: z.array(z.string()).optional(),
+      /** The environment whose version was tested, when the service has environments. */
+      environment: z.string().optional(),
+      /** The model the run was set to answer with. */
+      model: z.string().optional(),
+      /** The cases the run was limited to; such a run is no evidence for a gate. */
+      selected: z.array(z.string()).optional(),
+    })
+    .optional(),
+  owner: z.string().optional(),
+  heartbeatAt: z.string().optional(),
 });
 export type EvalRun = z.infer<typeof evalRun>;
+
+export const runState = (run: Pick<EvalRun, 'status'>): EvalRunState => run.status ?? 'completed';
+
+export const sumUsage = (parts: UsageSummary[]): UsageSummary => ({
+  inputTokens: parts.reduce((n, p) => n + p.inputTokens, 0),
+  outputTokens: parts.reduce((n, p) => n + p.outputTokens, 0),
+  costMicroNok: parts.some((p) => p.costMicroNok === null)
+    ? null
+    : parts.reduce((n, p) => n + (p.costMicroNok ?? 0), 0),
+});
 
 export const parseTestSet = (input: unknown): TestSet => testSet.parse(input);
 

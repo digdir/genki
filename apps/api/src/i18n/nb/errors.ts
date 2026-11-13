@@ -128,6 +128,57 @@ export const catalogErrors = defineNamespace({
   idStartsWith: 'id-en begynner med {id}/',
   noPluginRegistry: 'ingen register for tillegg',
   builtInPlugin: '{id} er et innebygd tillegg',
+  tracingSecretNotForHost: 'hemmeligheten er ikke satt for {outside}',
+  tracingServiceCovered: '{service} er allerede dekket av koblingen {id}',
+  tracingResidencyByOperator:
+    'en driftsoperatør setter lagringssted for en kobling til Digdirs Langfuse',
+  tracingBeingRemoved: 'koblingen {id} er i ferd med å bli fjernet',
+  tracingDeletesOwed: 'koblingen {id} har fortsatt sporinger å slette der den peker nå',
+  tracingNoConnection: 'ingen kobling {id}',
+  tracingNotCovered: 'ingen sporingskobling dekker tjenesten {service}',
+  tracingCoveredTwice: 'to sporingskoblinger dekker tjenesten {service}: {ids}',
+  tracingResidencyForbids:
+    'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
+  gateOnSinkJudge:
+    'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
+  sinkJudgeGone:
+    'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
+  sinkJudgeNoContent: '{rule} har ingenting å vurdere: koblingen {connection} får ikke svartekst',
+  sinkJudgesUnreadable: 'dommerne til koblingen {connection} kunne ikke leses: {error}',
+  sinkDatasetUnavailable:
+    'datasettet til testsettet {testSet} kunne verken finnes eller lages i prosjektet til koblingen {connection}: {error}',
+  sinkJudgesDiffer:
+    'prosjektet til koblingen {connection} har aktive dommere som genki ikke leser: {judges}; ta dem i bruk eller slå dem av i Langfuse',
+  sinkJudgeNotAModel:
+    '{rule} er ikke en LLM-som-dommer-evaluator, så den har ingen modell genki kan navngi',
+  sinkJudgeSampled:
+    '{rule} vurderer bare en del av elementene den får, så noen testtilfeller ville aldri fått vurdering',
+  sinkJudgeFiltered: '{rule} har et filter på {column} som genki ikke kan lese før kjøringen',
+  sinkRuleEverySpan:
+    '{rule} ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
+  sinkRuleRootOnly:
+    '{rule} vurderer rotspennene i kjøringen uten isExperimentItemRootSpan = true, som genki trenger for å lese en dommer',
+  sinkRuleUnreadEvaluator: '{rule} kjører en evaluator genki ikke kan lese',
+  sinkJudgeDefaultModel:
+    '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
+  sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',
+  sinkJudgeUnreadPath: '{rule} leser {field} på {path}, en JSON-sti genki ikke kan lese',
+  sinkJudgeSeveral: '{rule} kjører mer enn én evaluator; genki leser en regel med én',
+  sinkJudgeSameName:
+    '{rule} er navnet på mer enn én regel i prosjektet, så genki kan ikke skille dem fra hverandre',
+  sinkJudgePaused: 'evaluatoren {evaluator} til {rule} er satt på pause i Langfuse',
+  tracingHostOrigin:
+    'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
+  tracingHostDot: 'vertsnavnet slutter med punktum',
+  tracingContentNeedsInstance:
+    'innhold krever at LANGFUSE_BASE_URL er satt, så Digdirs Langfuse aldri forveksles med en virksomhets egen',
+  tracingResidencyValues: 'norway, eu eller global',
+  tracingResidencyByTenant: 'virksomheten oppgir lagringssted for sin egen Langfuse',
+  tracingKeysRefused: 'Langfuse avviste nøklene',
+  tracingHttpStatus: 'HTTP {status}',
+  tracingUnreachable: 'Langfuse kunne ikke nås',
+  pluginContractOutdated:
+    'tillegg av typen {kind} følger {expected}; registrer {id} på nytt under {expected}',
   noExternalPlugin: 'ingen eksternt tillegg {id}',
   invalidManifest: 'Ugyldig manifest',
   pluginEndpointNeedsAuth: 'et endepunkt av typen {kind} trenger autentisering',
@@ -265,6 +316,11 @@ export const blockErrors = defineNamespace({
   onlyOperatorsShare: 'bare operatører endrer hva som deles',
   sharedWith: 'må være "*", organisasjonsnumre eller null',
   onlyOperatorsLabel: 'bare operatører merker resultater fra dommere',
+  onlyOperatorsDecideLabels: 'bare operatører avgjør hvilke etiketter som teller',
+  sinkLabelsOff: 'koblingen {id} henter ikke etiketter; slå på etiketter først',
+  labelsNotAList: 'labels må være en liste over etikettene som ble vist, med id og revisjon',
+  noPendingLabels: 'det finnes ingen slik bunke med ventende etiketter',
+  tenantAndConnectionRequired: 'virksomhet og kobling må oppgis',
   onlyOperatorsEndSessions: 'bare operatører avslutter støtteøkter',
   noActiveSession: 'ingen aktiv økt med den id-en',
   onlyOperatorsExtend: 'bare operatører forlenger støtteøkter',
@@ -398,11 +454,17 @@ export const qualityErrors = defineNamespace({
   caseIdList: 'cases er en liste med minst én id for et testtilfelle',
   noCaseIn: 'ingen testtilfelle {id} i {setId}',
   expectedRequired: 'forventet svar eller kriterier er påkrevd',
+  expectedShape: 'forventet svar er en tekst, eller et referansesvar og navngitte kriterier',
+  criteriaCaseNeedsCriteria: 'et kriterietilfelle trenger kriterier',
+  exactCaseNeedsText: 'et tilfelle med nøyaktig svar trenger teksten som skal finnes',
   caseExists: 'testtilfellet {id} finnes',
   testSetRequired: 'testsettet er påkrevd',
   noTestSetFor: 'ingen testsett {setId} for {service}',
   noVersion: 'ingen versjon {version}',
+  noTestSetInService: 'ingen testsett {testSet} i tjenesten',
   noCases: 'Testsettet har ingen testtilfeller',
+  serviceCannotRun: 'Tjenesten kan ikke kjøres',
+  runNotTraced: 'Testkjøringen kan ikke sendes til sporing',
   noCasesToRun: 'ingen testtilfeller å kjøre',
   approveTrueFalse: 'approve er true eller false',
   skillId: 'må være små bokstaver, sifre og bindestrek, og ikke import eller imports',

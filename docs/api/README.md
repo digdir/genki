@@ -192,6 +192,25 @@ Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CR
 - `byService`, `byProject`, `testing`, `ingestion` and `daily[].byService`/`daily[].byModel` stay genki's own: the gateway cannot see services, projects or test runs.
 - `GET /operator/usage/unassigned` lists this month's gateway rows that belong to no tenant. Operators only.
 
+### 2026-10-30: the portal's test runs are eval runs
+
+- `POST /tenants/{tenant}/services/{id}/eval-runs` starts an eval run. Its `status` is `running`, `waiting-for-scores`, `completed`, `failed` or `interrupted` (was `queued`, `running`, `succeeded`, `failed`), and a draft that cannot run answers `422`.
+- `GET /tenants/{tenant}/services/{id}/eval-runs` lists eval runs with `metrics`, `judges` and `incomplete`; runs from before are no longer listed.
+- An eval run's `provenance.services` names the service it tested, `<tenant>/<service>@<version>#<config hash>`.
+
+### 2026-10-30: case types judged as evaluators
+
+- The `contract` evaluator is version 2: it scores an exact case's text (`exact-text`, 0 when the case has no text) and counts an empty answer as a refusal on a must_reject case.
+- `judge:criteria` scores criteria cases. A run's provenance names it with its version and model, `judge:criteria@<version>+<model>`; labels and calibration are kept under `judge:criteria`.
+- The eval capability (`platform.eval.run`) takes `avoidAsJudge`, models the run's judges must not share a family with; a portal test run's judge also avoids the service's own models.
+
+### 2026-10-30: judges that answer later (evaluator@2)
+
+- Registering an evaluator plug-in under `evaluator@1` answers `400`; one stored under it judges nothing until it is registered again under `evaluator@2`.
+- Every score in an eval run has a `state`: `scored`, `not-applicable`, `pending`, `failed` or `missing`. A run stored before reads with the state its value implies.
+- `GET /eval-tasks/{task}` can answer `waiting-for-scores` with how many scores are pending, and an eval run has `incomplete`, naming each judge with missing or failed scores.
+- A gate fails when its metric has missing or failed scores in its split, in the run or, for a no-regression gate, in its baseline.
+
 ### 2026-10-26: rights stay within their scope
 
 - Saving or attaching an API key policy answers `403` when the policy's scopes need a right the person lacks: `admin` needs all five rights, `ingest` needs `manage-datasets`. API keys, machine clients and operators are unchanged.
@@ -244,7 +263,7 @@ Other
 
 - Service eval runs no longer show the lease fields `owner` and `heartbeatAt`.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both kinds of run and tells them apart with `kind` (`service` or `kernel`); see [work.md](work.md).
-- `GET /eval-tasks/{task}` answers the same from every instance.
+- `GET /eval-tasks/{task}` answers the same from every instance, except `waiting-for-scores`, which only the instance running the eval knows.
 - `GET /operator/tasks?status=` filters on every task status; an unknown status answers `400`.
 - `GET /operator/tracing` no longer has the always-empty `tenants` member.
 - Pipeline `/versions` marks the version that removed the pipeline with `deleted: true`.

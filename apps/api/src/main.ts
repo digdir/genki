@@ -84,7 +84,13 @@ import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
-import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
+import {
+  bootProblems,
+  devModeWarning,
+  isDevMode,
+  knowledgeServerProblems,
+  tracesContent,
+} from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
@@ -326,7 +332,7 @@ const traces = process.env.TRACES_ENDPOINT
               secretKey: 'secret://env/langfuse-secret-key',
             }
           : { kind: 'none' },
-        content: process.env.TRACES_CONTENT === 'true',
+        content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
       { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-api' },
@@ -335,7 +341,7 @@ const traces = process.env.TRACES_ENDPOINT
 const traceResidency = residencies.includes(process.env.TRACES_RESIDENCY as Residency)
   ? (process.env.TRACES_RESIDENCY as Residency)
   : 'global';
-log('traces', { enabled: Boolean(traces), content: process.env.TRACES_CONTENT === 'true' });
+log('traces', { enabled: Boolean(traces), content: tracesContent(process.env) });
 
 const catalogs = {
   models: loadCatalog(configDir, 'models.yaml', 'models'),
@@ -444,6 +450,12 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const platform = await createPlatform({
   platformTenant,
+  appVersion: version,
+  tracing: {
+    ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
+    instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',
+    devMode: isDevMode(process.env),
+  },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
   processorRecords,
@@ -453,6 +465,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
+  ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
   ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock
@@ -479,7 +492,7 @@ const platform = await createPlatform({
     traces && process.env.TRACES_ENDPOINT
       ? {
           endpoint: process.env.TRACES_ENDPOINT.split('?')[0] ?? '',
-          content: process.env.TRACES_CONTENT === 'true',
+          content: tracesContent(process.env),
           residency: traceResidency,
           stats: traces.stats(),
         }
@@ -553,6 +566,7 @@ const platform = await createPlatform({
         connections: db.connections,
         evalStores: db.eval,
         labels: db.labels,
+        sinkLabels: db.sinkLabels,
       }
     : {}),
   policy: allowWorker(

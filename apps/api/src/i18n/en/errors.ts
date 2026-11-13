@@ -129,6 +129,56 @@ export const catalogErrors = {
   idStartsWith: 'the id starts with {id}/',
   noPluginRegistry: 'no plug-in registry',
   builtInPlugin: '{id} is a built-in plug-in',
+  tracingSecretNotForHost: 'the secret is not set for {outside}',
+  tracingServiceCovered: '{service} is already covered by the connection {id}',
+  tracingResidencyByOperator: "an operator sets the residency of a connection to Digdir's Langfuse",
+  tracingBeingRemoved: 'the connection {id} is being removed',
+  tracingDeletesOwed: 'the connection {id} still has traces to delete where it points now',
+  tracingNoConnection: 'no connection {id}',
+  tracingNotCovered: 'no trace connection covers the service {service}',
+  tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',
+  tracingResidencyForbids:
+    "the service's residency {residency} does not allow the connection's {connection}",
+  gateOnSinkJudge:
+    'the gate {gate} reads the Langfuse judge {judge} on the connection {connection}, which is advisory and never blocks a publish',
+  sinkJudgeGone:
+    'the judge {id} is no longer an active experiment judge in the project of the connection {connection}',
+  sinkJudgeNoContent:
+    '{rule} has nothing to judge: the connection {connection} gets no answer text',
+  sinkJudgesUnreadable: 'the judges of the connection {connection} could not be read: {error}',
+  sinkDatasetUnavailable:
+    'the dataset of the test set {testSet} could not be found or made in the project of the connection {connection}: {error}',
+  sinkJudgesDiffer:
+    'the project of the connection {connection} has active judges genki does not read: {judges}; take them in use or switch them off in Langfuse',
+  sinkJudgeNotAModel:
+    '{rule} is not an LLM-as-a-judge evaluator, so it has no model genki can name',
+  sinkJudgeSampled:
+    '{rule} judges only part of the items it gets, so some cases would never be scored',
+  sinkJudgeFiltered: '{rule} has a filter on {column} that genki cannot read before the run',
+  sinkRuleEverySpan:
+    "{rule} would judge every span of the run's cases; add the filter isExperimentItemRootSpan = true, or leave genki's test runs out with environment none of genki-test-runs",
+  sinkRuleRootOnly:
+    "{rule} judges the run's root spans without isExperimentItemRootSpan = true, which genki needs to read a judge",
+  sinkRuleUnreadEvaluator: '{rule} runs an evaluator genki cannot read',
+  sinkJudgeDefaultModel:
+    "{rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API",
+  sinkJudgeUnsentField: '{rule} reads {field}, which genki does not send',
+  sinkJudgeUnreadPath: '{rule} reads {field} at {path}, a JSON path genki cannot read',
+  sinkJudgeSeveral: '{rule} runs more than one evaluator; genki reads a rule with one',
+  sinkJudgeSameName:
+    '{rule} is the name of more than one rule in the project, so genki cannot tell them apart',
+  sinkJudgePaused: "{rule}'s evaluator {evaluator} is paused in Langfuse",
+  tracingHostOrigin:
+    'the host is an address like https://langfuse.example.no, without a path or credentials',
+  tracingHostDot: 'the host name ends with a dot',
+  tracingContentNeedsInstance:
+    "content needs LANGFUSE_BASE_URL, so Digdir's Langfuse is never taken for an agency's own",
+  tracingResidencyValues: 'norway, eu or global',
+  tracingResidencyByTenant: 'the tenant declares the residency of its own Langfuse',
+  tracingKeysRefused: 'Langfuse refused the keys',
+  tracingHttpStatus: 'HTTP {status}',
+  tracingUnreachable: 'Langfuse could not be reached',
+  pluginContractOutdated: '{kind} plug-ins meet {expected}; register {id} again under {expected}',
   noExternalPlugin: 'no external plug-in {id}',
   invalidManifest: 'Invalid manifest',
   pluginEndpointNeedsAuth: 'a {kind} endpoint needs auth',
@@ -266,6 +316,11 @@ export const blockErrors = {
   onlyOperatorsShare: 'only operators change what is shared',
   sharedWith: 'must be "*", org numbers or null',
   onlyOperatorsLabel: 'only operators label judge results',
+  onlyOperatorsDecideLabels: 'only operators decide which labels count',
+  sinkLabelsOff: 'the connection {id} does not bring labels back; switch labels on first',
+  labelsNotAList: 'labels must be a list of the labels shown, by id and revision',
+  noPendingLabels: 'no such batch of pending labels',
+  tenantAndConnectionRequired: 'tenant and connection are required',
   onlyOperatorsEndSessions: 'only operators end support sessions',
   noActiveSession: 'no active session with that id',
   onlyOperatorsExtend: 'only operators extend support sessions',
@@ -399,11 +454,17 @@ export const qualityErrors = {
   caseIdList: 'cases is a non-empty list of case ids',
   noCaseIn: 'no case {id} in {setId}',
   expectedRequired: 'the expected answer or criteria are required',
+  expectedShape: 'expected is a text, or a reference answer and named criteria',
+  criteriaCaseNeedsCriteria: 'a criteria case needs criteria',
+  exactCaseNeedsText: 'an exact case needs the text to find',
   caseExists: 'case {id} exists',
   testSetRequired: 'the test set is required',
   noTestSetFor: 'no test set {setId} for {service}',
   noVersion: 'no {version} version',
+  noTestSetInService: 'no test set {testSet} in the service',
   noCases: 'The test set has no test cases',
+  serviceCannotRun: 'The service cannot run',
+  runNotTraced: 'The test run cannot be sent for tracing',
   noCasesToRun: 'no cases to run',
   approveTrueFalse: 'approve is true or false',
   skillId: 'must be lowercase letters, digits and dashes, and not import or imports',

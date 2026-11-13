@@ -1,19 +1,30 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Chip,
   Fieldset,
   Heading,
+  Link,
   Paragraph,
   Table,
   Tag,
 } from '@digdir/designsystemet-react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
-import type { EvalRun, RunVersion, ServiceTestSet } from '../../api/quality';
-import { formatKroner, usePortalFormat } from '../../format';
+import type {
+  CaseJudgement,
+  EvalRun,
+  ReportedCost,
+  RunSending,
+  RunVersion,
+  ServiceTestSet,
+  SinkAgreement,
+} from '../../api/quality';
+import { storageLabels } from '../../data/building-blocks';
+import { formatKroner, httpStatusOf, usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
-import { useT, type Format, type T } from '../../i18n';
+import type { Format, PlainKey, T } from '../../i18n';
 import { modelLabel } from '../../models';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
@@ -28,23 +39,23 @@ const versionText = (t: T, v: RunVersion) =>
       ? t('quality.versionPublished')
       : t('quality.versionN', { version: v });
 
-const active = (r: EvalRun) => r.status === 'running' || r.status === 'queued';
-
 const statusTag = (
   t: T,
   r: EvalRun,
 ): [string, 'success' | 'danger' | 'warning' | 'info' | 'neutral'] =>
-  r.status === 'succeeded'
+  r.status === 'completed'
     ? [t('quality.runDone'), 'success']
-    : r.interrupted
-      ? [t('quality.runInterrupted'), 'warning']
-      : r.status === 'failed'
-        ? [t('quality.runFailed'), 'danger']
-        : typeof r.queuePlace === 'number' && active(r)
-          ? [t('quality.runWaiting', { place: r.queuePlace }), 'neutral']
-          : active(r)
-            ? [t('quality.runRunning'), 'info']
-            : [r.status, 'neutral'];
+    : r.status === 'failed'
+      ? [t('quality.runFailed'), 'danger']
+      : r.status === 'interrupted'
+        ? [t('quality.runInterrupted'), 'warning']
+        : r.status === 'waiting-for-scores'
+          ? [t('quality.runWaiting'), 'info']
+          : typeof r.queuePlace === 'number' && r.status === 'running'
+            ? [t('quality.runQueued', { place: r.queuePlace }), 'neutral']
+            : r.status === 'running'
+              ? [t('quality.runRunning'), 'info']
+              : [r.status, 'neutral'];
 
 const percent = (f: Format, score: number | null | undefined) =>
   typeof score === 'number' ? f.percent(score) : '–';
@@ -59,7 +70,262 @@ const passedText = (t: T, r: EvalRun) =>
 const costText = (t: T, f: Format, r: EvalRun) =>
   typeof r.cost === 'number'
     ? formatKroner(r.cost, f, t)
-    : t(r.interrupted ? 'quality.costUnknown' : 'quality.notPricedLower');
+    : t(r.status === 'interrupted' ? 'quality.costUnknown' : 'quality.notPricedLower');
+
+const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
+
+const metricKeys: Record<string, PlainKey> = {
+  'exact-text': 'quality.metricExactText',
+  'non-empty-answer': 'quality.metricNonEmpty',
+  refusal: 'quality.metricRefusal',
+  'judge.criteria': 'quality.metricCriteria',
+  'answer-pattern': 'quality.metricAnswerPattern',
+};
+
+const metricLabel = (t: T, metric: string) => {
+  const key = metricKeys[metric];
+  return key ? t(key) : metric;
+};
+
+/** What a judge left unscored, said from the counts so it reads in the person's language. */
+const incompleteText = (t: T, i: NonNullable<EvalRun['incomplete']>[number]) =>
+  i.of === undefined
+    ? i.reason
+    : [
+        ...(i.missing
+          ? [t('quality.runMissing', { judge: i.evaluator, count: i.missing, of: i.of })]
+          : []),
+        ...(i.failed
+          ? [t('quality.runJudgeFailed', { judge: i.evaluator, count: i.failed, of: i.of })]
+          : []),
+      ].join(' ');
+
+/** A Langfuse judge's name on a case: its rule, as the run's summary names it. */
+const sinkJudgeName = (run: EvalRun, judge: string) =>
+  run.sinkJudges?.find((j) => j.id === judge)?.name ?? judge.slice(judge.indexOf('/') + 1);
+
+const verdictText = (t: T, f: Format, j: CaseJudgement) => {
+  if (j.state === 'not-applicable') return t('quality.verdictNotApplicable');
+  if (j.state === 'pending') return t('quality.verdictPending');
+  if (j.state === 'missing') return t('quality.verdictMissing');
+  if (j.state === 'failed') return t('quality.verdictFailed');
+  if (j.asItCame !== undefined) return String(j.asItCame);
+  if (j.dataType === 'BOOLEAN')
+    return t(j.value === 1 ? 'quality.verdictYes' : 'quality.verdictNo');
+  return j.value === null ? '' : f.percent(j.value);
+};
+
+/** A Langfuse judge's agreement with its accepted labels, as one line (ADR 0003's kappa). */
+const agreementText = (t: T, f: Format, labels: SinkAgreement) =>
+  [
+    labels.n === 0 || labels.kappa === undefined || labels.observed === undefined
+      ? t('quality.sinkAgreementNone')
+      : [
+          t('quality.sinkAgreement', {
+            kappa: f.decimal(labels.kappa, 2),
+            alike: f.percent(labels.observed),
+            n: labels.n,
+          }),
+          ...(labels.otherVersions > 0
+            ? [t('quality.sinkAgreementOther', { count: labels.otherVersions })]
+            : []),
+        ].join(' '),
+    ...(labels.unpaired > 0
+      ? [t('quality.sinkAgreementUnpaired', { count: labels.unpaired })]
+      : []),
+  ].join(' · ');
+
+/** What Langfuse reports calls cost: kroner at the run's rate, dollars until one is known. */
+const reportedCostText = (t: T, f: Format, reported: ReportedCost, usdNok: EvalRun['usdNok']) => {
+  const tokens = f.number(reported.inputTokens + reported.outputTokens);
+  const cost =
+    reported.costUsd === null
+      ? t('quality.sinkCostTokens', { tokens })
+      : usdNok
+        ? t('quality.sinkCostKroner', {
+            kroner: f.currency(reported.costUsd * usdNok.rate, { digits: 2 }),
+            usd: f.decimal(reported.costUsd, 4),
+            rate: f.decimal(usdNok.rate, 4),
+            date: f.date(usdNok.date),
+            tokens,
+          })
+        : t('quality.sinkCostUsd', { usd: f.decimal(reported.costUsd, 4), tokens });
+  return [
+    cost,
+    ...(reported.unpriced > 0 ? [t('quality.sinkCostUnpriced', { count: reported.unpriced })] : []),
+    ...((reported.unread ?? 0) > 0
+      ? [t('quality.sinkCostUnread', { count: reported.unread ?? 0 })]
+      : []),
+  ].join(' ');
+};
+
+/**
+ * Langfuse judges are advisory: shown apart from genki's metrics and never in a gate. A run not
+ * sent to Langfuse names the judges in use that did not score it.
+ */
+const SinkJudges = ({ run }: { run: EvalRun }) => {
+  const { t, f } = usePortalFormat();
+  const judges = run.sinkJudges ?? [];
+  if (judges.length === 0)
+    return run.unsentJudges?.length ? (
+      <Paragraph data-size="sm">
+        {t('quality.runNotSent', { judges: run.unsentJudges.map((j) => j.name).join(', ') })}
+      </Paragraph>
+    ) : null;
+  return (
+    <section aria-labelledby="sink-judges-h" className="stack-sm">
+      <Heading level={4} data-size="2xs" id="sink-judges-h">
+        {t('quality.sinkJudgesTitle')}
+      </Heading>
+      <Paragraph data-size="sm">{t('quality.sinkJudgesAdvisory')}</Paragraph>
+      {judges.map((j) => (
+        <div key={j.id} className="stack-xs">
+          <Heading level={5} data-size="2xs">
+            {j.name}
+          </Heading>
+          {j.metric ? (
+            <Paragraph data-size="sm">
+              {t(j.dataType === 'BOOLEAN' ? 'quality.sinkJudgeYes' : 'quality.sinkJudgeMean', {
+                mean: f.percent(j.metric.mean),
+                low: f.percent(j.metric.ci[0]),
+                high: f.percent(j.metric.ci[1]),
+                n: j.metric.n,
+              })}
+            </Paragraph>
+          ) : null}
+          {j.categories ? (
+            <Paragraph data-size="sm">
+              {t('quality.sinkJudgeCategories', {
+                categories: Object.entries(j.categories)
+                  .map(([answer, count]) => `${answer}: ${count}`)
+                  .join(', '),
+              })}
+            </Paragraph>
+          ) : null}
+          {j.notApplicable > 0 ? (
+            <Paragraph data-size="sm">
+              {t('quality.sinkJudgeNotApplicable', { count: j.notApplicable })}
+            </Paragraph>
+          ) : null}
+          {j.missing > 0 ? (
+            <Paragraph data-size="sm" className="danger-text">
+              {t('quality.runMissing', { judge: j.name, count: j.missing, of: j.of })}
+            </Paragraph>
+          ) : null}
+          {j.failed > 0 ? (
+            <Paragraph data-size="sm" className="danger-text">
+              {t('quality.runJudgeFailed', { judge: j.name, count: j.failed, of: j.of })}
+            </Paragraph>
+          ) : null}
+          {j.changed.length > 0 ? (
+            <Paragraph data-size="sm">{t('quality.sinkJudgeChanged')}</Paragraph>
+          ) : null}
+          {j.labels ? <Paragraph data-size="sm">{agreementText(t, f, j.labels)}</Paragraph> : null}
+          {j.reported ? (
+            <Paragraph data-size="sm">
+              {t('quality.sinkCostLabel', {
+                cost: reportedCostText(t, f, j.reported, run.usdNok),
+              })}
+            </Paragraph>
+          ) : null}
+        </div>
+      ))}
+      {run.sinkOthers ? (
+        <Paragraph data-size="sm">
+          {t('quality.sinkOthersLabel', {
+            cost: reportedCostText(t, f, run.sinkOthers, run.usdNok),
+          })}
+        </Paragraph>
+      ) : null}
+      {run.experiment ? (
+        <Paragraph data-size="sm">
+          <Link href={run.experiment} target="_blank" rel="noreferrer">
+            {t('quality.sinkJudgeExperiment')}
+          </Link>
+        </Paragraph>
+      ) : null}
+    </section>
+  );
+};
+
+const RunMetrics = ({ run }: { run: EvalRun }) => {
+  const { t, f } = usePortalFormat();
+  const sink = new Set((run.sinkJudges ?? []).map((j) => j.id));
+  const metrics = Object.entries(run.metrics ?? {}).filter(([m]) => !sink.has(m));
+  const judges = (run.judges ?? []).filter((j) => !j.startsWith('langfuse:'));
+  if (metrics.length === 0) return null;
+  return (
+    <>
+      <Heading level={4} data-size="2xs">
+        {t('quality.runMetrics')}
+      </Heading>
+      {judges.length ? (
+        <Paragraph data-size="sm">
+          {t('quality.runJudges', { judges: judges.join(', ') })}
+        </Paragraph>
+      ) : null}
+      {(run.incomplete ?? [])
+        .filter((i) => !sink.has(i.evaluator))
+        .map((i) => (
+          <Paragraph key={i.evaluator} data-size="sm" className="danger-text">
+            {incompleteText(t, i)}
+          </Paragraph>
+        ))}
+      <Table data-size="sm" zebra>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeaderCell scope="col">{t('quality.runMetric')}</Table.HeaderCell>
+            <Table.HeaderCell scope="col">{t('quality.runMean')}</Table.HeaderCell>
+            <Table.HeaderCell scope="col">{t('quality.runInterval')}</Table.HeaderCell>
+            <Table.HeaderCell scope="col">{t('quality.runCases')}</Table.HeaderCell>
+          </Table.Row>
+        </Table.Head>
+        <Table.Body>
+          {metrics.map(([metric, m]) => (
+            <Table.Row key={metric}>
+              <Table.Cell>{metricLabel(t, metric)}</Table.Cell>
+              <Table.Cell>{f.percent(m.mean)}</Table.Cell>
+              <Table.Cell>
+                {f.percent(m.ci[0])} – {f.percent(m.ci[1])}
+              </Table.Cell>
+              <Table.Cell>{m.n}</Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table>
+    </>
+  );
+};
+
+/** Why a run sent to Langfuse cannot start, before it is started. */
+const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
+  const refused = plan?.refused;
+  if (!refused) return undefined;
+  if (refused.reason === 'judges-differ')
+    return [
+      t('quality.judgesDiffer', { connection: refused.connection }),
+      ...(refused.notInUse.length > 0
+        ? [t('quality.judgesNotInUse', { judges: refused.notInUse.join(', ') })]
+        : []),
+      ...(refused.unreadable.length > 0
+        ? [t('quality.judgesUnreadable', { judges: refused.unreadable.join(', ') })]
+        : []),
+    ].join(' ');
+  if (refused.reason === 'judges-unreadable')
+    return t('quality.judgesNotRead', {
+      connection: refused.connection,
+      status: httpStatusOf(refused.message),
+    });
+  if (refused.reason === 'covered-twice')
+    return t('quality.sendCoveredTwice', { connections: refused.connections.join(', ') });
+  if (refused.reason === 'no-content')
+    return t('quality.judgeNoContent', { judges, connection: refused.connection });
+  return t('quality.sendResidencyRefused', {
+    connection: plan.connection?.id ?? '',
+    where: t(storageLabels[refused.connection]),
+    service: t(storageLabels[refused.service]),
+  });
+};
 
 const usageDays = 30;
 
@@ -125,7 +391,7 @@ const RunDetail = ({
   runId: string;
   onClose: () => void;
 }) => {
-  const t = useT();
+  const { t, f } = usePortalFormat();
   const [state, retry] = useAsync(
     (signal) => api.quality.run(tenant, runId, signal),
     [api, tenant, runId],
@@ -144,9 +410,15 @@ const RunDetail = ({
         <Loading label={t('quality.runLoading')} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
+      ) : state.data.cases.length === 0 && state.data.status !== 'interrupted' ? (
+        <Paragraph data-size="sm" className={state.data.error ? 'danger-text' : undefined}>
+          {state.data.error
+            ? t('quality.runStopped', { error: state.data.error })
+            : t('quality.runNoResults')}
+        </Paragraph>
       ) : (
         <>
-          {state.data.interrupted ? (
+          {state.data.status === 'interrupted' ? (
             <Paragraph data-size="sm">
               {t('quality.runInterruptedNote', {
                 finished: state.data.cases.length,
@@ -154,36 +426,50 @@ const RunDetail = ({
               })}
             </Paragraph>
           ) : null}
-          {state.data.cases.length === 0 && !state.data.interrupted ? (
-            <Paragraph data-size="sm">{t('quality.runNoResults')}</Paragraph>
-          ) : (
-            <ul className="live-case-list">
-              {state.data.cases.map((c) => (
-                <li key={c.caseId}>
-                  <dl className="case-detail run-case">
-                    <dt>{t('quality.input')}</dt>
-                    <dd>{c.input}</dd>
-                    <dt>{t('quality.goodAnswer')}</dt>
-                    <dd>{c.expected}</dd>
-                    <dt>{t('quality.theAnswer')}</dt>
-                    <dd>{c.output}</dd>
-                    <dt>{t('quality.result')}</dt>
-                    <dd>
-                      <Tag data-size="sm" data-color={c.pass ? 'success' : 'danger'}>
-                        {t(c.pass ? 'quality.passed' : 'quality.notPassed')}
-                      </Tag>
-                    </dd>
-                    {c.reason ? (
-                      <>
-                        <dt>{t('quality.reasoning')}</dt>
-                        <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
-                      </>
-                    ) : null}
-                  </dl>
-                </li>
-              ))}
-            </ul>
-          )}
+          <RunMetrics run={state.data} />
+          <SinkJudges run={state.data} />
+          <ul className="live-case-list">
+            {state.data.cases.map((c) => (
+              <li key={c.caseId}>
+                <dl className="case-detail run-case">
+                  <dt>{t('quality.input')}</dt>
+                  <dd>{c.input}</dd>
+                  <dt>{t('quality.goodAnswer')}</dt>
+                  <dd>{c.expected}</dd>
+                  <dt>{t('quality.theAnswer')}</dt>
+                  <dd>{c.output}</dd>
+                  <dt>{t('quality.result')}</dt>
+                  <dd>
+                    <Tag data-size="sm" data-color={c.pass ? 'success' : 'danger'}>
+                      {t(c.pass ? 'quality.passed' : 'quality.notPassed')}
+                    </Tag>
+                  </dd>
+                  {c.reason ? (
+                    <>
+                      <dt>{t('quality.reasoning')}</dt>
+                      <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
+                    </>
+                  ) : null}
+                  {(c.judges ?? []).map((j) => (
+                    <Fragment key={j.judge}>
+                      <dt>
+                        {t('quality.sinkJudgeOnCase', { name: sinkJudgeName(state.data, j.judge) })}
+                      </dt>
+                      <dd>
+                        <strong>{verdictText(t, f, j)}</strong>
+                        {j.state === 'scored' && j.reason ? (
+                          <>
+                            {' '}
+                            <span>{j.reason}</span>
+                          </>
+                        ) : null}
+                      </dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
         </>
       )}
     </section>
@@ -220,6 +506,27 @@ export const RunHistory = ({
   const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
   const modelList = models.status === 'ready' ? models.data : [];
   const [starting, setStarting] = useState(false);
+  const [trace, setTrace] = useState(false);
+  const [sinks] = useAsync(
+    (signal) => api.tracing.list(tenant, signal).catch(() => []),
+    [api, tenant],
+  );
+  const sink =
+    sinks.status === 'ready'
+      ? sinks.data.find((c) => !c.removing && c.services.includes(serviceId))
+      : undefined;
+  // What a run sent to Langfuse would meet there: the judges in use, or why it would be refused.
+  const [sending] = useAsync(
+    (signal) =>
+      confirming && sink
+        ? api.quality.sending(tenant, serviceId, version, testSet.id, signal).catch(() => undefined)
+        : Promise.resolve(undefined),
+    [api, tenant, serviceId, version, testSet.id, confirming, sink?.id],
+  );
+  const plan = sending.status === 'ready' ? sending.data : undefined;
+  const judgeNames = (plan?.judges ?? []).map((j) => j.name).join(', ');
+  const judged = (plan?.judges.length ?? 0) > 0;
+  const refusedText = trace ? sendingRefusal(t, plan, judgeNames) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(
@@ -246,7 +553,14 @@ export const RunHistory = ({
   }, [running, round]);
 
   const start = async (choice: 'all' | 'marked') => {
-    if (starting || running || !canRun || (choice === 'marked' && marked.length === 0)) return;
+    if (
+      starting ||
+      running ||
+      !canRun ||
+      refusedText ||
+      (choice === 'marked' && marked.length === 0)
+    )
+      return;
     setConfirming(undefined);
     setStarting(true);
     const names = { name: testSet.name, version: versionText(t, version).toLowerCase() };
@@ -258,6 +572,7 @@ export const RunHistory = ({
           testSet: testSet.id,
           version,
           ...(choice === 'marked' ? { cases: marked } : {}),
+          ...(trace && sink ? { trace: true } : {}),
         },
         choice === 'marked'
           ? t('quality.runMarkedReason', { ...names, count: marked.length })
@@ -302,7 +617,12 @@ export const RunHistory = ({
           aria-disabled={blocked || undefined}
           aria-describedby={!canRun ? 'run-hint' : undefined}
           aria-expanded={canRun ? confirming === 'all' : undefined}
-          onClick={() => !blocked && setConfirming('all')}
+          onClick={() => {
+            if (blocked) return;
+            // Each run is sent to Langfuse only when the person ticks it for that run.
+            setTrace(false);
+            setConfirming('all');
+          }}
         >
           {t('quality.runSet')}
         </Button>
@@ -312,7 +632,11 @@ export const RunHistory = ({
               variant="tertiary"
               aria-disabled={blocked || undefined}
               aria-expanded={canRun ? confirming === 'marked' : undefined}
-              onClick={() => !blocked && setConfirming('marked')}
+              onClick={() => {
+                if (blocked) return;
+                setTrace(false);
+                setConfirming('marked');
+              }}
             >
               {t('quality.runMarked', { count: marked.length })}
             </Button>
@@ -341,11 +665,28 @@ export const RunHistory = ({
               : t('quality.confirmRunTitle', { count: cases })}
           </Heading>
           <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={chosen} />
+          {sink ? (
+            <Checkbox
+              data-size="sm"
+              label={t('quality.sendToTrace', { connection: sink.id })}
+              checked={trace}
+              {...(judged
+                ? { description: t('quality.judgesOnlyWhenSent', { judges: judgeNames }) }
+                : {})}
+              onChange={(e) => setTrace(e.target.checked)}
+            />
+          ) : null}
+          {refusedText ? (
+            <Alert data-color="danger" data-size="sm">
+              <Paragraph data-size="sm">{refusedText}</Paragraph>
+              <Paragraph data-size="sm">{t('quality.untickToRun')}</Paragraph>
+            </Alert>
+          ) : null}
           <div className="actions">
             <Button
               variant="primary"
               data-size="sm"
-              aria-disabled={blocked || undefined}
+              aria-disabled={blocked || refusedText !== undefined || undefined}
               onClick={() => void start(confirming)}
             >
               {t('quality.confirmRun')}

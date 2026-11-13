@@ -1,4 +1,4 @@
-import type { EvalRun, TestSet } from './schema.js';
+import { parseTestSet, type EvalRun, type TestSet } from './schema.js';
 
 export interface StoredRun {
   run: EvalRun;
@@ -15,8 +15,16 @@ export interface RunFilter {
   testSet?: string;
 }
 
+/** The state a run was read in: a replace lands only while the stored run still has it. */
+export interface RunReadAs {
+  status?: string | undefined;
+  heartbeatAt?: string | undefined;
+}
+
 export interface EvalRunStore {
   save(stored: StoredRun): Promise<void>;
+  /** Saves the run only if the stored one still has the status and heartbeat it was read with. */
+  replace(stored: StoredRun, readAs: RunReadAs): Promise<boolean>;
   get(id: string): Promise<StoredRun | undefined>;
   list(filter: RunFilter): Promise<StoredRun[]>;
 }
@@ -34,6 +42,14 @@ export class InMemoryEvalRunStore implements EvalRunStore {
 
   async save(stored: StoredRun) {
     this.#runs.set(stored.run.id, structuredClone(stored));
+  }
+
+  async replace(stored: StoredRun, readAs: RunReadAs) {
+    const current = this.#runs.get(stored.run.id)?.run;
+    if (current?.status !== readAs.status || current?.heartbeatAt !== readAs.heartbeatAt)
+      return false;
+    await this.save(stored);
+    return true;
   }
 
   async get(id: string) {
@@ -75,7 +91,7 @@ export class InMemoryTestSetStore implements TestSetStore {
       version === undefined
         ? versions.at(-1)
         : versions.find((v) => v.metadata.version === version);
-    return found && structuredClone(found);
+    return found && parseTestSet(structuredClone(found));
   }
 
   async list(tenant: string, service?: string) {
@@ -86,6 +102,6 @@ export class InMemoryTestSetStore implements TestSetStore {
           s.metadata.tenant === tenant && (service === undefined || s.spec.service === service),
       )
       .sort((a, b) => a.metadata.id.localeCompare(b.metadata.id))
-      .map((s) => structuredClone(s));
+      .map((s) => parseTestSet(structuredClone(s)));
   }
 }

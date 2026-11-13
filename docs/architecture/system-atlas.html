@@ -5805,7 +5805,7 @@
               'An eval run invokes the service under test like any caller (ADR 0003). Scores and feedback are kernel events. A judge blocks publishing only once it is calibrated against human labels.',
             responsibilities: [
               'Versioned test sets with locked splits',
-              'Deterministic and model-based evaluators',
+              'Deterministic and model-based evaluators, answering at once or later (evaluator@2)',
               'Publishing gates and feedback',
             ],
             files: [
@@ -5875,6 +5875,7 @@
                   $schema: 'https://json-schema.org/draft/2020-12/schema',
                   type: 'object',
                   properties: {
+                    id: { type: 'string', minLength: 1 },
                     capability: { type: 'string', minLength: 1 },
                     testSet: {
                       type: 'object',
@@ -5958,6 +5959,14 @@
                                       },
                                       answerPattern: { type: 'string' },
                                       referenceAnswer: { type: 'string', minLength: 1 },
+                                      criteria: {
+                                        type: 'object',
+                                        propertyNames: {
+                                          type: 'string',
+                                          pattern: '^[a-z][a-z0-9_]*$',
+                                        },
+                                        additionalProperties: { type: 'string', minLength: 1 },
+                                      },
                                       fields: {
                                         type: 'object',
                                         propertyNames: { type: 'string' },
@@ -6014,6 +6023,9 @@
                       required: ['commit', 'data'],
                       additionalProperties: false,
                     },
+                    sink: { type: 'string', minLength: 1 },
+                    avoidAsJudge: { type: 'array', items: { type: 'string' } },
+                    sinkJudges: { type: 'array', items: {} },
                   },
                   required: ['capability', 'testSet', 'evaluators', 'provenance'],
                   additionalProperties: false,
@@ -6034,6 +6046,10 @@
                       anyOf: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'null' }],
                     },
                     applicable: { type: 'boolean' },
+                    state: {
+                      type: 'string',
+                      enum: ['scored', 'not-applicable', 'pending', 'failed', 'missing'],
+                    },
                     reason: { type: 'string' },
                     details: {
                       type: 'object',
@@ -6041,7 +6057,7 @@
                       additionalProperties: {},
                     },
                   },
-                  required: ['evaluator', 'version', 'metric', 'value', 'applicable'],
+                  required: ['evaluator', 'version', 'metric', 'value', 'applicable', 'state'],
                   additionalProperties: false,
                 },
               },
@@ -6071,6 +6087,7 @@
               'packages/jobs/src/trigger-runs.ts',
               'packages/jobs/src/quota.ts',
               'packages/jobs/src/retention.ts',
+              'packages/jobs/src/trace-deliveries.ts',
               'packages/jobs/src/retention-policy.ts',
               'packages/jobs/src/batch.ts',
               'packages/jobs/src/provider-object-sweep.ts',
@@ -9885,10 +9902,23 @@
               'Exports task events as OTLP spans to Langfuse, metadata only unless opted in.',
             description:
               'Wraps the event log; content goes out only if the connection opts in and the sink can honour erasure (ADR 0011).',
-            responsibilities: ['Build spans from events', 'Export with content opt-in'],
+            responsibilities: [
+              'Build spans from events',
+              'Export with content opt-in',
+              "Send an eval run's cases to the tenant's connection as one experiment (ADR 0040)",
+              "Delete what genki sent, and the judges' traces made from it",
+              "Read a project's experiment judges and score an eval run with the ones a tenant adopted",
+              'Find or make the empty dataset of a test set, which every span of its sent runs names',
+              "Read each rule's filters to tell whether it skips, judges or refuses a run of a test set",
+            ],
             files: [
               'packages/providers-langfuse/src/exporter.ts',
               'packages/providers-langfuse/src/spans.ts',
+              'packages/providers-langfuse/src/experiment.ts',
+              'packages/providers-langfuse/src/sink.ts',
+              'packages/providers-langfuse/src/judges.ts',
+              'packages/providers-langfuse/src/datasets.ts',
+              'packages/providers-langfuse/src/filters.ts',
             ],
             input: 'Kernel events',
             output: 'OTLP spans',
@@ -9902,6 +9932,16 @@
                 witness: {
                   file: 'packages/providers-langfuse/src/config.ts',
                   imports: '@genai/kernel',
+                },
+              },
+              {
+                to: 'eval',
+                label: 'Evaluator contract: Langfuse judges as built-in evaluators',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-langfuse/src/judges.ts',
+                  imports: '@genai/eval',
                 },
               },
               {
@@ -9964,6 +10004,10 @@
                       ],
                     },
                     content: { default: false, type: 'boolean' },
+                    fields: {
+                      type: 'array',
+                      items: { type: 'string', enum: ['input', 'output', 'expected_output'] },
+                    },
                     sampleRate: { default: 1, type: 'number', minimum: 0, maximum: 1 },
                     environment: { type: 'string', minLength: 1 },
                     pseudonymKey: {

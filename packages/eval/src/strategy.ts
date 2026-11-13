@@ -1,17 +1,32 @@
-import type { Part } from '@genai/contracts';
+import type { Part, Principal } from '@genai/contracts';
 import type { Emitted, Kernel, Strategy } from '@genai/kernel';
 import { z } from 'zod';
 import { EvalError, type Evaluator } from './evaluators.js';
-import { describeTask, runEval, type EvalTarget } from './runner.js';
+import {
+  describeTask,
+  runEval,
+  type EvalItem,
+  type EvalTarget,
+  type RunEvalOptions,
+  type WaitOptions,
+} from './runner.js';
+import { judgedExpectation } from './cases.js';
 import { splits, testSet } from './schema.js';
 
 export const evalRunConfig = z.strictObject({
+  id: z.string().min(1).optional(),
   capability: z.string().min(1),
   testSet,
   evaluators: z.array(z.string()).min(1),
   repeats: z.number().int().positive().max(20).default(1),
   splits: z.array(z.enum(splits)).min(1).default(['train', 'validation']),
   provenance: z.strictObject({ commit: z.string().min(1), data: z.string().min(1) }),
+  /** Send each case's trace to this sink, as one experiment; holdout cases never go. */
+  sink: z.string().min(1).optional(),
+  /** Models the run's judges must not share a family with: the tested service's own models. */
+  avoidAsJudge: z.array(z.string()).optional(),
+  /** The sink's judges as they were when the run started, for forRun to score with. */
+  sinkJudges: z.array(z.unknown()).optional(),
 });
 export type EvalRunConfig = z.input<typeof evalRunConfig>;
 
@@ -20,6 +35,33 @@ export interface EvalStrategyDeps {
   evaluators: Map<string, Evaluator>;
   modelFamily?: (model: string) => string | undefined;
   admit?: (tenant: string) => Promise<boolean>;
+  wait?: WaitOptions;
+  meterAnswers?: RunEvalOptions['meterAnswers'];
+  /** Evaluators made for one run, such as a judge whose model is picked for the run's tenant. */
+  forRun?: (
+    principal: Principal,
+    run: {
+      avoid: string[];
+      id?: string;
+      evaluators: string[];
+      sink?: string;
+      sinkJudges?: unknown[];
+    },
+  ) => Map<string, Evaluator> | Promise<Map<string, Evaluator>>;
+  /**
+   * Case slots shared with the other runs on the instance. onQueue gets the run's place in line
+   * while it waits for a slot with no case running, and undefined once it has one.
+   */
+  slots?: (
+    tenant: string,
+    run: string,
+    onQueue: (place: number | undefined) => void,
+  ) => { perRun: number; acquire: () => Promise<() => void>; end: () => void };
+}
+
+export interface EvalNotice {
+  kind: 'eval.progress' | 'eval.waiting' | 'eval.queued';
+  [key: string]: unknown;
 }
 
 export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRunConfig>> => ({
@@ -33,29 +75,71 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
         `invalid eval run: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
       );
     const options = parsed.data;
+    const ownEvaluators =
+      (await deps.forRun?.(ctx.principal, {
+        avoid: options.avoidAsJudge ?? [],
+        ...(options.id ? { id: options.id } : {}),
+        evaluators: options.evaluators,
+        ...(options.sink ? { sink: options.sink } : {}),
+        ...(options.sinkJudges ? { sinkJudges: options.sinkJudges } : {}),
+      })) ?? new Map<string, Evaluator>();
     const evaluators = options.evaluators.map((id) => {
-      const evaluator = deps.evaluators.get(id);
+      const evaluator = ownEvaluators.get(id) ?? deps.evaluators.get(id);
       if (!evaluator) throw new EvalError(`unknown evaluator ${id}`);
       return evaluator;
     });
+    // A sink's judges bill every case they get, so a case none of them can read is not sent.
+    const sinkJudges = evaluators.filter((e) => e.canRead);
+    const sendable = (c: EvalItem['case']) =>
+      c.split !== 'holdout' && (sinkJudges.length === 0 || sinkJudges.some((e) => e.canRead?.(c)));
     const kernel = deps.kernel();
     const target: EvalTarget = {
       capability: options.capability,
-      invoke: async (caseInput) => {
+      invoke: async (caseInput, item) => {
         const tenant = ctx.principal.tenant;
         if (tenant && deps.admit && !(await deps.admit(tenant)))
           throw new EvalError('the monthly token quota is used up');
-        const run = await ctx.invoke(options.capability, caseInput);
+        const run = await ctx.invoke(
+          options.capability,
+          caseInput,
+          options.sink && options.id && item && sendable(item.case)
+            ? {
+                evaluation: {
+                  run: {
+                    id: options.id,
+                    name: `${options.testSet.metadata.id} v${options.testSet.metadata.version}`,
+                  },
+                  case: {
+                    id: item.case.id,
+                    repeat: item.repeat,
+                    split: item.case.split,
+                    ...(judgedExpectation(item.case)
+                      ? { expected: judgedExpectation(item.case) }
+                      : {}),
+                  },
+                  sink: options.sink,
+                },
+              }
+            : {},
+        );
         return describeTask(kernel, ctx.principal, run.task, await run.result);
       },
       annotate: (task, score) =>
         kernel.annotate(ctx.principal, task, { type: 'kernel.score', data: score }),
     };
 
-    const progress: { done: number; total: number }[] = [];
+    const notices: EvalNotice[] = [];
     let wake: (() => void) | undefined;
     let finished = false;
+    const notify = (notice: EvalNotice) => {
+      notices.push(notice);
+      wake?.();
+    };
+    const slots = deps.slots?.(ctx.tenant, options.id ?? ctx.task, (place) =>
+      notify({ kind: 'eval.queued', ...(place === undefined ? {} : { place }) }),
+    );
     const running = runEval({
+      ...(options.id ? { id: options.id } : {}),
       target,
       testSet: options.testSet,
       evaluators,
@@ -63,20 +147,30 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       repeats: options.repeats,
       splits: options.splits,
       ...(deps.modelFamily ? { modelFamily: deps.modelFamily } : {}),
-      onProgress: (done, total) => {
-        progress.push({ done, total });
-        wake?.();
-      },
+      ...(deps.wait ? { wait: deps.wait } : {}),
+      ...(deps.meterAnswers ? { meterAnswers: deps.meterAnswers } : {}),
+      signal: ctx.signal,
+      ...(slots ? { slots } : {}),
+      onProgress: (done, total, usage, result) =>
+        notify({
+          kind: 'eval.progress',
+          done,
+          total,
+          ...(usage ? { usage } : {}),
+          ...(result ? { result } : {}),
+        }),
+      onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {
+      slots?.end();
       finished = true;
       wake?.();
     });
     running.catch(() => undefined);
 
-    while (!finished || progress.length > 0) {
-      const next = progress.shift();
+    while (!finished || notices.length > 0) {
+      const next = notices.shift();
       if (next) {
-        yield { type: 'kernel.notice', data: { kind: 'eval.progress', ...next } };
+        yield { type: 'kernel.notice', data: next };
         continue;
       }
       await new Promise<void>((resolve) => {

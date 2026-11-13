@@ -7,6 +7,10 @@ import {
   defaultPlatformTenant,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
+  allowOf,
+  pinnedFetch,
+  traceConnectionKind,
+  tracingEgress,
 } from '@genai/composition';
 import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
@@ -49,6 +53,7 @@ import {
   InMemoryEvalRunStore,
   InMemoryFeedbackStore,
   InMemoryLabelStore,
+  InMemorySinkLabelStore,
   InMemoryTestSetStore,
   publishGate,
   retrievalRecall,
@@ -58,10 +63,29 @@ import {
   type FeedbackStore,
   type Gate,
   type LabelStore,
+  type SinkLabelStore,
   type TestSetStore,
+  type WaitOptions,
 } from '@genai/eval';
-import { type TriggerRunStore } from '@genai/jobs';
+import {
+  InMemoryTraceDeliveries,
+  klarsprakChecklist,
+  nynorskReference,
+  type TraceDeliveryStore,
+  type TriggerRunStore,
+} from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
+import {
+  createExperimentRouter,
+  createTraceExporter,
+  datasetName,
+  langfuseDatasets,
+  langfuseJudges,
+  mappedContent,
+  observedEventLog,
+  traceIdFor,
+  type LangfuseJudge,
+} from '@genai/providers-langfuse';
 import {
   deleteConversationDocuments,
   runtimeDocumentStore,
@@ -102,8 +126,6 @@ import {
 } from './frontends.js';
 import { createWebhooks, egressSender, type WebhookSender } from './webhooks.js';
 import { createConfigurables, type ConfigurablesInput } from './configurables.js';
-import { definitionSubject } from './definition-subject.js';
-import { portalGateMetrics, portalGateRuns } from './gate-runs.js';
 import { checkOverrides, serviceOverridesOf } from './settings-runtime.js';
 import { requestLocale, t } from './i18n/index.js';
 import {
@@ -215,10 +237,15 @@ import { tenantGate } from './tenant-gate.js';
 import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
 import { evalSlots, type EvalSlotLimits } from './eval-slots.js';
-import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
+import {
+  createDraftRunner,
+  usageSummaryOf,
+  type FieldOptionsLookup,
+  type ModelPrice,
+} from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
   decorateWith,
@@ -235,6 +262,9 @@ import {
   withBlockSettings,
 } from './building-blocks.js';
 import { engineSwitchesModule } from './engine-switches.js';
+import { definitionSubject } from './definition-subject.js';
+import { runJudges } from './eval-judges.js';
+import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
@@ -248,6 +278,14 @@ import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
+import {
+  connectionOf,
+  traceConnectionsModule,
+  type TraceConnection,
+  type TraceSinks,
+  type TracingOptions,
+} from './trace-connections.js';
+import { testRunEnvironment, traceDatasets, withTraceDatasets } from './trace-datasets.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
 import { stepOperationsModule } from './step-operations.js';
@@ -266,6 +304,7 @@ import {
 } from './service-environments.js';
 import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
+import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { operatorOperationsModule } from './operator-operations.js';
@@ -319,6 +358,7 @@ export const platformModules: PlatformModuleFactory[] = [
   stepBlocksModule,
   stepOperationsModule,
   recipesModule,
+  traceConnectionsModule,
   strategyCatalogueModule,
   definitionCompletionModule,
   datasetUploadsModule,
@@ -423,6 +463,14 @@ export interface PlatformInput {
   evaluators?: Map<string, Evaluator>;
   gates?: Map<string, Gate>;
   platformTenant?: string;
+  /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
+  appVersion?: string;
+  /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
+  tracing?: TracingOptions;
+  /** Every trace sent to a tenant's sink, until its delete is confirmed. */
+  traceDeliveries?: TraceDeliveryStore;
+  /** How an eval run waits for a sink's judges' scores; tests poll fast. */
+  evalWait?: WaitOptions;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -451,6 +499,8 @@ export interface PlatformInput {
     candidates: CandidateStore;
   };
   labels?: LabelStore;
+  /** Labels brought back from tenants' trace sinks, pending until an operator accepts them. */
+  sinkLabels?: SinkLabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
@@ -532,7 +582,7 @@ export const defaultGates = new Map<string, Gate>([
   ],
 ]);
 
-export { definitionSubject };
+export { definitionSubject } from './definition-subject.js';
 
 const retrievalInput = {
   type: 'object',
@@ -937,10 +987,127 @@ export const askFilterIssues = (
   );
 };
 
+/** A Langfuse judge is advisory (ADR 0040): no gate may read its metric. */
+const advisoryGate = (gate: string, metric: string | undefined) => {
+  const judge = /^langfuse:([^/]+)\/(.+)$/.exec(metric ?? '');
+  return judge
+    ? `the gate ${gate} reads the Langfuse judge ${judge[2]} on the connection ${judge[1]}, which is advisory and never blocks a publish`
+    : undefined;
+};
+
 export const createPlatform = async (input: PlatformInput) => {
   const platformTenant = input.platformTenant ?? defaultPlatformTenant;
   const configEntries = input.configurables?.store ?? new InMemoryConfigEntryStore();
   const vault = new TenantSecretVault(input.tenantSecrets);
+  const tenantSecrets = new TenantSecrets(vault.resolver(input.secrets));
+  const experiments = createExperimentRouter();
+  const sinkEgress = tracingEgress(input.egress ?? {}, input.tracing?.devMode);
+  const traceDeliveries = input.traceDeliveries ?? new InMemoryTraceDeliveries();
+  const langfuseOf = async (tenant: string, connection: TraceConnection) =>
+    langfuseJudges({
+      host: connection.host,
+      publicKey: connection.publicKey,
+      secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+      fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+    });
+  const sinkJudgeOf = (j: LangfuseJudge, connection: TraceConnection) => ({
+    id: j.id,
+    name: j.rule.name,
+    source: `Langfuse (${connection.id})`,
+    ...(j.evaluator.model
+      ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
+      : {}),
+    version: String(j.evaluator.version),
+    dataType: j.evaluator.dataType,
+    fields: j.rule.mapping,
+    // A judge on a connection without answer text would be paid for and judge nothing.
+    ...(j.refused
+      ? { refused: j.refused }
+      : connection.content
+        ? {}
+        : {
+            refused: {
+              reason: 'no-content' as const,
+              connection: connection.id,
+              message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
+            },
+          }),
+    snapshot: j,
+  });
+  const traceSinks: TraceSinks = {
+    traceIdOf: (task) => traceIdFor(task),
+    judges: async (tenant, connection) =>
+      (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) =>
+        sinkJudgeOf(j, connection),
+      ),
+    forRun: async (tenant, connection, run) => {
+      const found = await (
+        await langfuseOf(tenant, connection)
+      ).forRun(connection.id, {
+        tenant,
+        environment: testRunEnvironment,
+        experimentName: `${run.testSet} v${run.version}`,
+        ...(run.dataset ? { dataset: run.dataset } : {}),
+      });
+      return {
+        judges: found.judges.map((j) => sinkJudgeOf(j, connection)),
+        elsewhere: found.elsewhere.map((j) => sinkJudgeOf(j, connection)),
+        refusing: found.refusing,
+      };
+    },
+    sourceOf: (connection) => `Langfuse (${connection.id})`,
+    sharedScores: async (tenant, connection) => (await langfuseOf(tenant, connection)).shared(),
+    judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
+    isSinkJudge: (judge) => judge.startsWith('langfuse:'),
+    annotations: async (tenant, connection) => (await langfuseOf(tenant, connection)).annotations(),
+    // langfuse:<connection>/<rule> calibrates langfuse:<tenant>/<connection>/<rule> (ADR 0040).
+    calibrationKey: (tenant, evaluator) => evaluator.replace(/^langfuse:/, `langfuse:${tenant}/`),
+    experimentUrl: async (tenant, connection, run) =>
+      (await langfuseOf(tenant, connection)).experimentUrl(run),
+    fieldsOf: (judges) => mappedContent(judges.map((j) => j.snapshot as LangfuseJudge)),
+    dataset: async (tenant, connection, service, testSet) =>
+      langfuseDatasets({
+        host: connection.host,
+        publicKey: connection.publicKey,
+        secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+        fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+      }).ensure(datasetName(service, testSet)),
+    open: (run, tenant, connection, beforeSend, fields = [], dataset) =>
+      experiments.open(
+        run,
+        createTraceExporter(
+          {
+            endpoint: new URL('/api/public/otel', connection.host).toString(),
+            auth: {
+              kind: 'langfuse',
+              publicKey: connection.publicKey,
+              secretKey: 'secret://sink/key',
+            },
+            // Only what the run's judges map, and only to a connection that receives content.
+            content: connection.content && fields.length > 0,
+            fields: fields.filter(
+              (f) => f === 'input' || f === 'output' || f === 'expected_output',
+            ),
+            // Every agency's test runs land apart from its live traffic (ADR 0040).
+            environment: testRunEnvironment,
+          },
+          {
+            secrets: {
+              resolve: () =>
+                tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+            },
+            tasks: async (id) => (await taskStore.get(id))?.task,
+            fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+            serviceName: 'genai-eval',
+            ...(beforeSend ? { beforeSend } : {}),
+            experiments: true,
+            ...(dataset ? { dataset } : {}),
+          },
+        ),
+        tenant,
+      ),
+    close: (run) => experiments.close(run),
+  };
   const settings = input.settings ?? new SettingsRegistry(platformSettings);
   const overridePolicy = {
     check: async (
@@ -985,6 +1152,15 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const evalStores = {
     ...baseEvalStores,
+    testSets: withTraceDatasets(
+      baseEvalStores.testSets,
+      traceDatasets({
+        configEntries,
+        traceSinks,
+        testSets: baseEvalStores.testSets,
+        ...(input.logger ? { log: input.logger } : {}),
+      }),
+    ),
     feedback: feedbackToModules(
       webhooks.feedback(baseEvalStores.feedback, taskStore),
       taskStore,
@@ -998,10 +1174,12 @@ export const createPlatform = async (input: PlatformInput) => {
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
       ['retrieval', retrievalRecall(10)],
+      ['klarsprak-checklist', klarsprakChecklist()],
+      ['nynorsk-reference', nynorskReference()],
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',
@@ -1055,7 +1233,31 @@ export const createPlatform = async (input: PlatformInput) => {
       evalRunStrategy({
         kernel,
         evaluators,
+        forRun: async (principal, run) => {
+          const own = runJudges(() => modelChoice(moduleDeps))(principal, run);
+          const tenant = principal.tenant;
+          if (!tenant || !run.sink || !run.sinkJudges?.length) return own;
+          const connection = await connectionOf(configEntries, tenant, run.sink);
+          if (!connection) return own;
+          const judges = await langfuseOf(tenant, connection);
+          // A run starts only when every judge that reaches it is in use, so those are the ones
+          // that judge, and bill, each case it sends.
+          judges.expectJudges((run.sinkJudges as LangfuseJudge[]).map((j) => j.rule.id));
+          for (const snapshot of run.sinkJudges as LangfuseJudge[])
+            own.set(
+              snapshot.id,
+              judges.evaluator(snapshot, { tenant, content: connection.content }),
+            );
+          return own;
+        },
+        ...(input.evalWait ? { wait: input.evalWait } : {}),
+        modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
+        meterAnswers: (events) => usageSummaryOf(events, prices),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
+        slots: (tenant, run, onQueue) => {
+          const session = caseSlots.session(run, tenant, onQueue);
+          return { perRun: caseSlots.limits.perRun, acquire: session.acquire, end: session.end };
+        },
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
@@ -1067,7 +1269,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ]),
     platformCapabilities: [evalCapability, enrichmentWork.capability],
     ...(input.state ? { state: input.state } : {}),
-    ...(input.observe ? { observe: input.observe } : {}),
+    observe: (log: EventLog) =>
+      observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
@@ -1156,6 +1359,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestionExecutions ? { executions: input.ingestionExecutions } : {}),
     builtinGates: new Map([...defaultGates, ...(input.gates ?? [])]),
     platformTenant,
+    gateProblem: advisoryGate,
   });
   const databaseGuard = new EgressGuard(input.egress ?? {});
   const ingestSources: IngestSourceConfig = {
@@ -1281,31 +1485,25 @@ export const createPlatform = async (input: PlatformInput) => {
     const unknown = listed.filter((g) => !gates.has(g));
     if (unknown.length > 0)
       return unknown.map((g) => ({ path: 'spec.evaluation.gates', message: `unknown gate ${g}` }));
+    const advisory = listed.flatMap((g) => {
+      const message = advisoryGate(g, gates.get(g)?.metric);
+      return message ? [{ path: 'spec.evaluation.gates', message }] : [];
+    });
+    if (advisory.length > 0) return advisory;
     const current = await store.get('Service', d.metadata.tenant, d.metadata.id);
     if (!current) return undefined;
     const candidate = definitionSubject(d.spec);
-    const testSets = evaluation?.testSets ?? [];
     const decision = await publishGate({
       tenant: d.metadata.tenant,
       service: d.metadata.id,
       candidate,
-      candidateFallback: {
-        runs: await portalGateRuns(
-          configEntries,
-          evalStores.testSets,
-          d.metadata.tenant,
-          d.metadata.id,
-          candidate,
-          testSets,
-        ),
-        metrics: portalGateMetrics,
-      },
       ...(current
         ? { baseline: definitionSubject((current.definition as { spec: unknown }).spec) }
         : {}),
       evaluation: { testSets: evaluation?.testSets ?? [], gates: listed },
       runs: evalStores.runs,
       registry: gates,
+      advisoryJudge: (judge) => judge.startsWith('langfuse:'),
     });
     if (decision.allow) return undefined;
     return [
@@ -1546,6 +1744,8 @@ export const createPlatform = async (input: PlatformInput) => {
     const value = settings.effective(tenant)[key]?.value;
     return typeof value === 'number' && value > 0 ? value : fallback;
   };
+  // Case slots shared by every test-set run on this instance.
+  const caseSlots = evalSlots(input.evalSlots);
   const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
     const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
     const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
@@ -1619,6 +1819,16 @@ export const createPlatform = async (input: PlatformInput) => {
     registered,
   });
   const labels = input.labels ?? new InMemoryLabelStore();
+  const sinkLabelService = sinkLabels({
+    store: input.sinkLabels ?? new InMemorySinkLabelStore(),
+    runs: evalStores.runs,
+    connection: (tenant, id) => connectionOf(configEntries, tenant, id),
+    connections: async (tenant) =>
+      (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
+        .filter((e) => !e.deleted)
+        .map((e) => e.spec as TraceConnection),
+    sinks: traceSinks,
+  });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
   let adminRef: Admin | undefined;
   const consoleOperator: Principal = { kind: 'operator', issuer: 'platform', subject: 'console' };
@@ -1641,6 +1851,7 @@ export const createPlatform = async (input: PlatformInput) => {
     tenants: async () => (await directory.list()).map((t) => t.orgNumber),
     runs: evalStores.runs,
     labels,
+    sinkLabels: sinkLabelService,
     traces: () => input.traces?.(),
     support: {
       list: () => adminRef?.supportSessions() ?? [],
@@ -1737,12 +1948,20 @@ export const createPlatform = async (input: PlatformInput) => {
         }
       : {}),
     evalStores,
+    evalCapability: evalCapability.descriptor.id,
+    ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    tenantSecrets,
+    traceSinks,
+    sinkLabels: sinkLabelService,
+    traceDeliveries,
+    egressOptions: input.egress ?? {},
+    ...(input.tracing ? { tracing: input.tracing } : {}),
     connections,
     blobs: blobStore,
     prices,
     quota,
     drafts,
-    evalSlots: evalSlots(input.evalSlots),
+    evalSlots: caseSlots,
     pinService: async (tenant, service, version) => {
       const compiled = (await definitions.capabilities()).find(
         (c) => c.service.tenant === tenant && c.service.id === service,
