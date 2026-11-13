@@ -7,6 +7,7 @@ export const serviceUi = {
     navLabel: 'Service',
     sectionOverview: 'Overview',
     sectionSetup: 'Setup',
+    sectionInterface: 'Interface',
     sectionTest: 'Test',
     sectionChannels: 'Channels and frontends',
     sectionSettings: 'Settings',

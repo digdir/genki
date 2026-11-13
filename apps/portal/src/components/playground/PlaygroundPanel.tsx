@@ -101,7 +101,7 @@ export interface ServiceDraft {
 const record = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
-const withDraftService = (
+export const withDraftService = (
   options: PlaygroundOptions,
   id: string,
   draft: ServiceDraft,

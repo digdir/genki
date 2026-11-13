@@ -28,6 +28,12 @@
     },
     {
       "path": "../../packages/schema-forms"
+    },
+    {
+      "path": "../../packages/ui-assembly"
+    },
+    {
+      "path": "../../packages/ui-blocks"
     }
   ]
 }
