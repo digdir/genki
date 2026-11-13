@@ -166,11 +166,12 @@
               <li>
                 <code>DocumentsInScope</code>: <code>count</code>, the documents the next question
                 reads from; <code>total</code>, the collection's size; <code>corpus</code>, which
-                names it; <code>documents</code>, most relevant first, each with <code>id</code>,
+                names it; <code>documents</code>, in the host's order, each with <code>id</code>,
                 <code>title</code>, <code>type</code>, <code>organisation</code>, <code>year</code>,
-                <code>pages</code> and <code>included</code>; <code>onIncludedChange</code> with an
-                id and whether it is ticked; <code>defaultOpen</code>, open unless false;
-                <code>headingLevel</code>, 3 by default; and <code>className</code>.
+                <code>pages</code>, <code>href</code>, where it opens, and <code>included</code>;
+                <code>onIncludedChange</code> with an id and whether it is ticked;
+                <code>defaultOpen</code>, open unless false; <code>headingLevel</code>, 3 by
+                default; and <code>className</code>.
               </li>
             </ul>
             <h2>Where it goes</h2>
@@ -459,10 +460,12 @@
                 781 dokumenter i Kudos». With neither a count nor documents, nothing is drawn.
               </li>
               <li>
-                With the host's documents: «Mest relevante først», a search by title or
-                organisation, and a tick per document with its type as a tag, its organisation, year
-                and pages. Without <code>onIncludedChange</code> the ticks are switched off, so none
-                seems to work that does not.
+                With the host's documents: a search by title or organisation, and per document its
+                type as a tag, its organisation, year and pages. With
+                <code>onIncludedChange</code> each has a tick and the hint «Mest relevante først.
+                Fjern haken …». Without it there are no ticks, since one that cannot be changed
+                reads as broken: the documents are a plain list, and a title with an
+                <code>href</code> is a link that opens in a new tab.
               </li>
               <li>The words are the block's own catalogue, in bokmål and English.</li>
             </ul>

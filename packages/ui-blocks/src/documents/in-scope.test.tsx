@@ -99,10 +99,34 @@ describe('DocumentsInScope', () => {
     expect(within(list).getByText('Tilsyn med automatiserte vedtak')).toBeTruthy();
   });
 
-  it('keeps the ticks still without a handler, so no tick seems to work that does not', () => {
+  it('lists the documents without ticks or the tick hint when the host cannot leave one out', () => {
     render(<DocumentsInScope count={2} corpus={kudos} documents={documents} />);
-    expect(screen.getAllByRole('checkbox').every((box) => (box as HTMLInputElement).disabled)).toBe(
-      true,
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByText(/Fjern haken/)).toBeNull();
+    const list = screen.getByRole('list', { name: 'Dokumentene som blir med' });
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([
+      'Evaluering av KI-piloter i statenEvalueringDigitaliseringsdirektoratet · 2024 · 52 sider',
+      'Tilsyn med automatiserte vedtakTilsynsrapportDatatilsynet · 2023 · 41 sider',
+    ]);
+  });
+
+  it('makes a title a link that opens in a new tab where the host has the document’s address', () => {
+    render(
+      <DocumentsInScope
+        count={2}
+        corpus={kudos}
+        documents={documents.map((d) =>
+          d.id === '1' ? { ...d, href: 'https://kudos.dfo.no/dokument/1' } : d,
+        )}
+      />,
     );
+    const link = screen.getByRole('link', { name: 'Evaluering av KI-piloter i staten' });
+    expect(link.getAttribute('href')).toBe('https://kudos.dfo.no/dokument/1');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(screen.queryByRole('link', { name: 'Tilsyn med automatiserte vedtak' })).toBeNull();
   });
 });

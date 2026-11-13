@@ -348,3 +348,107 @@ describe('the run behind an answer', () => {
     expect(turns[0]?.answer).not.toHaveProperty('runId');
   });
 });
+
+// «Dokumentene som blir med»: the documents a filter keeps, from genki's `/api/documents`.
+describe('the documents in scope', () => {
+  const fields = [
+    { id: 'type', label: 'Dokumenttyper' },
+    { id: 'orgs_long', label: 'Virksomheter' },
+    { id: 'concerned_years', label: 'År', kind: 'year' as const, integer: true },
+  ];
+  const kudos = createGenkiApi({
+    baseUrl: '/genki',
+    tenant: 'digdir',
+    profile: {
+      corpora: {
+        kudos: {
+          typeField: 'type',
+          organisationField: 'orgs_long',
+          documentUrl: (id) => `https://kudos.example/dokument/${id}`,
+        },
+      },
+    },
+  });
+
+  it('asks for the selection’s documents in genki’s filter shape, with the limit', async () => {
+    const fetch = vi.fn(async (_url: string) => Response.json({ documents: [], found: 0 }));
+    vi.stubGlobal('fetch', fetch);
+    await kudos.loadDocuments?.(
+      { type: ['Årsrapport'], concerned_years: ['2024'] },
+      'kudos',
+      fields,
+      50,
+    );
+    const url = new URL(fetch.mock.calls[0]?.[0] ?? '', 'http://host');
+    expect(url.pathname).toBe('/genki/api/documents');
+    expect(url.searchParams.get('tenant')).toBe('digdir');
+    expect(url.searchParams.get('dataset-config-key')).toBe('kudos');
+    expect(url.searchParams.get('limit')).toBe('50');
+    expect(JSON.parse(url.searchParams.get('filter') ?? '')).toEqual({
+      fields: [
+        {
+          field: 'type',
+          type: 'multiselect',
+          'value-type': 'string',
+          'selected-options': ['Årsrapport'],
+        },
+        {
+          field: 'concerned_years',
+          type: 'multiselect',
+          'value-type': 'integer',
+          'selected-options': [2024],
+        },
+      ],
+    });
+  });
+
+  it('names each document by the profile’s fields, a period for several years, and links it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          documents: [
+            {
+              id: '42',
+              title: 'Årsrapport 2023',
+              url: 'https://kudos.dfo.no/dokument/42',
+              fields: { type: 'Årsrapport', orgs_long: ['Digdir'], concerned_years: [2023] },
+            },
+            {
+              id: '43',
+              fields: {
+                type: ['Statusrapport'],
+                orgs_long: ['NIVA', 'NILU'],
+                concerned_years: [2021, 2019, 2020],
+              },
+            },
+          ],
+          found: 2,
+        }),
+      ),
+    );
+    expect(await kudos.loadDocuments?.({}, 'kudos', fields, 50)).toEqual({
+      documents: [
+        {
+          id: '42',
+          title: 'Årsrapport 2023',
+          type: 'Årsrapport',
+          organisation: 'Digdir',
+          year: '2023',
+          href: 'https://kudos.dfo.no/dokument/42',
+          included: true,
+        },
+        {
+          id: '43',
+          title: '43',
+          type: 'Statusrapport',
+          organisation: 'NIVA, NILU',
+          year: '2019–2021',
+          href: 'https://kudos.example/dokument/43',
+          included: true,
+        },
+      ],
+      found: 2,
+    });
+  });
+});
