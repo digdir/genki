@@ -24,7 +24,7 @@ import type { AnswerMarker, StreamEvent } from '@genai/client';
 import { InLocale } from '@genai/i18n/react';
 import { FileSearchIcon } from '@navikt/aksel-icons';
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createGenkiApi, HttpError, type AskParams, type AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile } from './profile.js';
@@ -1010,6 +1010,36 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     fireEvent.click(within(rail as HTMLElement).getByRole('link', { name: 'Ny tråd' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Ny tråd' })).toBeTruthy();
     expect(location.search).toBe('');
+  });
+
+  it('leaves a click for a new tab on the rail’s «Ny tråd» to the browser', async () => {
+    drawNext();
+    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
+    const rail = document.querySelector<HTMLElement>('.uib-shell-rail');
+    const link = within(rail as HTMLElement).getByRole('link', { name: 'Ny tråd' });
+    // Records whether the page took each click; `stay` then keeps jsdom from following the link.
+    const taken: boolean[] = [];
+    const record = (event: Event) => taken.push(event.defaultPrevented);
+    const stay = (event: Event) => event.preventDefault();
+    document.body.addEventListener('click', record);
+    document.addEventListener('click', stay);
+    onTestFinished(() => {
+      document.body.removeEventListener('click', record);
+      document.removeEventListener('click', stay);
+    });
+    for (const init of [
+      { metaKey: true },
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+    ])
+      fireEvent.click(link, init);
+    expect(taken).toEqual([false, false, false, false, false]);
+    expect(location.search).toBe('?t=t-old');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('En gammel tråd');
   });
 
   it('gives Kilder Aksel’s FileSearch icon in the switcher (dev-verktoy-2)', async () => {
