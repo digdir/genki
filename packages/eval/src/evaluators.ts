@@ -34,11 +34,14 @@ export interface Evaluator {
   id: string;
   version: string;
   kind: 'deterministic' | 'model' | 'human';
-  judge?: string;
+  judge?: string | undefined;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
   /** The signal aborts when the run's wait for scores ends or the run is cancelled. */
   collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
 }
+
+/** The evaluator of a provenance judge: judge:criteria@2+foundry/claude is judge:criteria. */
+export const evaluatorOfJudge = (judge: string) => /^([^@+]+)@[^+]+\+/.exec(judge)?.[1] ?? judge;
 
 export class EvalError extends Error {
   constructor(message: string) {
@@ -77,16 +80,26 @@ export const defaultRefusalPatterns = [
   "(?i)\\b(i don't know|i do not know|could not find|couldn't find|no information|cannot answer|not covered)\\b",
 ];
 
+const normalized = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** What a judge reads as the answer: its text, or a structured answer's fields as JSON. */
+export const answerText = (o: Observation) =>
+  o.answer.trim() === '' && o.fields !== undefined ? JSON.stringify(o.fields, null, 2) : o.answer;
+
+/** v2: an exact case's text, and an empty answer counts as a refusal, as the portal graded them. */
 export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Evaluator => {
   const refusals = refusalPatterns.map(compilePattern);
   const self: Evaluator = {
     id: 'contract',
-    version: '1',
+    version: '2',
     kind: 'deterministic',
     evaluate: async (c, o) => {
       const scores: Score[] = [];
-      const refused = refusals.some((r) => r.test(o.answer));
-      if (c.grounding === 'refusal-expected') {
+      // No answer at all is a refusal; a structured answer has no text but is still an answer.
+      const refused =
+        (o.answer.trim() === '' && o.fields === undefined) ||
+        refusals.some((r) => r.test(o.answer));
+      if (c.grounding === 'refusal-expected' || c.type === 'must_reject') {
         scores.push(scored(self, 'refusal', refused ? 1 : 0));
         scores.push(skipped(self, 'answer-pattern', 'a refusal is expected'));
       } else {
@@ -98,6 +111,19 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
                 self,
                 'answer-pattern',
                 compilePattern(c.expected.answerPattern).test(o.answer) ? 1 : 0,
+              ),
+        );
+      }
+      if (c.type === 'exact') {
+        const expected = c.expected.referenceAnswer ?? c.expected.answerPattern;
+        // An exact case without its text cannot pass, as the portal grades it.
+        scores.push(
+          expected === undefined || expected.trim() === ''
+            ? { ...scored(self, 'exact-text', 0), reason: 'the case has no text to find' }
+            : scored(
+                self,
+                'exact-text',
+                normalized(o.answer).includes(normalized(expected)) ? 1 : 0,
               ),
         );
       }
@@ -271,7 +297,7 @@ export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator =
           role: 'user',
           content: fill(prompt.template, {
             question,
-            answer: o.answer,
+            answer: answerText(o),
             criteria: criteriaText(prompt),
             sources: judgeSources(o),
             min: String(prompt.scale.min),
