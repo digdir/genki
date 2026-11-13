@@ -101,4 +101,8 @@ export const supportAccess = defineNamespace({
   endFailed: 'Kunne ikke avslutte støttetilgangen. Prøv igjen om litt.',
   endListed: 'Avslutt',
   endListedFor: 'Avslutt støttetilgangen til {tenant}',
+  searchSettings: 'Søk i innstillinger',
+  searchSettingsHelp: 'Søk på navn, nøkkel eller beskrivelse.',
+  noSettingMatch: 'Ingen innstillinger passer søket.',
+  lockedBy: 'Låst: {reason}',
 });

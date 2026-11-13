@@ -178,6 +178,9 @@ const settings = {
   panelPinnedLayer: 'Pinned',
   panelNewValue: 'New value here',
   panelCannotHere: 'Cannot be set on this layer',
+  panelSetByDigdir: 'Digdir sets this limit',
+  panelSetByDigdirHelp:
+    'The limit protects the cost and capacity of the platform. Contact Digdir if you need a different value.',
   panelSecretStored: 'Stored in Key Vault. Last replaced 2 October by Jonas Lie.',
   panelSecretNotSet: 'Not set',
   panelNewSecret: 'New value',

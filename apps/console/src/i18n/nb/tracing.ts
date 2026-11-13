@@ -114,4 +114,6 @@ export const tracing = defineNamespace({
   disconnect: 'Koble fra',
   disconnected: '{tool} er koblet fra. Ingen spor sendes dit lenger. Plattformens logg er uendret.',
   disconnectFailed: 'Kunne ikke koble fra {tool}. Prøv igjen om litt.',
+  liveActionsUnavailable:
+    'Ikke tilgjengelig ennå. Plattformen kan ikke lagre, teste eller koble fra verktøy herfra.',
 });

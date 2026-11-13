@@ -39,4 +39,6 @@ export const tenants = defineNamespace({
   actionServices: 'Tjenester',
   actionDiagnostics: 'Diagnostikk',
   actionSupport: 'Støttetilgang',
+  nearQuotaFor: 'Nær kvoten: juster månedlig tokenkvote for {name}',
+  nearQuotaOnboarding: 'Kvoten kan justeres i støttetilgang når oppstarten er ferdig.',
 });

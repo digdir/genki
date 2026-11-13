@@ -31,6 +31,9 @@ const statusLabel: Record<TenantStatus, { text: PlainKey; color: 'success' | 'in
 
 export const formatOrgNumber = (n: string) => n.replace(/^(\d{3})(\d{3})(\d{3})$/, '$1 $2 $3');
 
+const quotaLink = (org: string) =>
+  `#/support-access?${new URLSearchParams({ tenant: org, tab: 'settings', setting: 'usage.monthlyTokens' }).toString()}`;
+
 type Filter = 'all' | TenantStatus;
 
 const filters: { value: Filter; label: PlainKey }[] = [
@@ -234,11 +237,23 @@ export const Tenants = ({ api, now = () => new Date() }: { api: ApiClient; now?:
                         <span className="usage">
                           <span className="usage-text">
                             {use.text}
-                            {warn ? (
-                              <Tag data-size="sm" data-color="warning">
-                                {t('tenants.nearQuota')}
-                              </Tag>
-                            ) : null}
+                            {!warn ? null : onboarding ? (
+                              <span className="two-line">
+                                <Tag data-size="sm" data-color="warning">
+                                  {t('tenants.nearQuota')}
+                                </Tag>
+                                <span className="meta">{t('tenants.nearQuotaOnboarding')}</span>
+                              </span>
+                            ) : (
+                              <a
+                                href={quotaLink(x.orgNumber)}
+                                aria-label={t('tenants.nearQuotaFor', { name: x.name })}
+                              >
+                                <Tag data-size="sm" data-color="warning">
+                                  {t('tenants.nearQuota')}
+                                </Tag>
+                              </a>
+                            )}
                           </span>
                           {use.percent === undefined ? null : (
                             <Meter percent={use.percent} warn={warn} />

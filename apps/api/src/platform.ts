@@ -18,7 +18,10 @@ import {
 import { refusedRight, type Access } from './access.js';
 import { requireRight, rights, rightsOf, seesUsage } from './rights.js';
 import {
+  operatorOnlyRefused,
+  operatorOnlySettingType,
   settingsConflictMessage,
+  settingWriterOf,
   shareOperatorOnlyType,
   sharingRefused,
   type Admin,
@@ -91,6 +94,11 @@ const optionalSchema = (schema: unknown) => {
   }
 };
 
+const operatorOnlyForbidden = {
+  content: problemContent,
+  description: `Not allowed for this tenant, or ${operatorOnlySettingType}: a limit only an operator in a support session changes for a tenant`,
+};
+
 const conflict = {
   content: problemContent,
   description: 'Changed elsewhere since it was read; reload and try again',
@@ -110,6 +118,9 @@ const SettingInfo = z
     sensitivity: z.enum(['normal', 'secret']),
     default: z.unknown(),
     settableAt: z.array(z.string()),
+    operatorOnly: z.boolean().optional().openapi({
+      description: 'At the tenant layer only an operator in a support session sets it',
+    }),
     schema: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi('SettingInfo');
@@ -476,7 +487,7 @@ const routes = {
       200: json(z.union([Applied, Preview]), 'Applied or previewed'),
       400: problems[400],
       401: problems[401],
-      403: problems[403],
+      403: operatorOnlyForbidden,
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -490,7 +501,7 @@ const routes = {
     responses: {
       200: json(Applied, 'Removed'),
       401: problems[401],
-      403: problems[403],
+      403: operatorOnlyForbidden,
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -516,7 +527,7 @@ const routes = {
       200: json(Applied, 'Pinned'),
       400: problems[400],
       401: problems[401],
-      403: problems[403],
+      403: operatorOnlyForbidden,
       409: conflict,
       422: problems[422],
       404: problems[404],
@@ -558,7 +569,7 @@ const routes = {
       401: problems[401],
       403: {
         content: problemContent,
-        description: `Not allowed for this tenant, or ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change`,
+        description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
       409: conflict,
       422: problems[422],
@@ -955,6 +966,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
           sensitivity: d.sensitivity,
           default: d.default,
           settableAt: d.settableAt,
+          ...(d.operatorOnly ? { operatorOnly: true } : {}),
           ...optionalSchema(d.schema),
         })),
       },
@@ -1033,7 +1045,14 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (lacking) return lacking;
     const { value } = c.req.valid('json');
     if (c.req.valid('query').dryRun === 'true') {
-      const preview = settings.previewTenant(tenant, key, value, await services());
+      const preview = settings.previewTenant(
+        tenant,
+        key,
+        value,
+        await services(),
+        settingWriterOf(acting),
+      );
+      if (!preview.ok && preview.operatorOnly) return operatorOnlyRefused(c, preview.errors);
       if (!preview.ok) return problem(c, 422, 'Invalid setting', { errors: preview.errors });
       return c.json({ dryRun: true as const, ...preview.value }, 200);
     }
@@ -1046,6 +1065,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     );
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid setting', { errors: result.errors });
     return c.json(applied(result), 200);
   });
@@ -1061,6 +1082,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const result = await admin.setTenantSetting(acting, tenant, key, null, changeReasonOf(c) ?? '');
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid setting', { errors: result.errors });
     return c.json(applied(result), 200);
   });
@@ -1082,6 +1105,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     );
     c.header('genai-task', result.task);
     if (!result.ok && result.conflict) return conflicted(c);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid pin', { errors: result.errors });
     return c.json(applied(result), 200);
   });
@@ -1115,8 +1140,10 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         onConflict,
         actor: '',
         reason,
+        writer: settingWriterOf(acting),
         check: admin.importCheck(acting),
       });
+      if (!plan.ok && plan.operatorOnly) return operatorOnlyRefused(c, plan.errors);
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);
     }
@@ -1125,6 +1152,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!result.ok && result.conflict) return conflicted(c);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === operatorOnlySettingType)
+      return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });
     return c.json({ dryRun: false, task: result.task, plan: result.value }, 200);
   });

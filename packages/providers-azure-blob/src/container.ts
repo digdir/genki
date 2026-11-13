@@ -101,3 +101,20 @@ export const nativeOutputStoreFromEnv = async (
     : new FileSystemNativeOutputContainer(join(dataDir, 'conversions'));
   return { store: nativeOutputStore(container), container };
 };
+
+/** For an operator's one-off copy: the az CLI login, or the account key when given one. Never for the worker. */
+export const operatorNativeOutputContainer = async (
+  url: string,
+  { key }: { key?: string } = {},
+): Promise<AzureNativeOutputContainer> => {
+  const checked = containerUrl(url);
+  const { ContainerClient, StorageSharedKeyCredential } = await import('@azure/storage-blob');
+  if (key) {
+    const account = new URL(checked).hostname.split('.')[0] ?? '';
+    return new AzureNativeOutputContainer(
+      new ContainerClient(checked, new StorageSharedKeyCredential(account, key)),
+    );
+  }
+  const { AzureCliCredential } = await import('@azure/identity');
+  return new AzureNativeOutputContainer(new ContainerClient(checked, new AzureCliCredential()));
+};
