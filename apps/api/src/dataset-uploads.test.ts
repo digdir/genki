@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import type { DocumentConverter } from '@genai/ingest';
+import { onePage, type DocumentConverter } from '@genai/ingest';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { IndexWriterRouter } from '@genai/port-knowledge';
@@ -27,7 +27,7 @@ const principals: Record<string, Principal> = {
 };
 
 const converter: DocumentConverter = {
-  toMarkdown: async (file) => `# ${file.name}\n\nTekst fra PDF-en ${file.name}.`,
+  convert: async (file) => onePage(`# ${file.name}\n\nTekst fra PDF-en ${file.name}.`),
 };
 
 const boot = async () => {

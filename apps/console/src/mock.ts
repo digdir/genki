@@ -272,6 +272,12 @@ export const exampleRunning: RunningTask[] = [
   },
 ];
 
+export const exampleFinished: RunningTask[] = [
+  { task: 't-090', tenant: '974222333', status: 'completed', at: '2026-10-07T08:12:00Z' },
+  { task: 't-091', tenant: '999888777', status: 'failed', at: '2026-10-07T08:40:00Z' },
+  { task: 't-092', tenant: '983555666', status: 'cancelled', at: '2026-10-07T09:05:00Z' },
+];
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -1579,6 +1585,15 @@ export const mockFetch = (
       return json({
         data: running.filter(
           (t) => (!tenant || t.tenant === tenant) && (!service || t.service === service),
+        ),
+      });
+    }
+    if (path === '/operator/tasks') {
+      const status = url.searchParams.get('status') ?? 'running';
+      const all = [...running, ...exampleFinished];
+      return json({
+        data: all.filter((t) =>
+          status === 'running' ? ['running', 'queued'].includes(t.status) : t.status === status,
         ),
       });
     }

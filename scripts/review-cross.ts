@@ -590,7 +590,7 @@ export function runRecord(input: {
   };
 }
 
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 const git = (...args: string[]) =>
   execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
@@ -683,8 +683,8 @@ export function responsesClient(base: string, token: string) {
   };
 }
 
-function foundryClient(resource: string) {
-  const token = execFileSync(
+export const foundryToken = () =>
+  execFileSync(
     'az',
     [
       'account',
@@ -698,6 +698,9 @@ function foundryClient(resource: string) {
     ],
     { encoding: 'utf8' },
   ).trim();
+
+function foundryClient(resource: string) {
+  const token = foundryToken();
   return responsesClient(`https://${resource}.openai.azure.com/openai/v1`, token);
 }
 

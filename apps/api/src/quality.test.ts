@@ -3161,7 +3161,9 @@ describe('test-set runs on a shared instance', () => {
       ...{ evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } },
       hold: cases.hold,
     });
-    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 1).ok).toBe(true);
+    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 1, 'operator').ok).toBe(
+      true,
+    );
     const id = await start(env);
     await vi.waitFor(() => expect(cases.started).toHaveLength(2));
 

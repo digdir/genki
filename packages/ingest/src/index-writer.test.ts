@@ -18,6 +18,7 @@ import {
   runIndexIngest,
   toIndexDocument,
   type IndexTarget,
+  onePage,
 } from './index.js';
 
 const signal = new AbortController().signal;
@@ -106,7 +107,7 @@ describe('ingest through an index writer', () => {
         fetchFile: async () => new TextEncoder().encode('Tildelingsbrev med mål.'),
         converter: {
           extensions: ['.pdf'],
-          toMarkdown: async () => '# Brev\n\nTildelingsbrev med mål.',
+          convert: async () => onePage('# Brev\n\nTildelingsbrev med mål.'),
         },
       }),
       chunking,

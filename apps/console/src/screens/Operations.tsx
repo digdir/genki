@@ -1,6 +1,9 @@
 import {
   Alert,
   Button,
+  Chip,
+  Fieldset,
+  FieldsetLegend,
   Heading,
   Paragraph,
   Table,
@@ -41,9 +44,32 @@ const queueStatus = {
   failed: ['operations.queueFailed', 'danger'],
 } as const satisfies Record<string, readonly [PlainKey, string]>;
 
-const statusLabel: Record<string, PlainKey> = {
-  running: 'operations.taskRunning',
-  queued: 'operations.taskQueued',
+const statusLabel: Record<string, readonly [PlainKey, string]> = {
+  running: ['operations.taskRunning', 'info'],
+  queued: ['operations.taskQueued', 'neutral'],
+  completed: ['operations.statusCompleted', 'success'],
+  failed: ['operations.statusFailed', 'danger'],
+  cancelled: ['operations.statusCancelled', 'neutral'],
+  interrupted: ['operations.statusInterrupted', 'warning'],
+};
+
+const taskFilters = [
+  ['running', 'operations.statusRunning'],
+  ['completed', 'operations.statusCompleted'],
+  ['failed', 'operations.statusFailed'],
+  ['cancelled', 'operations.statusCancelled'],
+  ['interrupted', 'operations.statusInterrupted'],
+] as const satisfies readonly (readonly [string, PlainKey])[];
+
+type TaskFilter = (typeof taskFilters)[number][0];
+
+const statusTag = (status: string, t: T) => {
+  const known = statusLabel[status];
+  return (
+    <Tag data-size="sm" data-color={known?.[1] ?? 'neutral'}>
+      {known ? t(known[0]) : status}
+    </Tag>
+  );
 };
 
 const rateComponents = ['Kjøringer', 'Innlesing'];
@@ -272,7 +298,7 @@ const HealthOnly = ({ api }: { api: ApiClient }) => {
   );
 };
 
-const Running = ({ api }: { api: ApiClient }) => {
+const Running = ({ api, refresh }: { api: ApiClient; refresh: number }) => {
   const t = useT();
   const f = useFormat();
   const tRef = useRef(t);
@@ -280,16 +306,32 @@ const Running = ({ api }: { api: ApiClient }) => {
   const tenantName = useTenantNames(api);
   const [tenant, setTenant] = useState('');
   const [service, setService] = useState('');
+  const [status, setStatus] = useState<TaskFilter>('running');
+  const running = status === 'running';
   const [state, retry] = useAsync(
-    (signal) => api.runningTasks({ tenant: tenant.trim(), service: service.trim() }, signal),
-    [api, tenant, service],
+    async (signal) => ({
+      status,
+      list: running
+        ? await api.runningTasks({ tenant: tenant.trim(), service: service.trim() }, signal)
+        : (await api.tasks(status, signal)).filter(
+            (task) => !tenant.trim() || task.tenant === tenant.trim(),
+          ),
+    }),
+    [api, tenant, running ? service : '', status],
   );
-  const [tasks, setTasks] = useState<RunningTask[]>([]);
+  const seen = useRef(refresh);
+  useEffect(() => {
+    if (seen.current === refresh) return;
+    seen.current = refresh;
+    retry();
+  }, [refresh, retry]);
+  const [loaded, setLoaded] = useState<{ status: TaskFilter; list: RunningTask[] }>();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | undefined>();
   const reason = useReason();
+  const tasks = loaded?.list ?? [];
 
   useEffect(() => {
-    if (state.status === 'ready') setTasks(state.data);
+    if (state.status === 'ready') setLoaded(state.data);
   }, [state]);
 
   const cancel = async (task: RunningTask) => {
@@ -298,7 +340,7 @@ const Running = ({ api }: { api: ApiClient }) => {
     setMessage(undefined);
     try {
       await api.cancelTask(task.task, why);
-      setTasks((all) => all.filter((x) => x.task !== task.task));
+      setLoaded((all) => all && { ...all, list: all.list.filter((x) => x.task !== task.task) });
       setMessage({ ok: true, text: tRef.current('operations.taskCancelled', { task: task.task }) });
     } catch {
       setMessage({
@@ -311,7 +353,7 @@ const Running = ({ api }: { api: ApiClient }) => {
   return (
     <section className="stack" aria-labelledby="kjor-h">
       <Heading level={2} data-size="xs" id="kjor-h">
-        {t('operations.runningTitle')}
+        {running ? t('operations.runningTitle') : t('operations.tasksTitle')}
       </Heading>
       <div className="filters">
         <Textfield
@@ -320,13 +362,30 @@ const Running = ({ api }: { api: ApiClient }) => {
           value={tenant}
           onChange={(e) => setTenant(e.target.value)}
         />
-        <Textfield
-          label={t('operations.service')}
-          value={service}
-          onChange={(e) => setService(e.target.value)}
-        />
+        {running ? (
+          <Textfield
+            label={t('operations.service')}
+            value={service}
+            onChange={(e) => setService(e.target.value)}
+          />
+        ) : null}
+        <Fieldset>
+          <FieldsetLegend>{t('operations.showTasks')}</FieldsetLegend>
+          <div className="chips">
+            {taskFilters.map(([value, label]) => (
+              <Chip.Radio
+                key={value}
+                name="task-status"
+                checked={status === value}
+                onChange={() => setStatus(value)}
+              >
+                {t(label)}
+              </Chip.Radio>
+            ))}
+          </div>
+        </Fieldset>
       </div>
-      {reason.field(t('operations.cancelReasonHint'))}
+      {running ? reason.field(t('operations.cancelReasonHint')) : null}
       {message ? (
         <Alert
           data-color={message.ok ? 'success' : 'danger'}
@@ -336,27 +395,35 @@ const Running = ({ api }: { api: ApiClient }) => {
           {message.text}
         </Alert>
       ) : null}
-      {state.status === 'loading' ? (
-        <Loading label={t('operations.loadingRunning')} />
+      {state.status === 'loading' || (state.status === 'ready' && loaded?.status !== status) ? (
+        <Loading label={running ? t('operations.loadingRunning') : t('operations.loadingTasks')} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : tasks.length === 0 ? (
-        <EmptyState title={t('operations.noRunningTitle')}>
-          <Paragraph>
-            {tenant || service ? t('operations.noMatch') : t('operations.allDone')}
-          </Paragraph>
-        </EmptyState>
+        running ? (
+          <EmptyState title={t('operations.noRunningTitle')}>
+            <Paragraph>
+              {tenant || service ? t('operations.noMatch') : t('operations.allDone')}
+            </Paragraph>
+          </EmptyState>
+        ) : (
+          <EmptyState title={t('operations.noTasksTitle')} />
+        )
       ) : (
-        <TableRegion label={t('operations.runningLabel')}>
+        <TableRegion label={running ? t('operations.runningLabel') : t('operations.tasksLabel')}>
           <Table>
             <TableHead>
               <TableRow>
                 <TableHeaderCell scope="col">{t('operations.colRun')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('operations.tenant')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('operations.service')}</TableHeaderCell>
+                {running ? (
+                  <TableHeaderCell scope="col">{t('operations.service')}</TableHeaderCell>
+                ) : null}
                 <TableHeaderCell scope="col">{t('operations.colStatus')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('operations.colChanged')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('operations.colAction')}</TableHeaderCell>
+                {running ? (
+                  <TableHeaderCell scope="col">{t('operations.colAction')}</TableHeaderCell>
+                ) : null}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -366,27 +433,25 @@ const Running = ({ api }: { api: ApiClient }) => {
                     <code>{task.task}</code>
                   </TableCell>
                   <TableCell>{tenantName(task.tenant)}</TableCell>
-                  <TableCell>
-                    {task.service ?? <span className="meta">{t('operations.unknown')}</span>}
-                  </TableCell>
-                  <TableCell>
-                    <Tag data-size="sm" data-color={task.status === 'running' ? 'info' : 'neutral'}>
-                      {statusLabel[task.status]
-                        ? t(statusLabel[task.status] as PlainKey)
-                        : task.status}
-                    </Tag>
-                  </TableCell>
+                  {running ? (
+                    <TableCell>
+                      {task.service ?? <span className="meta">{t('operations.unknown')}</span>}
+                    </TableCell>
+                  ) : null}
+                  <TableCell>{statusTag(task.status, t)}</TableCell>
                   <TableCell>{f.dateTime(task.at, 'short')}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="secondary"
-                      data-size="sm"
-                      onClick={() => void cancel(task)}
-                      aria-label={t('operations.cancelRun', { task: task.task })}
-                    >
-                      {t('operations.cancel')}
-                    </Button>
-                  </TableCell>
+                  {running ? (
+                    <TableCell>
+                      <Button
+                        variant="secondary"
+                        data-size="sm"
+                        onClick={() => void cancel(task)}
+                        aria-label={t('operations.cancelRun', { task: task.task })}
+                      >
+                        {t('operations.cancel')}
+                      </Button>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -499,7 +564,7 @@ export const Operations = ({ api }: { api: ApiClient }) => {
           <ErrorState error={state.error} onRetry={retry} />
         )
       ) : null}
-      <Running api={api} />
+      <Running api={api} refresh={tick} />
       <Quarantine api={api} />
     </>
   );
