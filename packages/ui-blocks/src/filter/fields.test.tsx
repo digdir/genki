@@ -672,6 +672,70 @@ describe('a field with compact chips', () => {
   });
 });
 
+describe('a field with every value it lists chosen, without compact chips', () => {
+  const all = organisations.options.map((option) => option.value);
+  const one: FilterField = { ...organisations, options: organisations.options.slice(0, 1) };
+
+  it('shows one «Alle …» chip when every value in a field is chosen', async () => {
+    const { container } = render(<Harness field={organisations} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Velg alle virksomheter' }));
+    expect(chips(container)).toEqual(['Alle virksomheter']);
+    // u-combobox ticks the options from the chips it observes, hence the async act.
+    await act(async () => {});
+    expect(ticked(container)).toEqual(all);
+  });
+
+  it("keeps a single chosen value's own chip", () => {
+    for (const compact of [false, true]) {
+      const { container, unmount } = render(
+        <FacetField
+          field={one}
+          selected={all.slice(0, 1)}
+          compact={compact}
+          max={100}
+          onChange={() => {}}
+        />,
+      );
+      expect(chips(container)).toEqual(['Virksomhet 1']);
+      unmount();
+    }
+  });
+
+  it('clears the field when the «Alle …» chip is removed', () => {
+    const seen: string[][] = [];
+    const { container } = render(<Harness field={organisations} initial={all} seen={seen} />);
+    fireEvent.click(
+      screen.getByRole('option', { name: /^Alle virksomheter, Trykk for å fjerne alle/u }),
+    );
+    expect(seen.at(-1)).toEqual([]);
+    expect(chips(container)).toEqual([]);
+  });
+
+  it('reaches the «Alle …» chip from the field by keyboard, and moves focus back when it goes', () => {
+    const said: Said = [];
+    render(<Harness field={organisations} initial={all} said={said} />);
+    act(() => input().focus());
+    fireEvent.keyDown(input(), { key: 'ArrowLeft' });
+    const chip = screen.getByRole('option', {
+      name: /^Alle virksomheter, Trykk for å fjerne alle/u,
+    });
+    expect(document.activeElement).toBe(chip);
+    fireEvent.keyDown(chip, { key: 'Backspace' });
+    expect(said.at(-1)).toBe('Ingen virksomheter er valgt.');
+    expect(document.activeElement).toBe(input());
+  });
+
+  it('counts the values behind the «Alle …» chip for a screen reader, not the chip', () => {
+    const { container } = render(<Harness field={organisations} initial={all} />);
+    expect(input().getAttribute('aria-description')).toBe(
+      '20 valgt, naviger bakover for å fjerne alle',
+    );
+    expect(container.querySelector('ds-suggestion')?.getAttribute('data-sr-remove')).toBe(
+      'Trykk for å fjerne alle fra virksomheter',
+    );
+  });
+});
+
 describe('«Velg alle» and «Tøm» for a screen reader', () => {
   const all = organisations.options.map((option) => option.value);
 
@@ -684,17 +748,18 @@ describe('«Velg alle» and «Tøm» for a screen reader', () => {
     expect(said.at(-1)).toBe('Ingen virksomheter er valgt.');
   });
 
-  it('leave it to u-combobox when only one value changes, so it is not heard twice', () => {
+  it('leave it to u-combobox when «Tøm» removes one value, so it is not heard twice', () => {
     const said: Said = [];
-    const { unmount } = render(
-      <Harness field={organisations} initial={all.slice(0, 1)} said={said} />,
-    );
+    render(<Harness field={organisations} initial={all.slice(0, 1)} said={said} />);
     fireEvent.click(screen.getByRole('button', { name: 'Tøm virksomheter' }));
     expect(said).toEqual([undefined]);
-    unmount();
+  });
+
+  it('say «Velg alle» from all but one, since the «Alle …» chip comes as well', () => {
+    const said: Said = [];
     render(<Harness field={organisations} initial={all.slice(1)} said={said} />);
     fireEvent.click(screen.getByRole('button', { name: 'Velg alle virksomheter' }));
-    expect(said).toEqual([undefined, undefined]);
+    expect(said).toEqual(['Alle 20 virksomheter er valgt.']);
   });
 
   it('tell it when the one chip comes, even if only one value came', () => {

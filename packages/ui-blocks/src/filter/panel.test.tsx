@@ -77,6 +77,24 @@ describe('the panel variant', () => {
     expect(row(/^Virksomhet/).textContent).toBe('Virksomhet Alle');
   });
 
+  it('says «Alle» in a row only when two or more values are chosen and they are every value it lists', () => {
+    const every = orgs.options.map((option) => option.value);
+    const { unmount } = render(
+      <Host initial={{ type: ['Evaluering', 'Tilsynsrapport', 'Årsrapport'], org: every }} />,
+    );
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Alle');
+    expect(row(/^Virksomhet/).textContent).toBe('Virksomhet Alle');
+    unmount();
+    // Another field narrowed the list to the one value chosen.
+    render(
+      <Host
+        fields={[{ ...types, options: types.options.slice(0, 1) }]}
+        initial={{ type: ['Evaluering'] }}
+      />,
+    );
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Evaluering');
+  });
+
   it('opens the first row, and one row at a time', () => {
     render(<Host />);
     expect(row(/^Dokumenttype/).getAttribute('aria-expanded')).toBe('true');

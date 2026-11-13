@@ -9,6 +9,7 @@ import { useImperativeHandle, useRef, type Ref } from 'react';
 import { renderChip, removedDrawnChip, valuesAfter, withDrawnChips } from './drawnChips.js';
 import { useT } from './i18n.js';
 import { chosenFirst, useChosenFirst, useListFollowsField } from './listBehaviour.js';
+import { everyListed, showsAsAll } from './selection.js';
 import type { FilterField } from './types.js';
 
 /** What the filter may do with a field from outside: put the keyboard in it. */
@@ -23,7 +24,7 @@ export interface FieldProps {
   selected: readonly string[];
   /** `said` is for the filter's live region: the change, where u-combobox says nothing. */
   onChange: (values: string[], said?: string) => void;
-  /** One chip for all, or for `compactFrom` or more, chosen values. */
+  /** One chip also for `COMPACT_FROM` or more chosen values; all chosen is one chip without it. */
   compact: boolean;
   /** Most values a field may send. */
   max: number;
@@ -75,15 +76,13 @@ export const FacetField = ({
   const total = field.options.length;
   const chosen = selected.length;
   // Every listed value ticked, as `narrowing` reads it; a field with all ticked is not sent.
-  const everyListed = (values: readonly string[]) =>
-    total > 0 && field.options.every((option) => values.includes(option.value));
-  const allChosen = everyListed(selected);
+  const allChosen = everyListed(field, selected);
   const labelOf = (value: string) =>
     field.options.find((option) => option.value === value)?.label ?? value;
 
-  // With many chosen, one drawn chip instead of hundreds, while the list still ticks them.
+  // One drawn chip over those per value, «Alle virksomheter» from two; the list still ticks them.
   const isCompact = (values: readonly string[]) =>
-    compactChips && values.length > 0 && (everyListed(values) || values.length >= COMPACT_FROM);
+    showsAsAll(field, values) || (compactChips && values.length >= COMPACT_FROM);
   const compact = isCompact(selected);
   const drawn = compact
     ? [

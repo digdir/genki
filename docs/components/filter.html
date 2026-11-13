@@ -133,6 +133,8 @@
               <li>
                 <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
                 default as in KA. A reader turns them on in the settings, under «Eksperimenter».
+                <code>compactChips</code> gathers six or more chosen values in one chip, such as «12
+                virksomheter»; every value a field lists is one chip without it.
               </li>
               <li>
                 <code>head</code> and <code>children</code>: the corpus choice over the fields, and
@@ -156,11 +158,11 @@
                 <code>variant</code>: <code>fields</code>, the default, or <code>panel</code>, the
                 dev boards' filter beside the threads (dev-filter-panel): «Fjern alle filtre» over
                 the fields, and each field a row with its <code>heading</code> and what is chosen,
-                «Alle» when nothing is, that opens one at a time to a checkbox per value with its
-                exact count, in two columns, or as many as
-                <code>--genai-filter-checkboxes-columns</code> says: 1 in a narrow panel. A field
-                with more than 12 values opens to its list with search instead.
-                <code>children</code> stand under the rows with no line.
+                «Alle» when nothing is or when two or more are and they are every value it lists,
+                that opens one at a time to a checkbox per value with its exact count, in two
+                columns, or as many as <code>--genai-filter-checkboxes-columns</code> says: 1 in a
+                narrow panel. A field with more than 12 values opens to its list with search
+                instead. <code>children</code> stand under the rows with no line.
               </li>
               <li>
                 <code>FilterRead</code> and <code>FilterNext</code>: the filter where it is not
@@ -243,6 +245,13 @@
                 the description: «Ingen avgrensning», «3 av 12 valgt», «Alle 12 valgt, altså ingen
                 avgrensning». Chosen values come first when the list opens, and nothing moves while
                 it is open. More than 100 chosen in one field says so, with the way out.
+              </li>
+              <li>
+                <strong>One chip for all:</strong> when two or more values are chosen and they are
+                every value the field lists, as after «Velg alle», the field shows one chip, «Alle
+                virksomheter», instead of one per value, and the list still ticks them all. Removing
+                it clears the field, and ArrowLeft from the field reaches it. A single chosen value
+                keeps its own chip, also when another field narrows the list to it.
               </li>
               <li>
                 <strong>Years as periods</strong> (<code>yearPeriods</code>): a field of kind
