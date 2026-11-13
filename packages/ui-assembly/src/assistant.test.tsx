@@ -1012,7 +1012,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     await opened();
     const h1 = () => screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent);
     expect(h1()).toEqual(['Ny tråd']);
-    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
     await waitFor(() =>
       expect(document.querySelector('.uib-answer')?.textContent).toContain(
         'Rapporteringen er fast',
@@ -1177,7 +1177,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
           threadInUrl
         />,
       );
-      fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
       await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
       const width = () =>
         document
@@ -1429,7 +1429,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
 
   it('brings back a thread’s last filter when the thread is opened again', async () => {
     drawNext(counted().api);
-    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
     await waitFor(() => expect(answers()).toBe(1));
     await tick(/^Årsrapport/);
     await askMore('Og i år?');
@@ -2010,6 +2010,73 @@ describe('asking, whatever genki has said of the service', () => {
     unmount();
     expect(signals[0]?.aborted).toBe(true);
     expect(reported).not.toHaveBeenCalled();
+  });
+});
+
+describe('leaving a thread while its answer streams', () => {
+  it('shows the thread asked in, from genki, when the reader comes back to it', async () => {
+    const { api } = fakeApi();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let made = false;
+    api.loadThreads = vi.fn(async () => [
+      ...(made
+        ? [{ id: 't-new', title: 'Hva er nytt?', updatedAt: Date.now(), service: 'ka' }]
+        : []),
+      { id: 't-old', title: 'En gammel tråd', updatedAt: Date.now(), service: 'ka' },
+    ]);
+    api.loadThread = vi.fn(async (id: string) =>
+      id === 't-new'
+        ? {
+            title: 'Hva er nytt?',
+            turns: [
+              {
+                id: 'n1',
+                question: 'Hva er nytt?',
+                askedAt: 1,
+                answer: { text: 'Det nye svaret.', status: 'complete' as const, created: 2 },
+              },
+            ],
+          }
+        : {
+            title: 'En gammel tråd',
+            turns: [
+              {
+                id: 'o1',
+                question: 'Hva var gammelt?',
+                askedAt: 1,
+                answer: { text: 'Det gamle svaret.', status: 'complete' as const, created: 2 },
+              },
+            ],
+          },
+    );
+    api.ask = async function* (params) {
+      made = true;
+      // genki says the new thread twice: the assembly's POST, then the stream itself.
+      yield { type: 'conversation', conversationId: 't-new' };
+      yield { type: 'conversation', conversationId: 't-new' };
+      // The answer is on its way when the reader leaves; leaving aborts it, as fetch does.
+      await new Promise<void>((resolve, reject) => {
+        void held.then(resolve);
+        params.signal.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        );
+      });
+      yield { type: 'text', text: 'Det nye svaret.' };
+    };
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
+    });
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('link', { name: /Hva er nytt\?/ }));
+    });
+    expect(await screen.findByText('Det nye svaret.')).toBeTruthy();
+    expect(screen.queryByText('Det gamle svaret.')).toBeNull();
+    expect(screen.queryByText('Hva var gammelt?')).toBeNull();
+    release();
   });
 });
 
