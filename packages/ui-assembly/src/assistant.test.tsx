@@ -1420,7 +1420,9 @@ describe('the filter in the next look (dev-filter-panel)', () => {
         new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '20-22' }),
       );
     });
-    expect(screen.getByRole('option', { name: '2020–2022 (3)', hidden: true })).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: '2020–2022 (3 år med dokumenter)', hidden: true }),
+    ).toBeTruthy();
   });
 
   it('says under the field how many documents the next question reads from, and its values', async () => {

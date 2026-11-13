@@ -262,7 +262,12 @@
               <li>
                 <strong>Years as periods</strong> (<code>yearPeriods</code>): a field of kind
                 <code>year</code> takes «2021», «2023–2028» or «23-28», and years in a row show as
-                one chip.
+                one chip. A period stands for the years in it that the field lists with documents,
+                not every calendar year, so «1800-2015» sends no more values than the collection has
+                years. The list shows a period with those years counted, «1800–2015 (26 år med
+                dokumenter)», since adding the documents per year would count a document with
+                several years more than once; a single year keeps its documents, «2019 (523)». A
+                period with none of them is not offered: «Ingen dokumenter i 1700–1750.»
               </li>
               <li>
                 <strong>Values no field can show</strong>, under «Avgrenset til», removable one by

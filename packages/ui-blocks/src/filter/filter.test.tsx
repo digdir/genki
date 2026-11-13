@@ -448,8 +448,9 @@ describe('the live region', () => {
       );
     });
     const value =
-      screen.getByRole('option', { name: '2023–2024 (2)', hidden: true }).getAttribute('value') ??
-      '';
+      screen
+        .getByRole('option', { name: '2023–2024 (2 år med dokumenter)', hidden: true })
+        .getAttribute('value') ?? '';
     act(() => {
       field.value = value;
       field.dispatchEvent(
@@ -458,6 +459,35 @@ describe('the live region', () => {
     });
     expect(container.querySelector('output')?.textContent).toBe('2023–2024 er alt valgt.');
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('sends the years a typed period has documents in, not every calendar year in it', () => {
+    const onChange = vi.fn();
+    const known: FilterField = {
+      ...years,
+      options: ['1990', '2014', '2015', '2016'].map((value) => ({ value, count: 400 })),
+    };
+    render(<Filter fields={[known]} yearPeriods selection={{}} onChange={onChange} />);
+    const field = screen.getByPlaceholderText('Skriv et år eller en periode') as HTMLInputElement;
+    act(() => {
+      field.value = '1800-2015';
+      field.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '1800-2015' }),
+      );
+    });
+    // Three years with documents, not their 1,200 documents, which may hold one document twice.
+    const option = screen.getByRole('option', {
+      name: '1800–2015 (3 år med dokumenter)',
+      hidden: true,
+    });
+    const value = option.getAttribute('value') ?? '';
+    act(() => {
+      field.value = value;
+      field.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: value }),
+      );
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ year: ['1990', '2014', '2015'] });
   });
 
   it('carries the corpus choice in its head, after «Henter filtre», with the reset said', () => {
