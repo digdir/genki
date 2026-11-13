@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
+import { onePage } from '@genai/ingest';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
@@ -228,8 +229,8 @@ const boot = async (
     embeddingAdapters: [fakeEmbeddingAdapter()],
     searchOnlyClusters: [typesenseUrl],
     documentConverter: {
-      toMarkdown: async () =>
-        '# Tildelingsbrev\n\nDepartementet tildeler midler til skyplattformen.',
+      convert: async () =>
+        onePage('# Tildelingsbrev\n\nDepartementet tildeler midler til skyplattformen.'),
     },
     kudos: { fetch: kudosFetch, sleep: async () => undefined },
     ...(shared.entries ? { configurables: { store: shared.entries } } : {}),

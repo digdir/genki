@@ -103,6 +103,10 @@ export const replaceDocument = async (
     text: c.text,
     metadata: c.metadata ?? {},
     ...pagesOf(c.metadata),
+    ...(c.pageFrom !== undefined ? { page_from: c.pageFrom, page_to: c.pageTo ?? c.pageFrom } : {}),
+    file: c.file ?? null,
+    file_sha256: c.fileSha256 ?? null,
+    heading_path: c.headingPath ?? null,
     vec: checkedVector(target, c.vector, c.id),
   }));
   const phrases = doc.phrases.map((p) => ({
@@ -126,9 +130,9 @@ export const replaceDocument = async (
     ],
   );
   await client.query(
-    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, config, vec)
-     select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, $4::regconfig, x.vec::halfvec
-     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, vec text)`,
+    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, file, file_sha256, heading_path, config, vec)
+     select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, x.file, x.file_sha256, x.heading_path, $4::regconfig, x.vec::halfvec
+     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], vec text)`,
     [...key, target.config, JSON.stringify(chunks)],
   );
   await client.query(

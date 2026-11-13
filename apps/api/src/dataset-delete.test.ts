@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
-import type { DocumentConverter } from '@genai/ingest';
+import { onePage, type DocumentConverter } from '@genai/ingest';
 import { InMemoryBlobStore, type BlobKey, type BlobStore } from '@genai/port-blob';
 import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
 import { createPool } from '@genai/providers-postgres';
@@ -330,9 +330,9 @@ describe('deleting a dataset', () => {
     });
     const booted = await boot({
       converter: {
-        toMarkdown: async () => {
+        convert: async () => {
           await gate;
-          return '# Notat\n\nTekst fra PDF-en.';
+          return onePage('# Notat\n\nTekst fra PDF-en.');
         },
       },
     });
