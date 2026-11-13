@@ -469,8 +469,7 @@ export const AssistantView = ({
       );
     }
     const suggestions = a.option('chat', 'suggestions') ? (a.profile?.suggestions ?? []) : [];
-    // The next look offers no follow-ups under an answer: the catalogue keeps the option to the
-    // current look, since no board draws them.
+    // The catalogue keeps follow-ups to the current look.
     const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
     // While a question is written, the next look hides the greeting and suggestions in place.
