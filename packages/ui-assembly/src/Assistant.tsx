@@ -398,7 +398,7 @@ export const AssistantView = ({
     } else if (start) {
       middle = (
         <div className="uia-greeting">
-          <Welcome />
+          <Welcome className="uia-welcome" />
           {a.view === 'ready' ? (
             <EmptyState
               title={t('assembly.emptyThreadTitle')}
@@ -454,10 +454,14 @@ export const AssistantView = ({
     const suggestions = a.option('chat', 'suggestions') ? (a.profile?.suggestions ?? []) : [];
     const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
+    // The next look's front page gives way to the question once the reader writes one: the
+    // greeting and suggestions are hidden, keeping their room so the field stays where it is.
+    const typing = next && start && a.draft !== '';
     return (
       <div
         className="uia-chat"
         data-start={start || undefined}
+        data-typing={typing || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
         style={next && !inPanel ? cardGround : undefined}

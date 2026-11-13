@@ -84,6 +84,13 @@
     padding-block-end: var(--genai-assembly-room-inset, var(--ds-size-3));
   }
 
+  /* In the next look, writing a question hides the greeting and the suggestions, from sight and
+     from assistive technology, and keeps their room, so the field does not move under the caret. */
+  .uia-chat[data-typing] .uia-welcome,
+  .uia-chat[data-typing] .uia-suggestions {
+    visibility: hidden;
+  }
+
   .uia-disclaimer {
     color: var(--genai-assembly-disclaimer-color, var(--ds-color-neutral-text-subtle));
     text-align: center;
