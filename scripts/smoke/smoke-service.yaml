@@ -5,6 +5,7 @@ spec:
   purpose: Fast røyktest av plattformen etter hver utrulling til genki-test. Ingen andre tjenester, frontender eller nøkler skal bruke den.
   audience: [employees]
   riskClass: minimal
+  visibility: internal
   variants:
     - id: default
       title: { nb: Agent, en: Agent }

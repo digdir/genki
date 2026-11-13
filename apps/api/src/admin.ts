@@ -1,3 +1,4 @@
+import { publishRefusals } from './internal-services.js';
 import type { Event, Part, Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import {
@@ -344,6 +345,7 @@ export const createAdmin = (options: AdminOptions) => {
     async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
       ...checkImport(definition, files),
       ...(await sharingProblems(definition, principal)),
+      ...(await publishRefusals(store, definition)),
     ];
 
   const confirmedOnImport = (principal: Principal) => (definition: unknown) => {

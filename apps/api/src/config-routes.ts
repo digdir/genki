@@ -48,6 +48,7 @@ export interface ConfigDeps {
   rules: GuardrailRuleRegistry;
   ingestion: IngestionService;
   testSets: TestSetStore;
+  testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
   engines: () => EngineDescription[];
   adapters: KnowledgeAdapter[];
   writers?: IndexWriterRouter;
@@ -452,6 +453,12 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     if (!/^[a-z0-9][a-z0-9.-]*$/.test(id))
       return { ok: false, errors: [{ path: 'id', message: 'not a valid id' }], target };
     const current = await deps.testSets.get(tenant, id);
+    if (input.op === 'create' && !current && (await deps.testSetTaken?.(tenant, id)))
+      return {
+        ok: false,
+        errors: [{ path: 'id', message: `test set ${id} already exists` }],
+        target,
+      };
     const next = nextSet(current, input, tenant);
     if (!next.ok) return { ok: false, errors: next.errors, target };
     await deps.testSets.put(next.set);
