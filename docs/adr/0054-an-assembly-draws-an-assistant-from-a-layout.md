@@ -16,7 +16,7 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 - **`@genai/ui-assembly` is the one UI package that calls genki.** It sits beside `@genai/ui-blocks` among the consumers and depends on `@genai/client`. It holds the state the blocks share (`useAssistant`), places each block of a layout in its zone (`<Assistant>`), and turns genki's answers and stream into the blocks' props. The blocks stay free of fetching.
 - **One interface to genki.** Every call goes through `AssistantApi`. `createGenkiApi` implements it with reads (models, threads, collections, fields, facets), a new thread and a question; tests use a fake.
 - **No key in the page.** `createGenkiApi` takes a `baseUrl` and sends no credentials of its own. A host reaches genki through its own proxy or session, which adds the key or the person's token.
-- **Writes other than a question are the host's.** Feedback goes to the host's `onFeedback`; without it, no feedback is offered.
+- **Writes other than a question are the host's.** Feedback goes to the host's `onFeedback`, with the answer's `runId` (genki's task id) when genki gave one; without `onFeedback`, no feedback is offered.
 
 ## Why
 

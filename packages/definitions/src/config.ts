@@ -52,7 +52,9 @@ export interface TenantSettings {
 }
 
 export type SettingsResult<T = undefined> =
-  { ok: true; value: T } | { ok: false; errors: ValidationError[] };
+  { ok: true; value: T } | { ok: false; errors: ValidationError[]; operatorOnly?: true };
+
+export type SettingWriter = 'operator' | 'tenant';
 
 export interface SettingsSnapshot {
   defaults: DefaultVersion[];
@@ -260,6 +262,18 @@ export class SettingsRegistry {
     this.#persist((store) => store.saveLock(key, undefined));
   }
 
+  writableBy(key: string, writer: SettingWriter): boolean {
+    return writer === 'operator' || !this.#definition(key)?.operatorOnly;
+  }
+
+  #operatorOnly(key: string): { ok: false; errors: ValidationError[]; operatorOnly: true } {
+    return {
+      ok: false,
+      errors: [{ path: key, message: 'only an operator changes this for an organisation' }],
+      operatorOnly: true,
+    };
+  }
+
   tenant(tenant: string): TenantSettings {
     return structuredClone(this.#tenants.get(tenant) ?? { values: {}, pins: {} });
   }
@@ -273,7 +287,13 @@ export class SettingsRegistry {
     return checked.ok ? [] : [{ path: key, message: checked.reason }];
   }
 
-  setTenant(tenant: string, key: string, value: unknown): SettingsResult {
+  setTenant(
+    tenant: string,
+    key: string,
+    value: unknown,
+    writer: SettingWriter = 'tenant',
+  ): SettingsResult {
+    if (!this.writableBy(key, writer)) return this.#operatorOnly(key);
     const current = this.tenant(tenant);
     if (value === undefined || value === null) {
       if (!this.#definition(key))
@@ -288,7 +308,13 @@ export class SettingsRegistry {
     return { ok: true, value: undefined };
   }
 
-  pin(tenant: string, key: string, version: number | null): SettingsResult {
+  pin(
+    tenant: string,
+    key: string,
+    version: number | null,
+    writer: SettingWriter = 'tenant',
+  ): SettingsResult {
+    if (!this.writableBy(key, writer)) return this.#operatorOnly(key);
     if (!this.#definition(key))
       return { ok: false, errors: [{ path: key, message: `unknown setting ${key}` }] };
     const current = this.tenant(tenant);
@@ -362,7 +388,9 @@ export class SettingsRegistry {
     key: string,
     value: unknown,
     services: ServiceSettings[],
+    writer: SettingWriter = 'tenant',
   ): SettingsResult<{ tenant: SettingChange; services: ServiceImpact[] }> {
+    if (!this.writableBy(key, writer)) return this.#operatorOnly(key);
     if (value !== undefined && value !== null) {
       const errors = this.#checkTenantValue(key, value);
       if (errors.length > 0) return { ok: false, errors };
