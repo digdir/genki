@@ -3653,6 +3653,22 @@ describe('in a host’s preview', () => {
     expect(screen.queryByRole('main')).toBeNull();
   });
 
+  it('titles «Innstillinger» below the host’s own `h1`', async () => {
+    const { api } = fakeApi();
+    render(
+      <Assistant
+        api={api}
+        layout={fromTemplate('knowledge-assistant').layout}
+        service="ka"
+        tenant="digdir"
+        frameWidth={1280}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('link', { name: 'Innstillinger' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Innstillinger' })).toBeTruthy();
+    expect(screen.queryAllByRole('heading', { level: 1 })).toEqual([]);
+  });
+
   it('draws its name as the page’s `h1` on a page of its own', async () => {
     draw(fromTemplate('knowledge-assistant').layout, fakeApi().api);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
