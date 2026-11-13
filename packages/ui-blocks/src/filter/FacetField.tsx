@@ -24,7 +24,7 @@ export interface FieldProps {
   selected: readonly string[];
   /** `said` is for the filter's live region: the change, where u-combobox says nothing. */
   onChange: (values: string[], said?: string) => void;
-  /** One chip for `COMPACT_FROM` or more chosen values too; two or more that are all always are. */
+  /** One chip for `COMPACT_FROM` or more chosen values too; all of two or more listed always are. */
   compact: boolean;
   /** Most values a field may send. */
   max: number;
@@ -80,7 +80,7 @@ export const FacetField = ({
   const labelOf = (value: string) =>
     field.options.find((option) => option.value === value)?.label ?? value;
 
-  // One drawn chip over those per value, «Alle virksomheter» from two; the list still ticks them.
+  // One drawn chip over those per value: «Alle virksomheter», or by flag «12 virksomheter».
   const isCompact = (values: readonly string[]) =>
     showsAsAll(field, values) || (compactChips && values.length >= COMPACT_FROM);
   const compact = isCompact(selected);
@@ -88,7 +88,7 @@ export const FacetField = ({
     ? [
         {
           key: 'chosen',
-          label: allChosen
+          label: showsAsAll(field, selected)
             ? t('filter.compactAll', { field: name })
             : t('filter.compactSome', { count: chosen, field: name }),
           values: selected,

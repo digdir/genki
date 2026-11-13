@@ -563,6 +563,12 @@ describe('a field another field narrows', () => {
       unmount();
     }
   });
+
+  it('keeps a chip per chosen value when another field narrows the list to one of them', () => {
+    const selection = { type: ['Årsrapport'], organisation: ['Nav', 'Skatteetaten'] };
+    render(<Filter fields={narrowed} selection={selection} onChange={() => {}} />);
+    expect(shownChips()).toEqual(['Nav', 'Skatteetaten']);
+  });
 });
 
 describe('what a question is asked with', () => {

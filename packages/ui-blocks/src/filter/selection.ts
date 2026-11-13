@@ -46,9 +46,9 @@ export const everyListed = (field: FilterField, values: readonly string[]) => {
   return field.options.length > 0 && field.options.every((option) => ticked.has(option.value));
 };
 
-/** Whether a field's chosen values show as one «Alle»: two or more, and every value it lists. */
+/** Whether a field's chosen values show as one «Alle»: it lists two or more, and all are ticked. */
 export const showsAsAll = (field: FilterField, values: readonly string[]) =>
-  values.length > 1 && everyListed(field, values);
+  field.options.length > 1 && everyListed(field, values);
 
 /** What a question is asked with: a field with every listed value ticked is left out. */
 export const narrowing = (

@@ -621,6 +621,12 @@ describe('a field with compact chips', () => {
     expect(chips(container)).toEqual(first(5));
   });
 
+  it('counts the chosen values, never «Alle», when another field narrows the list to one of them', () => {
+    const one: FilterField = { ...organisations, options: organisations.options.slice(0, 1) };
+    const { container } = render(<Harness field={one} compact initial={first(6)} />);
+    expect(chips(container)).toEqual(['6 virksomheter']);
+  });
+
   it('removes the whole choice when the one chip is removed', () => {
     const seen: string[][] = [];
     const { container } = render(<Organisations initial={first(12)} seen={seen} />);
