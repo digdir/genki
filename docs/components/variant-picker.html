@@ -40,12 +40,17 @@
             <dl class="facts">
               <dt>UI name</dt>
               <dd>
-                «Variant»: the button says «Variant: Svar med kilder», the list «Velg variant»
+                «Variant»: the button says «Variant: Svar med kilder», and the list is headed by the
+                service's name, or «Velg variant» without one
               </dd>
               <dt>Sits in</dt>
               <dd>The question field, beside the send button</dd>
               <dt>Issue</dt>
-              <dd>None yet</dd>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/227"
+                  >kunnskapsassistenten#227</a
+                >
+              </dd>
               <dt>Code</dt>
               <dd><code>VariantPicker</code> in <code>packages/ui-blocks</code></dd>
               <dt>Made from</dt>
@@ -89,8 +94,12 @@
             <h2>Variants</h2>
             <ul>
               <li>
-                One: a button with no frame and the name of the variant in use, with a list that
-                opens above it.
+                One service: a button with no frame and the name of the variant in use, with a list
+                that opens above it, headed by the service's name.
+              </li>
+              <li>
+                Several services, where the app offers a family of them: each service's name, then
+                its own variants, in the order the services first come.
               </li>
             </ul>
             <h2>Where it goes</h2>
@@ -101,14 +110,21 @@
                 the choice of who answers sits where the question is written, like the model choice
                 in claude.ai. Not in the conversation's head.
               </li>
+              <li>
+                The UI assembly gives each variant its row's <code>_service_title</code> as
+                <code>service</code>.
+              </li>
             </ul>
           </div>
           <div>
             <h2>Props</h2>
             <ul>
               <li>
-                <code>variants</code>: <code>{ id, title, description? }</code> for each variant,
-                from the platform's <code>id</code> and <code>_variant_title</code>.
+                <code>variants</code>: for each variant its <code>id</code>, the platform's
+                <code>id</code>; its <code>title</code>, from <code>_variant_title</code>; a
+                <code>description</code> when there is one; and its <code>service</code>, the
+                service's name from <code>_service_title</code>, which heads its variants in the
+                list.
               </li>
               <li>
                 <code>value</code>: the id of the variant in use. Without it the button says
@@ -124,9 +140,10 @@
                 until hosts have moved.
               </li>
               <li>
-                <code>headingLevel</code>: «Velg variant» as a heading at this level. None by
-                default: the picker sits in another block's slot, the question field, where a
-                heading would break the page's outline. It names the list either way.
+                <code>headingLevel</code>: the list's title, the service's name or «Velg variant»,
+                as a heading at this level. None by default: the picker sits in another block's
+                slot, the question field, where a heading would break the page's outline. The title
+                names its list either way.
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the button and the
@@ -229,9 +246,14 @@
             <h2>What is built</h2>
             <ul>
               <li>
-                A Designsystemet <code>Dropdown</code> of buttons under the heading «Velg variant»,
-                not an ARIA menu: a menu without arrow keys and typeahead is worse than none. The
-                variant in use has <code>aria-current</code> and a check.
+                The service is shown, then its variants: the list is headed by the service's name,
+                and a variant is never drawn as a service of its own, as the frontend contract asks.
+                Variants without a service stand under «Velg variant».
+              </li>
+              <li>
+                A Designsystemet <code>Dropdown</code> of buttons under that title, not an ARIA
+                menu: a menu without arrow keys and typeahead is worse than none. The variant in use
+                has <code>aria-current</code> and a check.
               </li>
               <li>
                 The button's name is «Variant: » and what it shows, so voice control still finds it
@@ -246,6 +268,35 @@
               <li>
                 A long name ends in an ellipsis, so the button never pushes the send button off a
                 phone. A description is shown only when the app has one.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Parity with Kunnskapsassistenten</h2>
+            <p>
+              Drawn side by side on 13 November 2026: kunnskapsassistenten's
+              <code>chat/AgentPicker</code> with its rules in <code>chat.css</code>, from its main
+              at <code>ef434b7a</code>, beside this block, both under kunnskapsassistenten's theme
+              and Designsystemet 1.23.0, in Chrome at 1440 px, with the same two variants, one with
+              a description, and each list opened. 18 elements were compared with their pairs, each
+              on 25 computed properties, its box and its name, role and text: 558 values.
+            </p>
+            <ul>
+              <li>
+                <strong>The same:</strong> the button, the list and every row: sizes, colours,
+                fonts, padding, the check, the description, and where the list opens, above the
+                button and flush with its end.
+              </li>
+              <li>
+                <strong>Decided:</strong> the button's name says «Variant:», not «Agent:», and the
+                list is headed by the service's name instead of «Velg agent», as the frontend
+                contract asks. The heading is no entry in the page's outline unless
+                <code>headingLevel</code> is given.
+              </li>
+              <li>
+                <strong>Different on purpose, with the same result here:</strong> the button is
+                capped at its slot's width, and the list's room is reckoned from the window as 100%,
+                where kunnskapsassistenten used <code>100vw</code>.
               </li>
             </ul>
           </div>

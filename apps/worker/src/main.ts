@@ -67,7 +67,7 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, guardPdfParseLeaks } from '@genai/providers-documents';
 import {
   createTraceExporter,
   langfuseTraceSink,
@@ -118,6 +118,8 @@ import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
+// pdf.js can leave a page's parse error unhandled; that page is already left empty (ADR 0042).
+guardPdfParseLeaks(log);
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
@@ -385,7 +387,10 @@ const knowledgeHandlers =
         },
         // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
-        converter: createLocalConverter(),
+        // A PDF page the text layer cannot read is left empty and logged; the rest of the file is kept.
+        converter: createLocalConverter({
+          onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),
+        }),
         ...(nativeOutputs ? { nativeOutputs } : {}),
         heavy: heavySettings,
         runs: knowledgeRunRecords,

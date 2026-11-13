@@ -8,7 +8,12 @@ import {
   toMarkdown,
 } from '@genai/ingest';
 import { docxBytes } from '@genai/port-blob';
-import { TooManyPagesError, UnsupportedDocumentError, createLocalConverter } from './index.js';
+import {
+  TooManyPagesError,
+  UnsupportedDocumentError,
+  createLocalConverter,
+  readEachPage,
+} from './index.js';
 
 const encoder = new TextEncoder();
 
@@ -159,5 +164,32 @@ describe('local document converter', () => {
     await expect(
       markdownOf(createLocalConverter({ maxPages: 3 }), { name: 'kort.pdf', bytes }),
     ).resolves.toContain('Tre');
+  });
+});
+
+describe('reading a PDF page by page', () => {
+  const broken = new Error('UnknownErrorException: Illegal character: 41');
+
+  it('a PDF page the text layer cannot read is left empty, and the rest of the file is kept', async () => {
+    const reported: [number, unknown][] = [];
+    const pages = await readEachPage(
+      3,
+      async (n) => {
+        if (n === 2) throw broken;
+        return `Side ${n}.`;
+      },
+      (page, error) => reported.push([page, error]),
+    );
+
+    expect(pages).toEqual(['Side 1.', '', 'Side 3.']);
+    expect(reported).toEqual([[2, broken]]);
+  });
+
+  it('a PDF none of whose pages can be read still fails', async () => {
+    await expect(
+      readEachPage(2, async () => {
+        throw broken;
+      }),
+    ).rejects.toBe(broken);
   });
 });
