@@ -627,6 +627,7 @@ const evalRun = (id: string) =>
     status: 'completed',
     startedAt: '2026-10-07T10:00:00.000Z',
     endedAt: '2026-10-07T10:01:00.000Z',
+    testSet: { tenant: digdir, id: 'sett', version: 1 },
     metrics: {},
     byTag: {},
     cases: [],
@@ -658,6 +659,32 @@ describe('eval runs, keys and drafts of an internal service', () => {
     expect(opened.status).toBe(404);
     expect(shown.status).toBe(200);
     expect(compared.status).toBe(404);
+  });
+
+  it('answers 404 to a tenant admin who opens or lists its eval runs in the organisation', async () => {
+    const { send, platform } = await boot();
+    await platform.evalStores.runs.save({
+      run: evalRun('kjoring-1'),
+      tenant: digdir,
+      task: 't1',
+      service: 'smoke',
+    });
+    await platform.evalStores.runs.save({
+      run: evalRun('kjoring-2'),
+      tenant: digdir,
+      task: 't2',
+      service: 'klarsprak',
+    });
+
+    const opened = await send(`/tenants/${digdir}/eval-runs/kjoring-1`, 'eva');
+    const shown = await send(`/tenants/${digdir}/eval-runs/kjoring-2`, 'eva');
+    const listed = (await (await send(`/tenants/${digdir}/eval-runs`, 'eva')).json()) as {
+      data: { id: string }[];
+    };
+
+    expect(opened.status).toBe(404);
+    expect(shown.status).toBe(200);
+    expect(listed.data.map((run) => run.id)).toEqual(['kjoring-2']);
   });
 
   it('answers a tenant admin at a path with no route the same as for an unknown id', async () => {
