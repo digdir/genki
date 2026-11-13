@@ -9,7 +9,7 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 | Resource                                   | Notes                                                                                                                                                             |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Virtual network                            | `apps` subnet (/23, delegated to Container Apps), `postgres` subnet (delegated to Postgres Flexible Server)                                                       |
-| Container Apps environment                 | The five container apps below, the shared `data` volume, managed certificates                                                                                     |
+| Container Apps environment                 | The six container apps below, the shared `data` volume, managed certificates                                                                                      |
 | Container registry (Basic)                 | No admin user; the apps pull with their identity (AcrPull), the deploy identity pushes (AcrPush)                                                                  |
 | Key Vault                                  | RBAC only, purge protection; the apps read secrets with Key Vault Secrets User                                                                                    |
 | Postgres Flexible Server 17                | Private networking only, Entra ID auth only (no passwords), database `genai`                                                                                      |
@@ -25,15 +25,16 @@ From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server
 
 One `Dockerfile`, three targets:
 
-| Container app          | Target   | Ingress | What it runs                                          |
-| ---------------------- | -------- | ------- | ----------------------------------------------------- |
-| `genai-test-api`       | `api`    | Public  | The API, on `api.genki-test.digdir.cloud`             |
-| `genai-test-worker`    | `worker` | None    | Triggers, ingestion and batch jobs. One replica       |
-| `genai-test-portal`    | `apps`   | Public  | The portal, on `portal.genki-test.digdir.cloud`       |
-| `genai-test-workspace` | `apps`   | Public  | The workspace, on `workspace.genki-test.digdir.cloud` |
-| `genai-test-console`   | `apps`   | Public  | The console, on `console.genki-test.digdir.cloud`     |
+| Container app          | Target   | Ingress            | What it runs                                           |
+| ---------------------- | -------- | ------------------ | ------------------------------------------------------ |
+| `genai-test-api`       | `api`    | Public             | The API, on `api.genki-test.digdir.cloud`              |
+| `genai-test-worker`    | `worker` | None               | Triggers, ingestion and batch jobs. One replica        |
+| `genai-test-portal`    | `apps`   | Public             | The portal, on `portal.genki-test.digdir.cloud`        |
+| `genai-test-workspace` | `apps`   | Public             | The workspace, on `workspace.genki-test.digdir.cloud`  |
+| `genai-test-console`   | `apps`   | Public             | The console, on `console.genki-test.digdir.cloud`      |
+| `genai-test-docling`   | (own)    | Internal TCP, 5001 | PDF conversions, see [Docling server](#docling-server) |
 
-In prod the names are `genai-prod-*` and the host names end in `genki.digdir.cloud`.
+In prod the names are `genai-prod-*` and the host names end in `genki.digdir.cloud`. The Docling server has its own image, from `docker/docling/Dockerfile`.
 
 The `api` and `worker` images hold each package's `dist` and the folders in `docker/runtime-assets`: the files the code reads from disk next to itself, such as eval judges, test sets and the seeded services. A test (`scripts/runtime-assets.test.ts`) fails when the code reads such a folder that is not listed.
 
@@ -42,6 +43,33 @@ They also hold `/app/genki-docs`: the documentation the GenKI guide answers from
 The `apps` image holds all three app builds; `APP` picks which one a container serves. Settings are read at start, not at build: the container writes `/config.js` from its environment (`ANSATTPORTEN_ISSUER`, `OIDC_CLIENT_ID`, `API_AUDIENCE`, `ALTINN_RESOURCE`, `PUBLIC_API_BASE`, `PORTAL_URL`, and for the console `OIDC_ISSUER`, `OIDC_TOKEN_ENDPOINT`, `ENVIRONMENT`), so one image runs in every environment. It proxies `/api/` to the API (`API_UPSTREAM`), so the browser talks to one origin and the API needs no CORS. The proxy drops `/api` and forwards the rest of the request URI as the browser sent it, so encoded slashes in ids such as `digdir%2Fkudos` reach the API still encoded. The Azure ingress in front of the API decodes `%2F` anyway, so the API also accepts these ids with a plain slash (`/operator/datasets/digdir/kudos/pipelines`) and reads them as the encoded form (`apps/api/src/decoded-ids.ts`). It sends a Content Security Policy that allows connections to the login issuer only.
 
 The API writes one JSON line to its console log for each request slower than `SLOW_REQUEST_MS` (500 ms by default): `{"msg":"request","method":"GET","route":"/tenants/:tenant/overview","status":200,"ms":1234}`. It names the route pattern, never the ids in the path or the query string. `LOG_REQUESTS=true` logs every request the same way.
+
+## Docling server
+
+`genai-<env>-docling` converts PDFs for `knowledge.convert` (ADR 0042, issue 476; the worker calls it from issue 477 on). Test and prod alike:
+
+- **Image:** `docker/docling/Dockerfile`, docling-serve 1.38.2's CPU image (Docling 2.142.1, models inside) pinned by digest, plus Tesseract's Norwegian data (tessdata 4.1.0) pinned by checksum. `deploy.yml` builds it with the others and deploys it by digest; prod gets the same digest.
+- **Size:** Consumption, 4 vCPU and 8 GiB a replica, one conversion at a time (one Docling worker, 4 threads), 0 to 8 replicas (`doclingMaxReplicas`). The parser benchmark's rate, 8 Docling processes on 32 vCPUs, was 5,413 pages an hour; 8 replicas are the same 32 vCPUs. Peak memory converting a four-page scan locally was 1.7 GiB.
+- **Reach:** internal TCP ingress on port 5001, so only apps in the environment reach it, and every request but the health routes needs `X-Api-Key`: the Key Vault secret `docling-api-key`, which only the worker (`DOCLING_API_KEY`) and the server get. The worker gets `DOCLING_URL`, `http://<internal address>:5001`. TCP, not HTTP, because HTTP ingress ends a request after 240 s and a conversion takes minutes: the worker holds one request open until Docling answers.
+- **Scale:** from zero, one replica per open connection; with no connection the replicas stop.
+- **Keeps:** no volume; uploads over 1 MB spooled to the replica's `/tmp`, and results in memory, single-use and removed `DOCLING_SERVE_RESULT_REMOVAL_DELAY` (1 s) after they are fetched, while a result never fetched, such as one whose request was cut, stays until the replica stops; `DOCLING_SERVE_LOG_LEVEL=WARNING`. Docling's Tesseract stage logs OCR failures at ERROR with the uploaded file's name and the page; no text. All of it is gone when the replica stops. The API docs, version, capabilities and metrics routes are off.
+
+**Before the first deploy with it,** create the Key Vault secret `docling-api-key` (`openssl rand -base64 32`). The worker and the server read it, and, as for the secrets above, a secret missing behind its name stops the revision from starting: the worker's included.
+
+**Check it** after a deploy, from the worker, with a PDF that takes more than five minutes (an image-only Kudos report of 30 pages or more), so the held connection is shown to last:
+
+```sh
+az containerapp exec -g <resource group> -n genai-<env>-worker \
+  --command "node scripts/docling-check.ts https://kudos.dfo.no/dokument/73b8a416-7746-4816-b7bc-de228880168a/filer/b9e6d79a-a23d-4f4f-bf35-13c61735b173.pdf"
+```
+
+It prints one line for the conversion (`http` 200, `status` `success`, `seconds`, `pages`, `characters`) and one for the same request without the key (`http` 401). A first request after the server was idle also waits for a replica to start. Then, after five minutes with no conversion, `az containerapp replica list -g <resource group> -n genai-<env>-docling` lists none.
+
+Not checked yet, and checked by that first run in test:
+
+- whether a TCP connection that sends nothing while Docling works is cut before Docling answers; the check sends TCP keepalive probes every 30 s, and so must the client of issue 477;
+- how long a replica takes to start in Azure, pulling the 2.2 GB image and loading the models (17 s from a cached image locally);
+- whether the environment's Consumption cores allow 8 Docling replicas (32 vCPUs) beside the other apps.
 
 ## Database
 
@@ -164,6 +192,8 @@ Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an en
 | `typesense-key`               | `TYPESENSE_KEY` (search only) |
 | `colbert-api-key`             | `COLBERT_API_KEY`             |
 
+`docling-api-key` is not in `keyVaultSecretNames`: the template gives it only to the worker (`DOCLING_API_KEY`) and the Docling server (`DOCLING_SERVE_API_KEY`), see [Docling server](#docling-server). Create it like the others.
+
 Create every secret in Key Vault before the first deploy, or remove its name from the parameter file. A name listed without a secret behind it stops the revision from starting. `CONTENT_MASTER_KEY` is 32 random bytes, base64: `openssl rand -base64 32`.
 
 Development mode is off: the image sets `NODE_ENV=production`, and the API refuses `GENAI_DEV_MODE=true` there.
@@ -255,6 +285,7 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
 docker build --target api -t genai-api:local .
 docker build --target worker -t genai-worker:local .
 docker build --target apps -t genai-apps:local .
+docker build -t genai-docling:local docker/docling
 docker/smoke.sh genai-api:local genai-apps:local
 docker run --rm -p 127.0.0.1:18091:8080 -e APP=portal -e API_UPSTREAM=https://api.genki-test.digdir.cloud genai-apps:local
 ```

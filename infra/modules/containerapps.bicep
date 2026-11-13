@@ -14,6 +14,12 @@ param keyVaultSecretNames array
 param apiImage string
 param workerImage string
 param appsImage string
+
+@description('The Docling server image by digest (docker/docling).')
+param doclingImage string
+
+@description('Most Docling replicas at once; each converts one PDF at a time.')
+param doclingMaxReplicas int = 8
 param appVersion string
 param appEnv object
 param identityEnv object
@@ -174,6 +180,15 @@ var knowledgeEnv = empty(knowledge)
     ))
 var knowledgeIdentity = toObject(['api', 'worker'], app => app, app => empty(knowledge) ? {} : { '${knowledge[app].id}': {} })
 
+// The Docling server's key (ADR 0042): only the worker and the server get it, so the API and the web apps, which
+// share the environment and could reach internal ingress, are refused. It is not in keyVaultSecretNames, which
+// every server app gets.
+var doclingKeySecret = {
+  name: 'docling-api-key'
+  keyVaultUrl: '${keyVaultUri}secrets/docling-api-key'
+  identity: identityId
+}
+
 resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   name: '${name}-api'
   location: location
@@ -232,7 +247,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     configuration: {
       activeRevisionsMode: 'Single'
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: secrets
+      secrets: concat(secrets, [doclingKeySecret])
     }
     template: {
       containers: [
@@ -241,7 +256,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
             name: 'worker'
             image: workerImage
             resources: { cpu: json(cpu), memory: memory }
-            env: concat(serverEnv, knowledgeEnv.worker)
+            env: concat(serverEnv, knowledgeEnv.worker, doclingEnv)
             volumeMounts: dataMount
           },
           // 503 until the worker has reached the knowledge server and found it bound to this platform server.
@@ -255,6 +270,79 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     }
   }
 }
+
+// The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
+// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
+// until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
+// connections, from zero. It keeps nothing past a request: no volume, results dropped once fetched, WARNING logs
+// (no file names), and every route but conversion and health off.
+resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
+  name: '${name}-docling'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identityId}': {} }
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: false
+        transport: 'tcp'
+        targetPort: 5001
+        exposedPort: 5001
+      }
+      registries: [{ server: registryServer, identity: identityId }]
+      secrets: [doclingKeySecret]
+    }
+    template: {
+      containers: [
+        {
+          name: 'docling'
+          image: doclingImage
+          resources: { cpu: json('4'), memory: '8Gi' }
+          env: [
+            { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
+            { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
+            { name: 'DOCLING_NUM_THREADS', value: '4' }
+            { name: 'OMP_NUM_THREADS', value: '4' }
+            { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '3600' }
+            { name: 'DOCLING_SERVE_SINGLE_USE_RESULTS', value: 'true' }
+            { name: 'DOCLING_SERVE_RESULT_REMOVAL_DELAY', value: '1' }
+            { name: 'DOCLING_SERVE_SCRATCH_PATH', value: '/tmp/docling' }
+            { name: 'DOCLING_SERVE_LOG_LEVEL', value: 'WARNING' }
+            { name: 'DOCLING_SERVE_ENABLE_UI', value: 'false' }
+            { name: 'DOCLING_SERVE_ENABLE_API_DOCS', value: 'false' }
+            { name: 'DOCLING_SERVE_SHOW_VERSION_INFO', value: 'false' }
+            { name: 'DOCLING_SERVE_ENABLE_CAPABILITIES_ENDPOINT', value: 'false' }
+            { name: 'DOCLING_SERVE_OTEL_ENABLE_METRICS', value: 'false' }
+            { name: 'DOCLING_SERVE_OTEL_ENABLE_PROMETHEUS', value: 'false' }
+          ]
+          probes: [
+            // 503 until the models are loaded
+            { type: 'Startup', httpGet: { path: '/ready', port: 5001 }, periodSeconds: 10, failureThreshold: 30 }
+            { type: 'Readiness', httpGet: { path: '/ready', port: 5001 }, periodSeconds: 10 }
+            { type: 'Liveness', httpGet: { path: '/livez', port: 5001 }, periodSeconds: 30 }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 0
+        maxReplicas: doclingMaxReplicas
+        rules: [{ name: 'connections', tcp: { metadata: { concurrentConnections: '1' } } }]
+      }
+    }
+  }
+}
+
+var doclingUrl = 'http://${docling.properties.configuration.ingress.fqdn}:5001'
+var doclingEnv = [
+  { name: 'DOCLING_URL', value: doclingUrl }
+  { name: 'DOCLING_API_KEY', secretRef: doclingKeySecret.name }
+]
 
 // The principals job (ADR 0042): run by hand, inside the environment's network, the only place the
 // knowledge server can be reached from. The platform side logs in as the app identity, the only one
@@ -400,6 +488,7 @@ output verificationId string = environment.properties.customDomainConfiguration.
 output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
+output doclingName string = docling.name
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn
 output defaultFqdns object = {
