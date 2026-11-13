@@ -20,7 +20,19 @@ const dropPayload = z.union([
   z.strictObject({ tenant, dataset: id }),
   z.strictObject({ tenant, dataset: id, generation: id }),
 ]);
-const convertPayload = z.strictObject({ run: id, tenant, file: sha256 });
+/**
+ * A file to convert, the record whose source fetches it, and every other organisation with a record
+ * waiting on it, comma-separated and starting with its own, so the job's dead letter is shown to
+ * each (ADR 0042, "Jobs"). Job data keeps 128 characters a value, so the list holds 12.
+ */
+const convertPayload = z.strictObject({
+  run: id,
+  tenant,
+  file: sha256,
+  dataset: id,
+  record: id,
+  tenants: z.string().regex(/^(\d{9}|platform)(,(\d{9}|platform))*$/, 'organisation numbers'),
+});
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
 /**
  * A `vacuum` or `index` build that ends an ingestion run names the run, which stays open until the

@@ -2696,6 +2696,8 @@
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
+              "Work knowledge.convert, 2 at once, with the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, and send the waiting records' index jobs (ADR 0042)",
+              'Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
@@ -2721,6 +2723,16 @@
             output: 'Results written back to blob storage',
             replaces: [],
             edges: [
+              {
+                to: 'providers-azure-blob',
+                label: "Writes converters' native output to the Blob container",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/main.ts',
+                  imports: '@genai/providers-azure-blob',
+                },
+              },
               {
                 to: 'port-usage',
                 label: 'Polls usage sources into usage buckets',
@@ -5654,7 +5666,8 @@
               'Source loaders and the ingest pipeline. Document ids are derived with valuehash so they match the ids headless-rag gave the same documents, except folder documents on the knowledge database, whose ids name the owner and a hash of the path from the folder root (ADR 0042).',
             responsibilities: [
               'Kudos, website and folder loaders',
-              'Conversion and chunking',
+              'Conversion and chunking: converters return pages, and chunks on the knowledge database name their file, pages and heading path, with ids from document, file, page and position (ADR 0042)',
+              'Read stored conversions in index jobs instead of converting, and fetch one file of a record for a convert job (storedConverter, Listing.file)',
               'Phrase extraction with a model',
               'The pipeline spec and its sources, shared by the API and the worker',
               {
@@ -5675,6 +5688,9 @@
               'packages/ingest/src/chunking.ts',
               'packages/ingest/src/pipeline-sources.ts',
               'packages/ingest/src/document-records.ts',
+              'packages/ingest/src/converter.ts',
+              'packages/ingest/src/chunk-places.ts',
+              'packages/ingest/src/stored-converter.ts',
             ],
             input: 'Source config',
             output: 'Documents, chunks and phrases',
@@ -8592,6 +8608,7 @@
               'packages/port-knowledge/src/router.ts',
               'packages/port-knowledge/src/catalog.ts',
               'packages/port-knowledge/src/records.ts',
+              'packages/port-knowledge/src/conversions.ts',
               'packages/port-knowledge/src/tombstone.ts',
             ],
             input: 'Query + filters',
@@ -9475,17 +9492,17 @@
             status: 'Provider',
             packages: ['@genai/providers-documents'],
             summary:
-              'Local converter that turns PDF, Word, text and HTML files into markdown for ingestion.',
+              'The text layer - the local converter that turns PDF, Word, text and HTML files into markdown per page for ingestion.',
             description:
-              "Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process. Scanned PDFs without text are refused with a typed error so ingestion can skip them with a reason.",
+              "Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process, and returns a conversion with one page per PDF page and one for other types, named text-layer version 1. A scanned PDF converts to empty pages, which ingestion skips as no_text and the knowledge database stores, so a scan is converted once (ADR 0042).",
             responsibilities: [
-              'PDF text layer to markdown',
+              'PDF text layer to markdown, one page per PDF page',
               'Word to markdown',
               'Size limit and typed refusals',
             ],
             files: ['packages/providers-documents/src/index.ts'],
             input: 'File bytes',
-            output: 'Markdown',
+            output: 'Markdown per page',
             edges: [
               {
                 to: 'ingest',
@@ -10152,7 +10169,8 @@
             responsibilities: [
               'Install, migrate and grant schema pgboss',
               'Send, work, schedule, cancel and redrive jobs',
-              'Queue counts and dead letters behind platform access',
+              'Queue counts and dead letters behind platform access; a job shared by several organisations shows each only its own part',
+              "Jobs by key for the knowledge server - add an organisation, count, cancel and hand over under a conversion's lock",
               "A run's jobs on one server, for the reconciler",
             ],
             files: ['packages/providers-pgboss/src/index.ts'],
@@ -10197,6 +10215,7 @@
               'Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)',
               'A per-generation advisory lock that writers take shared and VACUUM exclusively',
               'Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample',
+              'Stored conversions on the knowledge server - pages per file, converter and derivation, and the records waiting on them (ADR 0042)',
             ],
             files: [
               'packages/providers-pgvector/src/engine.ts',
@@ -10209,6 +10228,7 @@
               'packages/providers-pgvector/src/read-functions.ts',
               'packages/providers-pgvector/src/knowledge-records.ts',
               'packages/providers-pgvector/src/heavy-work.ts',
+              'packages/providers-pgvector/src/knowledge-conversions.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',
