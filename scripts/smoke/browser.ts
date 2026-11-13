@@ -34,7 +34,9 @@ export const playgroundRun = (question: string) => async (page: Page) => {
     .first()
     .click();
   const picker = page.locator('select[id$="-ver"]').first();
-  await picker.waitFor({ timeout: settle });
+  await picker.waitFor({ timeout: settle }).catch(() => {
+    throw new Error('the playground setup shows no version picker for the smoke service');
+  });
   const published = publishedVersionOf(
     await picker.locator('option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value)),
   );
