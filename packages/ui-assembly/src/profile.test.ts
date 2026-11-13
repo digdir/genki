@@ -23,7 +23,44 @@ const layout = { ...emptyLayout, profile: data };
 
 describe('the profile a layout is drawn with', () => {
   it('is the layout’s when the host gives none', () => {
-    expect(profileOf(layout)).toBe(data);
+    expect(profileOf(layout)).toEqual(data);
+  });
+
+  it('draws only a layout’s https links, whether or not the layout was checked', () => {
+    const drawn = profileOf({
+      profile: {
+        corpora: {
+          kudos: {
+            documentLinks: {
+              digits: 'https://kudos.dfo.no/documents/{id}',
+              uuid: 'http://kudos.dfo.no/dokument/{id}',
+              any: 'javascript:alert({id})',
+            },
+          },
+        },
+        experiments: [
+          { id: 'a', title: 'A', href: 'https://example.org/a', hrefLabel: 'Sak A' },
+          { id: 'b', title: 'B', href: 'data:text/html,b', hrefLabel: 'Sak B' },
+        ],
+      },
+    });
+    expect(drawn?.corpora?.kudos?.documentLinks).toEqual({
+      digits: 'https://kudos.dfo.no/documents/{id}',
+    });
+    expect(drawn?.experiments?.map((experiment) => experiment.href)).toEqual([
+      'https://example.org/a',
+      undefined,
+    ]);
+    expect(drawn?.experiments?.[1]?.hrefLabel).toBeUndefined();
+  });
+
+  it('leaves a host’s own links to the host, as before', () => {
+    const host: AssistantProfile = {
+      corpora: { kudos: { documentLinks: { any: 'http://intranet.example/{id}' } } },
+    };
+    expect(profileOf(layout, host)?.corpora?.kudos?.documentLinks).toEqual({
+      any: 'http://intranet.example/{id}',
+    });
   });
 
   it('is the host’s own, the same object, when the layout carries none', () => {

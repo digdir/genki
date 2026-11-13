@@ -214,7 +214,7 @@
                 kind of number, <code>digits</code>, <code>uuid</code> or <code>any</code>, with
                 <code>{id}</code> where the number goes, encoded. A number takes the first that
                 fits, in that order, after the function. Only an http or https address becomes a
-                link, and the builder's checks keep a layout's to https.
+                link, and a layout's only an https one whose host comes before the number.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
@@ -238,10 +238,12 @@
                 first and the layout's <code>documentLinks</code> link what it does not. Without a
                 profile in the layout, the host's is drawn as it is, so a host that passes a full
                 profile draws what it drew. A host with no code profile passes none and draws the
-                layout's. Either way it gives <code>createGenkiApi</code> the same
-                <code>profileOf(layout, own)</code>, so the fields, the collections' names, a stored
-                answer's links and the line under a document's title are in its words. A field the
-                profile does not mark <code>integer</code> is sent as the dataset declares it.
+                layout's. A link or link template in the layout's that is not https, with its host
+                before the number, is left out, checked or not. Either way the host gives
+                <code>createGenkiApi</code> the same <code>profileOf(layout, own)</code>, so the
+                fields, the collections' names, a stored answer's links and the line under a
+                document's title are in its words. A field the profile does not mark
+                <code>integer</code> is sent as the dataset declares it.
               </li>
               <li>
                 <code>now</code>: the clock, for the year a year field runs up to; tests give a

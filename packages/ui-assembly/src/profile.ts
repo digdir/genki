@@ -3,13 +3,14 @@
 // lives. kunnskapsassistenten's own choices are one such profile. A layout may carry the part of
 // it that is data (`ProfileData`), which fills what the host's leaves out; without either, the
 // assembly uses genki's names as they come.
-import type {
-  AssistantLayout,
-  DocumentIdPattern,
-  FieldKind,
-  ProfileData,
-  ShellProfileProps,
-  YearBounds,
+import {
+  isHttpsLink,
+  type AssistantLayout,
+  type DocumentIdPattern,
+  type FieldKind,
+  type ProfileData,
+  type ShellProfileProps,
+  type YearBounds,
 } from '@genai/ui-blocks';
 
 export type { DocumentIdPattern, YearBounds } from '@genai/ui-blocks';
@@ -132,18 +133,45 @@ const corporaOf = (
   ) as AssistantProfile['corpora'];
 };
 
+// A stored layout may not have been checked: only its https links are drawn, as the checks ask.
+const httpsLinks = (data: ProfileData): ProfileData => {
+  const corpora = data.corpora && {
+    corpora: Object.fromEntries(
+      Object.entries(data.corpora).map(([key, corpus]) => [
+        key,
+        corpus.documentLinks
+          ? {
+              ...corpus,
+              documentLinks: Object.fromEntries(
+                Object.entries(corpus.documentLinks).filter(
+                  ([, url]) => url !== undefined && isHttpsLink(url),
+                ),
+              ),
+            }
+          : corpus,
+      ]),
+    ),
+  };
+  const experiments = data.experiments && {
+    experiments: data.experiments.map((experiment) =>
+      experiment.href === undefined || isHttpsLink(experiment.href)
+        ? experiment
+        : { ...experiment, href: undefined, hrefLabel: undefined },
+    ),
+  };
+  return { ...data, ...corpora, ...experiments };
+};
+
 /**
- * The profile a layout is drawn with: the host's, with the layout's own (`layout.profile`) filling
- * what the host leaves out. What the host sets wins whole, such as its list of suggestions or a
- * collection's fields, an empty list too; each collection is filled field by field. Without a
- * profile in the layout, it is the host's as it is.
+ * The profile a layout is drawn with: the host's, the layout's own filling what it leaves out.
+ * What the host sets wins whole, an empty list too; each collection is filled value by value.
  */
 export const profileOf = (
   layout: Pick<AssistantLayout, 'profile'>,
   host?: AssistantProfile,
 ): AssistantProfile | undefined => {
-  const data = layout.profile;
-  if (!data) return host;
+  if (!layout.profile) return host;
+  const data = httpsLinks(layout.profile);
   if (!host) return data;
   const corpora = corporaOf(host.corpora, data.corpora);
   return { ...data, ...set(host), ...(corpora ? { corpora } : {}) };
