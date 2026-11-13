@@ -43,8 +43,8 @@ export interface FilterProps {
   selection: FilterSelection;
   /** Called only when the selection changes. Ask with `narrowing(selection, fields)`. */
   onChange: (selection: FilterSelection) => void;
-  /** The fields could not be fetched. */
-  failed?: boolean | undefined;
+  /** The fields could not be fetched; a string says why, in place of the block's words. */
+  failed?: boolean | string | undefined;
   /** «Prøv igjen» with the error. */
   onRetry?: (() => void) | undefined;
   /** The thread on screen is locked to this filter, so the fields are not drawn. */
@@ -255,7 +255,13 @@ export const Filter = ({
 
         {/* While locked, the fields are not drawn, so a failure to fetch them can wait. */}
         <ErrorRegion
-          message={failed && !locked ? t('filter.failed') : undefined}
+          message={
+            failed && !locked
+              ? typeof failed === 'string'
+                ? failed
+                : t('filter.failed')
+              : undefined
+          }
           onRetry={retry}
           retryRef={retryRef}
         />

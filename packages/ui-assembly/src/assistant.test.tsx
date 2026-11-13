@@ -25,7 +25,13 @@ import { InLocale } from '@genai/i18n/react';
 import { FileSearchIcon } from '@navikt/aksel-icons';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { createGenkiApi, HttpError, type AskParams, type AssistantApi } from './api.js';
+import {
+  createGenkiApi,
+  FACETS_URL_LIMIT,
+  HttpError,
+  type AskParams,
+  type AssistantApi,
+} from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile } from './profile.js';
 import { browserStorage, type AssistantStorage } from './storage.js';
@@ -118,6 +124,18 @@ const fakeApi = (streamed?: AnswerMarker[]) => {
   };
   return { api, asked };
 };
+
+// Two document types, so one chosen narrows: the fake's only type, chosen, is the whole field.
+const twoTypes = async () => [
+  {
+    id: 'type',
+    label: 'Dokumenttyper',
+    options: [
+      { value: 'Årsrapport', count: 3 },
+      { value: 'Tildelingsbrev', count: 2 },
+    ],
+  },
+];
 
 // A wide window: both panels fit beside the main column.
 beforeEach(() => {
@@ -741,6 +759,61 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     expect(kept.get('flags')).toEqual(['year-ranges']);
   });
 
+  it('does not count a field with every value chosen as narrowing, under the answer or in the strip', async () => {
+    const both = () => {
+      const { api } = fakeApi();
+      api.loadFacets = vi.fn(twoTypes);
+      const { storage } = memory();
+      storage.write('filter', { type: ['Årsrapport', 'Tildelingsbrev'] });
+      return { api, storage };
+    };
+    // The field's one chip, «Alle dokumenttyper», once the facets are in.
+    const shown = () => screen.findByText(/Alle dokumenttyper/);
+    const ka = both();
+    const { unmount } = drawKa(ka.storage, kaLayout, ka.api);
+    await shown();
+    await ask();
+    expect(screen.queryByText(/Avgrenset til/)).toBeNull();
+    unmount();
+    const strip = both();
+    drawKa(strip.storage, placeIn(state('sources-only'), 'filter', 'main').layout, strip.api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre' }));
+    await shown();
+    expect(document.querySelector('.uia-filter-strip')?.textContent).not.toMatch(/Avgrenset til/);
+  });
+
+  it('names chosen years as periods, under the answer and in the strip', async () => {
+    const years = () => {
+      const { api } = fakeApi();
+      api.loadFields = vi.fn(async () => [{ id: 'year', label: 'År', kind: 'year' as const }]);
+      api.loadFacets = vi.fn(async () => [
+        {
+          id: 'year',
+          label: 'År',
+          kind: 'year' as const,
+          options: Array.from({ length: 8 }, (_, i) => ({ value: String(2018 + i), count: 1 })),
+        },
+      ]);
+      const { storage } = memory();
+      storage.write('filter', { year: ['2020', '2021', '2022', '2025'] });
+      return { api, storage };
+    };
+    const ka = years();
+    const { unmount } = drawKa(ka.storage, kaLayout, ka.api);
+    await waitFor(() => expect(ka.api.loadFacets).toHaveBeenCalled());
+    await act(async () => {});
+    await ask();
+    expect(screen.getByText('Avgrenset til: 2020–2022 · 2025')).toBeTruthy();
+    unmount();
+    const strip = years();
+    drawKa(strip.storage, placeIn(state('sources-only'), 'filter', 'main').layout, strip.api);
+    await waitFor(() =>
+      expect(document.querySelector('.uia-filter-strip')?.textContent).toContain(
+        'Avgrenset til: 2020–2022 · 2025',
+      ),
+    );
+  });
+
   it('puts the filter over Kilder with the trial «filters-right-panel», and only threads on the left', async () => {
     const { storage } = memory();
     storage.write('flags', ['filters-right-panel']);
@@ -759,12 +832,14 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     storage.write('corpus', 'kudos');
     storage.write('threadFilters', { 't-old': { type: ['Årsrapport'] } });
     const { api } = fakeApi();
+    api.loadFacets = vi.fn(twoTypes);
     drawKa(storage, kaLayout, api);
     // Kept: the facets are asked for the stored filter, without the field that is not all strings.
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
         'kudos',
+        expect.anything(),
         expect.anything(),
       ),
     );
@@ -850,6 +925,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     localStorage.setItem('preview.filter', JSON.stringify({ type: ['Årsrapport'] }));
     localStorage.setItem('preview.flags', JSON.stringify(['filters-right-panel']));
     const { api } = fakeApi();
+    api.loadFacets = vi.fn(twoTypes);
     render(
       <Assistant
         api={api}
@@ -865,6 +941,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
         'kudos',
+        expect.anything(),
         expect.anything(),
       ),
     );
@@ -1764,6 +1841,203 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       expect(columns()).toBeUndefined();
       expect(edge().getAttribute('aria-valuemin')).toBe('660');
       expect(edge().getAttribute('aria-valuenow')).toBe('660');
+    });
+  });
+
+  // As Kudos's «Virksomhet» (457): 300 long names in one address pass Node's 16 KB, answered 431.
+  describe('a field with hundreds of values', () => {
+    const agencies = Array.from(
+      { length: 300 },
+      (_, i) => `Direktoratet for forvaltning og økonomistyring nr. ${i + 1}`,
+    );
+    const types = [
+      { value: 'Årsrapport', count: 3 },
+      { value: 'Tildelingsbrev', count: 2 },
+    ];
+    let sent: string[] = [];
+    const filterOf = (url: string) =>
+      new URL(url, 'http://localhost').searchParams.get('filter') ?? '';
+    /** `answered`: how many requests genki answers before it is unavailable. */
+    const drawWide = (stored?: Record<string, readonly string[]>, answered = Infinity) => {
+      sent = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string) => {
+          const url = String(input);
+          sent.push(url);
+          if (sent.length > answered) return new Response(null, { status: 503 });
+          if (url.length > 16_384)
+            return new Response(null, {
+              status: 431,
+              statusText: 'Request Header Fields Too Large',
+            });
+          const field = new URL(url, 'http://localhost').searchParams.get('fields');
+          const options =
+            field === 'virksomhet' ? agencies.map((value) => ({ value, count: 1 })) : types;
+          return Response.json({ fields: [{ field, options }] });
+        }),
+      );
+      const fake = fakeApi();
+      fake.api.loadFields = vi.fn(async () => [
+        { id: 'type', label: 'Dokumenttyper', heading: 'Dokumenttype' },
+        { id: 'virksomhet', label: 'Virksomheter', heading: 'Virksomhet' },
+      ]);
+      fake.api.loadFacets = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).loadFacets;
+      const kept = new Map<string, unknown>(stored ? [['filter', stored]] : []);
+      render(
+        <Assistant
+          api={fake.api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={{
+            assistantName: 'KA',
+            signedInAs: 'Kari Marie Nordmann',
+            corpora: { kudos: { typeField: 'type' } },
+          }}
+          storage={{
+            read: (key) => kept.get(key),
+            write: (key, value) => void kept.set(key, value),
+            remove: (key) => void kept.delete(key),
+          }}
+          threadInUrl
+        />,
+      );
+      return fake;
+    };
+    afterEach(() => vi.unstubAllGlobals());
+    const failed = () => within(filterPanel()).queryByText('Klarte ikke å hente filtrene.');
+    const row = (name: RegExp) => within(filterPanel()).queryByRole('button', { name });
+    /** The filter has drawn its fields, or said it could not fetch them. */
+    const settled = () => waitFor(() => expect(failed() ?? row(/^Virksomhet /)).toBeTruthy());
+
+    it('leaves a field with every value chosen out of the facets request', async () => {
+      drawWide();
+      fireEvent.click(
+        await within(filterPanel()).findByRole('button', { name: 'Virksomhet Alle' }),
+      );
+      const from = sent.length;
+      await act(async () => {
+        fireEvent.click(
+          within(filterPanel()).getByRole('button', { name: 'Velg alle virksomheter' }),
+        );
+      });
+      await waitFor(() => expect(sent.length).toBeGreaterThanOrEqual(from + 2));
+      await settled();
+      expect(failed()).toBeNull();
+      expect(sent.slice(from).filter((url) => filterOf(url).includes('virksomhet'))).toEqual([]);
+      expect(row(/^Virksomhet Alle/)).toBeTruthy();
+      expect(row(/^Dokumenttype Alle/)).toBeTruthy();
+    });
+
+    it('leaves it out of the question’s filter', async () => {
+      const { asked } = drawWide({ virksomhet: agencies });
+      await settled();
+      await askMore('Hva er fast?');
+      expect(asked).toHaveLength(1);
+      expect(asked[0]?.filters).toBeUndefined();
+    });
+
+    it('keeps every value ticked after a question asked without the field', async () => {
+      const { asked } = drawWide();
+      fireEvent.click(
+        await within(filterPanel()).findByRole('button', { name: 'Virksomhet Alle' }),
+      );
+      await act(async () => {
+        fireEvent.click(
+          within(filterPanel()).getByRole('button', { name: 'Velg alle virksomheter' }),
+        );
+      });
+      await settled();
+      await askMore('Hva er fast?');
+      expect(asked[0]?.filters).toBeUndefined();
+      expect(
+        within(filterPanel()).queryByRole('button', {
+          name: 'Velg alle virksomheter',
+          hidden: true,
+        }),
+      ).toBeNull();
+    });
+
+    it('leaves it out of the question’s filter while the facets cannot be fetched, by the collection’s values', async () => {
+      // The collection's values come back, one request per field; then genki is unavailable.
+      const { asked } = drawWide({ virksomhet: agencies }, 2);
+      await settled();
+      expect(failed()).toBeTruthy();
+      await askMore('Hva er fast?');
+      expect(asked).toHaveLength(1);
+      expect(asked[0]?.filters).toBeUndefined();
+    });
+
+    it('refuses a facets request longer than the server takes, with the error the filter already shows', async () => {
+      // 100 names, as many as genki takes, each long enough that together they pass the limit.
+      const long = Array.from(
+        { length: 100 },
+        (_, i) =>
+          `Direktoratet for forvaltning og økonomistyring, avdeling for samordning nr. ${i}`,
+      );
+      drawWide({ virksomhet: long });
+      await settled();
+      expect(failed()).toBeTruthy();
+      expect(sent.filter((url) => url.length > FACETS_URL_LIMIT)).toEqual([]);
+    });
+
+    // genki's filter takes at most 100 values a field (`maxOptions` in adapter-rest).
+    const leftOut = (filter: string) =>
+      (JSON.parse(filter || '{"fields":[]}') as { fields: Record<string, unknown>[] }).fields.find(
+        (field) => field.field === 'virksomhet',
+      );
+
+    it('asks the facets with more than 100 chosen and at most 100 left out as the values left out', async () => {
+      drawWide({ virksomhet: agencies.slice(1) });
+      await settled();
+      expect(failed()).toBeNull();
+      const asked = sent.filter((url) => filterOf(url).includes('virksomhet'));
+      expect(asked.length).toBeGreaterThan(0);
+      expect(asked.map((url) => leftOut(filterOf(url)))).toEqual(
+        asked.map(() => ({
+          field: 'virksomhet',
+          type: 'not-in-set',
+          'value-type': 'string',
+          'selected-options': [agencies[0]],
+        })),
+      );
+    });
+
+    it('asks the question with them as the values left out', async () => {
+      const { asked } = drawWide({ virksomhet: agencies.slice(1) });
+      await settled();
+      await askMore('Hva er fast?');
+      expect(asked[0]?.filters).toEqual({
+        fields: [
+          {
+            field: 'virksomhet',
+            type: 'not-in-set',
+            'value-type': 'string',
+            'selected-options': [agencies[0]],
+          },
+        ],
+      });
+    });
+
+    const tooMany =
+      'Virksomheter: for mange er valgt. Velg høyst 100, eller alle unntatt høyst 100.';
+
+    it('says why in the filter, and asks nothing with it, when more than 100 are chosen and more than 100 left out', async () => {
+      drawWide({ virksomhet: agencies.slice(0, 150) });
+      expect(await within(filterPanel()).findByText(tooMany)).toBeTruthy();
+      expect(sent.filter((url) => filterOf(url).includes('virksomhet'))).toEqual([]);
+      expect(within(filterPanel()).queryByRole('button', { name: 'Prøv igjen' })).toBeNull();
+    });
+
+    it('fails a question with that filter before sending it, saying why', async () => {
+      const { asked } = drawWide({ virksomhet: agencies.slice(0, 150) });
+      await within(filterPanel()).findByText(tooMany);
+      await askMore('Hva er fast?');
+      expect(asked).toEqual([]);
+      const answer = document.querySelector<HTMLElement>('.uib-answer');
+      expect(answer?.textContent).toContain('Filteret kan ikke brukes');
+      expect(answer?.textContent).toContain(tooMany);
     });
   });
 
@@ -2822,6 +3096,65 @@ describe('the page around the blocks', () => {
     const { result } = renderHook(() => useAssistant(options));
     await waitFor(() => expect(result.current.facts).toBeDefined());
     expect(result.current.level).toBe('standard');
+  });
+
+  it('reads the collection’s values again when the collection changes, so another’s never leave a field out', async () => {
+    const { api } = fakeApi();
+    api.loadFields = vi.fn(async () => [
+      { id: 'type', label: 'Dokumenttyper' },
+      { id: 'year', label: 'År' },
+    ]);
+    // Both chosen types are every type in Kudos, and two of three in the other collection.
+    api.loadFacets = vi.fn(async (_selection: unknown, dataset: string) => [
+      {
+        id: 'type',
+        label: 'Dokumenttyper',
+        options: [
+          ...(dataset === 'kudos' ? [] : [{ value: 'Evaluering', count: 1 }]),
+          { value: 'Årsrapport', count: 3 },
+          { value: 'Tildelingsbrev', count: 2 },
+        ],
+      },
+      { id: 'year', label: 'År', options: [{ value: '2024', count: 5 }] },
+    ]);
+    const kept = new Map<string, unknown>([
+      ['corpus', 'genki-docs'],
+      ['filter', { type: ['Årsrapport', 'Tildelingsbrev'] }],
+    ]);
+    const storage: AssistantStorage = {
+      read: (key) => kept.get(key),
+      write: (key, value) => void kept.set(key, value),
+      remove: (key) => void kept.delete(key),
+    };
+    const ka = state('knowledge-assistant');
+    const setup = (layout: AssistantLayout) => ({
+      api,
+      layout,
+      service: 'ka',
+      tenant: 'digdir',
+      storage,
+    });
+    // Without the choice of collection, the service's own: Kudos.
+    const { rerender } = renderHook((options) => useAssistant(options), {
+      initialProps: setup(withSetting(ka, 'filter', 'corpus', false).layout),
+    });
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        { type: [] },
+        'kudos',
+        expect.anything(),
+        expect.anything(),
+      ),
+    );
+    rerender(setup(ka.layout));
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        { type: ['Årsrapport', 'Tildelingsbrev'] },
+        'genki-docs',
+        expect.anything(),
+        expect.anything(),
+      ),
+    );
   });
 
   it('offers in the picker the variants the facts count, one rule for both', async () => {

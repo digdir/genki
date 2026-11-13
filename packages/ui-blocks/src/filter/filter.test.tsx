@@ -311,6 +311,11 @@ describe('a chosen value no field can show', () => {
       expect(screen.queryByRole('heading', { name: 'Avgrenset til' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Prøv igjen' })).toBeNull();
     });
+
+    it('says the host’s reason in place of its own when it is given one', () => {
+      draw({ failed: 'Virksomheter: for mange er valgt.' });
+      expect(screen.getByRole('alert').textContent).toBe('Virksomheter: for mange er valgt.');
+    });
   });
 });
 

@@ -428,6 +428,25 @@
                 document where the collection declares its number as a filter field.
               </li>
               <li>
+                A filter field with every value chosen, as after «Velg alle», narrows nothing, so it
+                is left out of what goes to genki and of «Avgrenset til». The facets are asked
+                without a field that has every value in the collection chosen, the question without
+                one that has every value it lists chosen. «Avgrenset til» names the values as the
+                filter does, years in a row as one period.
+              </li>
+              <li>
+                genki's filter takes at most 100 values a field. A field with more chosen and at
+                most 100 left out goes as the values left out, <code>not-in-set</code>: by the
+                collection's values for the facets, by the field's list for the question. That keeps
+                documents with no value in the field, and drops a document that has a value left out
+                among several. With more than 100 on both sides, nothing is sent: the filter says
+                so, and a question fails with «Filteret kan ikke brukes» and why.
+              </li>
+              <li>
+                A facets address longer than 8,000 characters is not sent: Node answers 431 past 16
+                KB of headers, so the filter says it could not fetch the fields instead.
+              </li>
+              <li>
                 «Kopier svaret» copies what the screen says, through the answer block's
                 <code>answerCopy</code>. «Kopier lenke til tråden» is offered only where the thread
                 is in the address.
@@ -482,6 +501,11 @@
               <li>
                 Should a question asked in a document be marked in the thread as one, as the
                 canvas's «Spørsmål til én kilde» does?
+              </li>
+              <li>
+                How should a field with more than 100 chosen and more than 100 left out be asked
+                for, such as 200 of Kudos's 457 «Virksomhet»? genki's filter takes neither side, so
+                the filter says so and nothing is sent.
               </li>
               <li>
                 Dokumentvisning's jumps read the shell's pinned height only because the assembly

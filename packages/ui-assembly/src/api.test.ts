@@ -1,7 +1,7 @@
 import type { StreamEvent } from '@genai/client';
 import { readFootnotes } from '@genai/ui-blocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGenkiApi, sourceFromWire } from './api.js';
+import { createGenkiApi, filterSet, FilterTooLarge, sourceFromWire } from './api.js';
 
 // A service that cites excerpts: one document, two excerpts, `[1]` and `[2]` one each.
 const wireSource = {
@@ -346,5 +346,71 @@ describe('the run behind an answer', () => {
     );
     const { turns } = await api().loadThread('t1');
     expect(turns[0]?.answer).not.toHaveProperty('runId');
+  });
+});
+
+// genki's filter takes at most 100 values a field (`maxOptions` in adapter-rest's filters.ts).
+describe('the filter as genki takes it', () => {
+  const names = (count: number, from = 1) =>
+    Array.from({ length: count }, (_, i) => `Virksomhet ${from + i}`);
+  const organisations = [{ id: 'org', label: 'Virksomheter' }];
+  const listed = (id: string, values: readonly string[]) => [
+    { id, label: id, options: values.map((value) => ({ value, count: 1 })) },
+  ];
+
+  it('sends a field with at most 100 chosen as the values chosen', () => {
+    expect(filterSet({ org: names(100) }, organisations, listed('org', names(150)))).toEqual({
+      fields: [
+        {
+          field: 'org',
+          type: 'multiselect',
+          'value-type': 'string',
+          'selected-options': names(100),
+        },
+      ],
+    });
+  });
+
+  it('sends a field with more than 100 chosen and at most 100 left out as the values left out', () => {
+    expect(filterSet({ org: names(101) }, organisations, listed('org', names(150)))).toEqual({
+      fields: [
+        {
+          field: 'org',
+          type: 'not-in-set',
+          'value-type': 'string',
+          'selected-options': names(49, 102),
+        },
+      ],
+    });
+  });
+
+  it('leaves out a year field’s years as integers', () => {
+    const years = Array.from({ length: 150 }, (_, i) => String(1900 + i));
+    expect(
+      filterSet(
+        { year: years.slice(0, 101) },
+        [{ id: 'year', label: 'År', kind: 'year', integer: true }],
+        listed('year', years),
+      ),
+    ).toEqual({
+      fields: [
+        {
+          field: 'year',
+          type: 'not-in-set',
+          'value-type': 'integer',
+          'selected-options': Array.from({ length: 49 }, (_, i) => 2001 + i),
+        },
+      ],
+    });
+  });
+
+  it('refuses a field with more than 100 chosen and more than 100 left out, naming it', () => {
+    expect(() => filterSet({ org: names(101) }, organisations, listed('org', names(202)))).toThrow(
+      new FilterTooLarge('org'),
+    );
+  });
+
+  it('refuses a field with more than 100 chosen when the values it has are not known', () => {
+    expect(() => filterSet({ org: names(101) }, organisations)).toThrow(FilterTooLarge);
   });
 });
