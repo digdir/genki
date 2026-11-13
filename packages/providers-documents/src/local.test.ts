@@ -4,6 +4,8 @@ import {
   NoTextLayerError,
   markerPageSeparator,
   readDocument,
+  textLayer,
+  toMarkdown,
 } from '@genai/ingest';
 import { docxBytes } from '@genai/port-blob';
 import { TooManyPagesError, UnsupportedDocumentError, createLocalConverter } from './index.js';
@@ -46,9 +48,37 @@ const pdfBytes = (pages: string[][]) => {
 
 describe('local document converter', () => {
   const converter = createLocalConverter();
+  const markdownOf = (c: typeof converter, file: Parameters<typeof toMarkdown>[1]) =>
+    toMarkdown(c, file);
+
+  it('the text layer gives one page per PDF page and one for other types', async () => {
+    const pdf = await converter.convert({
+      name: 'arsrapport.pdf',
+      bytes: pdfBytes([['Arsrapport 2025'], [], ['Side tre om budsjett.']]),
+    });
+    expect(pdf).toEqual({
+      pages: ['Arsrapport 2025', '', 'Side tre om budsjett.'],
+      converter: textLayer,
+    });
+    expect(pdf.output).toBeUndefined();
+
+    const docx = await converter.convert({
+      name: 'brev.docx',
+      bytes: docxBytes(['Brev', 'Tekst']),
+    });
+    expect(docx.pages).toEqual(['Brev\n\nTekst']);
+    const md = await converter.convert({ name: 'notat.md', bytes: encoder.encode('# Notat') });
+    expect(md).toEqual({ pages: ['# Notat'], converter: textLayer });
+  });
+
+  it('a PDF without a text layer converts to empty pages, which toMarkdown refuses as NoTextLayerError', async () => {
+    const scan = { name: 'skannet.pdf', bytes: pdfBytes([[], []]) };
+    expect((await converter.convert(scan)).pages).toEqual(['', '']);
+    await expect(markdownOf(converter, scan)).rejects.toBeInstanceOf(NoTextLayerError);
+  });
 
   it('reads the text layer of a PDF and keeps page boundaries like Marker', async () => {
-    const markdown = await converter.toMarkdown({
+    const markdown = await markdownOf(converter, {
       name: 'arsrapport.pdf',
       bytes: pdfBytes([
         ['Arsrapport 2025', 'Direktoratet leverte alle mal.'],
@@ -61,12 +91,6 @@ describe('local document converter', () => {
     expect(pages[0]).toContain('Arsrapport 2025');
     expect(pages[0]).toContain('Direktoratet leverte alle mal.');
     expect(pages[1]).toBe('Side to handler om budsjett.');
-  });
-
-  it('a PDF without a text layer throws NoTextLayerError', async () => {
-    await expect(
-      converter.toMarkdown({ name: 'skannet.pdf', bytes: pdfBytes([[], []]) }),
-    ).rejects.toBeInstanceOf(NoTextLayerError);
   });
 
   it('a PDF without a text layer becomes a no_text skip during ingestion', async () => {
@@ -82,7 +106,7 @@ describe('local document converter', () => {
   });
 
   it('converts DOCX paragraphs to markdown', async () => {
-    const markdown = await converter.toMarkdown({
+    const markdown = await markdownOf(converter, {
       name: 'brev.docx',
       bytes: docxBytes(['Tildelingsbrev 2025', 'Departementet stiller midler til disposisjon.']),
     });
@@ -92,10 +116,10 @@ describe('local document converter', () => {
 
   it('passes text through and cleans HTML', async () => {
     expect(
-      await converter.toMarkdown({ name: 'notat.md', bytes: encoder.encode('# Notat\n\nTekst') }),
+      await markdownOf(converter, { name: 'notat.md', bytes: encoder.encode('# Notat\n\nTekst') }),
     ).toBe('# Notat\n\nTekst');
     expect(
-      await converter.toMarkdown({
+      await markdownOf(converter, {
         name: 'side',
         mimetype: 'text/html; charset=utf-8',
         bytes: encoder.encode('<nav>Meny</nav><main><h1>Side</h1><p>Innhold</p></main>'),
@@ -107,30 +131,33 @@ describe('local document converter', () => {
     const small = createLocalConverter({ maxBytes: 10 });
 
     await expect(
-      small.toMarkdown({ name: 'stor.pdf', bytes: new Uint8Array(11) }),
+      markdownOf(small, { name: 'stor.pdf', bytes: new Uint8Array(11) }),
     ).rejects.toBeInstanceOf(DocumentTooLargeError);
     await expect(
-      converter.toMarkdown({ name: 'budsjett.xlsx', bytes: new Uint8Array(1) }),
+      markdownOf(converter, { name: 'budsjett.xlsx', bytes: new Uint8Array(1) }),
     ).rejects.toBeInstanceOf(UnsupportedDocumentError);
   });
 
   it('refuses a Word file whose zip entries declare more than the unzipped size limit', async () => {
     const bytes = docxBytes(['x'.repeat(5000)]);
     await expect(
-      createLocalConverter({ maxUnzippedBytes: 4000 }).toMarkdown({ name: 'stor.docx', bytes }),
+      markdownOf(createLocalConverter({ maxUnzippedBytes: 4000 }), { name: 'stor.docx', bytes }),
     ).rejects.toBeInstanceOf(DocumentTooLargeError);
     await expect(
-      createLocalConverter({ maxUnzippedBytes: 100_000 }).toMarkdown({ name: 'liten.docx', bytes }),
+      markdownOf(createLocalConverter({ maxUnzippedBytes: 100_000 }), {
+        name: 'liten.docx',
+        bytes,
+      }),
     ).resolves.toContain('xxx');
   });
 
   it('refuses a PDF with more pages than the page limit', async () => {
     const bytes = pdfBytes([['En'], ['To'], ['Tre']]);
     await expect(
-      createLocalConverter({ maxPages: 2 }).toMarkdown({ name: 'lang.pdf', bytes }),
+      markdownOf(createLocalConverter({ maxPages: 2 }), { name: 'lang.pdf', bytes }),
     ).rejects.toBeInstanceOf(TooManyPagesError);
     await expect(
-      createLocalConverter({ maxPages: 3 }).toMarkdown({ name: 'kort.pdf', bytes }),
+      markdownOf(createLocalConverter({ maxPages: 3 }), { name: 'kort.pdf', bytes }),
     ).resolves.toContain('Tre');
   });
 });

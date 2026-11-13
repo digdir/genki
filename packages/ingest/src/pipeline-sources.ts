@@ -5,7 +5,7 @@ import type { BlobInfo, BlobStore } from '@genai/port-blob';
 import { z } from 'zod';
 import type { ChunkDocumentConfig, ChunkStrategy } from './chunk-document.js';
 import type { MetadataStyle } from './chunking.js';
-import type { DocumentConverter } from './converter.js';
+import type { DocumentConverter, DocumentFile } from './converter.js';
 import {
   databaseConnection,
   databaseSource,
@@ -766,7 +766,7 @@ const listingOf = (
   deletes: Listing['deletes'],
   list: () => AsyncIterable<ListedDocument>,
   load: Listing['load'],
-  whole = true,
+  file?: Listing['file'],
 ): Listing => {
   let complete = false;
   return {
@@ -774,11 +774,31 @@ const listingOf = (
     documents: async function* () {
       complete = false;
       yield* list();
-      complete = whole;
+      complete = true;
     },
     complete: () => complete,
     load,
+    ...(file ? { file } : {}),
   };
+};
+
+/** A file whose bytes are no longer the sha256 its record names; the next run lists the new one. */
+export class FileChanged extends Error {
+  override readonly name = 'FileChanged';
+}
+
+/** A file a record names that its source no longer has, or that lies outside the source. */
+export class FileGone extends Error {
+  override readonly name = 'FileGone';
+}
+
+/** A fetched file, refused when it is no longer the file its record names. */
+const sameFile = (file: DocumentFile, sha256: string): DocumentFile => {
+  if (sha256Of(file.bytes) !== sha256)
+    throw new FileChanged(
+      'the file changed since it was listed; the next run converts the new one',
+    );
+  return file;
 };
 
 /**
@@ -817,6 +837,8 @@ export const knowledgeListingOf = async (
       convertibleExtensions(converter).includes(extname(new URL(loc).pathname).toLowerCase())
         ? maxDocumentBytes
         : policy.maxMarkdownBytes;
+    const converts = (loc: string) =>
+      convertibleExtensions(converter).includes(extname(new URL(loc).pathname).toLowerCase());
     const fetchBody = async (entry: SitemapEntry) => {
       try {
         return await guardedFetchBytes(entry.loc, policy, documentLimit(entry.loc), {
@@ -839,7 +861,11 @@ export const knowledgeListingOf = async (
             ? []
             : [
                 await fetchBody(entry).then(
-                  (body) => ({ name: entry.loc, sha256: sha256Of(body.bytes) }),
+                  (body) => ({
+                    name: entry.loc,
+                    sha256: sha256Of(body.bytes),
+                    ...(converts(entry.loc) ? { converts: true } : {}),
+                  }),
                   (error: unknown) => {
                     if (error instanceof PageGone) return { name: entry.loc };
                     throw error;
@@ -859,12 +885,26 @@ export const knowledgeListingOf = async (
           }),
           'the page',
         ),
+      async (record, sha256) => {
+        const entry = record as unknown as SitemapEntry;
+        const body = await fetchBody(entry);
+        return sameFile(
+          {
+            name: new URL(entry.loc).pathname,
+            bytes: body.bytes,
+            ...(body.contentType ? { mimetype: body.contentType } : {}),
+          },
+          sha256,
+        );
+      },
     );
   }
   if (source.kind === 'folder') {
     const root = inside(options.folderRoot ?? '', source.path);
     if (!options.folderRoot || !root) throw new Error('the folder is not allowed');
     const name = (path: string) => relative(root, path).split(sep).join('/');
+    const converts = (path: string) =>
+      convertibleExtensions(converter).includes(extname(path).toLowerCase());
     const fromRoot = resolve(options.folderRoot);
     const idOf = (path: string) =>
       folderDocumentId(scope.owner, relative(fromRoot, path).split(sep).join('/'));
@@ -891,13 +931,24 @@ export const knowledgeListingOf = async (
             id: idOf(entry.path),
             record: { path: entry.path, lastmod: entry.lastmod },
             metadata: { path: name(entry.path) },
-            files: [{ name: name(entry.path), sha256: sha256Of(await readFile(entry.path)) }],
+            files: [
+              {
+                name: name(entry.path),
+                sha256: sha256Of(await readFile(entry.path)),
+                ...(converts(entry.path) ? { converts: true } : {}),
+              },
+            ],
           };
       },
       (record) => {
         const path = String(record.path);
         if (!inside(root, path)) throw new Error('the file lies outside the folder');
         return firstDocument(folder({ path, lastmod: String(record.lastmod) }), 'the file');
+      },
+      async (record, sha256) => {
+        const path = String(record.path);
+        if (!inside(root, path)) throw new FileGone('the file lies outside the folder');
+        return sameFile({ name: name(path), bytes: await readFile(path) }, sha256);
       },
     );
   }
@@ -914,7 +965,15 @@ export const knowledgeListingOf = async (
             id: uploadDocumentId(scope.tenant, info.path),
             record: { ...info },
             metadata: { path: name, contentType: info.contentType },
-            files: [{ name, sha256: info.sha256 }],
+            files: [
+              {
+                name,
+                sha256: info.sha256,
+                ...(convertibleExtensions(converter).includes(extname(name).toLowerCase())
+                  ? { converts: true }
+                  : {}),
+              },
+            ],
           };
         }
       },
@@ -930,6 +989,17 @@ export const knowledgeListingOf = async (
             ...(converter ? { converter } : {}),
           }),
           'the upload',
+        );
+      },
+      async (record, sha256) => {
+        const info = record as unknown as BlobInfo;
+        if (info.tenant !== scope.tenant || !info.path.startsWith(prefix))
+          throw new FileGone('the upload lies outside its dataset');
+        const blob = await uploads.get(info);
+        if (!blob) throw new FileGone('the upload is gone');
+        return sameFile(
+          { name: info.path.slice(prefix.length), bytes: blob.body, mimetype: info.contentType },
+          sha256,
         );
       },
     );
@@ -960,6 +1030,8 @@ export const knowledgeListingOf = async (
           files: (files ?? []).map((f) => ({
             name: f.uuid ?? f.url,
             ...(f.sha256 ? { sha256: f.sha256 } : {}),
+            // A file KUDOS lists as too large is never downloaded, so it gets no convert job.
+            ...(f.sha256 && Number(f.size ?? 0) <= maxDocumentBytes ? { converts: true } : {}),
           })),
           ...(earlierIds && earlierIds.length > 0 ? { earlierIds } : {}),
         };
@@ -967,6 +1039,31 @@ export const knowledgeListingOf = async (
     },
     // Every page came back and every search reached its total (a listing from a later page never does).
     complete: listing.complete,
+    file: async (record, sha256) => {
+      const file = ((record as KudosDocument).files ?? []).find((f) => f.sha256 === sha256);
+      if (!file) throw new FileGone('the document no longer lists the file');
+      const bytes = await fetchKudosFile(file, (url) =>
+        kudosDownload(
+          limiter,
+          async () =>
+            (
+              await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
+                ...options.web,
+                signal,
+                ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
+              })
+            ).bytes,
+        ),
+      );
+      return sameFile(
+        {
+          name: file.url.split('/').pop() ?? `${sha256}.pdf`,
+          bytes,
+          ...(file.mimetype ? { mimetype: file.mimetype } : {}),
+        },
+        sha256,
+      );
+    },
     load: async (record) => {
       const doc = await firstDocument(
         kudosSource({

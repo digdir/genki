@@ -4,6 +4,8 @@ import {
   markerConverter,
   markerPageSeparator,
   markerRetryDelaysMs,
+  onePage,
+  toMarkdown,
   type DocumentConverter,
 } from './index.js';
 
@@ -36,7 +38,7 @@ describe('Marker conversion', () => {
     const sleeps: number[] = [];
     const { converter, calls } = marker([429, 502, 503], sleeps);
 
-    expect(await converter.toMarkdown(file)).toBe(`Side 1${markerPageSeparator}Side 2`);
+    expect(await toMarkdown(converter, file)).toBe(`Side 1${markerPageSeparator}Side 2`);
     expect(sleeps).toEqual(markerRetryDelaysMs.slice(0, 3));
     expect(markerRetryDelaysMs).toEqual([
       60_000, 600_000, 1_800_000, 3_600_000, 7_200_000, 86_400_000,
@@ -46,8 +48,8 @@ describe('Marker conversion', () => {
 
   it('gives up at once on other statuses and when the configured ladder is spent', async () => {
     const sleeps: number[] = [];
-    await expect(marker([500], sleeps).converter.toMarkdown(file)).rejects.toThrow(/HTTP 500/);
-    await expect(marker([503, 503], sleeps, [5]).converter.toMarkdown(file)).rejects.toThrow(
+    await expect(toMarkdown(marker([500], sleeps).converter, file)).rejects.toThrow(/HTTP 500/);
+    await expect(toMarkdown(marker([503, 503], sleeps, [5]).converter, file)).rejects.toThrow(
       /HTTP 503/,
     );
     expect(sleeps).toEqual([5]);
@@ -56,9 +58,9 @@ describe('Marker conversion', () => {
   it('sends PDF files to Marker and other documents to the local converter', async () => {
     const seen: string[] = [];
     const named = (label: string): DocumentConverter => ({
-      toMarkdown: async (f) => {
+      convert: async (f) => {
         seen.push(`${label}:${f.name}`);
-        return label;
+        return onePage(label);
       },
     });
     const converter = byExtension([
@@ -66,9 +68,9 @@ describe('Marker conversion', () => {
       { converter: named('local'), extensions: ['.docx'] },
     ]);
 
-    await converter.toMarkdown(file);
-    await converter.toMarkdown({ name: 'notat.docx', bytes: new Uint8Array() });
-    await converter.toMarkdown({
+    await converter.convert(file);
+    await converter.convert({ name: 'notat.docx', bytes: new Uint8Array() });
+    await converter.convert({
       name: 'uten-endelse',
       bytes: new Uint8Array(),
       mimetype: 'application/pdf',

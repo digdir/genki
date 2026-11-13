@@ -165,7 +165,12 @@ var knowledgeEnv = empty(knowledge)
         { name: 'KNOWLEDGE_PGUSER', value: knowledge[app].name }
         { name: 'KNOWLEDGE_AZURE_CLIENT_ID', value: knowledge[app].clientId }
       ],
-      app == 'worker' ? [{ name: 'KNOWLEDGE_VCORES', value: string(knowledge.vcores) }] : []
+      app == 'worker'
+        ? [
+            { name: 'KNOWLEDGE_VCORES', value: string(knowledge.vcores) }
+            { name: 'CONVERSIONS_BLOB_URL', value: knowledge.conversionsUrl }
+          ]
+        : []
     ))
 var knowledgeIdentity = toObject(['api', 'worker'], app => app, app => empty(knowledge) ? {} : { '${knowledge[app].id}': {} })
 

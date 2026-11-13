@@ -130,14 +130,14 @@
                 <code>foot</code> and <code>footPinned</code>, <code>railFoot</code> (what the
                 folded panel shows at its bottom, such as the reader's avatar; not in the top row),
                 <code>rail</code> (what the folded panel shows under its button, such as a button
-                per tool that opens the panel on it, dev-verktoy-4; not in the top row or a drawer),
-                <code>title</code> (the panel's visible name, an <code>h2</code> on its row:
-                «Tråder», «Verktøy»), <code>size</code> (<code>width</code>, <code>minWidth</code>,
-                <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>. A
-                host may change a panel's <code>size</code> while the page is open, as the next
-                look's primary panel goes from the threads with their filter to the settings menu:
-                the panel is then drawn within its new floor and ceiling, and the width it had comes
-                back with its old size.
+                per tool that opens the panel on it, dev-verktoy-4, on a drawer's rail too; not in
+                the top row), <code>title</code> (the panel's visible name, an <code>h2</code> on
+                its row: «Tråder», «Verktøy»), <code>size</code> (<code>width</code>,
+                <code>minWidth</code>, <code>maxWidth</code>), <code>defaultCollapsed</code> and
+                <code>landmark</code>. A host may change a panel's <code>size</code> while the page
+                is open, as the next look's primary panel goes from the threads with their filter to
+                the settings menu: the panel is then drawn within its new floor and ceiling, and the
+                width it had comes back with its old size.
               </li>
               <li>
                 <code>companion</code>: a second column in the panel's card, towards the main
@@ -219,10 +219,13 @@
                 <code>organisation</code> at the top; then <code>settings</code> («Innstillinger»),
                 <code>feedback</code> («Gi tilbakemelding»), <code>changelog</code> («Endringslogg»,
                 with a dot when <code>news</code>), <code>about</code> («Om tjenesten») and
-                <code>contact</code> («Kontakt {to}»), with Aksel's icons; a line; and
-                <code>signOut</code> («Logg ut», a link, with <code>onSignOut</code> first). Each
-                entry is an <code>href</code>, an <code>onSelect</code> or both; one the host does
-                not give is not drawn. There is no cog. Nothing is drawn without a name.
+                <code>contact</code> («Kontakt {to}»), with Aksel's icons; then <code>extra</code>,
+                the host's own entries in its order, each with an <code>id</code>, its own
+                <code>label</code> in the reader's language and an optional <code>icon</code>,
+                hidden from screen readers; a line; and <code>signOut</code> («Logg ut», a link,
+                with <code>onSignOut</code> first). Each entry is an <code>href</code>, an
+                <code>onSelect</code> or both; one the host does not give, or one with neither, is
+                not drawn. There is no cog. Nothing is drawn without a name.
               </li>
             </ul>
             <h2>Related</h2>
@@ -273,14 +276,16 @@
               <li>
                 <strong>One panel below 1440:</strong> where both do not fit, opening one folds the
                 other, and a window that shrinks past 1440 folds the secondary panel. Growing back
-                opens nothing (14 September).
+                opens it again, unless the reader opened or folded a panel in the meantime (12
+                November; until then growing back opened nothing).
               </li>
               <li>
                 <strong>Drawers below 1139:</strong> both panels stand as rails, and an open panel
                 is Designsystemet's modal <code>Dialog</code> over the main column, in from its own
                 edge, at the design's width and never wider than the window: focus is trapped,
                 Escape closes it, focus goes back, and it has «Lukk …». Entering drawer mode folds
-                both, so nothing opens over the answer by itself (17 September).
+                both, so nothing opens over the answer by itself (17 September); leaving it opens
+                again what it folded, where only one fits the one that does not yield (12 November).
               </li>
               <li>
                 <strong>The top row below 774</strong> (kunnskapsassistenten#120): two rails and a

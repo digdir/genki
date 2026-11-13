@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-12: only operators change the limits Digdir sets
+
+- `PUT` and `DELETE /tenants/{tenant}/settings/{key}`, `PUT /tenants/{tenant}/pins/{key}` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:operator-only-setting` when someone other than an operator in a support session sets, removes or pins `usage.monthlyTokens`, `usage.tenantCallsPerMinute`, `assistant.dailyTokens` or `batch.approvalLimitNok` for a tenant. A dry run of `PUT /tenants/{tenant}/settings/{key}` or of the import answers the same 403. Importing a bundle that keeps a limit at its current value is fine.
+- `GET /settings` marks these settings with `operatorOnly: true`. Reading the effective value is unchanged.
+
 ### 2026-11-11: no ingest date as a publish date
 
 - A source without a known publish date has no `published_at` (`publishedAt` in the native and table shapes) on `/v1/chat/completions` and its table cells, in MCP `structuredContent` and in a step flow's document list. It used to carry the date the document was indexed. The field was already optional, so the shape is unchanged.

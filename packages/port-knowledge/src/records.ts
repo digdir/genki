@@ -15,6 +15,8 @@ export interface ListedFile {
   name: string;
   /** The hash the source lists for the file, when it lists one without a download. */
   sha256?: string;
+  /** A file a converter reads, so it gets a stored conversion; HTML and plain text do not. */
+  converts?: boolean;
 }
 
 /** One document as its source lists it, before anything is fetched. */
@@ -82,10 +84,15 @@ export interface IndexRecord {
   state: OwnedRecord['state'];
   change: number;
   gone: number;
+  /** The record's files as its listing named them, when the store reads them. */
+  files?: ListedFile[];
 }
 
-/** `checked`: a re-checked page that still answered, left as the generation holds it. */
-export type IndexOutcome = 'stored' | 'skipped' | 'deleted' | 'checked';
+/**
+ * `checked`: a re-checked page that still answered, left as the generation holds it. `waiting`: a
+ * file had no stored conversion, so the record waits on its convert job and nothing was written.
+ */
+export type IndexOutcome = 'stored' | 'skipped' | 'deleted' | 'checked' | 'waiting';
 
 /**
  * A writer that cannot get its generation's lock, because VACUUM holds it or waits for it: the

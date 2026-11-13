@@ -94,13 +94,15 @@
               </li>
               <li>
                 <strong>The design's list</strong> (<code>variant="nav"</code>, the dev-trader
-                board): titles in the text colour on up to two lines, with no time; the open row on
-                the host colour's tinted background, in that colour's text; the group names small
-                and grey, <code>--ds-size-6</code> above them; «Ny tråd» across the panel, its words
-                alone. A row's «…» stands over the row's end on hover or focus, and always beside it
-                where nothing can hover. A cut title's box opens down over the row, at its width,
-                and moves up as far as it must to stay inside the box the list scrolls in, so it
-                never covers what is pinned under the list, such as the reader at the panel's foot.
+                board): titles in the text colour on one line, the whole title in a box on hover or
+                focus, with no time; the open row on the host colour's tinted background, in that
+                colour's text; the group names small and grey, <code>--ds-size-6</code> above them;
+                «Ny tråd» across the panel, its words alone, in a row of its own that stays in view
+                while the list scrolls under it, a row reached by keyboard stopping below it. A
+                row's «…» stands over the row's end on hover or focus, and always beside it where
+                nothing can hover. A cut title's box opens down over the row, at its width, and
+                moves up as far as it must to stay inside the box the list scrolls in, so it never
+                covers what is pinned under the list, such as the reader at the panel's foot.
               </li>
             </ul>
             <h2>What it does</h2>
@@ -332,6 +334,14 @@
                   <td>gap between the time and the dataset</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-threads-new-band-background</code></td>
+                  <td><code>--ds-color-neutral-surface-default</code></td>
+                  <td>
+                    the band under «Ny tråd» that the list scrolls under (<em>nav</em>), pinned to
+                    neutral as the shell's card is
+                  </td>
+                </tr>
+                <tr>
                   <td><code>--genai-threads-new-font-size</code></td>
                   <td><code>--ds-font-size-3</code></td>
                   <td>«Ny tråd» (<em>nav</em>)</td>
@@ -454,7 +464,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-threads-title-lines</code></td>
-                  <td>2</td>
+                  <td>1</td>
                   <td>the lines a title takes before «…» (<em>nav</em>)</td>
                 </tr>
                 <tr>
