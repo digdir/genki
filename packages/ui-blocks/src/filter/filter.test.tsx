@@ -204,6 +204,16 @@ describe('a chosen value no field can show', () => {
       expect(screen.queryByText('Du kan stille spørsmål uten å avgrense dokumentene.')).toBeNull();
     });
 
+    it('shows a year field’s years as periods, one chip each, and removes a period whole', () => {
+      const years = { type: ['Årsrapport'], year: ['2020', '2021', '2022', '2025'] };
+      const { seen } = draw({ fields: [], initial: years, yearFields: ['year'] });
+      expect(chip('2020–2022')).toBeTruthy();
+      expect(chip('2025')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Fjern filter: 2021' })).toBeNull();
+      fireEvent.click(chip('2020–2022'));
+      expect(seen.at(-1)).toEqual({ type: ['Årsrapport'], year: ['2025'] });
+    });
+
     it('removes one value, keeps the rest, moves focus to the next chip and says what went', () => {
       const { seen, region } = draw({ fields: [], initial: stored });
       const first = chip('Årsrapport');
