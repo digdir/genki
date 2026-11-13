@@ -630,9 +630,8 @@ describe('stored conversions', () => {
   }, 60_000);
 
   it('an error the converter does not name is retried and then dead-lettered, not stored', async () => {
-    // A plain error, a bug and a file the text layer cannot read: none of them says the file is
-    // too large or of a type the converter does not read.
-    const textLayer = createLocalConverter();
+    // A plain error and a bug: neither says the file is too large or of a type the converter does
+    // not read.
     const failures: { name: string; bytes: Uint8Array; convert: DocumentConverter['convert'] }[] = [
       {
         name: 'feil.pdf',
@@ -647,11 +646,6 @@ describe('stored conversions', () => {
         convert: async () => {
           throw new TypeError("Cannot read properties of undefined (reading 'pages')");
         },
-      },
-      {
-        name: 'odelagt.pdf',
-        bytes: encoder.encode('%PDF-1.4 dette er ikke en hel PDF'),
-        convert: (file) => textLayer.convert(file),
       },
     ];
     for (const { name, bytes, convert } of failures) {
@@ -676,37 +670,10 @@ describe('stored conversions', () => {
     }
   }, 120_000);
 
-  it('a file that is too large or of an unsupported type is stored as a failure and not converted again', async () => {
-    const cases: {
-      name: string;
-      bytes: Uint8Array;
-      converter: DocumentConverter;
-      reason: string;
-    }[] = [
-      {
-        name: 'stor.pdf',
-        bytes: pdfBytes([['En fil over grensen for bytes.']]),
-        converter: createLocalConverter({ maxBytes: 10 }),
-        reason: 'too_large',
-      },
-      {
-        name: 'mange-sider.pdf',
-        bytes: pdfBytes([['Side 1.'], ['Side 2.'], ['Side 3.']]),
-        converter: createLocalConverter({ maxPages: 2 }),
-        reason: 'too_large',
-      },
-      {
-        name: 'ukjent.pdf',
-        bytes: pdfBytes([['En type omformeren ikke leser.']]),
-        converter: {
-          extensions: ['.pdf'],
-          convert: async (file) => {
-            throw new UnsupportedDocumentError(file.name);
-          },
-        },
-        reason: 'unsupported_type',
-      },
-    ];
+  /** Converts each file in one dataset, then lists it in another: stored once as its failure. */
+  const storedOnceAsFailure = async (
+    cases: { name: string; bytes: Uint8Array; converter: DocumentConverter; reason: string }[],
+  ) => {
     for (const { name, bytes, converter, reason } of cases) {
       await clearConvertJobs();
       const converted: string[] = [];
@@ -741,6 +708,58 @@ describe('stored conversions', () => {
         expect(rows).toEqual([{ state: 'skipped', reason }]);
       }
     }
+  };
+
+  it('a file that is too large or of an unsupported type is stored as a failure and not converted again', async () => {
+    await storedOnceAsFailure([
+      {
+        name: 'stor.pdf',
+        bytes: pdfBytes([['En fil over grensen for bytes.']]),
+        converter: createLocalConverter({ maxBytes: 10 }),
+        reason: 'too_large',
+      },
+      {
+        name: 'mange-sider.pdf',
+        bytes: pdfBytes([['Side 1.'], ['Side 2.'], ['Side 3.']]),
+        converter: createLocalConverter({ maxPages: 2 }),
+        reason: 'too_large',
+      },
+      {
+        name: 'ukjent.pdf',
+        bytes: pdfBytes([['En type omformeren ikke leser.']]),
+        converter: {
+          extensions: ['.pdf'],
+          convert: async (file) => {
+            throw new UnsupportedDocumentError(file.name);
+          },
+        },
+        reason: 'unsupported_type',
+      },
+    ]);
+  }, 120_000);
+
+  it('a PDF that pdf.js cannot open or that has a password is stored as conversion_failed and not converted again', async () => {
+    await storedOnceAsFailure([
+      {
+        // The text layer's own error for it: pdf.js's InvalidPDFException.
+        name: 'odelagt.pdf',
+        bytes: encoder.encode('%PDF-1.4 dette er ikke en hel PDF'),
+        converter: createLocalConverter(),
+        reason: 'conversion_failed',
+      },
+      {
+        name: 'passord.pdf',
+        bytes: pdfBytes([['Last med passord.']]),
+        converter: {
+          extensions: ['.pdf'],
+          // What pdf.js throws for a PDF that needs a password.
+          convert: async () => {
+            throw Object.assign(new Error('No password given'), { name: 'PasswordException' });
+          },
+        },
+        reason: 'conversion_failed',
+      },
+    ]);
   }, 120_000);
 
   it('a converter that times out or loses its connection is tried again, not stored as a refusal', async () => {

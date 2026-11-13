@@ -257,17 +257,25 @@ const derivationOf = (converter: string) =>
 type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
 type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
 
-/** The converter errors known to be about the file, and the failure each is stored as. */
-const fileRefusals: Readonly<Record<string, 'too_large' | 'unsupported_type'>> = {
+/**
+ * The converter errors known to be about the file, and the failure each is stored as. pdf.js
+ * throws the last two for a PDF it cannot open and one that needs a password: the file's sha256
+ * is checked before converting, so trying the same bytes again would fail the same way.
+ */
+const fileRefusals: Readonly<
+  Record<string, 'too_large' | 'unsupported_type' | 'conversion_failed'>
+> = {
   DocumentTooLargeError: 'too_large',
   TooManyPagesError: 'too_large',
   UnsupportedDocumentError: 'unsupported_type',
+  InvalidPDFException: 'conversion_failed',
+  PasswordException: 'conversion_failed',
 };
 
 /**
  * Why a converter refused a file, when its error is known to be about the file. Every other
- * error, from a bug, a host that timed out or answered with a status, or a file the converter
- * could not read, is not stored: its job is tried again and then dead-lettered.
+ * error, from a bug, a host that timed out or answered with a status, or a Word file the
+ * converter could not read, is not stored: its job is tried again and then dead-lettered.
  */
 const refusalOf = (error: unknown) =>
   error instanceof Error && Object.hasOwn(fileRefusals, error.name)
