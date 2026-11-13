@@ -1,0 +1,208 @@
+{
+ "tests": [
+  {
+   "id": "eras-c083beda-p5-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Proportion of people living on less than $1 a day, 1990 and 2002 (%)",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "rotated",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Latin America and the Carribean",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Overcoming poverty and hunger is possible. In Asia, the reduction in poverty has been dramatic.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Between 1990 and 2002, the number of people living on less than $1 a day was cut by nearly a quarter of a billion.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Source: The U.N. Millennium Development Goals Report 2006",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "cut by nearly a quarter of a billion",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Source: The U.N. Millennium Development Goals Report",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Advisory Services",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Norad’s most important product is the counsel it provides on development issues to the Ministry of Foreign Affairs",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Source: The U.N. Millennium Development Goals Report 2006",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Norad’s most important product is the counsel",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Giving good advice requires Norad to pull together different kinds of expertise.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-c083beda-p5-t11",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Its consulting services cover the preparation, implementation and follow-up of development programmes.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

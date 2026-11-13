@@ -513,6 +513,14 @@ export const createApiClient = ({
         )
       ).data;
     },
+    tasks: async (status: string, signal?: AbortSignal) =>
+      (
+        await call<{ data: RunningTask[] }>(
+          'GET',
+          `/operator/tasks?${new URLSearchParams({ status }).toString()}`,
+          { signal },
+        )
+      ).data,
     cancelTask: (task: string, reason: string) =>
       call<{ task: string; cancelled: boolean }>(
         'POST',

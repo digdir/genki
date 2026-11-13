@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { describe, expect, it } from 'vitest';
+import { onePage } from './converter.js';
 import { documentId } from './ids.js';
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
 import { toIndexDocument } from './index-writer.js';
@@ -155,7 +156,7 @@ describe('knowledge listings', () => {
         );
       }) as typeof fetch,
     };
-    const converter = { toMarkdown: async () => 'tekst' };
+    const converter = { convert: async () => onePage('tekst') };
     const fromThree = await knowledgeListingOf(
       spec({ kind: 'kudos', types: ['Årsrapport'], startingPage: 3 }),
       { kudos, converter },

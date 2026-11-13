@@ -57,6 +57,8 @@ export interface AttachedDocument {
 export interface Source {
   title: string;
   index?: number;
+  /** The document a marker's excerpt is from, when the answer cites excerpts. */
+  document?: string;
   url?: string;
   excerpt?: string;
   version?: string;

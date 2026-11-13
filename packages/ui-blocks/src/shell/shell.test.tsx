@@ -371,13 +371,29 @@ describe('one open panel where both do not fit, below 1440', () => {
     expect([folded(primary()), folded(secondary())]).toEqual([false, true]);
   });
 
-  it('folds the secondary panel when the window shrinks past it, and opens nothing growing back', () => {
+  it('folds the secondary panel when the window shrinks past it, and opens it again growing back', () => {
     draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
     expect(folded(secondary())).toBe(false);
     resizeTo(1300);
     expect(folded(secondary())).toBe(true);
     resizeTo(1600);
-    expect(folded(secondary())).toBe(true);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
+  it('opens nothing growing back that was folded before the window shrank', () => {
+    draw({}, 1600);
+    resizeTo(1300);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, true]);
+  });
+
+  it('keeps what the reader chose while the window was narrow, growing back', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1300);
+    fireEvent.click(button('Vis kilder'));
+    fireEvent.click(button('Skjul kilder'));
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, true]);
   });
 
   it('leaves both open at the breakpoint itself', () => {
@@ -411,6 +427,35 @@ describe('drawers, below 1139', () => {
     expect(within(drawer as HTMLElement).getByRole('link', { name: 'Innstillinger' })).toBeTruthy();
   });
 
+  it('opens again, out of drawer mode, the panels that entering it folded, as far as there is room', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, true]);
+    resizeTo(1300);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, true]);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
+  it('keeps a drawer the reader opened and shut folded out of drawer mode, and opens the other', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    fireEvent.click(button('Vis tråder og filter'));
+    fireEvent.click(button('Skjul tråder og filter'));
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, false]);
+  });
+
+  it('opens nothing more, out of drawer mode where only one fits, beside a drawer the reader opened', () => {
+    draw({ initialLayout: { collapsed: { secondary: false } } }, 1600);
+    resizeTo(1000);
+    fireEvent.click(button('Vis kilder'));
+    resizeTo(1300);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, false]);
+    resizeTo(1600);
+    expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
+  });
+
   it('has no separator: a drawer has no edge to share', () => {
     draw({}, 1000);
     fireEvent.click(button('Vis tråder og filter'));
@@ -424,13 +469,13 @@ describe('drawers, below 1139', () => {
     expect(button('Vis tråder og filter').getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('folds an open panel away when the window shrinks past 1139', () => {
+  it('folds an open panel away when the window shrinks past 1139, and opens it again after', () => {
     draw({}, 1300);
     expect(folded(primary())).toBe(false);
     resizeTo(1000);
     expect(button('Vis tråder og filter')).toBeTruthy();
     resizeTo(1300);
-    expect(button('Vis tråder og filter')).toBeTruthy();
+    expect(button('Skjul tråder og filter')).toBeTruthy();
   });
 });
 

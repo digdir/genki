@@ -1,8 +1,8 @@
 {
   "benchmark": "ingestion/opb",
-  "code": "22198e6fc59e3f59ab0ab806d75e807886eaf4290a760cd7bc750f450c958012",
+  "code": "61a1f962226c5e748feb5e86c71d17fe49aadef674a159ce2a89f7beb5a260b7",
   "git": {
-    "commit": "59b1a619ef733cb62e52aa15135393a696bac212",
+    "commit": "8cf61bdfc6a6d80b2d466304589ed441fa3f700c",
     "dirty": true
   },
   "items": "2b161ec8ed4ddf8eee20fce45a43d201b13102e7794ab1ba1fb2e03e54a46264",
@@ -33,5 +33,5 @@
       "paginate_output": true
     }
   },
-  "time": "2026-10-26T12:46:01+00:00"
+  "time": "2026-11-04T14:36:12+00:00"
 }

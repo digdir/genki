@@ -38,40 +38,44 @@ const counting = (value: () => string) => {
   return { secrets, resolved };
 };
 
-const router = (
+type RouterOptions = ConstructorParameters<typeof EmbeddingRouter>[0];
+
+const routerOptions = (
   url: string,
   options: {
     auth?: Record<string, unknown>;
     modelOptions?: Record<string, unknown>;
     secrets?: SecretResolver;
   } = {},
-) =>
-  new EmbeddingRouter({
-    catalog: {
-      endpoints: {
-        foundry: {
-          baseURL: url,
-          auth: options.auth ?? { kind: 'api-key', header: 'api-key', secret: 'secret://env/key' },
-          families: { openai: '/openai' },
-        },
+): RouterOptions => ({
+  catalog: {
+    endpoints: {
+      foundry: {
+        baseURL: url,
+        auth: options.auth ?? { kind: 'api-key', header: 'api-key', secret: 'secret://env/key' },
+        families: { openai: '/openai' },
       },
-      models: [
-        {
-          id: 'foundry/embed-small',
-          endpoint: 'foundry',
-          deployment: 'text-embedding-3-small-prod',
-          residency: 'eu',
-          apis: { embed: 'openai/embeddings@1' },
-          embed: { dimensions: 3 },
-          options: options.modelOptions ?? {},
-        },
-      ],
     },
-    adapters: [openAiEmbeddings],
-    secrets: options.secrets ?? counting(() => 'test-key').secrets,
-    tokenProviders: { entra: async () => 'entra-token' },
-    maxRetries: 0,
-  });
+    models: [
+      {
+        id: 'foundry/embed-small',
+        endpoint: 'foundry',
+        deployment: 'text-embedding-3-small-prod',
+        residency: 'eu',
+        apis: { embed: 'openai/embeddings@1' },
+        embed: { dimensions: 3 },
+        options: options.modelOptions ?? {},
+      },
+    ],
+  },
+  adapters: [openAiEmbeddings],
+  secrets: options.secrets ?? counting(() => 'test-key').secrets,
+  tokenProviders: { entra: async () => 'entra-token' },
+  maxRetries: 0,
+});
+
+const router = (url: string, options: Parameters<typeof routerOptions>[1] = {}) =>
+  new EmbeddingRouter(routerOptions(url, options));
 
 const ref = { kind: 'embedder', id: 'foundry/embed-small' };
 
@@ -146,12 +150,51 @@ describe('the openai/embeddings@1 adapter', () => {
     [401, 'unauthorized'],
     [400, 'bad_request'],
     [503, 'unavailable'],
+    [408, 'unavailable'],
+    [409, 'unavailable'],
   ])('maps HTTP %i to %s', async (status, code) => {
     const { url } = await fake(() => ({ status, json: { error: { message: 'nei' } } }));
 
     await expect(router(url).open(ref, testContext().ctx).embed(['a'])).rejects.toMatchObject({
       code,
     });
+  });
+
+  it.each([
+    [{ 'retry-after-ms': '1500' }, 1500],
+    [{ 'retry-after': '7' }, 7000],
+    [{}, undefined],
+  ])(
+    'a throttled embedder answers rate_limited with the wait from retry-after-ms or retry-after (%j)',
+    async (headers, wait) => {
+      const { url } = await fake(() => ({
+        status: 429,
+        headers,
+        json: { error: { message: 'nei' } },
+      }));
+
+      const error = await router(url)
+        .open(ref, testContext().ctx)
+        .embed(['a'])
+        .catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ code: 'rate_limited' });
+      expect((error as { retryAfterMs?: number }).retryAfterMs).toBe(wait);
+    },
+  );
+
+  it('an embedder opened with no retries sends a throttled call once', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 429,
+      headers: { 'retry-after-ms': '10' },
+      json: { error: { message: 'nei' } },
+    }));
+    const withRetries = new EmbeddingRouter({ ...routerOptions(url), maxRetries: 2 });
+
+    await expect(
+      withRetries.open(ref, testContext().ctx, { retries: 0 }).embed(['a']),
+    ).rejects.toMatchObject({ code: 'rate_limited' });
+    expect(seen).toHaveLength(1);
   });
 
   it('fails when the endpoint returns vectors of another length than the catalog says', async () => {
