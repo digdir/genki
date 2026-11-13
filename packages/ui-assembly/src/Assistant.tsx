@@ -25,7 +25,6 @@ import {
   EmptyState,
   ErrorState,
   Filter,
-  FilterNext,
   FilterRead,
   NotFoundState,
   Settings,
@@ -60,7 +59,14 @@ import {
   type SourceDocument,
   type SourceTarget,
 } from '@genai/ui-blocks';
-import { ArrowLeftIcon, ChatIcon, FileIcon, FileTextIcon, RobotIcon } from '@navikt/aksel-icons';
+import {
+  ArrowLeftIcon,
+  ChatIcon,
+  FileSearchIcon,
+  FileTextIcon,
+  PlusIcon,
+  RobotIcon,
+} from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -68,6 +74,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
 import { phrase, useT, type AssemblyTranslator } from './i18n.js';
@@ -92,14 +99,21 @@ const sourcesTool = {
 // `compact-filter`: a field's ticks in one column, so the filter fits its narrow panel.
 const oneColumnTicks = { '--genai-filter-checkboxes-columns': '1' } as CSSProperties;
 
+// The next look's footnote marks, 16 px as dev-kilder-hoyre draws them.
+const nextFootnotes = { '--genai-answer-footnote-size': 'var(--ds-size-4)' } as CSSProperties;
+
 // The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
-// Kilder's page. Notater's pencil waits for the block.
+// Kilder's page with a magnifier. Notater's pencil waits for the block.
 const toolIcons: Record<string, ReactNode> = {
   approach: <RobotIcon aria-hidden />,
   chat: <ChatIcon aria-hidden />,
-  sources: <FileIcon aria-hidden />,
+  sources: <FileSearchIcon aria-hidden />,
   'document-view': <FileTextIcon aria-hidden />,
 };
+
+// A plain main-button click is the host's; any other, for a new tab, is the browser's.
+const plainClick = (event: MouseEvent<HTMLAnchorElement>) =>
+  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 // The modifier to name; the shortcut takes both (kunnskapsassistenten's shortcutModifier.ts).
 const modifier = () =>
@@ -413,8 +427,8 @@ export const AssistantView = ({
           loading={a.view === 'loading'}
           assistantName={name}
           answerColor="neutral"
-          // The next look's answer has no card, under the assistant's name (dev-kilder-hoyre).
-          {...(next ? { answerVariant: 'plain' as const } : {})}
+          // The next look's answer has no card and no name over it (dev-kilder-hoyre).
+          {...(next ? { answerVariant: 'plain' as const, answerLabel: false } : {})}
           // The next look names the thread once, in the main card's `h1`.
           {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
@@ -462,7 +476,7 @@ export const AssistantView = ({
         data-start={start || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
-        style={next && !inPanel ? cardGround : undefined}
+        style={next ? { ...nextFootnotes, ...(inPanel ? {} : cardGround) } : undefined}
       >
         {titled ? pageHeading : null}
         {middle}
@@ -511,12 +525,6 @@ export const AssistantView = ({
                 <VariantPicker variants={a.variants} value={a.model} onChange={a.setModel} />
               ) : undefined
             }
-            // What the next question reads from, under the field, beside the filter's panel.
-            {...(filterPanel
-              ? {
-                  note: <FilterNext selection={a.selection} fields={a.facets} count={a.readFrom} />,
-                }
-              : {})}
             // Docked, the field keeps the rest of the column clear of itself (WCAG 2.4.11) with a
             // scroll margin as tall as it, as kunnskapsassistenten does.
             sticky={!start && !inPanel}
@@ -708,15 +716,29 @@ export const AssistantView = ({
             : {}),
         }
       : undefined;
-  // Pinned, so the list scrolls above it and never runs under it (WCAG 2.4.11); on the rail, the
-  // avatar alone.
+  // Pinned, so the list scrolls above it and never runs under it (WCAG 2.4.11). Not on the rail.
   const profileFoot: Partial<ShellPanel> = profile
-    ? {
-        foot: <ShellProfile {...profile} />,
-        footPinned: true,
-        railFoot: <ShellProfile {...profile} compact />,
-      }
+    ? { foot: <ShellProfile {...profile} />, footPinned: true }
     : {};
+
+  // The folded threads panel in the next look: its button, then «Ny tråd» as a plus (dev-navbar).
+  const newThreadRail = (
+    <Tooltip content={t('threads.newThread')} placement="right">
+      <Button asChild data-size="md" icon>
+        <a
+          aria-label={t('threads.newThread')}
+          href={a.hrefOf()}
+          onClick={(event) => {
+            if (!plainClick(event)) return;
+            event.preventDefault();
+            a.newThread();
+          }}
+        >
+          <PlusIcon aria-hidden />
+        </a>
+      </Button>
+    </Tooltip>
+  );
 
   // ── Settings, from the primary panel's foot ──
   const foot =
@@ -769,6 +791,7 @@ export const AssistantView = ({
       children: threadList,
       foot,
       ...nextPrimary,
+      ...(next ? { rail: newThreadRail } : {}),
       // The filter's own panel in the threads' card, 220 + 440 at 1720 as dev-filter-panel draws
       // it: «Filter», «Gjelder neste spørsmål», and the card's button on its row.
       ...(filterPanel
@@ -949,7 +972,7 @@ export const AssistantView = ({
   );
   // The tool is the detailed one, the next look's as the list of the dev-verktoy boards.
   const approachPanel = approachOf(a, a.active?.id, t, 'tool') ?? approachNote;
-  // Each tool's icon, as the dev-verktoy boards draw it, in the switcher and on the folded panel.
+  // Each tool's icon, as the dev-verktoy boards draw it, in the switcher.
   const icon = (id: string) =>
     next ? { icon: toolIcons[id] ?? <FileTextIcon aria-hidden /> } : {};
   const tools: ShellTool[] = [
@@ -1018,25 +1041,6 @@ export const AssistantView = ({
       {...(next ? { headingLevel: 3 as const, variant: 'tinted' as const } : {})}
     />
   ) : null;
-  // The folded panel in the next look: a button per tool under the panel's own (dev-verktoy-4).
-  const toolsRail = next ? (
-    <>
-      {tools.map((tool) => (
-        <Tooltip key={tool.id} content={tool.label} placement="left">
-          <Button
-            aria-label={tool.label}
-            data-color="neutral"
-            data-size="md"
-            icon
-            onClick={() => a.showTool(tool.id)}
-            variant="tertiary"
-          >
-            {tool.icon}
-          </Button>
-        </Tooltip>
-      ))}
-    </>
-  ) : undefined;
   // `filters-right-panel`: the filter over the tools, drawn first and named first, as
   // kunnskapsassistenten's withFiltersBesideSources.
   const secondary: ShellPanel | undefined =
@@ -1067,11 +1071,7 @@ export const AssistantView = ({
           // The next look titles the panel by how many tools it has: the tool's name for one
           // (dev-verktoy-1), else «Verktøy» with the switcher under it; 380 wide.
           ...(next
-            ? {
-                title: singleTool ? singleTool.label : t('shell.tools'),
-                size: { width: 380 },
-                rail: toolsRail,
-              }
+            ? { title: singleTool ? singleTool.label : t('shell.tools'), size: { width: 380 } }
             : {}),
         }
       : undefined;
