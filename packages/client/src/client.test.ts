@@ -170,6 +170,35 @@ describe('@genai/client requests', () => {
     expect(answer.conversationId).toBe('k1');
   });
 
+  it('lists the documents a filter keeps with the dataset, filter, limit and offset in the query', async () => {
+    const page = {
+      documents: [{ id: 'd1', title: 'Tildelingsbrev', fields: { type: 'Tildelingsbrev' } }],
+      found: 12,
+    };
+    const { calls, fetchFn } = recording(() => Response.json(page));
+    const client = createClient({ baseUrl: 'http://api', apiKey: 'k', fetch: fetchFn });
+    const filter = { fields: [selection('type', ['Tildelingsbrev'])] };
+
+    const listed = await client.documents({
+      tenant: 'digdir',
+      datasetConfigKey: 'kudos',
+      filter,
+      limit: 10,
+      offset: 20,
+    });
+
+    const url = new URL(calls[0]?.url ?? '');
+    expect(url.pathname).toBe('/api/documents');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      tenant: 'digdir',
+      'dataset-config-key': 'kudos',
+      filter: JSON.stringify(filter),
+      limit: '10',
+      offset: '20',
+    });
+    expect(listed).toEqual(page);
+  });
+
   it('maps the sources to one document each with indexed excerpts and the task id', async () => {
     const { fetchFn } = recording(
       () =>

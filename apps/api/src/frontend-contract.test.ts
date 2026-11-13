@@ -413,6 +413,7 @@ describe('openapi.json for a frontend', () => {
     ['get', '/api/datasets'],
     ['get', '/api/datasets/{id}'],
     ['get', '/api/facets'],
+    ['get', '/api/documents'],
     ['post', '/api/feedback'],
   ];
 

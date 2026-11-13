@@ -210,7 +210,12 @@ export const channelOf = (pathname: string): ClientChannel | undefined => {
   if (path === '/api/conversations' || path.startsWith('/api/conversations/'))
     return 'conversations';
   if (path === '/api/feedback' || /^\/tasks\/[^/]+\/feedback$/.test(path)) return 'feedback';
-  if (path === '/api/facets' || path === '/api/datasets' || path.startsWith('/api/datasets/'))
+  if (
+    path === '/api/facets' ||
+    path === '/api/documents' ||
+    path === '/api/datasets' ||
+    path.startsWith('/api/datasets/')
+  )
     return 'facets';
   return undefined;
 };

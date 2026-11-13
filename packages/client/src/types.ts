@@ -194,6 +194,27 @@ export interface FacetRequest {
   filter?: FilterSet;
 }
 
+export interface DocumentsRequest {
+  tenant: string;
+  datasetConfigKey: string;
+  filter?: FilterSet;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DatasetDocument {
+  id: string;
+  title?: string;
+  url?: string;
+  /** Only the filter fields the dataset declares. */
+  fields: Record<string, unknown>;
+}
+
+export interface DocumentPage {
+  documents: DatasetDocument[];
+  found?: number;
+}
+
 export interface FeedbackRequest {
   taskId: string;
   rating: 'up' | 'down';

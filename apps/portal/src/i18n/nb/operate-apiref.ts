@@ -228,6 +228,12 @@ export const apirefArea = {
     'ds-facets.p.tenant': 'Eieren av datasettet',
     'ds-facets.p.dataset-config-key': 'Navnet på datasettet',
     'ds-facets.p.fields': 'Felter, skilt med komma',
+    'ds-documents.summary': 'List dokumentene et filter tar med',
+    'ds-documents.desc':
+      'Dokumentene som passer et filter, med tittel, lenke og feltene du kan filtrere på. found er antall treff.',
+    'ds-documents.p.filter': 'Filteret som JSON, det samme som for fasetter',
+    'ds-documents.p.limit': 'Høyst så mange dokumenter, 1 til 100. 50 om det ikke er satt',
+    'ds-documents.p.offset': 'Hopp over så mange dokumenter først, et multiplum av limit',
     'inn-catalog.summary': 'List innstillingene',
     'inn-catalog.desc':
       'Alle innstillingene plattformen har, med type, grenser og hvilke lag som kan endre dem.',

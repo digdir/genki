@@ -2086,6 +2086,7 @@ export const createPlatform = async (input: PlatformInput) => {
       '/api/datasets',
       '/api/datasets/*',
       '/api/facets',
+      '/api/documents',
       '/api/conversations',
       '/api/conversations/*',
       '/tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/proposals',

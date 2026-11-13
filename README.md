@@ -358,13 +358,13 @@ sequenceDiagram
   FE->>API: POST /api/feedback
 ```
 
-| Channel           | Routes                                                                |
-| ----------------- | --------------------------------------------------------------------- |
-| OpenAI-compatible | `GET /v1/models`, `POST /v1/chat/completions`                         |
-| MCP               | `POST /api/mcp`, one tool per variant                                 |
-| A2A               | `GET /a2a`, agent cards, `POST /a2a/:agent`                           |
-| REST              | `/api/datasets`, `/api/facets`, `/api/conversations`, `/api/feedback` |
-| Administration    | Everything else, documented in `/openapi.json` and at `/reference`    |
+| Channel           | Routes                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| OpenAI-compatible | `GET /v1/models`, `POST /v1/chat/completions`                                           |
+| MCP               | `POST /api/mcp`, one tool per variant                                                   |
+| A2A               | `GET /a2a`, agent cards, `POST /a2a/:agent`                                             |
+| REST              | `/api/datasets`, `/api/facets`, `/api/documents`, `/api/conversations`, `/api/feedback` |
+| Administration    | Everything else, documented in `/openapi.json` and at `/reference`                      |
 
 Authentication:
 
