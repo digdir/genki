@@ -14,6 +14,7 @@ description: Source loaders and the ingest pipeline. Document ids are derived wi
 responsibilities:
   - Kudos, website and folder loaders
   - 'Conversion and chunking: converters return pages, and chunks on the knowledge database name their file, pages and heading path, with ids from document, file, page and position (ADR 0042)'
+  - Pages from a DoclingDocument (doclingPages, derivation docling-pages 1), with heading levels from section numbers
   - Read stored conversions in index jobs instead of converting, and fetch one file of a record for a convert job (storedConverter, Listing.file)
   - Phrase extraction with a model
   - The pipeline spec and its sources, shared by the API and the worker
@@ -31,6 +32,7 @@ files:
   - packages/ingest/src/converter.ts
   - packages/ingest/src/chunk-places.ts
   - packages/ingest/src/stored-converter.ts
+  - packages/ingest/src/docling-pages.ts
 input: Source config
 output: Documents, chunks and phrases
 replaces:

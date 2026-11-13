@@ -32,7 +32,7 @@ import {
   type QueueWork,
 } from '@genai/jobs';
 import {
-  acceptedTextLayer,
+  acceptedConverters,
   conversionKey,
   GenerationBusy,
   textLayerDerivation,
@@ -43,6 +43,8 @@ import {
 } from '@genai/port-knowledge';
 import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
 import type { RunProgress } from './run-progress.js';
+import { seedWork } from './conversion-seed.js';
+import type { NativeOutputStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
@@ -78,7 +80,7 @@ export interface KnowledgeHandlerDeps {
       output: Uint8Array,
       pages: number,
     ): Promise<{ path: string }>;
-  };
+  } & Partial<Pick<NativeOutputStore, 'files' | 'read'>>;
   /** How many convert jobs this worker works at once; 2 when left out. */
   convertConcurrency?: number;
   /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
@@ -257,47 +259,26 @@ const derivationOf = (converter: string) =>
 type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
 type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
 
-/** Error codes and names of a converter host that could not answer: tried again, never a refusal. */
-const unavailable = new Set([
-  'AbortError',
-  'TimeoutError',
-  'ECONNRESET',
-  'ECONNREFUSED',
-  'ETIMEDOUT',
-  'EPIPE',
-  'ENOTFOUND',
-  'EAI_AGAIN',
-  'UND_ERR_HEADERS_TIMEOUT',
-  'UND_ERR_BODY_TIMEOUT',
-  'UND_ERR_CONNECT_TIMEOUT',
-  'UND_ERR_SOCKET',
-]);
-
-/** Whether an error, or one it was caused by, says the converter could not be reached or timed out. */
-const hostUnavailable = (error: unknown): boolean => {
-  for (let e = error, depth = 0; e && depth < 5; depth++) {
-    const { name, code, status } = e as { name?: unknown; code?: unknown; status?: unknown };
-    if (typeof status === 'number') return true;
-    if (unavailable.has(String(name)) || unavailable.has(String(code))) return true;
-    if (e instanceof TypeError && e.message === 'fetch failed') return true;
-    e = (e as { cause?: unknown }).cause;
-  }
-  return false;
+/** Converter errors about the file itself, and the failure each is stored as (ADR 0042). */
+const fileRefusals: Readonly<
+  Record<string, 'too_large' | 'unsupported_type' | 'conversion_failed'>
+> = {
+  DocumentTooLargeError: 'too_large',
+  TooManyPagesError: 'too_large',
+  UnsupportedDocumentError: 'unsupported_type',
+  InvalidPDFException: 'conversion_failed',
+  PasswordException: 'conversion_failed',
 };
 
 /**
- * Why a converter refused a file, when it did: its own errors about the file are refusals, kept
- * as such. A converter host that answered with a status, timed out or lost its connection did not
- * refuse the file, so its job is tried again; a refusal is never stored for those.
+ * Why a converter refused a file, when its error is known to be about the file. Every other
+ * error, from a bug, a host that timed out or answered with a status, or a Word file the
+ * converter could not read, is not stored: its job is tried again and then dead-lettered.
  */
-const refusalOf = (error: unknown) => {
-  if (!(error instanceof Error) || hostUnavailable(error)) return undefined;
-  if (error.message.startsWith('the converter made ')) return undefined;
-  if (error.name === 'DocumentTooLargeError' || error.name === 'TooManyPagesError')
-    return 'too_large';
-  if (error.name === 'UnsupportedDocumentError') return 'unsupported_type';
-  return 'conversion_failed';
-};
+const refusalOf = (error: unknown) =>
+  error instanceof Error && Object.hasOwn(fileRefusals, error.name)
+    ? fileRefusals[error.name]
+    : undefined;
 
 /** A file a convert job could not fetch: tried again, never stored as the converter's refusal. */
 class FetchFailed extends Error {
@@ -408,7 +389,7 @@ export const knowledgeWork = (
           // conversion that ended as a dead letter, is ended before the record waits again.
           await conversions.clear(transaction, run.dataset, record);
           let waiting = false;
-          for (const file of await conversions.missing(transaction, record, acceptedTextLayer))
+          for (const file of await conversions.missing(transaction, record, acceptedConverters))
             waiting = (await waitOn(conversions, file.sha256, waiter, transaction)) || waiting;
           return waiting ? undefined : index();
         },
@@ -447,7 +428,7 @@ export const knowledgeWork = (
             run,
             signal,
             conversions
-              ? storedConverter(deps.converter ?? {}, conversions, acceptedTextLayer)
+              ? storedConverter(deps.converter ?? {}, conversions, acceptedConverters)
               : undefined,
           );
           const listing = found.listing;
@@ -592,6 +573,19 @@ export const knowledgeWork = (
     }
   }
 
+  /** The index job of a record whose wait a stored conversion ended. */
+  const sendIndex = (waiter: ConversionWaiter, transaction: RecordTransaction) =>
+    deps.knowledge.send(
+      knowledgeIndexQueue,
+      {
+        run: waiter.run,
+        tenant: waiter.tenant,
+        generation: waiter.generation,
+        record: waiter.record,
+      },
+      { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
+    );
+
   async function convertFile({ job, run, sender, cancelled }: ConvertJob) {
     deps.bound?.();
     const { conversions, converter } = deps;
@@ -601,7 +595,9 @@ export const knowledgeWork = (
     const key = conversionTarget(job.data.file);
     let stored: { pages: string[]; output?: Uint8Array; failure?: string };
     // A conversion stored by an earlier try is not made again: only its waits are ended.
-    const kept = await conversions.find(job.data.file, acceptedTextLayer);
+    const kept = await conversions.find(job.data.file, [
+      { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
+    ]);
     if (kept) stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
     else
       try {
@@ -635,17 +631,7 @@ export const knowledgeWork = (
         ...(output ? { outputPath: output.path } : {}),
         ...(stored.failure ? { failure: stored.failure } : {}),
       },
-      (waiter, transaction) =>
-        deps.knowledge.send(
-          knowledgeIndexQueue,
-          {
-            run: waiter.run,
-            tenant: waiter.tenant,
-            generation: waiter.generation,
-            record: waiter.record,
-          },
-          { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
-        ),
+      sendIndex,
     );
     if (busy.length > 0)
       throw new IndexJobBusy(
@@ -659,6 +645,19 @@ export const knowledgeWork = (
       { ...documentWork(knowledgeIndexQueue), options: documentOptions } as QueueWork,
       ...(deps.conversions
         ? [{ ...convert, options: { concurrency: deps.convertConcurrency ?? 2 } } as QueueWork]
+        : []),
+      ...(deps.conversions && deps.nativeOutputs?.files && deps.nativeOutputs.read
+        ? [
+            seedWork({
+              conversions: deps.conversions,
+              outputs: deps.nativeOutputs as Required<
+                NonNullable<KnowledgeHandlerDeps['nativeOutputs']>
+              >,
+              sendIndex,
+              ...(deps.log ? { log: deps.log } : {}),
+              ...(deps.bound ? { bound: deps.bound } : {}),
+            }),
+          ]
         : []),
     ],
     heavy: [{ ...documentWork(knowledgeFillQueue), options: documentOptions } as QueueWork],
