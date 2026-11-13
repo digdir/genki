@@ -2,15 +2,13 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { AzureCliCredential } from '@azure/identity';
-import { ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import {
   nativeOutputEntry,
   nativeOutputStore,
   type NativeOutputContainer,
   type NativeOutputKey,
 } from '@genai/port-blob';
-import { AzureNativeOutputContainer } from '@genai/providers-azure-blob';
+import { operatorNativeOutputContainer } from '@genai/providers-azure-blob';
 
 // Copies a Docling export (<prefix>/<sha256>/docling.json + done.json) to the native output container; only reads the export.
 const usage = `npx tsx --conditions=source scripts/upload-docling-export.ts --root <export dir> --url <container URL> [--auth login|key] [--limit <n>] [--concurrency <n>] [--dry-run]
@@ -88,13 +86,10 @@ export const parseCount = (value: string, name: string) => {
 };
 
 const containerFor = (url: string, auth: string) => {
-  if (auth === 'key') {
-    const key = process.env.AZURE_STORAGE_KEY;
-    if (!key) throw new Error('--auth key needs AZURE_STORAGE_KEY');
-    const account = new URL(url).hostname.split('.')[0] ?? '';
-    return new ContainerClient(url, new StorageSharedKeyCredential(account, key));
-  }
-  return new ContainerClient(url, new AzureCliCredential());
+  if (auth !== 'key') return operatorNativeOutputContainer(url);
+  const key = process.env.AZURE_STORAGE_KEY;
+  if (!key) throw new Error('--auth key needs AZURE_STORAGE_KEY');
+  return operatorNativeOutputContainer(url, { key });
 };
 
 const retry = async <T>(run: () => Promise<T>, tries = 4): Promise<T> => {
@@ -211,9 +206,7 @@ const main = async () => {
     console.log(JSON.stringify({ ...counts, seconds: Math.round((Date.now() - started) / 1000) }));
   const { counts, problems } = await upload({
     dirs: await listExport(values.root ?? ''),
-    container: values.url
-      ? new AzureNativeOutputContainer(containerFor(values.url, values.auth))
-      : undefined,
+    container: values.url ? await containerFor(values.url, values.auth) : undefined,
     dryRun: values['dry-run'],
     limit: values.limit === undefined ? undefined : parseCount(values.limit, '--limit'),
     concurrency: parseCount(values.concurrency, '--concurrency'),
