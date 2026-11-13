@@ -114,17 +114,18 @@
                 way back to the answer shows Chat's tool again.
               </li>
               <li>
-                <strong>The next look,</strong> a layout from the template
-                <code>knowledge-assistant-next</code>: the shell's cards frame, with no top bar.
-                Every panel is titled alike, «Tråder» and «Verktøy», and the primary panel lands on
-                «Tråder». The thread's title is the page's <code>h1</code> at the top of the main
-                card, where the conversation no longer names it, and the hidden <code>h1</code> with
-                the assistant's name is gone. With a reader in the profile, the reader stands pinned
-                at the primary panel's foot, the shell's <code>ShellProfile</code>, in place of
-                «Innlogget som» and the links: its menu has «Innstillinger», the profile's
-                <code>menu</code> pages and «Logg ut» when the profile gives a sign-out. Without a
-                reader, the links stay. The docked field stands on the card's ground. Every other
-                template draws what it drew before.
+                <strong>The next look,</strong> a layout whose <code>look</code> is
+                <code>next</code>, or one from the template
+                <code>knowledge-assistant-next</code> that names no look: the shell's cards frame,
+                with no top bar. Every panel is titled alike, «Tråder» and «Verktøy», and the
+                primary panel lands on «Tråder». The thread's title is the page's <code>h1</code> at
+                the top of the main card, where the conversation no longer names it, and the hidden
+                <code>h1</code> with the assistant's name is gone. With a reader in the profile, the
+                reader stands pinned at the primary panel's foot, the shell's
+                <code>ShellProfile</code>, in place of «Innlogget som» and the links: its menu has
+                «Innstillinger», the profile's <code>menu</code> pages and «Logg ut» when the
+                profile gives a sign-out. Without a reader, the links stay. The docked field stands
+                on the card's ground. Every other template draws what it drew before.
               </li>
               <li>
                 <strong>The next look's folded panels</strong> (dev-navbar, dev-verktoy-4): the
@@ -175,9 +176,10 @@
               </li>
               <li>
                 <strong>Under the next look's answer</strong>: no follow-up questions over the
-                field, whatever the profile's <code>followUps</code> and Chat's option say, and
-                «Kopier lenke til tråden» with no note that the link works only here: the answer
-                actions' <code>linkOnlyHere</code> is off. The answer's time stays at the row's end.
+                field, whatever the profile's <code>followUps</code> and Chat's option say, since
+                the catalogue keeps that option to the current look, and «Kopier lenke til tråden»
+                with no note that the link works only here: the answer actions'
+                <code>linkOnlyHere</code> is off. The answer's time stays at the row's end.
               </li>
             </ul>
           </div>
@@ -200,6 +202,15 @@
               <li>
                 <code>service</code> and <code>tenant</code>; <code>model</code>, the variant to
                 start from.
+              </li>
+              <li>
+                A collection's document links, for a source that carries none: the profile's
+                <code>documentUrl</code>, a host's function, or its <code>documentLinks</code>, the
+                same as plain data in the host's profile, which nothing stores yet. That is an
+                address per kind of number, <code>digits</code>, <code>uuid</code> or
+                <code>any</code>, with <code>{id}</code> where the number goes, encoded. A number
+                takes the first that fits, in that order, after the function. Only an http or https
+                address becomes a link.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,

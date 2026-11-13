@@ -26,7 +26,7 @@ import {
   sameSelection,
   serviceOf,
   settingsOf,
-  templateLook,
+  lookOf,
   zoneOf,
   zonesOf,
   type AssistantLayout,
@@ -609,7 +609,7 @@ export const useAssistant = ({
   // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
   // of each thread's last question asked here is kept, and opening the thread brings it back.
   // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
-  const look = templateLook(layout.template);
+  const look = lookOf(layout);
   const threadFiltersOn = look === 'next' && filterOn;
   const [threadFilters, setThreadFilters] = useStoredValue(
     storage,
@@ -1123,7 +1123,7 @@ export const useAssistant = ({
   return {
     // what is placed
     layout,
-    // The template's look: `next` draws the dev boards' frame, titles and profile menu.
+    // The layout's look: `next` draws the dev boards' frame, titles and profile menu.
     look,
     facts,
     modelsFailed,
