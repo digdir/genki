@@ -10,6 +10,7 @@ import {
   type DocumentConverter,
   type IndexSink,
   type KudosFile,
+  onePage,
 } from './index.js';
 
 const pdf = new TextEncoder().encode('%PDF-1.7 innhold');
@@ -75,7 +76,7 @@ describe('Kudos file fetch', () => {
 
 describe('Kudos source', () => {
   const converter: DocumentConverter = {
-    toMarkdown: async () => '# Tildelingsbrev\n\nMål og styringsparametere for året.',
+    convert: async () => onePage('# Tildelingsbrev\n\nMål og styringsparametere for året.'),
   };
   const sink = (): IndexSink & { stored: string[] } => {
     const stored: string[] = [];
