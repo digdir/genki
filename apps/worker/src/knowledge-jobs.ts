@@ -54,7 +54,7 @@ export interface WorkerJobServers<Pool> {
   knowledgeRunJobs?: (jobs: RunJobs) => RunJobs;
   onError?: (error: unknown) => void;
   /** Where each failed attempt of a knowledge job is logged. */
-  log?: (msg: string, fields: Record<string, unknown>) => void;
+  log: (msg: string, fields: Record<string, unknown>) => void;
 }
 
 export interface WorkerJobs {
@@ -64,12 +64,24 @@ export interface WorkerJobs {
   runJobs: RunJobs[];
 }
 
-type FailureLog = NonNullable<WorkerJobServers<unknown>['log']>;
+type FailureLog = WorkerJobServers<unknown>['log'];
+
+/**
+ * An error by its name and code, such as SQLSTATE 22021 or ENOENT, never its message: a message can
+ * hold a file path or a URL, and logs name a document only by its record's number (ADR 0042).
+ */
+const errorKind = (error: unknown) => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return {
+    error: error instanceof Error ? error.name : typeof error,
+    ...(typeof code === 'string' || typeof code === 'number' ? { code: String(code) } : {}),
+  };
+};
 
 /**
  * A job queue whose `knowledge.*` handlers log each failed attempt before pg-boss records it on the
- * job (issue 532): the queue, the job id, the attempt, what follows and the error message, never the
- * job's data, so no source id (ADR 0042). Every `work` goes through it, the night window's too.
+ * job (issue 532): the queue, the job id, the attempt, what follows and the error's name and code,
+ * never its message or the job's data, so no source id (ADR 0042). Every `work` goes through it, the night window's too.
  */
 const loggingFailures = (queue: JobQueue, log: FailureLog): JobQueue =>
   new Proxy(queue, {
@@ -93,7 +105,7 @@ const loggingFailures = (queue: JobQueue, log: FailureLog): JobQueue =>
                       job: job.id,
                       attempt: job.retryCount + 1,
                       next: !last ? 'retry' : definition.deadLetter ? 'dead letter' : 'none',
-                      error: error instanceof Error ? error.message : String(error),
+                      ...errorKind(error),
                     });
                     throw error;
                   }
@@ -114,7 +126,7 @@ export const openWorkerJobs = async <Pool>(
   servers: WorkerJobServers<Pool>,
 ): Promise<WorkerJobs> => {
   const onError = servers.onError ? { onError: servers.onError } : {};
-  const logged = (queue: JobQueue) => (servers.log ? loggingFailures(queue, servers.log) : queue);
+  const logged = (queue: JobQueue) => loggingFailures(queue, servers.log);
   const platform = logged(
     await servers.open(
       { owner: servers.platform.owner, runtime: servers.platform.worker },
