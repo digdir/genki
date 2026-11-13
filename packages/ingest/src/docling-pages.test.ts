@@ -5,16 +5,18 @@ type Item = Record<string, unknown> & { self_ref: string };
 
 const height = 800;
 /** A box on a page, its top `top` points from the page's top edge, as Docling writes BOTTOMLEFT boxes. */
-const prov = (page: number, top = 300, lineHeight = 12) => [
+const prov = (page: number, top = 300, lineHeight = 12, fromTop = false) => [
   {
     page_no: page,
-    bbox: {
-      l: 50,
-      t: height - top,
-      r: 300,
-      b: height - top - lineHeight,
-      coord_origin: 'BOTTOMLEFT',
-    },
+    bbox: fromTop
+      ? { l: 50, t: top, r: 300, b: top + lineHeight, coord_origin: 'TOPLEFT' }
+      : {
+          l: 50,
+          t: height - top,
+          r: 300,
+          b: height - top - lineHeight,
+          coord_origin: 'BOTTOMLEFT',
+        },
     charspan: [0, 1],
   },
 ];
@@ -41,7 +43,7 @@ const doc = (pages: number, build: (add: Adder) => void): DoclingDocument => {
         children: [],
         content_layer: options.layer ?? (/page_(header|footer)/.test(label) ? 'furniture' : 'body'),
         label,
-        prov: prov(page, options.top),
+        prov: prov(page, options.top, 12, options.fromTop),
         orig: text,
         text,
       };
@@ -115,7 +117,7 @@ interface Adder {
     label: string,
     text: string,
     page: number,
-    options?: { parent?: string; layer?: string; top?: number },
+    options?: { parent?: string; layer?: string; top?: number; fromTop?: boolean },
   ): string;
   group(label: string, parent?: string): string;
   table(page: number, rows: string[][], parent?: string, headerRows?: number): string;
@@ -381,5 +383,67 @@ describe('docling-pages', () => {
       }),
     );
     expect(pages).toEqual(['Figur 3: Organisasjonskart for direktoratet\n\nDirektør']);
+  });
+
+  it('escapes a backslash and a bar in a table cell', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        add.table(1, [
+          ['Sti', 'Merknad'],
+          ['C:\\data\\', 'a | b'],
+        ]);
+      }),
+    );
+    expect(pages).toEqual(['| Sti | Merknad |\n| --- | --- |\n| C:\\\\data\\\\ | a \\| b |']);
+  });
+
+  it('a lone number at the edge of a page is left out when its box is measured from the top', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        add.text('text', '7', 1, { top: 15, fromTop: true });
+        add.text('text', 'Innhold.', 1, { top: 300, fromTop: true });
+        add.text('text', '8', 1, { top: 780, fromTop: true });
+        add.text('text', '9', 1, { top: 400, fromTop: true });
+      }),
+    );
+    expect(pages).toEqual(['Innhold.\n\n9']);
+  });
+
+  it('numbers the items of an ordered list', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        const list = add.group('ordered_list');
+        add.text('list_item', 'Søk innen 1. mars', 1, { parent: list });
+        add.text('list_item', 'Rapporter året etter', 1, { parent: list });
+      }),
+    );
+    expect(pages).toEqual(['1. Søk innen 1. mars\n2. Rapporter året etter']);
+  });
+
+  it('a list item whose text is an inline group keeps its bullet', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        const list = add.group('list');
+        const item = add.text('list_item', '', 1, { parent: list });
+        const inline = add.group('inline', item);
+        add.text('text', 'Les', 1, { parent: inline });
+        add.text('text', 'veilederen', 1, { parent: inline });
+      }),
+    );
+    expect(pages).toEqual(['- Les veilederen']);
+  });
+
+  it('an inline group inside an inline group keeps its text', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        const outer = add.group('inline');
+        add.text('text', 'Se', 1, { parent: outer });
+        const inner = add.group('inline', outer);
+        add.text('text', 'kapittel', 1, { parent: inner });
+        add.text('text', '3', 1, { parent: inner });
+        add.text('text', 'for detaljer.', 1, { parent: outer });
+      }),
+    );
+    expect(pages).toEqual(['Se kapittel 3 for detaljer.']);
   });
 });

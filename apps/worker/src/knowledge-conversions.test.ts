@@ -189,6 +189,7 @@ interface ScenarioOptions {
   nativeOutputs?: Parameters<typeof knowledgeWork>[0]['nativeOutputs'];
   lockdown?: boolean;
   log?: (msg: string, fields: Record<string, unknown>) => void;
+  bound?: () => void;
 }
 
 /** A folder dataset on the knowledge database whose worker stores conversions. */
@@ -227,6 +228,7 @@ const scenario = async (options: ScenarioOptions = {}) => {
     converter,
     ...(options.nativeOutputs ? { nativeOutputs: options.nativeOutputs } : {}),
     ...(options.log ? { log: options.log } : {}),
+    ...(options.bound ? { bound: options.bound } : {}),
     knowledge: {
       send: async (queue, data, sendOptions) => {
         const id = await knowledgeQueue.send(queue, data, sendOptions);
@@ -1418,6 +1420,64 @@ describe('seeded conversions', () => {
         .filter(Boolean)
         .sort(),
     ).toEqual([notJson, noMeta, wrongCount].sort());
+  }, 60_000);
+
+  it('a seed batch skips a file whose output or meta.json is damaged and seeds the rest', async () => {
+    const blob = seedContainer();
+    const files = Array.from({ length: 6 }, () => shaStarting('e1')).sort();
+    for (const file of files) await blob.put(file, ['Lesbar.']);
+    const [badJson, nullMeta, noSettings, otherSettings, badGzip, good] = files as string[];
+    const metaOf = (sha256: string) => nativeOutputEntry({ sha256, ...docling }).metaPath;
+    const meta = (sha256: string, text: string) =>
+      blob.container.write(metaOf(sha256), encoder.encode(text), 'application/json');
+    await meta(badJson as string, '{"pag');
+    await meta(nullMeta as string, 'null');
+    await meta(noSettings as string, '{"pages":1}');
+    await meta(
+      otherSettings as string,
+      JSON.stringify({ pages: 1, settings: { ocr: 'tesseract' } }),
+    );
+    await blob.container.write(
+      nativeOutputEntry({ sha256: badGzip as string, ...docling }).path,
+      encoder.encode('not gzip'),
+      'application/gzip',
+    );
+    const logged: Record<string, unknown>[] = [];
+    const s = await scenario({
+      nativeOutputs: blob.store,
+      log: (_, fields) => logged.push(fields),
+    });
+
+    await seed(s, 'e1');
+
+    expect(await doclingRows(good as string)).toHaveLength(1);
+    for (const bad of [badJson, nullMeta, noSettings, otherSettings, badGzip] as string[])
+      expect(await doclingRows(bad)).toEqual([]);
+    const skipped = logged.filter((f) => f.sha256);
+    expect(skipped.map((f) => f.sha256)).toEqual([
+      badJson,
+      nullMeta,
+      noSettings,
+      otherSettings,
+      badGzip,
+    ]);
+    expect(skipped.find((f) => f.sha256 === badGzip)?.reason).not.toMatch(/missing/);
+  }, 60_000);
+
+  it('an unbound worker seeds nothing', async () => {
+    const blob = seedContainer();
+    const file = shaStarting('f1');
+    await blob.put(file, ['Ikke ennå.']);
+    const s = await scenario({
+      nativeOutputs: blob.store,
+      bound: () => {
+        throw new Error('the knowledge server is bound to another platform server');
+      },
+    });
+
+    await expect(seed(s, 'f1')).rejects.toThrow('bound to another platform server');
+    expect(await doclingRows(file)).toEqual([]);
+    expect(blob.reads.get(file)).toBeUndefined();
   }, 60_000);
 
   it('sending the seed again while its jobs wait sends no second job', async () => {

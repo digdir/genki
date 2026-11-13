@@ -13,7 +13,6 @@ interface Box {
   t: number;
   r: number;
   b: number;
-  coord_origin?: string;
 }
 
 interface GridCell {
@@ -77,7 +76,7 @@ const numberDepth = (heading: string) => {
 };
 
 const cell = (text: string | undefined) =>
-  (text ?? '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|');
+  (text ?? '').replace(/\s+/g, ' ').trim().replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 
 /**
  * How many leading rows form the column header: the run of rows with a cell marked as one, and no
@@ -143,10 +142,9 @@ export const doclingPages = (document: DoclingDocument): string[] => {
     const first = node.prov?.[0];
     const height = first && heightOf(first.page_no);
     if (!first?.bbox || !height) return false;
-    const { t, b, coord_origin } = first.bbox;
-    const [top, bottom] =
-      coord_origin === 'TOPLEFT' ? [t, b] : [height - Math.max(t, b), height - Math.min(t, b)];
-    return bottom < pageEdge * height || top > (1 - pageEdge) * height;
+    // The two edge bands mirror each other, so a box counts the same from the top or the bottom.
+    const { t, b } = first.bbox;
+    return Math.max(t, b) < pageEdge * height || Math.min(t, b) > (1 - pageEdge) * height;
   };
 
   const blocks: Block[] = [];
@@ -180,9 +178,28 @@ export const doclingPages = (document: DoclingDocument): string[] => {
     });
   };
 
+  /** The text of an inline group's parts, groups inside it included, joined with spaces. */
+  const inlineText = (node: Node): string =>
+    (node.children ?? [])
+      .map((c) => nodes.get(c.$ref))
+      .filter((n): n is Node => n !== undefined && inBody(n))
+      .map((n) => (n.label === 'inline' ? inlineText(n) : textOf(n)))
+      .filter((t) => t !== '')
+      .join(' ');
+
   const renderText = (node: Node, context: Context) => {
-    const text = textOf(node);
     const label = node.label ?? 'text';
+    // A list item's text may sit in an inline group under it instead of on the item.
+    const inlineParts =
+      label === 'list_item' && textOf(node) === ''
+        ? (node.children ?? []).filter((c) => nodes.get(c.$ref)?.label === 'inline')
+        : [];
+    const text =
+      textOf(node) ||
+      inlineParts
+        .map((c) => inlineText(nodes.get(c.$ref) as Node))
+        .filter((t) => t !== '')
+        .join(' ');
     if (label === 'page_header' || label === 'page_footer') return;
     if (text !== '' && !isPageNumber(node, text)) {
       if (label === 'title') emit(node, `# ${text}`, text.length, context);
@@ -200,17 +217,13 @@ export const doclingPages = (document: DoclingDocument): string[] => {
       else if (label === 'checkbox_unselected') emit(node, `- [ ] ${text}`, text.length, context);
       else emit(node, text, text.length, context);
     }
-    visitChildren(node, context);
+    for (const child of node.children ?? [])
+      if (!inlineParts.includes(child)) visit(child.$ref, context);
   };
 
   const renderGroup = (node: Node, context: Context) => {
     if (node.label === 'inline') {
-      const parts = (node.children ?? [])
-        .map((c) => nodes.get(c.$ref))
-        .filter((n): n is Node => n !== undefined && inBody(n))
-        .map(textOf)
-        .filter((t) => t !== '');
-      const text = parts.join(' ');
+      const text = inlineText(node);
       if (text !== '') emit(node, text, text.length, context, context.list?.ref);
       return;
     }

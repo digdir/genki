@@ -34,6 +34,8 @@ export interface SeedDeps {
   /** Sends the index job of a record that waited on the stored conversion. */
   sendIndex(waiter: ConversionWaiter, transaction: RecordTransaction): Promise<unknown>;
   log?: (msg: string, fields: Record<string, unknown>) => void;
+  /** Throws while the knowledge server is bound to another platform server (ADR 0042). */
+  bound?: () => void;
 }
 
 /** Why a listed output cannot be seeded, or its pages. */
@@ -43,7 +45,10 @@ const pagesOf = (
   derive: (output: unknown) => string[],
 ): { pages: string[] } | { reason: string } => {
   if (!found) return { reason: 'its output or meta.json is missing' };
-  if (settingsHash(found.meta.settings) !== entry.settingsHash)
+  const meta = found.meta as Partial<StoredNativeOutput['meta']> | null;
+  if (!meta?.settings || typeof meta.settings !== 'object' || typeof meta.pages !== 'number')
+    return { reason: 'its meta.json has no settings or pages' };
+  if (settingsHash(meta.settings) !== entry.settingsHash)
     return { reason: 'its meta.json settings do not match its path' };
   let pages: string[];
   try {
@@ -64,6 +69,7 @@ const pagesOf = (
  */
 export const seedWork = (deps: SeedDeps): QueueWork =>
   queueWork(knowledgeSeedQueue, async (job) => {
+    deps.bound?.();
     const { prefix, converter, version, settings } = job.data;
     const known = derivations[converter];
     if (!known) throw new Error(`no derivation makes pages from ${converter}`);
@@ -80,13 +86,18 @@ export const seedWork = (deps: SeedDeps): QueueWork =>
       if (already.has(entry.sha256)) continue;
       job.signal.throwIfAborted();
       let found: StoredNativeOutput | undefined;
+      let damaged: string | undefined;
       try {
         found = await deps.outputs.read(entry);
       } catch (error) {
-        // A damaged gzip is the file's fault; anything else is the Blob service's, so retried.
-        if (!String((error as { code?: unknown }).code).startsWith('Z_')) throw error;
+        // A damaged gzip or meta.json is the file's fault; anything else is the Blob service's, so retried.
+        const fileFault =
+          error instanceof SyntaxError ||
+          String((error as { code?: unknown }).code).startsWith('Z_');
+        if (!fileFault) throw error;
+        damaged = `its output or meta.json is damaged: ${(error as Error).message}`;
       }
-      const result = pagesOf(entry, found, known.pages);
+      const result = damaged ? { reason: damaged } : pagesOf(entry, found, known.pages);
       if ('reason' in result) {
         skipped += 1;
         deps.log?.('a seed skipped a file', {

@@ -655,6 +655,7 @@ export const knowledgeWork = (
               >,
               sendIndex,
               ...(deps.log ? { log: deps.log } : {}),
+              ...(deps.bound ? { bound: deps.bound } : {}),
             }),
           ]
         : []),
