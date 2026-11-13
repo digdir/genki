@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome · Components</title>
+    <meta
+      name="description"
+      content="What a reader meets in a new, empty thread: a greeting, and a few suggested questions that fill the question field."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Welcome</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="welcome"
+        data-component="welcome"
+        data-phase="building"
+        data-optional="false"
+        aria-labelledby="welcome-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="welcome-title">Welcome</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Inside Chat</span
+              ><span class="badge">Main area</span>
+            </div>
+            <p class="summary">
+              What a reader meets in a new, empty thread: a greeting, and a few suggested questions
+              to start from. Picking a suggestion fills the question field. It does not send.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>
+                «Velkomst og spørsmålsforslag»: the greeting, and «Forslag» over the questions
+              </dd>
+              <dt>Sits in</dt>
+              <dd>Main area, on the start page of a new thread, around the question field</dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/223"
+                  >kunnskapsassistenten#223</a
+                >
+              </dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Welcome</code> and <code>Suggestions</code> in <code>@genai/ui-blocks</code>
+              </dd>
+              <dt>Made from</dt>
+              <dd>
+                <code>chat/Welcome</code> and <code>chat/Kickstarters</code> in kunnskapsassistenten
+              </dd>
+              <dt>In the builder</dt>
+              <dd>
+                Part of the chat block; the suggestions are its <code>suggestions</code> switch, on
+                by default
+              </dd>
+              <dt>Canvas</dt>
+              <dd>00-Chat (FM-0-Ny-trad), and KS-2a-Ny-trad</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-bar" x="28" y="22" width="44" height="7" rx="3.5" />
+            <rect class="s-bar" x="28" y="34" width="70" height="7" rx="3.5" />
+            <rect class="s-soft" x="28" y="48" width="104" height="14" rx="7" />
+            <rect class="s-accent" x="28" y="68" width="22" height="4" rx="2" />
+            <rect class="s-bar" x="28" y="77" width="6" height="7" rx="1.5" />
+            <rect class="s-bar" x="40" y="78.5" width="78" height="4" rx="2" />
+            <rect class="s-bar" x="28" y="90" width="6" height="7" rx="1.5" />
+            <rect class="s-bar" x="40" y="91.5" width="64" height="4" rx="2" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                A thread is new and empty: the greeting over the question field, and the service's
+                suggested questions under it, when it has some.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>The thread has turns. The conversation stands there instead.</li>
+              <li>
+                Something is missing or failed. That is <a href="states.html">States</a>: the
+                welcome is a component of its own, not the shared empty state.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>With a name:</strong> «Hei, Kari 👋» and «Hva lurer du på?», one heading on
+                two lines.
+              </li>
+              <li><strong>Without a name:</strong> «Hei 👋» and «Hva lurer du på?».</li>
+              <li>
+                <strong>With suggestions:</strong> «Forslag», and one row per question, each a
+                tertiary button with a document icon.
+              </li>
+              <li>
+                <strong>Without suggestions:</strong> nothing, not even the heading «Forslag».
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>Welcome</code>: <code>name</code>, the reader's first name, if known; without
+                it the greeting is «Hei». <code>headingLevel</code>, 2 by default, under the page's
+                own heading.
+              </li>
+              <li>
+                <code>Suggestions</code>: <code>suggestions</code>, the questions, and
+                <code>onPick</code> with the one picked. The host fills the field with it and puts
+                the caret there; the block sends nothing. <code>headingLevel</code> for «Forslag», 3
+                by default, under the greeting.
+              </li>
+              <li>
+                Both take <code>color</code>, Designsystemet's <code>data-color</code> for the
+                block, neutral unless given, and <code>className</code> for its root, beside its
+                own.
+              </li>
+              <li>
+                The words are the block's own catalogue, in bokmål and English: «Hei, {name}»,
+                «Hei», «Hva lurer du på?» and «Forslag». The suggestions are the host's, in its
+                words.
+              </li>
+            </ul>
+            <h2>Where it goes</h2>
+            <ul>
+              <li>
+                In the UI assembly, the greeting stands over the question field in a new thread, and
+                the suggestions under it, from the profile's <code>suggestions</code> when the
+                layout's chat has <code>suggestions</code> on. A pick fills the field and moves
+                focus there.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="chat.html">Chat</a>: the question field the greeting stands over</li>
+              <li><a href="states.html">States</a>: what is shown when something is missing</li>
+              <li>
+                <a href="corpus.html">Corpus choice</a>: kunnskapsassistenten offers suggestions per
+                collection
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The welcome sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. Both parts are neutral unless the host
+              passes <code>color</code>, and each suggestion is pinned to neutral in the markup, as
+              kunnskapsassistenten draws them: a list to read, not a row of buttons.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-welcome-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font family of the greeting and the suggestions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap in the greeting</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-border-color</code></td>
+                  <td><code>--ds-color-border-subtle</code></td>
+                  <td>line between suggestions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>line between suggestions</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>a suggestion's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a suggestion's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>gap between a suggestion's icon and text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-icon-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>a suggestion's icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-icon-offset</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>the icon's drop to the first line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestion-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>a suggestion's padding, top and bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestions-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between «Forslag» and the list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-welcome-suggestions-padding-block-start</code></td>
+                  <td><code>--ds-size-4</code>, <code>--ds-size-2</code> under 500 px</td>
+                  <td>air over «Forslag»</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                The greeting is one heading over two lines, so the page's outline gets one entry,
+                not a second with nothing under it. The wave is hidden from screen readers.
+              </li>
+              <li>
+                The suggestions are a heading and a plain list of buttons, no landmark. Each
+                question wraps, starts at the line's start, and is one step quieter than the field's
+                text.
+              </li>
+              <li>
+                A pick calls <code>onPick</code>, and nothing else: filling the field and moving
+                focus there are the host's.
+              </li>
+              <li>The air over «Forslag» halves where the block is under 500 px wide.</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Parity with Kunnskapsassistenten</h2>
+            <p>
+              Read against <code>views/chat/Welcome</code> and <code>Kickstarters</code> in
+              kunnskapsassistenten, their tests and <code>chat.css</code>, when the blocks were
+              ported (genki#406). The <a href="chat.html">Chat</a> page has the measurement.
+            </p>
+            <ul>
+              <li>
+                <strong>Ported, with tests:</strong> the greeting as one heading, with and without a
+                name; the suggestions, which fill the field and do not send.
+              </li>
+              <li>
+                <strong>The same, measured:</strong> beside kunnskapsassistenten's start page and
+                one live conversation, at 1440 px under its theme, all 61 sizes, gaps, offsets and
+                colours compared for the chat's blocks were the same.
+              </li>
+              <li>
+                <strong>Made data:</strong> the suggestions, which kunnskapsassistenten keeps in
+                code per collection (<code>kickstartersFor</code>).
+              </li>
+              <li>
+                <strong>Different on purpose:</strong> the air over «Forslag» steps at the block's
+                own width instead of the window's.
+              </li>
+              <li>
+                <strong>Decided:</strong> a service without suggestions of its own gets none, not
+                even the heading, since nothing is shown without data. Kunnskapsassistenten's
+                suggestions for any collection stay in that app.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                A second heading for «Hva lurer du på?» would be an outline entry with nothing under
+                it, so the greeting is one heading.
+              </li>
+              <li>The suggestions are long questions, so they are rows, not chips.</li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Where does a service set its suggestions: in its settings in genki, or in the
+                frontend? The UI assembly takes them from the host's profile today.
+              </li>
+              <li>
+                The canvas greets with «Hva vil du finne ut?», kunnskapsassistenten with «Hva lurer
+                du på?». The block keeps kunnskapsassistenten's wording until this is decided.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="chat.html" rel="prev"><small>Previous</small>Chat</a>
+        <a class="next" href="approach.html" rel="next"><small>Next</small>Approach</a>
+      </nav>
+    </main>
+  </body>
+</html>
