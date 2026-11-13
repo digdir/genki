@@ -6,6 +6,7 @@ export const restartMessage = 'Avbrutt fordi plattformen ble startet på nytt';
 export interface Leased {
   owner?: string | undefined;
   heartbeatAt?: string | undefined;
+  released?: boolean | undefined;
 }
 
 export interface LeaseOptions {
@@ -22,11 +23,14 @@ export const backgroundLeases = (options: LeaseOptions = {}) => {
   const now = options.now ?? (() => new Date());
   const live = new Set<string>();
 
-  const stamp = (): Required<Leased> => ({ owner: instance, heartbeatAt: now().toISOString() });
+  const stamp = (): { owner: string; heartbeatAt: string } => ({
+    owner: instance,
+    heartbeatAt: now().toISOString(),
+  });
 
   const abandoned = (key: string, spec: Leased, startedAt: string) => {
     if (live.has(key)) return false;
-    if (spec.owner === instance) return true;
+    if (spec.owner === instance || spec.released) return true;
     const last = new Date(spec.heartbeatAt ?? startedAt).getTime();
     return now().getTime() - last > staleAfterMs;
   };

@@ -214,6 +214,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
       ]
       volumes: dataVolume
       scale: { minReplicas: minReplicas, maxReplicas: maxReplicas }
+      terminationGracePeriodSeconds: 120
     }
   }
 }

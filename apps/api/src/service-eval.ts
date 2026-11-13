@@ -3,6 +3,7 @@ import { adoptionKind, blockKey, latestUsdNok } from '@genai/composition';
 import type { Part, Principal } from '@genai/contracts';
 import { validateDefinition, variantId, variantModelOf, type Variant } from '@genai/definitions';
 import { residencies, residencyAllows, type Residency } from '@genai/port-model';
+import { z } from 'zod';
 import {
   answerText,
   bootstrapMean,
@@ -21,6 +22,7 @@ import {
   type CaseSplit,
   type CaseType,
   type EvalRun,
+  type PriorAttempt,
   type Score,
   type StoredRun,
   type TestCase,
@@ -33,6 +35,8 @@ import {
   type BackgroundLeases,
   type LeaseOptions,
 } from './background-lease.js';
+import { actorOf } from './admin.js';
+import { appendVersion } from './config-store.js';
 import { definitionSubject } from './definition-subject.js';
 import {
   connectionsCovering,
@@ -40,7 +44,7 @@ import {
   type SinkRun,
   type TraceConnection,
 } from './trace-connections.js';
-import type { DraftModelUsage } from './draft-runner.js';
+import type { DraftModelUsage, PreparedDraft } from './draft-runner.js';
 import { traceDatasets } from './trace-datasets.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import { evalSlots, type QueueWatch } from './eval-slots.js';
@@ -53,6 +57,8 @@ export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter(judgedAgainst).map((m) => m.model);
 
 export const quotaStopMessage = 'Stoppet fordi månedskvoten for tokens er brukt opp';
+export const serviceEvalResumeKind = 'service-eval-resume';
+export const maxResumes = 3;
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
 export type RunVersion = 'draft' | number;
@@ -77,6 +83,7 @@ export interface CaseResult {
   pass: boolean;
   reason?: string;
   judges?: CaseJudgement[];
+  task?: string;
 }
 
 /** Whether an evaluator is a sink's judge: advisory, shown apart from the platform's metrics. */
@@ -171,6 +178,15 @@ export interface Subject {
   variant?: string;
 }
 
+/** What taking a run up again needs: who started it, and the draft or version it tests. */
+export interface Resumable {
+  principal: Principal;
+  service: string;
+  subject: Subject;
+  split?: CaseSplit;
+  only?: string[];
+}
+
 export interface Outcome {
   results: CaseResult[];
   passed: number;
@@ -249,6 +265,14 @@ export const runSummary = (
     ...(run.tested?.model ? { model: run.tested.model } : {}),
     ...(run.tested?.selected ? { selected: run.tested.selected } : {}),
     ...(run.queuePlace ? { queuePlace: run.queuePlace } : {}),
+    ...(state === 'running' && run.current?.length
+      ? { current: run.current.map((c) => ({ case: c.case, startedAt: c.startedAt })) }
+      : {}),
+    ...(run.pace?.cases
+      ? { secondsPerCase: Math.round(run.pace.caseMs / run.pace.cases / 1000) }
+      : {}),
+    ...(state === 'running' && run.pace?.endsAt ? { endsAt: run.pace.endsAt } : {}),
+    ...(run.resumes ? { resumed: run.resumes } : {}),
     startedAt: run.startedAt,
     endedAt: state === 'running' || state === 'waiting-for-scores' ? null : run.endedAt,
     score: state === 'completed' && counted.length > 0 ? passed / counted.length : null,
@@ -318,11 +342,29 @@ export const runDetail = (
       split: view?.split ?? 'open',
       output: answers.get(`${r.case}#${r.repeat}`) ?? '',
       pass: passes(r.scores),
+      task: r.task,
       ...(reason ? { reason } : {}),
       ...(judges.length > 0 ? { judges } : {}),
     };
   }),
 });
+
+/** A run that runs no case any more: not in line, no case in flight and no time left to show. */
+export const ended = (run: EvalRun): EvalRun => {
+  const rest = { ...run };
+  delete rest.queuePlace;
+  delete rest.current;
+  delete rest.released;
+  if (rest.pace) {
+    const pace = { ...rest.pace };
+    delete pace.endsAt;
+    rest.pace = pace;
+  }
+  return rest;
+};
+
+/** A run its stopping instance leaves for another to take up, with the cases it finished. */
+export const handedOver = (run: EvalRun): EvalRun => ({ ...ended(run), released: true });
 
 /**
  * A run left running by an instance that stopped is interrupted, ended at its last heartbeat. Any
@@ -336,11 +378,8 @@ export const interruptedIfAbandoned = (
   const state = runState(run);
   if (state !== 'running' && state !== 'waiting-for-scores') return run;
   if (!leases.abandoned(`${tenant}/${run.id}`, run, run.startedAt)) return run;
-  const rest = { ...run };
-  // It waits for nothing any more.
-  delete rest.queuePlace;
   return {
-    ...rest,
+    ...ended(run),
     status: 'interrupted',
     endedAt: run.heartbeatAt ?? run.startedAt,
     error: restartMessage,
@@ -352,6 +391,7 @@ export const shownRun = (run: EvalRun, usage: boolean): EvalRun => {
   const shown = { ...run };
   delete shown.owner;
   delete shown.heartbeatAt;
+  delete shown.released;
   if (!usage) delete shown.usage;
   return shown;
 };
@@ -371,18 +411,65 @@ export const progressed = (
   usage?: EvalRun['usage'],
   result?: EvalRun['results'][number],
   rank: (r: EvalRun['results'][number]) => number = () => 0,
+  at?: string,
+  served?: { servedModels: string[]; services: string[] },
 ): EvalRun => {
   if (finished(run)) return run;
   const rest = { ...run };
   // A case has started, so the run no longer waits in line.
   delete rest.queuePlace;
+  const same = (c: { case: string; repeat: number }) =>
+    result !== undefined && c.case === result.case && c.repeat === result.repeat;
   const results = result
-    ? [
-        ...run.results.filter((r) => r.case !== result.case || r.repeat !== result.repeat),
-        result,
-      ].sort((a, b) => rank(a) - rank(b))
+    ? [...run.results.filter((r) => !same(r)), result].sort((a, b) => rank(a) - rank(b))
     : run.results;
+  const began = run.current?.find(same);
+  const current = run.current?.filter((c) => !same(c));
+  if (current) rest.current = current;
+  if (at && run.pace) {
+    const caseMs = began ? Math.max(0, Date.parse(at) - Date.parse(began.startedAt)) : 0;
+    const doneNow = progress.done - run.pace.done;
+    const perCase = doneNow > 0 ? (Date.parse(at) - Date.parse(run.pace.since)) / doneNow : 0;
+    rest.pace = {
+      since: run.pace.since,
+      done: run.pace.done,
+      caseMs: run.pace.caseMs + caseMs,
+      cases: run.pace.cases + (began ? 1 : 0),
+      ...(perCase > 0
+        ? {
+            endsAt: new Date(
+              Date.parse(at) + perCase * Math.max(0, progress.total - progress.done),
+            ).toISOString(),
+          }
+        : {}),
+    };
+  }
+  if (served)
+    rest.provenance = {
+      ...run.provenance,
+      servedModels: served.servedModels,
+      services: served.services,
+    };
   return { ...rest, progress, ...(usage ? { usage } : {}), results };
+};
+
+/** A case the run has started, and the pace it keeps from its first case on this instance. */
+export const caseStarted = (
+  run: EvalRun,
+  item: { case: string; repeat: number },
+  at: string,
+): EvalRun => {
+  if (finished(run)) return run;
+  const rest = { ...run };
+  delete rest.queuePlace;
+  return {
+    ...rest,
+    current: [
+      ...(run.current ?? []).filter((c) => c.case !== item.case || c.repeat !== item.repeat),
+      { ...item, startedAt: at },
+    ],
+    pace: run.pace ?? { since: at, done: run.results.length, caseMs: 0, cases: 0 },
+  };
 };
 
 /** The run's place in line for a case slot, or none once a slot is free. */
@@ -410,7 +497,11 @@ export const answeringModel = ({ definition, variant }: Subject) => {
   return (chosen && variantModelOf(chosen)) ?? modelsOf(definition)[0];
 };
 
-export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
+export const serviceEval = (
+  deps: ModuleDeps,
+  leaseOptions: LeaseOptions = {},
+  onBackground?: (work: Promise<void>) => void,
+) => {
   const choice = modelChoice(deps);
   const slots = deps.evalSlots ?? evalSlots();
   const leases = backgroundLeases(leaseOptions);
@@ -565,7 +656,13 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     let stop: { error: unknown } | undefined;
     const worker = async () => {
       while (!stop && next < cases.length) {
-        const release = await session.acquire();
+        let release: () => void;
+        try {
+          release = await session.acquire();
+        } catch (error) {
+          stop ??= { error };
+          return;
+        }
         try {
           if (stop || next >= cases.length) return;
           if ((await deps.quota?.(judgeTenant, { fresh: true }))?.exhausted) {
@@ -617,10 +714,12 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
 
   const save = (stored: StoredRun) => deps.evalStores.runs.save(stored);
 
-  /** A run whose instance stopped without settling it is interrupted, as other background work. */
+  /** A run whose instance stopped is taken up again where it can be, and interrupted otherwise. */
   const settled = async (stored: StoredRun): Promise<StoredRun> => {
     const run = interruptedIfAbandoned(stored.tenant, stored.run, leases);
     if (run === stored.run) return stored;
+    const resumed = await resume(stored).catch(() => undefined);
+    if (resumed) return resumed;
     const interrupted: StoredRun = { ...stored, run };
     const replaced = await deps.evalStores.runs
       .replace(interrupted, { status: stored.run.status, heartbeatAt: stored.run.heartbeatAt })
@@ -844,6 +943,218 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     };
   };
 
+  type RunLease = ReturnType<typeof leases.hold<EvalRun>>;
+
+  const keptPrincipal = (principal: Principal): Principal => {
+    const kept = { ...principal };
+    delete kept.name;
+    delete kept.orgNames;
+    delete kept.expiresAt;
+    if (kept.actor) kept.actor = keptPrincipal(kept.actor);
+    return kept;
+  };
+
+  const remember = (tenant: string, run: string, resumable: Resumable) =>
+    appendVersion<Resumable>(deps.configEntries, {
+      kind: serviceEvalResumeKind,
+      scope: tenant,
+      id: run,
+      spec: { ...resumable, principal: keptPrincipal(resumable.principal) },
+      deleted: false,
+      by: actorOf(resumable.principal.actor ?? resumable.principal),
+      reason: 'Testkjøringen kan tas opp igjen etter en omstart',
+    });
+
+  const forget = (tenant: string, run: string) =>
+    appendVersion(deps.configEntries, {
+      kind: serviceEvalResumeKind,
+      scope: tenant,
+      id: run,
+      spec: {},
+      deleted: true,
+      by: 'platform:eval',
+      reason: 'Testkjøringen er ferdig',
+    }).catch(() => undefined);
+
+  const resumableOf = async (tenant: string, run: string) => {
+    const entry = (await deps.configEntries.history(serviceEvalResumeKind, tenant, run)).at(-1);
+    return entry && !entry.deleted ? (entry.spec as Resumable) : undefined;
+  };
+
+  const tokensOf = (usage: EvalRun['usage']) =>
+    [usage?.answers, usage?.judges].reduce(
+      (n, u) => n + (u ? u.inputTokens + u.outputTokens : 0),
+      0,
+    );
+
+  /** Runs the eval task of a run, from its first case or from where an earlier try left it. */
+  const launch = (go: {
+    principal: Principal;
+    tenant: string;
+    service: string;
+    set: TestSet;
+    cases: TestCase[];
+    spec: unknown;
+    prepared: PreparedDraft;
+    lease: RunLease;
+    first: EvalRun;
+    setTask: (task: string) => void;
+    resumable: boolean;
+    sinkJudges: Awaited<ReturnType<typeof snapshotJudges>>;
+    sink?: TraceConnection;
+    prior?: PriorAttempt;
+  }) => {
+    const { principal, tenant, service, cases, prepared, lease, first, sink, sinkJudges } = go;
+    // A finished case takes its place in the test set's order, repeat by repeat.
+    const order = new Map(cases.map((c, i) => [c.id, i]));
+    const rankOf = (r: { case: string; repeat: number }) =>
+      r.repeat * cases.length + (order.get(r.case) ?? cases.length);
+    // The draft's capability lives for one try; the service it tests is what runs compare by.
+    const named = (services: string[]) =>
+      services.map((s) =>
+        s.startsWith(`${prepared.capability}@`)
+          ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
+          : s,
+      );
+    let handed = false;
+    return (async () => {
+      try {
+        const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
+          data: {
+            id: first.id,
+            capability: prepared.capability,
+            testSet: go.set,
+            evaluators: [...evaluatorsFor(cases, gatesOf(go.spec)), ...sinkJudges.map((j) => j.id)],
+            provenance: { commit: first.provenance.commit, data: first.provenance.data },
+            splits: first.splits,
+            ...(sink ? { sink: sink.id } : {}),
+            ...(sinkJudges.length > 0 ? { sinkJudges: sinkJudges.map((j) => j.snapshot) } : {}),
+            // The judge is picked outside every model the service may answer with, fallback too.
+            avoidAsJudge: modelsOf(go.prepared.definition),
+            ...(go.prior ? { prior: go.prior } : {}),
+          },
+        });
+        go.setTask(invoked.task);
+        // Notices are applied in order to the latest state, and never reopen a finished run.
+        void (async () => {
+          for await (const event of invoked.events) {
+            const data = event.data as
+              | {
+                  kind?: string;
+                  done?: number;
+                  total?: number;
+                  usage?: unknown;
+                  result?: unknown;
+                  place?: number;
+                  case?: unknown;
+                  repeat?: unknown;
+                  served?: { servedModels?: unknown; services?: unknown };
+                }
+              | undefined;
+            if (event.type !== 'kernel.notice') continue;
+            if (data?.kind === 'eval.case' && typeof data.case === 'string') {
+              const item = {
+                case: data.case,
+                repeat: typeof data.repeat === 'number' ? data.repeat : 0,
+              };
+              await lease.update(
+                (run) => caseStarted(run, item, leases.now().toISOString()),
+                'case',
+              );
+            }
+            if (data?.kind === 'eval.progress' && data.done !== undefined) {
+              const usage = evalRun.shape.usage.safeParse(data.usage);
+              const result = evalRun.shape.results.element.safeParse(data.result);
+              const servedModels = z.array(z.string()).safeParse(data.served?.servedModels);
+              const services = z.array(z.string()).safeParse(data.served?.services);
+              const at = leases.now().toISOString();
+              let line: Record<string, unknown> | undefined;
+              await lease.update((run) => {
+                const next = progressed(
+                  run,
+                  { done: data.done ?? 0, total: data.total ?? 0 },
+                  usage.success ? usage.data : undefined,
+                  result.success ? result.data : undefined,
+                  rankOf,
+                  at,
+                  servedModels.success && services.success
+                    ? { servedModels: servedModels.data, services: named(services.data) }
+                    : undefined,
+                );
+                if (result.success && next !== run) {
+                  const began = run.current?.find(
+                    (c) => c.case === result.data.case && c.repeat === result.data.repeat,
+                  );
+                  line = {
+                    run: run.id,
+                    tenant,
+                    case: rankOf(result.data) + 1,
+                    of: data.total,
+                    ...(began ? { ms: Date.parse(at) - Date.parse(began.startedAt) } : {}),
+                    tokens: tokensOf(next.usage) - tokensOf(run.usage),
+                    outcome: passes(result.data.scores) ? 'passed' : 'failed',
+                  };
+                }
+                return next;
+              }, 'progress');
+              if (line) deps.logger?.('eval case', line);
+            }
+            if (data?.kind === 'eval.queued')
+              await lease.update((run) => queued(run, data.place), 'queued');
+            if (data?.kind === 'eval.waiting') await lease.update(waitingForScores, 'waiting');
+          }
+        })().catch(() => undefined);
+        const parts = await invoked.result;
+        const json = parts.find((p) => p.body.kind === 'json')?.body;
+        const result = evalRun.parse(json?.kind === 'json' ? json.json : undefined);
+        // A cost a sink reports in USD is shown with the rate of its day, kept with the run.
+        const usdNok =
+          result.usage?.reported && Object.keys(result.usage.reported).length > 0
+            ? await latestUsdNok(deps.configEntries).catch(() => undefined)
+            : undefined;
+        await lease.update((run) => {
+          const { pace } = ended(run);
+          return {
+            ...result,
+            startedAt: run.startedAt,
+            ...(usdNok && result.usage ? { usage: { ...result.usage, usdNok } } : {}),
+            provenance: { ...result.provenance, services: named(result.provenance.services) },
+            ...(first.tested ? { tested: first.tested } : {}),
+            progress: { done: cases.length, total: cases.length },
+            ...(pace ? { pace } : {}),
+            ...(run.resumes ? { resumes: run.resumes } : {}),
+          };
+        }, 'completed');
+      } catch (error) {
+        if (go.resumable && slots.draining()) {
+          handed = true;
+          await lease.update(handedOver, 'handed over').catch(() => undefined);
+          return;
+        }
+        await lease
+          .update(
+            (run) => ({
+              ...ended(run),
+              status: 'failed',
+              endedAt: leases.now().toISOString(),
+              // The eval run stops at the quota before a case; say so as the portal's runs do.
+              error: messageOf(error).endsWith('the monthly token quota is used up')
+                ? quotaStopMessage
+                : messageOf(error),
+            }),
+            'failed',
+          )
+          .catch(() => undefined);
+      } finally {
+        lease.release();
+        prepared.release();
+        if (go.resumable && !handed) await forget(tenant, first.id);
+        // Deliveries are recorded before each batch goes out (deliveryGate); closing only flushes.
+        if (sink) await deps.traceSinks?.close(first.id).catch(() => []);
+      }
+    })();
+  };
+
   const startRun = async (
     principal: Principal,
     tenant: string,
@@ -915,10 +1226,6 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         })
       : [];
     const cases = casesIn(set, split, only);
-    // A finished case takes its place in the test set's order, repeat by repeat.
-    const order = new Map(cases.map((c, i) => [c.id, i]));
-    const rankOf = (r: EvalRun['results'][number]) =>
-      r.repeat * cases.length + (order.get(r.case) ?? cases.length);
     const model = answeringModel(subject);
     const runId = randomUUID();
     // Where the sink shows the run's experiment; a run is no less valid without the link.
@@ -968,11 +1275,22 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     const lease = leases.hold(`${tenant}/${first.id}`, first, (run) =>
       save({ ...record, task, run }),
     );
+    // A run sent to a sink is not taken up again: its judges and dataset belong to the first try.
+    const resumable = !sink;
     try {
+      if (resumable)
+        await remember(tenant, first.id, {
+          principal,
+          service,
+          subject,
+          ...(split ? { split } : {}),
+          ...(only ? { only } : {}),
+        });
       await lease.update((run) => run, 'started');
     } catch (error) {
       lease.release();
       prepared.release();
+      if (resumable) await forget(tenant, first.id);
       throw error;
     }
     if (sink)
@@ -993,105 +1311,128 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         deps.traceSinks.fieldsOf?.(sinkJudges) ?? [],
         dataset?.id,
       );
-    const done = (async () => {
-      try {
-        const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
-          data: {
-            id: first.id,
-            capability: prepared.capability,
-            // Only the marked cases, when the run was limited to them.
-            testSet: only ? { ...set, spec: { ...set.spec, cases } } : set,
-            evaluators: [...evaluatorsFor(cases, gatesOf(spec)), ...sinkJudges.map((j) => j.id)],
-            provenance: { commit: first.provenance.commit, data: first.provenance.data },
-            splits: first.splits,
-            ...(sink ? { sink: sink.id } : {}),
-            ...(sinkJudges.length > 0 ? { sinkJudges: sinkJudges.map((j) => j.snapshot) } : {}),
-            // The judge is picked outside every model the service may answer with, fallback too.
-            avoidAsJudge: modelsOf(subject.definition),
-          },
-        });
-        task = invoked.task;
-        // Notices are applied in order to the latest state, and never reopen a finished run.
-        void (async () => {
-          for await (const event of invoked.events) {
-            const data = event.data as
-              | {
-                  kind?: string;
-                  done?: number;
-                  total?: number;
-                  usage?: unknown;
-                  result?: unknown;
-                  place?: number;
-                }
-              | undefined;
-            if (event.type !== 'kernel.notice') continue;
-            if (data?.kind === 'eval.progress' && data.done !== undefined) {
-              const usage = evalRun.shape.usage.safeParse(data.usage);
-              const result = evalRun.shape.results.element.safeParse(data.result);
-              await lease.update(
-                (run) =>
-                  progressed(
-                    run,
-                    { done: data.done ?? 0, total: data.total ?? 0 },
-                    usage.success ? usage.data : undefined,
-                    result.success ? result.data : undefined,
-                    rankOf,
-                  ),
-                'progress',
-              );
-            }
-            if (data?.kind === 'eval.queued')
-              await lease.update((run) => queued(run, data.place), 'queued');
-            if (data?.kind === 'eval.waiting') await lease.update(waitingForScores, 'waiting');
-          }
-        })().catch(() => undefined);
-        const parts = await invoked.result;
-        const json = parts.find((p) => p.body.kind === 'json')?.body;
-        const result = evalRun.parse(json?.kind === 'json' ? json.json : undefined);
-        // The draft's capability lives for one run; the service it tests is what runs compare by.
-        const services = result.provenance.services.map((s) =>
-          s.startsWith(`${prepared.capability}@`)
-            ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
-            : s,
-        );
-        // A cost a sink reports in USD is shown with the rate of its day, kept with the run.
-        const usdNok =
-          result.usage?.reported && Object.keys(result.usage.reported).length > 0
-            ? await latestUsdNok(deps.configEntries).catch(() => undefined)
-            : undefined;
-        await lease.update(
-          () => ({
-            ...result,
-            ...(usdNok && result.usage ? { usage: { ...result.usage, usdNok } } : {}),
-            provenance: { ...result.provenance, services },
-            ...(first.tested ? { tested: first.tested } : {}),
-            progress: { done: cases.length, total: cases.length },
-          }),
-          'completed',
-        );
-      } catch (error) {
-        await lease
-          .update(
-            (run) => ({
-              ...run,
-              status: 'failed',
-              endedAt: leases.now().toISOString(),
-              // The eval run stops at the quota before a case; say so as the portal's runs do.
-              error: messageOf(error).endsWith('the monthly token quota is used up')
-                ? quotaStopMessage
-                : messageOf(error),
-            }),
-            'failed',
-          )
-          .catch(() => undefined);
-      } finally {
-        lease.release();
-        prepared.release();
-        // Deliveries are recorded before each batch goes out (deliveryGate); closing only flushes.
-        if (sink) await deps.traceSinks?.close(first.id).catch(() => []);
-      }
-    })();
+    const done = launch({
+      principal,
+      tenant,
+      service,
+      set: only ? { ...set, spec: { ...set.spec, cases } } : set,
+      cases,
+      spec,
+      prepared,
+      lease,
+      first,
+      setTask: (t) => (task = t),
+      resumable,
+      sinkJudges,
+      ...(sink ? { sink } : {}),
+    });
+    slots.track(done);
     return { run: first, done };
+  };
+
+  /** Takes up a run another instance left: only its unfinished cases, as the person who started it. */
+  const resume = async (stored: StoredRun): Promise<StoredRun | undefined> => {
+    const { tenant, run } = stored;
+    if (runState(run) !== 'running' || !stored.service) return undefined;
+    const resumable = await resumableOf(tenant, run.id);
+    if (!resumable) return undefined;
+    if ((run.resumes ?? 0) >= maxResumes) {
+      await forget(tenant, run.id);
+      return undefined;
+    }
+    // A stopping instance leaves the run to the next one.
+    if (slots.draining()) return stored;
+    const set = await deps.evalStores.testSets.get(tenant, run.testSet.id, run.testSet.version);
+    if (!set) {
+      await forget(tenant, run.id);
+      return undefined;
+    }
+    const { principal, subject } = resumable;
+    const cases = casesIn(set, resumable.split, resumable.only);
+    const claimed: EvalRun = { ...ended(run), resumes: (run.resumes ?? 0) + 1, ...leases.stamp() };
+    delete claimed.pace;
+    const record = {
+      tenant,
+      service: stored.service,
+      ...(stored.subject ? { subject: stored.subject } : {}),
+    };
+    let task = stored.task;
+    const lease = leases.hold(`${tenant}/${run.id}`, claimed, (r) =>
+      save({ ...record, task, run: r }),
+    );
+    const won = await deps.evalStores.runs
+      .replace(
+        { ...record, task, run: claimed },
+        { status: run.status, heartbeatAt: run.heartbeatAt },
+      )
+      .catch(() => false);
+    if (!won) {
+      lease.release();
+      return (await deps.evalStores.runs.get(run.id)) ?? stored;
+    }
+    const prepared = await deps.drafts
+      .prepare({
+        principal,
+        tenant,
+        definition: subject.definition,
+        files: subject.files,
+        origin: 'builder',
+        ...(typeof subject.version === 'number' ? { version: subject.version } : {}),
+        ...(subject.variant ? { variant: subject.variant } : {}),
+      })
+      .catch((error: unknown) => ({ ok: false as const, errors: [{ message: messageOf(error) }] }));
+    if (!prepared.ok) {
+      await lease
+        .update(
+          (r) => ({
+            ...ended(r),
+            status: 'failed',
+            endedAt: leases.now().toISOString(),
+            error: prepared.errors.map((e) => e.message).join('; '),
+          }),
+          'failed',
+        )
+        .catch(() => undefined);
+      lease.release();
+      await forget(tenant, run.id);
+      return (await deps.evalStores.runs.get(run.id)) ?? stored;
+    }
+    const validated = validateDefinition(subject.definition, deps.plugins);
+    const done = launch({
+      principal,
+      tenant,
+      service: stored.service,
+      set: resumable.only ? { ...set, spec: { ...set.spec, cases } } : set,
+      cases,
+      spec: validated.ok ? validated.definition.spec : subject.definition.spec,
+      prepared,
+      lease,
+      first: claimed,
+      setTask: (t) => (task = t),
+      resumable: true,
+      sinkJudges: [],
+      prior: {
+        results: run.results,
+        usage: run.usage,
+        servedModels: run.provenance.servedModels,
+        services: run.provenance.services,
+      },
+    });
+    slots.track(done);
+    onBackground?.(done);
+    return { ...record, task, run: claimed };
+  };
+
+  /** Every run left unfinished on any instance, taken up again or settled. */
+  const resumeAbandoned = async () => {
+    if (slots.draining()) return;
+    for (const entry of await deps.configEntries.latest({ kind: serviceEvalResumeKind })) {
+      if (entry.deleted) continue;
+      const stored = await deps.evalStores.runs.get(entry.id).catch(() => undefined);
+      if (!stored || stored.tenant !== entry.scope) continue;
+      if (finished(stored.run)) await forget(stored.tenant, stored.run.id);
+      else await settled(stored).catch(() => undefined);
+    }
   };
 
   return {
@@ -1111,6 +1452,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     sendingOf,
     leases,
     startRun,
+    resumeAbandoned,
   };
 };
 

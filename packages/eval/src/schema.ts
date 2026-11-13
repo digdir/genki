@@ -274,6 +274,22 @@ export const evalRun = z.strictObject({
   progress: z.strictObject({ done: z.number().int(), total: z.number().int() }).optional(),
   /** Set while the run waits for a free case slot with no case running; 1 is next in line. */
   queuePlace: z.number().int().positive().optional(),
+  /** The cases running now, each with when it started. */
+  current: z
+    .array(z.strictObject({ case: z.string(), repeat: z.number().int(), startedAt: z.string() }))
+    .optional(),
+  /** How fast this attempt of the run goes: from when and how many cases it had then. */
+  pace: z
+    .strictObject({
+      since: z.string(),
+      done: z.number().int().nonnegative(),
+      caseMs: z.number().nonnegative(),
+      cases: z.number().int().nonnegative(),
+      endsAt: z.string().optional(),
+    })
+    .optional(),
+  /** How many times the run was taken up again after its instance stopped. */
+  resumes: z.number().int().positive().optional(),
   usage: z
     .strictObject({
       answers: usageSummary,
@@ -306,6 +322,8 @@ export const evalRun = z.strictObject({
     .optional(),
   owner: z.string().optional(),
   heartbeatAt: z.string().optional(),
+  /** Set by an instance that stops: any other may take the run up at once. */
+  released: z.boolean().optional(),
 });
 export type EvalRun = z.infer<typeof evalRun>;
 
