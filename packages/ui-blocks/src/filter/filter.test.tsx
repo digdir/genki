@@ -566,8 +566,18 @@ describe('a field another field narrows', () => {
 
   it('keeps a chip per chosen value when another field narrows the list to one of them', () => {
     const selection = { type: ['Årsrapport'], organisation: ['Nav', 'Skatteetaten'] };
-    render(<Filter fields={narrowed} selection={selection} onChange={() => {}} />);
-    expect(shownChips()).toEqual(['Nav', 'Skatteetaten']);
+    for (const compactChips of [false, true]) {
+      const { unmount } = render(
+        <Filter
+          fields={narrowed}
+          selection={selection}
+          onChange={() => {}}
+          compactChips={compactChips}
+        />,
+      );
+      expect(shownChips()).toEqual(['Nav', 'Skatteetaten']);
+      unmount();
+    }
   });
 });
 
