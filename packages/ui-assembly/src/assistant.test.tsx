@@ -33,7 +33,7 @@ import {
   type AssistantApi,
 } from './api.js';
 import { Assistant } from './Assistant.js';
-import type { AssistantProfile } from './profile.js';
+import type { AssistantProfile, FieldSpec } from './profile.js';
 import { browserStorage, type AssistantStorage } from './storage.js';
 import { useAssistant, type AssistantFeedback } from './useAssistant.js';
 
@@ -3517,5 +3517,74 @@ describe('Fremgangsmåte as the card, the tool or both', () => {
     const [card] = inMain();
     if (!card) throw new Error('no card');
     expect(frames(card)).toBe('frames');
+  });
+});
+
+describe('a year field’s values', () => {
+  const noisy = ['12', '1985', '1990', '2025', '2026', '2027', '2252'];
+  const setup = (fields: readonly FieldSpec[], chosen?: Record<string, string[]>) => {
+    const { api } = fakeApi();
+    api.loadFields = vi.fn(async () => fields);
+    api.loadFacets = vi.fn(async () =>
+      fields.map((field) => ({
+        id: field.id,
+        label: field.label,
+        ...(field.kind ? { kind: field.kind } : {}),
+        options: noisy.map((value) => ({ value, count: 1 })),
+      })),
+    );
+    const kept = new Map<string, unknown>(chosen ? [['filter', chosen]] : []);
+    const storage: AssistantStorage = {
+      read: (key) => kept.get(key),
+      write: (key, value) => void kept.set(key, value),
+      remove: (key) => void kept.delete(key),
+    };
+    // Made once: the hook reads a new api or layout as a new setup.
+    const options = {
+      api,
+      layout: state('knowledge-assistant').layout,
+      service: 'ka',
+      tenant: 'digdir',
+      storage,
+      now: () => new Date('2026-11-13T12:00:00Z'),
+    };
+    return renderHook(() => useAssistant(options)).result;
+  };
+  const valuesOf = (
+    field: string,
+    facets: readonly { id: string; options: readonly { value: string }[] }[] | undefined,
+  ) => facets?.find((one) => one.id === field)?.options.map((option) => option.value);
+
+  it('offers a year field 1900 up to this year, newest first, whatever else genki returns', async () => {
+    const result = setup([
+      { id: 'concerned_years', label: 'År', kind: 'year' },
+      { id: 'pages', label: 'Sider' },
+    ]);
+    await waitFor(() => expect(result.current.facets).toBeDefined());
+    expect(valuesOf('concerned_years', result.current.facets)).toEqual([
+      '2026',
+      '2025',
+      '1990',
+      '1985',
+    ]);
+    // A field that is not a year field keeps every value.
+    expect(valuesOf('pages', result.current.facets)).toEqual(noisy);
+  });
+
+  it('offers a year field the years its profile gives, and keeps a chosen value outside them', async () => {
+    const result = setup(
+      [{ id: 'concerned_years', label: 'År', kind: 'year', years: { first: 1990 } }],
+      {
+        concerned_years: ['2252'],
+      },
+    );
+    await waitFor(() =>
+      expect(valuesOf('concerned_years', result.current.facets)).toEqual([
+        '2252',
+        '2026',
+        '2025',
+        '1990',
+      ]),
+    );
   });
 });
