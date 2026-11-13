@@ -42,6 +42,7 @@ const run = (id: string, endedAt: string, mean: number, ci: [number, number]): E
           metric: 'judge',
           value: mean,
           applicable: true,
+          state: 'scored',
           reason: 'ok',
         },
       ],
@@ -49,6 +50,7 @@ const run = (id: string, endedAt: string, mean: number, ci: [number, number]): E
   ],
   metrics: { judge: { mean, ci, n: 10 } },
   byTag: {},
+  incomplete: [],
 });
 
 const setup = async (extra: Pick<ConsoleDeps, 'lifecycle' | 'pluginUsage'> = {}) => {

@@ -546,6 +546,7 @@ describe('eval runs for a service', () => {
         results: [],
         metrics: {},
         byTag: {},
+        incomplete: [],
       },
     });
 

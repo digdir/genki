@@ -51,6 +51,7 @@ export const evalRunFromServiceRun = async (
     results,
     metrics: {},
     byTag: {},
+    incomplete: [],
   };
 };
 
