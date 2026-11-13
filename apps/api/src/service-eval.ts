@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Part, Principal } from '@genai/contracts';
 import { validateDefinition, variantId, variantModelOf, type Variant } from '@genai/definitions';
+import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
   answerText,
   caseTypeOf,
@@ -28,6 +29,7 @@ import {
   type LeaseOptions,
 } from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
+import { connectionsCovering } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import { evalSlots, type QueueWatch } from './eval-slots.js';
@@ -55,6 +57,31 @@ export interface CaseResult {
   reason?: string;
 }
 
+/** The draft or version cannot be run, for the reasons the draft runner gives. */
+export class RunRefused extends Error {
+  constructor(readonly errors: { path: string; message: string }[]) {
+    super(errors.map((e) => e.message).join('; '));
+    this.name = 'RunRefused';
+  }
+}
+
+/** Sending a run's traces is refused: no connection covers the service, or residency forbids it. */
+export class TraceRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TraceRefused';
+  }
+}
+
+const residencyOf = (definition: Record<string, unknown>): Residency => {
+  const residency = (
+    isRecord(definition.spec) && isRecord(definition.spec.model)
+      ? definition.spec.model.residency
+      : undefined
+  ) as unknown;
+  return residencies.includes(residency as Residency) ? (residency as Residency) : 'global';
+};
+
 export interface Subject {
   definition: Record<string, unknown>;
   files: Record<string, string>;
@@ -68,14 +95,6 @@ export interface Outcome {
   passed: number;
   total: number;
   score: number | null;
-}
-
-/** The draft or version cannot be run, for the reasons the draft runner gives. */
-export class RunRefused extends Error {
-  constructor(readonly errors: { path: string; message: string }[]) {
-    super(errors.map((e) => e.message).join('; '));
-    this.name = 'RunRefused';
-  }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -523,8 +542,21 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     split?: CaseSplit,
     only?: string[],
+    options: { trace?: boolean } = {},
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
+    // Locked cases never leave the platform, so a run of them alone sends nothing anywhere.
+    const traced = options.trace === true && split !== 'locked';
+    const covering = traced ? await connectionsCovering(deps.configEntries, tenant, service) : [];
+    const sink = covering[0];
+    if (traced) {
+      if (!sink || !deps.traceSinks)
+        throw new TraceRefused(`no trace connection covers the service ${service}`);
+      if (covering.length > 1)
+        throw new TraceRefused(
+          `two trace connections cover the service ${service}: ${covering.map((c) => c.id).join(', ')}`,
+        );
+    }
     const prepared = await deps.drafts.prepare({
       principal,
       tenant,
@@ -535,6 +567,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ...(subject.variant ? { variant: subject.variant } : {}),
     });
     if (!prepared.ok) throw new RunRefused(prepared.errors);
+    if (sink) {
+      // The residency the run has, filled from its model when the draft leaves it out.
+      const residency = residencyOf(prepared.definition);
+      if (!residencyAllows(residency, sink.residency)) {
+        prepared.release();
+        throw new TraceRefused(
+          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+        );
+      }
+    }
     const cases = casesIn(set, split, only);
     // A finished case takes its place in the test set's order, repeat by repeat.
     const order = new Map(cases.map((c, i) => [c.id, i]));
@@ -567,6 +609,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         version: subject.version,
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(split ? { split } : {}),
+        ...(sink ? { sink: sink.id } : {}),
         ...(subject.environment ? { environment: subject.environment } : {}),
         ...(model ? { model } : {}),
         ...(only ? { selected: only } : {}),
@@ -587,6 +630,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       prepared.release();
       throw error;
     }
+    if (sink) deps.traceSinks?.open(first.id, tenant, sink);
     const done = (async () => {
       try {
         const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
@@ -598,6 +642,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             evaluators: evaluatorsFor(cases, gatesOf(spec)),
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
+            ...(sink ? { sink: sink.id } : {}),
             // The judge is picked outside every model the service may answer with, fallback too.
             avoidAsJudge: modelsOf(subject.definition),
           },
@@ -673,6 +718,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       } finally {
         lease.release();
         prepared.release();
+        if (sink) await deps.traceSinks?.close(first.id).catch(() => undefined);
       }
     })();
     return { run: first, done };

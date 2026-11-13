@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Chip,
   Fieldset,
   Heading,
@@ -296,6 +297,13 @@ export const RunHistory = ({
   const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
   const modelList = models.status === 'ready' ? models.data : [];
   const [starting, setStarting] = useState(false);
+  const [trace, setTrace] = useState(false);
+  const [sinks] = useAsync(
+    (signal) => api.tracing.list(tenant, signal).catch(() => []),
+    [api, tenant],
+  );
+  const sink =
+    sinks.status === 'ready' ? sinks.data.find((c) => c.services.includes(serviceId)) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(
@@ -334,6 +342,7 @@ export const RunHistory = ({
           testSet: testSet.id,
           version,
           ...(choice === 'marked' ? { cases: marked } : {}),
+          ...(trace && sink ? { trace: true } : {}),
         },
         choice === 'marked'
           ? t('quality.runMarkedReason', { ...names, count: marked.length })
@@ -378,7 +387,12 @@ export const RunHistory = ({
           aria-disabled={blocked || undefined}
           aria-describedby={!canRun ? 'run-hint' : undefined}
           aria-expanded={canRun ? confirming === 'all' : undefined}
-          onClick={() => !blocked && setConfirming('all')}
+          onClick={() => {
+            if (blocked) return;
+            // Each run is sent to Langfuse only when the person ticks it for that run.
+            setTrace(false);
+            setConfirming('all');
+          }}
         >
           {t('quality.runSet')}
         </Button>
@@ -388,7 +402,11 @@ export const RunHistory = ({
               variant="tertiary"
               aria-disabled={blocked || undefined}
               aria-expanded={canRun ? confirming === 'marked' : undefined}
-              onClick={() => !blocked && setConfirming('marked')}
+              onClick={() => {
+                if (blocked) return;
+                setTrace(false);
+                setConfirming('marked');
+              }}
             >
               {t('quality.runMarked', { count: marked.length })}
             </Button>
@@ -417,6 +435,14 @@ export const RunHistory = ({
               : t('quality.confirmRunTitle', { count: cases })}
           </Heading>
           <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={chosen} />
+          {sink ? (
+            <Checkbox
+              data-size="sm"
+              label={t('quality.sendToTrace', { connection: sink.id })}
+              checked={trace}
+              onChange={(e) => setTrace(e.target.checked)}
+            />
+          ) : null}
           <div className="actions">
             <Button
               variant="primary"

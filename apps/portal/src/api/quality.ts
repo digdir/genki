@@ -292,6 +292,7 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
         version?: RunVersion;
         split?: CaseSplit;
         cases?: string[];
+        trace?: boolean;
       },
       reason: string,
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),

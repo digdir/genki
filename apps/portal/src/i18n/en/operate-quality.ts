@@ -148,6 +148,7 @@ export const qualityArea = {
     runFailed: 'Failed',
     runRunning: 'Running',
     runWaiting: 'Waiting for scores',
+    sendToTrace: 'Send the run to Langfuse ({connection}). Holdout cases are never sent.',
     runInterrupted: 'Interrupted by a restart',
     runMetrics: 'Metrics',
     runMetric: 'Metric',

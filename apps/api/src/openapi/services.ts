@@ -1203,6 +1203,10 @@ export const serviceRoutes: RouteConfig[] = [
             description: 'With version draft: run this definition instead of the saved draft',
           }),
           files: files.optional(),
+          trace: z.boolean().optional().openapi({
+            description:
+              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent",
+          }),
         }),
       ),
     },
@@ -1211,7 +1215,10 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing test set, invalid split, or a case the test set does not have'),
       ...tenantErrors,
       404: problem('No such test set or version'),
-      409: problem('The test set has no cases'),
+      409: problem(
+        "The test set has no cases, or trace is asked for but no connection covers the service or the service's residency does not allow the connection's",
+      ),
+      422: problem('The draft or version cannot run'),
     },
   }),
   createRoute({
