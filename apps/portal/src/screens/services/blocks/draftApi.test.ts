@@ -260,6 +260,15 @@ describe('the draft API for the try view', () => {
     ]);
   });
 
+  it('asks for each dataset’s filter fields by the id the draft names, tenant included', async () => {
+    const { draftApi, paths } = draft({ definition });
+    await draftApi.loadFields('byggeregler');
+    expect(paths.filter((path) => path.startsWith('/api/datasets/'))).toEqual([
+      '/api/datasets/felles/byggeregler',
+      '/api/datasets/felles/plankart',
+    ]);
+  });
+
   it('counts each facet narrowed by the other fields only, in the dataset’s tenant', async () => {
     const { draftApi, paths } = draft({ definition });
     const fields = [

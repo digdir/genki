@@ -112,7 +112,8 @@ export const fakeClient = (
     },
     getJson: async (path: string) => {
       paths.push(path);
-      const dataset = /^\/api\/datasets\/([a-z]+)$/.exec(path)?.[1];
+      // Only a dataset named with its tenant, as the draft names it, is found.
+      const dataset = /^\/api\/datasets\/felles\/([a-z]+)$/.exec(path)?.[1];
       if (dataset) return { dataset: { filters: declared[dataset as keyof typeof declared] } };
       return { fields: [{ field: 'kommune', options: [{ value: 'Oslo', count: 3 }] }] };
     },

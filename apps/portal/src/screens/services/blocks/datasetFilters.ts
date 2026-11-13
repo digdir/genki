@@ -2,14 +2,17 @@ import type { DatasetFilter } from '@genai/ui-blocks/builder';
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../../api';
 
-/** A dataset's own filter fields, as `/api/datasets/{key}` declares them to the person. */
+/**
+ * A dataset's own filter fields, as `/api/datasets/{id}` declares them to the person. The id is
+ * the one the draft names, with its tenant: a short key alone could find another tenant's dataset.
+ */
 export const loadDatasetFilters = async (
   api: ApiClient,
   dataset: string,
   signal?: AbortSignal,
 ): Promise<readonly DatasetFilter[]> => {
-  const key = dataset.slice(dataset.lastIndexOf('/') + 1);
-  const body = (await api.getJson(`/api/datasets/${encodeURIComponent(key)}`, signal)) as {
+  const path = dataset.split('/').map(encodeURIComponent).join('/');
+  const body = (await api.getJson(`/api/datasets/${path}`, signal)) as {
     dataset?: { filters?: DatasetFilter[] };
   };
   return body.dataset?.filters ?? [];
