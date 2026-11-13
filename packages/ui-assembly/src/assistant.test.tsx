@@ -3571,6 +3571,16 @@ describe('a year field’s values', () => {
     expect(valuesOf('pages', result.current.facets)).toEqual(noisy);
   });
 
+  it('keeps a chosen year outside the bounds listed when every year inside them is chosen too', async () => {
+    const result = setup(
+      [{ id: 'concerned_years', label: 'År', kind: 'year', years: { first: 2025 } }],
+      { concerned_years: ['2252', '2025', '2026'] },
+    );
+    await waitFor(() =>
+      expect(valuesOf('concerned_years', result.current.facets)).toEqual(['2252', '2026', '2025']),
+    );
+  });
+
   it('offers a year field the years its profile gives, and keeps a chosen value outside them', async () => {
     const result = setup(
       [{ id: 'concerned_years', label: 'År', kind: 'year', years: { first: 1990 } }],

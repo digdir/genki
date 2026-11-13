@@ -642,27 +642,32 @@ export const useAssistant = ({
     if (!filterOn || !fields || !corpusKey) return;
     let gone = false;
     setFacetsFailed(false);
-    // Every year field kept to its years, for the list and for what «Velg alle» chooses.
+    // Year fields bounded everywhere, so «Velg alle» on the years narrows nothing, as «Alle år».
     const thisYear = currentYear(now());
-    const facetsOf = async (asked: FilterSelection, lists?: readonly FilterField[]) =>
+    const facetsOf = async (
+      asked: FilterSelection,
+      keep: FilterSelection,
+      lists?: readonly FilterField[],
+    ) =>
       withinYears(
         await (lists
           ? api.loadFacets(asked, corpusKey, fields, lists)
           : api.loadFacets(asked, corpusKey, fields)),
         fields,
-        asked,
+        keep,
         thisYear,
       );
     const load = async () => {
       if (isEmptySelection(selection)) {
-        const found = await facetsOf(selection);
+        const found = await facetsOf(selection, selection);
         if (!gone) setBaseFacets(found);
         return found;
       }
       // A field with every value in the collection (the facets of nothing) chosen narrows nothing.
-      const base = baseFacets ?? (await facetsOf({}));
+      const base = baseFacets ?? (await facetsOf({}, {}));
       if (!gone && !baseFacets) setBaseFacets(base);
-      return facetsOf(narrowing(selection, base), base);
+      // The reader's own choices are kept in the list, also those narrowing leaves out.
+      return facetsOf(narrowing(selection, base), selection, base);
     };
     load().then(
       (found) => !gone && setFacets(found),
