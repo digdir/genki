@@ -39,9 +39,11 @@ export interface StoredConversion extends ConverterKey {
   /** Where the converter's native output lies in the Blob container, when it has one. */
   outputPath?: string;
   /**
-   * Why the converter refused the file (`too_large`, `unsupported_type`, `conversion_failed`):
-   * stored with no pages, so documents skip the file with that reason and it is not converted
-   * again until a converter replaces it.
+   * Why the converter refused the file, only for an error about the file itself: `too_large`,
+   * `unsupported_type`, or `conversion_failed` for a PDF that cannot be opened or needs a
+   * password (rows stored before issue 517 also hold it for other errors). Stored with no pages,
+   * so documents skip the file with that reason and it is not converted again until a converter
+   * replaces it.
    */
   failure?: string;
 }
