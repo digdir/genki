@@ -1,9 +1,7 @@
-// Where a document lives, from its number, when the source carries no link: the host's function,
-// or the collection's link templates, which are data a layout or a stored profile can hold.
+// A document's link from its number: the host's function, then the collection's templates.
 import type { CorpusProfile, DocumentIdPattern } from './profile.js';
 
-// The patterns a template can be keyed by, tried in this order. Fixed here, never built from a
-// profile: a stored profile is not trusted to bring a regular expression.
+// Tried in this order, and never built from a profile.
 const patterns: readonly (readonly [DocumentIdPattern, RegExp])[] = [
   ['digits', /^\d+$/],
   ['uuid', /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i],
@@ -21,10 +19,7 @@ const filled = (template: string, documentId: string): string | undefined => {
   }
 };
 
-/**
- * A document's link from its number: the profile's `documentUrl` first, then the first of its
- * `documentLinks` whose pattern the number fits. Only an http or https address is a link.
- */
+/** `documentUrl`, else the first of `documentLinks` the number fits; http or https only. */
 export const documentLink = (
   corpus: CorpusProfile | undefined,
   documentId: string,
