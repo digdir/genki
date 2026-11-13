@@ -2,19 +2,17 @@ dataset: digdir/kudos
 id: kudos
 spec:
   name: Kudos
-  description: Kudos-dokumentene Kunnskapsassistenten søker i, fra 2020, lest inn etter UUID
+  description: Hele KUDOS, nyeste først, lest inn etter UUID og delt opp side for side
   source:
     kind: kudos
     profile: prod
-    types:
-      - Tildelingsbrev
-      - Årsrapport
-      - Instruks
-      - Proposisjon til Stortinget
-      - Melding til Stortinget
-      - Strategi/plan
-      - Evaluering
-      - Statusrapport
-    since: '2020-01-01'
+    since: '1900-01-01'
+  chunking:
+    strategy:
+      kind: page
+      splitMaxLength: 4000
+    minimumLength: 1
+    maximumLength: 4000
+  maxDocumentFailures: 5000
   schedule: none
-  enabled: false
+  enabled: true

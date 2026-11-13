@@ -63,6 +63,31 @@ describe('pipeline seeds', () => {
     for (const s of read.seeds) expect(datasets).toContain(s.dataset);
   });
 
+  it('the Kudos pipeline fills all of KUDOS by page, with a failure budget of 5,000', () => {
+    const kudos = readPipelineSeeds(join(local, 'pipelines')).seeds.find(
+      (s) => s.dataset === 'digdir/kudos' && s.id === 'kudos',
+    );
+
+    expect(kudos?.spec.source).toMatchObject({
+      kind: 'kudos',
+      profile: 'prod',
+      since: '1900-01-01',
+      types: [],
+    });
+    expect(kudos?.spec.source).not.toHaveProperty('until');
+    expect(kudos?.spec.chunking).toMatchObject({
+      strategy: { kind: 'page', splitMaxLength: 4000 },
+      minimumLength: 1,
+      maximumLength: 4000,
+    });
+    expect(kudos?.spec).toMatchObject({
+      maxDocumentFailures: 5000,
+      enabled: true,
+      schedule: 'none',
+    });
+    expect(kudos?.spec.phrases).toBeUndefined();
+  });
+
   it('creates a missing pipeline in the platform scope as the seed', async () => {
     const ingestion = service();
 

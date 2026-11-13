@@ -1,3 +1,4 @@
+import { chunkingOf, pipelineSpec } from './pipeline-sources.js';
 import { describe, expect, it } from 'vitest';
 import { runIngest, type IndexSink, type IngestSource, type SourceDocument } from './index.js';
 
@@ -105,5 +106,19 @@ describe('document loop', () => {
       ),
     ).rejects.toThrow(/avbrutt/);
     expect(loaded).toEqual(['a']);
+  });
+
+  it('a pipeline can chunk by page', () => {
+    const spec = pipelineSpec.parse({
+      name: 'Kudos',
+      source: { kind: 'kudos', profile: 'prod' },
+      chunking: { strategy: { kind: 'page', splitMaxLength: 4000 }, minimumLength: 1 },
+    });
+
+    expect(chunkingOf(spec.chunking)).toMatchObject({
+      strategy: { kind: 'page', splitMaxLength: 4000 },
+      minimumLength: 1,
+      maximumLength: 4000,
+    });
   });
 });

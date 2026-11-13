@@ -38,6 +38,7 @@ import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
+import { guardPdfParseLeaks } from '@genai/providers-documents';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { evalSlotLimitsFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
@@ -132,6 +133,8 @@ const configDir = process.env.CONFIG_DIR ?? join(import.meta.dirname, '..', 'con
 const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-genai-platform';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
+// pdf.js can leave a page's parse error unhandled; that page is already left empty (ADR 0042).
+guardPdfParseLeaks(log);
 
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
 const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
@@ -411,7 +414,7 @@ const seedList = (file: string) => {
   return raw.items ?? [];
 };
 
-const documentConverter = documentConverterFrom(process.env, secrets);
+const documentConverter = documentConverterFrom(process.env, secrets, log);
 const phraseArchive = phraseArchiveFrom(process.env, log);
 log('document converter', { converter: process.env.DOCUMENT_CONVERTER ?? 'local' });
 
