@@ -483,6 +483,32 @@ describe('Prøveområde', () => {
     expect(screen.queryByText(/svarte ikke/)).toBeNull();
   });
 
+  it('shows the reason the API gives for a 403 that is not a model policy, not the model text', async () => {
+    await openPage({
+      forbidden: {
+        type: 'urn:genai:problem:test-runner-scope',
+        title: 'En testkjørernøkkel kan ikke gjøre dette',
+        detail: 'En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet.',
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/kan ikke brukes i dette oppsettet/)).toBeNull();
+  });
+
+  it('never shows the English title of a 403 that has no detail', async () => {
+    await openPage({ forbidden: { type: 'about:blank', title: 'Forbidden' } });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/kan ikke brukes i dette oppsettet/)).toBeTruthy();
+    expect(screen.queryByText(/Forbidden/)).toBeNull();
+  });
+
   it('words a model residency refusal in the language of the screen', async () => {
     await openPage({
       invalidSetup: {

@@ -889,6 +889,29 @@ describe('the playground screen', () => {
   it('fails when no run was sent', () => {
     expect(assessPlaygroundScreen(screen(), plan).detail).toBe('no playground run was sent');
   });
+
+  it('names the problem type and detail of a refused run', () => {
+    const refused = screen({
+      api: [
+        {
+          path: '/tenants/1/playground/runs/stream',
+          status: 403,
+          problem: 'urn:genai:problem:test-runner-scope',
+          why: 'A test-runner key tries smoke- services in the playground.',
+        },
+      ],
+    });
+    expect(assessPlaygroundScreen(refused, plan).detail).toBe(
+      'the playground run answered 403 urn:genai:problem:test-runner-scope A test-runner key tries smoke- services in the playground.',
+    );
+  });
+
+  it('says why no run was sent when the steps failed', () => {
+    const stuck = screen({ pageErrors: ['Error: no published version'] });
+    expect(assessPlaygroundScreen(stuck, plan).detail).toBe(
+      'no playground run was sent: Error: no published version',
+    );
+  });
 });
 
 describe('an expired session', () => {
@@ -1023,23 +1046,50 @@ describe('the playground version', () => {
     expect(publishedVersionOf(['draft'])).toBeUndefined();
   });
 
-  it('selects the published version before sending the question', async () => {
+  const playgroundPage = (versions: string[]) => {
     const calls: string[] = [];
+    let open = false;
     const picker = {
-      locator: () => ({ evaluateAll: async () => ['draft', '4'] }),
+      waitFor: async () => {
+        if (!open) throw new Error('timeout waiting for the version select');
+      },
+      locator: () => ({ evaluateAll: async () => (open ? versions : []) }),
       selectOption: async (v: string) => void calls.push(`select ${v}`),
     };
     const form = {
       locator: () => ({ fill: async () => void calls.push('fill') }),
       getByRole: () => ({ click: async () => void calls.push('send') }),
     };
+    const button = (name: string) => ({
+      first: () => button(name),
+      click: async () => {
+        if (name === 'edit') open = true;
+        if (name === 'apply') open = false;
+        calls.push(name);
+      },
+    });
     const page = {
+      getByRole: (_: string, o: { name: RegExp }) =>
+        button(
+          o.name.test('Endre oppsett') ? 'edit' : o.name.test('Bruk oppsettet') ? 'apply' : '',
+        ),
       locator: (q: string) =>
         q.startsWith('select') ? { first: () => picker } : { filter: () => ({ last: () => form }) },
       waitForResponse: async () => undefined,
       waitForTimeout: async () => undefined,
     };
-    await playgroundRun('q')(page as never);
-    expect(calls).toEqual(['select 4', 'fill', 'send']);
+    return { page: page as never, calls };
+  };
+
+  it('opens the setup, selects the published version and applies it before sending', async () => {
+    const { page, calls } = playgroundPage(['draft', '4']);
+    await playgroundRun('q')(page);
+    expect(calls).toEqual(['edit', 'select 4', 'apply', 'fill', 'send']);
+  });
+
+  it('sends nothing when the service has no published version', async () => {
+    const { page, calls } = playgroundPage(['draft']);
+    await expect(playgroundRun('q')(page)).rejects.toThrow('no published version');
+    expect(calls).not.toContain('send');
   });
 });
