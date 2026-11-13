@@ -21,6 +21,12 @@ describe('the Filter styles', () => {
   it('give the line over the documents the same air as the fields on each side', () => {
     expect(rule('.uib-filter-divider')).toContain(`margin-block: ${gap};`);
   });
+
+  it('lay a field’s ticks out in two columns, or as many as the host’s --genai-filter-checkboxes-columns', () => {
+    expect(rule('.uib-filter-checkboxes')).toContain(
+      'grid-template-columns: repeat(var(--genai-filter-checkboxes-columns, 2), minmax(0, 1fr));',
+    );
+  });
 });
 
 // A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.
