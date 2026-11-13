@@ -201,7 +201,7 @@ SMOKE_TIERS=free node scripts/smoke/run.ts
 ## Setting it up
 
 1. Merge the `test-runner` grant pull request and deploy it.
-2. Check with `list_models` that each model id in `plan.json` exists on genki-test, then publish `scripts/smoke/smoke-service.yaml` in the platform organisation.
+2. Check with `list_models` that each model id in `plan.json` exists on genki-test, then publish `scripts/smoke/smoke-service.yaml` in the platform organisation as an operator. It sets `spec.visibility: internal`, so only operators and the test-runner key see `smoke` and the `smoke-` services made from it; tenant members never do ([ADR 0004](adr/0004-service-capability-and-version.md#internal-services)).
 3. Signed in to the portal with Entra ID, create a tenant-wide key under Utvikler, API-nøkler (no service binding) with the `test-runner` grant, `callsPerMinute: 30` and `expiresInDays: 90`. It must reach every service, or the playground checks cannot run. The key expires after 90 days at most, so rotate it by then: create a new one and replace `SMOKE_API_KEY`.
 4. Create the environment `genki-test` with deployment branches set to the selected branch `main`, then add the key as `SMOKE_API_KEY`.
 5. Create the environment `smoke-review`, branch `main`, and add a federated credential with the subject `repo:digdir@51157288/genki@1411915404:environment:smoke-review` to the managed identity the AI review uses (`id-genki-review`, client id in `AZURE_REVIEW_CLIENT_ID`). The repository issues subjects with owner and repository ids, as the review's existing `pull_request` credential does. Its role on the Foundry resource already covers `claude-sonnet-5-5`.

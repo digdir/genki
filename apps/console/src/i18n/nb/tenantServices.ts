@@ -37,4 +37,5 @@ export const tenantServices = defineNamespace({
   byUnknown: 'Ukjent person',
   archived: 'Arkivert',
   paused: 'På pause',
+  internal: 'Intern',
 });

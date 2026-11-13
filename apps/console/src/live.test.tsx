@@ -453,6 +453,30 @@ describe('live mode without invented data', () => {
     );
   });
 
+  it('marks an internal service in the tenant service list', async () => {
+    await openLive('#/tenants/services?tenant=991825827', (path) =>
+      path === '/api/operator/tenants/991825827/definitions'
+        ? json({
+            data: [
+              {
+                kind: 'Service',
+                id: 'smoke',
+                name: 'Røyktest',
+                latestVersion: 1,
+                publishedAt: '2026-10-02T10:00:00Z',
+                publishedBy: 'operator:drift',
+                internal: true,
+              },
+            ],
+          })
+        : undefined,
+    );
+
+    const row = (await screen.findByText('Røyktest')).closest('tr');
+
+    expect(within(row as HTMLElement).getByText('Intern')).toBeTruthy();
+  });
+
   it('falls back to API health on Drift when the API has no operations overview', async () => {
     const api = await openLive('#/operations');
 
