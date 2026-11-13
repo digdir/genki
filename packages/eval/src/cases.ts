@@ -19,6 +19,7 @@ import {
   type Score,
   type Split,
   type TestCase,
+  type UsageSummary,
 } from './schema.js';
 
 export const caseSplits = ['locked', 'open'] as const;
@@ -132,6 +133,7 @@ export const criteriaJudgeId = 'judge:criteria';
 /** Scores criteria cases, with a model picked once per run from another family. */
 export const criteriaJudge = (
   pick: (writers: string[]) => Promise<JudgeModel | undefined>,
+  usage?: () => UsageSummary,
 ): Evaluator => {
   const prompt = criteriaJudgePrompt('');
   let chosen: Promise<JudgeModel | undefined> | undefined;
@@ -152,6 +154,7 @@ export const criteriaJudge = (
       return model ? `${criteriaJudgeId}@${prompt.version}+${model.id}` : undefined;
     },
     kind: 'model',
+    ...(usage ? { usage } : {}),
     evaluate: async (c, o, ctx) => {
       const type = caseTypeOf(c);
       if (type !== 'criteria')
@@ -184,7 +187,8 @@ export const criteriaJudge = (
           }),
         ];
       try {
-        if (!chosen) {
+        // A judge picked before any case reached a model is picked again once one has writers.
+        if (!chosen || (pickedAgainst.length === 0 && ctx.servedModels.length > 0)) {
           pickedAgainst = ctx.servedModels;
           chosen = pick(ctx.servedModels);
         }

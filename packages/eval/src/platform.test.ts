@@ -403,6 +403,34 @@ describe('publish gate', () => {
     expect(decision).toMatchObject({ allow: true, refused: [], advisory: [] });
   });
 
+  it('reads only completed runs: a newer run still running, failed or interrupted never hides the last completed one', async () => {
+    const unsettled = (id: string, status: 'running' | 'failed' | 'interrupted'): EvalRun => ({
+      ...fakeRun(id, 'v2', 0),
+      endedAt: '2026-10-06T10:09:00Z',
+      results: [],
+      metrics: {},
+      status,
+    });
+    const runs = await stored(
+      [fakeRun('r2', 'v2', 0.9), 'v2'],
+      [unsettled('r3', 'running'), 'v2'],
+      [unsettled('r4', 'failed'), 'v2'],
+      [unsettled('r5', 'interrupted'), 'v2'],
+    );
+
+    const decision = await publishGate({
+      tenant,
+      service: 'kunnskapsassistenten',
+      candidate: 'v2',
+      evaluation: { testSets: ['mini'], gates: ['pattern-floor'] },
+      runs,
+      registry,
+    });
+
+    expect(decision.allow).toBe(true);
+    expect(decision.results[0]?.reason).toBe('answer-pattern 0.900 >= 0.8');
+  });
+
   it('refuses a publish below a threshold or without a run, naming why', async () => {
     const low = await publishGate({
       tenant,
@@ -424,48 +452,6 @@ describe('publish gate', () => {
     expect(low.allow).toBe(false);
     expect(low.refused).toEqual(['pattern-floor on mini: answer-pattern 0.500 < 0.8']);
     expect(missing.refused).toEqual(['pattern-floor on mini: no eval run for test set mini']);
-  });
-
-  it('uses a fallback run only for a deterministic threshold gate the candidate has no eval run for', async () => {
-    const input = {
-      tenant,
-      service: 'kunnskapsassistenten',
-      candidate: 'v3',
-      evaluation: { testSets: ['mini'], gates: ['pattern-floor'] },
-      registry,
-    };
-
-    const fromFallback = await publishGate({
-      ...input,
-      runs: await stored([fakeRun('r2', 'v2', 0.5), 'v2']),
-      candidateFallback: {
-        runs: new Map([['mini', fakeRun('portal', 'v3', 0.9)]]),
-        metrics: ['answer-pattern'],
-      },
-    });
-    const storedWins = await publishGate({
-      ...input,
-      runs: await stored([fakeRun('r3', 'v3', 0.5), 'v3']),
-      candidateFallback: {
-        runs: new Map([['mini', fakeRun('portal', 'v3', 0.9)]]),
-        metrics: ['answer-pattern'],
-      },
-    });
-    const judgeGate = await publishGate({
-      ...input,
-      evaluation: { testSets: ['mini'], gates: ['no-judge-regression'] },
-      runs: await stored([fakeRun('r2', 'v2', 0.9), 'v2']),
-      candidateFallback: {
-        runs: new Map([['mini', fakeRun('portal', 'v3', 0.9)]]),
-        metrics: ['answer-pattern', 'judge.correct'],
-      },
-    });
-
-    expect(fromFallback.allow).toBe(true);
-    expect(judgeGate.refused).toEqual([
-      'no-judge-regression on mini: no eval run for test set mini',
-    ]);
-    expect(storedWins.refused).toEqual(['pattern-floor on mini: answer-pattern 0.500 < 0.8']);
   });
 
   it('lets a regression flagged by an uncalibrated judge advise but not block', async () => {

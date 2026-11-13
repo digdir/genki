@@ -1,7 +1,7 @@
 import { untrustedData } from '@genai/port-model';
 import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
-import type { Score, TestCase } from './schema.js';
+import type { Score, TestCase, UsageSummary } from './schema.js';
 
 export interface EvalContext {
   servedModels: string[];
@@ -38,6 +38,8 @@ export interface Evaluator {
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
   /** The signal aborts when the run's wait for scores ends or the run is cancelled. */
   collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
+  /** What the evaluator's own model calls used, for a judge that calls one. */
+  usage?(): UsageSummary;
 }
 
 /** The evaluator of a provenance judge: judge:criteria@2+foundry/claude is judge:criteria. */

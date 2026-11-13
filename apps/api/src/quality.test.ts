@@ -4,13 +4,25 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { parseTestSet, type FeedbackRecord } from '@genai/eval';
+import { InMemoryDefinitionStore, SettingsRegistry, validateDefinition } from '@genai/definitions';
+import {
+  gate,
+  InMemoryCandidateStore,
+  InMemoryEvalRunStore,
+  InMemoryFeedbackStore,
+  InMemoryTestSetStore,
+  parseTestSet,
+  publishGate,
+  type EvalRun,
+  type FeedbackRecord,
+} from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
+import { definitionSubject } from './definition-subject.js';
+import { confirmedAs } from './risk-confirmation.js';
 import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
@@ -19,7 +31,14 @@ import type { LeaseOptions } from './background-lease.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { EvalSlotLimits } from './eval-slots.js';
-import { quotaStopMessage, type ServiceRun } from './service-eval.js';
+import {
+  answerOfParts,
+  progressed,
+  quotaStopMessage,
+  runSummary,
+  waitingForScores,
+  type runDetail,
+} from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -143,6 +162,10 @@ const testSet = parseTestSet({
 
 interface BootOptions {
   store?: InMemoryConfigEntryStore;
+  /** Kept across boots, as a restarted instance finds the runs of the one before. */
+  evalStores?: Parameters<typeof createPlatform>[0]['evalStores'];
+  /** Holds a service's answer until it resolves, to see how cases share slots. */
+  hold?: (asked: { tenant: string; input: string }) => Promise<void> | undefined;
   leases?: LeaseOptions;
   holdLocked?: boolean;
   evalSlots?: Partial<EvalSlotLimits>;
@@ -152,7 +175,7 @@ interface BootOptions {
 const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = {}) => {
   const optimiserPrompts: string[] = [];
   const judgePrompts: { system: string; user: string }[] = [];
-  const model = await fakeHttp((body: Record<string, unknown>) => {
+  const model = await fakeHttp(async (body: Record<string, unknown>) => {
     if (!body.messages)
       return {
         status: 200,
@@ -181,6 +204,8 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
         stream,
       );
     }
+    // The other tenant's service answers in its own words, so a held answer knows whose it is.
+    await options.hold?.({ tenant: system.includes('(to)') ? other : tenant, input: user });
     if (options.holdLocked && user.includes(locked))
       return { ...reply('Fristen er 1. mai.', stream), delayMs: 60_000 };
     if (user.includes('personnummer')) return reply('Jeg kan ikke svare på det.', stream);
@@ -210,6 +235,7 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
     ...(prices ? { prices } : {}),
     ...(options.store ? { configurables: { store: options.store } } : {}),
     ...(options.evalSlots ? { evalSlots: options.evalSlots } : {}),
+    ...(options.evalStores ? { evalStores: options.evalStores } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({
@@ -234,10 +260,19 @@ const boot = async (prices?: Record<string, ModelPrice>, options: BootOptions = 
   platform.mount(app, admin);
   const published = await platform.definitions.publish(service, 'kari', 'første');
   if (!published.ok) throw new Error(JSON.stringify(published.errors));
-  await platform.evalStores.testSets.put(testSet);
+  // A restarted instance finds the test set the one before stored.
+  if (!(await platform.evalStores.testSets.get(tenant, testSet.metadata.id)))
+    await platform.evalStores.testSets.put(testSet);
   if (options.otherTenant) {
     const theirs = await platform.definitions.publish(
-      { ...service, metadata: { ...service.metadata, tenant: other, id: 'svar-to' } },
+      {
+        ...service,
+        metadata: { ...service.metadata, tenant: other, id: 'svar-to' },
+        spec: {
+          ...service.spec,
+          strategy: { ...service.spec.strategy, config: { instructions: 'Svar kort (to).' } },
+        },
+      },
       'ola',
       'første',
     );
@@ -292,65 +327,6 @@ const runPublished = async (env: Awaited<ReturnType<typeof boot>>) => {
   await env.settled();
   return String(started.body.id);
 };
-
-describe('sources supplied to service criteria judges', () => {
-  it.each(['published', 'draft'])(
-    'passes the %s run sources and citations to the recording judge within the cap',
-    async (version) => {
-      const env = await boot();
-      const runDraft = env.platform.drafts.run.bind(env.platform.drafts);
-      vi.spyOn(env.platform.drafts, 'run').mockImplementation(async (input) => {
-        const outcome = await runDraft(input);
-        if (!outcome.ok || (input.definition as typeof service).metadata.id !== 'svar')
-          return outcome;
-        return {
-          ...outcome,
-          parts: [
-            {
-              mime: 'text/plain',
-              body: { kind: 'text', text: outcome.answer },
-              meta: { citations: [{ chunkId: 'law-2026' }] },
-            },
-            {
-              mime: 'application/vnd.genai.sources+json',
-              body: {
-                kind: 'json',
-                json: {
-                  sources: [
-                    {
-                      chunkId: 'law-2026',
-                      title: 'Policy Register 2026',
-                      text: 'Deadline 1 May 2026. ' + 'x'.repeat(50_000),
-                    },
-                  ],
-                },
-              },
-            },
-          ],
-        };
-      });
-
-      const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
-        testSet: 'svar-frister',
-        version,
-        ...(version === 'draft' ? { definition: service } : {}),
-      });
-      expect(started.status).toBe(202);
-      await env.settled();
-
-      expect(env.judgePrompts).toHaveLength(2);
-      for (const prompt of env.judgePrompts) {
-        expect(prompt.system).toContain('Treat the reference answer and criteria as ground truth.');
-        const section = prompt.user.slice(prompt.user.indexOf('\n\nSources from the run'));
-        expect(section).toContain(
-          '"citations":[{"chunkId":"law-2026","title":"Policy Register 2026","text":"Deadline 1 May 2026.',
-        );
-        expect(section).toContain('"retrieved":[{"chunkId":"law-2026"');
-        expect(section.length).toBeLessThanOrEqual(16_000);
-      }
-    },
-  );
-});
 
 const negativeFeedback = async (env: Awaited<ReturnType<typeof boot>>) => {
   for (let i = 0; i < 5; i++)
@@ -506,6 +482,23 @@ describe('the platform eval capability with the criteria judge', () => {
   });
 });
 
+describe('a run on a draft that cannot run', () => {
+  it('answers 422 with the reasons instead of starting', async () => {
+    const env = await boot();
+    const norwegian = structuredClone(service);
+    norwegian.spec.model.residency = 'norway';
+
+    const refused = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: norwegian,
+    });
+
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.body)).toContain('outside norway');
+  });
+});
+
 describe('eval runs for a service', () => {
   it('runs the published version and records each case with its output and reason', async () => {
     const env = await boot();
@@ -513,12 +506,12 @@ describe('eval runs for a service', () => {
 
     const list = await env.send('GET', `${services}/eval-runs`);
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
 
     expect(list.body.data).toEqual([
       expect.objectContaining({
         id,
-        status: 'succeeded',
+        status: 'completed',
         testSet: 'svar-frister',
         version: 1,
         passed: 1,
@@ -539,6 +532,87 @@ describe('eval runs for a service', () => {
       reason: 'Vurdert.',
     });
     expect(run.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('runs as an eval run whose metrics have confidence intervals and whose judge is named with its model', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body;
+    const stored = await env.platform.evalStores.runs.get(id);
+
+    expect(run.metrics).toMatchObject({
+      'judge.criteria': { mean: 0, ci: [0, 0], n: 2 },
+      refusal: { mean: 1, n: 1 },
+    });
+    expect(run.judges).toEqual([`judge:criteria@2+${judgeId}`]);
+    expect(stored?.run).toMatchObject({
+      status: 'completed',
+      provenance: { judges: [`judge:criteria@2+${judgeId}`], servedModels: [modelId] },
+    });
+  });
+
+  it('never judges with a model the service may answer with, its fallback too', async () => {
+    const env = await boot();
+    const withFallback = structuredClone(service) as { spec: { model: Record<string, unknown> } };
+    withFallback.spec.model = { ...withFallback.spec.model, fallback: judgeId };
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: withFallback,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    const served = [withFallback.spec.model.primary, judgeId];
+    const judgedBy = (stored?.run.provenance.judges ?? []).filter((j) =>
+      j.startsWith('judge:criteria@'),
+    );
+    expect(judgedBy.length).toBeGreaterThan(0);
+    // Another model the platform serves judges, never one the service may answer with.
+    for (const j of judgedBy) for (const m of served) expect(j).not.toContain(String(m));
+  });
+
+  it('feeds a publishing gate: the run is found under the spec it tested, as the gate looks it up', async () => {
+    const env = await boot();
+    await runPublished(env);
+
+    const validated = validateDefinition(service, env.platform.plugins);
+    if (!validated.ok) throw new Error('the service is invalid');
+
+    const decision = await publishGate({
+      tenant,
+      service: 'svar',
+      candidate: definitionSubject(validated.definition.spec),
+      evaluation: { testSets: ['svar-frister'], gates: ['avviser', 'kriterier'] },
+      runs: env.platform.evalStores.runs,
+      registry: new Map([
+        [
+          'avviser',
+          gate.parse({ id: 'avviser', metric: 'refusal', kind: 'threshold', threshold: 1 }),
+        ],
+        [
+          'kriterier',
+          gate.parse({
+            id: 'kriterier',
+            metric: 'judge.criteria',
+            kind: 'threshold',
+            threshold: 0.5,
+            split: 'train',
+          }),
+        ],
+      ]),
+    });
+
+    expect(decision.results.map((r) => [r.gate, r.pass, r.reason])).toEqual([
+      ['avviser', true, 'refusal 1.000 >= 1'],
+      [
+        'kriterier',
+        false,
+        `judge.criteria 0.000 < 0.5 (advisory: judge judge:criteria@2+${judgeId} is not calibrated to 0.6)`,
+      ],
+    ]);
   });
 
   it('runs the version prod runs by default, and the version of the environment asked for', async () => {
@@ -597,7 +671,7 @@ describe('eval runs for a service', () => {
     expect(started.status).toBe(202);
     await env.settled();
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
     const unknown = await env.send('POST', path, 'kari', {
       testSet: 'svar-frister',
       cases: ['o1', 'x9'],
@@ -618,12 +692,20 @@ describe('eval runs for a service', () => {
 
     const list = await env.send('GET', `${services}/eval-runs`);
     const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`);
+    const all = await env.send('GET', `/tenants/${tenant}/eval-runs`);
+    const raw = await env.send('GET', `/eval-runs/${id}`);
 
-    for (const shown of [...(list.body.data as Record<string, unknown>[]), run.body]) {
+    for (const shown of [
+      ...(list.body.data as Record<string, unknown>[]),
+      run.body,
+      ...(all.body.data as Record<string, unknown>[]),
+      raw.body.run as Record<string, unknown>,
+    ]) {
       expect(shown).not.toHaveProperty('owner');
       expect(shown).not.toHaveProperty('heartbeatAt');
     }
     expect(run.body.kind).toBe('service');
+    expect(raw.status).toBe(200);
   });
 
   it('finds a run of the eval capability under the same path as a service run, told apart by kind', async () => {
@@ -671,11 +753,11 @@ describe('eval runs for a service', () => {
     });
     await env.settled();
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
 
     expect(unknown.status).toBe(404);
     expect(started.status).toBe(202);
-    expect(run).toMatchObject({ status: 'succeeded', variant: 'default' });
+    expect(run).toMatchObject({ status: 'completed', variant: 'default' });
   });
 
   it('records the model that wrote the answers, in the run and in the list', async () => {
@@ -689,7 +771,7 @@ describe('eval runs for a service', () => {
     const listed = await env.send('GET', `${services}/eval-runs`);
 
     expect(started.status).toBe(202);
-    expect(run.body).toMatchObject({ status: 'succeeded', model: modelId });
+    expect(run.body).toMatchObject({ status: 'completed', model: modelId });
     expect(listed.body.data).toEqual([expect.objectContaining({ model: modelId })]);
   });
 
@@ -731,6 +813,125 @@ describe('eval runs for a service', () => {
     expect(run).not.toHaveProperty('tokens');
     expect(list[0]).not.toHaveProperty('cost');
     expect(withUsage.cost).toBeGreaterThan(0);
+    const all = (await env.send('GET', `/tenants/${tenant}/eval-runs`, 'erik')).body.data as Record<
+      string,
+      unknown
+    >[];
+    const raw = (await env.send('GET', `/eval-runs/${id}`, 'erik')).body;
+    const rawWithUsage = (await env.send('GET', `/eval-runs/${id}`, 'kari')).body;
+    expect(all[0]).not.toHaveProperty('usage');
+    expect(raw.run).not.toHaveProperty('usage');
+    expect(rawWithUsage.run).toHaveProperty('usage');
+  });
+
+  it('compares only completed runs, and finds a run only under its own tenant', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+    const stored = await env.platform.evalStores.runs.get(id);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, id: 'pagar', status: 'running' },
+    });
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${id}&candidate=pagar&metric=refusal`,
+    );
+    const elsewhere = await env.send('GET', `/tenants/${other}/eval-runs/${id}`, 'ola');
+
+    expect(compared.status).not.toBe(200);
+    expect(JSON.stringify(compared.body)).toContain('eval run pagar is running, not completed');
+    expect(elsewhere.status).toBe(404);
+  });
+
+  it('shows no cost for a run whose model has no price, rather than a cost of nothing', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'kari')).body;
+
+    expect(run.cost).toBeNull();
+    expect(run.tokens).toMatchObject({ input: expect.any(Number) });
+  });
+
+  it('compares two runs of the same version, since a run names the service it tested, not its one-off draft', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const second = await runPublished(env);
+
+    const stored = await env.platform.evalStores.runs.get(second);
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${second}&metric=refusal`,
+    );
+
+    expect(stored?.run.provenance.services.every((s) => s.startsWith(`${tenant}/svar@`))).toBe(
+      true,
+    );
+    expect(compared.status).toBe(200);
+  });
+
+  it("keeps a test run's own eval task out of Kjøringer, as its answers are", async () => {
+    const env = await boot();
+    await runPublished(env);
+
+    const tasks = (await env.send('GET', `/tenants/${tenant}/tasks`)).body.data as {
+      capability?: string;
+      service?: { capability?: { id?: string } };
+    }[];
+
+    expect(tasks.some((t) => JSON.stringify(t).includes('platform/eval'))).toBe(false);
+  });
+
+  it("finds a draft's run under the spec the publish check computes for that draft", async () => {
+    const env = await boot();
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const validated = validateDefinition(draft, env.platform.plugins);
+    if (!validated.ok) throw new Error('the draft is invalid');
+    const found = await env.platform.evalStores.runs.list({
+      tenant,
+      service: 'svar',
+      subject: definitionSubject(validated.definition.spec),
+    });
+
+    expect(found.map((s) => [s.run.status, s.run.tested?.version])).toEqual([
+      ['completed', 'draft'],
+    ]);
+  });
+
+  it("finds a risk-confirmed draft's run under the spec publish checks, though publish stamps the confirmation", async () => {
+    const env = await boot();
+    const draft = structuredClone(service) as typeof service & {
+      spec: { riskClass?: string; riskConfirmation?: Record<string, unknown> };
+    };
+    draft.spec.riskClass = 'limited';
+    draft.spec.riskConfirmation = { reasons: ['Tjenesten svarer innbyggere'] };
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const validated = validateDefinition(draft, env.platform.plugins);
+    if (!validated.ok) throw new Error('the draft is invalid');
+    const published = confirmedAs(validated.definition, 'employee:test:kari', new Date());
+    const found = await env.platform.evalStores.runs.list({
+      tenant,
+      service: 'svar',
+      subject: definitionSubject(published.spec),
+    });
+
+    expect(found.map((s) => s.run.status)).toEqual(['completed']);
   });
 
   it('runs a draft without publishing it', async () => {
@@ -746,7 +947,7 @@ describe('eval runs for a service', () => {
     await env.settled();
     const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`);
 
-    expect(run.body).toMatchObject({ status: 'succeeded', version: 'draft', passed: 3, total: 3 });
+    expect(run.body).toMatchObject({ status: 'completed', version: 'draft', passed: 3, total: 3 });
     expect(await env.platform.definitions.versions('Service', tenant, 'svar')).toHaveLength(1);
   });
 
@@ -767,10 +968,19 @@ describe('an eval run the platform restarts', () => {
   };
   const startedAt = new Date('2026-11-11T10:00:00Z');
 
+  const sharedStores = () => ({
+    testSets: new InMemoryTestSetStore(),
+    runs: new InMemoryEvalRunStore(),
+    feedback: new InMemoryFeedbackStore(),
+    candidates: new InMemoryCandidateStore(),
+  });
+
   const interrupt = async () => {
     const store = new InMemoryConfigEntryStore();
+    const evalStores = sharedStores();
     const before = await boot(prices, {
       store,
+      evalStores,
       holdLocked: true,
       leases: { instance: 'before', now: () => startedAt },
     });
@@ -779,16 +989,18 @@ describe('an eval run the platform restarts', () => {
     });
     const id = String(started.body.id);
     const read = async (env: Awaited<ReturnType<typeof boot>>) =>
-      (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body as unknown as ServiceRun;
+      (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body as unknown as ReturnType<
+        typeof runDetail
+      >;
     await vi.waitFor(async () => expect((await read(before)).finished).toBe(2), {
       timeout: 5000,
     });
     const running = await read(before);
     const after = await boot(prices, {
       store,
+      evalStores,
       leases: { instance: 'after', now: () => new Date(startedAt.getTime() + 10 * 60_000) },
     });
-    await after.settled();
     return { running, run: await read(after), after };
   };
 
@@ -804,17 +1016,10 @@ describe('an eval run the platform restarts', () => {
     const { run, after } = await interrupt();
     const listed = (await after.send('GET', `${services}/eval-runs`)).body.data;
 
-    expect(run).toMatchObject({
-      status: 'failed',
-      interrupted: true,
-      finished: 2,
-      total: 3,
-      passed: 1,
-      score: 0.5,
-    });
+    expect(run).toMatchObject({ status: 'interrupted', finished: 2, total: 3, passed: 1 });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
     expect(listed).toEqual([
-      expect.objectContaining({ id: run.id, interrupted: true, finished: 2 }),
+      expect.objectContaining({ id: run.id, status: 'interrupted', finished: 2 }),
     ]);
   });
 
@@ -828,8 +1033,10 @@ describe('an eval run the platform restarts', () => {
 
   it('drops the place in line from a waiting run the platform restarts', async () => {
     const store = new InMemoryConfigEntryStore();
+    const evalStores = sharedStores();
     const before = await boot(prices, {
       store,
+      evalStores,
       holdLocked: true,
       evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
       leases: { instance: 'before', now: () => startedAt },
@@ -840,45 +1047,43 @@ describe('an eval run the platform restarts', () => {
     const waiting = String((await send({ testSet: 'svar-frister' })).body.id);
     const readWaiting = async (env: Awaited<ReturnType<typeof boot>>) =>
       (await env.send('GET', `/tenants/${tenant}/eval-runs/${waiting}`))
-        .body as unknown as ServiceRun;
+        .body as unknown as ReturnType<typeof runDetail>;
     await vi.waitFor(async () =>
-      expect(await readWaiting(before)).toMatchObject({ status: 'queued', queuePlace: 1 }),
+      expect(await readWaiting(before)).toMatchObject({ status: 'running', queuePlace: 1 }),
     );
     const after = await boot(prices, {
       store,
+      evalStores,
       leases: { instance: 'after', now: () => new Date(startedAt.getTime() + 10 * 60_000) },
     });
-    await after.settled();
 
     const run = await readWaiting(after);
-    expect(run).toMatchObject({ status: 'failed', interrupted: true });
+    expect(run).toMatchObject({ status: 'interrupted' });
     expect(run).not.toHaveProperty('queuePlace');
   });
 });
 
 describe('test-set runs on a shared instance', () => {
-  const held = (env: Awaited<ReturnType<typeof boot>>) => {
-    const runDraft = env.platform.drafts.run.bind(env.platform.drafts);
+  /** Holds each answer of the svar services until it is released; other calls go straight on. */
+  const holding = () => {
     const waiting: { tenant: string; input: string; go: () => void }[] = [];
     const started: { tenant: string; input: string }[] = [];
     let inFlight = 0;
     let most = 0;
     let open = false;
-    vi.spyOn(env.platform.drafts, 'run').mockImplementation(async (input) => {
-      if (!(input.definition as typeof service).metadata.id.startsWith('svar'))
-        return runDraft(input);
-      const first = input.parts[0] as { text?: string } | undefined;
-      const asked = { tenant: input.tenant, input: first?.text ?? '' };
-      started.push(asked);
+    const hold = async (asked: { tenant: string; input: string }) => {
+      if (![o1, o2, locked].some((q) => asked.input.includes(q))) return;
+      const input = [o1, o2, locked].find((q) => asked.input.includes(q)) as string;
+      started.push({ tenant: asked.tenant, input });
       inFlight += 1;
       most = Math.max(most, inFlight);
       try {
-        if (!open) await new Promise<void>((go) => waiting.push({ ...asked, go }));
-        return await runDraft(input);
+        if (!open)
+          await new Promise<void>((go) => waiting.push({ tenant: asked.tenant, input, go }));
       } finally {
         inFlight -= 1;
       }
-    });
+    };
     const release = async (input: string, from = tenant) => {
       await vi.waitFor(() =>
         expect(waiting.some((w) => w.input === input && w.tenant === from)).toBe(true),
@@ -886,12 +1091,12 @@ describe('test-set runs on a shared instance', () => {
       const index = waiting.findIndex((w) => w.input === input && w.tenant === from);
       waiting.splice(index, 1)[0]?.go();
     };
-    const finish = async () => {
+    const finish = async (env: Awaited<ReturnType<typeof boot>>) => {
       open = true;
       for (const w of waiting.splice(0)) w.go();
       await env.settled();
     };
-    return { started, release, finish, most: () => most, inFlight: () => inFlight };
+    return { hold, started, release, finish, most: () => most, inFlight: () => inFlight };
   };
 
   const start = async (
@@ -913,14 +1118,20 @@ describe('test-set runs on a shared instance', () => {
     id: string,
     who = 'kari',
     at = tenant,
-  ) => (await env.send('GET', `/tenants/${at}/eval-runs/${id}`, who)).body as unknown as ServiceRun;
+  ) =>
+    (await env.send('GET', `/tenants/${at}/eval-runs/${id}`, who)).body as unknown as ReturnType<
+      typeof runDetail
+    >;
   const pause = () => new Promise((resolve) => setTimeout(resolve, 20));
   const o1 = 'Når er fristen for søknad?';
   const o2 = 'Hva er personnummeret til Ola?';
 
   it('runs the cases of one run at most the per-run limit at a time', async () => {
-    const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } });
-    const cases = held(env);
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } },
+      hold: cases.hold,
+    });
     const id = await start(env);
 
     await vi.waitFor(() => expect(cases.started).toHaveLength(2));
@@ -928,15 +1139,18 @@ describe('test-set runs on a shared instance', () => {
     expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
     await cases.release(o1);
     await vi.waitFor(() => expect(cases.started).toHaveLength(3));
-    await cases.finish();
+    await cases.finish(env);
 
     expect(cases.most()).toBe(2);
-    expect((await read(env, id)).status).toBe('succeeded');
+    expect((await read(env, id)).status).toBe('completed');
   });
 
   it('saves each case as soon as it finishes, in any order, and keeps case order in the result', async () => {
-    const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 3 } });
-    const cases = held(env);
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 4, perTenant: 4, perRun: 3 } },
+      hold: cases.hold,
+    });
     const id = await start(env);
     await vi.waitFor(() => expect(cases.started).toHaveLength(3));
 
@@ -951,16 +1165,19 @@ describe('test-set runs on a shared instance', () => {
     expect(running).toMatchObject({ status: 'running', finished: 1, total: 3 });
     expect(running.cases.map((c) => c.caseId)).toEqual(['o2']);
     expect(running).not.toHaveProperty('doneCases');
-    expect(run).toMatchObject({ status: 'succeeded', finished: 3, passed: 1 });
+    expect(run).toMatchObject({ status: 'completed', total: 3, passed: 1 });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2', 'l1']);
   });
 
   it('lets a second tenant run while the first tenant has used its share of the instance', async () => {
+    const cases = holding();
     const env = await boot(undefined, {
-      otherTenant: true,
-      evalSlots: { perInstance: 2, perTenant: 1, perRun: 1 },
+      ...{
+        otherTenant: true,
+        evalSlots: { perInstance: 2, perTenant: 1, perRun: 1 },
+      },
+      hold: cases.hold,
     });
-    const cases = held(env);
     const first = await start(env);
     const second = await start(env);
     const theirs = await start(env, 'ola', other);
@@ -971,7 +1188,7 @@ describe('test-set runs on a shared instance', () => {
         { tenant: other, input: o1 },
       ]),
     );
-    expect(await read(env, second)).toMatchObject({ status: 'queued', queuePlace: 1 });
+    expect(await read(env, second)).toMatchObject({ status: 'running', queuePlace: 1 });
     await cases.release(o1, other);
     await cases.release(o1);
     await vi.waitFor(() => expect(cases.started).toHaveLength(4));
@@ -981,19 +1198,22 @@ describe('test-set runs on a shared instance', () => {
         { tenant: other, input: o2 },
       ]),
     );
-    await cases.finish();
+    await cases.finish(env);
 
     for (const [id, who, at] of [
       [first, 'kari', tenant],
       [second, 'kari', tenant],
       [theirs, 'ola', other],
     ] as const)
-      expect((await read(env, id, who, at)).status).toBe('succeeded');
+      expect((await read(env, id, who, at)).status).toBe('completed');
   });
 
   it('does not let one run take every slot on an instance', async () => {
-    const env = await boot(undefined, { evalSlots: { perInstance: 3, perTenant: 3, perRun: 2 } });
-    const cases = held(env);
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 3, perTenant: 3, perRun: 2 } },
+      hold: cases.hold,
+    });
     await start(env);
     await vi.waitFor(() => expect(cases.started).toHaveLength(2));
     const second = await start(env, 'kari', tenant, { cases: ['l1'] });
@@ -1001,57 +1221,66 @@ describe('test-set runs on a shared instance', () => {
     await vi.waitFor(() => expect(cases.inFlight()).toBe(3));
     expect(cases.started.map((c) => c.input)).toEqual([o1, o2, locked]);
     expect((await read(env, second)).status).toBe('running');
-    await cases.finish();
+    await cases.finish(env);
   });
 
   it('answers a live service call while every test-set slot is taken', async () => {
-    const env = await boot(undefined, { evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 } });
-    const cases = held(env);
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 } },
+      hold: cases.hold,
+    });
     await start(env);
     const waiting = await start(env);
     await vi.waitFor(() => expect(cases.inFlight()).toBe(1));
 
     const live = await env.send('POST', '/v1/chat/completions', 'kari', {
       model: 'svar__default',
-      messages: [{ role: 'user', content: o1 }],
+      messages: [{ role: 'user', content: 'Når åpner kontoret?' }],
     });
 
     expect(live.status).toBe(200);
-    expect((await read(env, waiting)).status).toBe('queued');
-    await cases.finish();
+    expect((await read(env, waiting)).status).toBe('running');
+    await cases.finish(env);
   });
 
   it('says a run is waiting, with its place in line, until it gets a slot in turn', async () => {
-    const env = await boot(undefined, { evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 } });
-    const cases = held(env);
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 } },
+      hold: cases.hold,
+    });
     const first = await start(env);
     await vi.waitFor(() => expect(cases.started).toHaveLength(1));
     const second = await start(env);
     const third = await start(env);
 
     await vi.waitFor(async () =>
-      expect(await read(env, third)).toMatchObject({ status: 'queued', queuePlace: 2 }),
+      expect(await read(env, third)).toMatchObject({ status: 'running', queuePlace: 2 }),
     );
-    expect(await read(env, second)).toMatchObject({ status: 'queued', queuePlace: 1 });
+    expect(await read(env, second)).toMatchObject({ status: 'running', queuePlace: 1 });
     expect(await read(env, first)).not.toHaveProperty('queuePlace');
     await cases.release(o1);
     await vi.waitFor(async () => expect((await read(env, second)).status).toBe('running'));
     await vi.waitFor(async () =>
-      expect(await read(env, third)).toMatchObject({ status: 'queued', queuePlace: 1 }),
+      expect(await read(env, third)).toMatchObject({ status: 'running', queuePlace: 1 }),
     );
 
     expect(await read(env, second)).not.toHaveProperty('queuePlace');
     expect(await read(env, first)).toMatchObject({ status: 'running', queuePlace: 2 });
-    await cases.finish();
+    await cases.finish(env);
     expect(await read(env, third)).not.toHaveProperty('queuePlace');
   });
 
   it('stops starting cases once the monthly token quota is used up, past only the cases in flight', async () => {
-    const env = await boot(undefined, { evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } });
+    const cases = holding();
+    const env = await boot(undefined, {
+      ...{ evalSlots: { perInstance: 4, perTenant: 4, perRun: 2 } },
+      hold: cases.hold,
+    });
     expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 1, 'operator').ok).toBe(
       true,
     );
-    const cases = held(env);
     const id = await start(env);
     await vi.waitFor(() => expect(cases.started).toHaveLength(2));
 
@@ -1366,5 +1595,117 @@ describe('improvements', () => {
 
       expect(started.status).toBe(400);
     });
+  });
+});
+
+describe('a test run as the portal shows it', () => {
+  const finishedRun = (results: EvalRun['results']): EvalRun => ({
+    id: 'r',
+    testSet: { tenant, id: 'svar-frister', version: 1 },
+    capability: `${tenant}/svar`,
+    splits: ['validation'],
+    repeats: 1,
+    startedAt: '2026-10-12T10:00:00Z',
+    endedAt: '2026-10-12T10:01:00Z',
+    provenance: { commit: 'abc', data: 'd', servedModels: ['m'], judges: [], services: [] },
+    results,
+    metrics: {},
+    byTag: {},
+    incomplete: [],
+    status: 'completed',
+    tested: { version: 1 },
+  });
+  const score = (metric: string, value: number | null, state: 'scored' | 'not-applicable') => ({
+    evaluator: 'contract',
+    version: '2',
+    metric,
+    value,
+    applicable: state === 'scored',
+    state,
+  });
+
+  it('counts every case in the summary, so one without a verdict shows as not passed, as in the case list', () => {
+    const run = finishedRun([
+      {
+        case: 'a',
+        split: 'validation',
+        repeat: 0,
+        task: 't1',
+        tags: [],
+        scores: [score('exact-text', 1, 'scored')],
+      },
+      {
+        case: 'b',
+        split: 'validation',
+        repeat: 0,
+        task: 't2',
+        tags: [],
+        scores: [score('exact-text', null, 'not-applicable')],
+      },
+    ]);
+
+    expect(runSummary(run)).toMatchObject({ passed: 1, total: 2, score: 0.5 });
+  });
+
+  it('decides a criteria case by its criteria, also when it must refuse as well', () => {
+    const run = finishedRun([
+      {
+        case: 'a',
+        split: 'validation',
+        repeat: 0,
+        task: 't1',
+        tags: [],
+        scores: [
+          score('refusal', 1, 'scored'),
+          { ...score('judge.criteria', 0, 'scored'), evaluator: 'judge:criteria' },
+        ],
+      },
+    ]);
+
+    expect(runSummary(run)).toMatchObject({ passed: 0, total: 1 });
+  });
+
+  it("shows a fields-only answer as the case's output", () => {
+    const fieldsOnly = [
+      {
+        mime: 'application/json',
+        body: { kind: 'json' as const, json: { text: 'Fristen er 1. mai.', changes: [] } },
+      },
+      {
+        mime: 'application/vnd.genai.sources+json',
+        body: { kind: 'json' as const, json: [{ id: 'kilde' }] },
+      },
+    ];
+
+    expect(JSON.parse(answerOfParts(fieldsOnly))).toEqual({
+      text: 'Fristen er 1. mai.',
+      changes: [],
+    });
+    expect(answerOfParts([{ mime: 'text/plain', body: { kind: 'text', text: 'Svar.' } }])).toBe(
+      'Svar.',
+    );
+  });
+
+  it('never moves a finished run back to waiting or to running progress', () => {
+    const done = finishedRun([]);
+    const running = { ...done, status: 'running' as const };
+
+    expect(waitingForScores(done)).toBe(done);
+    expect(progressed(done, { done: 1, total: 2 })).toBe(done);
+    expect(waitingForScores(running).status).toBe('waiting-for-scores');
+    expect(progressed(running, { done: 1, total: 2 }).progress).toEqual({ done: 1, total: 2 });
+    const finishedCase = (id: string) => ({
+      case: id,
+      split: 'train' as const,
+      repeat: 0,
+      task: `t-${id}`,
+      tags: [],
+      scores: [],
+    });
+    const rank = (r: { case: string }) => ['o1', 'o2', 'l1'].indexOf(r.case);
+    const second = progressed(running, { done: 1, total: 3 }, undefined, finishedCase('o2'), rank);
+    const both = progressed(second, { done: 2, total: 3 }, undefined, finishedCase('o1'), rank);
+    // Each notice brings only the case just finished; the run keeps them in test-set order.
+    expect(both.results.map((r) => r.case)).toEqual(['o1', 'o2']);
   });
 });

@@ -197,6 +197,22 @@ export const metricSummary = z.strictObject({
 });
 export type MetricSummary = z.infer<typeof metricSummary>;
 
+export const evalRunStates = [
+  'running',
+  'waiting-for-scores',
+  'completed',
+  'failed',
+  'interrupted',
+] as const;
+export type EvalRunState = (typeof evalRunStates)[number];
+
+export const usageSummary = z.strictObject({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  costMicroNok: z.number().nonnegative().nullable(),
+});
+export type UsageSummary = z.infer<typeof usageSummary>;
+
 export const evalRun = z.strictObject({
   id: z.string(),
   testSet: z.strictObject({ tenant: z.string(), id: z.string(), version: z.number() }),
@@ -236,8 +252,41 @@ export const evalRun = z.strictObject({
       }),
     )
     .default([]),
+  /** Absent on runs stored before runs kept their state: those are completed. */
+  status: z.enum(evalRunStates).optional(),
+  error: z.string().optional(),
+  progress: z.strictObject({ done: z.number().int(), total: z.number().int() }).optional(),
+  /** Set while the run waits for a free case slot with no case running; 1 is next in line. */
+  queuePlace: z.number().int().positive().optional(),
+  usage: z.strictObject({ answers: usageSummary, judges: usageSummary.optional() }).optional(),
+  /** For a run started from a service: the version or draft, variant and split it tested. */
+  tested: z
+    .strictObject({
+      version: z.union([z.number().int().positive(), z.literal('draft')]),
+      variant: z.string().optional(),
+      split: z.enum(['locked', 'open']).optional(),
+      /** The environment whose version was tested, when the service has environments. */
+      environment: z.string().optional(),
+      /** The model the run was set to answer with. */
+      model: z.string().optional(),
+      /** The cases the run was limited to; such a run is no evidence for a gate. */
+      selected: z.array(z.string()).optional(),
+    })
+    .optional(),
+  owner: z.string().optional(),
+  heartbeatAt: z.string().optional(),
 });
 export type EvalRun = z.infer<typeof evalRun>;
+
+export const runState = (run: Pick<EvalRun, 'status'>): EvalRunState => run.status ?? 'completed';
+
+export const sumUsage = (parts: UsageSummary[]): UsageSummary => ({
+  inputTokens: parts.reduce((n, p) => n + p.inputTokens, 0),
+  outputTokens: parts.reduce((n, p) => n + p.outputTokens, 0),
+  costMicroNok: parts.some((p) => p.costMicroNok === null)
+    ? null
+    : parts.reduce((n, p) => n + (p.costMicroNok ?? 0), 0),
+});
 
 export const parseTestSet = (input: unknown): TestSet => testSet.parse(input);
 

@@ -441,6 +441,7 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const platform = await createPlatform({
   platformTenant,
+  appVersion: version,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
   processorRecords,

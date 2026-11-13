@@ -5,6 +5,7 @@ import {
   caseSplits,
   caseTypes,
   evalRun,
+  evalRunStates,
   gate,
   judgeLabel,
   metricSummary,
@@ -15,6 +16,9 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
+
+/** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
+const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
 
 const pathParam = (name: string, example: string) =>
   z.string().openapi({ param: { name, in: 'path' }, example });
@@ -1156,11 +1160,11 @@ const RunStatus = z
 const ServiceEvalRun = z
   .object({
     id: z.string(),
-    service: z.string(),
-    status: z.enum(['queued', 'running', 'succeeded', 'failed']),
+    status: z.enum(evalRunStates),
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    variant: z.string().optional(),
     environment: z
       .string()
       .optional()
@@ -1178,25 +1182,44 @@ const ServiceEvalRun = z
       ),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
-    score: z.number().nullable(),
+    score: z
+      .number()
+      .nullable()
+      .describe(
+        'Share of cases that pass on their type: the criteria judge, the exact text or the refusal',
+      ),
     passed: z.number().int(),
     total: z.number().int(),
     finished: z
       .number()
       .int()
       .optional()
-      .describe('The cases done so far; passed, score and cost count only these'),
+      .describe('The cases done so far, while the run is not completed; passed counts only these'),
     queuePlace: z
       .number()
       .int()
       .optional()
       .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
-    cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
+    progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
+    metrics: z.record(z.string(), metricSummary),
+    incomplete: z.array(
+      z.object({
+        evaluator: z.string(),
+        missing: z.number().int(),
+        failed: z.number().int(),
+        of: z.number().int(),
+        reason: z.string(),
+      }),
+    ),
+    judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+    cost: z
+      .number()
+      .nullable()
+      .optional()
+      .describe('Micro-NOK for the answers and the judges; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
-    interrupted: z.boolean().optional().describe('The platform restarted before the run was done'),
-    owner: z.string().optional(),
-    heartbeatAt: z.string().optional(),
+    byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
     cases: z.array(
       z.object({
         caseId: z.string(),
@@ -1382,7 +1405,7 @@ const evalRoutes: RouteConfig[] = [
       headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
-    responses: { 200: json(z.object({ data: z.array(evalRun) }), 'Runs'), ...memberRead },
+    responses: { 200: json(z.object({ data: z.array(shownEvalRun) }), 'Runs'), ...memberRead },
   }),
   createRoute({
     method: 'post',
@@ -1432,7 +1455,7 @@ const evalRoutes: RouteConfig[] = [
           ServiceEvalRun.extend({ kind: z.literal('service') }),
           z.object({
             kind: z.literal('kernel'),
-            run: evalRun,
+            run: shownEvalRun,
             provenance: evalRun.shape.provenance,
             metrics: z.record(z.string(), metricSummary),
             byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
@@ -1494,7 +1517,7 @@ const evalRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          run: evalRun,
+          run: shownEvalRun,
           provenance: evalRun.shape.provenance,
           metrics: z.record(z.string(), metricSummary),
           byTag: z.record(z.string(), z.record(z.string(), metricSummary)),

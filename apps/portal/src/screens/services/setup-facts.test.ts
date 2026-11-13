@@ -65,7 +65,7 @@ describe('who and numbers shown for versions', () => {
   it('writes the latest quality run in the language of the screen', () => {
     expect(latestRunFact([], en)).toBe('Not run');
     const run = {
-      status: 'succeeded',
+      status: 'completed',
       total: 4,
       passed: 3,
       startedAt: '2026-10-09T10:00:00Z',
