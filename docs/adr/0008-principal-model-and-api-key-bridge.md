@@ -1,12 +1,12 @@
 # 0008 Principal model and the API-key bridge
 
-Status: accepted, 2026-10-12 (built; Entra logins in the locked test environment are tenant principals, ADR 0033, 2026-11-03; test-runner keys in the locked test environment, ADR 0033, 2026-11-10; Maskinporten clients get no platform right, 2026-11-11). Proposed 2026-10-06. Amended 2026-10-12: the legacy key flag is removed.
+Status: accepted, 2026-10-12 (built; Entra logins in the locked test environment are tenant principals, ADR 0033, 2026-11-03; test-runner keys in the locked test environment, ADR 0033, 2026-11-10; Maskinporten clients get no platform right, 2026-11-11; Ansattporten logins only from registered or trusted clients, 2026-11-12). Proposed 2026-10-06. Amended 2026-10-12: the legacy key flag is removed.
 
 ## Decision
 
 - Every caller becomes a `Principal` with a kind, issuer, subject and tenant. The tenant is an organisation number.
 - Per issuer:
-  - **Ansattporten:** subject is a pseudonymous id. The national identity number is kept only in an identity table, never in events. Tenant is the organisation the person chose, from the Altinn rights in the token.
+  - **Ansattporten:** subject is a pseudonymous id. The national identity number is kept only in an identity table, never in events. Tenant is the organisation the person chose, from the Altinn rights in the token. The token's `client_id` must be a client a tenant registered, which confines the login to that client's service and tenant, or one of the platform's own clients in `EMPLOYEE_CLIENT_IDS`. A token from any other client, or without `client_id`, is refused.
   - **Maskinporten:** subject is the client id. Tenant is the consumer organisation; a supplier organisation is recorded separately.
   - **Systembruker:** subject is the system user id. Tenant is the customer organisation.
   - **Entra ID:** Digdir operators only, with roles. Never a tenant principal, except in the locked test environment, where a trusted Entra login through Ansattporten is an employee of `PLATFORM_TENANT` (ADR 0033). Operators are also recognised as Ansattporten employees listed in `OPERATOR_SUBJECTS` who log in through `OPERATOR_CLIENT_IDS`; ADR 0035 proposes recognising them by Entra group instead.

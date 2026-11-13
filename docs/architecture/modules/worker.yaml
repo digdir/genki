@@ -23,7 +23,10 @@ responsibilities:
   - Fire schedules from one worker at a time through a Postgres advisory lock
   - Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)
   - Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding
+  - Work knowledge.convert, 2 at once, with the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, and send the waiting records' index jobs (ADR 0042)
+  - Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled
   - Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them
+  - Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try
   - Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start
   - Work knowledge.drop on the platform server for one generation an engine switch left, never the active one
   - End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold
@@ -45,6 +48,13 @@ input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []
 edges:
+  - to: providers-azure-blob
+    label: Writes converters' native output to the Blob container
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-azure-blob'
   - to: port-usage
     label: Polls usage sources into usage buckets
     kind: call

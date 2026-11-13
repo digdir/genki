@@ -68,6 +68,7 @@ export type TrustedIssuer =
       minAssurance?: 'substantial' | 'high';
       acceptEntraId?: boolean;
       trustedEntra?: TrustedEntra;
+      trustedClients?: readonly string[];
       registeredClients?: ClientRegistry;
     }
   | {
@@ -198,6 +199,12 @@ const employee = (
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
   if (assurance === 'entraid' && issuer.trustedEntra)
     return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered);
+  if (
+    !registered &&
+    issuer.trustedClients &&
+    !(typeof payload.client_id === 'string' && issuer.trustedClients.includes(payload.client_id))
+  )
+    throw new AuthenticationError('invalid_token', 'the login comes from an untrusted client');
   if (assurance === 'entraid' && !issuer.acceptEntraId)
     throw new AuthenticationError('insufficient_assurance', 'Entra ID logins are not accepted');
   if (issuer.minAssurance === 'high' && assurance !== 'high')

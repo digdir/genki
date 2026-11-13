@@ -481,6 +481,7 @@ export const mergeRows = (
       found.apiKey = info.key;
       const scope = info.settableAt.flatMap((l) => scopeFromLayer[l] ?? []);
       if (scope.length) found.scope = scope;
+      if (info.operatorOnly) found.setByDigdir = true;
       const p = fromApiValue(found, info.default);
       if (isSet(p) && typeof p === typeof found.P) found.P = p;
       continue;
@@ -497,6 +498,7 @@ export const mergeRows = (
       ...shape,
       sens: info.sensitivity === 'secret' ? 'Hemmelig' : 'Lav',
       scope: info.settableAt.flatMap((l) => scopeFromLayer[l] ?? []),
+      ...(info.operatorOnly ? { setByDigdir: true } : {}),
       P:
         info.sensitivity === 'secret'
           ? null

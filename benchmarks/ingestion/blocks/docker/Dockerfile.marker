@@ -1,0 +1,14 @@
+# Marker 1.10.2 with the Marker service's pins (services/marker-pdf-to-markdown/requirements.txt, PR 91).
+FROM python:3.13-slim
+# build-essential: Triton compiles its launcher with the C compiler at run time (Surya's models).
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0 build-essential \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir torch==2.14.1 torchvision==0.29.1 "marker-pdf[full]==1.10.2"
+# Marker downloads a font into site-packages on first load; the container runs as the host user, who can't write
+# there, so fetch it at build time.
+RUN python -c "from marker.util import download_font; download_font()"
+COPY documents.json /app/documents.json
+COPY convert/ /app/convert/
+WORKDIR /app/convert
+ENV PYTHONUNBUFFERED=1
+ENTRYPOINT ["python", "convert_marker.py"]

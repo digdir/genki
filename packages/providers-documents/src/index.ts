@@ -1,9 +1,9 @@
 import { extname } from 'node:path';
 import {
   DocumentTooLargeError,
-  NoTextLayerError,
   htmlToMarkdown,
-  markerPageSeparator,
+  onePage,
+  textLayer,
   type DocumentConverter,
   type DocumentFile,
 } from '@genai/ingest';
@@ -101,7 +101,8 @@ const pageText = (items: object[]) => {
     .trim();
 };
 
-const pdfToMarkdown = async (file: DocumentFile, maxPages: number) => {
+/** One markdown string per PDF page; a page with no text layer is empty. */
+const pdfPages = async (file: DocumentFile, maxPages: number) => {
   const task = getDocument({
     data: new Uint8Array(file.bytes),
     disableFontFace: true,
@@ -118,8 +119,7 @@ const pdfToMarkdown = async (file: DocumentFile, maxPages: number) => {
       pages.push(pageText((await page.getTextContent()).items));
       page.cleanup();
     }
-    if (pages.every((p) => p === '')) throw new NoTextLayerError(file.name);
-    return pages.join(markerPageSeparator);
+    return pages;
   } finally {
     await task.destroy();
   }
@@ -145,14 +145,14 @@ export const createLocalConverter = (options: LocalConverterOptions = {}): Docum
   const maxPages = options.maxPages ?? 2000;
   return {
     extensions: localConverterExtensions,
-    toMarkdown: async (file) => {
+    convert: async (file) => {
       if (file.bytes.byteLength > maxBytes) throw new DocumentTooLargeError(file.name, maxBytes);
       const kind = kindOf(file);
-      if (kind === '.pdf') return pdfToMarkdown(file, maxPages);
-      if (kind === '.docx') return docxToMarkdown(file, maxUnzippedBytes);
+      if (kind === '.pdf') return { pages: await pdfPages(file, maxPages), converter: textLayer };
+      if (kind === '.docx') return onePage(await docxToMarkdown(file, maxUnzippedBytes));
       if (kind === '.html' || kind === '.htm')
-        return htmlToMarkdown(new TextDecoder().decode(file.bytes));
-      if (kind === '.md' || kind === '.txt') return new TextDecoder().decode(file.bytes);
+        return onePage(htmlToMarkdown(new TextDecoder().decode(file.bytes)));
+      if (kind === '.md' || kind === '.txt') return onePage(new TextDecoder().decode(file.bytes));
       throw new UnsupportedDocumentError(file.name);
     },
   };

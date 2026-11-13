@@ -395,7 +395,14 @@ describe('/v1/chat/completions', () => {
           title: 'Tildelingsbrev 2025',
           url: 'https://kudos.dfo.no/d1',
           document_id: 'd1',
-          excerpts: [{ chunk_id: 'c1', text: 'Digdir skal ...', position: 3 }],
+          excerpts: [
+            {
+              chunk_id: 'c1',
+              text: 'Digdir skal ...',
+              position: 3,
+              heading: 'Tildelingsbrev 2025 › Mål Delmål › Styringsparametere',
+            },
+          ],
         },
         {
           source: { name: 'Årsrapport', id: 'c2', url: 'chunk:c2' },
@@ -404,7 +411,7 @@ describe('/v1/chat/completions', () => {
           excerpt: 'Uten tittel',
           title: 'Årsrapport',
           document_id: 'd2',
-          excerpts: [{ chunk_id: 'c2', text: 'Uten tittel' }],
+          excerpts: [{ chunk_id: 'c2', text: 'Uten tittel', heading: 'Årsrapport' }],
         },
       ],
       ai_generated: true,

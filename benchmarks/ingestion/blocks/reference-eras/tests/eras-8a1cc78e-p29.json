@@ -1,0 +1,314 @@
+{
+ "tests": [
+  {
+   "id": "eras-8a1cc78e-p29-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabell 4c. Konsumprisindeksen. Bidrag fra de enkelte delindekser til totalindeksen.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,6",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Drikkevarer og tobakk",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1978",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "0,5",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Klær og skotøy",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "1979",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "10,1",
+     "max_diffs": 1
+    },
+    "left_heading": {
+     "text": "Importerte konsumvarer",
+     "max_diffs": 1
+    },
+    "top_heading": {
+     "text": "des. 76",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t05",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "9,2",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Husleie",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "des. 77",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "4,7",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Totalindeks",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "des. 78",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "11,6",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tabellen viser at reduksjonen i prisstigningen i 1979 har gjort seg gjeldende innenfor alle undergrupper",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "En gjør oppmerksom på vektene er revidert for 1979 på posten 3 og 4.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "loven om inntektsstopp som gjaldt gjennom hele 1979",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Som følge av loven ble jordbruksprisene",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t11",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "2. PRISREGULERING",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "I 1978 og 1979 har det vært gjennomført",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t12",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Bestemmelsene.",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t13",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "sjøl om det i perioden har vært gjennomført visse endringer",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "eras-8a1cc78e-p29-t14",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Forskriftene ble den 23. juni 1978 avløst av bestemmelser om skjerpet prisregulering.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -326,6 +326,7 @@ module storage 'modules/storage.bicep' = {
     name: take('${namePrefix}${environmentName}data${suffix}', 24)
     location: location
     tags: allTags
+    conversionsWriterPrincipalId: knowledgeOn ? knowledgeWorkerIdentity!.properties.principalId : ''
   }
 }
 
@@ -363,6 +364,7 @@ module apps 'modules/containerapps.bicep' = {
       MASKINPORTEN_REQUIRED_SCOPE: maskinportenRequiredScope
       OPERATOR_SUBJECTS: operatorSubjects
       PLATFORM_TENANT: platformTenant
+      EMPLOYEE_CLIENT_IDS: join(filter([portalClientId, workspaceClientId, consoleClientId], id => !empty(id)), ',')
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer
@@ -386,6 +388,7 @@ module apps 'modules/containerapps.bicep' = {
           host: knowledgeHost
           database: knowledgeDatabaseName
           vcores: knowledgePostgresVCores
+          conversionsUrl: storage.outputs.conversionsUrl
           api: {
             id: knowledgeApiIdentity!.id
             clientId: knowledgeApiIdentity!.properties.clientId

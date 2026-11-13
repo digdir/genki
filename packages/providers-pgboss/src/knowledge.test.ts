@@ -93,19 +93,26 @@ describe('the knowledge job queues', () => {
     const key = knowledgeKeys.convert(file);
     const first = await writer.send(
       convert,
-      { run: run(), tenant: ORG, file: file.sha256 },
+      { run: run(), tenant: ORG, file: file.sha256, dataset: 'kudos', record: '1', tenants: ORG },
       { key, priority: convertPriority.run },
     );
     const second = await writer.send(
       convert,
-      { run: run(), tenant: ORG, file: file.sha256 },
+      { run: run(), tenant: ORG, file: file.sha256, dataset: 'kudos', record: '1', tenants: ORG },
       { key, priority: convertPriority.upload },
     );
     expect(first).toEqual(expect.any(String));
     expect(second).toBeNull();
     const other = await writer.send(
       convert,
-      { run: run(), tenant: ORG, file: 'b'.repeat(64) },
+      {
+        run: run(),
+        tenant: ORG,
+        file: 'b'.repeat(64),
+        dataset: 'kudos',
+        record: '2',
+        tenants: ORG,
+      },
       { key: knowledgeKeys.convert({ ...file, sha256: 'b'.repeat(64) }) },
     );
     expect(other).toEqual(expect.any(String));
