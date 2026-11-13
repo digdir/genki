@@ -699,20 +699,26 @@ export const integrationsArea = {
     idInvalid:
       'Use only small letters, digits and hyphens, starting with a letter or digit, for example agency-langfuse.',
     host: 'Address',
-    hostHelp: 'For example https://langfuse.digdir.cloud. HTTPS only.',
-    hostInvalid: 'Write the whole address, for example https://langfuse.digdir.cloud.',
+    hostHelp: 'For example https://langfuse.agency.no. HTTPS only.',
+    hostInvalid: 'Write the whole address, for example https://langfuse.agency.no.',
     publicKey: 'Public key',
     secret: 'Secret key',
-    secretHelp:
-      'Stored as a secret that can only be sent to the address above, and never shown again.',
-    secretKeepHelp:
-      'Leave it empty to keep the stored key. It is stored for the address above only.',
+    secretHelp: 'Stored as a secret that can only be sent to this Langfuse, and never shown again.',
+    secretKeepHelp: 'Leave it empty to keep the stored key. It is stored for this Langfuse only.',
     secretAgain: 'Enter the secret key again when the address changes, so it is only sent there.',
+    which: 'Langfuse',
+    whichHelp: "Digdir's Langfuse is {host}.",
+    instanceOption: "Digdir's Langfuse",
+    ownOption: 'Your own Langfuse',
     servicesLabel: 'Services',
-    servicesHelp: "The services' ids, separated by commas. A service can have only one connection.",
+    servicesHelp:
+      'The services that send their test runs here. A service can have only one connection.',
+    coveredBy: 'Connected to {id}',
+    unknownService: '{id} (does not exist)',
+    noServices: 'The organisation has no services yet.',
+    servicesFailed: 'Could not read the services.',
     residency: 'Residency',
-    residencyHelp:
-      "Where Langfuse stores what it receives, and where its judges' models run. Digdir sets this for Digdir's Langfuse.",
+    residencyHelp: "Where Langfuse stores what it receives, and where its judges' models run.",
     content: 'Send text',
     contentHelp:
       'Questions, answers and what the judges read. Needs a Langfuse that deletes what genki deletes and keeps raw files at most 7 days.',

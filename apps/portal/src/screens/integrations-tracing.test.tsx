@@ -39,9 +39,35 @@ const digdir = {
   ],
 };
 
-const renderTracing = async () => {
+const digdirHost = 'https://langfuse.digdir.cloud';
+
+const own = {
+  ...digdir,
+  id: 'etaten',
+  host: 'https://langfuse.etaten.example.no',
+  publicKey: 'pk-lf-etaten',
+  secretKey: 'secret://tenant/999888777/langfuse-etaten',
+  services: ['postsortering'],
+  residency: 'eu',
+  instance: false,
+  residencySetBy: 'tenant',
+  datasets: [],
+};
+
+const renderTracing = async (
+  options: {
+    connections?: Record<string, unknown>[];
+    instance?: { host: string; content: boolean } | null;
+    /** The agency's services, or a failure to read them; the portal's mock otherwise. */
+    services?: { id: string; name: string; lifecycle?: string }[] | 'fail';
+  } = {},
+) => {
   const calls: Call[] = [];
-  const saved: Record<string, unknown>[] = [digdir];
+  const saved: Record<string, unknown>[] = [...(options.connections ?? [digdir])];
+  const instance =
+    options.instance === null
+      ? undefined
+      : (options.instance ?? { host: digdirHost, content: false });
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -56,11 +82,24 @@ const renderTracing = async () => {
       body,
     });
     const path = new URL(url, 'http://localhost').pathname;
+    if (/\/tenants\/[^/]+\/services$/.test(path) && method === 'GET' && options.services)
+      return options.services === 'fail'
+        ? Response.json({ title: 'Internal error' }, { status: 500 })
+        : Response.json({
+            data: options.services.map((x) => ({ lifecycle: 'active', ...x })),
+          });
     if (/\/tracing\/connections$/.test(path) && method === 'GET')
-      return Response.json({ data: saved });
+      return Response.json({ data: saved, ...(instance ? { instance } : {}) });
     const put = /\/tracing\/connections\/([^/]+)$/.exec(path);
     if (put && method === 'PUT') {
-      const connection = { ...body, id: put[1], instance: false, residencySetBy: 'tenant' };
+      const onInstance = body?.host === instance?.host;
+      const connection = {
+        residency: 'global',
+        ...body,
+        id: put[1],
+        instance: onInstance,
+        residencySetBy: onInstance ? 'operator' : 'tenant',
+      };
       const at = saved.findIndex((c) => c.id === put[1]);
       if (at >= 0) saved[at] = connection;
       else saved.push(connection);
@@ -144,11 +183,13 @@ describe('Integrasjoner: Langfuse', () => {
 
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Langfuse', 'own');
     fill('Id for koblingen', 'etaten');
     fill('Adresse', 'https://langfuse.etaten.example.no');
     fill('Offentlig nøkkel', 'pk-lf-etaten');
     fill('Hemmelig nøkkel', 'sk-lf-etaten');
-    fill('Tjenester', 'soknadsuttrekk, rapportassistenten');
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Postsortering' }));
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Møtereferat' }));
     fill('Lagringssted', 'norway');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
       target: { value: 'Teamet bruker Langfuse til dommere' },
@@ -172,7 +213,7 @@ describe('Integrasjoner: Langfuse', () => {
         host: 'https://langfuse.etaten.example.no',
         publicKey: 'pk-lf-etaten',
         secretKey: expect.stringMatching(/^secret:\/\/tenant\/\d{9}\/langfuse-etaten$/),
-        services: ['soknadsuttrekk', 'rapportassistenten'],
+        services: ['postsortering', 'motereferat'],
         residency: 'norway',
         content: false,
         erasureDeclared: false,
@@ -220,6 +261,7 @@ describe('Integrasjoner: Langfuse', () => {
     const form = within(section).getByRole('form', { name: 'Ny Langfuse-kobling' });
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Langfuse', 'own');
     fill('Id for koblingen', 'digdir');
     fill('Adresse', 'https://langfuse.etaten.example.no');
     fill('Offentlig nøkkel', 'pk-lf-etaten');
@@ -269,6 +311,7 @@ describe('Integrasjoner: Langfuse', () => {
     const form = within(section).getByRole('form', { name: 'Ny Langfuse-kobling' });
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Langfuse', 'own');
     fill('Id for koblingen', 'Lokal Langfuse');
     fill('Adresse', 'https://langfuse.etaten.example.no');
     fill('Offentlig nøkkel', 'pk-lf-etaten');
@@ -301,7 +344,7 @@ describe('Integrasjoner: Langfuse', () => {
     };
 
     const first = edit();
-    first.fill('Tjenester', 'rapportassistenten, soknadsuttrekk');
+    fireEvent.click(within(first.form).getByRole('checkbox', { name: 'Postsortering' }));
     fireEvent.click(within(first.form).getByRole('button', { name: 'Lagre' }));
     expect(await screen.findByText('Koblingen digdir er lagret.')).toBeTruthy();
     expect(calls.filter((c) => c.method === 'PUT')).toMatchObject([
@@ -309,6 +352,7 @@ describe('Integrasjoner: Langfuse', () => {
     ]);
 
     const second = edit();
+    second.fill('Langfuse', 'own');
     second.fill('Adresse', 'https://langfuse.ny.example.no');
     fireEvent.click(within(second.form).getByRole('button', { name: 'Lagre' }));
     expect(
@@ -328,5 +372,347 @@ describe('Integrasjoner: Langfuse', () => {
       },
       { body: { secretKey: 'secret://tenant/999888777/langfuse-digdir' } },
     ]);
+  });
+});
+
+describe('Integrasjoner: Langfuse, picked from lists', () => {
+  const newForm = async (options?: Parameters<typeof renderTracing>[0]) => {
+    const rendered = await renderTracing(options);
+    await within(rendered.section).findByRole('button', { name: 'Koble til Langfuse' });
+    fireEvent.click(within(rendered.section).getByRole('button', { name: 'Koble til Langfuse' }));
+    const form = within(rendered.section).getByRole('form', { name: 'Ny Langfuse-kobling' });
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    const reason = (value = 'Teamet bruker Langfuse til dommere') =>
+      fireEvent.change(within(form).getByLabelText(/Begrunnelse/), { target: { value } });
+    return { ...rendered, form, fill, reason };
+  };
+  const editForm = async (id: string, options?: Parameters<typeof renderTracing>[0]) => {
+    const rendered = await renderTracing(options);
+    const card = (await within(rendered.section).findByRole('heading', { name: id })).closest(
+      'li',
+    ) as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Endre' }));
+    const form = within(rendered.section).getByRole('form', { name: 'Endre Langfuse-koblingen' });
+    const reason = (value = 'Teamet rydder i Langfuse-koblingen') =>
+      fireEvent.change(within(form).getByLabelText(/Begrunnelse/), { target: { value } });
+    return { ...rendered, form, reason };
+  };
+  const puts = (calls: Call[]) => calls.filter((c) => c.method === 'PUT');
+
+  it("connects to Digdir's Langfuse without typing its address", async () => {
+    const { calls, form, fill, reason, section } = await newForm({ connections: [] });
+
+    expect((within(form).getByLabelText('Langfuse') as HTMLSelectElement).value).toBe('instance');
+    expect(
+      within(form).getByText('Digdirs Langfuse er https://langfuse.digdir.cloud.'),
+    ).toBeTruthy();
+    fill('Offentlig nøkkel', 'pk-lf-digdir');
+    fill('Hemmelig nøkkel', 'sk-lf-digdir');
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Rapportassistenten' }));
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen digdir-langfuse er lagret.')).toBeTruthy();
+    expect(await within(section).findByText(digdirHost)).toBeTruthy();
+    expect(puts(calls)).toMatchObject([
+      {
+        url: expect.stringMatching(/\/secrets\/langfuse-digdir-langfuse$/),
+        body: { value: 'sk-lf-digdir', allowedHosts: [digdirHost] },
+      },
+      {
+        url: expect.stringMatching(/\/tracing\/connections\/digdir-langfuse$/),
+        body: { host: digdirHost, publicKey: 'pk-lf-digdir', services: ['rapportassistenten'] },
+      },
+    ]);
+  });
+
+  it("asks for the address only for the agency's own Langfuse", async () => {
+    const { form, fill } = await newForm();
+
+    expect(within(form).queryByLabelText('Adresse')).toBeNull();
+    fill('Langfuse', 'own');
+    expect((within(form).getByLabelText('Adresse') as HTMLInputElement).value).toBe('');
+    fill('Langfuse', 'instance');
+    expect(within(form).queryByLabelText('Adresse')).toBeNull();
+  });
+
+  it("picks the services from the agency's own services, by name", async () => {
+    const { calls, form, fill, reason } = await newForm({ connections: [] });
+
+    const group = within(form).getByRole('group', { name: /^Tjenester/ });
+    for (const name of [
+      'Rapportassistenten',
+      'Postsortering',
+      'Møtereferat',
+      'Vedtaksutkast',
+      'Nettsider på nynorsk',
+    ])
+      expect(within(group).getByRole('checkbox', { name })).toBeTruthy();
+    expect(within(form).queryByRole('textbox', { name: 'Tjenester' })).toBeNull();
+    fireEvent.click(within(group).getByRole('checkbox', { name: 'Nettsider på nynorsk' }));
+    fill('Offentlig nøkkel', 'pk-lf-digdir');
+    fill('Hemmelig nøkkel', 'sk-lf-digdir');
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen digdir-langfuse er lagret.')).toBeTruthy();
+    expect(puts(calls)[1]).toMatchObject({ body: { services: ['nettsider-nynorsk'] } });
+  });
+
+  it('shows a service another connection covers as taken, naming that connection', async () => {
+    const { form } = await newForm();
+
+    const taken = within(form).getByRole('checkbox', {
+      name: 'Rapportassistenten',
+    }) as HTMLInputElement;
+    expect(taken.disabled).toBe(true);
+    expect(taken.checked).toBe(false);
+    expect(within(form).getByText('Koblet til digdir')).toBeTruthy();
+    expect(
+      (within(form).getByRole('checkbox', { name: 'Postsortering' }) as HTMLInputElement).disabled,
+    ).toBe(false);
+  });
+
+  it('shows a stored service id that is not a service, ticked, so it can be unticked', async () => {
+    const typo = { ...own, services: ['postsortering', 'fqa'] };
+    const { calls, form, reason } = await editForm('etaten', { connections: [digdir, typo] });
+
+    const unknown = within(form).getByRole('checkbox', {
+      name: 'fqa (finnes ikke)',
+    }) as HTMLInputElement;
+    expect(unknown.checked).toBe(true);
+    fireEvent.click(unknown);
+    const again = () =>
+      within(form).getByRole('checkbox', { name: 'fqa (finnes ikke)' }) as HTMLInputElement;
+    fireEvent.click(again());
+    expect(again().checked).toBe(true);
+    fireEvent.click(again());
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen etaten er lagret.')).toBeTruthy();
+    expect(puts(calls)).toMatchObject([{ body: { services: ['postsortering'] } }]);
+  });
+
+  it("shows Digdir's residency as set by Digdir and leaves it out of the save", async () => {
+    const { calls, form, fill, reason } = await newForm({ connections: [] });
+
+    expect(within(form).queryByRole('combobox', { name: 'Lagringssted' })).toBeNull();
+    expect(
+      within(form).getByText('Lagringssted: ikke avklart (global), satt av Digdir'),
+    ).toBeTruthy();
+    fill('Offentlig nøkkel', 'pk-lf-digdir');
+    fill('Hemmelig nøkkel', 'sk-lf-digdir');
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen digdir-langfuse er lagret.')).toBeTruthy();
+    expect(puts(calls)[1]?.body).not.toHaveProperty('residency');
+    cleanup();
+
+    const edited = await editForm('digdir', {
+      connections: [{ ...digdir, residency: 'eu' }],
+    });
+    expect(within(edited.form).getByText('Lagringssted: i EU/EØS, satt av Digdir')).toBeTruthy();
+  });
+
+  it("offers Send tekst for Digdir's Langfuse only when it may receive text, or already does", async () => {
+    const closed = await newForm({ connections: [] });
+    expect(within(closed.form).queryByRole('switch', { name: /Send tekst/ })).toBeNull();
+    closed.fill('Langfuse', 'own');
+    expect(within(closed.form).getByRole('switch', { name: /Send tekst/ })).toBeTruthy();
+    cleanup();
+
+    const open = await newForm({ connections: [], instance: { host: digdirHost, content: true } });
+    expect(within(open.form).getByRole('switch', { name: /Send tekst/ })).toBeTruthy();
+    cleanup();
+
+    const already = await editForm('digdir', { connections: [{ ...digdir, content: true }] });
+    const sends = within(already.form).getByRole('switch', {
+      name: /Send tekst/,
+    }) as HTMLInputElement;
+    expect(sends.checked).toBe(true);
+    fireEvent.click(sends);
+    already.reason();
+    fireEvent.click(within(already.form).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText('Koblingen digdir er lagret.')).toBeTruthy();
+    expect(puts(already.calls)).toMatchObject([{ body: { content: false } }]);
+  });
+
+  it("asks for the erasure declaration only for the agency's own Langfuse, and only with text on", async () => {
+    const declaration = /Vi bekrefter at vår Langfuse sletter det genki sletter/;
+    const { form, fill } = await newForm({
+      connections: [],
+      instance: { host: digdirHost, content: true },
+    });
+
+    fireEvent.click(within(form).getByRole('switch', { name: /Send tekst/ }));
+    expect(within(form).queryByRole('checkbox', { name: declaration })).toBeNull();
+    fill('Langfuse', 'own');
+    expect(within(form).getByRole('checkbox', { name: declaration })).toBeTruthy();
+    fireEvent.click(within(form).getByRole('switch', { name: /Send tekst/ }));
+    expect(within(form).queryByRole('checkbox', { name: declaration })).toBeNull();
+  });
+
+  it('fills in the id from the Langfuse chosen, with -2 when taken, until the person types one', async () => {
+    const taken = { ...own, id: 'egen-langfuse' };
+    const { form, fill } = await newForm({ connections: [digdir, taken] });
+    const id = () => (within(form).getByLabelText('Id for koblingen') as HTMLInputElement).value;
+
+    expect(id()).toBe('digdir-langfuse');
+    fill('Langfuse', 'own');
+    expect(id()).toBe('egen-langfuse-2');
+    fill('Id for koblingen', 'etatens-langfuse');
+    fill('Langfuse', 'instance');
+    expect(id()).toBe('etatens-langfuse');
+  });
+
+  it('shows only the address field where there is no Digdir Langfuse', async () => {
+    const { form } = await newForm({ connections: [], instance: null });
+
+    expect(within(form).queryByLabelText('Langfuse')).toBeNull();
+    expect(within(form).getByLabelText('Adresse')).toBeTruthy();
+    expect(within(form).getByRole('combobox', { name: 'Lagringssted' })).toBeTruthy();
+    expect((within(form).getByLabelText('Id for koblingen') as HTMLInputElement).value).toBe(
+      'egen-langfuse',
+    );
+  });
+
+  it("edits a connection to Digdir's Langfuse and one to the agency's own with the right choice made", async () => {
+    const digdirs = await editForm('digdir', { connections: [digdir, own] });
+    expect((within(digdirs.form).getByLabelText('Langfuse') as HTMLSelectElement).value).toBe(
+      'instance',
+    );
+    expect(within(digdirs.form).queryByLabelText('Adresse')).toBeNull();
+    expect(
+      (
+        within(digdirs.form).getByRole('checkbox', {
+          name: 'Rapportassistenten',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    cleanup();
+
+    const owns = await editForm('etaten', { connections: [digdir, own] });
+    expect((within(owns.form).getByLabelText('Langfuse') as HTMLSelectElement).value).toBe('own');
+    expect((within(owns.form).getByLabelText('Adresse') as HTMLInputElement).value).toBe(
+      'https://langfuse.etaten.example.no',
+    );
+    expect(
+      (within(owns.form).getByRole('combobox', { name: 'Lagringssted' }) as HTMLSelectElement)
+        .value,
+    ).toBe('eu');
+    owns.reason();
+    fireEvent.click(within(owns.form).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText('Koblingen etaten er lagret.')).toBeTruthy();
+    expect(puts(owns.calls)).toMatchObject([
+      {
+        body: {
+          host: 'https://langfuse.etaten.example.no',
+          residency: 'eu',
+          services: ['postsortering'],
+        },
+      },
+    ]);
+  });
+
+  it("keeps the address a connection to Digdir's Langfuse was saved with", async () => {
+    const slash = { ...digdir, host: `${digdirHost}/` };
+    const { calls, form, reason } = await editForm('digdir', { connections: [slash] });
+
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen digdir er lagret.')).toBeTruthy();
+    expect(puts(calls)).toMatchObject([{ body: { host: `${digdirHost}/` } }]);
+  });
+
+  it('lets a service two connections cover be unticked, so either can be saved', async () => {
+    const twice = { ...own, services: ['rapportassistenten'] };
+    const { calls, form, reason } = await editForm('etaten', { connections: [digdir, twice] });
+
+    const box = within(form).getByRole('checkbox', {
+      name: 'Rapportassistenten',
+    }) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(false);
+    fireEvent.click(box);
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen etaten er lagret.')).toBeTruthy();
+    expect(puts(calls)).toMatchObject([{ body: { services: [] } }]);
+  });
+
+  it("does not show a connection's own services as taken by itself", async () => {
+    const { form } = await editForm('digdir', { connections: [digdir] });
+
+    const box = within(form).getByRole('checkbox', {
+      name: 'Rapportassistenten',
+    }) as HTMLInputElement;
+    expect(box.disabled).toBe(false);
+    expect(within(form).queryByText('Koblet til digdir')).toBeNull();
+  });
+
+  it("sends no text and no declaration when Digdir's Langfuse is chosen after the agency's own", async () => {
+    const { calls, form, fill, reason } = await newForm({ connections: [] });
+
+    fill('Langfuse', 'own');
+    fireEvent.click(within(form).getByRole('switch', { name: /Send tekst/ }));
+    fireEvent.click(
+      within(form).getByRole('checkbox', {
+        name: /Vi bekrefter at vår Langfuse sletter det genki sletter/,
+      }),
+    );
+    fill('Langfuse', 'instance');
+    fill('Offentlig nøkkel', 'pk-lf-digdir');
+    fill('Hemmelig nøkkel', 'sk-lf-digdir');
+    reason();
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await screen.findByText('Koblingen digdir-langfuse er lagret.')).toBeTruthy();
+    expect(puts(calls)[1]).toMatchObject({ body: { content: false, erasureDeclared: false } });
+  });
+
+  it('still lists the connections when the services cannot be read, and keeps the ones saved', async () => {
+    const { form, section } = await editForm('digdir', { services: 'fail' });
+
+    expect(within(section).getByText(digdirHost)).toBeTruthy();
+    expect(within(form).getByText('Fikk ikke hentet tjenestene.')).toBeTruthy();
+    expect(
+      (within(form).getByRole('checkbox', { name: 'rapportassistenten' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+  });
+
+  it('leaves archived services out unless the connection already has them', async () => {
+    const services = [
+      { id: 'rapportassistenten', name: 'Rapportassistenten', lifecycle: 'archived' },
+      { id: 'postsortering', name: 'Postsortering', lifecycle: 'archived' },
+      { id: 'motereferat', name: 'Møtereferat' },
+    ];
+    const { form } = await editForm('digdir', { connections: [digdir], services });
+
+    expect(within(form).getByRole('checkbox', { name: 'Rapportassistenten' })).toBeTruthy();
+    expect(within(form).queryByRole('checkbox', { name: 'Postsortering' })).toBeNull();
+    expect(within(form).getByRole('checkbox', { name: 'Møtereferat' })).toBeTruthy();
+  });
+
+  it('lets a service unticked by mistake be ticked again, archived or covered twice', async () => {
+    const services = [
+      { id: 'rapportassistenten', name: 'Rapportassistenten' },
+      { id: 'postsortering', name: 'Postsortering', lifecycle: 'archived' },
+    ];
+    const both = { ...own, services: ['rapportassistenten', 'postsortering'] };
+    const { form } = await editForm('etaten', { connections: [digdir, both], services });
+
+    for (const name of ['Rapportassistenten', 'Postsortering']) {
+      fireEvent.click(within(form).getByRole('checkbox', { name }));
+      const box = within(form).getByRole('checkbox', { name }) as HTMLInputElement;
+      expect(box.disabled).toBe(false);
+      fireEvent.click(box);
+      expect(box.checked).toBe(true);
+    }
   });
 });

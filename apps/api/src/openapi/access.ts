@@ -758,7 +758,7 @@ const TraceConnection = z
     secretKey: z.string().describe('A secret://tenant/<tenant>/<name> reference, set for the host'),
     services: z
       .array(z.string())
-      .describe('The services whose eval runs it receives; one connection per service'),
+      .describe("The tenant's services whose eval runs it receives; one connection per service"),
     residency: z
       .enum(['norway', 'eu', 'global'])
       .describe(
@@ -813,6 +813,17 @@ const tracingRoutes: RouteConfig[] = [
                 ),
             }),
           ),
+          instance: z
+            .object({
+              host: z.string().describe("Digdir's Langfuse, as LANGFUSE_BASE_URL names it"),
+              content: z
+                .boolean()
+                .describe(
+                  'Whether a connection to it may receive text (LANGFUSE_INSTANCE_RECEIVES_CONTENT)',
+                ),
+            })
+            .optional()
+            .describe("Digdir's Langfuse, when LANGFUSE_BASE_URL is set"),
         }),
         'Connections',
       ),
@@ -844,7 +855,7 @@ const tracingRoutes: RouteConfig[] = [
     responses: {
       200: json(TraceConnection.omit({ instance: true, residencySetBy: true }), 'Saved'),
       400: problem(
-        'A host that is not HTTPS or is private, a secret of another tenant or not set for the host, a service already covered, or content where erasure is not shown',
+        'A host that is not HTTPS or is private, a secret of another tenant or not set for the host, a service the tenant does not have or one already covered, or content where erasure is not shown',
       ),
       403: problem('Missing manage-services'),
     },
