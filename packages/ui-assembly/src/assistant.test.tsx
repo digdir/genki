@@ -2376,10 +2376,10 @@ describe('feedback on an answer', () => {
     );
   const rate = async () => {
     const group = await screen.findByRole('group', { name: 'Tilbakemelding på svaret' });
-    fireEvent.click(within(group).getByRole('button', { name: 'Ja' }));
     await act(async () => {
-      fireEvent.click(within(group).getByRole('button', { name: 'Send' }));
+      fireEvent.click(within(group).getByRole('button', { name: 'Ja' }));
     });
+    return group;
   };
   const withRun = (taskId?: string): AssistantApi => {
     const { api } = fakeApi();
@@ -2409,6 +2409,35 @@ describe('feedback on an answer', () => {
     await ask();
     await rate();
     expect(given).toEqual([expect.objectContaining({ runId: 'task-1', rating: 'up' })]);
+  });
+
+  it('sends the rating on the click, and a comment after it as the whole feedback again', async () => {
+    const given: AssistantFeedback[] = [];
+    drawWith(withRun('task-1'), (feedback) => void given.push(feedback));
+    await ask();
+    const group = await rate();
+    expect(given).toEqual([
+      { answerId: expect.any(String), runId: 'task-1', rating: 'up', reasons: [], comment: '' },
+    ]);
+    await within(group).findByText('Takk!');
+
+    fireEvent.change(within(group).getByRole('textbox', { name: 'Kommentar (valgfritt)' }), {
+      target: { value: 'Godt svar' },
+    });
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: 'Send' }));
+    });
+    expect(given).toHaveLength(2);
+    expect(given[1]).toEqual({
+      answerId: given[0]?.answerId,
+      runId: 'task-1',
+      rating: 'up',
+      reasons: [],
+      comment: 'Godt svar',
+    });
+    await within(group).findByText(
+      'Takk! Tilbakemeldingen lagres for tjenesten, ikke for deg som person.',
+    );
   });
 
   it('hands the host the run id of a stored answer in a thread opened again', async () => {

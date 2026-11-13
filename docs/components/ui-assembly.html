@@ -209,14 +209,15 @@
                 <code>onFeedback</code>, <code>onRename</code> and <code>onDelete</code>: without
                 them, none is offered. <code>onFeedback</code> gets the answer's
                 <code>answerId</code>, the <code>rating</code>, <code>reasons</code> and
-                <code>comment</code>, and <code>runId</code>: genki's id for the run that gave the
-                answer, which <code>POST /api/feedback</code> takes as <code>task</code>. It comes
-                from the stream's <code>genai-task</code> header, or from <code>task</code> on a
-                stored answer, so a proxy passes that header on; without it, <code>runId</code> is
-                left out and the host decides. It comes from the page, so a host whose proxy uses
-                one shared key sends feedback only on runs it made for that reader.
-                <code>onNotice</code>, <code>onThreadChange</code> and
-                <code>onStepsReported</code> tell the host what happened.
+                <code>comment</code>, on the click on a thumb and again in full with a comment, and
+                <code>runId</code>: genki's id for the run that gave the answer, which
+                <code>POST /api/feedback</code> takes as <code>task</code>. It comes from the
+                stream's <code>genai-task</code> header, or from <code>task</code> on a stored
+                answer, so a proxy passes that header on; without it, <code>runId</code> is left out
+                and the host decides. It comes from the page, so a host whose proxy uses one shared
+                key sends feedback only on runs it made for that reader. <code>onNotice</code>,
+                <code>onThreadChange</code> and <code>onStepsReported</code> tell the host what
+                happened.
               </li>
               <li>
                 <code>colorScheme</code> and <code>onColorSchemeChange</code>: the host keeps the
