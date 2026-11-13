@@ -32,7 +32,7 @@ import {
   type QueueWork,
 } from '@genai/jobs';
 import {
-  acceptedTextLayer,
+  acceptedConverters,
   conversionKey,
   GenerationBusy,
   textLayerDerivation,
@@ -43,6 +43,8 @@ import {
 } from '@genai/port-knowledge';
 import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
 import type { RunProgress } from './run-progress.js';
+import { seedWork } from './conversion-seed.js';
+import type { NativeOutputStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
@@ -78,7 +80,7 @@ export interface KnowledgeHandlerDeps {
       output: Uint8Array,
       pages: number,
     ): Promise<{ path: string }>;
-  };
+  } & Partial<Pick<NativeOutputStore, 'files' | 'read'>>;
   /** How many convert jobs this worker works at once; 2 when left out. */
   convertConcurrency?: number;
   /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
@@ -387,7 +389,7 @@ export const knowledgeWork = (
           // conversion that ended as a dead letter, is ended before the record waits again.
           await conversions.clear(transaction, run.dataset, record);
           let waiting = false;
-          for (const file of await conversions.missing(transaction, record, acceptedTextLayer))
+          for (const file of await conversions.missing(transaction, record, acceptedConverters))
             waiting = (await waitOn(conversions, file.sha256, waiter, transaction)) || waiting;
           return waiting ? undefined : index();
         },
@@ -426,7 +428,7 @@ export const knowledgeWork = (
             run,
             signal,
             conversions
-              ? storedConverter(deps.converter ?? {}, conversions, acceptedTextLayer)
+              ? storedConverter(deps.converter ?? {}, conversions, acceptedConverters)
               : undefined,
           );
           const listing = found.listing;
@@ -571,6 +573,19 @@ export const knowledgeWork = (
     }
   }
 
+  /** The index job of a record whose wait a stored conversion ended. */
+  const sendIndex = (waiter: ConversionWaiter, transaction: RecordTransaction) =>
+    deps.knowledge.send(
+      knowledgeIndexQueue,
+      {
+        run: waiter.run,
+        tenant: waiter.tenant,
+        generation: waiter.generation,
+        record: waiter.record,
+      },
+      { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
+    );
+
   async function convertFile({ job, run, sender, cancelled }: ConvertJob) {
     deps.bound?.();
     const { conversions, converter } = deps;
@@ -580,7 +595,9 @@ export const knowledgeWork = (
     const key = conversionTarget(job.data.file);
     let stored: { pages: string[]; output?: Uint8Array; failure?: string };
     // A conversion stored by an earlier try is not made again: only its waits are ended.
-    const kept = await conversions.find(job.data.file, acceptedTextLayer);
+    const kept = await conversions.find(job.data.file, [
+      { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
+    ]);
     if (kept) stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
     else
       try {
@@ -614,17 +631,7 @@ export const knowledgeWork = (
         ...(output ? { outputPath: output.path } : {}),
         ...(stored.failure ? { failure: stored.failure } : {}),
       },
-      (waiter, transaction) =>
-        deps.knowledge.send(
-          knowledgeIndexQueue,
-          {
-            run: waiter.run,
-            tenant: waiter.tenant,
-            generation: waiter.generation,
-            record: waiter.record,
-          },
-          { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
-        ),
+      sendIndex,
     );
     if (busy.length > 0)
       throw new IndexJobBusy(
@@ -638,6 +645,18 @@ export const knowledgeWork = (
       { ...documentWork(knowledgeIndexQueue), options: documentOptions } as QueueWork,
       ...(deps.conversions
         ? [{ ...convert, options: { concurrency: deps.convertConcurrency ?? 2 } } as QueueWork]
+        : []),
+      ...(deps.conversions && deps.nativeOutputs?.files && deps.nativeOutputs.read
+        ? [
+            seedWork({
+              conversions: deps.conversions,
+              outputs: deps.nativeOutputs as Required<
+                NonNullable<KnowledgeHandlerDeps['nativeOutputs']>
+              >,
+              sendIndex,
+              ...(deps.log ? { log: deps.log } : {}),
+            }),
+          ]
         : []),
     ],
     heavy: [{ ...documentWork(knowledgeFillQueue), options: documentOptions } as QueueWork],

@@ -20,16 +20,26 @@ export interface Derivation {
   version: number;
 }
 
-/** A converter a pipeline accepts, with the derivation its documents read. */
+/**
+ * A converter a pipeline accepts, with the derivation its documents read, and whether its
+ * conversions are kept or replaced by a later run (ADR 0042, "Conversion").
+ */
 export interface AcceptedConverter {
   converter: string;
   derivation: Derivation;
+  kept: boolean;
 }
 
-/** The text layer: the only accepted converter until Docling (issues 474 and 477). */
 export const textLayerDerivation: Derivation = { name: 'text-layer', version: 1 };
-export const acceptedTextLayer: AcceptedConverter[] = [
-  { converter: 'text-layer', derivation: textLayerDerivation },
+export const doclingPagesDerivation: Derivation = { name: 'docling-pages', version: 1 };
+
+/**
+ * The converters every pipeline accepts, in order: Docling, any version and settings, kept (the
+ * seeded KUDOS export, issue 474), then the text layer, to be replaced.
+ */
+export const acceptedConverters: AcceptedConverter[] = [
+  { converter: 'docling', derivation: doclingPagesDerivation, kept: true },
+  { converter: 'text-layer', derivation: textLayerDerivation, kept: false },
 ];
 
 export interface StoredConversion extends ConverterKey {
@@ -147,6 +157,14 @@ export interface StoredConversions {
       kept: ({ key: string } & ConversionWaiter)[],
     ) => Promise<unknown>,
   ): Promise<void>;
+  /**
+   * Which of these files already have a stored conversion with this converter, version, settings
+   * hash and derivation.
+   */
+  storedAmong(
+    key: { converter: string; version: string; settingsHash: string; derivation: Derivation },
+    sha256s: readonly string[],
+  ): Promise<Set<string>>;
   /** Every convert key some record waits on. */
   waitedKeys(): Promise<string[]>;
 }
