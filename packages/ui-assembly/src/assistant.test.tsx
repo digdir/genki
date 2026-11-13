@@ -164,9 +164,16 @@ const send = async (question = 'Hva er fast?') => {
   });
 };
 
+// Read as a whole, since a footnote mark holds the word before it on its own line.
 const ask = async (question?: string) => {
   await send(question);
-  await screen.findByText(/Rapporteringen er fast/);
+  await waitFor(() =>
+    expect(
+      [...document.querySelectorAll('.uib-answer-text')].some((text) =>
+        text.textContent?.includes('Rapporteringen er fast'),
+      ),
+    ).toBe(true),
+  );
 };
 
 const footnotes = () =>
@@ -2106,17 +2113,10 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].map((mark) =>
       mark.getAttribute('aria-label'),
     );
-  // The mark holds the word before it on its line, so the answer's words are read as a whole.
-  const answered = async () => {
-    await send();
-    await waitFor(() =>
-      expect(document.querySelector('.uib-answer-text')?.textContent).toContain('fast'),
-    );
-  };
 
   it('draws a mark per cited document, which opens the document in Kilder', async () => {
     draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
-    await answered();
+    await ask();
     await waitFor(() => expect(documentMarks()).toEqual(['Kilde 1: Tildelingsbrev 2022']));
     fireEvent.click(screen.getByRole('link', { name: 'Kilde 1: Tildelingsbrev 2022' }));
     await waitFor(() =>
@@ -2135,7 +2135,7 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
       value: { writeText: async (text: string) => void clipboard.push(text) },
     });
     draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
-    await answered();
+    await ask();
     await act(async () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Kopier svaret' }));
     });
