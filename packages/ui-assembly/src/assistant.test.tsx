@@ -1670,6 +1670,45 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     );
   });
 
+  it('takes periods in the year field and says «Alle år» with none chosen, with no trial on', async () => {
+    const fake = counted();
+    const years = { id: 'concerned_years', label: 'År', heading: 'År', kind: 'year' as const };
+    fake.api.loadFields = vi.fn(async () => [
+      { id: 'type', label: 'Dokumenttyper', heading: 'Dokumenttype' },
+      years,
+    ]);
+    fake.api.loadFacets = vi.fn(async () => [
+      {
+        id: 'type',
+        label: 'Dokumenttyper',
+        heading: 'Dokumenttype',
+        options: [{ value: 'Årsrapport', count: 3 }],
+      },
+      {
+        ...years,
+        options: Array.from({ length: 20 }, (_, n) => ({ value: String(2006 + n), count: 1 })),
+      },
+    ]);
+    drawNext(fake.api);
+    const row = await within(filterPanel()).findByRole('button', { name: 'År Alle år' });
+    await act(async () => {
+      fireEvent.click(row);
+    });
+    const input = filterPanel().querySelector<HTMLInputElement>(
+      '.uib-filter-row-body:not([hidden]) input',
+    );
+    if (!input) throw new Error('the year row opened to no field');
+    await act(async () => {
+      input.value = '20-22';
+      input.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '20-22' }),
+      );
+    });
+    expect(
+      screen.getByRole('option', { name: '2020–2022 (3 år med dokumenter)', hidden: true }),
+    ).toBeTruthy();
+  });
+
   it('draws no line under the field about what the next question reads from (dev-filter-panel)', async () => {
     drawNext(counted().api);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });

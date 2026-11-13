@@ -132,11 +132,13 @@
                 follows <code>newThreadHref</code>, the browser's.
               </li>
               <li>
-                <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
-                default as in KA. A reader turns them on in the settings, under «Eksperimenter».
+                <code>yearPeriods</code> and <code>compactChips</code>: off by default in the block.
+                The UI assembly always turns both on (they were KA's trials until 13 November 2026).
                 <code>compactChips</code> gathers six or more chosen values in one chip, such as «12
                 virksomheter»; without it, a field that lists two or more values, all chosen, shows
-                one chip anyway.
+                one chip anyway. <code>yearFields</code>: the ids of the fields whose values are
+                years, so a filter in force shows its years as periods, «2020–2022», one chip each,
+                even while the facets are missing; removing a period removes all its years.
               </li>
               <li>
                 <code>head</code> and <code>children</code>: the corpus choice over the fields, and
@@ -160,10 +162,12 @@
                 <code>variant</code>: <code>fields</code>, the default, or <code>panel</code>, the
                 dev boards' filter beside the threads (dev-filter-panel): «Fjern alle filtre» over
                 the fields, and each field a row with its <code>heading</code> and what is chosen,
-                «Alle» when nothing is, or when it lists two or more values and all are chosen, that
-                opens one at a time to a checkbox per value with its exact count, in two columns, or
-                as many as <code>--genai-filter-checkboxes-columns</code> says: 1 in a narrow panel.
-                A field with more than 12 values opens to its list with search instead.
+                «Alle» when nothing is, or when it lists two or more values and all are chosen
+                («Alle år» for a field of kind <code>year</code>, whose chosen years read as periods
+                such as «2020–2022, 2025»), that opens one at a time to a checkbox per value with
+                its exact count, in two columns, or as many as
+                <code>--genai-filter-checkboxes-columns</code> says: 1 in a narrow panel. A field
+                with more than 12 values opens to its list with search instead.
                 <code>children</code> stand under the rows with no line.
               </li>
               <li>
@@ -260,7 +264,12 @@
               <li>
                 <strong>Years as periods</strong> (<code>yearPeriods</code>): a field of kind
                 <code>year</code> takes «2021», «2023–2028» or «23-28», and years in a row show as
-                one chip.
+                one chip. A period stands for the years in it that the field lists with documents,
+                not every calendar year, so «1800-2015» sends no more values than the collection has
+                years. The list shows a period with those years counted, «1800–2015 (26 år med
+                dokumenter)», since adding the documents per year would count a document with
+                several years more than once; a single year keeps its documents, «2019 (523)». A
+                period with none of them is not offered: «Ingen dokumenter i 1700–1750.»
               </li>
               <li>
                 <strong>Values no field can show</strong>, under «Avgrenset til», removable one by

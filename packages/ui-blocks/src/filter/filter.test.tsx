@@ -204,6 +204,16 @@ describe('a chosen value no field can show', () => {
       expect(screen.queryByText('Du kan stille spørsmål uten å avgrense dokumentene.')).toBeNull();
     });
 
+    it('shows a year field’s years as periods, one chip each, and removes a period whole', () => {
+      const years = { type: ['Årsrapport'], year: ['2020', '2021', '2022', '2025'] };
+      const { seen } = draw({ fields: [], initial: years, yearFields: ['year'] });
+      expect(chip('2020–2022')).toBeTruthy();
+      expect(chip('2025')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Fjern filter: 2021' })).toBeNull();
+      fireEvent.click(chip('2020–2022'));
+      expect(seen.at(-1)).toEqual({ type: ['Årsrapport'], year: ['2025'] });
+    });
+
     it('removes one value, keeps the rest, moves focus to the next chip and says what went', () => {
       const { seen, region } = draw({ fields: [], initial: stored });
       const first = chip('Årsrapport');
@@ -443,8 +453,9 @@ describe('the live region', () => {
       );
     });
     const value =
-      screen.getByRole('option', { name: '2023–2024 (2)', hidden: true }).getAttribute('value') ??
-      '';
+      screen
+        .getByRole('option', { name: '2023–2024 (2 år med dokumenter)', hidden: true })
+        .getAttribute('value') ?? '';
     act(() => {
       field.value = value;
       field.dispatchEvent(
@@ -453,6 +464,35 @@ describe('the live region', () => {
     });
     expect(container.querySelector('output')?.textContent).toBe('2023–2024 er alt valgt.');
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('sends the years a typed period has documents in, not every calendar year in it', () => {
+    const onChange = vi.fn();
+    const known: FilterField = {
+      ...years,
+      options: ['1990', '2014', '2015', '2016'].map((value) => ({ value, count: 400 })),
+    };
+    render(<Filter fields={[known]} yearPeriods selection={{}} onChange={onChange} />);
+    const field = screen.getByPlaceholderText('Skriv et år eller en periode') as HTMLInputElement;
+    act(() => {
+      field.value = '1800-2015';
+      field.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '1800-2015' }),
+      );
+    });
+    // Three years with documents, not their 1,200 documents, which may hold one document twice.
+    const option = screen.getByRole('option', {
+      name: '1800–2015 (3 år med dokumenter)',
+      hidden: true,
+    });
+    const value = option.getAttribute('value') ?? '';
+    act(() => {
+      field.value = value;
+      field.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: value }),
+      );
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ year: ['1990', '2014', '2015'] });
   });
 
   it('carries the corpus choice in its head, after «Henter filtre», with the reset said', () => {
