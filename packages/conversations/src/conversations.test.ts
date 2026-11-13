@@ -395,6 +395,92 @@ describe('conversation routes for frontends', () => {
     expect(messages.find((m) => m.role === 'user')?.input).toEqual({ ministry: 'KD' });
   });
 
+  it('returns the markers an answer that cites excerpts was stored with', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c2', document: 'd1' },
+    ];
+    const sources = [
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+          { chunk_id: 'c2', text: 'Andre', position: 1, markers: ['2'] },
+        ],
+        markers: ['1', '2'],
+      },
+    ];
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Første [1] og andre [2].',
+      sources,
+      markers,
+    });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1);
+
+    expect(answer).toMatchObject({ sources, markers });
+  });
+
+  it('returns every field a stored excerpt was given, also one the store does not name', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const excerpt = { chunk_id: 'c1', text: 'Første', markers: ['1'], heading: '1 Innledning' };
+    const sources = [{ index: 1, title: 'Tildelingsbrev', excerpts: [excerpt] }];
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: '[1]', sources });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1) as {
+      sources?: { excerpts: unknown[] }[];
+    };
+
+    expect(answer.sources?.[0]?.excerpts).toStrictEqual([excerpt]);
+  });
+
+  it('reads a stored turn from before markers were kept as it was', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const chunks = [
+      { chunkId: 'c1', docTitle: 'Tildelingsbrev', docNum: 'd1', contentMarkdown: 'Første' },
+    ];
+    const sources = [
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        url: 'https://x.no/d1',
+        document_id: 'd1',
+        excerpts: [{ chunk_id: 'c1', text: 'Første', position: 0 }],
+      },
+    ];
+    await store.append(owner, json.conversation.id, {
+      role: 'assistant',
+      text: 'Svar [1].',
+      chunks,
+      sources,
+      task: 'task-1',
+    });
+
+    const answer = (await messagesOf(send, json.conversation.id)).at(-1);
+
+    expect(answer).toStrictEqual({
+      id: expect.any(String),
+      text: 'Svar [1].',
+      role: 'assistant',
+      created: expect.any(Number),
+      tags: [],
+      filterValue: null,
+      chunks,
+      sources,
+      task: 'task-1',
+    });
+  });
+
   it.each(['title', 'topic'])('renames a conversation with the key %s', async (key) => {
     const { send } = setup();
     const { json } = await create(send, 'ka', 'u');

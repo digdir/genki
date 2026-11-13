@@ -129,6 +129,7 @@ export const problems = defineNamespace({
   shareOperatorOnly:
     'Bare plattformoperatører endrer hvem tjenesten deles med. Behold spec.availableTo slik den er i publisert versjon.',
   shareOperatorOnlyTitle: 'Bare operatører endrer deling',
+  operatorOnlySettingTitle: 'Bare Digdir endrer denne grensen for en virksomhet',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',

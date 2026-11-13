@@ -81,6 +81,7 @@ const Form = ({
   tool,
   connection,
   agencies,
+  live,
   onSaved,
   onDisconnected,
   onFlash,
@@ -89,6 +90,7 @@ const Form = ({
   tool: TraceTool;
   connection: TraceConnection | undefined;
   agencies: string[];
+  live: boolean;
   onSaved: (c: TraceConnection) => void;
   onDisconnected: () => void;
   onFlash: (text: string, color?: 'success' | 'info' | 'danger') => void;
@@ -252,14 +254,16 @@ const Form = ({
             </Alert>
           ) : null}
           <div className="name-line">
-            <Button
-              variant="secondary"
-              data-size="sm"
-              aria-disabled={testing || undefined}
-              onClick={() => void (testing ? undefined : sendTest())}
-            >
-              {t('tracing.sendTest')}
-            </Button>
+            {live ? null : (
+              <Button
+                variant="secondary"
+                data-size="sm"
+                aria-disabled={testing || undefined}
+                onClick={() => void (testing ? undefined : sendTest())}
+              >
+                {t('tracing.sendTest')}
+              </Button>
+            )}
             <span role="status">
               {testing ? <Spinner aria-hidden data-size="xs" /> : null}
               {testMsg?.text}
@@ -425,32 +429,38 @@ const Form = ({
             onChange={() => set({ annotations: !d.annotations })}
           />
         </Fieldset>
-        <div className="actions-row">
-          <Button onClick={() => void save()}>
-            {connected ? t('tracing.save') : t('tracing.connect')}
-          </Button>
-          {connected ? (
-            <Button
-              variant="tertiary"
-              data-color="danger"
-              onClick={() => {
-                void api.disconnectTracing(tool.id).then(
-                  () => {
-                    onDisconnected();
-                    onFlash(tRef.current('tracing.disconnected', { tool: tool.name }), 'info');
-                  },
-                  () =>
-                    onFlash(
-                      tRef.current('tracing.disconnectFailed', { tool: tool.name }),
-                      'danger',
-                    ),
-                );
-              }}
-            >
-              {t('tracing.disconnect')}
+        {live ? (
+          <Paragraph data-size="sm" className="meta">
+            {t('tracing.liveActionsUnavailable')}
+          </Paragraph>
+        ) : (
+          <div className="actions-row">
+            <Button onClick={() => void save()}>
+              {connected ? t('tracing.save') : t('tracing.connect')}
             </Button>
-          ) : null}
-        </div>
+            {connected ? (
+              <Button
+                variant="tertiary"
+                data-color="danger"
+                onClick={() => {
+                  void api.disconnectTracing(tool.id).then(
+                    () => {
+                      onDisconnected();
+                      onFlash(tRef.current('tracing.disconnected', { tool: tool.name }), 'info');
+                    },
+                    () =>
+                      onFlash(
+                        tRef.current('tracing.disconnectFailed', { tool: tool.name }),
+                        'danger',
+                      ),
+                  );
+                }}
+              >
+                {t('tracing.disconnect')}
+              </Button>
+            ) : null}
+          </div>
+        )}
       </section>
     </>
   );
@@ -505,7 +515,7 @@ const EnvironmentTracing = ({ status }: { status: TracingStatus }) => {
   );
 };
 
-export const Tracing = ({ api }: { api: ApiClient }) => {
+export const Tracing = ({ api, live = false }: { api: ApiClient; live?: boolean }) => {
   const t = useT();
   const f = useFormat();
   const tenantName = useTenantNames(api);
@@ -604,6 +614,7 @@ export const Tracing = ({ api }: { api: ApiClient }) => {
               tool={current}
               connection={connections[current.id]}
               agencies={state.data.agencies}
+              live={live}
               onSaved={(c) => setConnections((all) => ({ ...all, [current.id]: c }))}
               onDisconnected={() =>
                 setConnections((all) =>
