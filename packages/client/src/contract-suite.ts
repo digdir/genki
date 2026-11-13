@@ -1,7 +1,7 @@
 import { check, checkEqual, skipped, type ContractSuite } from '@genai/plugins';
 import { ApiError } from './errors.js';
 import { citedIndexes, sourceFor, type Client } from './client.js';
-import type { FilterSet, StreamEvent } from './types.js';
+import type { Answer, FilterSet, StreamEvent } from './types.js';
 
 export const frontendContractVersion = 'frontend@1';
 
@@ -36,6 +36,20 @@ const applied = (events: StreamEvent[]) => {
   return text;
 };
 
+// With `markers` (ADR 0052), `[N]` names one excerpt; without them, the source with index N.
+const checkCited = (answer: Answer, n: number) => {
+  if (!answer.markers) {
+    check(sourceFor(answer.sources, n), `[${n}] has no source with index ${n}`);
+    return;
+  }
+  const marker = answer.markers.find((m) => m.marker === String(n));
+  check(marker, `[${n}] is not in the answer's markers`);
+  check(
+    answer.sources.some((s) => s.excerpts.some((e) => e.chunkId === marker.chunkId)),
+    `[${n}] leads to excerpt ${marker.chunkId}, which no source has`,
+  );
+};
+
 const collect = async (events: AsyncIterable<StreamEvent>) => {
   const all: StreamEvent[] = [];
   for await (const e of events) all.push(e);
@@ -56,12 +70,11 @@ export const frontendContract: ContractSuite<FrontendContractSubject> = {
       },
     },
     {
-      name: 'answers with text and gives every [N] in it a source with index N',
+      name: 'answers with text and resolves every [N] in it, by the markers when it has them, else by index',
       run: async (s) => {
         const answer = await s.client.ask({ service: s.service, question: s.question });
         check(answer.text.trim() !== '' || answer.noAnswer, 'the answer is empty');
-        for (const n of citedIndexes(answer.text))
-          check(sourceFor(answer.sources, n), `[${n}] has no source with index ${n}`);
+        for (const n of citedIndexes(answer.text)) checkCited(answer, n);
         for (const source of answer.sources) {
           check(source.title !== '', 'a source has no title');
           check(

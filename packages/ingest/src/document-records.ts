@@ -15,6 +15,8 @@ import type {
   RunPlan,
 } from '@genai/port-knowledge';
 import type { ChunkDocumentConfig } from './chunk-document.js';
+import { placeChunks } from './chunk-places.js';
+import { ConversionPending, type DocumentFile } from './converter.js';
 import { copiedDocument, type CopiedSource } from './copy-listing.js';
 import { embedIndexDocument, toIndexDocument } from './index-writer.js';
 import { prepareDocument, type SourceDocument } from './pipeline.js';
@@ -46,6 +48,11 @@ export interface Listing<Loaded = SourceDocument> {
   complete(): boolean;
   /** A source document to convert and chunk, or for a copy, one with its chunks as they are (#366). */
   load(record: Record<string, unknown>): Promise<Loaded>;
+  /**
+   * One file of a record, fetched as its index job would, for a convert job (ADR 0042). Throws
+   * when the source no longer has the file with that sha256.
+   */
+  file?(record: Record<string, unknown>, sha256: string): Promise<DocumentFile>;
 }
 
 /** A record that changed while its index job ran: the job fails, and its retry writes the newer change. */
@@ -72,9 +79,15 @@ const stableJson = (value: unknown): string => {
 export const metadataHash = (metadata: Record<string, unknown>) =>
   createHash('sha256').update(stableJson(metadata)).digest('hex');
 
-const sameFiles = (a: ListedFile[], b: ListedFile[]) =>
-  stableJson([...a].sort((x, y) => (x.name < y.name ? -1 : 1))) ===
-  stableJson([...b].sort((x, y) => (x.name < y.name ? -1 : 1)));
+/** Files compare by name and hash only, so marking which ones convert changes no record. */
+const filesKey = (files: ListedFile[]) =>
+  stableJson(
+    [...files]
+      .sort((x, y) => (x.name < y.name ? -1 : 1))
+      .map((f) => ({ name: f.name, sha256: f.sha256 })),
+  );
+
+const sameFiles = (a: ListedFile[], b: ListedFile[]) => filesKey(a) === filesKey(b);
 
 /**
  * Days after which a crawled page is downloaded again though its sitemap date has not moved, so a
@@ -164,6 +177,11 @@ export interface IndexRecordOptions {
   embedder?: EmbeddingPort;
   /** Called with the chunks a stored document wrote, so the run counts them toward the heavy threshold. */
   onStored?: (chunks: number) => void;
+  /**
+   * Files with no stored conversion yet: the record waits on their convert jobs and the job writes
+   * nothing (ADR 0042). Without it, such a file fails the job.
+   */
+  pending?: (files: { name: string; sha256: string }[]) => Promise<void>;
 }
 
 /**
@@ -188,12 +206,40 @@ export const indexRecord = async (
   try {
     return await writeRecord(options, record);
   } catch (error) {
+    if (error instanceof ConversionPending && options.pending) {
+      await options.pending(error.files);
+      return 'waiting';
+    }
     if (error instanceof GenerationBusy) throw error;
     // Not applied: the generation keeps what it held, and the data version stays below this change
     // until a later run, send-back or catch-up writes it. The reason is a code, never the source id.
     await options.records.fail(record, error instanceof Error ? error.name : 'Error');
     throw error;
   }
+};
+
+/**
+ * A document's converted files named as its record lists them, matched by sha256, so a chunk names
+ * a file the way withdrawal finds it and never by a local path. A lone file takes the lone name.
+ */
+const listedNames = (document: SourceDocument, record: IndexRecord): SourceDocument => {
+  const listed = record.files ?? [];
+  // A page or text file read without a converter is its record's one file, on one page.
+  if (!document.files) {
+    const [only] = listed;
+    return only && listed.length === 1 && document.texts.length === 1
+      ? { ...document, files: [{ ...only, pages: document.texts }] }
+      : document;
+  }
+  return {
+    ...document,
+    files: document.files.map((file) => {
+      const match =
+        listed.find((l) => l.sha256 && l.sha256 === file.sha256) ??
+        (listed.length === 1 ? listed[0] : undefined);
+      return match ? { ...file, name: match.name } : file;
+    }),
+  };
 };
 
 const applied = (done: boolean) => {
@@ -257,7 +303,11 @@ const writeRecord = async (
     return 'skipped';
   }
   const prepared = await prepareDocument(document, options.chunking, 'pipeline');
-  const doc = toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases);
+  // Each chunk names its file and pages, and takes its id from them (ADR 0042, "Identity and chunks").
+  const doc = placeChunks(
+    toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases),
+    listedNames(document, record),
+  );
   const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;
   applied(await options.records.replace(record, options.generation, { document: written }));
   options.onStored?.(written.chunks.length);
