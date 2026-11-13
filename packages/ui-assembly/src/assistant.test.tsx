@@ -2557,6 +2557,59 @@ describe('the page around the blocks', () => {
     expect(result.current.level).toBe('standard');
   });
 
+  it('reads the collection’s values again when the collection changes, so another’s never leave a field out', async () => {
+    const { api } = fakeApi();
+    api.loadFields = vi.fn(async () => [
+      { id: 'type', label: 'Dokumenttyper' },
+      { id: 'year', label: 'År' },
+    ]);
+    // Both chosen types are every type in Kudos, and two of three in the other collection.
+    api.loadFacets = vi.fn(async (_selection: unknown, dataset: string) => [
+      {
+        id: 'type',
+        label: 'Dokumenttyper',
+        options: [
+          ...(dataset === 'kudos' ? [] : [{ value: 'Evaluering', count: 1 }]),
+          { value: 'Årsrapport', count: 3 },
+          { value: 'Tildelingsbrev', count: 2 },
+        ],
+      },
+      { id: 'year', label: 'År', options: [{ value: '2024', count: 5 }] },
+    ]);
+    const kept = new Map<string, unknown>([
+      ['corpus', 'genki-docs'],
+      ['filter', { type: ['Årsrapport', 'Tildelingsbrev'] }],
+    ]);
+    const storage: AssistantStorage = {
+      read: (key) => kept.get(key),
+      write: (key, value) => void kept.set(key, value),
+      remove: (key) => void kept.delete(key),
+    };
+    const ka = state('knowledge-assistant');
+    const setup = (layout: AssistantLayout) => ({
+      api,
+      layout,
+      service: 'ka',
+      tenant: 'digdir',
+      storage,
+    });
+    // Without the choice of collection, the service's own: Kudos.
+    const { rerender } = renderHook((options) => useAssistant(options), {
+      initialProps: setup(withSetting(ka, 'filter', 'corpus', false).layout),
+    });
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith({ type: [] }, 'kudos', expect.anything()),
+    );
+    rerender(setup(ka.layout));
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        { type: ['Årsrapport', 'Tildelingsbrev'] },
+        'genki-docs',
+        expect.anything(),
+      ),
+    );
+  });
+
   it('offers in the picker the variants the facts count, one rule for both', async () => {
     const { api } = fakeApi();
     const kudos = rows[0]?._datasets;
