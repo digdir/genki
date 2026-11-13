@@ -65,7 +65,7 @@ export const blocksUi = {
     pasteNotLayout: 'Teksten er ikke et oppsett av byggeklosser.',
     pasteBreaksRules: 'Oppsettet bryter reglene for byggeklossene:',
     pasteUnknownBlock: '«{block}» er ikke en byggekloss.',
-    pasteWrongPanel: '{block} kan ikke stå i panelet {panel}.',
+    pasteWrongPanel: '{block} kan ikke stå i {panel}.',
     pastePlacedTwice: '{block} står flere steder.',
     pasteNotBuilt: '{block} er ikke laget ennå.',
     pasteMissingPartner: '{block} trenger {partner}.',

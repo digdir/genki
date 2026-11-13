@@ -140,7 +140,11 @@ describe('«Lim inn oppsett»', () => {
       target: { value: JSON.stringify(twice) },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
-    expect(screen.getByText(/Oppsettet bryter reglene for byggeklossene:.*Chat/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Oppsettet bryter reglene for byggeklossene: Chat kan ikke stå i venstre panel. Chat står flere steder.',
+      ),
+    ).toBeTruthy();
     expect(screen.getByLabelText('Oppsett som JSON').getAttribute('aria-invalid')).toBe('true');
     expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
     expectAccessible();

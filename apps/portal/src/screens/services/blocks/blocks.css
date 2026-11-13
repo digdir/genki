@@ -296,3 +296,20 @@
   padding: 5px 0;
   background-clip: content-box;
 }
+
+/* «Kopier oppsettet» and «Lim inn oppsett», under the templates or the blocks. */
+.blocks-transfer {
+  margin-top: var(--ds-size-8);
+  padding-top: var(--ds-size-6);
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.blocks-transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+}
+
+.blocks-transfer [role='status'] {
+  margin: 0;
+}

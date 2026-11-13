@@ -65,7 +65,7 @@ export const blocksUi = {
     pasteNotLayout: 'The text is not a layout of building blocks.',
     pasteBreaksRules: 'The layout breaks the rules for the building blocks:',
     pasteUnknownBlock: '“{block}” is not a building block.',
-    pasteWrongPanel: '{block} cannot stand in the panel {panel}.',
+    pasteWrongPanel: '{block} cannot stand in the {panel}.',
     pastePlacedTwice: '{block} stands in more than one place.',
     pasteNotBuilt: '{block} is not built yet.',
     pasteMissingPartner: '{block} needs {partner}.',

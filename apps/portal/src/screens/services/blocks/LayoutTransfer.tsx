@@ -26,7 +26,10 @@ const problemText = (problem: LayoutProblem, t: T) => {
   const block = t(blockLabel(problem.block));
   switch (problem.rule) {
     case 'zone-not-allowed':
-      return t('builderBlocks.pasteWrongPanel', { block, panel: t(panelName[problem.zone]) });
+      return t('builderBlocks.pasteWrongPanel', {
+        block,
+        panel: t(panelName[problem.zone]).toLocaleLowerCase(),
+      });
     case 'placed-twice':
       return t('builderBlocks.pastePlacedTwice', { block });
     case 'not-built':
