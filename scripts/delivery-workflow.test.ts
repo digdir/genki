@@ -36,10 +36,9 @@ const smoke = load('smoke.yml');
 const weekly = load('weekly-summary.yml');
 const changelog = deploy.jobs.changelog as Job;
 const release = deploy.jobs.release as Job;
-const alert = smoke.jobs.alert as Job;
 const collect = weekly.jobs.collect as Job;
 const post = weekly.jobs.post as Job;
-const ours = { changelog, release, alert, collect, post };
+const ours = { changelog, release, collect, post };
 const holdsSlack = (job: Job) => JSON.stringify(job).includes('secrets.SLACK_');
 const writes = (job: Job) =>
   Object.entries(job.permissions)
@@ -58,7 +57,7 @@ describe('the delivery workflows', () => {
     expect(changelog.if).toBe("github.ref == 'refs/heads/main'");
     expect(release.if).toContain("needs.deploy-test.result == 'success'");
     expect(release.if).toContain("github.ref == 'refs/heads/main'");
-    for (const job of [changelog, release, alert]) expect(job['continue-on-error']).toBe(true);
+    for (const job of [changelog, release]) expect(job['continue-on-error']).toBe(true);
   });
 
   it('reach the model only with the federated review identity, and never hold a Slack secret there', () => {
@@ -85,18 +84,18 @@ describe('the delivery workflows', () => {
   it('let only the release job write, and only contents', () => {
     expect(writes(release)).toEqual(['contents']);
     expect(release.environment).toBeUndefined();
-    for (const job of [alert, post]) expect(writes(job)).toEqual([]);
+    for (const job of [post]) expect(writes(job)).toEqual([]);
     expect(weekly.permissions).toEqual({});
   });
 
-  it('give the Slack secrets only to the weekly post and the smoke alert', () => {
+  it('give the Slack secrets only to the weekly post', () => {
     const holders = [deploy, smoke, weekly].flatMap((w) =>
       Object.entries(w.jobs)
         .filter(([, j]) => holdsSlack(j))
         .map(([n]) => n),
     );
-    expect(holders.sort()).toEqual(['alert', 'post']);
-    for (const job of [alert, post]) expect(job.permissions).toEqual({ contents: 'read' });
+    expect(holders.sort()).toEqual(['post']);
+    for (const job of [post]) expect(job.permissions).toEqual({ contents: 'read' });
   });
 
   it('pass untrusted text only through files and environment variables, never a run script', () => {
@@ -122,13 +121,5 @@ describe('the weekly summary workflow', () => {
     expect(due?.env?.SCHEDULE).toBe('${{ github.event.schedule }}');
     expect(post.if).toBe("needs.collect.outputs.due == 'true'");
     expect(collect.if).toBe("github.ref == 'refs/heads/main'");
-  });
-});
-
-describe('the smoke alert job', () => {
-  it('runs only after a deploy, and needs nothing but the smoke bundle', () => {
-    expect(alert.if).toContain("github.event_name == 'workflow_run'");
-    const downloads = alert.steps.filter((s) => s.uses?.startsWith('actions/download-artifact@'));
-    expect(downloads.map((s) => s.with?.name)).toEqual(['smoke-bundle']);
   });
 });

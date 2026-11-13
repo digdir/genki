@@ -1,4 +1,4 @@
-// What genki delivered: a release per deploy, a weekly Slack summary and a Slack alert on a red smoke test.
+// What genki delivered: a release per deploy and a weekly Slack summary.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -596,39 +596,6 @@ export const weeklyText = (week: Week): string | null => {
   return lines.join('\n');
 };
 
-export interface SmokeOutcome {
-  sha: string;
-  outcome: string;
-  failing: string[];
-  runUrl: string;
-}
-
-export const smokeOutcomeOf = (bundle: unknown, sha: string, runUrl: string): SmokeOutcome => {
-  const b = (bundle ?? {}) as {
-    report?: { sha?: string; outcome?: string; checks?: { id: string; outcome: string }[] };
-  };
-  return {
-    sha: b.report?.sha || sha,
-    outcome: b.report?.outcome ?? 'fail',
-    failing: (b.report?.checks ?? []).filter((c) => c.outcome === 'fail').map((c) => c.id),
-    runUrl,
-  };
-};
-
-export const smokeAlertText = (s: SmokeOutcome): string | null => {
-  if (s.outcome !== 'fail') return null;
-  const lines = [
-    `*Røyktesten av \`${short(escapeText(s.sha, 40))}\` på genki-test feilet* (<${s.runUrl}|kjøring>)`,
-  ];
-  if (!s.failing.length) lines.push('Jobben stoppet før den skrev et resultat. Se loggen.');
-  else
-    lines.push(
-      ...s.failing.slice(0, 15).map((id) => `• \`${escapeText(id, 120).replace(/`/g, "'")}\``),
-    );
-  if (s.failing.length > 15) lines.push(`… og ${s.failing.length - 15} til.`);
-  return lines.join('\n');
-};
-
 export interface SlackConfig {
   token?: string;
   channel?: string;
@@ -782,16 +749,6 @@ const commands: Record<string, () => Promise<void>> = {
     const text = weeklyText(week);
     if (!text) return notice('Nothing was deployed this week, so nothing is posted.');
     reportPost(await postToSlack(slackConfig(), text, slackPost), 'the weekly summary');
-  },
-  'smoke-alert': async () => {
-    const outcome = smokeOutcomeOf(
-      readJson(join(process.env.SMOKE_OUT || 'smoke-out', 'bundle.json')),
-      process.env.SMOKE_SHA ?? '',
-      process.env.SMOKE_RUN_URL ?? '',
-    );
-    const text = smokeAlertText(outcome);
-    if (!text) return notice(`The smoke test ended ${outcome.outcome}, so nothing is posted.`);
-    reportPost(await postToSlack(slackConfig(), text, slackPost), 'the smoke failure');
   },
 };
 

@@ -12,8 +12,6 @@ import {
   prsInRelease,
   releaseBody,
   releaseName,
-  smokeAlertText,
-  smokeOutcomeOf,
   summaryPrompt,
   tagOf,
   weeklyDue,
@@ -662,50 +660,5 @@ describe('posting to Slack', () => {
     expect(
       (await postToSlack({ token: 't', channel: 'C1' }, 'hei', recorder(false).post)).via,
     ).toBe('failed');
-  });
-});
-
-describe('the smoke alert', () => {
-  const bundle = (outcome: string) => ({
-    report: {
-      sha: head,
-      outcome,
-      checks: [
-        { id: 'model:a', outcome: 'pass' },
-        { id: 'screen:portal/home', outcome: outcome === 'fail' ? 'fail' : 'pass' },
-      ],
-    },
-  });
-  const run = 'https://github.com/digdir/genki/actions/runs/7';
-
-  it('posts the failing checks and the run when the smoke test is red', () => {
-    const text = smokeAlertText(smokeOutcomeOf(bundle('fail'), head, run)) ?? '';
-    expect(text).toContain(`Røyktesten av \`${head.slice(0, 8)}\` på genki-test feilet`);
-    expect(text).toContain('• `screen:portal/home`');
-    expect(text).not.toContain('model:a');
-    expect(text).toContain(`<${run}|kjøring>`);
-  });
-
-  it('posts nothing when the smoke test is green or only partly run', () => {
-    expect(smokeAlertText(smokeOutcomeOf(bundle('pass'), head, run))).toBeNull();
-    expect(smokeAlertText(smokeOutcomeOf(bundle('partial'), head, run))).toBeNull();
-  });
-
-  it('posts a failure when the smoke job left no result', () => {
-    expect(smokeAlertText(smokeOutcomeOf(undefined, head, run))).toContain(
-      'Jobben stoppet før den skrev et resultat',
-    );
-  });
-
-  it('escapes a check name that carries a mention', () => {
-    const text =
-      smokeAlertText(
-        smokeOutcomeOf(
-          { report: { outcome: 'fail', checks: [{ id: 'x<!channel>`', outcome: 'fail' }] } },
-          head,
-          run,
-        ),
-      ) ?? '';
-    expect(text).toContain("• `x&lt;!channel&gt;'`");
   });
 });
