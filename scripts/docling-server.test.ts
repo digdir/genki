@@ -22,13 +22,52 @@ interface Workflow {
 const workflow = (name: string) => parse(read(`.github/workflows/${name}`)) as Workflow;
 
 describe('the Docling server image', () => {
-  it('pins the Docling server image by digest and the Norwegian Tesseract data by checksum', () => {
+  it("runs the Docling, Tesseract, Python and torch versions of the parser benchmark's winner", () => {
+    const dockerfile = read('docker/docling/Dockerfile');
+    const winner = JSON.parse(
+      read(
+        'benchmarks/ingestion/blocks/results/azure-D32as_v6-swedencentral-run2/docling-tess/meta.json',
+      ),
+    ) as {
+      version: string;
+      docling_core: string;
+      docling_ibm_models: string;
+      tesseract: string;
+      torch: string;
+      machine: { python: string };
+    };
+    expect(dockerfile).toMatch(/^FROM python:[\d.]+-slim-trixie@sha256:[0-9a-f]{64}$/m);
+    const python = winner.machine.python.split('.').slice(0, 2).join('.');
+    expect(dockerfile).toContain(`FROM python:${python}-slim-trixie@`);
+    expect(dockerfile).toContain(`grep -qx '${winner.tesseract}'`);
+    expect(dockerfile).toContain(`torch==${winner.torch.split('+')[0]}+cpu `);
+    const locked = read('docker/docling/requirements.txt');
+    for (const pin of [
+      `docling==${winner.version}`,
+      `docling-slim==${winner.version}`,
+      `docling-core==${winner.docling_core}`,
+      `docling-ibm-models==${winner.docling_ibm_models}`,
+    ])
+      expect(locked.split('\n'), pin).toContain(pin);
+  });
+
+  it('installs every Python package at the version in its lock file', () => {
     const dockerfile = read('docker/docling/Dockerfile');
     expect(dockerfile).toMatch(
-      /^FROM ghcr\.io\/docling-project\/docling-serve-cpu:v[\d.]+@sha256:[0-9a-f]{64}$/m,
+      /^RUN pip install --no-deps -r \/tmp\/requirements\.txt && pip check/m,
     );
-    expect(dockerfile).toMatch(
-      /^ADD --checksum=sha256:[0-9a-f]{64} .*https:\/\/github\.com\/tesseract-ocr\/tessdata\/raw\/[\d.]+\/nor\.traineddata /m,
+    const lines = read('docker/docling/requirements.txt')
+      .split('\n')
+      .filter((l) => l && !l.startsWith('#'));
+    expect(lines.length).toBeGreaterThan(100);
+    expect(lines.filter((l) => !/^[\w.-]+==[\w.+-]+$/.test(l))).toEqual([]);
+  });
+
+  it('gives every request Tesseract with Norwegian, the only OCR in the image', () => {
+    const dockerfile = read('docker/docling/Dockerfile');
+    expect(dockerfile).toContain(`DOCLING_SERVE_ALLOWED_OCR_PRESETS='["tesseract"]'`);
+    expect(dockerfile).toContain(
+      `DOCLING_SERVE_CUSTOM_OCR_PRESETS='{"auto": {"kind": "tesseract", "lang": ["nor"]}}'`,
     );
   });
 });
