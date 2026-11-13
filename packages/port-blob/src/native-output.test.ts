@@ -43,3 +43,26 @@ describe('nativeOutputStore', () => {
     expect(await store.list(key.sha256)).toEqual([]);
   });
 });
+
+describe('nativeOutputStore put', () => {
+  const key = { sha256: 'b'.repeat(64), converter: 'docling', version: '2.123.1', settings: {} };
+
+  it('a native output keeps the time its converter finished, when given', async () => {
+    const store = nativeOutputStore(
+      new InMemoryNativeOutputContainer(),
+      () => new Date('2026-11-12T00:00:00Z'),
+    );
+    await store.put(key, new TextEncoder().encode('{}'), 9, '2026-08-28T17:47:10Z');
+    expect((await store.get(key))?.meta.when).toBe('2026-08-28T17:47:10Z');
+  });
+
+  it('put reports the gzipped bytes it wrote', async () => {
+    const container = new InMemoryNativeOutputContainer();
+    const entry = await nativeOutputStore(container).put(
+      key,
+      new TextEncoder().encode('{"a":1}'.repeat(100)),
+      1,
+    );
+    expect(entry.bytes).toBe((await container.read(entry.path))?.byteLength);
+  });
+});
