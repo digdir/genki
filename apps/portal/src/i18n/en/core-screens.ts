@@ -155,6 +155,8 @@ export const changes = {
   guardrailRuleSave: 'saved the guardrail rule',
   improvementDecide: 'decided on the improvement proposal',
   judgeLabel: 'labelled the judge assessment',
+  judgeLabelAccept: 'accepted labels from Langfuse for the judge',
+  judgeLabelReject: 'rejected labels from Langfuse for the judge',
   keypolicyAttach: 'attached the key policy to',
   keypolicyDelete: 'deleted the key policy',
   keypolicySave: 'saved the key policy',

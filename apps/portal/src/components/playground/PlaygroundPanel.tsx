@@ -189,6 +189,8 @@ const errorText = (error: unknown, model: string, t: T) => {
     return `${error.problem.detail} ${notStored}`;
   if (error instanceof ApiError && error.status === 403) {
     const policy = (error.problem as Partial<PlaygroundRefusal> | undefined)?.policy;
+    const reason = error.problem?.detail;
+    if (!policy && reason) return t('playground.runRefused', { reason, notStored });
     return `${t('playground.refused', { model })}${policy ? ` ${policy.rule}` : ''} ${notStored}`;
   }
   if (error instanceof ApiError && error.status === 422 && error.problem) {

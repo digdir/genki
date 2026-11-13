@@ -9,6 +9,7 @@ import {
   gate,
   judgeLabel,
   metricSummary,
+  scoreStates,
   splits,
   testCase,
 } from '@genai/eval';
@@ -16,6 +17,7 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
+import { sinkJudgeFields } from './services.js';
 
 /** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
 const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
@@ -1219,6 +1221,7 @@ const ServiceEvalRun = z
       .describe('Micro-NOK for the answers and the judges; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
+    ...sinkJudgeFields,
     byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
     cases: z.array(
       z.object({
@@ -1230,6 +1233,22 @@ const ServiceEvalRun = z
         output: z.string(),
         pass: z.boolean(),
         reason: z.string().optional(),
+        judges: z
+          .array(
+            z.object({
+              judge: z.string(),
+              state: z.enum(scoreStates),
+              value: z.number().nullable(),
+              dataType: z.string().optional(),
+              asItCame: z.unknown().optional(),
+              reason: z
+                .string()
+                .optional()
+                .describe("The judge's reason, while the case's task keeps it"),
+            }),
+          )
+          .optional()
+          .describe("Each Langfuse judge's verdict on the case"),
       }),
     ),
   })
@@ -2148,6 +2167,121 @@ const qualityRoutes: RouteConfig[] = [
       ...operatorOnly,
     },
   }),
+  createRoute({
+    method: 'get',
+    path: '/operator/quality/sink-labels',
+    summary:
+      "Every tenant's trace connections and the labels brought back from them that wait for a decision",
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({
+          connections: z.array(
+            z.object({ tenant: z.string(), connection: z.string(), labels: z.boolean() }),
+          ),
+          batches: z.array(
+            z
+              .object({
+                tenant: z.string(),
+                connection: z.string(),
+                judge: z
+                  .string()
+                  .describe(
+                    'The judge the labels calibrate, such as langfuse:<tenant>/<connection>/<rule>',
+                  ),
+                name: z.string(),
+                labels: z.array(
+                  z.object({
+                    id: z.string(),
+                    revision: z.string(),
+                    run: z.string(),
+                    case: z.string(),
+                    repeat: z.number().int(),
+                    humanLabel: z.string(),
+                    judgeLabel: z
+                      .string()
+                      .optional()
+                      .describe("The judge's own verdict; absent when it did not score the case"),
+                    labeller: z.string().describe('A pseudonym, per agency'),
+                  }),
+                ),
+                paired: z.number().int(),
+                alike: z.number().int(),
+                unpaired: z.number().int(),
+                labellers: z.number().int(),
+              })
+              .describe('The pending labels of one connection and judge'),
+          ),
+        }),
+        'Sink labels',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/quality/sink-labels/fetch',
+    summary:
+      "Read what people labelled in a tenant's trace connection: new labels and edits on cases genki sent wait as pending, deleted ones stop counting",
+    description: described(operator, notAudited),
+    request: { body: body(z.object({ tenant: z.string(), connection: z.string() })) },
+    responses: {
+      200: json(
+        z.object({
+          pending: z.number().int(),
+          shared: z
+            .array(z.object({ name: z.string(), rules: z.array(z.string()) }))
+            .describe(
+              'Scores that two or more rules write under one name, so their labels cannot be told apart and none is made',
+            ),
+        }),
+        'Fetched',
+      ),
+      400: problem('Tenant or connection missing'),
+      404: problem('No such tenant or connection'),
+      409: problem('The connection does not bring labels back'),
+      502: problem(
+        'Langfuse refused or failed; nothing changed, and the error says what it answered',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  ...(['accept', 'reject'] as const).map((decision) =>
+    createRoute({
+      method: 'post',
+      path: `/operator/quality/sink-labels/${decision}`,
+      summary:
+        decision === 'accept'
+          ? "Accept a connection's pending labels for one judge, so they count in its agreement"
+          : "Reject a connection's pending labels for one judge; they come back only if edited",
+      description: described(operator, audited),
+      request: {
+        headers: operatorWriteHeaders,
+        body: body(
+          z.object({
+            tenant: z.string(),
+            connection: z.string(),
+            judge: z.string(),
+            labels: z
+              .array(z.object({ id: z.string(), revision: z.string() }))
+              .optional()
+              .describe('The labels the operator was shown; without it, every pending one'),
+          }),
+        ),
+      },
+      responses: {
+        200: json(
+          decision === 'accept'
+            ? z.object({ accepted: z.number().int() })
+            : z.object({ rejected: z.number().int() }),
+          decision === 'accept' ? 'Accepted' : 'Rejected',
+        ),
+        400: problem('Missing change reason, or labels that are not a list'),
+        404: problem('No pending labels for that connection and judge'),
+        ...operatorOnly,
+      },
+    }),
+  ),
   createRoute({
     method: 'post',
     path: '/operator/quality/matrix/estimate',

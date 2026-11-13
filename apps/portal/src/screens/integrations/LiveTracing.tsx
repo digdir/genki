@@ -3,6 +3,7 @@ import {
   Button,
   Checkbox,
   Field,
+  Fieldset,
   Heading,
   Label,
   Paragraph,
@@ -13,15 +14,22 @@ import {
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
-import type { TraceConnection, Residency } from '../../api/tracing';
+import type { TraceConnection, TraceInstance, Residency } from '../../api/tracing';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 
+/** Digdir's Langfuse, or one the agency runs itself. */
+type Kind = 'instance' | 'own';
+
 interface Draft {
   id: string;
+  /** The person typed the id; until then it follows the Langfuse chosen. */
+  idTyped: boolean;
+  kind: Kind;
+  /** The address of the agency's own Langfuse, as typed. */
   host: string;
   /** The host the stored secret is set for; empty for a new connection. */
   storedHost: string;
@@ -30,23 +38,48 @@ interface Draft {
   secretKey: string;
   /** A new secret key: stored for the host before the connection is saved, never shown again. */
   secret: string;
-  services: string;
+  services: string[];
+  /** The services the saved connection covers, which stay offered while unticked. */
+  servicesWas: string[];
+  /** The residency the agency declares for its own Langfuse. */
   residency: Residency;
+  /** The residency an operator set on Digdir's Langfuse; a new connection there starts global. */
+  instanceResidency: Residency;
   content: boolean;
+  /** A connection to Digdir's Langfuse that already sends text, so it can be switched off. */
+  contentWas: boolean;
   erasureDeclared: boolean;
+  labels: boolean;
 }
 
-const blank: Draft = {
-  id: '',
-  host: '',
-  storedHost: '',
-  publicKey: '',
-  secretKey: '',
-  secret: '',
-  services: '',
-  residency: 'global',
-  content: false,
-  erasureDeclared: false,
+/** A free id for a new connection, named after the Langfuse chosen. */
+const suggestedId = (kind: Kind, taken: string[]) => {
+  const base = kind === 'instance' ? 'digdir-langfuse' : 'egen-langfuse';
+  let id = base;
+  for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`;
+  return id;
+};
+
+const blank = (instance: TraceInstance | undefined, taken: string[]): Draft => {
+  const kind: Kind = instance ? 'instance' : 'own';
+  return {
+    id: suggestedId(kind, taken),
+    idTyped: false,
+    kind,
+    host: '',
+    storedHost: '',
+    publicKey: '',
+    secretKey: '',
+    secret: '',
+    services: [],
+    servicesWas: [],
+    residency: 'global',
+    instanceResidency: 'global',
+    content: false,
+    contentWas: false,
+    erasureDeclared: false,
+    labels: false,
+  };
 };
 
 const secretPrefix = (tenant: string) => `secret://tenant/${tenant}/`;
@@ -62,22 +95,45 @@ const originOf = (host: string) => {
   }
 };
 
-/** A key must be entered for a new connection, and again when the address changes. */
-const needsKey = (d: Draft) =>
-  !d.secretKey || originOf(d.host) === undefined || originOf(d.host) !== originOf(d.storedHost);
+/** Digdir's address as the connection was saved with it, so an edit does not move it. */
+const hostOf = (d: Draft, instance: TraceInstance | undefined) =>
+  d.kind === 'instance' && instance
+    ? originOf(d.storedHost) === originOf(instance.host)
+      ? d.storedHost
+      : instance.host
+    : d.host;
 
-const draftOf = (c: TraceConnection): Draft => ({
-  id: c.id,
-  host: c.host,
-  storedHost: c.host,
-  publicKey: c.publicKey,
-  secretKey: c.secretKey,
-  secret: '',
-  services: c.services.join(', '),
-  residency: c.residency,
-  content: c.content,
-  erasureDeclared: c.erasureDeclared,
-});
+/** A key must be entered for a new connection, and again when the address changes. */
+const needsKey = (d: Draft, instance: TraceInstance | undefined) => {
+  const host = originOf(hostOf(d, instance));
+  return !d.secretKey || host === undefined || host !== originOf(d.storedHost);
+};
+
+/** Text goes to Digdir's Langfuse only once operators allow it; one already sending can stop. */
+const offersContent = (d: Draft, instance: TraceInstance | undefined) =>
+  d.kind === 'own' || instance?.content === true || d.contentWas;
+
+const draftOf = (c: TraceConnection, instance: TraceInstance | undefined): Draft => {
+  const kind: Kind = c.instance && instance ? 'instance' : 'own';
+  return {
+    id: c.id,
+    idTyped: true,
+    kind,
+    host: kind === 'own' ? c.host : '',
+    storedHost: c.host,
+    publicKey: c.publicKey,
+    secretKey: c.secretKey,
+    secret: '',
+    services: c.services,
+    servicesWas: c.services,
+    residency: kind === 'own' ? c.residency : 'global',
+    instanceResidency: c.instance ? c.residency : 'global',
+    content: c.content,
+    contentWas: c.instance && c.content,
+    erasureDeclared: c.erasureDeclared,
+    labels: c.labels === true,
+  };
+};
 
 const residencyText = (t: T, r: Residency) =>
   t(
@@ -106,7 +162,17 @@ export const LiveTracing = ({
   const canManage = useRights().has('manage-services');
   const [round, setRound] = useState(0);
   const [state, retry] = useAsync(
-    (signal) => api.tracing.list(tenant, signal),
+    async (signal) => {
+      const [listing, services] = await Promise.all([
+        api.tracing.listing(tenant, signal),
+        // Without the services the connections still show; the form keeps the ones saved.
+        api.services(tenant, signal).then(
+          (r) => r.data,
+          () => undefined,
+        ),
+      ]);
+      return { connections: listing.data, instance: listing.instance, services };
+    },
     [api, tenant, round],
   );
   const [draft, setDraft] = useState<Draft>();
@@ -124,20 +190,27 @@ export const LiveTracing = ({
     setFailed(undefined);
   };
 
+  const instance = state.status === 'ready' ? state.data.instance : undefined;
+
   const save = async () => {
     if (!draft) return;
     setTried(true);
-    const host = originOf(draft.host);
+    const address = hostOf(draft, instance);
+    const host = originOf(address);
     if (
       !idPattern.test(draft.id.trim()) ||
       !host ||
       !draft.publicKey ||
-      (needsKey(draft) && !draft.secret) ||
+      (needsKey(draft, instance) && !draft.secret) ||
       reasonProblem(reason, t)
     )
       return;
     // Saving under a name that exists would replace that connection; only Endre does that.
-    if (!editing && state.status === 'ready' && state.data.some((c) => c.id === draft.id.trim())) {
+    if (
+      !editing &&
+      state.status === 'ready' &&
+      state.data.connections.some((c) => c.id === draft.id.trim())
+    ) {
       setFailed(t('integLangfuse.nameTaken', { id: draft.id.trim() }));
       return;
     }
@@ -162,16 +235,16 @@ export const LiveTracing = ({
         tenant,
         draft.id.trim(),
         {
-          host: draft.host.trim(),
+          host: address.trim(),
           publicKey: draft.publicKey.trim(),
           secretKey,
-          services: draft.services
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-          residency: draft.residency,
-          content: draft.content,
-          erasureDeclared: draft.erasureDeclared,
+          services: draft.services,
+          // On Digdir's Langfuse an operator sets the residency, and the API keeps it.
+          ...(draft.kind === 'own' ? { residency: draft.residency } : {}),
+          content: offersContent(draft, instance) && draft.content,
+          // Digdir's operators answer for erasure there, not the agency.
+          erasureDeclared: draft.kind === 'own' && draft.erasureDeclared,
+          labels: draft.labels,
         },
         reason,
       );
@@ -217,6 +290,34 @@ export const LiveTracing = ({
   if (state.status === 'loading') return <Loading label={t('integLangfuse.loading')} />;
   if (state.status === 'error')
     return <ErrorState error={state.error} onRetry={retry} headingLevel={3} />;
+  const { connections, services } = state.data;
+
+  /** The connection that covers a service, other than the one being edited. */
+  const coveredBy = (service: string) =>
+    connections.find(
+      (c) => !c.removing && !(editing && c.id === draft?.id) && c.services.includes(service),
+    )?.id;
+
+  const choose = (d: Draft, kind: Kind) =>
+    setDraft({
+      ...d,
+      kind,
+      id:
+        editing || d.idTyped
+          ? d.id
+          : suggestedId(
+              kind,
+              connections.map((c) => c.id),
+            ),
+    });
+
+  const toggle = (d: Draft, service: string) =>
+    setDraft({
+      ...d,
+      services: d.services.includes(service)
+        ? d.services.filter((s) => s !== service)
+        : [...d.services, service],
+    });
 
   return (
     <section aria-labelledby="tracing-h" className="stack-md">
@@ -224,11 +325,11 @@ export const LiveTracing = ({
         {t('integLangfuse.heading')}
       </Heading>
       <Paragraph data-size="sm">{t('integLangfuse.intro')}</Paragraph>
-      {state.data.length === 0 ? (
+      {connections.length === 0 ? (
         <Paragraph data-size="sm">{t('integLangfuse.none')}</Paragraph>
       ) : (
         <ul className="plain-list stack-sm">
-          {state.data.map((c) => (
+          {connections.map((c) => (
             <li key={c.id} className="quality-panel">
               <Heading level={4} data-size="2xs">
                 {c.id}
@@ -255,6 +356,26 @@ export const LiveTracing = ({
               <Tag data-size="sm" data-color={c.content ? 'warning' : 'neutral'}>
                 {t(c.content ? 'integLangfuse.contentOn' : 'integLangfuse.contentOff')}
               </Tag>
+              {c.labels ? (
+                <Tag data-size="sm" data-color="info">
+                  {t('integLangfuse.labelsOn')}
+                </Tag>
+              ) : null}
+              {c.datasets?.length ? (
+                <>
+                  <Heading level={5} data-size="2xs" id={`datasets-${c.id}`}>
+                    {t('integLangfuse.datasets')}
+                  </Heading>
+                  <Paragraph data-size="sm">{t('integLangfuse.datasetsHelp')}</Paragraph>
+                  <ul className="plain-list" aria-labelledby={`datasets-${c.id}`}>
+                    {c.datasets.map((d) => (
+                      <li key={d.id}>
+                        <code>{d.name}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
               {checked[c.id] ? <Paragraph data-size="sm">{checked[c.id]}</Paragraph> : null}
               <div className="row-gap">
                 <Button variant="secondary" data-size="sm" onClick={() => void check(c.id)}>
@@ -266,7 +387,7 @@ export const LiveTracing = ({
                     data-size="sm"
                     onClick={() => {
                       setEditing(true);
-                      setDraft(draftOf(c));
+                      setDraft(draftOf(c, instance));
                     }}
                   >
                     {t('integLangfuse.edit')}
@@ -282,7 +403,12 @@ export const LiveTracing = ({
           variant="primary"
           onClick={() => {
             setEditing(false);
-            setDraft(blank);
+            setDraft(
+              blank(
+                instance,
+                connections.map((c) => c.id),
+              ),
+            );
           }}
         >
           {t('integLangfuse.add')}
@@ -301,6 +427,18 @@ export const LiveTracing = ({
             {t(editing ? 'integLangfuse.editHeading' : 'integLangfuse.addHeading')}
           </Heading>
           {failed ? <Alert data-color="danger">{failed}</Alert> : null}
+          {instance ? (
+            <Field>
+              <Label>{t('integLangfuse.which')}</Label>
+              <Field.Description>
+                {t('integLangfuse.whichHelp', { host: instance.host })}
+              </Field.Description>
+              <Select value={draft.kind} onChange={(e) => choose(draft, e.target.value as Kind)}>
+                <Select.Option value="instance">{t('integLangfuse.instanceOption')}</Select.Option>
+                <Select.Option value="own">{t('integLangfuse.ownOption')}</Select.Option>
+              </Select>
+            </Field>
+          ) : null}
           <Textfield
             label={t('integLangfuse.id')}
             description={editing ? undefined : t('integLangfuse.idHelp')}
@@ -315,23 +453,25 @@ export const LiveTracing = ({
                     ? t('integLangfuse.idInvalid')
                     : undefined
             }
-            onChange={(e) => setDraft({ ...draft, id: e.target.value })}
+            onChange={(e) => setDraft({ ...draft, id: e.target.value, idTyped: true })}
           />
-          <Textfield
-            label={t('integLangfuse.host')}
-            description={t('integLangfuse.hostHelp')}
-            value={draft.host}
-            error={
-              !tried
-                ? undefined
-                : !draft.host.trim()
-                  ? t('integLangfuse.required')
-                  : !originOf(draft.host)
-                    ? t('integLangfuse.hostInvalid')
-                    : undefined
-            }
-            onChange={(e) => setDraft({ ...draft, host: e.target.value })}
-          />
+          {draft.kind === 'own' ? (
+            <Textfield
+              label={t('integLangfuse.host')}
+              description={t('integLangfuse.hostHelp')}
+              value={draft.host}
+              error={
+                !tried
+                  ? undefined
+                  : !draft.host.trim()
+                    ? t('integLangfuse.required')
+                    : !originOf(draft.host)
+                      ? t('integLangfuse.hostInvalid')
+                      : undefined
+              }
+              onChange={(e) => setDraft({ ...draft, host: e.target.value })}
+            />
+          ) : null}
           <Textfield
             label={t('integLangfuse.publicKey')}
             value={draft.publicKey}
@@ -347,42 +487,92 @@ export const LiveTracing = ({
             autoComplete="new-password"
             value={draft.secret}
             error={
-              tried && needsKey(draft) && !draft.secret
+              tried && needsKey(draft, instance) && !draft.secret
                 ? t(draft.secretKey ? 'integLangfuse.secretAgain' : 'integLangfuse.required')
                 : undefined
             }
             onChange={(e) => setDraft({ ...draft, secret: e.target.value })}
           />
-          <Textfield
-            label={t('integLangfuse.servicesLabel')}
-            description={t('integLangfuse.servicesHelp')}
-            value={draft.services}
-            onChange={(e) => setDraft({ ...draft, services: e.target.value })}
-          />
-          <Field>
-            <Label>{t('integLangfuse.residency')}</Label>
-            <Field.Description>{t('integLangfuse.residencyHelp')}</Field.Description>
-            <Select
-              value={draft.residency}
-              onChange={(e) => setDraft({ ...draft, residency: e.target.value as Residency })}
-            >
-              {(['norway', 'eu', 'global'] as const).map((r) => (
-                <Select.Option key={r} value={r}>
-                  {residencyText(t, r)}
-                </Select.Option>
+          <Fieldset>
+            <Fieldset.Legend>{t('integLangfuse.servicesLabel')}</Fieldset.Legend>
+            <Fieldset.Description>{t('integLangfuse.servicesHelp')}</Fieldset.Description>
+            {services === undefined ? (
+              <Paragraph data-size="sm">{t('integLangfuse.servicesFailed')}</Paragraph>
+            ) : services.length === 0 ? (
+              <Paragraph data-size="sm">{t('integLangfuse.noServices')}</Paragraph>
+            ) : null}
+            {(services ?? [])
+              // An archived service is offered only to a connection that already covers it.
+              .filter((s) => s.lifecycle !== 'archived' || draft.servicesWas.includes(s.id))
+              .map((s) => {
+                const taken = coveredBy(s.id);
+                const ticked = draft.services.includes(s.id);
+                return (
+                  <Checkbox
+                    key={s.id}
+                    label={s.name}
+                    description={taken ? t('integLangfuse.coveredBy', { id: taken }) : undefined}
+                    // One this connection covers stays free, even if another connection covers it too.
+                    disabled={taken !== undefined && !draft.servicesWas.includes(s.id)}
+                    checked={ticked}
+                    onChange={() => toggle(draft, s.id)}
+                  />
+                );
+              })}
+            {/* An id saved before services were picked from this list, so it can be unticked. */}
+            {[...new Set([...draft.servicesWas, ...draft.services])]
+              .filter((id) => !services?.some((s) => s.id === id))
+              .map((id) => (
+                <Checkbox
+                  key={id}
+                  label={services ? t('integLangfuse.unknownService', { id }) : id}
+                  checked={draft.services.includes(id)}
+                  onChange={() => toggle(draft, id)}
+                />
               ))}
-            </Select>
-          </Field>
+          </Fieldset>
+          {draft.kind === 'own' ? (
+            <Field>
+              <Label>{t('integLangfuse.residency')}</Label>
+              <Field.Description>{t('integLangfuse.residencyHelp')}</Field.Description>
+              <Select
+                value={draft.residency}
+                onChange={(e) => setDraft({ ...draft, residency: e.target.value as Residency })}
+              >
+                {(['norway', 'eu', 'global'] as const).map((r) => (
+                  <Select.Option key={r} value={r}>
+                    {residencyText(t, r)}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <Paragraph data-size="sm">
+              {t('integLangfuse.residencyByDigdir', {
+                residency: residencyText(t, draft.instanceResidency),
+              })}
+            </Paragraph>
+          )}
+          {offersContent(draft, instance) ? (
+            <Switch
+              label={t('integLangfuse.content')}
+              description={t('integLangfuse.contentHelp')}
+              checked={draft.content}
+              onChange={(e) => setDraft({ ...draft, content: e.target.checked })}
+            />
+          ) : null}
+          {draft.kind === 'own' && draft.content ? (
+            <Checkbox
+              label={t('integLangfuse.declaration')}
+              checked={draft.erasureDeclared}
+              onChange={(e) => setDraft({ ...draft, erasureDeclared: e.target.checked })}
+            />
+          ) : null}
           <Switch
-            label={t('integLangfuse.content')}
-            description={t('integLangfuse.contentHelp')}
-            checked={draft.content}
-            onChange={(e) => setDraft({ ...draft, content: e.target.checked })}
-          />
-          <Checkbox
-            label={t('integLangfuse.declaration')}
-            checked={draft.erasureDeclared}
-            onChange={(e) => setDraft({ ...draft, erasureDeclared: e.target.checked })}
+            label={t('integLangfuse.labels')}
+            description={t('integLangfuse.labelsHelp')}
+            checked={draft.labels}
+            onChange={(e) => setDraft({ ...draft, labels: e.target.checked })}
           />
           <ReasonField value={reason} onChange={setReason} showError={tried} />
           <div className="row-gap">

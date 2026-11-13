@@ -379,6 +379,27 @@ const BuildingBlock = z
     pendingRequest: z
       .object({ id: z.string(), at: z.string(), by: z.string(), reason: z.string() })
       .optional(),
+    judge: z
+      .object({
+        connection: z.string(),
+        model: z.string().optional().describe('provider/model; absent on a default model'),
+        version: z.string(),
+        dataType: z.string(),
+        fields: z.array(
+          z.object({ variable: z.string(), source: z.string(), jsonPath: z.string().optional() }),
+        ),
+        refused: z
+          .object({
+            reason: z.string(),
+            field: z.string().optional(),
+            connection: z.string().optional(),
+            message: z.string(),
+          })
+          .optional()
+          .describe('Why the judge cannot be taken in use'),
+      })
+      .optional()
+      .describe("A judge from the project of one of the tenant's Langfuse connections"),
   })
   .openapi('BuildingBlock');
 
@@ -737,7 +758,7 @@ const TraceConnection = z
     secretKey: z.string().describe('A secret://tenant/<tenant>/<name> reference, set for the host'),
     services: z
       .array(z.string())
-      .describe('The services whose eval runs it receives; one connection per service'),
+      .describe("The tenant's services whose eval runs it receives; one connection per service"),
     residency: z
       .enum(['norway', 'eu', 'global'])
       .describe(
@@ -748,6 +769,11 @@ const TraceConnection = z
       .boolean()
       .describe(
         "The tenant's declaration that its own Langfuse deletes what genki deletes and keeps raw files at most 7 days",
+      ),
+    labels: z
+      .boolean()
+      .describe(
+        "Whether people's annotations in the project come back as pending calibration labels for its judges",
       ),
     instance: z.boolean().describe("Whether the host is Digdir's Langfuse"),
     removing: z
@@ -769,7 +795,38 @@ const tracingRoutes: RouteConfig[] = [
     summary: "The tenant's Langfuse connections, with secret references only. Any member",
     request: { params: z.object({ tenant }) },
     responses: {
-      200: json(z.object({ data: z.array(TraceConnection) }), 'Connections'),
+      200: json(
+        z.object({
+          data: z.array(
+            TraceConnection.extend({
+              datasets: z
+                .array(
+                  z.object({
+                    service: z.string(),
+                    testSet: z.string(),
+                    name: z.string(),
+                    id: z.string().describe("Langfuse's id for the dataset"),
+                  }),
+                )
+                .describe(
+                  'One Langfuse dataset per test set of the services it covers, which genki made or reused in its project. genki cannot delete them (ADR 0040)',
+                ),
+            }),
+          ),
+          instance: z
+            .object({
+              host: z.string().describe("Digdir's Langfuse, as LANGFUSE_BASE_URL names it"),
+              content: z
+                .boolean()
+                .describe(
+                  'Whether a connection to it may receive text (LANGFUSE_INSTANCE_RECEIVES_CONTENT)',
+                ),
+            })
+            .optional()
+            .describe("Digdir's Langfuse, when LANGFUSE_BASE_URL is set"),
+        }),
+        'Connections',
+      ),
       404: problem('Not a member of the tenant'),
     },
   }),
@@ -791,13 +848,14 @@ const tracingRoutes: RouteConfig[] = [
           residency: true,
           content: true,
           erasureDeclared: true,
+          labels: true,
         }),
       ),
     },
     responses: {
       200: json(TraceConnection.omit({ instance: true, residencySetBy: true }), 'Saved'),
       400: problem(
-        'A host that is not HTTPS or is private, a secret of another tenant or not set for the host, a service already covered, or content where erasure is not shown',
+        'A host that is not HTTPS or is private, a secret of another tenant or not set for the host, a service the tenant does not have or one already covered, or content where erasure is not shown',
       ),
       403: problem('Missing manage-services'),
     },

@@ -44,6 +44,7 @@ import type {
 } from '@genai/providers-mcp-client';
 import type { TraceDeliveryStore } from '@genai/jobs';
 import type { TraceSinks, TracingOptions } from './trace-connections.js';
+import type { SinkLabels } from './sink-labels.js';
 import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
@@ -84,6 +85,8 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   egressOptions?: EgressOptions;
   tracing?: TracingOptions;
   traceSinks?: TraceSinks;
+  /** Labels brought back from trace sinks, and each sink judge's agreement with them. */
+  sinkLabels?: SinkLabels;
   traceDeliveries?: TraceDeliveryStore;
   evalSlots?: EvalSlots;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;

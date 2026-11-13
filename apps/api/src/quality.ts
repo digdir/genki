@@ -20,6 +20,8 @@ import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
+import { connectionsCovering } from './trace-connections.js';
+import { datasetsOf } from './trace-datasets.js';
 import {
   runDetail,
   casesIn,
@@ -79,10 +81,23 @@ const setSummary = (set: TestSet) => {
   };
 };
 
-const costless = <T extends { cost?: unknown; tokens?: unknown }>(view: T) => {
+const costless = <
+  T extends { cost?: unknown; tokens?: unknown; usdNok?: unknown; sinkJudges?: object[] },
+>(
+  view: T,
+) => {
   const shown: Partial<T> = { ...view };
   delete shown.cost;
   delete shown.tokens;
+  delete shown.usdNok;
+  delete (shown as { sinkOthers?: unknown }).sinkOthers;
+  // What a sink reports its judges' calls cost is usage too.
+  if (view.sinkJudges)
+    shown.sinkJudges = view.sinkJudges.map((j) => {
+      const rest = { ...(j as { reported?: unknown }) };
+      delete rest.reported;
+      return rest;
+    }) as T['sinkJudges'];
   return shown;
 };
 
@@ -98,6 +113,7 @@ export const createQualityModule =
   ): PlatformModuleFactory =>
   (deps) => {
     const evals = serviceEval(deps, options.leases);
+    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
     const improving = improvements(deps, evals);
     const background = (work: Promise<void>) => {
       work.catch(() => undefined);
@@ -387,8 +403,27 @@ export const createQualityModule =
         app.get('/tenants/:tenant/services/:id/test-sets', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
-          const sets = await deps.evalStores.testSets.list(guard.tenant, param(c, 'id'));
-          return c.json({ data: sets.map(setSummary) });
+          const service = param(c, 'id');
+          const sets = await deps.evalStores.testSets.list(guard.tenant, service);
+          // The Langfuse dataset an agency points its judges at, in the covering connection.
+          const covering = await connectionsCovering(deps.configEntries, guard.tenant, service);
+          const made = (
+            await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant)
+          ).filter(
+            (d) =>
+              covering.length === 1 && d.connection === covering[0]?.id && d.service === service,
+          );
+          return c.json({
+            data: sets.map((set) => {
+              const dataset = made.find((d) => d.testSet === set.metadata.id);
+              return {
+                ...setSummary(set),
+                ...(dataset
+                  ? { dataset: { connection: dataset.connection, name: dataset.name } }
+                  : {}),
+              };
+            }),
+          });
         });
 
         app.get('/tenants/:tenant/test-sets/:setId/cases', async (c) => {
@@ -552,10 +587,41 @@ export const createQualityModule =
             if (error instanceof RunRefused)
               return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
             if (!(error instanceof TraceRefused)) throw error;
-            return problem(c, 409, 'Testkjøringen kan ikke sendes til sporing', [
-              { path: 'trace', message: error.message },
-            ]);
+            return problem(
+              c,
+              409,
+              'Testkjøringen kan ikke sendes til sporing',
+              error.messages.map((message) => ({ path: 'trace', message })),
+            );
           }
+        });
+
+        app.get('/tenants/:tenant/services/:id/eval-runs/sending', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const service = param(c, 'id');
+          const version = c.req.query('version');
+          const found = await evals.subjectOf(
+            guard.tenant,
+            service,
+            version === 'draft' ? 'draft' : version ? Number(version) : undefined,
+          );
+          if (!found)
+            return problem(c, 404, 'Fant ikke', [
+              { path: 'version', message: `no ${version ?? 'published'} version` },
+            ]);
+          // The judges that reach a run depend on its test set, by its dataset and its name.
+          const testSet = c.req.query('testSet');
+          const set = testSet
+            ? (await deps.evalStores.testSets.list(guard.tenant, service)).find(
+                (s) => s.metadata.id === testSet,
+              )
+            : undefined;
+          if (!set)
+            return problem(c, 404, 'Fant ikke', [
+              { path: 'testSet', message: `no test set ${testSet ?? ''} in the service` },
+            ]);
+          return c.json(await evals.sendingOf(guard.tenant, service, found, set));
         });
 
         app.get('/tenants/:tenant/services/:id/eval-runs', async (c) => {
@@ -563,8 +629,12 @@ export const createQualityModule =
           if (guard.response) return guard.response;
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
           const usage = seesUsage(guard.principal, guard.tenant);
+          const agreementsOf = await deps.sinkLabels?.agreementsFor(guard.tenant);
           return c.json({
-            data: runs.map((s) => (usage ? runSummary(s.run) : costless(runSummary(s.run)))),
+            data: runs.map((s) => {
+              const summary = runSummary(s.run, isSinkJudge, agreementsOf?.(s.run));
+              return usage ? summary : costless(summary);
+            }),
           });
         });
 
@@ -579,7 +649,13 @@ export const createQualityModule =
               stored.run.testSet.id,
               stored.run.testSet.version,
             );
-            const detail = runDetail(stored.run, set, await evals.answersOf(stored.run));
+            const detail = runDetail(stored.run, set, await evals.answersOf(stored.run), {
+              isSinkJudge,
+              reasons: await evals.judgeReasonsOf(stored.run, isSinkJudge),
+              ...(deps.sinkLabels
+                ? { agreements: await deps.sinkLabels.agreements(guard.tenant, stored.run) }
+                : {}),
+            });
             const shown = seesUsage(guard.principal, guard.tenant) ? detail : costless(detail);
             return c.json({ kind: 'service' as const, ...shown });
           }

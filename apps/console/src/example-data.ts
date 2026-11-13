@@ -5,6 +5,7 @@ import type {
   GridSetting,
   JudgeCalibration,
   LabelItem,
+  SinkLabels,
   OnboardingRequest,
   OperationsOverview,
   QualityHistory,
@@ -662,6 +663,57 @@ export const exampleJudges: JudgeCalibration[] = [
     advisory: false,
   },
 ];
+
+/** Labels people made in DFØ's Langfuse project, waiting for an operator. */
+export const exampleSinkLabels: SinkLabels = {
+  connections: [
+    { tenant: '991825827', connection: 'kudos', labels: true },
+    { tenant: '991825827', connection: 'test', labels: false },
+  ],
+  batches: [
+    {
+      tenant: '991825827',
+      connection: 'kudos',
+      judge: 'langfuse:991825827/kudos/kudos_quotes_covered',
+      name: 'kudos_quotes_covered',
+      labels: [
+        {
+          id: 'merknad-1',
+          revision: '2026-11-02T10:00:00.000Z|good',
+          run: 'kjoring-41',
+          case: 'tilskudd-frist',
+          repeat: 0,
+          humanLabel: 'good',
+          judgeLabel: 'good',
+          labeller: 'pseudonym:3f9a1c27b0d4',
+        },
+        {
+          id: 'merknad-2',
+          revision: '2026-11-02T10:00:00.000Z|bad',
+          run: 'kjoring-41',
+          case: 'rapport-mangler',
+          repeat: 0,
+          humanLabel: 'bad',
+          judgeLabel: 'good',
+          labeller: 'pseudonym:3f9a1c27b0d4',
+        },
+        {
+          id: 'merknad-3',
+          revision: '2026-11-02T10:00:00.000Z|good',
+          run: 'kjoring-41',
+          case: 'personvern',
+          repeat: 0,
+          humanLabel: 'good',
+          labeller: 'pseudonym:8e02d5aa41c9',
+        },
+      ],
+      paired: 2,
+      alike: 1,
+      unpaired: 1,
+      labellers: 2,
+    },
+  ],
+};
 
 export const exampleLabelQueue: LabelItem[] = [
   {

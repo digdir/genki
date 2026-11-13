@@ -41,6 +41,8 @@ export interface ConfigurablesInput {
   /** Runs of these datasets are knowledge jobs (ADR 0042). */
   jobRuns?: JobRuns;
   onWarning?: (message: string) => void;
+  /** Why a gate on this metric cannot be saved, when it cannot. */
+  gateProblem?: (gate: string, metric: string) => string | undefined;
 }
 
 const countTtlMs = 5 * 60_000;
@@ -131,6 +133,7 @@ export const createConfigurables = (
       ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorSecret: connectorSecretOf(store),
+      ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
     };
 
     const publishProblems = async (definition: Definition) => {

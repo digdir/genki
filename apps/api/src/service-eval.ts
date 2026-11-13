@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto';
+import { adoptionKind, blockKey, latestUsdNok } from '@genai/composition';
 import type { Part, Principal } from '@genai/contracts';
 import { validateDefinition, variantId, variantModelOf, type Variant } from '@genai/definitions';
 import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
   answerText,
+  bootstrapMean,
   caseTypeOf,
   caseView,
   criteriaJudgeId,
   defaultObserve,
   evalRun,
   gradeAnswer,
+  mean,
+  perCaseMeans,
   judgedAgainst,
   runState,
   splitsFor,
@@ -21,6 +25,7 @@ import {
   type StoredRun,
   type TestCase,
   type TestSet,
+  type SinkAgreement,
 } from '@genai/eval';
 import {
   backgroundLeases,
@@ -29,8 +34,14 @@ import {
   type LeaseOptions,
 } from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
-import { connectionsCovering, deliveryGate } from './trace-connections.js';
+import {
+  connectionsCovering,
+  deliveryGate,
+  type SinkRun,
+  type TraceConnection,
+} from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
+import { traceDatasets } from './trace-datasets.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import { evalSlots, type QueueWatch } from './eval-slots.js';
 import { markedNotFound } from './not-found.js';
@@ -46,6 +57,16 @@ export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
 export type RunVersion = 'draft' | number;
 
+/** A sink judge's verdict on one case, with its reason while the case's task keeps it. */
+export interface CaseJudgement {
+  judge: string;
+  state: Score['state'];
+  value: number | null;
+  dataType?: string;
+  asItCame?: unknown;
+  reason?: string;
+}
+
 export interface CaseResult {
   caseId: string;
   input: string;
@@ -55,7 +76,64 @@ export interface CaseResult {
   output: string;
   pass: boolean;
   reason?: string;
+  judges?: CaseJudgement[];
 }
+
+/** Whether an evaluator is a sink's judge: advisory, shown apart from the platform's metrics. */
+export type IsSinkJudge = (evaluator: string) => boolean;
+const noSinkJudge: IsSinkJudge = () => false;
+
+/** Each sink judge of a run: its score, what it could not judge, and whether it changed. */
+export const sinkJudgesOf = (
+  run: EvalRun,
+  isSinkJudge: IsSinkJudge,
+  agreements?: Map<string, SinkAgreement>,
+) =>
+  [...new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)).filter(isSinkJudge))]
+    .sort()
+    .map((id) => {
+      const scores = run.results.flatMap((r) => r.scores.filter((s) => s.evaluator === id));
+      const applicable = scores.filter((s) => s.state !== 'not-applicable');
+      const gap = run.incomplete.find((i) => i.evaluator === id);
+      const changed = [
+        ...new Set(
+          scores.flatMap((s) =>
+            Array.isArray(s.details?.judgeChanged) ? (s.details.judgeChanged as string[]) : [],
+          ),
+        ),
+      ];
+      const categories: Record<string, number> = {};
+      for (const s of scores)
+        if (s.state === 'scored' && s.value === null && s.details?.asItCame !== undefined) {
+          const key = String(s.details.asItCame);
+          categories[key] = (categories[key] ?? 0) + 1;
+        }
+      // Advisory scores stay out of the run's metrics, so the judge's own summary is made here.
+      const values = [...perCaseMeans(run, id).values()];
+      const metric =
+        values.length > 0
+          ? { mean: mean(values), ci: bootstrapMean(values), n: values.length }
+          : undefined;
+      const reported = run.usage?.reported?.[id];
+      const labels = agreements?.get(id);
+      const dataType = scores.find((s) => typeof s.details?.dataType === 'string')?.details
+        ?.dataType as string | undefined;
+      return {
+        id,
+        name: id.slice(id.indexOf('/') + 1),
+        version: scores[0]?.version ?? '',
+        ...(dataType ? { dataType } : {}),
+        ...(metric ? { metric } : {}),
+        ...(reported ? { reported } : {}),
+        ...(labels ? { labels } : {}),
+        ...(Object.keys(categories).length > 0 ? { categories } : {}),
+        notApplicable: scores.length - applicable.length,
+        missing: gap?.missing ?? applicable.filter((s) => s.state === 'pending').length,
+        failed: gap?.failed ?? 0,
+        of: applicable.length,
+        changed,
+      };
+    });
 
 /** The draft or version cannot be run, for the reasons the draft runner gives. */
 export class RunRefused extends Error {
@@ -67,9 +145,12 @@ export class RunRefused extends Error {
 
 /** Sending a run's traces is refused: no connection covers the service, or residency forbids it. */
 export class TraceRefused extends Error {
-  constructor(message: string) {
+  /** Every reason the run is refused, the first being the message. */
+  readonly messages: string[];
+  constructor(message: string, more: string[] = []) {
     super(message);
     this.name = 'TraceRefused';
+    this.messages = [message, ...more];
   }
 }
 
@@ -135,8 +216,21 @@ const passes = (scores: Score[]) => {
 export const answerOfParts = (parts: unknown) =>
   Array.isArray(parts) ? answerText(defaultObserve(parts as Part[], [])) : '';
 
+/** What a sink reports judges the run did not use cost, such as one switched on during the run. */
+const sinkOthersOf = (run: EvalRun, isSinkJudge: IsSinkJudge) => {
+  const judges = new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)));
+  const others = Object.entries(run.usage?.reported ?? {}).filter(
+    ([key]) => isSinkJudge(key) && !judges.has(key),
+  );
+  return others.length > 0 ? { sinkOthers: others[0]?.[1] } : {};
+};
+
 /** A test run as the portal lists it, read from the eval run. */
-export const runSummary = (run: EvalRun) => {
+export const runSummary = (
+  run: EvalRun,
+  isSinkJudge: IsSinkJudge = noSinkJudge,
+  agreements?: Map<string, SinkAgreement>,
+) => {
   const state = runState(run);
   // Every case counts, as the case list shows it: one without a verdict did not pass.
   const counted = run.results;
@@ -168,6 +262,18 @@ export const runSummary = (run: EvalRun) => {
     cost: usage ? usage.costMicroNok : null,
     tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
     ...(run.error ? { error: run.error } : {}),
+    sinkJudges: sinkJudgesOf(run, isSinkJudge, agreements),
+    ...sinkOthersOf(run, isSinkJudge),
+    ...(run.usage?.usdNok ? { usdNok: run.usage.usdNok } : {}),
+    ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
+    ...(run.tested?.unsentJudges
+      ? {
+          unsentJudges: run.tested.unsentJudges.map((id) => ({
+            id,
+            name: id.slice(id.indexOf('/') + 1),
+          })),
+        }
+      : {}),
   };
 };
 
@@ -176,13 +282,34 @@ export const runDetail = (
   run: EvalRun,
   set: TestSet | undefined,
   answers: Map<string, string>,
+  sink: {
+    isSinkJudge: IsSinkJudge;
+    reasons?: Map<string, Map<string, string>>;
+    agreements?: Map<string, SinkAgreement>;
+  } = {
+    isSinkJudge: noSinkJudge,
+  },
 ) => ({
-  ...runSummary(run),
+  ...runSummary(run, sink.isSinkJudge, sink.agreements),
   byTag: run.byTag,
   cases: run.results.map((r): CaseResult => {
     const found = set?.spec.cases.find((c) => c.id === r.case);
     const view = found ? caseView(found) : undefined;
     const reason = verdictOf(r.scores)?.reason;
+    const said = sink.reasons?.get(`${r.case}#${r.repeat}`);
+    const judges = r.scores
+      .filter((s) => sink.isSinkJudge(s.evaluator))
+      .map((s): CaseJudgement => {
+        const why = s.reason ?? said?.get(s.evaluator);
+        return {
+          judge: s.evaluator,
+          state: s.state,
+          value: s.value,
+          ...(typeof s.details?.dataType === 'string' ? { dataType: s.details.dataType } : {}),
+          ...(s.details?.asItCame !== undefined ? { asItCame: s.details.asItCame } : {}),
+          ...(why ? { reason: why } : {}),
+        };
+      });
     return {
       caseId: r.case,
       input: view?.input ?? '',
@@ -192,6 +319,7 @@ export const runDetail = (
       output: answers.get(`${r.case}#${r.repeat}`) ?? '',
       pass: passes(r.scores),
       ...(reason ? { reason } : {}),
+      ...(judges.length > 0 ? { judges } : {}),
     };
   }),
 });
@@ -286,6 +414,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   const choice = modelChoice(deps);
   const slots = deps.evalSlots ?? evalSlots();
   const leases = backgroundLeases(leaseOptions);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+  });
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
   const draftOf = drafts.draftOf;
@@ -534,6 +667,183 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     return answers;
   };
 
+  /** The judges of a connection that the tenant has taken in use as building blocks. */
+  const adoptedJudges = async (tenant: string, connection: string) => {
+    const judgeOf = deps.traceSinks?.judgeOf;
+    if (!judgeOf) return [];
+    const prefix = blockKey('judge', '');
+    return (await deps.configEntries.latest({ kind: adoptionKind, scope: tenant }))
+      .filter(
+        (e) =>
+          !e.deleted &&
+          (e.spec as { status?: string }).status === 'in_use' &&
+          e.id.startsWith(prefix) &&
+          judgeOf(connection, e.id.slice(prefix.length)),
+      )
+      .map((e) => e.id.slice(prefix.length))
+      .sort();
+  };
+
+  /**
+   * The rules of the connection's project as they meet a run of the test set (ADR 0040): the
+   * adopted judges that reach it, and what refuses it. A judge whose filters leave the test set
+   * out is no part of the run; a refused judge that reaches it, one not taken in use, and a rule
+   * that would judge every span or that genki cannot read, refuse it.
+   */
+  const reachOf = async (
+    tenant: string,
+    connection: TraceConnection,
+    adopted: string[],
+    run: SinkRun,
+  ) => {
+    const sinks = deps.traceSinks;
+    if (!sinks?.forRun) return undefined;
+    const found = await sinks.forRun(tenant, connection, run);
+    const reaching = found.judges.filter((j) => j.refused?.reason !== 'paused');
+    return {
+      ...found,
+      used: found.judges.filter((j) => adopted.includes(j.id)),
+      notInUse: reaching.filter((j) => !adopted.includes(j.id) && !j.refused),
+      refused: reaching.filter((j) => !adopted.includes(j.id) && j.refused),
+      unreadable: [
+        ...reaching.filter((j) => !adopted.includes(j.id) && j.refused).map((j) => j.name),
+        ...found.refusing.map((r) => r.name),
+      ],
+      gone: adopted.filter(
+        (id) => !found.judges.some((j) => j.id === id) && !found.elsewhere.some((j) => j.id === id),
+      ),
+    };
+  };
+
+  /** The adopted judges that reach the run, as the project has them now; throws when it is refused. */
+  const snapshotJudges = async (
+    tenant: string,
+    connection: TraceConnection,
+    adopted: string[],
+    run: SinkRun,
+  ) => {
+    const found = await reachOf(tenant, connection, adopted, run).catch((error: unknown) => {
+      throw new TraceRefused(
+        `the judges of the connection ${connection.id} could not be read: ${messageOf(error)}`,
+      );
+    });
+    if (!found) return [];
+    // Each refusal names its judge or rule, and reads in the person's language on its own.
+    const unread = [...found.notInUse, ...found.refused].map((j) => j.name);
+    const messages = [
+      ...found.used.flatMap((j) => (j.refused ? [j.refused.message] : [])),
+      ...(unread.length > 0
+        ? [
+            `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
+          ]
+        : []),
+      // A judge taken in use that now judges every span is refused for that, not as gone.
+      ...found.refusing.map((r) => r.message),
+      ...found.gone
+        .filter((id) => !found.refusing.some((r) => id.endsWith(`/${r.name}`)))
+        .map(
+          (id) =>
+            `the judge ${id} is no longer an active experiment judge in the project of the connection ${connection.id}`,
+        ),
+    ];
+    const [first, ...more] = messages;
+    if (first) throw new TraceRefused(first, more);
+    return found.used;
+  };
+
+  /** The sink judges' reasons, kept only on each case's task for as long as its retention keeps them. */
+  const judgeReasonsOf = async (run: EvalRun, isSinkJudge: IsSinkJudge) => {
+    const reasons = new Map<string, Map<string, string>>();
+    for (const r of run.results) {
+      if (!r.scores.some((s) => isSinkJudge(s.evaluator) && s.state === 'scored')) continue;
+      const said = new Map<string, string>();
+      try {
+        for await (const event of deps.events(r.task)) {
+          const score = event.type === 'kernel.score' ? (event.data as Partial<Score>) : undefined;
+          if (score?.evaluator && isSinkJudge(score.evaluator) && typeof score.reason === 'string')
+            said.set(score.evaluator, score.reason);
+        }
+      } catch {
+        continue;
+      }
+      reasons.set(`${r.case}#${r.repeat}`, said);
+    }
+    return reasons;
+  };
+
+  /** The residency a run of the definition has: as stated, or its primary model's. */
+  const runResidency = (definition: Record<string, unknown>): Residency => {
+    const stated = (
+      isRecord(definition.spec) && isRecord(definition.spec.model)
+        ? definition.spec.model.residency
+        : undefined
+    ) as Residency | undefined;
+    if (stated && residencies.includes(stated)) return stated;
+    const primary = modelsOf(definition)[0];
+    return primary ? choice.residencyOf(primary) : 'global';
+  };
+
+  /**
+   * Where a run of the subject on the test set would be sent and which sink judges would score
+   * it, before it starts, with the judges of other test sets apart.
+   */
+  const sendingOf = async (tenant: string, service: string, subject: Subject, set: TestSet) => {
+    const covering = await connectionsCovering(deps.configEntries, tenant, service);
+    const sink = covering[0];
+    if (!sink) return { judges: [] };
+    const adopted = await adoptedJudges(tenant, sink.id);
+    const residency = runResidency(subject.definition);
+    const dataset = await datasets.recorded(tenant, sink, service, set.metadata.id);
+    const run: SinkRun = {
+      testSet: set.metadata.id,
+      version: set.metadata.version,
+      ...(dataset ? { dataset: dataset.id } : {}),
+    };
+    // Judges that cannot be read refuse the run when it starts: say so before.
+    const read = await reachOf(tenant, sink, adopted, run).catch((error: unknown) => ({
+      error: messageOf(error),
+    }));
+    const unread = () => {
+      if (!read) return undefined;
+      if ('error' in read)
+        return {
+          reason: 'judges-unreadable' as const,
+          connection: sink.id,
+          message: read.error,
+        };
+      return read.notInUse.length + read.unreadable.length > 0
+        ? {
+            reason: 'judges-differ' as const,
+            connection: sink.id,
+            notInUse: read.notInUse.map((j) => j.name),
+            unreadable: read.unreadable,
+          }
+        : undefined;
+    };
+    const reached = read && !('error' in read) ? read : undefined;
+    const refused =
+      covering.length > 1
+        ? { reason: 'covered-twice' as const, connections: covering.map((c) => c.id) }
+        : !residencyAllows(residency, sink.residency)
+          ? { reason: 'residency' as const, service: residency, connection: sink.residency }
+          : adopted.length > 0 && !sink.content
+            ? { reason: 'no-content' as const, connection: sink.id }
+            : unread();
+    const named = (id: string) => ({ id, name: id.slice(id.indexOf('/') + 1) });
+    return {
+      connection: { id: sink.id, residency: sink.residency },
+      // What reaches the test set, whatever else refuses the run.
+      ...(reached
+        ? { notInUse: reached.notInUse.map((j) => j.name), unreadable: reached.unreadable }
+        : {}),
+      judges: reached ? reached.used.map((j) => named(j.id)) : adopted.map(named),
+      ...(reached && reached.elsewhere.length > 0
+        ? { elsewhere: reached.elsewhere.map((j) => named(j.id)) }
+        : {}),
+      ...(refused ? { refused } : {}),
+    };
+  };
+
   const startRun = async (
     principal: Principal,
     tenant: string,
@@ -546,9 +856,17 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
     // Locked cases never leave the platform, so a run of them alone sends nothing anywhere.
-    const traced = options.trace === true && split !== 'locked';
-    const covering = traced ? await connectionsCovering(deps.configEntries, tenant, service) : [];
-    const sink = covering[0];
+    const sendable = split !== 'locked';
+    const covering = sendable ? await connectionsCovering(deps.configEntries, tenant, service) : [];
+    const adopted = new Map(
+      await Promise.all(
+        covering.map(async (c) => [c.id, await adoptedJudges(tenant, c.id)] as const),
+      ),
+    );
+    // A run goes to a sink only when it asks, and the sink's judges score only a run sent there.
+    const traced = sendable && options.trace === true;
+    const unsentJudges = traced ? [] : [...adopted.values()].flat();
+    const sink = traced ? covering[0] : undefined;
     if (traced) {
       if (!sink || !deps.traceSinks)
         throw new TraceRefused(`no trace connection covers the service ${service}`);
@@ -577,15 +895,40 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         );
       }
     }
+    // Looked up only after the run's checks pass, so a refused run writes nothing (ADR 0040).
+    const dataset = sink
+      ? await datasets.ensure(tenant, sink, service, set.metadata.id).catch((error: unknown) => {
+          prepared.release();
+          throw new TraceRefused(
+            `the dataset of the test set ${set.metadata.id} could not be found or made in the project of the connection ${sink.id}: ${messageOf(error)}`,
+          );
+        })
+      : undefined;
+    const sinkJudges = sink
+      ? await snapshotJudges(tenant, sink, adopted.get(sink.id) ?? [], {
+          testSet: set.metadata.id,
+          version: set.metadata.version,
+          ...(dataset ? { dataset: dataset.id } : {}),
+        }).catch((error: unknown) => {
+          prepared.release();
+          throw error;
+        })
+      : [];
     const cases = casesIn(set, split, only);
     // A finished case takes its place in the test set's order, repeat by repeat.
     const order = new Map(cases.map((c, i) => [c.id, i]));
     const rankOf = (r: EvalRun['results'][number]) =>
       r.repeat * cases.length + (order.get(r.case) ?? cases.length);
     const model = answeringModel(subject);
+    const runId = randomUUID();
+    // Where the sink shows the run's experiment; a run is no less valid without the link.
+    const experiment =
+      sink && deps.traceSinks?.experimentUrl
+        ? await deps.traceSinks.experimentUrl(tenant, sink, runId).catch(() => undefined)
+        : undefined;
     const startedAt = leases.now().toISOString();
     const first: EvalRun = {
-      id: randomUUID(),
+      id: runId,
       testSet: { tenant, id: set.metadata.id, version: set.metadata.version },
       capability: prepared.capability,
       splits: split ? splitsFor(split) : ['train', 'validation', 'holdout'],
@@ -610,6 +953,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(split ? { split } : {}),
         ...(sink ? { sink: sink.id } : {}),
+        ...(experiment ? { experiment } : {}),
+        ...(unsentJudges.length > 0 ? { unsentJudges } : {}),
         ...(subject.environment ? { environment: subject.environment } : {}),
         ...(model ? { model } : {}),
         ...(only ? { selected: only } : {}),
@@ -645,6 +990,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
               now: () => leases.now().toISOString(),
             })
           : undefined,
+        deps.traceSinks.fieldsOf?.(sinkJudges) ?? [],
+        dataset?.id,
       );
     const done = (async () => {
       try {
@@ -654,10 +1001,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             capability: prepared.capability,
             // Only the marked cases, when the run was limited to them.
             testSet: only ? { ...set, spec: { ...set.spec, cases } } : set,
-            evaluators: evaluatorsFor(cases, gatesOf(spec)),
+            evaluators: [...evaluatorsFor(cases, gatesOf(spec)), ...sinkJudges.map((j) => j.id)],
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
             ...(sink ? { sink: sink.id } : {}),
+            ...(sinkJudges.length > 0 ? { sinkJudges: sinkJudges.map((j) => j.snapshot) } : {}),
             // The judge is picked outside every model the service may answer with, fallback too.
             avoidAsJudge: modelsOf(subject.definition),
           },
@@ -706,9 +1054,15 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
             : s,
         );
+        // A cost a sink reports in USD is shown with the rate of its day, kept with the run.
+        const usdNok =
+          result.usage?.reported && Object.keys(result.usage.reported).length > 0
+            ? await latestUsdNok(deps.configEntries).catch(() => undefined)
+            : undefined;
         await lease.update(
           () => ({
             ...result,
+            ...(usdNok && result.usage ? { usage: { ...result.usage, usdNok } } : {}),
             provenance: { ...result.provenance, services },
             ...(first.tested ? { tested: first.tested } : {}),
             progress: { done: cases.length, total: cases.length },
@@ -753,6 +1107,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     runsOf,
     latestCompleted,
     answersOf,
+    judgeReasonsOf,
+    sendingOf,
     leases,
     startRun,
   };

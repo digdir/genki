@@ -9,14 +9,19 @@ import {
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
   followChanges,
+  exchangeRateGuard,
   isLockdown,
   knowledgeRecordsOf,
+  latestUsdNok,
   loadCatalog,
   mayUseModels,
   openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
+  readUsdNok,
   runtimeBlocksOf,
+  saveUsdNok,
+  scheduleUsdNok,
   TenantSecretVault,
   traceSinkAccess,
   tracesContent,
@@ -862,6 +867,29 @@ const retention = db
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
+// Norges Bank's USD/NOK rate, read once a day through the egress guard, shows a judge's reported cost in kroner.
+const rateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-exchange-rate') : undefined;
+const rateGuard = exchangeRateGuard();
+const exchangeRate = db
+  ? scheduleUsdNok({
+      configEntries: db.configEntries,
+      guard: rateGuard,
+      ...(rateLease ? { active: () => rateLease.tryAcquire() } : {}),
+      onRead: (rate) => log('usd/nok rate', { ...rate }),
+      onError: (error) => log('usd/nok rate failed', { error: String(error) }),
+    })
+  : undefined;
+if (db)
+  void latestUsdNok(db.configEntries)
+    .then(async (known) => {
+      // One replica reads it, as the daily job does.
+      if (known || (rateLease && !(await rateLease.tryAcquire()))) return;
+      const rate = await readUsdNok(rateGuard);
+      await saveUsdNok(db.configEntries, rate, new Date());
+      log('usd/nok rate', { ...rate });
+    })
+    .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
+
 const sweepLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
   : undefined;
@@ -948,6 +976,7 @@ const knowledgeReconciler = knowledgeRunRecords
 const stop = () => {
   knowledgeProgress.stop();
   retention?.stop();
+  exchangeRate?.stop();
   providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);

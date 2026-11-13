@@ -9,12 +9,16 @@ const evaluationContext = z.object({
     id: z.string().min(1),
     repeat: z.number().int().nonnegative(),
     split: z.enum(['train', 'validation', 'holdout']),
+    expected: z.record(z.string(), z.string()).optional(),
   }),
   sink: z.string().min(1).optional(),
 });
 
-/** A case of an eval run: its task starts a trace of its own, one item of the run's experiment. */
-export type Experiment = EvaluationContext & { rootTask: string };
+/**
+ * A case of an eval run: its task starts a trace of its own, one item of the run's experiment,
+ * linked to its test set's dataset when the run has one.
+ */
+export type Experiment = EvaluationContext & { rootTask: string; dataset?: string };
 
 /** The evaluation context recorded beside a task's input, when the task answers a case. */
 export const evaluationIn = (event: Event): EvaluationContext | undefined => {
@@ -31,13 +35,18 @@ export const experimentAttributes = (experiment: Experiment, rootObservationId: 
   'langfuse.experiment.name': experiment.run.name,
   'langfuse.experiment.item.id': `${experiment.case.id}#${experiment.case.repeat}`,
   'langfuse.experiment.item.root_observation_id': rootObservationId,
+  // Langfuse lists the run under the dataset, and a judge filtered on datasetId judges it.
+  ...(experiment.dataset ? { 'langfuse.experiment.dataset.id': experiment.dataset } : {}),
 });
 
-/** Only on the item's root span. */
-export const itemAttributes = (experiment: Experiment) => ({
+/** Only on the item's root span; what the case expects only when a judge maps it. */
+export const itemAttributes = (experiment: Experiment, expected = false) => ({
   'langfuse.experiment.item.metadata.case': experiment.case.id,
   'langfuse.experiment.item.metadata.repeat': String(experiment.case.repeat),
   'langfuse.experiment.item.metadata.split': experiment.case.split,
+  ...(expected && experiment.case.expected
+    ? { 'langfuse.experiment.item.expected_output': JSON.stringify(experiment.case.expected) }
+    : {}),
 });
 
 export interface ExperimentRouter {

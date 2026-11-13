@@ -682,6 +682,10 @@ export const integrationsArea = {
     global: 'not settled (global)',
     contentOn: 'Receives text',
     contentOff: 'Receives metadata only',
+    labelsOn: 'Brings labels back',
+    datasets: 'Datasets in Langfuse',
+    datasetsHelp:
+      "One dataset per test set in the services the connection covers. Each test run sent to Langfuse is linked to its test set's dataset. To have a judge judge one test set, pick the dataset in the judge's filter in Langfuse, together with isExperimentItemRootSpan = true.",
     check: 'Check the connection',
     checkedOk:
       'The secret key opens the project {project}. Langfuse does not check the public key, so make sure it belongs to the same project.',
@@ -695,23 +699,32 @@ export const integrationsArea = {
     idInvalid:
       'Use only small letters, digits and hyphens, starting with a letter or digit, for example agency-langfuse.',
     host: 'Address',
-    hostHelp: 'For example https://langfuse.digdir.cloud. HTTPS only.',
-    hostInvalid: 'Write the whole address, for example https://langfuse.digdir.cloud.',
+    hostHelp: 'For example https://langfuse.agency.no. HTTPS only.',
+    hostInvalid: 'Write the whole address, for example https://langfuse.agency.no.',
     publicKey: 'Public key',
     secret: 'Secret key',
-    secretHelp:
-      'Stored as a secret that can only be sent to the address above, and never shown again.',
-    secretKeepHelp:
-      'Leave it empty to keep the stored key. It is stored for the address above only.',
+    secretHelp: 'Stored as a secret that can only be sent to this Langfuse, and never shown again.',
+    secretKeepHelp: 'Leave it empty to keep the stored key. It is stored for this Langfuse only.',
     secretAgain: 'Enter the secret key again when the address changes, so it is only sent there.',
+    which: 'Langfuse',
+    whichHelp: "Digdir's Langfuse is {host}.",
+    instanceOption: "Digdir's Langfuse",
+    ownOption: 'Your own Langfuse',
     servicesLabel: 'Services',
-    servicesHelp: "The services' ids, separated by commas. A service can have only one connection.",
+    servicesHelp:
+      'The services that send their test runs here. A service can have only one connection.',
+    coveredBy: 'Connected to {id}',
+    unknownService: '{id} (does not exist)',
+    noServices: 'The organisation has no services yet.',
+    servicesFailed: 'Could not read the services.',
     residency: 'Residency',
-    residencyHelp:
-      "Where Langfuse stores what it receives, and where its judges' models run. Digdir sets this for Digdir's Langfuse.",
+    residencyHelp: "Where Langfuse stores what it receives, and where its judges' models run.",
     content: 'Send text',
     contentHelp:
       'Questions, answers and what the judges read. Needs a Langfuse that deletes what genki deletes and keeps raw files at most 7 days.',
+    labels: 'Bring labels back from Langfuse as calibration labels',
+    labelsHelp:
+      "What people label in the project comes back as pending labels for its judges. An operator fetches them in the operations console, and they count only once the operator accepts them. Make the score config with the name and type of the judge's evaluator.",
     declaration:
       'We confirm that our Langfuse deletes what genki deletes and keeps raw files at most 7 days.',
     required: 'Fill in the field',

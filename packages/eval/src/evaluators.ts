@@ -1,13 +1,16 @@
 import { untrustedData } from '@genai/port-model';
 import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
-import type { Score, TestCase, UsageSummary } from './schema.js';
+import type { ReportedUsage, Score, TestCase, UsageSummary } from './schema.js';
 
 export interface EvalContext {
   servedModels: string[];
   modelFamily(model: string): string | undefined;
   /** Aborts when the eval run is cancelled. */
   signal?: AbortSignal;
+  /** The eval run and the case's task, for a judge that scores the trace the case sent. */
+  run?: string;
+  task?: string;
 }
 
 export const judgedAgainst = (model: { kind?: unknown }) =>
@@ -40,6 +43,25 @@ export interface Evaluator {
   collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
   /** What the evaluator's own model calls used, for a judge that calls one. */
   usage?(): UsageSummary;
+  /**
+   * Its reasons may quote the answer, so they are kept only on the case's task, whose retention
+   * purges them with the case; the run keeps its scores without them.
+   */
+  reasonsOnTheCase?: boolean;
+  /** Its scores are shown apart and never count in the run's metrics or its gates. */
+  advisory?: boolean;
+  /**
+   * What a sink reports its judges' calls on the run's cases used, outside the platform's
+   * metering: per evaluator, and under the sink's own key for its judges the run does not use.
+   */
+  reportedUsage?(): Record<string, ReportedUsage>;
+  /**
+   * For a judge in a sink: whether it can judge the case at all, known before the case is
+   * answered. A case none of a run's sink judges can read is not sent, so it is not billed.
+   */
+  canRead?(testCase: TestCase): boolean;
+  /** Once the run's wait for scores is over: a last read of what a sink reports, before the run ends. */
+  settle?(options?: { signal?: AbortSignal }): Promise<void>;
 }
 
 /** The evaluator of a provenance judge: judge:criteria@2+foundry/claude is judge:criteria. */

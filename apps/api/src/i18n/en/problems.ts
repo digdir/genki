@@ -13,6 +13,7 @@ export const problems = {
   notAllowedForTenant: 'Not allowed for this tenant',
   forbiddenEn: 'Forbidden',
   conflict: 'Conflict',
+  badGateway: 'Bad gateway',
   changedElsewhere: 'Changed elsewhere',
   notAccessDataset: 'You do not have access to the dataset',
   needsRight: 'You need the right «{right}»',

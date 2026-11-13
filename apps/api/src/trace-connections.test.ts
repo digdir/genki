@@ -9,6 +9,7 @@ import { createPlatform } from './composition.js';
 import { connectionsCovering, deliveryGate, type TracingOptions } from './trace-connections.js';
 import { pinnedFetch } from '@genai/composition';
 import { InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
+import { fakeModels, files, testService } from './testkit.js';
 
 const tenant = '991825827';
 const other = '889640782';
@@ -59,7 +60,7 @@ const boot = async (
 ) => {
   const platform = await createPlatform({
     catalogs: {
-      models: { endpoints: {}, models: [] },
+      models: fakeModels,
       knowledge: { endpoints: {}, datasets: [] },
       rerank: { endpoints: {}, rerankers: [] },
     },
@@ -77,6 +78,13 @@ const boot = async (
     tracing,
     traceDeliveries,
   });
+  // The services the connections below cover, and one of another tenant's.
+  for (const [id, owner] of [
+    ['svar', tenant],
+    ['annen', tenant],
+    ['hos-andre', other],
+  ] as const)
+    await platform.definitions.publish(testService(id, owner), 'test', 'test', files);
   const app = new Hono();
   platform.mount(
     app,
@@ -145,12 +153,48 @@ describe("an agency's Langfuse connections", () => {
         residency: 'norway',
         content: false,
         erasureDeclared: false,
+        labels: false,
         instance: false,
         residencySetBy: 'tenant',
+        datasets: [],
       },
     ]);
     expect(JSON.stringify(listed.body)).not.toContain('sk-lf-hemmelig');
     expect(elsewhere.status).toBe(404);
+  });
+
+  it("tells a tenant Digdir's Langfuse address and whether it may receive text, beside its connections", async () => {
+    const metadataOnly = await boot();
+    const withText = await boot({ instance: `${instance}/`, instanceReceivesContent: true });
+
+    const listed = await metadataOnly.send('GET', `/tenants/${tenant}/tracing/connections`);
+    const listedWithText = await withText.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(listed.body).toEqual({ data: [], instance: { host: instance, content: false } });
+    expect(listedWithText.body.instance).toEqual({ host: instance, content: true });
+  });
+
+  it("says nothing of Digdir's Langfuse when LANGFUSE_BASE_URL is unset", async () => {
+    const env = await boot({});
+
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body).toEqual({ data: [] });
+  });
+
+  it('refuses a connection naming a service the tenant does not have, naming the service', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+
+    const typo = await env.connect('etaten', ownConnection({ services: ['svar', 'fqa'] }));
+    const othersService = await env.connect('etaten', ownConnection({ services: ['hos-andre'] }));
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(typo.status).toBe(400);
+    expect(errorsOf(typo.body)).toEqual(['connection.services: no service fqa']);
+    expect(errorsOf(othersService.body)).toEqual(['connection.services: no service hos-andre']);
+    expect(listed.body.data).toEqual([]);
   });
 
   it('refuses a host that is not HTTPS, or resolves to a private or link-local address', async () => {
@@ -525,17 +569,17 @@ describe('configuration from the environment', () => {
 
 const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
 
-describe.skipIf(!localLangfuse)('a local Langfuse 4.4.0 in development mode', () => {
+describe.skipIf(!localLangfuse)('a local Langfuse 4.72.0 in development mode', () => {
   it('checks a connection against its project through the egress path', async () => {
     const host = localLangfuse as string;
     const env = await boot({ devMode: true });
     await env.send('PUT', `/tenants/${tenant}/secrets/langfuse-lokal`, 'kari', {
-      value: process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test',
+      value: process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-472',
       allowedHosts: [host],
     });
     await env.connect('lokal', {
       host,
-      publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test',
+      publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472',
       secretKey: `secret://tenant/${tenant}/langfuse-lokal`,
       services: ['svar'],
       content: true,

@@ -126,6 +126,8 @@ export type TestSet = z.infer<typeof testSet>;
 /**
  * Only a scored score has a value. Pending waits to be collected, missing never arrived in time,
  * failed is the evaluator's own failure; all three still apply to the case, unlike not-applicable.
+ * A scored score without a value keeps what came in details.asItCame, as a Langfuse judge's
+ * category does: it is shown, never averaged.
  */
 export const scoreStates = ['scored', 'not-applicable', 'pending', 'failed', 'missing'] as const;
 export type ScoreState = (typeof scoreStates)[number];
@@ -156,8 +158,9 @@ export const score = z.preprocess(
     })
     .refine(
       (s) =>
-        (s.state === 'scored') === (s.value !== null) &&
-        (s.state === 'not-applicable') === !s.applicable,
+        (s.state === 'scored'
+          ? s.value !== null || s.details?.asItCame !== undefined
+          : s.value === null) && (s.state === 'not-applicable') === !s.applicable,
       'only a scored score has a value, and only a not-applicable one does not apply',
     ),
 );
@@ -213,6 +216,19 @@ export const usageSummary = z.strictObject({
 });
 export type UsageSummary = z.infer<typeof usageSummary>;
 
+/** A sink's own report of an evaluator's calls: tokens, and its cost in USD where it priced them. */
+export const reportedUsage = z.strictObject({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  /** null when the sink priced none of the calls. */
+  costUsd: z.number().nonnegative().nullable(),
+  /** Calls the sink had no price for: their tokens count, their cost is unknown. */
+  unpriced: z.number().int().nonnegative(),
+  /** Calls whose cost the sink had not reported when the run read it: the totals are at least this. */
+  unread: z.number().int().nonnegative().default(0),
+});
+export type ReportedUsage = z.infer<typeof reportedUsage>;
+
 export const evalRun = z.strictObject({
   id: z.string(),
   testSet: z.strictObject({ tenant: z.string(), id: z.string(), version: z.number() }),
@@ -258,7 +274,16 @@ export const evalRun = z.strictObject({
   progress: z.strictObject({ done: z.number().int(), total: z.number().int() }).optional(),
   /** Set while the run waits for a free case slot with no case running; 1 is next in line. */
   queuePlace: z.number().int().positive().optional(),
-  usage: z.strictObject({ answers: usageSummary, judges: usageSummary.optional() }).optional(),
+  usage: z
+    .strictObject({
+      answers: usageSummary,
+      judges: usageSummary.optional(),
+      /** Per evaluator, what a sink reports its own calls used: shown, never metered. */
+      reported: z.record(z.string(), reportedUsage).optional(),
+      /** The USD/NOK rate the run shows reported costs with, and the day it is from. */
+      usdNok: z.strictObject({ rate: z.number().positive(), date: z.string().min(1) }).optional(),
+    })
+    .optional(),
   /** For a run started from a service: the version or draft, variant and split it tested. */
   tested: z
     .strictObject({
@@ -267,6 +292,10 @@ export const evalRun = z.strictObject({
       split: z.enum(['locked', 'open']).optional(),
       /** The tenant's trace connection the run's cases were sent to. */
       sink: z.string().optional(),
+      /** Where the sink shows the run as an experiment. */
+      experiment: z.string().optional(),
+      /** The sink judges in use that did not score the run, because it was not sent. */
+      unsentJudges: z.array(z.string()).optional(),
       /** The environment whose version was tested, when the service has environments. */
       environment: z.string().optional(),
       /** The model the run was set to answer with. */

@@ -15,8 +15,10 @@ import { actorOf, AdminRefused, refusedBy, type AdminHandler } from './admin.js'
 import { allowOf, traceConnectionKind, tracingEgress } from '@genai/composition';
 import { appendVersion, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, problem, reasonTooShort } from './http.js';
+import type { DefinitionStore } from '@genai/definitions';
 import type { TraceDeliveryStore } from '@genai/jobs';
 import type { PlatformModuleFactory } from './platform-modules.js';
+import { datasetsOf, traceDatasets } from './trace-datasets.js';
 
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
@@ -34,6 +36,8 @@ export const traceConnection = z.strictObject({
   residency: z.enum(residencies).default('global'),
   content: z.boolean().default(false),
   erasureDeclared: z.boolean().default(false),
+  /** Labels people make in the project come back as pending calibration labels (ADR 0040). */
+  labels: z.boolean().default(false),
 });
 export type TraceConnection = z.output<typeof traceConnection> & {
   /** Removal asked for: its traces are being deleted, and it covers no service any more. */
@@ -71,6 +75,8 @@ const errorsOf = (error: z.ZodError) =>
 export const traceConnections = (
   deps: {
     configEntries: ConfigEntryStore;
+    /** A connection covers only the tenant's own services. */
+    definitions: Pick<DefinitionStore, 'get'>;
     tenantSecrets?: TenantSecrets;
     egress: ReturnType<typeof tracingEgress>;
     deliveries?: Pick<TraceDeliveryStore, 'markPending' | 'outstanding'>;
@@ -222,6 +228,10 @@ export const traceConnections = (
     const hostRefused = await hostProblem(next.host);
     if (hostRefused) errors.push({ path: 'connection.host', message: hostRefused });
     for (const service of next.services) {
+      if (!(await deps.definitions.get('Service', tenant, service))) {
+        errors.push({ path: 'connection.services', message: `no service ${service}` });
+        continue;
+      }
       const covering = await coveringService(tenant, service);
       if (covering && covering.id !== next.id)
         errors.push({
@@ -419,19 +429,124 @@ export const connectionsCovering = async (
     .filter((c) => !c.removing && c.services.includes(service))
     .sort((a, b) => a.id.localeCompare(b.id));
 
+/** A judge in a connection's project, refused with why when genki cannot use it (ADR 0040). */
+export interface SinkJudge {
+  /** The evaluator and its metric. */
+  id: string;
+  name: string;
+  /** Where the judge comes from, as a person names it. */
+  source: string;
+  /** provider/model, absent when the judge falls back to a default model. */
+  model?: string;
+  version: string;
+  dataType: string;
+  fields: { variable: string; source: string; jsonPath?: string }[];
+  refused?: { reason: string; field?: string; connection?: string; message: string };
+  /** The judge as it was read, which a run scores with. */
+  snapshot: unknown;
+}
+
+/** A person's label on a case trace in a sink, as the sink reads it. */
+export interface SinkAnnotation {
+  /** The sink's id for the label, and its revision: an edit there gives a new one. */
+  id: string;
+  revision: string;
+  trace: string;
+  /** The judge it is for, by the judge's name and data type. */
+  name: string;
+  dataType: string;
+  /**
+   * good or bad for a boolean, or a number split at 0.5; a category as it came. Absent when it is
+   * no label: it still shows the annotation is there.
+   */
+  label?: string;
+  /** A number label's range, to split the judge's own number when it came without one. */
+  bounds?: { min: number; max: number };
+  /** The sink's own id for the person, never stored as it is. */
+  author?: string;
+}
+
+/** What a sink knows of a run before it starts: its test set, at a version, and its dataset. */
+export interface SinkRun {
+  testSet: string;
+  version: number;
+  /** The test set's dataset in the connection's project; absent while none is made. */
+  dataset?: string;
+}
+
+export interface SinkReach {
+  judges: SinkJudge[];
+  /** Judges whose filters leave the run out, such as another test set's. */
+  elsewhere: SinkJudge[];
+  refusing: { name: string; message: string }[];
+}
+
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
-  /** beforeSend sees each batch's traces before it goes out, and false drops the batch. */
+  /**
+   * beforeSend sees each batch's traces before it goes out, and false drops the batch. Text goes
+   * only to a connection that receives content, and then only the fields named.
+   */
   open(
     run: string,
     tenant: string,
     connection: TraceConnection,
     beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>,
+    fields?: string[],
+    /** The Langfuse dataset of the run's test set, which every span names. */
+    dataset?: string,
   ): void;
+  /**
+   * The test set's dataset in the connection's project: found by its name, or made when there is
+   * none (ADR 0040).
+   */
+  dataset?(
+    tenant: string,
+    connection: TraceConnection,
+    service: string,
+    testSet: string,
+  ): Promise<{ id: string; name: string }>;
+  /** The judges of the connection's project that can score an eval run. */
+  judges?(tenant: string, connection: TraceConnection): Promise<SinkJudge[]>;
+  /**
+   * The project's rules as they meet a run of one test set (ADR 0040): the judges that judge each
+   * of its cases once, the judges whose filters leave it out, and the rules that refuse it, each
+   * named with why. Throws when the rules cannot be read.
+   */
+  forRun?(tenant: string, connection: TraceConnection, run: SinkRun): Promise<SinkReach>;
+  /** Where the connection's judges come from, as a person names it, such as "Langfuse (kudos)". */
+  sourceOf?(connection: TraceConnection): string;
+  /**
+   * Each score name that two or more of the project's rules write, so a label of that name cannot
+   * be told apart; throws when the rules cannot be read.
+   */
+  sharedScores?(
+    tenant: string,
+    connection: TraceConnection,
+  ): Promise<{ name: string; rules: string[] }[]>;
+  /** Whether a judge building block is one of the connection's judges. */
+  judgeOf?(connection: string, block: string): boolean;
+  /** Whether a run's judge identity, or an evaluator, is a sink's judge. */
+  isSinkJudge?(judge: string): boolean;
+  /** Where the sink shows a run as an experiment. */
+  experimentUrl?(
+    tenant: string,
+    connection: TraceConnection,
+    run: string,
+  ): Promise<string | undefined>;
+  /** The content fields the judges read. */
+  fieldsOf?(judges: SinkJudge[]): string[];
   /** Flushes the run's sink and answers the case tasks whose traces went there. */
   close(run: string): Promise<string[]>;
   /** The id the sink knows a case task's trace by. */
   traceIdOf(task: string): string;
+  /**
+   * What people labelled in the connection's project (Langfuse's annotations), each read as good,
+   * bad or its category, with the sink's id for the person who made it.
+   */
+  annotations?(tenant: string, connection: TraceConnection): Promise<SinkAnnotation[]>;
+  /** The judge a sink judge's evaluator calibrates, with the tenant in it: labels pool by it. */
+  calibrationKey?(tenant: string, evaluator: string): string;
 }
 
 /** A connection as a tenant reads it: the secret's reference, never its value. */
@@ -446,6 +561,7 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
   const connections = traceConnections(
     {
       configEntries: deps.configEntries,
+      definitions: deps.definitions,
       ...(deps.tenantSecrets ? { tenantSecrets: deps.tenantSecrets } : {}),
       ...(deps.traceDeliveries ? { deliveries: deps.traceDeliveries } : {}),
       egress: tracingEgress(deps.egressOptions ?? {}, options.devMode),
@@ -453,10 +569,23 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
     options,
   );
   const shown = view(connections);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+    ...(deps.logger ? { log: deps.logger } : {}),
+  });
+  /** Each test set of the services it covers gets its dataset, so judges can be set up first. */
+  const save: AdminHandler = async (input, principal) => {
+    const saved = await connections.save(input, principal);
+    if (saved.ok)
+      await datasets.forConnection(String(input.tenant ?? ''), saved.value as TraceConnection);
+    return saved;
+  };
   return {
     id: 'trace-connections',
     handlers: {
-      'platform.tracing.connection.save': connections.save,
+      'platform.tracing.connection.save': save,
       'platform.tracing.connection.remove': connections.remove,
       'platform.tracing.connection.residency': connections.setResidency,
     },
@@ -497,7 +626,24 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
       app.get('/tenants/:tenant/tracing/connections', async (c) => {
         const guard = await member(c);
         if ('response' in guard) return guard.response;
-        return c.json({ data: (await connections.list(guard.tenant)).map(shown) });
+        const made = await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant);
+        return c.json({
+          data: (await connections.list(guard.tenant)).map((connection) => ({
+            ...shown(connection),
+            datasets: made
+              .filter((d) => d.connection === connection.id)
+              .map(({ service, testSet, name, id }) => ({ service, testSet, name, id })),
+          })),
+          // So the portal can offer Digdir's Langfuse before any connection to it exists.
+          ...(options.instance
+            ? {
+                instance: {
+                  host: origin(options.instance),
+                  content: options.instanceReceivesContent === true,
+                },
+              }
+            : {}),
+        });
       });
 
       app.put('/tenants/:tenant/tracing/connections/:id', async (c) => {

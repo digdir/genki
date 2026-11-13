@@ -166,9 +166,18 @@ export const perCaseMeans = (
   return new Map([...byCase].map(([c, v]) => [c, mean(v)]));
 };
 
-const aggregate = (results: EvalRun['results'], bootstrap?: BootstrapOptions) => {
+/** An advisory evaluator's scores stay on their cases but out of the run's metrics. */
+const aggregate = (
+  results: EvalRun['results'],
+  bootstrap?: BootstrapOptions,
+  advisory: Set<string> = new Set(),
+) => {
   const metrics = [
-    ...new Set(results.flatMap((r) => r.scores.filter((s) => s.applicable).map((s) => s.metric))),
+    ...new Set(
+      results.flatMap((r) =>
+        r.scores.filter((s) => s.applicable && !advisory.has(s.evaluator)).map((s) => s.metric),
+      ),
+    ),
   ].sort();
   const tags = [...new Set(results.flatMap((r) => r.tags))].sort();
   const table = (tag?: string) =>
@@ -249,6 +258,15 @@ const pauseFor = (ms: number, signal?: AbortSignal) =>
     );
   });
 
+/** The score as the run keeps it: without a judge's reason, which stays only on the case's task. */
+const keptInRun = (evaluator: Evaluator | undefined, score: Score): Score => {
+  if (!evaluator?.reasonsOnTheCase || score.state !== 'scored' || score.reason === undefined)
+    return score;
+  const kept = { ...score };
+  delete kept.reason;
+  return kept;
+};
+
 const minutes = (ms: number) => `${Math.round(ms / 60_000)} minute${ms === 60_000 ? '' : 's'}`;
 
 const collectPending = async (
@@ -295,7 +313,7 @@ const collectPending = async (
         s.metric === collected.score.metric,
     );
     if (!result || at === undefined || at < 0) return;
-    result.scores[at] = collected.score;
+    result.scores[at] = keptInRun(byId.get(collected.score.evaluator), collected.score);
     await options.annotate(result.task, collected.score);
   };
 
@@ -373,9 +391,16 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const usageSoFar = (): EvalRun['usage'] => {
     if (!options.meterAnswers) return undefined;
     const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    // A sink's judges share what they report, so one key may come from several evaluators.
+    const reported = Object.fromEntries(
+      evaluators
+        .flatMap((e) => Object.entries(e.reportedUsage?.() ?? {}))
+        .filter(([, r]) => r.inputTokens + r.outputTokens > 0 || r.unpriced + r.unread > 0),
+    );
     return {
       answers: sumUsage(answered),
       ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
+      ...(Object.keys(reported).length > 0 ? { reported } : {}),
     };
   };
   let lastSent = now();
@@ -402,6 +427,8 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
     const observation: Observation = observe(outcome.parts, outcome.events);
     const ctx: EvalContext = {
+      ...(options.id ? { run: options.id } : {}),
+      task: outcome.task,
       servedModels: outcome.judgedModels ?? outcome.servedModels,
       modelFamily: options.modelFamily ?? (() => undefined),
       ...(options.signal ? { signal: options.signal } : {}),
@@ -427,6 +454,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       scores.push(...answered);
     }
     for (const s of scores) if (s.state !== 'pending') await annotate(outcome.task, s);
+    const byId = new Map(evaluators.map((e) => [e.id, e]));
     done[index] = {
       case: c.id,
       split: c.split,
@@ -434,7 +462,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       task: outcome.task,
       tags: c.tags,
       ...(c.language ? { language: c.language } : {}),
-      scores,
+      scores: scores.map((s) => keptInRun(byId.get(s.evaluator), s)),
     };
     finishedCount += 1;
     options.onProgress?.(finishedCount, total, usageSoFar(), done[index]);
@@ -468,6 +496,9 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  // What a sink reports may still arrive after its scores; a failed read never fails the run.
+  for (const e of evaluators)
+    await e.settle?.(options.signal ? { signal: options.signal } : {}).catch(() => undefined);
 
   return {
     id: options.id ?? randomUUID(),
@@ -489,7 +520,11 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       services: [...services].sort(),
     },
     results,
-    ...aggregate(results, options.bootstrap),
+    ...aggregate(
+      results,
+      options.bootstrap,
+      new Set(evaluators.filter((e) => e.advisory).map((e) => e.id)),
+    ),
     incomplete: incompleteOf(results),
     status: 'completed',
     ...(options.meterAnswers ? { usage: usageSoFar() } : {}),
@@ -502,6 +537,8 @@ export interface CompareOptions extends BootstrapOptions {
   tag?: string;
   split?: Split;
   allowDifferent?: ComparableField[];
+  /** Judges whose scores never gate, such as a sink's: two runs are compared without them. */
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export const compareRuns = (
@@ -516,9 +553,12 @@ export const compareRuns = (
   )
     throw new EvalError('runs on different test sets or versions cannot be compared');
   const allowed = new Set(options.allowDifferent ?? []);
+  const advisory = options.advisoryJudge ?? (() => false);
+  const compared = (run: EvalRun, field: ComparableField) =>
+    field === 'judges' ? run.provenance.judges.filter((j) => !advisory(j)) : run.provenance[field];
   for (const field of ['commit', 'data', 'servedModels', 'judges', 'services'] as const) {
     if (allowed.has(field)) continue;
-    if (JSON.stringify(baseline.provenance[field]) !== JSON.stringify(candidate.provenance[field]))
+    if (JSON.stringify(compared(baseline, field)) !== JSON.stringify(compared(candidate, field)))
       throw new EvalError(
         `runs differ in ${field}; only like is compared with like unless that difference is the point`,
       );

@@ -62,6 +62,7 @@ export const playgroundUi = {
     modelSilentWithin:
       '{model} svarte ikke innen 60 sekunder. Det er ikke noe galt med oppsettet. Prøv igjen om litt. {notStored}',
     refused: '{model} kan ikke brukes i dette oppsettet.',
+    runRefused: 'Kjøringen ble avvist: {reason} {notStored}',
     invalidSetup: 'Kjøringen ble avvist: {reason} {notStored}',
     setupNotRunnable: 'noe i delen «{section}» passer ikke med dette oppsettet.',
     quotaUsedUp: 'Kvoten for måneden er brukt opp. {notStored}',

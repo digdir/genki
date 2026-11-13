@@ -7,16 +7,28 @@ export interface TraceConnectionInput {
   publicKey: string;
   secretKey: string;
   services: string[];
-  residency: Residency;
+  /** Left out for Digdir's Langfuse, where an operator sets it. */
+  residency?: Residency;
   content: boolean;
   erasureDeclared: boolean;
+  /** People's annotations in the project come back as pending calibration labels. */
+  labels: boolean;
 }
 
 export interface TraceConnection extends TraceConnectionInput {
   id: string;
+  residency: Residency;
   instance: boolean;
   residencySetBy: 'operator' | 'tenant';
   removing?: boolean;
+  /** One Langfuse dataset per test set of the services it covers, which judges are pointed at. */
+  datasets?: { service: string; testSet: string; name: string; id: string }[];
+}
+
+/** Digdir's Langfuse, when the platform has one, and whether a connection to it may send text. */
+export interface TraceInstance {
+  host: string;
+  content: boolean;
 }
 
 export const tracingApi = ({ get, request, tenantPath }: ApiContext) => {
@@ -26,6 +38,9 @@ export const tracingApi = ({ get, request, tenantPath }: ApiContext) => {
   return {
     list: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: TraceConnection[] }>(base(tenant), signal)).data,
+    /** The connections, with Digdir's Langfuse beside them. */
+    listing: (tenant: string, signal?: AbortSignal) =>
+      get<{ data: TraceConnection[]; instance?: TraceInstance }>(base(tenant), signal),
     save: (tenant: string, id: string, connection: TraceConnectionInput, reason: string) =>
       request<TraceConnection>('PUT', one(tenant, id), connection, why(reason)),
     remove: (tenant: string, id: string, reason: string) =>

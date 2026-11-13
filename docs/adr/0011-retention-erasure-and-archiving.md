@@ -16,19 +16,19 @@ Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-2
 
 ## Accepted with ADR 0040 (partly built)
 
-These rules extend the decision above once they are built. All are built except three: deletes in a sink after an erasure other than the nightly purge, sending only the fields a judge maps, and keeping judge reasons out of stored eval runs:
+These rules extend the decision above once they are built. All are built except deletes in a sink after an erasure other than the nightly purge:
 
 - **When a sink honours erasure.** It does when the platform can delete a task's trace and every trace the sink made from it, such as a judge's execution trace, and when its operator keeps the raw files it ingests for at most 7 days, the shortest retention class.
   - For a sink a tenant runs itself, the tenant's declaration that both hold is enough.
   - In development mode (`GENAI_DEV_MODE=true`), a Langfuse on the developer's own machine may receive content without the 7-day rule, as long as only made-up test sets are sent to it.
 - **Platform-wide exporter.** It carries metadata only. `TRACES_CONTENT` is honoured only in development mode.
-- **Text sent for evaluation.** It is only what the judges read, as their variable mappings name it: the question and the answer, and the cited sources, the retrieved documents, the case's `expected.criteria` or other fields only when a judge maps them. A field no judge maps is not sent. Holdout cases are never sent.
+- **Text sent for evaluation.** It is only what the judges read, as their variable mappings name it: the question and the answer, and the cited sources, the retrieved documents, the case's `expected.criteria` (or, for a criteria case without named criteria, its reference answer as `criteria`) or other fields only when a judge maps them. A field no judge maps is not sent. Holdout cases are never sent.
 - **Deleting in a sink.** The platform records the id of every trace it sends to a sink, and of the traces the sink made from them, until each delete is confirmed.
   - When the nightly purge or any other erasure removes a task, the platform records the deletion of those traces as pending, and the nightly purge works through the pending deletes.
   - A failed delete stays pending and is tried again the next night, without holding back the purge in the platform.
   - A delete that keeps failing is reported to operators.
   - Removing a sink connection marks everything sent through it for deletion, and the connection is gone only once every delete is confirmed.
-- **Judge reasons.** A judge's reason may quote the answer, so it follows the case's retention: the nightly purge clears it from stored eval runs when the case's payload expires.
+- **Judge reasons.** A judge's reason may quote the answer, so the eval run does not keep it: it stays only on the case's task, and the nightly purge clears it with the case's payload.
 
 ## Why
 
