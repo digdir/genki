@@ -661,7 +661,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
     return { content: readGuidance(workspace, 'generate_response') };
   const docs = sourcesFirst(
     workspace.attached,
-    workspace.contextDocs.length ? workspace.contextDocs : chunks.slice(0, 10),
+    workspace.contextDocs.length ? workspace.contextDocs : workspace.chunksForSynthesis(),
   );
   const {
     context,
