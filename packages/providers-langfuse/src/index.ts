@@ -15,3 +15,13 @@ export { buildSpans, type OtlpSpan } from './spans.js';
 export { createExperimentRouter, type ExperimentRouter } from './experiment.js';
 export { judgeTraceIdOf, langfuseTraceSink, type LangfuseSinkOptions } from './sink.js';
 export { traceIdFor } from './spans.js';
+export {
+  contentSources,
+  langfuseJudges,
+  mappedContent,
+  type ContentSource,
+  type JudgeRefusal,
+  type LangfuseAnnotation,
+  type LangfuseApiOptions,
+  type LangfuseJudge,
+} from './judges.js';

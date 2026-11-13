@@ -36,7 +36,7 @@ These rules replace or extend the decision above once they are built. The ones m
 
 - **Calibration details.** Numeric verdicts are split at 0.5 into good and bad first. A gate checks the calibration of the judge that produced its metric, not of every judge in the run.
 - **Judge identity** (built for `judge:criteria`). A judge's identity includes its version and its model, and every result records it. Labels and calibration are kept per evaluator.
-- **Labels outlive judge versions.** Calibration labels are human verdicts on cases. When a judge's identity changes, the platform has the new identity score the labelled cases again, while their text is kept, and computes its kappa from those pairs. A new identity takes over only the labels of the same judge: for a Langfuse judge, the same tenant, connection and name, so its labels never come from another tenant.
+- **Labels outlive judge versions.** Calibration labels are human verdicts on cases. When a judge's identity changes, the platform has the new identity score the labelled cases again, while their text is kept, and computes its kappa from those pairs. A new identity takes over only the labels of the same judge: for a Langfuse judge, the same tenant, connection and name, so its labels never come from another tenant. A Langfuse judge cannot be asked to score a case again, so its agreement uses the verdicts the earlier identities gave, and says how many of its labels they scored (ADR 0040).
 - **Re-running the baseline.** When a judge changes, the last published version's eval run is run again with the new judge before a no-regression comparison.
 
 ## Why
@@ -56,4 +56,4 @@ Components change more often than services are published, and a service's test s
 - The calibration rule accepted with ADR 0040 also governs skill publishing (ADR 0024).
 - `benchmarks/README.md` sets the shape of a benchmark folder and its report. Each report rebuilds byte for byte from its committed verdicts and reference, and checks its own instrument with an A/A run and a known loss.
 - Partly built: one benchmark follows the shape so far, and the rule on citing a result is checked in review, not by code. Tests: `refuses_to_compare_records_with_different_references` and `not_worse_needs_the_whole_interval_above_minus_margin` (`benchmarks/benchlib`), `no_reference_test_is_derived_from_a_side_output` (`benchmarks/ingestion/opb`).
-- Not built yet from the amendment: calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions, and re-running the baseline when a judge changes.
+- Not built yet from the amendment: calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions for the platform's own judges (a Langfuse judge's new version takes over its accepted labels, ADR 0040), and re-running the baseline when a judge changes.

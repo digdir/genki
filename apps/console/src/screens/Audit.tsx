@@ -59,6 +59,8 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.guardrail-rule.delete': 'audit.actionGuardrailRuleDelete',
   'platform.improvement.decide': 'audit.actionImprovementDecide',
   'platform.judge.label': 'audit.actionJudgeLabel',
+  'platform.judge.label.accept': 'audit.actionJudgeLabelAccept',
+  'platform.judge.label.reject': 'audit.actionJudgeLabelReject',
   'platform.pipeline.save': 'audit.actionPipelineSave',
   'platform.pipeline.delete': 'audit.actionPipelineDelete',
   'platform.pipeline.execute': 'audit.actionPipelineExecute',

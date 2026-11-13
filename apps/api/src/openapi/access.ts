@@ -379,6 +379,27 @@ const BuildingBlock = z
     pendingRequest: z
       .object({ id: z.string(), at: z.string(), by: z.string(), reason: z.string() })
       .optional(),
+    judge: z
+      .object({
+        connection: z.string(),
+        model: z.string().optional().describe('provider/model; absent on a default model'),
+        version: z.string(),
+        dataType: z.string(),
+        fields: z.array(
+          z.object({ variable: z.string(), source: z.string(), jsonPath: z.string().optional() }),
+        ),
+        refused: z
+          .object({
+            reason: z.string(),
+            field: z.string().optional(),
+            connection: z.string().optional(),
+            message: z.string(),
+          })
+          .optional()
+          .describe('Why the judge cannot be taken in use'),
+      })
+      .optional()
+      .describe("A judge from the project of one of the tenant's Langfuse connections"),
   })
   .openapi('BuildingBlock');
 
@@ -749,6 +770,11 @@ const TraceConnection = z
       .describe(
         "The tenant's declaration that its own Langfuse deletes what genki deletes and keeps raw files at most 7 days",
       ),
+    labels: z
+      .boolean()
+      .describe(
+        "Whether people's annotations in the project come back as pending calibration labels for its judges",
+      ),
     instance: z.boolean().describe("Whether the host is Digdir's Langfuse"),
     removing: z
       .boolean()
@@ -791,6 +817,7 @@ const tracingRoutes: RouteConfig[] = [
           residency: true,
           content: true,
           erasureDeclared: true,
+          labels: true,
         }),
       ),
     },

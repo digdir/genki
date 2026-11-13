@@ -62,6 +62,7 @@ export interface ConfigDeps {
     dataset: string,
     pipeline: string,
   ) => Promise<string | undefined>;
+  gateProblem?: (gate: string, metric: string) => string | undefined;
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
 }
 
@@ -265,6 +266,9 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     const id = String(input.id);
     const target = `gate:${scope}/${id}`;
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to change this gate');
+    const metric = (input.spec as { metric?: unknown } | undefined)?.metric;
+    const problem = typeof metric === 'string' ? deps.gateProblem?.(id, metric) : undefined;
+    if (problem) return { ok: false, errors: [{ path: 'metric', message: problem }], target };
     const result = await deps.gates.save({
       scope,
       id,

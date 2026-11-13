@@ -150,6 +150,8 @@ export const changes = defineNamespace({
   guardrailRuleSave: 'lagret vernregelen',
   improvementDecide: 'avgjorde forbedringsforslaget',
   judgeLabel: 'merket dommervurderingen',
+  judgeLabelAccept: 'godtok etiketter fra Langfuse for dommeren',
+  judgeLabelReject: 'avviste etiketter fra Langfuse for dommeren',
   keypolicyAttach: 'koblet nøkkelpolicyen til',
   keypolicyDelete: 'slettet nøkkelpolicyen',
   keypolicySave: 'lagret nøkkelpolicyen',

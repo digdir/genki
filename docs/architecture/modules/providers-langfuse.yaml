@@ -15,11 +15,13 @@ responsibilities:
   - Export with content opt-in
   - Send an eval run's cases to the tenant's connection as one experiment (ADR 0040)
   - Delete what genki sent, and the judges' traces made from it
+  - Read a project's experiment judges and score an eval run with the ones a tenant adopted
 files:
   - packages/providers-langfuse/src/exporter.ts
   - packages/providers-langfuse/src/spans.ts
   - packages/providers-langfuse/src/experiment.ts
   - packages/providers-langfuse/src/sink.ts
+  - packages/providers-langfuse/src/judges.ts
 input: Kernel events
 output: OTLP spans
 replaces:
@@ -33,6 +35,13 @@ edges:
     witness:
       file: packages/providers-langfuse/src/config.ts
       imports: '@genai/kernel'
+  - to: eval
+    label: 'Evaluator contract: Langfuse judges as built-in evaluators'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-langfuse/src/judges.ts
+      imports: '@genai/eval'
   - to: langfuse
     label: OTLP span export
     kind: http

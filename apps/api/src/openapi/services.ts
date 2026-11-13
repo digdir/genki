@@ -200,6 +200,117 @@ const TestSetSummary = z
   })
   .openapi('ServiceTestSetSummary');
 
+/** A Langfuse judge on a run: advisory, shown apart from the platform's metrics (ADR 0040). */
+export const SinkJudgeSummary = z
+  .object({
+    id: z.string().describe('The evaluator and its metric, langfuse:<connection>/<rule>'),
+    name: z.string().describe("The evaluation rule's name"),
+    version: z.string().describe('v<evaluator version>+<provider>/<model>'),
+    dataType: z.string().optional().describe('BOOLEAN, NUMERIC or CATEGORICAL'),
+    metric: metricSummary.optional(),
+    categories: z
+      .record(z.string(), z.number().int())
+      .optional()
+      .describe('Count per answer, for a score shown as it came'),
+    notApplicable: z.number().int(),
+    missing: z.number().int(),
+    failed: z.number().int(),
+    of: z.number().int(),
+    changed: z
+      .array(z.string())
+      .describe('What changed in the judge since the run started; empty when nothing did'),
+    reported: z
+      .object({
+        inputTokens: z.number().int(),
+        outputTokens: z.number().int(),
+        costUsd: z.number().nullable().describe('null when Langfuse priced none of the calls'),
+        unpriced: z.number().int().describe('Calls Langfuse had no price for'),
+        unread: z.number().int().describe('Calls whose cost was not reported yet'),
+      })
+      .optional()
+      .describe("What Langfuse reports the judge's own calls used; only with view-usage"),
+    labels: z
+      .object({
+        n: z.number().int().describe('Accepted labels paired with a verdict of the judge'),
+        kappa: z.number().optional().describe("Cohen's kappa over them; absent without labels"),
+        observed: z.number().optional().describe('Share where the label and the judge agree'),
+        otherVersions: z
+          .number()
+          .int()
+          .describe('Of n, labels another version or model of the judge scored'),
+        unpaired: z.number().int().describe('Accepted labels on cases the judge did not score'),
+      })
+      .optional()
+      .describe(
+        "The judge's agreement with the accepted labels of the same tenant, connection and name",
+      ),
+  })
+  .openapi('SinkJudgeSummary');
+
+/** Run fields for its Langfuse judges. */
+export const sinkJudgeFields = {
+  sinkJudges: z.array(SinkJudgeSummary),
+  experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
+  sinkOthers: z
+    .object({
+      inputTokens: z.number().int(),
+      outputTokens: z.number().int(),
+      costUsd: z.number().nullable(),
+      unpriced: z.number().int(),
+      unread: z.number().int(),
+    })
+    .optional()
+    .describe(
+      'What Langfuse judges the run did not use cost on its cases, such as one switched on during the run; only with view-usage',
+    ),
+  usdNok: z
+    .object({ rate: z.number(), date: z.string() })
+    .optional()
+    .describe("Norges Bank's USD/NOK rate the run shows reported costs with; only with view-usage"),
+  unsentJudges: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .optional()
+    .describe('The Langfuse judges in use that did not score the run, because it was not sent'),
+};
+
+const RunSending = z
+  .object({
+    connection: z
+      .object({ id: z.string(), residency: z.enum(['norway', 'eu', 'global']) })
+      .optional(),
+    judges: z
+      .array(z.object({ id: z.string(), name: z.string() }))
+      .describe('The Langfuse judges the tenant has taken in use from the connection'),
+    refused: z
+      .union([
+        z.object({
+          reason: z.literal('residency'),
+          service: z.enum(['norway', 'eu', 'global']),
+          connection: z.enum(['norway', 'eu', 'global']),
+        }),
+        z.object({ reason: z.literal('covered-twice'), connections: z.array(z.string()) }),
+        z.object({ reason: z.literal('no-content'), connection: z.string() }),
+        z.object({
+          reason: z.literal('judges-differ'),
+          connection: z.string(),
+          notInUse: z
+            .array(z.string())
+            .describe('Active judges in the project that the tenant has not taken in use'),
+          unreadable: z
+            .array(z.string())
+            .describe('Active judges in the project that genki cannot read'),
+        }),
+        z.object({
+          reason: z.literal('judges-unreadable'),
+          connection: z.string(),
+          message: z.string().describe('What the sink answered, such as its HTTP status'),
+        }),
+      ])
+      .optional()
+      .describe('Why a run that is sent to the connection would be refused'),
+  })
+  .openapi('EvalRunSending');
+
 const EvalRunSummary = z
   .object({
     id: z.string(),
@@ -258,6 +369,7 @@ const EvalRunSummary = z
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),
+    ...sinkJudgeFields,
   })
   .openapi('ServiceEvalRunSummary');
 
@@ -1205,7 +1317,7 @@ export const serviceRoutes: RouteConfig[] = [
           files: files.optional(),
           trace: z.boolean().optional().openapi({
             description:
-              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent",
+              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent. The connection's Langfuse judges in use score only a run that is sent",
           }),
         }),
       ),
@@ -1216,9 +1328,29 @@ export const serviceRoutes: RouteConfig[] = [
       ...tenantErrors,
       404: problem('No such test set or version'),
       409: problem(
-        "The test set has no cases, or trace is asked for but no connection covers the service or the service's residency does not allow the connection's",
+        "The test set has no cases, or the run is sent but no connection covers the service, the service's residency does not allow the connection's, a Langfuse judge taken in use is refused or gone, or the connection's project has active judges genki does not read",
       ),
       422: problem('The draft or version cannot run'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/eval-runs/sending',
+    summary:
+      'Where a run would be sent and which Langfuse judges would score it, before it starts. Any member',
+    request: {
+      params: z.object({ tenant, id: service }),
+      query: z.object({
+        version: z
+          .string()
+          .optional()
+          .openapi({ description: 'draft, or a version number; defaults to the published one' }),
+      }),
+    },
+    responses: {
+      200: json(RunSending, 'What the run would send'),
+      ...tenantErrors,
+      404: problem('No such version'),
     },
   }),
   createRoute({

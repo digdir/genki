@@ -145,6 +145,7 @@ describe("an agency's Langfuse connections", () => {
         residency: 'norway',
         content: false,
         erasureDeclared: false,
+        labels: false,
         instance: false,
         residencySetBy: 'tenant',
       },
@@ -525,17 +526,17 @@ describe('configuration from the environment', () => {
 
 const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
 
-describe.skipIf(!localLangfuse)('a local Langfuse 4.4.0 in development mode', () => {
+describe.skipIf(!localLangfuse)('a local Langfuse 4.72.0 in development mode', () => {
   it('checks a connection against its project through the egress path', async () => {
     const host = localLangfuse as string;
     const env = await boot({ devMode: true });
     await env.send('PUT', `/tenants/${tenant}/secrets/langfuse-lokal`, 'kari', {
-      value: process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test',
+      value: process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-472',
       allowedHosts: [host],
     });
     await env.connect('lokal', {
       host,
-      publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test',
+      publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472',
       secretKey: `secret://tenant/${tenant}/langfuse-lokal`,
       services: ['svar'],
       content: true,

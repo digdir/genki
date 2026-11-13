@@ -6,6 +6,7 @@ import {
   blockSettings,
   runtimeBlocksKey,
   runtimeBlocksOf,
+  traceConnectionKind,
   withBlockSettings as withBlockSettingsFor,
   type BlockTexts,
   type RuntimeBlock,
@@ -70,6 +71,7 @@ import type {
   PlatformModule,
   PlatformModuleFactory,
 } from './platform-modules.js';
+import type { SinkJudge, TraceConnection } from './trace-connections.js';
 import { requireRight, rightRefused, type Right } from './rights.js';
 import { pluginBlockOf, pluginEntries } from './external-plugins.js';
 import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -186,6 +188,10 @@ export interface BuildingBlock {
   right: Extract<Right, 'manage-services' | 'manage-datasets'>;
   changedBy?: { by: string; at: string; reason: string };
   pendingRequest?: PendingRequest;
+  /** A judge from a trace connection's project: what it runs on and reads. */
+  judge?: Pick<SinkJudge, 'model' | 'version' | 'dataType' | 'fields' | 'refused'> & {
+    connection: string;
+  };
 }
 
 export interface BuildingBlockList {
@@ -385,6 +391,8 @@ interface Source {
   >;
   owner?: string;
   latest?: { version: number; at: string; reason: string };
+  /** Why the tenant cannot take it in use, whatever its policy says. */
+  refused?: string;
   uses(ref: BlockReference): boolean;
   history(): Promise<BlockVersion[]>;
 }
@@ -644,6 +652,73 @@ export const createBuildingBlocksModule =
     };
     const sameDataset = (ref: string, id: string, tenant: string) =>
       (deps.knowledge.resolve(ref) ?? ref) === id || `${tenant}/${ref}` === id;
+
+    /** What a sink's judge reads of a case, in the reader's words. */
+    const sinkFieldsText = (fields: SinkJudge['fields']) => {
+      const named: Record<string, ApiKey> = {
+        input: 'blocks.sinkFieldInput',
+        output: 'blocks.sinkFieldOutput',
+        expected_output: 'blocks.sinkFieldExpected',
+      };
+      const read = [...new Set(fields.map((f) => f.source))].map((source) => {
+        const key = named[source];
+        return key ? translate(key) : source;
+      });
+      return read.length > 0 ? read.join(', ') : t('blocks.none');
+    };
+
+    /**
+     * Each judge in the projects of the tenant's trace connections, but none Langfuse does not run
+     * (paused). A connection whose judges cannot be read shows as one refused block saying why.
+     */
+    const sinkJudges = async (tenant: string) => {
+      const sinks = deps.traceSinks;
+      const list = sinks?.judges;
+      if (!list) return [];
+      const unreadable = (c: TraceConnection, error: unknown): SinkJudge[] => {
+        const source = sinks.sourceOf?.(c) ?? c.id;
+        return [
+          {
+            id: `sink-judges:${c.id}`,
+            name: t('blocks.sinkJudgesUnreadable', { source }),
+            source,
+            version: '',
+            dataType: '',
+            fields: [],
+            refused: {
+              reason: 'unreadable',
+              connection: c.id,
+              message: `the judges of the connection ${c.id} could not be read: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+            snapshot: undefined,
+          },
+        ];
+      };
+      const connections = (
+        await deps.configEntries.latest({ kind: traceConnectionKind, scope: tenant })
+      )
+        .filter((e) => !e.deleted)
+        .map((e) => e.spec as TraceConnection)
+        .filter((c) => !c.removing);
+      const found = await Promise.all(
+        connections.map(async (c) =>
+          (
+            await list(tenant, c).then(
+              (found) => found.filter((j) => j.refused?.reason !== 'paused'),
+              (error: unknown) => unreadable(c, error),
+            )
+          ).map((j) => ({
+            ...j,
+            connection: c.id,
+            residency: c.residency,
+            host: c.host,
+          })),
+        ),
+      );
+      return found.flat();
+    };
 
     const sources = async (tenant: string): Promise<Source[]> => {
       const out: Source[] = [];
@@ -919,9 +994,11 @@ export const createBuildingBlocksModule =
         }
       }
       const judgeIds = new Set<string>(['answer-quality', 'pairwise-preference']);
+      // A sink's judge is listed from its connection below, not from the runs it scored.
       for (const stored of await deps.evalStores.runs.list({ tenant }))
-        // One block per evaluator, whichever model judged a run.
-        for (const judge of stored.run.provenance.judges) judgeIds.add(evaluatorOfJudge(judge));
+        // One block per evaluator, whichever model judged a run; a sink's judges have their own.
+        for (const judge of stored.run.provenance.judges)
+          if (!deps.traceSinks?.isSinkJudge?.(judge)) judgeIds.add(evaluatorOfJudge(judge));
       for (const id of [...judgeIds].sort()) {
         const bundled =
           id === 'answer-quality' || id === 'pairwise-preference' ? bundledJudge(id) : undefined;
@@ -939,6 +1016,53 @@ export const createBuildingBlocksModule =
             permissions: [],
             settingsSchema: noSettings,
           },
+          uses: () => false,
+          history: async () => [],
+        });
+      }
+      for (const judge of await sinkJudges(tenant)) {
+        const unread = judge.refused?.reason === 'unreadable';
+        out.push({
+          block: {
+            id: judge.id,
+            kind: 'judge',
+            name: judge.name,
+            description: '',
+            publisher: { type: 'own', name: judge.source },
+            version: judge.version,
+            dataLocation: judge.residency,
+            // A connection whose judges could not be read judges nothing and reads no field.
+            capabilities: unread
+              ? []
+              : [t('blocks.sinkJudgeCapability', { connection: judge.connection })],
+            permissions: [
+              { type: 'network', value: judge.host, note: t('blocks.sinkJudgeNetwork') },
+              ...(unread
+                ? []
+                : [
+                    {
+                      type: 'data' as const,
+                      value: sinkFieldsText(judge.fields),
+                      note: '',
+                    },
+                    {
+                      type: 'model' as const,
+                      value: judge.model ?? t('blocks.sinkJudgeDefaultModel'),
+                      note: t('blocks.sinkJudgeModel'),
+                    },
+                  ]),
+            ],
+            settingsSchema: noSettings,
+            judge: {
+              connection: judge.connection,
+              ...(judge.model ? { model: judge.model } : {}),
+              version: judge.version,
+              dataType: judge.dataType,
+              fields: judge.fields,
+              ...(judge.refused ? { refused: judge.refused } : {}),
+            },
+          },
+          ...(judge.refused ? { refused: judge.refused.message } : {}),
           uses: () => false,
           history: async () => [],
         });
@@ -1145,10 +1269,15 @@ export const createBuildingBlocksModule =
           };
         }
       }
-      const { status, blocked, approver, adoption } = blockStatusFor(policy, block, {
+      const policed = blockStatusFor(policy, block, {
         used: usedBy.length > 0,
         ...(source.owner ? { owner: source.owner } : {}),
       });
+      const { approver, adoption } = policed;
+      const blocked = source.refused
+        ? { id: 'refused', ownedBy: block.publisher.name, text: source.refused }
+        : policed.blocked;
+      const status = source.refused ? 'not_allowed' : policed.status;
       const request = pending.find(
         (r) => r.kind === block.kind && r.block === block.id && r.state === 'pending',
       );

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@genai/contracts": "0.0.0",
+    "@genai/eval": "0.0.0",
     "@genai/kernel": "0.0.0",
     "zod": "^4.6.7"
   }

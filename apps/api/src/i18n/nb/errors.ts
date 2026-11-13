@@ -139,6 +139,28 @@ export const catalogErrors = defineNamespace({
   tracingCoveredTwice: 'to sporingskoblinger dekker tjenesten {service}: {ids}',
   tracingResidencyForbids:
     'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
+  gateOnSinkJudge:
+    'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
+  sinkJudgeGone:
+    'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
+  sinkJudgeNoContent: '{rule} har ingenting å vurdere: koblingen {connection} får ikke svartekst',
+  sinkJudgesUnreadable: 'dommerne til koblingen {connection} kunne ikke leses: {error}',
+  sinkJudgesDiffer:
+    'prosjektet til koblingen {connection} har aktive dommere som genki ikke leser: {judges}; ta dem i bruk eller slå dem av i Langfuse',
+  sinkJudgeNotAModel:
+    '{rule} er ikke en LLM-som-dommer-evaluator, så den har ingen modell genki kan navngi',
+  sinkJudgeSampled:
+    '{rule} vurderer bare en del av elementene den får, så noen testtilfeller ville aldri fått vurdering',
+  sinkJudgeFiltered:
+    '{rule} vurderer bare elementene filteret slipper gjennom, så noen testtilfeller ville aldri fått vurdering',
+  sinkJudgeDefaultModel:
+    '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
+  sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',
+  sinkJudgeUnreadPath: '{rule} leser {field} på {path}, en JSON-sti genki ikke kan lese',
+  sinkJudgeSeveral: '{rule} kjører mer enn én evaluator; genki leser en regel med én',
+  sinkJudgeSameName:
+    '{rule} er navnet på mer enn én regel i prosjektet, så genki kan ikke skille dem fra hverandre',
+  sinkJudgePaused: 'evaluatoren {evaluator} til {rule} er satt på pause i Langfuse',
   tracingHostOrigin:
     'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
   tracingHostDot: 'vertsnavnet slutter med punktum',
@@ -288,6 +310,11 @@ export const blockErrors = defineNamespace({
   onlyOperatorsShare: 'bare operatører endrer hva som deles',
   sharedWith: 'må være "*", organisasjonsnumre eller null',
   onlyOperatorsLabel: 'bare operatører merker resultater fra dommere',
+  onlyOperatorsDecideLabels: 'bare operatører avgjør hvilke etiketter som teller',
+  sinkLabelsOff: 'koblingen {id} henter ikke etiketter; slå på etiketter først',
+  labelsNotAList: 'labels må være en liste over etikettene som ble vist, med id og revisjon',
+  noPendingLabels: 'det finnes ingen slik bunke med ventende etiketter',
+  tenantAndConnectionRequired: 'virksomhet og kobling må oppgis',
   onlyOperatorsEndSessions: 'bare operatører avslutter støtteøkter',
   noActiveSession: 'ingen aktiv økt med den id-en',
   onlyOperatorsExtend: 'bare operatører forlenger støtteøkter',

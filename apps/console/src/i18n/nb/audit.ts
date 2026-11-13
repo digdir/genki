@@ -35,6 +35,8 @@ export const audit = defineNamespace({
   actionGuardrailRuleDelete: 'Slettet vernregel',
   actionImprovementDecide: 'Avgjorde forbedringsforslag',
   actionJudgeLabel: 'Merket dommervurdering',
+  actionJudgeLabelAccept: 'Godtok etiketter fra Langfuse',
+  actionJudgeLabelReject: 'Avviste etiketter fra Langfuse',
   actionPipelineSave: 'Lagret innlesing',
   actionPipelineDelete: 'Slettet innlesing',
   actionPipelineExecute: 'Startet innlesing',

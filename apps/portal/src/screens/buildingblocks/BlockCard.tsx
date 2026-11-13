@@ -3,7 +3,7 @@ import { blockHref, type CatalogItem } from '../../api/building-blocks';
 import { DataLocationTag } from '../../components/DataLocationTag';
 import { statusLabels } from '../../data/building-blocks';
 import { useT } from '../../i18n';
-import { serviceName, usedText, versionText } from './common';
+import { judgeRefusalText, serviceName, usedText, versionText } from './common';
 
 export const BlockCard = ({ item }: { item: CatalogItem }) => {
   const t = useT();
@@ -49,7 +49,9 @@ export const BlockCard = ({ item }: { item: CatalogItem }) => {
         </div>
       ) : null}
       {item.status === 'not_allowed' && item.policyBlock ? (
-        <span className="bb-block-text">{item.policyBlock.text}</span>
+        <span className="bb-block-text">
+          {item.judge?.refused ? judgeRefusalText(t, item.judge.refused) : item.policyBlock.text}
+        </span>
       ) : null}
     </li>
   );

@@ -1,6 +1,7 @@
 import {
   currentFeedback,
   labelFile,
+  sinkLabel,
   parseTestSet,
   type CandidateStatus,
   type CandidateStore,
@@ -12,11 +13,14 @@ import {
   type JudgeLabel,
   type LabelStore,
   type RunFilter,
+  type SinkLabel,
+  type SinkLabelStore,
   type StoredRun,
   type TestCaseCandidate,
   type TestSet,
   type TestSetStore,
 } from '@genai/eval';
+import { randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
 import { open, seal } from './crypto.js';
 import type { ContentKeys } from './keys.js';
@@ -287,5 +291,69 @@ export class PostgresLabelStore implements LabelStore {
       [judge ?? null],
     );
     return found.rows.map((r) => r.label);
+  }
+}
+
+export class PostgresSinkLabelStore implements SinkLabelStore {
+  constructor(private readonly pool: Pool) {}
+
+  async list(
+    tenant: string,
+    filter: { connection?: string; judge?: string } = {},
+  ): Promise<SinkLabel[]> {
+    return withTenant(this.pool, tenant, async (client) =>
+      (
+        await client.query<{ label: SinkLabel }>(
+          `select label from (
+             select distinct on (connection, id, revision) label, connection, judge, id, revision
+             from sink_labels where tenant = $1 order by connection, id, revision, seq desc
+           ) latest
+           where ($2::text is null or connection = $2) and ($3::text is null or judge = $3)
+           order by connection, id, revision`,
+          [tenant, filter.connection ?? null, filter.judge ?? null],
+        )
+      ).rows.map((r) => r.label),
+    );
+  }
+
+  async save(tenant: string, labels: SinkLabel[]): Promise<void> {
+    await withTenant(this.pool, tenant, async (client) => {
+      for (const label of labels.map((l) => sinkLabel.parse(l)))
+        await client.query(
+          `insert into sink_labels (tenant, id, revision, connection, judge, label)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [tenant, label.id, label.revision, label.connection, label.judge, JSON.stringify(label)],
+        );
+    });
+  }
+
+  /** A transaction-free advisory lock, held on its own connection while the work runs. */
+  async exclusive<T>(tenant: string, connection: string, work: () => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    const key = `sink_labels:${tenant}:${connection}`;
+    try {
+      await client.query('select pg_advisory_lock(hashtext($1))', [key]);
+      try {
+        return await work();
+      } finally {
+        await client.query('select pg_advisory_unlock(hashtext($1))', [key]);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  async pseudonymKey(tenant: string): Promise<string> {
+    return withTenant(this.pool, tenant, async (client) => {
+      await client.query(
+        'insert into sink_label_keys (tenant, key) values ($1, $2) on conflict do nothing',
+        [tenant, randomBytes(32).toString('hex')],
+      );
+      const found = await client.query<{ key: string }>(
+        'select key from sink_label_keys where tenant = $1',
+        [tenant],
+      );
+      return found.rows[0]?.key ?? '';
+    });
   }
 }

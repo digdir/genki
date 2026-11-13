@@ -146,6 +146,51 @@ export const qualityArea = {
     runRunning: 'Kjører',
     runWaiting: 'Venter på vurderinger',
     sendToTrace: 'Send kjøringen til Langfuse ({connection}). Låste testtilfeller sendes aldri.',
+    judgesOnlyWhenSent: 'Langfuse-dommerne vurderer bare kjøringer som sendes: {judges}.',
+    sendResidencyRefused:
+      'Kjøringen kan ikke starte. Den kan ikke sendes til Langfuse-koblingen {connection}, fordi koblingens dataplassering ({where}) ikke er tillatt for tjenesten ({service}).',
+    judgeNoContent:
+      'Kjøringen kan ikke starte. Langfuse-dommerne ({judges}) har ingenting å vurdere, fordi koblingen {connection} ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.',
+    sendCoveredTwice:
+      'Kjøringen kan ikke starte. Den kan ikke sendes til Langfuse, fordi flere Langfuse-koblinger dekker tjenesten: {connections}.',
+    untickToRun: 'Fjern haken for å kjøre uten Langfuse.',
+    runNotSent:
+      'Ikke sendt til Langfuse, så Langfuse-dommerne ({judges}) vurderte ikke denne kjøringen.',
+    judgesDiffer:
+      'Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen {connection} på kjøringen, også dem genki ikke leser.',
+    judgesNotInUse: 'Ta i bruk under Byggeklosser, eller slå av i Langfuse: {judges}.',
+    judgesUnreadable: 'Slå av i Langfuse, fordi genki ikke kan lese dem: {judges}.',
+    judgesNotRead:
+      'Kjøringen kan ikke starte. Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}, så genki vet ikke hvilke dommere Langfuse ville kjørt på kjøringen.',
+    sinkJudgesTitle: 'Langfuse-dommere',
+    sinkJudgesAdvisory: 'Rådgivende. Disse vurderingene stopper aldri en publisering.',
+    sinkJudgeYes: 'Ja: {mean} ({low} – {high}, n = {n})',
+    sinkJudgeMean: 'Snitt: {mean} ({low} – {high}, n = {n})',
+    sinkJudgeCategories: 'Svar: {categories}',
+    sinkJudgeNotApplicable: 'Ikke aktuelt: {count} tilfeller',
+    sinkJudgeChanged: 'Dommeren er endret siden kjøringen startet.',
+    sinkJudgeExperiment: 'Se eksperimentet i Langfuse',
+    sinkAgreement: 'Samsvar med godkjente etiketter: κ {kappa} · {alike} like · {n} etiketter',
+    sinkAgreementOther: '({count} fra andre versjoner av dommeren)',
+    sinkAgreementNone: 'Ingen godkjente etiketter ennå',
+    sinkAgreementUnpaired: '{count} uten dommerscore',
+    sinkCostLabel: 'Kostnad rapportert av Langfuse: {cost}',
+    sinkOthersLabel: 'Andre dommere i Langfuse-prosjektet vurderte de samme testtilfellene: {cost}',
+    sinkCostKroner: '{kroner} ({usd} USD med kurs {rate} fra {date}), {tokens} tokens.',
+    sinkCostUsd:
+      '{usd} USD, {tokens} tokens. Kronebeløpet vises når kursen fra Norges Bank er hentet.',
+    sinkCostTokens: 'ingen pris for modellen, {tokens} tokens.',
+    sinkCostUnpriced:
+      'Langfuse hadde ingen pris for {count} av kallene, bare tokenene deres er med.',
+    sinkCostUnread:
+      'Langfuse hadde ikke rapportert kostnaden for {count} kall da kjøringen ble lagret, så beløpet er minst dette.',
+    sinkJudgeOnCase: '{name} (Langfuse)',
+    verdictYes: 'Ja',
+    verdictNo: 'Nei',
+    verdictNotApplicable: 'Ikke aktuelt',
+    verdictPending: 'Venter på vurdering',
+    verdictMissing: 'Mangler vurdering',
+    verdictFailed: 'Dommeren feilet',
     runInterrupted: 'Avbrutt av omstart',
     runMetrics: 'Måltall',
     runMetric: 'Mål',

@@ -139,6 +139,29 @@ export const catalogErrors = {
   tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',
   tracingResidencyForbids:
     "the service's residency {residency} does not allow the connection's {connection}",
+  gateOnSinkJudge:
+    'the gate {gate} reads the Langfuse judge {judge} on the connection {connection}, which is advisory and never blocks a publish',
+  sinkJudgeGone:
+    'the judge {id} is no longer an active experiment judge in the project of the connection {connection}',
+  sinkJudgeNoContent:
+    '{rule} has nothing to judge: the connection {connection} gets no answer text',
+  sinkJudgesUnreadable: 'the judges of the connection {connection} could not be read: {error}',
+  sinkJudgesDiffer:
+    'the project of the connection {connection} has active judges genki does not read: {judges}; take them in use or switch them off in Langfuse',
+  sinkJudgeNotAModel:
+    '{rule} is not an LLM-as-a-judge evaluator, so it has no model genki can name',
+  sinkJudgeSampled:
+    '{rule} judges only part of the items it gets, so some cases would never be scored',
+  sinkJudgeFiltered:
+    '{rule} judges only the items its filter lets through, so some cases would never be scored',
+  sinkJudgeDefaultModel:
+    "{rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API",
+  sinkJudgeUnsentField: '{rule} reads {field}, which genki does not send',
+  sinkJudgeUnreadPath: '{rule} reads {field} at {path}, a JSON path genki cannot read',
+  sinkJudgeSeveral: '{rule} runs more than one evaluator; genki reads a rule with one',
+  sinkJudgeSameName:
+    '{rule} is the name of more than one rule in the project, so genki cannot tell them apart',
+  sinkJudgePaused: "{rule}'s evaluator {evaluator} is paused in Langfuse",
   tracingHostOrigin:
     'the host is an address like https://langfuse.example.no, without a path or credentials',
   tracingHostDot: 'the host name ends with a dot',
@@ -287,6 +310,11 @@ export const blockErrors = {
   onlyOperatorsShare: 'only operators change what is shared',
   sharedWith: 'must be "*", org numbers or null',
   onlyOperatorsLabel: 'only operators label judge results',
+  onlyOperatorsDecideLabels: 'only operators decide which labels count',
+  sinkLabelsOff: 'the connection {id} does not bring labels back; switch labels on first',
+  labelsNotAList: 'labels must be a list of the labels shown, by id and revision',
+  noPendingLabels: 'no such batch of pending labels',
+  tenantAndConnectionRequired: 'tenant and connection are required',
   onlyOperatorsEndSessions: 'only operators end support sessions',
   noActiveSession: 'no active session with that id',
   onlyOperatorsExtend: 'only operators extend support sessions',
