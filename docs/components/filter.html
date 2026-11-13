@@ -157,7 +157,9 @@
                 dev boards' filter beside the threads (dev-filter-panel): «Fjern alle filtre» over
                 the fields, and each field a row with its <code>heading</code> and what is chosen,
                 «Alle» when nothing is, that opens one at a time to a checkbox per value with its
-                exact count. A field with more than 12 values opens to its list with search instead.
+                exact count, in two columns, or as many as
+                <code>--genai-filter-checkboxes-columns</code> says: 1 in a narrow panel. A field
+                with more than 12 values opens to its list with search instead.
                 <code>children</code> stand under the rows with no line.
               </li>
               <li>
@@ -176,7 +178,8 @@
                 <code>count</code>, <code>total</code> and <code>corpus</code>. The list under it,
                 each document with its type, organisation, year, pages and a tick to leave it out,
                 is drawn only when the host passes <code>documents</code> and
-                <code>onIncludedChange</code>; the platform sends neither yet.
+                <code>onIncludedChange</code>; the platform sends neither yet. In a box too narrow
+                for both, «Skjul» goes under the title.
               </li>
             </ul>
             <h2>Related</h2>
@@ -476,6 +479,14 @@
                   <td><code>--genai-filter-checkbox-padding-block</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>the panel variant and the filter lines: checkbox padding block</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-checkboxes-columns</code></td>
+                  <td>2</td>
+                  <td>
+                    the panel variant: how many columns a field's ticks stand in, 1 in a narrow
+                    panel
+                  </td>
                 </tr>
                 <tr>
                   <td><code>--genai-filter-checkboxes-gap</code></td>

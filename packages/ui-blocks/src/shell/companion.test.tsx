@@ -63,6 +63,32 @@ describe('a panel’s companion column', () => {
     expect(box.style.getPropertyValue('--uib-shell-lead-width')).toBe('220px');
   });
 
+  it('keeps its own width when it asks to, so the panel’s own column takes every resize', () => {
+    const narrow = {
+      label: 'Tråder og filter',
+      title: 'Tråder',
+      children: <a href="/t/1">En tråd</a>,
+      size: { width: 660, minWidth: 450 },
+      companion: { label: 'Filter for tråden', width: 230, keepWidth: true },
+    };
+    draw({ primary: narrow });
+    const box = () => primary().querySelector('.uib-shell-box') as HTMLElement;
+    expect(box().style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
+    const edge = screen.getByRole('separator', { name: 'Endre bredde på tråder og filter' });
+    fireEvent.keyDown(edge, { key: 'ArrowLeft', shiftKey: true });
+    expect(edge.getAttribute('aria-valuenow')).toBe('596');
+    expect(box().style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
+  });
+
+  it('gives the panel’s own column a fixed width by default, so the companion takes every resize', () => {
+    draw();
+    const box = () => primary().querySelector('.uib-shell-box') as HTMLElement;
+    const edge = screen.getByRole('separator', { name: 'Endre bredde på tråder og filter' });
+    fireEvent.keyDown(edge, { key: 'ArrowRight', shiftKey: true });
+    expect(edge.getAttribute('aria-valuenow')).toBe('724');
+    expect(box().style.getPropertyValue('--uib-shell-lead-width')).toBe('220px');
+  });
+
   it('takes the panel’s button onto its row, which folds both columns', () => {
     draw();
     const button = within(companion()).getByRole('button', { name: 'Skjul tråder og filter' });
