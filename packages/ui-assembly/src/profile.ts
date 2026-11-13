@@ -1,8 +1,18 @@
 // What a host knows about its service that genki does not say: the assistant's name, its
 // suggested questions, and per collection the labels of its filter fields and where a document
-// lives. kunnskapsassistenten's own choices are one such profile; without one, the assembly uses
-// genki's names as they come.
-import type { ShellProfileProps } from '@genai/ui-blocks';
+// lives. kunnskapsassistenten's own choices are one such profile. A layout may carry the part of
+// it that is data (`ProfileData`), which fills what the host's leaves out; without either, the
+// assembly uses genki's names as they come.
+import type {
+  AssistantLayout,
+  DocumentIdPattern,
+  FieldKind,
+  ProfileData,
+  ShellProfileProps,
+  YearBounds,
+} from '@genai/ui-blocks';
+
+export type { DocumentIdPattern, YearBounds } from '@genai/ui-blocks';
 
 /** One filter field as the reader sees it. */
 export interface FieldSpec {
@@ -10,22 +20,11 @@ export interface FieldSpec {
   label: string;
   /** The field's name over its row in the next look's filter, singular: «Dokumenttype». */
   heading?: string | undefined;
-  kind?: 'year' | undefined;
+  kind?: FieldKind | undefined;
   /** For a field of `kind: 'year'`, the years it offers. Without it, 1900 up to this year. */
   years?: YearBounds | undefined;
-  /** The values are integers on the wire. */
+  /** The values are integers on the wire; without it, as the dataset declares the field. */
   integer?: boolean | undefined;
-}
-
-/**
- * The years a year field offers, newest first. Anything else it holds, such as page numbers or a
- * year centuries ahead, is left out, but a value the reader has chosen is always kept.
- */
-export interface YearBounds {
-  /** The first year offered; 1900 without it. */
-  first?: number | undefined;
-  /** The last year offered; the year it is in Norway without it. */
-  last?: number | undefined;
 }
 
 export interface CorpusProfile {
@@ -103,5 +102,49 @@ export interface AssistantExperiment {
   hrefLabel?: string | undefined;
 }
 
-/** The kinds of document number a link is chosen by, tried in this order. */
-export type DocumentIdPattern = 'digits' | 'uuid' | 'any';
+/** Only what is set: an `undefined` the host passes says nothing, and fills nothing. */
+const set = <T extends object>(value: T): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as Partial<T>;
+
+const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string) =>
+  record && Object.hasOwn(record, key) ? record[key] : undefined;
+
+/** Each collection of either, the host's fields over the layout's, one by one. */
+const corporaOf = (
+  host: AssistantProfile['corpora'],
+  data: ProfileData['corpora'],
+): AssistantProfile['corpora'] => {
+  if (!host || !data) return host ?? data;
+  const keys = [...new Set([...Object.keys(data), ...Object.keys(host)])];
+  return Object.fromEntries(
+    keys.map((key) => {
+      const hostCorpus = own(host, key);
+      const dataCorpus = own(data, key);
+      return [
+        key,
+        hostCorpus && dataCorpus
+          ? { ...dataCorpus, ...set(hostCorpus) }
+          : (hostCorpus ?? dataCorpus),
+      ];
+    }),
+  ) as AssistantProfile['corpora'];
+};
+
+/**
+ * The profile a layout is drawn with: the host's, with the layout's own (`layout.profile`) filling
+ * what the host leaves out. What the host sets wins whole, such as its list of suggestions or a
+ * collection's fields, an empty list too; each collection is filled field by field. Without a
+ * profile in the layout, it is the host's as it is.
+ */
+export const profileOf = (
+  layout: Pick<AssistantLayout, 'profile'>,
+  host?: AssistantProfile,
+): AssistantProfile | undefined => {
+  const data = layout.profile;
+  if (!data) return host;
+  if (!host) return data;
+  const corpora = corporaOf(host.corpora, data.corpora);
+  return { ...data, ...set(host), ...(corpora ? { corpora } : {}) };
+};

@@ -2,6 +2,7 @@ export * from './catalogue.js';
 export * from './layout.js';
 export * from './templates.js';
 export * from './facts.js';
+export * from './profile.js';
 
 import type { Need } from './catalogue.js';
 import type { BuilderKey } from './i18n.js';
