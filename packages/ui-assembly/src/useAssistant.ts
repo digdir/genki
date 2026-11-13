@@ -16,6 +16,7 @@ import {
   blockSpec,
   documentCount,
   factsFromModels,
+  fieldValueLabels,
   isDisplayLevel,
   isEmptySelection,
   isOn,
@@ -51,7 +52,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
+  FILTER_VALUES_LIMIT,
   filterSet,
+  FilterTooLarge,
   HttpError,
   sourceFromWire,
   type AnswerData,
@@ -613,7 +616,12 @@ export const useAssistant = ({
   }, [currentId, threadFiltersOn]);
   const [facets, setFacets] = useState<FilterField[]>();
   const [baseFacets, setBaseFacets] = useState<FilterField[]>();
-  const [facetsFailed, setFacetsFailed] = useState(false);
+  const [facetsFailed, setFacetsFailed] = useState<boolean | string>(false);
+  const tooLarge = (error: FilterTooLarge) =>
+    t('assembly.filterTooLarge', {
+      field: fields?.find((field) => field.id === error.field)?.label ?? error.field,
+      max: FILTER_VALUES_LIMIT,
+    });
   const [facetsKey, setFacetsKey] = useState(0);
   useEffect(() => {
     if (!filterOn || !fields || !corpusKey) return;
@@ -628,14 +636,14 @@ export const useAssistant = ({
       // A field with every value in the collection (the facets of nothing) chosen narrows nothing.
       const base = baseFacets ?? (await api.loadFacets({}, corpusKey, fields));
       if (!gone && !baseFacets) setBaseFacets(base);
-      return api.loadFacets(narrowing(selection, base), corpusKey, fields);
+      return api.loadFacets(narrowing(selection, base), corpusKey, fields, base);
     };
     load().then(
       (found) => !gone && setFacets(found),
       (error: Error) => {
         if (gone) return;
         console.error('[assistant] facets', error.message);
-        setFacetsFailed(true);
+        setFacetsFailed(error instanceof FilterTooLarge ? tooLarge(error) : true);
       },
     );
     return () => {
@@ -767,12 +775,13 @@ export const useAssistant = ({
     const narrowedTo =
       toDocument && aboutTitle
         ? [aboutTitle]
-        : (facets ?? []).flatMap((field) => [...(narrowed?.[field.id] ?? [])]);
-    const filters =
+        : (facets ?? []).flatMap((field) => fieldValueLabels(field, narrowed?.[field.id] ?? []));
+    // Built as the question goes, so a filter genki cannot take fails it before any request.
+    const filtersOf = () =>
       toDocument && documentId
         ? filterSet({ [toDocument.id]: [documentId] }, [toDocument])
         : narrowed
-          ? filterSet(narrowed, fields ?? [])
+          ? filterSet(narrowed, fields ?? [], facets ?? baseFacets)
           : undefined;
     // What the filter was, and how many documents it read from, for the answer's «Fremgangsmåte».
     const askedWith = toDocument ? undefined : narrowed;
@@ -819,7 +828,7 @@ export const useAssistant = ({
         question,
         model,
         conversationId: startedIn,
-        filters,
+        filters: filtersOf(),
         dataset: corpusKey ? { tenant: ownDataset?.tenant || tenant, key: corpusKey } : undefined,
         steps: approachOn,
         signal: controller.signal,
@@ -874,7 +883,14 @@ export const useAssistant = ({
         ...a,
         status: aborted ? 'aborted' : 'failed',
         error: (error as Error).message,
-        ...(aborted ? {} : { failure: failureOf(error) }),
+        ...(aborted
+          ? {}
+          : {
+              failure:
+                error instanceof FilterTooLarge
+                  ? { kind: 'filter' as const, message: tooLarge(error) }
+                  : failureOf(error),
+            }),
       }));
       if (!aborted) reloadThreads();
     } finally {
@@ -1103,7 +1119,8 @@ export const useAssistant = ({
     facets,
     baseFacets,
     facetsFailed,
-    retryFacets: () => setFacetsKey((n) => n + 1),
+    // A filter genki cannot take fails the same way again: it is changed, not retried.
+    retryFacets: typeof facetsFailed === 'string' ? undefined : () => setFacetsKey((n) => n + 1),
     // How many documents the next question reads from, and the collection in all, exactly from the
     // facets; undefined while a count is missing.
     readFrom: filterOn

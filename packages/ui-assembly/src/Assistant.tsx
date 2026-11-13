@@ -46,6 +46,7 @@ import {
   Welcome,
   answerCopy,
   experimentsOn,
+  fieldValueLabels,
   isEmptySelection,
   isSettingsPageId,
   narrowing,
@@ -613,7 +614,9 @@ export const AssistantView = ({
   );
   // A field with every value it lists chosen narrows nothing, so the strip does not name it.
   const narrowed = narrowing(a.selection, a.facets);
-  const narrowedTo = (a.facets ?? []).flatMap((field) => [...(narrowed[field.id] ?? [])]);
+  const narrowedTo = (a.facets ?? []).flatMap((field) =>
+    fieldValueLabels(field, narrowed[field.id] ?? []),
+  );
   // The design's strip over the conversation: what the thread reads from, and «Endre».
   const filterStrip = (
     <section className="uia-filter-strip" aria-label={t('builder.filter')}>

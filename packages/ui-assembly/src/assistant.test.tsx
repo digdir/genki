@@ -756,6 +756,38 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     expect(document.querySelector('.uia-filter-strip')?.textContent).not.toMatch(/Avgrenset til/);
   });
 
+  it('names chosen years as periods, under the answer and in the strip', async () => {
+    const years = () => {
+      const { api } = fakeApi();
+      api.loadFields = vi.fn(async () => [{ id: 'year', label: 'År', kind: 'year' as const }]);
+      api.loadFacets = vi.fn(async () => [
+        {
+          id: 'year',
+          label: 'År',
+          kind: 'year' as const,
+          options: Array.from({ length: 8 }, (_, i) => ({ value: String(2018 + i), count: 1 })),
+        },
+      ]);
+      const { storage } = memory();
+      storage.write('filter', { year: ['2020', '2021', '2022', '2025'] });
+      return { api, storage };
+    };
+    const ka = years();
+    const { unmount } = drawKa(ka.storage, kaLayout, ka.api);
+    await waitFor(() => expect(ka.api.loadFacets).toHaveBeenCalled());
+    await act(async () => {});
+    await ask();
+    expect(screen.getByText('Avgrenset til: 2020–2022 · 2025')).toBeTruthy();
+    unmount();
+    const strip = years();
+    drawKa(strip.storage, placeIn(state('sources-only'), 'filter', 'main').layout, strip.api);
+    await waitFor(() =>
+      expect(document.querySelector('.uia-filter-strip')?.textContent).toContain(
+        'Avgrenset til: 2020–2022 · 2025',
+      ),
+    );
+  });
+
   it('puts the filter over Kilder with the trial «filters-right-panel», and only threads on the left', async () => {
     const { storage } = memory();
     storage.write('flags', ['filters-right-panel']);
@@ -781,6 +813,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
         'kudos',
+        expect.anything(),
         expect.anything(),
       ),
     );
@@ -882,6 +915,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport'] },
         'kudos',
+        expect.anything(),
         expect.anything(),
       ),
     );
@@ -1692,11 +1726,74 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     });
 
     it('refuses a facets request longer than the server takes, with the error the filter already shows', async () => {
-      // All but one: a field that still narrows, so its values must go with the others' requests.
-      drawWide({ virksomhet: agencies.slice(1) });
+      // 100 names, as many as genki takes, each long enough that together they pass the limit.
+      const long = Array.from(
+        { length: 100 },
+        (_, i) =>
+          `Direktoratet for forvaltning og økonomistyring, avdeling for samordning nr. ${i}`,
+      );
+      drawWide({ virksomhet: long });
       await settled();
       expect(failed()).toBeTruthy();
       expect(sent.filter((url) => url.length > FACETS_URL_LIMIT)).toEqual([]);
+    });
+
+    // genki's filter takes at most 100 values a field (`maxOptions` in adapter-rest).
+    const leftOut = (filter: string) =>
+      (JSON.parse(filter || '{"fields":[]}') as { fields: Record<string, unknown>[] }).fields.find(
+        (field) => field.field === 'virksomhet',
+      );
+
+    it('asks the facets with more than 100 chosen and at most 100 left out as the values left out', async () => {
+      drawWide({ virksomhet: agencies.slice(1) });
+      await settled();
+      expect(failed()).toBeNull();
+      const asked = sent.filter((url) => filterOf(url).includes('virksomhet'));
+      expect(asked.length).toBeGreaterThan(0);
+      expect(asked.map((url) => leftOut(filterOf(url)))).toEqual(
+        asked.map(() => ({
+          field: 'virksomhet',
+          type: 'not-in-set',
+          'value-type': 'string',
+          'selected-options': [agencies[0]],
+        })),
+      );
+    });
+
+    it('asks the question with them as the values left out', async () => {
+      const { asked } = drawWide({ virksomhet: agencies.slice(1) });
+      await settled();
+      await askMore('Hva er fast?');
+      expect(asked[0]?.filters).toEqual({
+        fields: [
+          {
+            field: 'virksomhet',
+            type: 'not-in-set',
+            'value-type': 'string',
+            'selected-options': [agencies[0]],
+          },
+        ],
+      });
+    });
+
+    const tooMany =
+      'Virksomheter: for mange er valgt. Velg høyst 100, eller alle unntatt høyst 100.';
+
+    it('says why in the filter, and asks nothing with it, when more than 100 are chosen and more than 100 left out', async () => {
+      drawWide({ virksomhet: agencies.slice(0, 150) });
+      expect(await within(filterPanel()).findByText(tooMany)).toBeTruthy();
+      expect(sent.filter((url) => filterOf(url).includes('virksomhet'))).toEqual([]);
+      expect(within(filterPanel()).queryByRole('button', { name: 'Prøv igjen' })).toBeNull();
+    });
+
+    it('fails a question with that filter before sending it, saying why', async () => {
+      const { asked } = drawWide({ virksomhet: agencies.slice(0, 150) });
+      await within(filterPanel()).findByText(tooMany);
+      await askMore('Hva er fast?');
+      expect(asked).toEqual([]);
+      const answer = document.querySelector<HTMLElement>('.uib-answer');
+      expect(answer?.textContent).toContain('Filteret kan ikke brukes');
+      expect(answer?.textContent).toContain(tooMany);
     });
   });
 
@@ -2598,13 +2695,19 @@ describe('the page around the blocks', () => {
       initialProps: setup(withSetting(ka, 'filter', 'corpus', false).layout),
     });
     await waitFor(() =>
-      expect(api.loadFacets).toHaveBeenCalledWith({ type: [] }, 'kudos', expect.anything()),
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        { type: [] },
+        'kudos',
+        expect.anything(),
+        expect.anything(),
+      ),
     );
     rerender(setup(ka.layout));
     await waitFor(() =>
       expect(api.loadFacets).toHaveBeenCalledWith(
         { type: ['Årsrapport', 'Tildelingsbrev'] },
         'genki-docs',
+        expect.anything(),
         expect.anything(),
       ),
     );

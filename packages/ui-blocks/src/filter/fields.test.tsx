@@ -171,10 +171,10 @@ describe('a field', () => {
     const many: FilterField = {
       id: 'organisation',
       label: 'Virksomheter',
-      options: Array.from({ length: 150 }, (_, index) => ({ value: `Virksomhet ${index + 1}` })),
+      options: Array.from({ length: 202 }, (_, index) => ({ value: `Virksomhet ${index + 1}` })),
     };
     const first = (count: number) => many.options.slice(0, count).map((option) => option.value);
-    const warning = /^Høyst 100 kan brukes i ett felt/;
+    const warning = /^Velg høyst 100, eller alle unntatt høyst 100\./;
     const draw = (selected: string[]) =>
       render(
         <FacetField
@@ -186,13 +186,16 @@ describe('a field', () => {
         />,
       );
 
-    it('says so, with the way out, when more than the limit are chosen', () => {
+    it('says so, with the way out, when more than the limit are chosen and more than the limit left out', () => {
       draw(first(101));
       expect(
-        screen.getByText(
-          'Høyst 100 kan brukes i ett felt, og 101 er valgt. Fjern noen, eller velg alle.',
-        ),
+        screen.getByText('Velg høyst 100, eller alle unntatt høyst 100. Nå er 101 av 202 valgt.'),
       ).toBeTruthy();
+    });
+
+    it('says nothing when more than the limit are chosen and at most the limit left out', () => {
+      draw(first(102));
+      expect(document.querySelector('.ds-validation-message')).toBeNull();
     });
 
     it('says nothing at the limit', () => {
@@ -200,10 +203,37 @@ describe('a field', () => {
       expect(screen.queryByText(warning)).toBeNull();
     });
 
+    it('says the same of a year field with periods, by its years', () => {
+      const years = Array.from({ length: 202 }, (_, index) => String(1800 + index));
+      const yearField: FilterField = {
+        id: 'year',
+        label: 'År',
+        kind: 'year',
+        options: years.map((value) => ({ value })),
+      };
+      const drawYears = (selected: string[]) =>
+        render(
+          <YearRangeField
+            field={yearField}
+            selected={selected}
+            compact={false}
+            max={100}
+            onChange={() => {}}
+          />,
+        );
+      const { unmount } = drawYears(years.slice(0, 102));
+      expect(document.querySelector('.ds-validation-message')).toBeNull();
+      unmount();
+      drawYears(years.slice(0, 101));
+      expect(
+        screen.getByText('Velg høyst 100, eller alle unntatt høyst 100. Nå er 101 av 202 valgt.'),
+      ).toBeTruthy();
+    });
+
     it('says nothing when all are chosen, which is no narrowing and is not sent', () => {
-      draw(first(150));
+      draw(first(202));
       expect(screen.queryByText(warning)).toBeNull();
-      expect(screen.getByText('Alle 150 valgt, altså ingen avgrensning')).toBeTruthy();
+      expect(screen.getByText('Alle 202 valgt, altså ingen avgrensning')).toBeTruthy();
     });
   });
 
@@ -226,7 +256,7 @@ describe('a field', () => {
         />,
       );
       expect(screen.getByText('Alle 136 valgt, altså ingen avgrensning')).toBeTruthy();
-      expect(screen.queryByText(/^Høyst 100 kan brukes i ett felt/)).toBeNull();
+      expect(screen.queryByText(/^Velg høyst 100, eller alle unntatt/)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Velg alle virksomheter' })).toBeNull();
     });
 
