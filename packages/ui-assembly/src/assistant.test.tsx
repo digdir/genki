@@ -572,6 +572,24 @@ describe('the assistant a layout describes', () => {
     expect(without.api.loadThreads).not.toHaveBeenCalled();
   });
 
+  it('opens a thread from `?t=` only when its id looks like one genki makes', async () => {
+    for (const id of ['..%2F..%2Fapi%2Fdatasets', '..', '.', 'a%2Fb', 'a%5Cb', 'a%3Fb', 'a.b']) {
+      history.replaceState(null, '', `/?t=${id}`);
+      const { api } = fakeApi();
+      const { unmount } = draw(state('approach-only').layout, api, true);
+      await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+      expect(api.loadThread, id).not.toHaveBeenCalled();
+      unmount();
+    }
+    for (const id of ['V1StGXR8_Z5jdHi6B-myT', '0b6f0a3e-6c1e-4a8e-9f3b-2d4c5e6f7a8b', 't-old']) {
+      history.replaceState(null, '', `/?t=${id}`);
+      const { api } = fakeApi();
+      const { unmount } = draw(state('approach-only').layout, api, true);
+      await waitFor(() => expect(api.loadThread).toHaveBeenCalledWith(id));
+      unmount();
+    }
+  });
+
   // The secondary panel starts folded, as in kunnskapsassistenten, so its tools are hidden.
   const tools = () => document.querySelector<HTMLElement>('.uib-shell-tools');
 

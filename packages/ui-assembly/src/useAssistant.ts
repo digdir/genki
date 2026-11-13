@@ -193,7 +193,12 @@ const firstSentence = (text: string | undefined) => {
   return sentence && sentence.length <= 140 ? sentence : undefined;
 };
 
-const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
+/** A thread id as genki makes them (21 of `[A-Za-z0-9_-]`, or a UUID), so `?t=` names no path. */
+const THREAD_ID = /^[\w-]{1,200}$/;
+const threadInAddress = () => {
+  const id = new URLSearchParams(location.search).get('t');
+  return id && THREAD_ID.test(id) ? id : undefined;
+};
 
 /** The answer with the markers its sources came with: `[N]` names an excerpt only with them. */
 const withMarkers = (
