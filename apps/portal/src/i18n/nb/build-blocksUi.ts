@@ -11,7 +11,7 @@ export const blocksUi = {
     paneBlocks: 'Byggeklosser',
     panePreview: 'Forhåndsvisning',
     intro:
-      'Slå på klossene du vil ha i hvert panel. Noen klosser kan stå flere steder, men bare ett sted om gangen.',
+      'Slå på klossene du vil ha i hvert panel. Noen klosser kan stå flere steder, de fleste bare ett sted om gangen.',
     usedIn: 'Står i {panel}. Slår du den på her, flyttes den hit.',
     groupLeft: 'Venstre panel',
     groupMain: 'Innhold',

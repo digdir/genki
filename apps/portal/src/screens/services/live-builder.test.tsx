@@ -714,6 +714,23 @@ describe('a new service saved as a draft on the server', () => {
     expect(screen.getByRole('link', { name: 'Oppsett', current: 'page' })).toBeTruthy();
   });
 
+  it('opens a draft-only service at Grensesnitt when the address names it', async () => {
+    const { fetch, id } = await startNamed('Permisjonssvar');
+
+    await elsewhere(fetch, `#/services/${id}/blocks`);
+
+    expect(await screen.findByRole('link', { name: 'Grensesnitt', current: 'page' })).toBeTruthy();
+    expect(window.location.hash).toBe(`#/services/${id}/blocks`);
+  });
+
+  it('shows a published service’s overview when the address names Grensesnitt, which it has not', async () => {
+    const { fetch } = quiet();
+    await elsewhere(fetch, '#/services/rapportassistenten/blocks');
+
+    expect(await screen.findByRole('link', { name: 'Oversikt', current: 'page' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Grensesnitt' })).toBeNull();
+  });
+
   const deleteQuestion = /^Vil du slette utkastet til Permisjonssvar\?/;
   const confirmBox = async () =>
     (await screen.findByText(deleteQuestion)).parentElement as HTMLElement;

@@ -11,7 +11,7 @@ export const blocksUi = {
     paneBlocks: 'Building blocks',
     panePreview: 'Preview',
     intro:
-      'Turn on the blocks you want in each panel. Some blocks can stand in more than one place, but only one place at a time.',
+      'Turn on the blocks you want in each panel. Some blocks can stand in more than one place, most in only one place at a time.',
     usedIn: 'In the {panel}. Turn it on here to move it here.',
     groupLeft: 'Left panel',
     groupMain: 'Content',

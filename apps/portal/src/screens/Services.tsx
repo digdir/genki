@@ -116,8 +116,14 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   return <ServiceList rows={state.data} tenantName={tenantName} />;
 };
 
+// Before a service loads, its address may name a section that only a server draft of a new one has.
+const addressSections = [
+  ...new Set([...availableSections({ isNew: false }), ...availableSections({ isNew: true })]),
+];
+
 const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) => {
-  const location = locate(id, route.segments, route.query, availableSections({ isNew }));
+  const allowed = isNew ? availableSections({ isNew }) : addressSections;
+  const location = locate(id, route.segments, route.query, allowed);
   const { redirect } = location;
   useEffect(() => {
     if (redirect) window.location.replace(`#${redirect}`);
@@ -237,6 +243,7 @@ const BuilderScreen = (
     ...(state.data && 'rebasedTo' in state.data ? { rebasedTo: state.data.rebasedTo } : {}),
   };
   const pane = paneOf(route.query);
+  const published = availableSections({ isNew: false });
   return (
     <Builder
       key={`${id}-${live?.latest.version ?? 0}`}
@@ -246,7 +253,7 @@ const BuilderScreen = (
       live={props.live}
       init={init}
       route={route}
-      section={location.section}
+      section={published.includes(location.section) ? location.section : 'overview'}
       detail={location.detail}
       pane={pane}
       openPublish={route.query.get('publiser') === '1'}
