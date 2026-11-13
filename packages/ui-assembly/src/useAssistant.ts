@@ -564,6 +564,8 @@ export const useAssistant = ({
     if (!filterOn || !corpusKey) return;
     let gone = false;
     setFields(undefined);
+    // The values another collection has say nothing of this one's.
+    setBaseFacets(undefined);
     api.loadFields(corpusKey).then(
       (found) => !gone && setFields(found),
       (error: Error) => {
@@ -603,7 +605,10 @@ export const useAssistant = ({
   useEffect(() => {
     if (!threadFiltersOn || !currentId) return;
     const kept = threadFilters.get(currentId);
-    if (kept && !sameSelection(kept, chosenSelection)) setSelection(kept);
+    // Kept as asked, so a field with every value chosen is empty there and means the same.
+    const asked = narrowing(chosenSelection, facets ?? baseFacets);
+    if (kept && !sameSelection(kept, chosenSelection) && !sameSelection(kept, asked))
+      setSelection(kept);
     // Only when another thread opens: a change made in the thread stays.
   }, [currentId, threadFiltersOn]);
   const [facets, setFacets] = useState<FilterField[]>();
@@ -614,12 +619,19 @@ export const useAssistant = ({
     if (!filterOn || !fields || !corpusKey) return;
     let gone = false;
     setFacetsFailed(false);
-    api.loadFacets(selection, corpusKey, fields).then(
-      (found) => {
-        if (gone) return;
-        setFacets(found);
-        if (isEmptySelection(selection)) setBaseFacets(found);
-      },
+    const load = async () => {
+      if (isEmptySelection(selection)) {
+        const found = await api.loadFacets(selection, corpusKey, fields);
+        if (!gone) setBaseFacets(found);
+        return found;
+      }
+      // A field with every value in the collection (the facets of nothing) chosen narrows nothing.
+      const base = baseFacets ?? (await api.loadFacets({}, corpusKey, fields));
+      if (!gone && !baseFacets) setBaseFacets(base);
+      return api.loadFacets(narrowing(selection, base), corpusKey, fields);
+    };
+    load().then(
+      (found) => !gone && setFacets(found),
       (error: Error) => {
         if (gone) return;
         console.error('[assistant] facets', error.message);
@@ -629,13 +641,8 @@ export const useAssistant = ({
     return () => {
       gone = true;
     };
-    // `selection` is new on every render without Filter; with it, it is the state.
+    // `selection` is new on every render without Filter; `baseFacets` is set here, not a cause.
   }, [api, filterOn, chosenSelection, facetsKey, corpusKey, fields]);
-  useEffect(() => {
-    if (!filterOn || baseFacets || isEmptySelection(chosenSelection) || !fields || !corpusKey)
-      return;
-    api.loadFacets({}, corpusKey, fields).then(setBaseFacets, () => {});
-  }, [api, filterOn, baseFacets, chosenSelection, corpusKey, fields]);
 
   const chooseCorpus = (key: string) => {
     // A new collection starts a new thread with an empty filter (kunnskapsassistenten's useCorpus).
@@ -755,18 +762,20 @@ export const useAssistant = ({
     const question = aboutTitle
       ? t('assembly.aboutDocument', { title: aboutTitle, question: typed })
       : typed;
+    // A field with every value it lists chosen narrows nothing, so it is neither sent nor said.
+    const narrowed = filterOn ? narrowing(selection, facets ?? baseFacets) : undefined;
     const narrowedTo =
       toDocument && aboutTitle
         ? [aboutTitle]
-        : (facets ?? []).flatMap((field) => [...(selection[field.id] ?? [])]);
+        : (facets ?? []).flatMap((field) => [...(narrowed?.[field.id] ?? [])]);
     const filters =
       toDocument && documentId
         ? filterSet({ [toDocument.id]: [documentId] }, [toDocument])
-        : filterOn
-          ? filterSet(narrowing(selection, facets), fields ?? [])
+        : narrowed
+          ? filterSet(narrowed, fields ?? [])
           : undefined;
     // What the filter was, and how many documents it read from, for the answer's «Fremgangsmåte».
-    const askedWith = filterOn && !toDocument ? narrowing(selection, facets) : undefined;
+    const askedWith = toDocument ? undefined : narrowed;
     const readFrom = askedWith
       ? documentCount(facets, askedWith, corpusProfile?.typeField)
       : undefined;

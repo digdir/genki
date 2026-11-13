@@ -120,6 +120,9 @@ export const failureOf = (error: unknown): AnswerFailure => {
   }
 };
 
+/** The longest facets address sent: Node answers 431 past 16 KB of headers, token included. */
+export const FACETS_URL_LIMIT = 8_000;
+
 /** The fields the question is narrowed by, in genki's filter shape. */
 export const filterSet = (
   selection: FilterSelection,
@@ -361,13 +364,21 @@ export const createGenkiApi = ({
     return (await response.json()) as T;
   };
 
-  const facetsQuery = (dataset: string, fields: string, filter?: FilterSet | object) =>
-    new URLSearchParams({
+  const getFacets = <T>(dataset: string, fields: string, filter?: FilterSet | object) => {
+    const query = new URLSearchParams({
       tenant,
       'dataset-config-key': dataset,
       fields,
       ...(filter ? { filter: JSON.stringify(filter) } : {}),
     });
+    const path = `/api/facets?${query}`;
+    const length = `${baseUrl}${path}`.length;
+    if (length > FACETS_URL_LIMIT)
+      return Promise.reject(
+        new HttpError(431, `facets address of ${length} characters, over ${FACETS_URL_LIMIT}`),
+      );
+    return getJson<T>(path);
+  };
 
   const aboutCache = new Map<string, Promise<readonly string[] | undefined>>();
 
@@ -459,9 +470,9 @@ export const createGenkiApi = ({
           const others = Object.fromEntries(
             Object.entries(selection).filter(([id]) => id !== field.id),
           );
-          const body = await getJson<{
+          const body = await getFacets<{
             fields: { field: string; options: { value: string; count: number }[] }[];
-          }>(`/api/facets?${facetsQuery(dataset, field.id, filterSet(others, fields))}`);
+          }>(dataset, field.id, filterSet(others, fields));
           const options = (body.fields.find((f) => f.field === field.id)?.options ?? []).map(
             (o) => ({
               value: String(o.value),
@@ -495,9 +506,9 @@ export const createGenkiApi = ({
           },
         ],
       };
-      const found = getJson<{
+      const found = getFacets<{
         fields: { field: string; options: { value: string | number; count: number }[] }[];
-      }>(`/api/facets?${facetsQuery(dataset, about.fields.join(','), filter)}`).then(
+      }>(dataset, about.fields.join(','), filter).then(
         (body) => {
           const values = (field: string) =>
             (body.fields.find((f) => f.field === field)?.options ?? [])

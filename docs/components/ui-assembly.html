@@ -393,6 +393,14 @@
                 document where the collection declares its number as a filter field.
               </li>
               <li>
+                A filter field with every value chosen, as after «Velg alle», narrows nothing, so it
+                is left out of what goes to genki and of «Avgrenset til». The facets are asked
+                without a field that has every value in the collection chosen, the question without
+                one that has every value it lists chosen. A facets address longer than 8,000
+                characters is not sent: Node answers 431 past 16 KB of headers, so the filter says
+                it could not fetch the fields instead.
+              </li>
+              <li>
                 «Kopier svaret» copies what the screen says, through the answer block's
                 <code>answerCopy</code>. «Kopier lenke til tråden» is offered only where the thread
                 is in the address.
@@ -433,6 +441,12 @@
               <li>
                 Should a question asked in a document be marked in the thread as one, as the
                 canvas's «Spørsmål til én kilde» does?
+              </li>
+              <li>
+                How should the facets be asked for a field with very many values chosen that still
+                narrows, such as 456 of Kudos's 457 «Virksomhet»? The address is too long to send,
+                so the filter says it could not fetch the fields. A POST, a list of the values left
+                out, or a cap on how many can be chosen would each do.
               </li>
               <li>
                 Dokumentvisning's jumps read the shell's pinned height only because the assembly
