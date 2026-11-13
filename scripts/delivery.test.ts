@@ -17,6 +17,7 @@ import {
   releaseName,
   summaryPrompt,
   tagOf,
+  weeklyDecision,
   weeklyDue,
   weeklyPrompt,
   weeklyText,
@@ -25,7 +26,7 @@ import {
   type Post,
   type Week,
 } from './delivery.ts';
-import type { Api } from './smoke/changes.ts';
+import { github, type Api } from './smoke/changes.ts';
 
 const repo = 'digdir/genki';
 const head = 'b'.repeat(40);
@@ -402,6 +403,27 @@ describe('the weekly window', () => {
 
   it('judges a late scheduled run by its schedule, not by when it started', () => {
     expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T12:40:00Z'))).toBe(false);
+  });
+
+  it('skips a scheduled run that started seven hours late', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T19:17:00Z'))).toBe(false);
+  });
+
+  it('runs a scheduled run that started at 13:05 in Oslo', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T12:05:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T11:05:00Z'))).toBe(true);
+  });
+
+  it('allows two hours of slack and no more, in winter and in summer', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T14:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T14:01:00Z'))).toBe(false);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T13:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T13:01:00Z'))).toBe(false);
+    expect(weeklyDue('0 12 * * 5', new Date('2026-07-10T12:05:00Z'))).toBe(false);
+  });
+
+  it('skips a scheduled run that crossed into the next day', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-14T00:30:00Z'))).toBe(false);
   });
 
   it('always runs when started by hand', () => {
@@ -866,5 +888,116 @@ describe('posting to Slack', () => {
     expect(
       (await postToSlack({ token: 't', channel: 'C1' }, 'hei', recorder(false).post)).via,
     ).toBe('failed');
+  });
+});
+
+describe('the weekly summary once a week', () => {
+  const runs = (list: { id: number; created_at: string }[], posted: number[]) => {
+    const api = (async (path: string) => {
+      if (path.includes('/workflows/weekly-summary.yml/runs'))
+        return { status: 200, body: { workflow_runs: list }, text: '' };
+      const id = Number(/\/runs\/(\d+)\/artifacts/.exec(path)?.[1]);
+      const artifacts = posted.includes(id) ? [{ name: 'weekly-posted', expired: false }] : [];
+      return { status: 200, body: { artifacts }, text: '' };
+    }) as Api;
+    return api;
+  };
+  const at = () => new Date('2026-11-13T12:05:00Z');
+  const decide = (api: Api, schedule = '0 12 * * 5') =>
+    weeklyDecision({ schedule, now: at, api, repo, runId: 3 });
+
+  it('skips a second post in the same week', async () => {
+    const api = runs([{ id: 2, created_at: '2026-11-13T10:00:00Z' }], [2]);
+    expect((await decide(api)).due).toBe(false);
+    expect((await decide(api, '')).due).toBe(false);
+  });
+
+  it('posts when the earlier run of the week did not post', async () => {
+    expect((await decide(runs([{ id: 2, created_at: '2026-11-13T10:00:00Z' }], []))).due).toBe(
+      true,
+    );
+  });
+
+  it('ignores a post from another week and the run itself', async () => {
+    const api = runs(
+      [
+        { id: 1, created_at: '2026-11-06T12:00:00Z' },
+        { id: 3, created_at: '2026-11-13T12:00:00Z' },
+      ],
+      [1, 3],
+    );
+    expect((await decide(api)).due).toBe(true);
+  });
+
+  it('does not look at earlier runs when the run is late', async () => {
+    const api = runs([], []);
+    const late = await weeklyDecision({
+      schedule: '0 12 * * 5',
+      now: () => new Date('2026-11-13T19:17:00Z'),
+      api,
+      repo,
+      runId: 3,
+    });
+    expect(late.due).toBe(false);
+  });
+});
+
+describe('temporary GitHub errors', () => {
+  const answer = (status: number, body: unknown = {}) =>
+    new Response(JSON.stringify(body), { status });
+
+  it('retries a 502 and succeeds on the next answer', async () => {
+    const send = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(answer(502))
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce(answer(200, { ok: true }));
+    const waits: number[] = [];
+    const api = github('t', { send, wait: async (ms) => void waits.push(ms) });
+    expect((await api('/repos/x/y')).body).toEqual({ ok: true });
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([500, 1000]);
+  });
+
+  it('gives up after the last try', async () => {
+    const send = vi.fn<typeof fetch>().mockImplementation(async () => answer(503));
+    const api = github('t', { send, wait: async () => undefined, tries: 3 });
+    await expect(api('/repos/x/y')).rejects.toThrow('503');
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it('never retries a write or an ordinary error', async () => {
+    const send = vi.fn<typeof fetch>().mockImplementation(async () => answer(502));
+    const api = github('t', { send, wait: async () => undefined });
+    await expect(api('/repos/x/y', { method: 'POST', body: {} })).rejects.toThrow('502');
+    expect(send).toHaveBeenCalledTimes(1);
+    send.mockClear().mockImplementation(async () => answer(500));
+    await expect(api('/repos/x/y')).rejects.toThrow('500');
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves out a pull request whose files keep failing and keeps the rest of the week', async () => {
+    const base = fakeApi({
+      [`/repos/${repo}/releases`]: [
+        {
+          tag_name: 'deploy-2026-11-12-0905',
+          html_url: 'https://github.com/x',
+          created_at: '2026-11-12T09:06:00Z',
+          body: '<!-- delivery-prs: 10,11 -->',
+        },
+      ],
+      ...pulls,
+    });
+    const api = (async (path: string, init?: Parameters<Api>[1]) => {
+      if (path.startsWith(`/repos/${repo}/pulls/10/files`)) throw new Error('GitHub answered 502');
+      return base(path, init);
+    }) as Api;
+    const collected = await collectWeek({
+      api,
+      repo,
+      now: () => new Date('2026-11-13T12:00:00Z'),
+      complete: null,
+    });
+    expect(collected.prs.map((p) => p.number)).toEqual([11]);
   });
 });
