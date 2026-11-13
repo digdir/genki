@@ -418,6 +418,18 @@ describe('the time each step took', () => {
     expect(step('Forsto spørsmålet').textContent).toContain('Forsto spørsmålet · 1.2 s');
   });
 
+  it('says «under 0,1 s» for a step that took less than it would round up to', () => {
+    render(
+      <Approach
+        variant="list"
+        steps={[{ id: 'read', title: 'Leste', status: 'done', duration: 30 }]}
+        working={false}
+        startedAt={started}
+      />,
+    );
+    expect(times()).toEqual([['under 0,1 s', 'PT0.0S']]);
+  });
+
   it('is left out of a step that waits', () => {
     render(
       <Approach

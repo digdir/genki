@@ -116,7 +116,9 @@ const StepTime = ({ ms, lead = '' }: { ms: number; lead?: string }) => {
     <span className="uib-approach-step-time">
       {lead}
       <time dateTime={`PT${seconds.toFixed(1)}S`}>
-        {t('approach.stepTime', { seconds: shown })}
+        {ms < 50
+          ? t('approach.stepTimeUnder', { seconds: f.decimal(0.1, 1) })
+          : t('approach.stepTime', { seconds: shown })}
       </time>
     </span>
   );
