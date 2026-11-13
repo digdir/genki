@@ -2101,6 +2101,60 @@ describe('the way back to the answer', () => {
   });
 });
 
+describe('footnotes per document in the next look, until genki cites excerpts', () => {
+  const documentMarks = () =>
+    [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].map((mark) =>
+      mark.getAttribute('aria-label'),
+    );
+  // The mark holds the word before it on its line, so the answer's words are read as a whole.
+  const answered = async () => {
+    await send();
+    await waitFor(() =>
+      expect(document.querySelector('.uib-answer-text')?.textContent).toContain('fast'),
+    );
+  };
+
+  it('draws a mark per cited document, which opens the document in Kilder', async () => {
+    draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
+    await answered();
+    await waitFor(() => expect(documentMarks()).toEqual(['Kilde 1: Tildelingsbrev 2022']));
+    fireEvent.click(screen.getByRole('link', { name: 'Kilde 1: Tildelingsbrev 2022' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe(
+        'true',
+      ),
+    );
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Tildelingsbrev 2022'));
+    expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
+  });
+
+  it('copies the marks as drawn, with a numbered line per document', async () => {
+    const clipboard: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+    draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
+    await answered();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Kopier svaret' }));
+    });
+    expect(clipboard).toEqual(['Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.']);
+  });
+
+  it('keeps one number per excerpt for an answer that cites excerpts', async () => {
+    await openStored(fromTemplate('knowledge-assistant-next').layout);
+    expect(documentMarks()).toEqual(['Utdrag 1: Tildelingsbrev 2022']);
+  });
+
+  it('leaves «Kunnskapsassistenten» drawing no mark for a document', async () => {
+    draw(fromTemplate('knowledge-assistant').layout, fakeApi().api, true);
+    await ask();
+    expect((await screen.findAllByText('Tildelingsbrev 2022')).length).toBeGreaterThan(0);
+    expect(documentMarks()).toEqual([]);
+  });
+});
+
 describe('copying from an answer', () => {
   let clipboard: string[] = [];
   beforeEach(() => {
