@@ -882,4 +882,11 @@ describe('the dev boards’ answer, `answerVariant="plain"` (dev-kilder-hoyre)',
     draw({ assistantName: 'Kunnskapsassistenten' });
     expect(document.querySelector('.uib-conversation-label')).toBeNull();
   });
+
+  it('leaves out the label over a plain answer with `answerLabel={false}`, still with no card', () => {
+    draw({ answerVariant: 'plain', answerLabel: false, assistantName: 'Kunnskapsassistenten' });
+    expect(document.querySelector('.uib-conversation-label')).toBeNull();
+    expect(screen.queryByText('Kunnskapsassistenten')).toBeNull();
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
+  });
 });

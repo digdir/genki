@@ -22,6 +22,7 @@ import {
 } from '@genai/ui-blocks';
 import type { AnswerMarker, StreamEvent } from '@genai/client';
 import { InLocale } from '@genai/i18n/react';
+import { FileSearchIcon } from '@navikt/aksel-icons';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGenkiApi, HttpError, type AskParams, type AssistantApi } from './api.js';
@@ -971,22 +972,72 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(within(tools).getByRole('button', { name: 'Kilder, velg verktøy' })).toBeTruthy();
   });
 
-  it('shows the folded panel as its button and one button per tool, which opens it on that tool (dev-verktoy-4)', async () => {
+  it('folds the tool panel to its button alone, with no tool icons (dev-verktoy-4)', async () => {
     drawNext();
     await opened();
     const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
-    const rail = tools.querySelector<HTMLElement>('.uib-shell-rail');
-    if (!rail) throw new Error('The folded panel shows no tools');
-    expect([...rail.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'))).toEqual([
-      'Fremgangsmåte',
-      'Kilder',
-    ]);
-    fireEvent.click(within(rail).getByRole('button', { name: 'Kilder' }));
-    expect(screen.getByRole('button', { name: 'Skjul verktøypanelet' })).toBeTruthy();
-    expect(within(tools).getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
     expect(tools.querySelector('.uib-shell-rail')).toBeNull();
+    expect(
+      within(tools)
+        .getAllByRole('button')
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Vis verktøypanelet']);
+  });
+
+  it('folds the threads’ panel to its button and «Ny tråd», with no avatar (dev-navbar)', async () => {
+    drawNext();
+    await opened();
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
+    const nav = screen.getByRole('navigation', { name: 'Tråder og filter' });
+    const rail = nav.querySelector<HTMLElement>('.uib-shell-rail');
+    if (!rail) throw new Error('The folded panel has no rail');
+    expect(within(rail).getByRole('link', { name: 'Ny tråd' }).getAttribute('href')).toBe('/');
+    expect(nav.querySelector('.uib-shell-rail-foot')).toBeNull();
+    expect(within(nav).queryByRole('button', { name: 'Kari Marie Nordmann' })).toBeNull();
+    expect(
+      within(nav)
+        .getAllByRole('button')
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Vis tråder og filter']);
+  });
+
+  it('starts a new thread from «Ny tråd» on the folded threads’ panel', async () => {
+    drawNext();
+    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
+    const rail = document.querySelector<HTMLElement>('.uib-shell-rail');
+    fireEvent.click(within(rail as HTMLElement).getByRole('link', { name: 'Ny tråd' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Ny tråd' })).toBeTruthy();
+    expect(location.search).toBe('');
+  });
+
+  it('gives Kilder Aksel’s FileSearch icon in the switcher (dev-verktoy-2)', async () => {
+    drawNext();
+    await opened();
+    fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
+    const tab = within(screen.getByRole('tablist', { name: 'Verktøy' })).getByRole('tab', {
+      name: 'Kilder',
+    });
+    const drawn = render(<FileSearchIcon aria-hidden />).container.querySelector('svg');
+    expect(tab.querySelector('svg')?.innerHTML).toBe(drawn?.innerHTML);
+  });
+
+  it('draws the answer with no name over it (dev-kilder-hoyre)', async () => {
+    drawNext();
+    await ask();
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(true);
+    expect(document.querySelector('.uib-conversation-label')).toBeNull();
+  });
+
+  it('draws the footnote marks 16 px tall, through --genai-answer-footnote-size (dev-kilder-hoyre)', async () => {
+    drawNext();
+    await opened();
+    expect(
+      document
+        .querySelector<HTMLElement>('.uia-chat')
+        ?.style.getPropertyValue('--genai-answer-footnote-size'),
+    ).toBe('var(--ds-size-4)');
   });
 
   it('lists the steps of a question asked here in «Fremgangsmåte», each with its mark', async () => {
@@ -1304,6 +1355,17 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(screen.queryByRole('button', { name: 'Kari Marie Nordmann' })).toBeNull();
     expect(document.querySelector('.uia-chat')?.getAttribute('style')).toBeNull();
   });
+
+  it('leaves «Kunnskapsassistenten»’s folded panels and answer as they were: no rails, a card with no label', async () => {
+    drawNext(reader, fromTemplate('knowledge-assistant').layout);
+    await ask();
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul tråder og filter' }));
+    expect(document.querySelector('.uib-shell-rail, .uib-shell-rail-foot')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Ny tråd' })).toBeNull();
+    expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(false);
+    expect(document.querySelector('.uib-conversation-label')).toBeNull();
+    expect(document.querySelector('.uia-chat')?.getAttribute('style')).toBeNull();
+  });
 });
 
 describe('the filter in the next look (dev-filter-panel)', () => {
@@ -1386,18 +1448,17 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     );
   });
 
-  it('says under the field how many documents the next question reads from, and its values', async () => {
+  it('draws no line under the field about what the next question reads from (dev-filter-panel)', async () => {
     drawNext(counted().api);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
-    await waitFor(() =>
-      expect(note()).toBe('Neste spørsmål leser fra 5 dokumenter – endres i filteret til venstre'),
-    );
     await tick(/^Årsrapport/);
     await waitFor(() =>
-      expect(note()).toBe(
-        'Neste spørsmål leser fra 3 dokumenter · Årsrapport – endres i filteret til venstre',
+      expect(document.querySelector('.uib-documents-scope-summary')?.textContent).toBe(
+        'Assistenten leser fra 3 av 5 dokumenter i Kudos',
       ),
     );
+    expect(note()).toBeUndefined();
+    expect(screen.queryByText(/Neste spørsmål leser fra/)).toBeNull();
   });
 
   it('says the filter inside Fremgangsmåte, and «filteret er endret» only when it changed', async () => {
