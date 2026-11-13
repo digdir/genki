@@ -57,7 +57,7 @@ export interface FilterProps {
   newThreadHref?: string | undefined;
   /** A field of kind `year` takes periods, and years in a row show as one chip. */
   yearPeriods?: boolean | undefined;
-  /** One chip also for six or more values chosen; every value a field lists is one chip without it. */
+  /** One chip for six or more chosen values too; two or more that are all it lists always are. */
   compactChips?: boolean | undefined;
   /** The most values a field can send; more shows a warning. */
   maxValues?: number | undefined;

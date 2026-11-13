@@ -24,7 +24,7 @@ export interface FieldProps {
   selected: readonly string[];
   /** `said` is for the filter's live region: the change, where u-combobox says nothing. */
   onChange: (values: string[], said?: string) => void;
-  /** One chip also for `COMPACT_FROM` or more chosen values; all chosen is one chip without it. */
+  /** One chip for `COMPACT_FROM` or more chosen values too; two or more that are all always are. */
   compact: boolean;
   /** Most values a field may send. */
   max: number;
