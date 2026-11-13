@@ -159,7 +159,8 @@ const AnswerRow = ({
                     void copy(new URL(a.hrefOf(a.currentId), location.href).href, {
                       kind: 'link',
                     }),
-                  linkOnlyHere: true,
+                  // The next look keeps the answer's time but no note that the link works only here.
+                  linkOnlyHere: a.look !== 'next',
                 }
               : {}),
           }
@@ -452,7 +453,8 @@ export const AssistantView = ({
       );
     }
     const suggestions = a.option('chat', 'suggestions') ? (a.profile?.suggestions ?? []) : [];
-    const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
+    // The next look offers no follow-ups under an answer: no board draws them.
+    const followUps = a.option('chat', 'followUps') && !next ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
     return (
       <div
