@@ -50,6 +50,31 @@ export const readEachPage = async (
   return pages;
 };
 
+// The parse errors pdf.js raises for a broken object; a page it cannot read can leave one unhandled.
+const pdfParseErrors = new Set(['FormatError', 'UnknownErrorException', 'InvalidPDFException']);
+
+/** Whether an unhandled rejection is a parse error pdf.js left behind for a page it could not read. */
+export const isPdfParseLeak = (reason: unknown): boolean =>
+  typeof reason === 'object' &&
+  reason !== null &&
+  pdfParseErrors.has(String((reason as { name?: unknown }).name));
+
+/**
+ * Keeps the process alive when pdf.js leaves a page's parse error unhandled: the page has already
+ * failed and been left empty. Any other unhandled rejection is thrown again, so it still ends the
+ * process as it would without a handler.
+ */
+export const guardPdfParseLeaks = (
+  log: (msg: string, fields: Record<string, unknown>) => void,
+  target: Pick<NodeJS.Process, 'on'> = process,
+) => {
+  target.on('unhandledRejection', (reason) => {
+    if (!isPdfParseLeak(reason)) throw reason;
+    const { name, message } = reason as Error;
+    log('pdf.js left a parse error unhandled', { error: `${name}: ${message}` });
+  });
+};
+
 export const localConverterExtensions = ['.pdf', '.docx', '.md', '.txt', '.html', '.htm'];
 
 export class UnsupportedDocumentError extends Error {

@@ -58,7 +58,7 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, guardPdfParseLeaks } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
@@ -105,6 +105,8 @@ import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
+// pdf.js can leave a page's parse error unhandled; that page is already left empty (ADR 0042).
+guardPdfParseLeaks(log);
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
