@@ -60,6 +60,9 @@ const literalSizes = (flat: string) => {
 
 const bareWeights = (css: string) => css.match(/font-weight:(?!\s*var\()[^;}]*/g) ?? [];
 
+// A style query reads a variable, as in `@container style(--genai-block-lines: 1)`.
+const variablesSet = (css: string) => css.match(/(?<!style\()--genai-[a-z-]+\s*:/g) ?? [];
+
 // Pinned to a colour family on purpose, each with a comment in the CSS.
 const accentPins = [
   '--genai-sources-toggle-color',
@@ -115,7 +118,7 @@ describe.each(sheets)('the styles in $path', ({ path, css, flat }) => {
   });
 
   it('never set a --genai- variable, which is the host’s to set', () => {
-    expect(css).not.toMatch(/--genai-[a-z-]+\s*:/);
+    expect(variablesSet(css)).toEqual([]);
   });
 
   it('sit in one layer after Designsystemet’s, so a host’s own CSS wins', () => {
@@ -165,6 +168,13 @@ describe('the lint', () => {
       .replace(/@import '[^']+';/g, '')
       .replace(/\.uib-visually-hidden \{[^}]*\}/, '');
     expect(rest.trim()).toBe('');
+  });
+
+  it('takes a style query on a --genai- variable as a read, and a declaration of one as a set', () => {
+    expect(variablesSet('@container style(--genai-block-lines: 1) { a { color: red; } }')).toEqual(
+      [],
+    );
+    expect(variablesSet('a { --genai-block-lines: 1; }')).toEqual(['--genai-block-lines:']);
   });
 
   it.each([
