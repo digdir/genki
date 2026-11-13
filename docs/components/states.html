@@ -43,7 +43,11 @@
               <dt>Sits in</dt>
               <dd>Inside a panel or a block, or as the whole page</dd>
               <dt>Issue</dt>
-              <dd>None yet</dd>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/228"
+                  >kunnskapsassistenten#228</a
+                >
+              </dd>
               <dt>Code</dt>
               <dd>
                 <code>EmptyState</code>, <code>ErrorState</code> and <code>NotFoundState</code> in
@@ -288,6 +292,53 @@
             </ul>
           </div>
           <div class="wide">
+            <h2>Parity with Kunnskapsassistenten</h2>
+            <p>
+              Drawn side by side on 13 November 2026: kunnskapsassistenten's
+              <code>components/EmptyState</code>, <code>ErrorState</code> and
+              <code>NotFoundState</code> with their rules in <code>styles/global.css</code>, from
+              its main at <code>ef434b7a</code>, beside this package's states at
+              <code>26f11892</code>. Both ran under kunnskapsassistenten's theme and Designsystemet
+              1.23.0, in Chrome at 1440 px, in five cases: empty in a panel with an action, empty as
+              a page, an error with a heading and «Prøv igjen», the alert region with no error, and
+              not found.
+            </p>
+            <ul>
+              <li>
+                <strong>The same:</strong> all 17 elements, each compared with its pair: 22 computed
+                properties, among them colour, background, font, size, weight, line height, margins,
+                padding, gap, border and radius; the width and height of its box; and its role,
+                <code>tabindex</code>, link, <code>data-color</code>, <code>data-size</code>
+                and text. 539 values, and none differs. The accessibility trees are the same too:
+                the heading levels, the alert region with and without its error, the button and the
+                link.
+              </li>
+              <li>
+                <strong>Ported, with tests:</strong> the error is announced when it appears, from a
+                region already in the page, and the empty state never; focus after a retry goes to
+                the given target or the region, and is left alone when the app moved it or the error
+                cleared on its own; not found is a level 2 empty state, not an alert.
+              </li>
+              <li>
+                <strong>Changed on purpose:</strong> «Prøv igjen», «Gå til forsiden» and the texts
+                of a page that does not exist come from the states' catalogue, in bokmål and
+                English, where kunnskapsassistenten took <code>retryLabel</code> and wrote the rest
+                in place. Not found takes its way out as data, <code>homeHref</code> and
+                <code>onGoHome</code>, instead of kunnskapsassistenten's router link.
+              </li>
+              <li>
+                <strong>Decided:</strong> the error's heading follows where it sits, through
+                <code>headingLevel</code>, as the empty state's follows <code>level</code>. Its
+                default, 3, is the level kunnskapsassistenten always gave it.
+              </li>
+              <li>
+                <strong>Added:</strong> <code>kind</code>, with the error texts of
+                kunnskapsassistenten's <code>views/chat/errorText.ts</code>, and
+                <code>CrashBoundary</code>.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
             <h2>What we have learned</h2>
             <ul>
               <li>
@@ -301,15 +352,6 @@
               <li>
                 One alert region per block, not one per error: two voices in no order are harder to
                 follow than one.
-              </li>
-            </ul>
-          </div>
-          <div class="wide open-questions">
-            <h2>Open questions</h2>
-            <ul>
-              <li>
-                The error's heading is always level 3, as in Kunnskapsassistenten. Should it follow
-                where it sits, as the empty state does?
               </li>
             </ul>
           </div>
