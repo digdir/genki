@@ -1,7 +1,16 @@
-import type { StreamEvent } from '@genai/client';
+import { ApiError, type StreamEvent } from '@genai/client';
 import { readFootnotes } from '@genai/ui-blocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGenkiApi, filterSet, FilterTooLarge, sourceFromWire } from './api.js';
+import {
+  type AssistantApi,
+  createGenkiApi,
+  failureOf,
+  filterSet,
+  FilterTooLarge,
+  type GenkiApiOptions,
+  HttpError,
+  sourceFromWire,
+} from './api.js';
 
 // A service that cites excerpts: one document, two excerpts, `[1]` and `[2]` one each.
 const wireSource = {
@@ -346,6 +355,151 @@ describe('the run behind an answer', () => {
     );
     const { turns } = await api().loadThread('t1');
     expect(turns[0]?.answer).not.toHaveProperty('runId');
+  });
+});
+
+// A host that calls genki with the person's token, as the workspace does.
+describe('the host’s credentials', () => {
+  // genki, refusing with 401 where `refused` says; returns each request's address and headers.
+  const genki = (refused: (url: string) => boolean = () => false, threadStatus = 200) => {
+    const sent: { url: string; headers: Headers }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        sent.push({ url, headers: new Headers(init?.headers) });
+        if (refused(url)) return Response.json({ error: 'unauthorized' }, { status: 401 });
+        const path = url.split('?')[0];
+        if (path === '/genki/api/conversations' && init?.method === 'POST')
+          return threadStatus === 200
+            ? json({ conversation: { id: 't1' } })
+            : Response.json({ error: 'not here' }, { status: threadStatus });
+        if (path === '/genki/v1/models') return json({ data: [] });
+        if (path === '/genki/api/conversations') return json({ conversations: [] });
+        if (path === '/genki/api/conversations/t1')
+          return json({ conversation: { id: 't1', topic: null, tags: [] }, messages: [] });
+        if (path === '/genki/api/datasets') return json({ datasets: [] });
+        if (path === '/genki/api/datasets/kudos')
+          return json({ dataset: { filters: [{ field: 'year', kinds: ['multiselect'] }] } });
+        if (path === '/genki/api/facets') return json({ fields: [] });
+        return stream({ id: 'a1', choices: [{ delta: { content: 'Svar.' } }] }, '[DONE]');
+      }),
+    );
+    return sent;
+  };
+
+  const withHeaders = (headers: GenkiApiOptions['headers']) =>
+    createGenkiApi({ baseUrl: '/genki', tenant: 'digdir', headers });
+
+  const ask = async (assistant: AssistantApi, conversationId?: string) => {
+    const events: StreamEvent[] = [];
+    for await (const event of assistant.ask({
+      question: 'Ventetid?',
+      model: 'ka__default',
+      conversationId,
+      steps: true,
+      signal: new AbortController().signal,
+    }))
+      events.push(event);
+    return events;
+  };
+
+  const bearer = () => ({ authorization: 'Bearer tok' });
+
+  it('sends the host’s headers with every read', async () => {
+    const sent = genki();
+    const reads = withHeaders(bearer);
+    await reads.loadModels();
+    await reads.loadThreads();
+    await reads.loadThread('t1');
+    await reads.loadCorpora();
+    await reads.loadFacets({}, 'kudos', await reads.loadFields('kudos'));
+    expect(sent.map((r) => [r.url.split('?')[0], r.headers.get('authorization')])).toEqual([
+      ['/genki/v1/models', 'Bearer tok'],
+      ['/genki/api/conversations', 'Bearer tok'],
+      ['/genki/api/conversations/t1', 'Bearer tok'],
+      ['/genki/api/datasets', 'Bearer tok'],
+      ['/genki/api/datasets/kudos', 'Bearer tok'],
+      ['/genki/api/facets', 'Bearer tok'],
+    ]);
+  });
+
+  it('sends the host’s headers with the new thread and with the question’s stream', async () => {
+    const sent = genki();
+    await ask(withHeaders(async () => bearer()));
+    expect(sent.map((r) => [r.url, r.headers.get('authorization')])).toEqual([
+      ['/genki/api/conversations', 'Bearer tok'],
+      ['/genki/v1/chat/completions', 'Bearer tok'],
+    ]);
+  });
+
+  it('asks the host for its headers before each request, so a renewed token is used', async () => {
+    const sent = genki();
+    let renewed = 0;
+    await ask(
+      withHeaders(() => {
+        renewed += 1;
+        return { authorization: `Bearer tok-${renewed}` };
+      }),
+    );
+    expect(sent.map((r) => r.headers.get('authorization'))).toEqual([
+      'Bearer tok-1',
+      'Bearer tok-2',
+    ]);
+  });
+
+  it('keeps the assembly’s own Accept and Content-Type over the host’s', async () => {
+    const sent = genki();
+    await ask(
+      withHeaders(() => ({ ...bearer(), accept: 'text/html', 'content-type': 'text/plain' })),
+    );
+    expect(sent.map((r) => [r.headers.get('accept'), r.headers.get('content-type')])).toEqual([
+      ['application/json', 'application/json'],
+      ['text/event-stream', 'application/json'],
+    ]);
+  });
+
+  it('adds no credentials for a host that passes none, as one behind a proxy', async () => {
+    const sent = genki();
+    const plain = api();
+    await plain.loadModels();
+    await ask(plain);
+    expect(sent.map((r) => r.headers.has('authorization'))).toEqual([false, false, false]);
+  });
+
+  it('fails a read refused with 401 with that status, which the assembly calls access', async () => {
+    genki(() => true);
+    const error = await withHeaders(bearer)
+      .loadModels()
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpError);
+    expect((error as HttpError).status).toBe(401);
+    expect(failureOf(error)).toEqual({ kind: 'access' });
+  });
+
+  it('fails a question whose stream is refused with 401 with that status, as access', async () => {
+    genki((url) => url.endsWith('/v1/chat/completions'));
+    const error = await ask(withHeaders(bearer), 't1').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(401);
+    expect(failureOf(error)).toEqual({ kind: 'access' });
+  });
+
+  it('stops at a new thread refused with 401, without sending the question', async () => {
+    const sent = genki((url) => url.endsWith('/api/conversations'));
+    const error = await ask(withHeaders(bearer)).catch((e: unknown) => e);
+    expect((error as HttpError).status).toBe(401);
+    expect(failureOf(error)).toEqual({ kind: 'access' });
+    expect(sent.map((r) => r.url)).toEqual(['/genki/api/conversations']);
+  });
+
+  it('asks without a thread when the new thread fails for another reason', async () => {
+    const sent = genki(() => false, 404);
+    const events = await ask(withHeaders(bearer));
+    expect(sent.map((r) => r.url)).toEqual([
+      '/genki/api/conversations',
+      '/genki/v1/chat/completions',
+    ]);
+    expect(events.some((e) => e.type === 'conversation')).toBe(false);
   });
 });
 
