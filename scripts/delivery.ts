@@ -169,16 +169,20 @@ const filesOf = async (api: Api, repo: string, number: number) => {
 export const pullsOf = async (api: Api, repo: string, numbers: number[]): Promise<Pr[]> => {
   const prs: Pr[] = [];
   for (const number of numbers.slice(0, limits.prs)) {
-    const found = await api(`/repos/${repo}/pulls/${number}`, { allow: [404] });
-    if (found.status === 404) continue;
-    const pull = found.body as PullResponse;
-    prs.push({
-      number,
-      title: pull.title,
-      url: pull.html_url,
-      body: (pull.body ?? '').slice(0, limits.bodyChars),
-      area: areaOf(await filesOf(api, repo, number)),
-    });
+    try {
+      const found = await api(`/repos/${repo}/pulls/${number}`, { allow: [404] });
+      if (found.status === 404) continue;
+      const pull = found.body as PullResponse;
+      prs.push({
+        number,
+        title: pull.title,
+        url: pull.html_url,
+        body: (pull.body ?? '').slice(0, limits.bodyChars),
+        area: areaOf(await filesOf(api, repo, number)),
+      });
+    } catch {
+      notice(`Could not read pull request #${number}, so it is left out.`);
+    }
   }
   return prs;
 };
@@ -554,6 +558,9 @@ const osloHour = (at: Date) =>
 
 export const summaryHour = 13;
 
+const lateAllowance = 2 * 60 * 60 * 1000;
+const earlyAllowance = 60 * 1000;
+
 export const weeklyDue = (schedule: string, now: Date) => {
   if (!schedule) return true;
   const match = /^(\d{1,2}) (\d{1,2}) /.exec(schedule);
@@ -567,7 +574,56 @@ export const weeklyDue = (schedule: string, now: Date) => {
       Number(match[1]),
     ),
   );
-  return osloHour(planned) === summaryHour;
+  const late = now.getTime() - planned.getTime();
+  return osloHour(planned) === summaryHour && late >= -earlyAllowance && late <= lateAllowance;
+};
+
+export const postedArtifact = 'weekly-posted';
+
+export const weeklyPostedThisWeek = async (api: Api, repo: string, runId: number, now: Date) => {
+  const week = isoWeekKey(now.toISOString());
+  const { body } = await api(
+    `/repos/${repo}/actions/workflows/weekly-summary.yml/runs?branch=main&per_page=30`,
+  );
+  const runs =
+    (body as { workflow_runs?: { id: number; created_at: string }[] } | undefined)?.workflow_runs ??
+    [];
+  for (const run of runs.filter((r) => r.id !== runId && isoWeekKey(r.created_at) === week)) {
+    const found = await api(
+      `/repos/${repo}/actions/runs/${run.id}/artifacts?name=${postedArtifact}`,
+    );
+    const artifacts =
+      (found.body as { artifacts?: { name: string; expired: boolean }[] } | undefined)?.artifacts ??
+      [];
+    if (artifacts.some((a) => a.name === postedArtifact && !a.expired)) return true;
+  }
+  return false;
+};
+
+export const weeklyDecision = async (deps: {
+  schedule: string;
+  now: () => Date;
+  api: Api;
+  repo: string;
+  runId: number;
+}): Promise<{ due: boolean; reason: string | null }> => {
+  const at = deps.now();
+  if (!weeklyDue(deps.schedule, at))
+    return {
+      due: false,
+      reason:
+        'This schedule is not the one for 13:00 in Oslo today, or it started more than two hours late; nothing to do.',
+    };
+  try {
+    if (await weeklyPostedThisWeek(deps.api, deps.repo, deps.runId, at))
+      return {
+        due: false,
+        reason: 'The weekly summary already went out this week; nothing to do.',
+      };
+  } catch {
+    notice('Could not check earlier runs, so the summary is treated as not yet posted.');
+  }
+  return { due: true, reason: null };
 };
 
 export interface ServiceWeek {
@@ -717,12 +773,22 @@ const osloParts = (iso: string) => {
   return { year: Number(part('year')), month: part('month'), day: Number(part('day')) };
 };
 
-export const isoWeek = (iso: string) => {
+const isoWeekParts = (iso: string) => {
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo' }).format(new Date(iso));
   const date = new Date(`${day}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
   const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
-  return Math.ceil(((date.getTime() - yearStart) / 86_400_000 + 1) / 7);
+  return {
+    year: date.getUTCFullYear(),
+    week: Math.ceil(((date.getTime() - yearStart) / 86_400_000 + 1) / 7),
+  };
+};
+
+export const isoWeek = (iso: string) => isoWeekParts(iso).week;
+
+const isoWeekKey = (iso: string) => {
+  const { year, week } = isoWeekParts(iso);
+  return `${year}-${week}`;
 };
 
 const dateRange = (fromIso: string, toIso: string) => {
@@ -920,8 +986,12 @@ const commands: Record<string, () => Promise<void>> = {
     notice(url ? `Release ${log.tag} created.` : `Release ${log.tag} already exists.`);
   },
   'weekly-due': async () => {
-    const due = weeklyDue(process.env.SCHEDULE ?? '', new Date());
-    if (!due) notice('This schedule is the one for the other half of the year; nothing to do.');
+    const { due, reason } = await weeklyDecision({
+      ...required(),
+      schedule: process.env.SCHEDULE ?? '',
+      now: () => new Date(),
+    });
+    if (reason) notice(reason);
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `due=${due}\n`);
   },
   'weekly-collect': async () => {
@@ -939,7 +1009,10 @@ const commands: Record<string, () => Promise<void>> = {
     if (!week) return notice('No weekly summary was collected, so nothing is posted.');
     const text = weeklyText(week);
     if (!text) return notice('Nothing was deployed this week, so nothing is posted.');
-    reportPost(await postToSlack(slackConfig(), text, slackPost), 'the weekly summary');
+    const posted = await postToSlack(slackConfig(), text, slackPost);
+    reportPost(posted, 'the weekly summary');
+    if (!('reason' in posted))
+      writeFileSync(join(outDir(), 'posted.json'), JSON.stringify({ postedAt: new Date() }));
   },
 };
 

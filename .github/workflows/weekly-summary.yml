@@ -8,6 +8,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: weekly-summary
+  cancel-in-progress: false
+
 jobs:
   collect:
     if: github.ref == 'refs/heads/main'
@@ -16,6 +20,7 @@ jobs:
     environment: smoke-review
     permissions:
       contents: read
+      actions: read
       pull-requests: read
       id-token: write
     outputs:
@@ -26,8 +31,9 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - id: due
-        name: Run only the schedule that is 13:00 in Oslo
+        name: Run only the schedule that is 13:00 in Oslo, once a week
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           SCHEDULE: ${{ github.event.schedule }}
         run: node scripts/delivery.ts weekly-due
       - id: login
@@ -77,3 +83,9 @@ jobs:
           SLACK_DEPLOY_CHANNEL: ${{ vars.SLACK_DEPLOY_CHANNEL }}
           SLACK_DEPLOY_WEBHOOK: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
         run: node scripts/delivery.ts weekly-post
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: weekly-posted
+          path: delivery-out/posted.json
+          retention-days: 30
+          if-no-files-found: ignore
