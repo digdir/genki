@@ -1,7 +1,7 @@
 /**
  * Pages from a `DoclingDocument`, derivation `docling-pages` 1 (ADR 0042, "Conversion"): the body
  * in reading order, grouped by the page of each item's first box, without furniture, empty items
- * and bare page numbers. Text inside a picture counts only on a page with no other text.
+ * and bare page numbers. Text inside a picture counts only on a page with almost no other text.
  */
 
 interface Ref {
@@ -16,6 +16,11 @@ interface Box {
   coord_origin?: string;
 }
 
+interface GridCell {
+  text?: string;
+  column_header?: boolean;
+}
+
 interface Node {
   self_ref: string;
   label?: string;
@@ -26,7 +31,7 @@ interface Node {
   text?: string;
   enumerated?: boolean;
   marker?: string;
-  data?: { grid?: { text?: string }[][] };
+  data?: { grid?: GridCell[][] };
 }
 
 /** A `DoclingDocument` as Docling's `export_to_dict` writes it: only the parts the pages read. */
@@ -39,8 +44,8 @@ export interface DoclingDocument {
   pages: Record<string, { page_no?: number; size?: { width: number; height: number } }>;
 }
 
-/** Under this many characters of other text, a page takes the text inside its pictures. */
-export const pictureTextBelow = 20;
+/** Under this many characters of other text, captions not counted, a page takes its pictures' text. */
+const pictureTextBelow = 20;
 const maxHeadingLevel = 4;
 /** At least this share of a document's headings must carry a section number to level them by it. */
 const minNumberedShare = 0.3;
@@ -54,6 +59,8 @@ interface Block {
   markdown: string;
   chars: number;
   inPicture: boolean;
+  /** A picture's caption: kept, but not counted as other text on its page. */
+  caption: boolean;
   list?: string;
 }
 
@@ -72,12 +79,40 @@ const numberDepth = (heading: string) => {
 const cell = (text: string | undefined) =>
   (text ?? '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|');
 
-const markdownTable = (grid: { text?: string }[][]) => {
+/**
+ * How many leading rows form the column header: the run of rows with a cell marked as one, and no
+ * other text outside the first column; the first row when no cell is marked.
+ */
+const headerRowCount = (grid: GridCell[][]) => {
+  if (!grid.some((row) => row.some((c) => c.column_header))) return 1;
+  let count = 0;
+  for (const row of grid) {
+    const marked = row.some((c) => c.column_header);
+    const body = row.some((c, col) => col > 0 && !c.column_header && cell(c.text) !== '');
+    if (!marked || (count > 0 && body)) break;
+    count += 1;
+  }
+  return Math.max(count, 1);
+};
+
+/** Stacked header rows as one, per column joined with " - " as Docling's own Markdown does. */
+const flattenHeader = (rows: string[][]) =>
+  (rows[0] ?? []).map((_, col) =>
+    rows
+      .reduce<string[]>((parts, row) => {
+        const text = row[col] ?? '';
+        return text === '' || text === parts.at(-1) ? parts : [...parts, text];
+      }, [])
+      .join(' - '),
+  );
+
+const markdownTable = (grid: GridCell[][]) => {
   const rows = grid.map((row) => row.map((c) => cell(c.text)));
-  const [header, ...rest] = rows;
-  if (!header || rows.every((row) => row.every((c) => c === ''))) return undefined;
+  if (rows.length === 0 || rows.every((row) => row.every((c) => c === ''))) return undefined;
+  const headers = headerRowCount(grid);
+  const header = flattenHeader(rows.slice(0, headers));
   const line = (row: string[]) => `| ${row.join(' | ')} |`;
-  return [line(header), line(header.map(() => '---')), ...rest.map(line)].join('\n');
+  return [line(header), line(header.map(() => '---')), ...rows.slice(headers).map(line)].join('\n');
 };
 
 export const doclingPages = (document: DoclingDocument): string[] => {
@@ -128,13 +163,21 @@ export const doclingPages = (document: DoclingDocument): string[] => {
 
   interface Context {
     inPicture: boolean;
+    caption?: boolean;
     list?: { ref: string; depth: number; ordered: boolean; counter: { n: number } };
   }
 
   const emit = (node: Node, markdown: string, chars: number, context: Context, list?: string) => {
     const page = firstPage(node);
     if (page === undefined) return;
-    blocks.push({ page, markdown, chars, inPicture: context.inPicture, ...(list ? { list } : {}) });
+    blocks.push({
+      page,
+      markdown,
+      chars,
+      inPicture: context.inPicture,
+      caption: context.caption === true,
+      ...(list ? { list } : {}),
+    });
   };
 
   const renderText = (node: Node, context: Context) => {
@@ -199,7 +242,7 @@ export const doclingPages = (document: DoclingDocument): string[] => {
 
   const renderPicture = (node: Node, context: Context) => {
     const captions = new Set((node.captions ?? []).map((c) => c.$ref));
-    for (const ref of captions) visit(ref, context);
+    for (const ref of captions) visit(ref, { ...context, caption: true });
     for (const child of node.children ?? [])
       if (!captions.has(child.$ref)) visit(child.$ref, { inPicture: true });
   };
@@ -222,7 +265,9 @@ export const doclingPages = (document: DoclingDocument): string[] => {
   const pages: Block[][] = Array.from({ length: pageCount }, () => []);
   for (const block of blocks) pages[block.page - 1]?.push(block);
   return pages.map((page) => {
-    const other = page.filter((b) => !b.inPicture).reduce((sum, b) => sum + b.chars, 0);
+    const other = page
+      .filter((b) => !b.inPicture && !b.caption)
+      .reduce((sum, b) => sum + b.chars, 0);
     const kept = other < pictureTextBelow ? page : page.filter((b) => !b.inPicture);
     return kept.reduce((markdown, block, i) => {
       if (i === 0) return block.markdown;

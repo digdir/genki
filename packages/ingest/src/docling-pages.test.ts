@@ -59,7 +59,7 @@ const doc = (pages: number, build: (add: Adder) => void): DoclingDocument => {
       groups.push(item);
       return attach(item, parent);
     },
-    table: (page, rows, parent) => {
+    table: (page, rows, parent, headerRows = 0) => {
       const item: Item = {
         self_ref: `#/tables/${tables.length}`,
         children: [],
@@ -70,7 +70,7 @@ const doc = (pages: number, build: (add: Adder) => void): DoclingDocument => {
         data: {
           num_rows: rows.length,
           num_cols: rows[0]?.length ?? 0,
-          grid: rows.map((row) => row.map((text) => ({ text }))),
+          grid: rows.map((row, r) => row.map((text) => ({ text, column_header: r < headerRows }))),
         },
       };
       tables.push(item);
@@ -118,7 +118,7 @@ interface Adder {
     options?: { parent?: string; layer?: string; top?: number },
   ): string;
   group(label: string, parent?: string): string;
-  table(page: number, rows: string[][], parent?: string): string;
+  table(page: number, rows: string[][], parent?: string, headerRows?: number): string;
   picture(page: number): string;
   caption(owner: string, text: string, page: number): string;
 }
@@ -350,5 +350,36 @@ describe('docling-pages', () => {
       }),
     );
     expect(pages).toEqual(['Innledning\n\n41']);
+  });
+
+  it('joins a column header of several rows into one header row', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        add.table(
+          1,
+          [
+            ['Varighet', 'Type eiendel', 'Type eiendel'],
+            ['Varighet', 'Maskiner', 'Sum'],
+            ['Under 1 år', '1 200', '206 932 833'],
+          ],
+          undefined,
+          2,
+        );
+      }),
+    );
+    expect(pages).toEqual([
+      '| Varighet | Type eiendel - Maskiner | Type eiendel - Sum |\n| --- | --- | --- |\n| Under 1 år | 1 200 | 206 932 833 |',
+    ]);
+  });
+
+  it('a caption does not count toward the text that keeps picture text out', () => {
+    const pages = doclingPages(
+      doc(1, (add) => {
+        const picture = add.picture(1);
+        add.caption(picture, 'Figur 3: Organisasjonskart for direktoratet', 1);
+        add.text('text', 'Direktør', 1, { parent: picture });
+      }),
+    );
+    expect(pages).toEqual(['Figur 3: Organisasjonskart for direktoratet\n\nDirektør']);
   });
 });
