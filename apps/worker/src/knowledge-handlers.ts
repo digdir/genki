@@ -257,47 +257,22 @@ const derivationOf = (converter: string) =>
 type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
 type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
 
-/** Error codes and names of a converter host that could not answer: tried again, never a refusal. */
-const unavailable = new Set([
-  'AbortError',
-  'TimeoutError',
-  'ECONNRESET',
-  'ECONNREFUSED',
-  'ETIMEDOUT',
-  'EPIPE',
-  'ENOTFOUND',
-  'EAI_AGAIN',
-  'UND_ERR_HEADERS_TIMEOUT',
-  'UND_ERR_BODY_TIMEOUT',
-  'UND_ERR_CONNECT_TIMEOUT',
-  'UND_ERR_SOCKET',
-]);
-
-/** Whether an error, or one it was caused by, says the converter could not be reached or timed out. */
-const hostUnavailable = (error: unknown): boolean => {
-  for (let e = error, depth = 0; e && depth < 5; depth++) {
-    const { name, code, status } = e as { name?: unknown; code?: unknown; status?: unknown };
-    if (typeof status === 'number') return true;
-    if (unavailable.has(String(name)) || unavailable.has(String(code))) return true;
-    if (e instanceof TypeError && e.message === 'fetch failed') return true;
-    e = (e as { cause?: unknown }).cause;
-  }
-  return false;
+/** The converter errors known to be about the file, and the failure each is stored as. */
+const fileRefusals: Readonly<Record<string, 'too_large' | 'unsupported_type'>> = {
+  DocumentTooLargeError: 'too_large',
+  TooManyPagesError: 'too_large',
+  UnsupportedDocumentError: 'unsupported_type',
 };
 
 /**
- * Why a converter refused a file, when it did: its own errors about the file are refusals, kept
- * as such. A converter host that answered with a status, timed out or lost its connection did not
- * refuse the file, so its job is tried again; a refusal is never stored for those.
+ * Why a converter refused a file, when its error is known to be about the file. Every other
+ * error, from a bug, a host that timed out or answered with a status, or a file the converter
+ * could not read, is not stored: its job is tried again and then dead-lettered.
  */
-const refusalOf = (error: unknown) => {
-  if (!(error instanceof Error) || hostUnavailable(error)) return undefined;
-  if (error.message.startsWith('the converter made ')) return undefined;
-  if (error.name === 'DocumentTooLargeError' || error.name === 'TooManyPagesError')
-    return 'too_large';
-  if (error.name === 'UnsupportedDocumentError') return 'unsupported_type';
-  return 'conversion_failed';
-};
+const refusalOf = (error: unknown) =>
+  error instanceof Error && Object.hasOwn(fileRefusals, error.name)
+    ? fileRefusals[error.name]
+    : undefined;
 
 /** A file a convert job could not fetch: tried again, never stored as the converter's refusal. */
 class FetchFailed extends Error {

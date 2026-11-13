@@ -25,7 +25,7 @@ import {
 } from '@genai/port-blob';
 import type { EmbeddingPort } from '@genai/port-embedding';
 import { conversionKey, type DatasetConfig, type StoredConversions } from '@genai/port-knowledge';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, UnsupportedDocumentError } from '@genai/providers-documents';
 import {
   attachGeneration,
   knowledgeConversionsOf,
@@ -629,29 +629,119 @@ describe('stored conversions', () => {
     expect(ours?.error).not.toContain(a.dataset.id);
   }, 60_000);
 
-  it('a file the converter refuses is skipped with its reason and not converted again', async () => {
-    await clearConvertJobs();
-    const a = await scenario();
-    const b = await scenario();
-    const broken = encoder.encode('%PDF-1.4 dette er ikke en hel PDF');
-    await a.file('odelagt.pdf', broken);
-    await b.file('odelagt.pdf', broken);
-    await ingest(a);
-    await drain(a);
-    const second = await ingest(b);
-    await drain(b);
-
-    expect(a.converted).toEqual(['odelagt.pdf']);
-    expect(b.converted).toEqual([]);
-    expect(second.sent.map((j) => j.queue)).toEqual(['knowledge.index']);
-    for (const s of [a, b]) {
-      const { rows } = await admin.query(
-        `select state, reason from src_documents where dataset = $1`,
-        [s.dataset.id],
-      );
-      expect(rows).toEqual([{ state: 'skipped', reason: 'conversion_failed' }]);
+  it('an error the converter does not name is retried and then dead-lettered, not stored', async () => {
+    // A plain error, a bug and a file the text layer cannot read: none of them says the file is
+    // too large or of a type the converter does not read.
+    const textLayer = createLocalConverter();
+    const failures: { name: string; bytes: Uint8Array; convert: DocumentConverter['convert'] }[] = [
+      {
+        name: 'feil.pdf',
+        bytes: pdfBytes([['Omformeren gir opp.']]),
+        convert: async () => {
+          throw new Error('the converter gave up');
+        },
+      },
+      {
+        name: 'bug.pdf',
+        bytes: pdfBytes([['En feil i koden.']]),
+        convert: async () => {
+          throw new TypeError("Cannot read properties of undefined (reading 'pages')");
+        },
+      },
+      {
+        name: 'odelagt.pdf',
+        bytes: encoder.encode('%PDF-1.4 dette er ikke en hel PDF'),
+        convert: (file) => textLayer.convert(file),
+      },
+    ];
+    for (const { name, bytes, convert } of failures) {
+      await clearConvertJobs();
+      const s = await scenario({ converter: { extensions: ['.pdf'], convert } });
+      await s.file(name, bytes);
+      const { sent } = await ingest(s);
+      const convertJob = handler(s.work.knowledge, 'knowledge.convert');
+      // Thrown, so the queue tries the job again.
+      await expect(convertJob(job('knowledge.convert', sent[0]?.data ?? {}))).rejects.toThrow();
+      expect(await stored(await sha(bytes))).toEqual([]);
+      // Once its retries are used up, the job is a dead letter its organisation sees.
+      const stop = await knowledgeQueue.work(convertQueue(), (j) => convertJob(j));
+      try {
+        await expect
+          .poll(async () => (await deadLettersFor(ORG)).length, { timeout: 30_000 })
+          .toBe(1);
+      } finally {
+        await stop();
+      }
+      expect(await stored(await sha(bytes))).toEqual([]);
     }
-  }, 60_000);
+  }, 120_000);
+
+  it('a file that is too large or of an unsupported type is stored as a failure and not converted again', async () => {
+    const cases: {
+      name: string;
+      bytes: Uint8Array;
+      converter: DocumentConverter;
+      reason: string;
+    }[] = [
+      {
+        name: 'stor.pdf',
+        bytes: pdfBytes([['En fil over grensen for bytes.']]),
+        converter: createLocalConverter({ maxBytes: 10 }),
+        reason: 'too_large',
+      },
+      {
+        name: 'mange-sider.pdf',
+        bytes: pdfBytes([['Side 1.'], ['Side 2.'], ['Side 3.']]),
+        converter: createLocalConverter({ maxPages: 2 }),
+        reason: 'too_large',
+      },
+      {
+        name: 'ukjent.pdf',
+        bytes: pdfBytes([['En type omformeren ikke leser.']]),
+        converter: {
+          extensions: ['.pdf'],
+          convert: async (file) => {
+            throw new UnsupportedDocumentError(file.name);
+          },
+        },
+        reason: 'unsupported_type',
+      },
+    ];
+    for (const { name, bytes, converter, reason } of cases) {
+      await clearConvertJobs();
+      const converted: string[] = [];
+      const counting: DocumentConverter = {
+        extensions: ['.pdf'],
+        convert: async (file) => {
+          converted.push(file.name);
+          return converter.convert(file);
+        },
+      };
+      const a = await scenario({ converter: counting });
+      const b = await scenario({ converter: counting });
+      await a.file(name, bytes);
+      await b.file(name, bytes);
+      await ingest(a);
+      await drain(a);
+      const second = await ingest(b);
+      await drain(b);
+
+      expect(converted).toEqual([name]);
+      expect(second.sent.map((j) => j.queue)).toEqual(['knowledge.index']);
+      const { rows: kept } = await admin.query(
+        `select failure from src_conversions where sha256 = $1`,
+        [await sha(bytes)],
+      );
+      expect(kept).toEqual([{ failure: reason }]);
+      for (const s of [a, b]) {
+        const { rows } = await admin.query(
+          `select state, reason from src_documents where dataset = $1`,
+          [s.dataset.id],
+        );
+        expect(rows).toEqual([{ state: 'skipped', reason }]);
+      }
+    }
+  }, 120_000);
 
   it('a converter that times out or loses its connection is tried again, not stored as a refusal', async () => {
     await clearConvertJobs();
