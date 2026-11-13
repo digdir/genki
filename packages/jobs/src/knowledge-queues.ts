@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { defineQueue, maximumExpireInSeconds, type QueueDefinition } from './job-queue.js';
+import {
+  defineQueue,
+  maximumExpireInSeconds,
+  type JobQueue,
+  type QueueDefinition,
+} from './job-queue.js';
 
 /** Ids only: a run, a record, a generation or a file hash, never a title, path or text (ADR 0041). */
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,127}$/, 'an id');
@@ -44,6 +49,17 @@ const buildPayload = z.union([
   z.strictObject({ tenant, generation: id, kind: z.enum(['vacuum', 'index']), run: id }),
 ]);
 const nightlyPayload = z.strictObject({});
+/**
+ * A batch of a seed: the native outputs in Blob of one converter, version and settings hash whose
+ * file sha256 starts with `prefix`, stored as conversions (ADR 0042, issue 474).
+ */
+const seedPayload = z.strictObject({
+  tenant,
+  prefix: z.string().regex(/^[0-9a-f]{2}$/, 'two hex characters'),
+  converter: id,
+  version: id,
+  settings: sha256,
+});
 
 const retried = { retryLimit: 2, retryDelaySeconds: 30, retryBackoff: true } as const;
 
@@ -166,6 +182,16 @@ export const knowledgeExportQueue = defineQueue({
   deadLetter: false,
 });
 
+export const knowledgeSeedQueue = defineQueue({
+  name: 'knowledge.seed',
+  policy: 'exclusive',
+  payload: seedPayload,
+  expireInSeconds: hour,
+  heartbeatSeconds: minute,
+  ...retried,
+  deadLetter: true,
+});
+
 /** Jobs that follow a platform record: on the platform server, sent by the API as genai_runtime. */
 export const knowledgePlatformQueues: QueueDefinition[] = [
   knowledgeIngestQueue,
@@ -183,6 +209,7 @@ export const knowledgeServerQueues = (markerTimeoutMs: number): QueueDefinition[
   knowledgeCheckQueue,
   knowledgeCleanupQueue,
   knowledgeExportQueue,
+  knowledgeSeedQueue,
 ];
 
 /** Heavy queues: sent to start at the window and worked only inside it (ADR 0042, "Jobs"). */
@@ -210,7 +237,32 @@ export const knowledgeKeys = {
   fill: (generation: string, record: string) => `${generation}#${record}`,
   build: () => 'knowledge-server',
   check: () => 'knowledge-server',
+  seed: (batch: { prefix: string; converter: string; version: string; settings: string }) =>
+    `${batch.converter}:${batch.version}:${batch.settings}:${batch.prefix}`,
 } as const;
+
+/** The two-character sha256 prefixes a seed is split by: 256 batches. */
+export const seedPrefixes = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 
 /** Uploads before ingestion runs before candidates; pg-boss takes the highest first. */
 export const convertPriority = { upload: 3, run: 2, candidate: 1 } as const;
+
+/** Sends a seed's batches, one job per prefix; a batch whose job still waits or runs is not sent again. */
+export const sendSeed = async (
+  queue: Pick<JobQueue, 'send'>,
+  target: { converter: string; version: string; settings: string },
+) => {
+  let sent = 0;
+  for (const prefix of seedPrefixes) {
+    const batch = { prefix, ...target };
+    if (
+      await queue.send(
+        knowledgeSeedQueue,
+        { tenant: 'platform', ...batch },
+        { key: knowledgeKeys.seed(batch) },
+      )
+    )
+      sent += 1;
+  }
+  return sent;
+};

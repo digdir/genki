@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import {
+  doclingPages,
   knowledgeListingOf,
   onePage,
   pipelineSpec,
@@ -12,7 +14,9 @@ import {
 import {
   knowledgeIndexQueue,
   knowledgeIngestQueue,
+  knowledgeSeedQueue,
   knowledgeServerQueues,
+  sendSeed,
   type Job,
   type JobData,
   type QueueDefinition,
@@ -22,6 +26,7 @@ import {
   InMemoryNativeOutputContainer,
   nativeOutputEntry,
   nativeOutputStore,
+  settingsHash,
 } from '@genai/port-blob';
 import type { EmbeddingPort } from '@genai/port-embedding';
 import { conversionKey, type DatasetConfig, type StoredConversions } from '@genai/port-knowledge';
@@ -183,6 +188,8 @@ interface ScenarioOptions {
   converter?: DocumentConverter;
   nativeOutputs?: Parameters<typeof knowledgeWork>[0]['nativeOutputs'];
   lockdown?: boolean;
+  log?: (msg: string, fields: Record<string, unknown>) => void;
+  bound?: () => void;
 }
 
 /** A folder dataset on the knowledge database whose worker stores conversions. */
@@ -220,6 +227,8 @@ const scenario = async (options: ScenarioOptions = {}) => {
     conversions,
     converter,
     ...(options.nativeOutputs ? { nativeOutputs: options.nativeOutputs } : {}),
+    ...(options.log ? { log: options.log } : {}),
+    ...(options.bound ? { bound: options.bound } : {}),
     knowledge: {
       send: async (queue, data, sendOptions) => {
         const id = await knowledgeQueue.send(queue, data, sendOptions);
@@ -1214,6 +1223,297 @@ describe('stored conversions', () => {
     // The stored conversion's key hashes the settings as the Blob container names them.
     expect(conversionKey(key)).toBe(
       `${key.sha256}:text-layer:1:${nativeOutputEntry(key).settingsHash}`,
+    );
+  }, 60_000);
+});
+
+/** The seeded KUDOS export's converter (issue 474): Docling 2.123.1 with these settings. */
+const docling = {
+  converter: 'docling',
+  version: '2.123.1',
+  settings: {
+    pipeline: 'standard',
+    ocr: 'easyocr',
+    languages: ['no', 'en'],
+    tableformer: 'accurate',
+  },
+};
+const seedBatch = (prefix: string) => ({
+  tenant: 'platform',
+  prefix,
+  converter: docling.converter,
+  version: docling.version,
+  settings: settingsHash(docling.settings),
+});
+
+/** A DoclingDocument with one body paragraph per page. */
+const doclingJson = (pages: string[]) => ({
+  schema_name: 'DoclingDocument',
+  version: '1.10.0',
+  body: { self_ref: '#/body', children: pages.map((_, i) => ({ $ref: `#/texts/${i}` })) },
+  texts: pages.map((text, i) => ({
+    self_ref: `#/texts/${i}`,
+    parent: { $ref: '#/body' },
+    children: [],
+    content_layer: 'body',
+    label: 'text',
+    prov: [
+      {
+        page_no: i + 1,
+        bbox: { l: 50, t: 500, r: 300, b: 488, coord_origin: 'BOTTOMLEFT' },
+        charspan: [0, text.length],
+      },
+    ],
+    orig: text,
+    text,
+  })),
+  groups: [],
+  tables: [],
+  pictures: [],
+  key_value_items: [],
+  form_items: [],
+  pages: Object.fromEntries(
+    pages.map((_, i) => [String(i + 1), { page_no: i + 1, size: { width: 600, height: 800 } }]),
+  ),
+});
+
+/** A file sha256 that starts with `prefix`, unique per call. */
+const shaStarting = (prefix: string) =>
+  prefix + randomBytes(32).toString('hex').slice(prefix.length);
+
+/** A Blob container holding Docling outputs, counting the reads of each output and failing those `failing` names once. */
+const seedContainer = () => {
+  const container = new InMemoryNativeOutputContainer();
+  const reads = new Map<string, number>();
+  const failing = new Set<string>();
+  const counted = {
+    write: container.write.bind(container),
+    list: container.list.bind(container),
+    remove: container.remove.bind(container),
+    read: async (path: string) => {
+      if (path.endsWith('.json.gz')) {
+        const sha256 = path.split('/')[0] as string;
+        reads.set(sha256, (reads.get(sha256) ?? 0) + 1);
+        if (failing.delete(sha256)) throw new Error('the Blob service did not answer');
+      }
+      return container.read(path);
+    },
+  };
+  const store = nativeOutputStore(counted);
+  const put = (sha256: string, pages: string[], metaPages = pages.length) =>
+    store.put(
+      { sha256, ...docling },
+      encoder.encode(JSON.stringify(doclingJson(pages))),
+      metaPages,
+    );
+  return { container, store, reads, failing, put };
+};
+
+const seed = (s: Scenario, prefix: string) =>
+  handler(
+    s.work.knowledge,
+    knowledgeSeedQueue.name,
+  )(job(knowledgeSeedQueue.name, seedBatch(prefix)));
+
+const doclingRows = async (sha256: string) =>
+  (await stored(sha256)).filter((row) => row.converter === 'docling');
+
+describe('seeded conversions', () => {
+  it('seeding a file twice leaves one stored conversion', async () => {
+    const blob = seedContainer();
+    const file = shaStarting('a1');
+    await blob.put(file, ['Tildelingsbrev for 2024.']);
+    const s = await scenario({ nativeOutputs: blob.store });
+
+    await seed(s, 'a1');
+    await seed(s, 'a1');
+
+    expect(await doclingRows(file)).toHaveLength(1);
+    expect(blob.reads.get(file)).toBe(1);
+  }, 60_000);
+
+  it('a failed seed batch is retried without redoing the batches that finished', async () => {
+    const blob = seedContainer();
+    const [done, first, second] = [shaStarting('b1'), shaStarting('b2'), shaStarting('b2')].sort();
+    for (const file of [done, first, second] as string[])
+      await blob.put(file, [`Side om ${file}.`]);
+    const late = [first, second].sort()[1] as string;
+    blob.failing.add(late);
+    const s = await scenario({ nativeOutputs: blob.store });
+
+    await seed(s, 'b1');
+    await expect(seed(s, 'b2')).rejects.toThrow('the Blob service did not answer');
+    await seed(s, 'b2');
+
+    for (const file of [done, first, second] as string[])
+      expect(await doclingRows(file)).toHaveLength(1);
+    expect(blob.reads.get(done as string)).toBe(1);
+    expect(blob.reads.get([first, second].sort()[0] as string)).toBe(1);
+    expect(blob.reads.get(late)).toBe(2);
+  }, 60_000);
+
+  it('a seeded file is not converted again in a Kudos run', async () => {
+    await clearConvertJobs();
+    const report = reportOf('seeded');
+    const file = await sha(report);
+    const blob = seedContainer();
+    await blob.put(file, ['Docling leste forsiden.', 'Docling leste baksiden.']);
+    const s = await scenario({ nativeOutputs: blob.store });
+    await seed(s, file.slice(0, 2));
+
+    await s.file('rapport.pdf', report);
+    const { sent } = await ingest(s);
+    await drain(s);
+
+    expect(sent.map((j) => j.queue)).toEqual(['knowledge.index']);
+    expect(s.converted).toEqual([]);
+    expect((await chunks(s.generation)).map((c) => c.text).join(' ')).toContain(
+      'Docling leste baksiden.',
+    );
+  }, 60_000);
+
+  it("a seeded conversion's pages can be made again from its Blob copy alone", async () => {
+    const blob = seedContainer();
+    const file = shaStarting('c1');
+    await blob.put(file, ['Første side.', 'Andre side.', '']);
+    const s = await scenario({ nativeOutputs: blob.store });
+    await seed(s, 'c1');
+
+    const [row] = await doclingRows(file);
+    expect(row).toMatchObject({
+      version: '2.123.1',
+      settings: docling.settings,
+      derivation: 'docling-pages',
+      derivation_version: 1,
+      output_path: nativeOutputEntry({ sha256: file, ...docling }).path,
+    });
+    const copy = await blob.container.read(row?.output_path as string);
+    const again = doclingPages(JSON.parse(gunzipSync(copy as Uint8Array).toString('utf8')));
+    expect(row?.pages).toEqual(again);
+    expect(again).toEqual(['Første side.', 'Andre side.', '']);
+  }, 60_000);
+
+  it('a seed batch skips a file it cannot read and seeds the rest', async () => {
+    const blob = seedContainer();
+    const [good, notJson, noMeta, wrongCount] = Array.from({ length: 4 }, () => shaStarting('d1'));
+    await blob.put(good as string, ['Lesbar.']);
+    await blob.store.put({ sha256: notJson as string, ...docling }, encoder.encode('{"half'), 1);
+    await blob.put(noMeta as string, ['Uten meta.']);
+    await blob.container.remove(
+      nativeOutputEntry({ sha256: noMeta as string, ...docling }).metaPath,
+    );
+    await blob.put(wrongCount as string, ['Én side.'], 4);
+    const logged: Record<string, unknown>[] = [];
+    const s = await scenario({
+      nativeOutputs: blob.store,
+      log: (_, fields) => logged.push(fields),
+    });
+
+    await seed(s, 'd1');
+
+    expect(await doclingRows(good as string)).toHaveLength(1);
+    for (const bad of [notJson, noMeta, wrongCount] as string[])
+      expect(await doclingRows(bad)).toEqual([]);
+    expect(
+      logged
+        .map((f) => f.sha256)
+        .filter(Boolean)
+        .sort(),
+    ).toEqual([notJson, noMeta, wrongCount].sort());
+  }, 60_000);
+
+  it('a seed batch skips a file whose output or meta.json is damaged and seeds the rest', async () => {
+    const blob = seedContainer();
+    const files = Array.from({ length: 6 }, () => shaStarting('e1')).sort();
+    for (const file of files) await blob.put(file, ['Lesbar.']);
+    const [badJson, nullMeta, noSettings, otherSettings, badGzip, good] = files as string[];
+    const metaOf = (sha256: string) => nativeOutputEntry({ sha256, ...docling }).metaPath;
+    const meta = (sha256: string, text: string) =>
+      blob.container.write(metaOf(sha256), encoder.encode(text), 'application/json');
+    await meta(badJson as string, '{"pag');
+    await meta(nullMeta as string, 'null');
+    await meta(noSettings as string, '{"pages":1}');
+    await meta(
+      otherSettings as string,
+      JSON.stringify({ pages: 1, settings: { ocr: 'tesseract' } }),
+    );
+    await blob.container.write(
+      nativeOutputEntry({ sha256: badGzip as string, ...docling }).path,
+      encoder.encode('not gzip'),
+      'application/gzip',
+    );
+    const logged: Record<string, unknown>[] = [];
+    const s = await scenario({
+      nativeOutputs: blob.store,
+      log: (_, fields) => logged.push(fields),
+    });
+
+    await seed(s, 'e1');
+
+    expect(await doclingRows(good as string)).toHaveLength(1);
+    for (const bad of [badJson, nullMeta, noSettings, otherSettings, badGzip] as string[])
+      expect(await doclingRows(bad)).toEqual([]);
+    const skipped = logged.filter((f) => f.sha256);
+    expect(skipped.map((f) => f.sha256)).toEqual([
+      badJson,
+      nullMeta,
+      noSettings,
+      otherSettings,
+      badGzip,
+    ]);
+    expect(skipped.find((f) => f.sha256 === badGzip)?.reason).not.toMatch(/missing/);
+  }, 60_000);
+
+  it('an unbound worker seeds nothing', async () => {
+    const blob = seedContainer();
+    const file = shaStarting('f1');
+    await blob.put(file, ['Ikke ennå.']);
+    const s = await scenario({
+      nativeOutputs: blob.store,
+      bound: () => {
+        throw new Error('the knowledge server is bound to another platform server');
+      },
+    });
+
+    await expect(seed(s, 'f1')).rejects.toThrow('bound to another platform server');
+    expect(await doclingRows(file)).toEqual([]);
+    expect(blob.reads.get(file)).toBeUndefined();
+  }, 60_000);
+
+  it('sending the seed again while its jobs wait sends no second job', async () => {
+    const target = {
+      converter: 'docling',
+      version: '2.123.1',
+      settings: settingsHash(docling.settings),
+    };
+    try {
+      expect(await sendSeed(knowledgeQueue, target)).toBe(256);
+      expect(await sendSeed(knowledgeQueue, target)).toBe(0);
+    } finally {
+      await admin.query(`delete from pgboss.job where name = 'knowledge.seed'`);
+    }
+  }, 60_000);
+
+  it("a convert job stores only its own converter's conversion when the file also has a seeded Docling one", async () => {
+    await clearConvertJobs();
+    const report = reportOf('both');
+    const file = await sha(report);
+    const blob = seedContainer();
+    await blob.put(file, ['Docling sin forside.', 'Docling sin bakside.']);
+    const s = await scenario({ nativeOutputs: blob.store });
+    await s.file('rapport.pdf', report);
+    // The convert job was sent before the seed reached this file.
+    await ingest(s);
+    await seed(s, file.slice(0, 2));
+    await drain(s);
+
+    const textLayer = (await stored(file)).find((row) => row.converter === 'text-layer');
+    expect(textLayer?.pages).toEqual([
+      'Arsrapport 2025\nDirektoratet leverte alle mal i fjor (both).',
+      'Budsjettet okte med ti prosent og gikk til fellesloesninger.',
+    ]);
+    expect((await chunks(s.generation)).map((c) => c.text).join(' ')).toContain(
+      'Docling sin bakside.',
     );
   }, 60_000);
 });
