@@ -819,9 +819,7 @@ export const useAssistant = ({
         signal: controller.signal,
       })) {
         if (!alive.current) break;
-        // genki says a new thread twice, from the assembly's POST and from the stream: only the
-        // first opens it, or the second marks it as on screen for good and a later visit draws
-        // the thread the reader was in instead.
+        // genki names a new thread twice (POST, then stream): only the first opens it.
         if (event.type === 'conversation' && !startedIn && !opened) {
           opened = true;
           if (askedWith) keepFilter(event.conversationId, askedWith);
