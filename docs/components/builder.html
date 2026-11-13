@@ -200,8 +200,8 @@
                     <td><code>service:chat</code></td>
                     <td>
                       <code>footnotes</code> (needs <code>component:sources|document-view</code>),
-                      <code>suggestions</code>, <code>followUps</code>, <code>disclaimer</code>,
-                      <code>copy</code>, <code>feedback</code> (off; needs
+                      <code>suggestions</code>, <code>followUps</code> (the current look only),
+                      <code>disclaimer</code>, <code>copy</code>, <code>feedback</code> (off; needs
                       <code>channel:feedback</code>), <code>variantPicker</code> (needs
                       <code>service:variants</code>), <code>attachments</code> (kommer; needs
                       <code>service:documents</code>)
@@ -281,10 +281,17 @@
               Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
               After it, <code>knowledge-assistant-next</code> has the same blocks in the look of the
               «_Ready for dev» boards, with Fremgangsmåte in both places, the bar over each answer
-              and the tool, built there step by step: <code>templateLook</code> says
-              <code>next</code> for it and <code>current</code> for every other template, and the
-              assembly draws the new look only for <code>next</code>, so the others draw what they
-              draw today.
+              and the tool, built there step by step.
+            </p>
+            <p>
+              A template may also set a look and options that differ from the defaults,
+              <code>templateSetups</code>, which <code>fromTemplate</code> writes into the layout.
+              <code>knowledge-assistant-next</code> sets the look <code>next</code>, Chat's
+              <code>feedback</code> on and <code>followUps</code> off, as Kunnskapsassistenten's
+              next client runs. Fremgangsmåte keeps the <code>standard</code> level there: in the
+              secondary panel it is the detailed tool by its place. The other templates set nothing,
+              so they draw what they draw today. <code>changeTemplate</code> replaces the blocks and
+              keeps the look the layout had, unless the new template sets its own.
             </p>
             <div class="table-wrap">
               <table>
@@ -370,11 +377,22 @@
             <h2>The layout and its rules</h2>
             <ul>
               <li>
-                <code>AssistantLayout</code> is <code>{ version: 1, template?, zones }</code>, with
-                each zone a list of <code>{ block, settings? }</code>.
-                <code>defaultLayout</code> has every built block in its default zone.
-                <code>normalised</code> sorts each zone into the catalogue's order and drops what
-                the catalogue does not hold. <code>isAssistantLayout</code> checks the shape only.
+                <code>AssistantLayout</code> is
+                <code>{ version: 1, template?, look?, zones }</code>, with each zone a list of
+                <code>{ block, settings? }</code>. <code>defaultLayout</code> has every built block
+                in its default zone. <code>normalised</code> sorts each zone into the catalogue's
+                order and drops what the catalogue does not hold.
+                <code>isAssistantLayout</code> checks the shape only, and that a look, when there is
+                one, is a known one.
+              </li>
+              <li>
+                <code>look</code> is <code>current</code> or <code>next</code>. <code>lookOf</code>
+                reads it, and a layout without it is drawn in its template's look,
+                <code>templateLook</code>: <code>next</code> for
+                <code>knowledge-assistant-next</code>, <code>current</code> for the rest, as before
+                the look was a setting. <code>withLook</code> changes it, and every other change to
+                the blocks and their options keeps it. <code>lookKey</code> gives a look's name in
+                the catalogue's words, «Dagens» and «Ny utgave».
               </li>
               <li>
                 <code>BuilderState</code> adds the builder's screen state: <code>chosen</code>,
@@ -397,9 +415,10 @@
                 by hand stays off.
               </li>
               <li>
-                <code>optionInForce</code>: an option is in force when it is on, its blocks are
-                placed and its needs are met. Fotnoter is off while both Kilder and Dokumentvisning
-                are, whatever the switch says.
+                <code>optionInForce</code>: an option is in force when it is on, drawn in the
+                layout's look, its blocks are placed and its needs are met. Fotnoter is off while
+                both Kilder and Dokumentvisning are, whatever the switch says, and follow-ups are
+                off in the next look.
               </li>
               <li>
                 <code>layoutProblems</code> lists every rule a layout breaks, by name:

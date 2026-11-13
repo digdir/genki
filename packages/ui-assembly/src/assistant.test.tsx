@@ -1536,6 +1536,24 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(document.querySelector('.uib-composer-follow-ups')).toBeNull();
   });
 
+  it('draws the look the layout names, whatever its template, and so offers no follow-ups in the next one', async () => {
+    const followUps = { ...reader, followUps: ['Kan du utdype?'] };
+    const { unmount } = drawNext(followUps, {
+      ...fromTemplate('knowledge-assistant').layout,
+      look: 'next',
+    });
+    await opened();
+    expect(document.querySelector('.uib-shell')?.getAttribute('data-frame')).toBe('cards');
+    await ask();
+    await screen.findByRole('button', { name: 'Kopier svaret' });
+    expect(screen.queryByRole('button', { name: 'Kan du utdype?' })).toBeNull();
+    unmount();
+    history.replaceState(null, '', '/');
+    drawNext(reader, { ...nextLayout, look: 'current' });
+    await opened();
+    expect(document.querySelector('.uib-shell')?.getAttribute('data-frame')).not.toBe('cards');
+  });
+
   it('copies the thread’s link with no note that it works only here, and keeps the answer’s time', async () => {
     const clipboard: string[] = [];
     Object.defineProperty(navigator, 'clipboard', {
@@ -2982,6 +3000,24 @@ describe('feedback on an answer', () => {
     await rate();
     expect(given).toHaveLength(1);
     expect(given[0]).not.toHaveProperty('runId');
+  });
+
+  it('offers feedback in a layout straight from knowledge-assistant-next, with no option set by the host', async () => {
+    const given: AssistantFeedback[] = [];
+    render(
+      <Assistant
+        api={withRun('task-1')}
+        layout={fromTemplate('knowledge-assistant-next').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        threadInUrl
+        onFeedback={(feedback) => void given.push(feedback)}
+      />,
+    );
+    await ask();
+    await rate();
+    expect(given).toEqual([expect.objectContaining({ runId: 'task-1', rating: 'up' })]);
   });
 });
 
