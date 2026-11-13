@@ -205,9 +205,7 @@ export const BlocksStep = ({
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />
       ) : null}
-      {state.tab === 'chat' ? null : (
-        <LayoutTransfer layout={state.layout} onPaste={state.paste} />
-      )}
+      {state.tab === 'chat' ? null : <LayoutTransfer layout={state.layout} onPaste={state.paste} />}
     </div>
   );
   const preview = (

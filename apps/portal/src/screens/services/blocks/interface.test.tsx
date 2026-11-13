@@ -59,12 +59,11 @@ describe('the Grensesnitt tab', () => {
     fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
     await screen.findByText('Satte jobb: henter ut opplysninger');
     const nav = screen.getByRole('navigation', { name: 'Tjenesten' });
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual([
-      'Oppsett',
-      'Grensesnitt',
-      'Test',
-      'Versjoner',
-    ]);
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Oppsett', 'Grensesnitt', 'Test', 'Versjoner']);
     fireEvent.click(navLink('Grensesnitt'));
     expect(await screen.findByRole('group', { name: 'Byggeklosser og maler' })).toBeTruthy();
     expectAccessible();
