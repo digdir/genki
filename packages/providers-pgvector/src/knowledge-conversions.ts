@@ -244,6 +244,23 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     return rows;
   },
 
+  storedAmong: async (key, sha256s) => {
+    const { rows } = await writer.query<{ sha256: string }>(
+      `select sha256 from src_conversions
+        where converter = $1 and version = $2 and settings_hash = $3 and derivation = $4
+          and derivation_version = $5 and sha256 = any($6::text[])`,
+      [
+        key.converter,
+        key.version,
+        key.settingsHash,
+        key.derivation.name,
+        key.derivation.version,
+        sha256s,
+      ],
+    );
+    return new Set(rows.map((r) => r.sha256));
+  },
+
   waitedKeys: async () => {
     const { rows } = await writer.query<{ key: string }>(
       `select distinct key from src_conversion_waits order by key`,
