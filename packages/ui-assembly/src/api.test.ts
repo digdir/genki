@@ -1,5 +1,5 @@
 import { ApiError, type StreamEvent } from '@genai/client';
-import { readFootnotes } from '@genai/ui-blocks';
+import { emptyLayout, readFootnotes } from '@genai/ui-blocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type AssistantApi,
@@ -11,6 +11,7 @@ import {
   HttpError,
   sourceFromWire,
 } from './api.js';
+import { profileOf, type FieldSpec } from './profile.js';
 
 // A service that cites excerpts: one document, two excerpts, `[1]` and `[2]` one each.
 const wireSource = {
@@ -602,5 +603,68 @@ describe('the filter as genki takes it', () => {
 
   it('refuses a field with more than 100 chosen when the values it has are not known', () => {
     expect(() => filterSet({ org: names(101) }, organisations)).toThrow(FilterTooLarge);
+  });
+});
+
+// A layout's profile says nothing of the wire; the dataset does.
+describe('the fields a profile chooses', () => {
+  const dataset = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        json({
+          dataset: {
+            filters: [
+              { field: 'type', kinds: ['multiselect'], 'value-type': 'string' },
+              { field: 'concerned_years', kinds: ['multiselect'], 'value-type': 'integer' },
+              { field: 'doc_num', kinds: ['multiselect'], 'value-type': 'integer' },
+            ],
+          },
+        }),
+      ),
+    );
+  const withFields = (fields: readonly FieldSpec[]) =>
+    createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: { corpora: { kudos: { fields } } },
+    });
+
+  it('takes whether a field’s values are integers from the dataset where the profile does not say', async () => {
+    dataset();
+    const fields = await withFields([
+      { id: 'type', label: 'Dokumenttyper' },
+      { id: 'concerned_years', label: 'År', kind: 'year' },
+    ]).loadFields('kudos');
+    expect(fields).toEqual([
+      { id: 'type', label: 'Dokumenttyper' },
+      { id: 'concerned_years', label: 'År', kind: 'year', integer: true },
+    ]);
+  });
+
+  it('keeps what the profile says of integers, and leaves out a field the dataset does not offer', async () => {
+    dataset();
+    const fields = await withFields([
+      { id: 'concerned_years', label: 'År', integer: false },
+      { id: 'gone', label: 'Borte' },
+    ]).loadFields('kudos');
+    expect(fields).toEqual([{ id: 'concerned_years', label: 'År', integer: false }]);
+  });
+
+  it('offers a layout’s fields in its words when the host passes its profile through profileOf', async () => {
+    dataset();
+    const year = {
+      id: 'concerned_years',
+      label: 'År',
+      kind: 'year',
+      years: { first: 1990 },
+    } as const;
+    const layout = { ...emptyLayout, profile: { corpora: { kudos: { fields: [year] } } } };
+    const reads = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: profileOf(layout),
+    });
+    expect(await reads.loadFields('kudos')).toEqual([{ ...year, integer: true }]);
   });
 });

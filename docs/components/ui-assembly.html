@@ -189,7 +189,8 @@
               <li>
                 <code>api</code>: the calls, from
                 <code>createGenkiApi({ baseUrl, tenant, profile, language, headers })</code>, or a
-                fake in tests. A host reaches genki through a proxy that adds the key, or passes
+                fake in tests. Its <code>profile</code> is the one the assistant is drawn with,
+                below. A host reaches genki through a proxy that adds the key, or passes
                 <code>headers</code>, a callback that returns its credentials, such as
                 <code>{ authorization: 'Bearer …' }</code> with the person's token. It is called
                 before every request, the question's stream included, so a renewed token is used;
@@ -198,7 +199,10 @@
                 <code>@genai/client</code>'s <code>ApiError</code>, which the assembly shows as
                 access; a question stops at its new thread.
               </li>
-              <li><code>layout</code>: the builder's layout, zones and options.</li>
+              <li>
+                <code>layout</code>: the builder's layout, zones and options, and its
+                <code>profile</code>, the service's words as data, when it carries one.
+              </li>
               <li>
                 <code>service</code> and <code>tenant</code>; <code>model</code>, the variant to
                 start from.
@@ -206,11 +210,11 @@
               <li>
                 A collection's document links, for a source that carries none: the profile's
                 <code>documentUrl</code>, a host's function, or its <code>documentLinks</code>, the
-                same as plain data in the host's profile, which nothing stores yet. That is an
-                address per kind of number, <code>digits</code>, <code>uuid</code> or
-                <code>any</code>, with <code>{id}</code> where the number goes, encoded. A number
-                takes the first that fits, in that order, after the function. Only an http or https
-                address becomes a link.
+                same as plain data, in the host's profile or the layout's. That is an address per
+                kind of number, <code>digits</code>, <code>uuid</code> or <code>any</code>, with
+                <code>{id}</code> where the number goes, encoded. A number takes the first that
+                fits, in that order, after the function. Only an http or https address becomes a
+                link, and a layout's only an https one whose host comes before the number.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
@@ -225,6 +229,21 @@
                 <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first forgets
                 the reader's choices kept in this browser, the threads' filters included, then calls
                 it and goes there. Without it, no «Logg ut» is drawn, in either look.
+              </li>
+              <li>
+                The profile drawn is <code>profileOf(layout, profile)</code>: what the host's
+                profile sets wins, and the layout's <code>profile</code> fills the rest. A list the
+                host sets wins whole, an empty one too; <code>undefined</code> sets nothing. Each
+                collection is filled value by value, so the host's <code>documentUrl</code> goes
+                first and the layout's <code>documentLinks</code> link what it does not. Without a
+                profile in the layout, the host's is drawn as it is, so a host that passes a full
+                profile draws what it drew. A host with no code profile passes none and draws the
+                layout's. A link or link template in the layout's that is not https, with its host
+                before the number, is left out, checked or not. Either way the host gives
+                <code>createGenkiApi</code> the same <code>profileOf(layout, own)</code>, so the
+                fields, the collections' names, a stored answer's links and the line under a
+                document's title are in its words. A field the profile does not mark
+                <code>integer</code> is sent as the dataset declares it.
               </li>
               <li>
                 <code>now</code>: the clock, for the year a year field runs up to; tests give a
@@ -542,6 +561,11 @@
                 hands it to them. Should the block read
                 <code>--uib-shell-pinned-block-size</code> itself, as the shell's page offers it to
                 a block that pins its own head?
+              </li>
+              <li>
+                Should a profile without <code>suggestions</code> offer the service's example
+                questions? The definition has them in bokmål and English, but
+                <code>/v1/models</code> does not carry them yet.
               </li>
             </ul>
           </div>
