@@ -175,7 +175,7 @@ describe('a Kudos listing', () => {
               }
             : undefined,
       },
-      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 } }],
+      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 }, kept: false }],
     );
     const listing = await knowledgeListingOf(
       spec({ types: ['Årsrapport'] }),
@@ -217,7 +217,7 @@ describe('a Kudos listing', () => {
             : { pages: ['Mål og resultater for året.'] }),
         }),
       },
-      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 } }],
+      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 }, kept: false }],
     );
     const listing = await knowledgeListingOf(
       spec({ types: ['Årsrapport'] }),
