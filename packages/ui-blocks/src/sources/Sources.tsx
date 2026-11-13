@@ -1058,7 +1058,9 @@ export const Sources = ({
   useEffect(() => {
     if (uncited.has(targetPosition(sources ?? [], item.target)) && othersRef.current)
       othersRef.current.open = true;
-  }, [item.target]);
+  }, [item.target, uncited]);
+  // So do search hits already found when the fold appears, as the answer ends.
+  useEffect(() => openOthers(hits.flatMap((hit) => cardOfRow.get(hit.itemId) ?? [])), [uncited]);
 
   const reveal = (keys: readonly string[]) => {
     if (keys.length === 0) return;

@@ -570,6 +570,15 @@ describe('the documents the answer read but cites nowhere, `foldUncited`', () =>
     expect(others()?.open).toBe(true);
   });
 
+  it('unfolds them for a search hit found while the answer streamed, once it ends', () => {
+    const props = { sources: [nkom, memo], citations: cite('kudos::2021-1'), foldUncited: true };
+    const { rerender } = render(<Sources {...props} answerStatus="streaming" />);
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'rutinen' } });
+    expect(others()).toBeNull();
+    rerender(<Sources {...props} answerStatus="complete" />);
+    expect(others()?.open).toBe(true);
+  });
+
   it('unfolds them for a target in one of them, and moves focus there', async () => {
     draw({
       citations: cite('kudos::2021-1'),
