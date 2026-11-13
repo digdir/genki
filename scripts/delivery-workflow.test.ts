@@ -25,6 +25,7 @@ interface Job {
 interface Workflow {
   on: Record<string, unknown>;
   permissions?: Record<string, string>;
+  concurrency?: Record<string, unknown>;
   jobs: Record<string, Job>;
 }
 
@@ -76,6 +77,7 @@ describe('the delivery workflows', () => {
     });
     expect(collect.permissions).toEqual({
       contents: 'read',
+      actions: 'read',
       'pull-requests': 'read',
       'id-token': 'write',
     });
@@ -121,5 +123,13 @@ describe('the weekly summary workflow', () => {
     expect(due?.env?.SCHEDULE).toBe('${{ github.event.schedule }}');
     expect(post.if).toBe("needs.collect.outputs.due == 'true'");
     expect(collect.if).toBe("github.ref == 'refs/heads/main'");
+  });
+
+  it('posts once a week: runs queue, and only a real post leaves the posted artifact', () => {
+    expect(weekly.concurrency).toEqual({ group: 'weekly-summary', 'cancel-in-progress': false });
+    const upload = post.steps.find((s) => s.with?.name === 'weekly-posted');
+    expect(upload?.with?.path).toBe('delivery-out/posted.json');
+    expect(upload?.with?.['if-no-files-found']).toBe('ignore');
+    expect(post.permissions).toEqual({ contents: 'read' });
   });
 });

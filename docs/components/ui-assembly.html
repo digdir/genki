@@ -188,8 +188,15 @@
             <ul>
               <li>
                 <code>api</code>: the calls, from
-                <code>createGenkiApi({ baseUrl, tenant, profile, language })</code> through a proxy
-                that adds the key, or a fake in tests.
+                <code>createGenkiApi({ baseUrl, tenant, profile, language, headers })</code>, or a
+                fake in tests. A host reaches genki through a proxy that adds the key, or passes
+                <code>headers</code>, a callback that returns its credentials, such as
+                <code>{ authorization: 'Bearer …' }</code> with the person's token. It is called
+                before every request, the question's stream included, so a renewed token is used;
+                <code>Accept</code> and <code>Content-Type</code> stay the assembly's own. A
+                <code>401</code> fails the call with that status, as <code>HttpError</code> or
+                <code>@genai/client</code>'s <code>ApiError</code>, which the assembly shows as
+                access; a question stops at its new thread.
               </li>
               <li><code>layout</code>: the builder's layout, zones and options.</li>
               <li>

@@ -1,6 +1,6 @@
 # 0054 An assembly draws an assistant from a layout
 
-Status: proposed, 2026-11-11 (partly built: the layout, its catalogue, rules and templates, and `@genai/ui-assembly`; no app uses the assembly yet; a block in both its zones, 2026-11-13; the look a layout setting, and a template's options, 2026-11-13)
+Status: proposed, 2026-11-11 (partly built: the layout, its catalogue, rules and templates, and `@genai/ui-assembly`; no app uses the assembly yet; a block in both its zones, 2026-11-13; the host's headers, 2026-11-13; the look a layout setting, and a template's options, 2026-11-13)
 
 Left: where a layout is stored, such as a frontend part of the service definition, and the builder's preview in the portal drawing a layout with the assembly. Each needs its own change.
 
@@ -18,7 +18,7 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 - **An option may belong to some looks only.** A catalogue option with `looks` is in force only in those looks (`optionInForce`). Chat's `followUps` is `current` only, since the next look draws no follow-ups.
 - **`@genai/ui-assembly` is the one UI package that calls genki.** It sits beside `@genai/ui-blocks` among the consumers and depends on `@genai/client`. It holds the state the blocks share (`useAssistant`), places each block of a layout in its zone (`<Assistant>`), and turns genki's answers and stream into the blocks' props. The blocks stay free of fetching.
 - **One interface to genki.** Every call goes through `AssistantApi`. `createGenkiApi` implements it with reads (models, threads, collections, fields, facets), a new thread and a question; tests use a fake.
-- **No key in the page.** `createGenkiApi` takes a `baseUrl` and sends no credentials of its own. A host reaches genki through its own proxy or session, which adds the key or the person's token.
+- **No key in the page.** `createGenkiApi` takes a `baseUrl` and holds no credentials of its own. A host reaches genki through its own proxy or session, which adds the key or the person's token, or gives `createGenkiApi` a `headers` callback, such as one that returns the person's Bearer token. The assembly calls it before every request, the question's stream included, and a header the assembly sets itself, such as `Accept`, stays its own. Without it, nothing is added. A `401` fails the call with that status, which the assembly calls access, and stops a question at its new thread.
 - **Writes other than a question are the host's.** Feedback goes to the host's `onFeedback`, with the answer's `runId` (genki's task id) when genki gave one; without `onFeedback`, no feedback is offered.
 
 ## Why
@@ -26,6 +26,7 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 - A service owner's preview and an app such as Kunnskapsassistenten should draw the same assistant from the same layout, without breaking 0053's rule for the blocks.
 - A layout as data can be edited by the builder, checked by a host and stored later. The catalogue keeps one table: the builder proposed in #210 had its own rules.
 - Turned down: fetching inside the blocks, which breaks 0053; and each host writing its own wiring, which would drift as the builder's sketches and the workspace's chat did.
+- A host such as the workspace calls genki with the person's token and has no proxy, so it hands the assembly headers. Turned down: a `fetch` for the host to wrap, since the assembly's own requests carry their headers in two shapes, a plain object and `@genai/client`'s `Headers`, and each host would have to merge both without losing `Accept` on the stream.
 - A block in both zones is placement, so it is said where placement is said, in the zones, and a layout that places a block once is unchanged. Turned down: an option on the block, `place: card | tool | both`, which would say the same thing as the zone it stands in and could contradict it.
 - The look is the layout's because a template is where a layout starts, not what it is: tied to the template's id, the look was lost as soon as the builder chose another template. Turned down: a layout version 2, since a layout without the field means what it meant; and keeping the look in the template's id, which a builder cannot change without changing the blocks.
 
