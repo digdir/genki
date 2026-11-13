@@ -141,4 +141,15 @@ describe('chunks in the knowledge database', () => {
     expect(doc.chunks.length).toBeGreaterThan(2);
     expect(doc.chunks.map((c) => c.pageFrom)).toEqual([1, ...doc.chunks.slice(1).map(() => 2)]);
   });
+
+  it('a piece cut inside a line with runs of spaces stays on its page', () => {
+    const line = Array.from({ length: 16 }, (_, i) => `ord${i}`).join('  ');
+    const doc = prepared(
+      'kudos:7c3d',
+      [{ name: 'notat.pdf', sha256: sha('f'), pages: ['Kort side.', line] }],
+      { ...byPage, strategy: { kind: 'page', splitMaxLength: 60 } },
+    );
+
+    expect(doc.chunks.map((c) => c.pageFrom)).toEqual([1, 2, 2]);
+  });
 });

@@ -70,7 +70,7 @@ const chunkStrategy = z.discriminatedUnion('kind', [
     width: z.number().int().positive(),
     overlap: z.number().int().min(0),
   }),
-  /** Each page on its own, split at paragraphs, sentences and words when longer than the limit. */
+  /** Each page on its own, split at paragraphs, lines, sentences and words when longer than the limit. */
   z.strictObject({
     kind: z.literal('page'),
     splitMaxLength: z.number().int().positive().optional(),
