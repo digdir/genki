@@ -497,6 +497,110 @@ describe('/v1 frontend contract: sources', () => {
       expect(text).toContain('"heading":"3 Styringsparametere › 3.2 Mål"');
     });
   });
+
+  describe("when the headings carry Marker's page anchors", () => {
+    afterEach(() => {
+      pool = chunks;
+    });
+    const anchored: SourceRecord[] = [
+      { ...chunks[0], chunkId: 'c1', headers: ['<span id="page-2-0"></span>1. Innledning'] },
+      {
+        ...chunks[1],
+        chunkId: 'c2',
+        headers: ['[DEL 3 – Aktiviteter og](#page-12-0) [resultater i 2024](#page-12-0)'],
+      },
+      {
+        ...chunks[2],
+        chunkId: 'c1b',
+        headers: ['<span id="page-8-3"></span>', '5.2 Tildelingsbrev'],
+      },
+    ];
+    type Headed = Omit<Source, 'excerpts'> & {
+      metadata: { name?: string }[];
+      excerpts: { chunk_id: string; heading?: string }[];
+    };
+    const answer = async (records: SourceRecord[]) => {
+      pool = records;
+      return ((await (await setup().ask({})).json()) as { sources: Headed[] }).sources;
+    };
+
+    it("gives a heading without Marker's page anchors", async () => {
+      const [first] = await answer(anchored);
+
+      expect(first?.excerpts[0]?.heading).toBe('1. Innledning');
+    });
+
+    it("gives a heading without Marker's links to its page anchors", async () => {
+      const sources = await answer(anchored);
+
+      expect(sources[1]?.excerpts[0]?.heading).toBe('DEL 3 – Aktiviteter og resultater i 2024');
+    });
+
+    it("gives a heading without Marker's underline and superscript tags", async () => {
+      const [first] = await answer([
+        { ...chunks[0], chunkId: 'c1', headers: ['<u>Styrken til porteføljen</u>'] },
+        { ...chunks[2], chunkId: 'c1b', headers: ['Note <sup>a)</sup>'] },
+      ]);
+
+      expect(first?.excerpts.map((e) => e.heading)).toEqual(['Styrken til porteføljen', 'Note a)']);
+    });
+
+    it('raises a footnote number in a heading, written as a superscript or as a link to its page', async () => {
+      const [first] = await answer([
+        {
+          ...chunks[0],
+          chunkId: 'c1',
+          headers: ['Tilgang i året <sup>1</sup>', 'KOSTRA – Gruppering[[11]](#page-35-0)'],
+        },
+        {
+          ...chunks[2],
+          chunkId: 'c1b',
+          headers: ['Mål[\\[2\\]](#page-4-0) og tiltak[3](#page-5-1)'],
+        },
+      ]);
+
+      expect(first?.excerpts.map((e) => e.heading)).toEqual([
+        'Tilgang i året ¹ › KOSTRA – Gruppering¹¹',
+        'Mål² og tiltak³',
+      ]);
+    });
+
+    it('leaves out a heading level that is only markup', async () => {
+      const [first] = await answer(anchored);
+      const [bare] = await answer([
+        { ...chunks[0], chunkId: 'c1', headers: ['<span id="page-3-0"></span>'] },
+      ]);
+      const [untitled] = await answer([
+        {
+          chunkId: 'c9',
+          text: 'Niende',
+          document: 'd9',
+          headers: ['<span id="page-1-0"></span>', 'Mål'],
+        },
+      ]);
+
+      expect(first?.excerpts[1]?.heading).toBe('5.2 Tildelingsbrev');
+      expect(bare?.excerpts[0]).not.toHaveProperty('heading');
+      expect(bare?.metadata).toEqual([{ source: 'c1', chunk_id: 'c1' }]);
+      expect(untitled?.title).toBe('Mål');
+    });
+
+    it('keeps the breadcrumb plain text', async () => {
+      const [first] = await answer(anchored);
+      const [untitled] = await answer([
+        {
+          chunkId: 'c9',
+          text: 'Niende',
+          document: 'd9',
+          headers: ['<span id="page-2-0"></span>1. Innledning', '1.1 Mål'],
+        },
+      ]);
+
+      expect(first?.metadata[0]?.name).toBe('Tildelingsbrev › 1. Innledning');
+      expect(untitled?.title).toBe('1. Innledning');
+      expect(untitled?.metadata[0]?.name).toBe('1. Innledning › 1.1 Mål');
+    });
+  });
 });
 
 describe('/v1 frontend contract: steps', () => {

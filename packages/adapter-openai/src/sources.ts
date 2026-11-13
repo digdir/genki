@@ -1,4 +1,10 @@
-import { plainHeading, publicSourceUrl, sourceBreadcrumb, type Part } from '@genai/contracts';
+import {
+  plainHeading,
+  plainHeadingLevel,
+  publicSourceUrl,
+  sourceBreadcrumb,
+  type Part,
+} from '@genai/contracts';
 
 export const SOURCES_MIME = 'application/vnd.genai.sources+json';
 
@@ -264,7 +270,10 @@ export const citationBundle = (
       markers,
       excerptMarkers,
     } = 'record' in entry ? entry : { record: entry, index: undefined };
-    const title = plainHeading(r.title ?? r.headers?.[0] ?? '') || 'Untitled source';
+    const title =
+      (r.title === undefined
+        ? r.headers?.map(plainHeadingLevel).find((h) => h.length > 0)
+        : plainHeading(r.title)) || 'Untitled source';
     return {
       index,
       chunkId: r.chunkId,
