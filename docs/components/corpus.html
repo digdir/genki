@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Corpus choice · Components</title>
+    <meta
+      name="description"
+      content="Which document collection the assistant searches, in one line, and a choice when the service offers more than one."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Corpus choice</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="corpus"
+        data-component="corpus"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="corpus-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="corpus-title">Corpus choice</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Inside Filter</span>
+            </div>
+            <p class="summary">
+              Shows which document collection the assistant searches, and lets the reader switch
+              when the service offers more than one. One line says what the collection holds, with
+              the rest behind «Vis mer».
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Dokumentsamling», and the line «Dokumenter fra Kudos»</dd>
+              <dt>Sits in</dt>
+              <dd>The filter's head, over the fields, and the line under «Dokumenter»</dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/225"
+                  >kunnskapsassistenten#225</a
+                >
+              </dd>
+              <dt>Code</dt>
+              <dd>
+                <code>CorpusChoice</code>, <code>CorpusLine</code>, <code>useCorpusText</code> and
+                <code>corpusName</code> in <code>@genai/ui-blocks</code>
+              </dd>
+              <dt>Made from</dt>
+              <dd>
+                <code>filters/CorpusLine</code>, <code>filters/corpusText</code> and the
+                «Dokumentsamling» select in <code>filters/FiltersView</code> in kunnskapsassistenten
+              </dd>
+              <dt>In the builder</dt>
+              <dd>
+                Part of the filter block: the choice is its <code>corpus</code> switch, on by
+                default
+              </dd>
+              <dt>Canvas</dt>
+              <dd>00-Chat (FM-0b-Endre-utvalg), 00-Filter (FI-P1-Foretrukket-filter)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="130" y="12" width="50" height="100" rx="10" opacity="0.55" />
+            <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+            <rect class="s-bar" x="20" y="22" width="52" height="5" rx="2.5" />
+            <rect class="s-soft" x="20" y="31" width="90" height="16" rx="5" />
+            <rect class="s-bar" x="26" y="36.5" width="40" height="5" rx="2.5" />
+            <path class="s-accent" d="M99 37l3 3 3-3z" />
+            <rect class="s-bar" x="20" y="58" width="58" height="5" rx="2.5" />
+            <rect class="s-accent" x="82" y="58" width="22" height="5" rx="2.5" />
+            <rect class="s-bar" x="20" y="70" width="84" height="4" rx="2" />
+            <rect class="s-bar" x="20" y="80" width="62" height="4" rx="2" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                The reader should know what the assistant reads from: the line, from the
+                collection's name and its facets.
+              </li>
+              <li>
+                The service can search more than one collection, and the reader picks one: the
+                choice.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>
+                To narrow the collection. That is the <a href="filter.html">Filter</a>, and the line
+                does not follow it.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>One collection:</strong> the line only. <code>CorpusChoice</code> draws
+                nothing.
+              </li>
+              <li>
+                <strong>Several:</strong> the line, and «Dokumentsamling», a select over them.
+              </li>
+              <li>
+                <strong>The line with counts:</strong> «Dokumenter fra Kudos», and behind «Vis mer»
+                how many documents, which types and which years.
+              </li>
+              <li>
+                <strong>The line without counts:</strong> the collection's own description behind
+                «Vis mer», or no «Vis mer» when there is none.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                A collection is a <code>CorpusOption</code>: <code>key</code>, the platform's
+                <code>dataset-config-key</code>; <code>label</code>, what the reader sees, of which
+                a sentence uses the part before a comma; and <code>description</code>, what is in
+                it, in the dataset's own words.
+              </li>
+              <li>
+                <code>CorpusLine</code>: <code>corpus</code>, the collection searched;
+                <code>fields</code>, the filter fields with their facets, unnarrowed;
+                <code>typeField</code>, the field whose values are the document types; and
+                <code>typePlurals</code>, what many of a type are called, «årsrapporter» for
+                «Årsrapport». <code>className</code> for its root.
+              </li>
+              <li>
+                <code>CorpusChoice</code>: <code>options</code>, every collection the service can
+                search, in order; <code>value</code>, the key of the one searched now;
+                <code>onChange</code> with the key chosen; and <code>resetsFilter</code>, when the
+                host empties a filter in force on a switch, so the announcement says so.
+                <code>className</code> for its field.
+              </li>
+              <li>
+                <code>useCorpusText</code> gives the line's two parts, <code>source</code> and
+                <code>detail</code>, for a host that draws it itself. <code>corpusName</code> gives
+                a collection's name for a sentence.
+              </li>
+            </ul>
+            <h2>Where it goes</h2>
+            <ul>
+              <li>
+                In the UI assembly, the choice is the filter's <code>head</code>, over the fields,
+                when the layout's filter has <code>corpus</code> on. The line stands under
+                «Dokumenter» in <a href="documents.html">Documents</a>, or in the strip over the
+                conversation where the layout draws one.
+              </li>
+              <li>
+                What a switch does is the host's. The UI assembly starts a new thread with an empty
+                filter for the other collection, as kunnskapsassistenten does, and passes
+                <code>resetsFilter</code> when a filter is set.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="filter.html">Filter</a>: the panel the choice heads</li>
+              <li><a href="documents.html">Documents</a>: the list under the line</li>
+              <li><a href="welcome.html">Welcome</a>: the suggestions can follow the collection</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The line and the choice sit in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follow
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and read every token through their own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. The line's text is pinned to neutral
+              on purpose, so it stays grey whatever family «Vis mer» beside it follows.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-corpus-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font of the line and the choice</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the line's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-column-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap before «Vis mer»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-line-row-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap over the opened detail</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-corpus-toggle-padding-block-end</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>«Vis mer»'s target, grown downward</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                The line counts the documents over one field, as each document has one value there,
+                the same sum the filter counts. A missing count drops that part rather than adding
+                up a partial one.
+              </li>
+              <li>
+                The types come biggest first. Up to five are named, and a sixth is named rather than
+                «med flere» about one; with more, the first five and «med flere». A type without a
+                plural is kept in lower case, not given an invented one.
+              </li>
+              <li>
+                The years are a range, «2015–2024», or one year alone. A part of the sentence whose
+                data is missing is left out.
+              </li>
+              <li>
+                «Vis mer» is a button drawn as a link, with <code>aria-expanded</code>, pointing at
+                the detail, which is always in the page and hidden while closed. Its name says what
+                it is about: «Vis mer om dokumentsamlingen». It stays open across a switch.
+              </li>
+              <li>
+                A collection the line does not know is «standardsamlingen». A label is used up to
+                its first comma.
+              </li>
+              <li>
+                The choice is Designsystemet's <code>Select</code> labelled «Dokumentsamling».
+                Choosing the collection already searched does nothing. A switch is announced,
+                «Dokumentsamling: Kudos», with «Filteret er nullstilt …» when
+                <code>resetsFilter</code> is set: through the filter's live region inside a
+                <a href="filter.html">Filter</a>, or its own beside the field elsewhere.
+              </li>
+              <li>The words are the block's own catalogue, in bokmål and English.</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                The line reads the unnarrowed facets, so ticking a box in the filter cannot shrink
+                what the collection is said to hold.
+              </li>
+              <li>
+                An <code>&lt;output&gt;</code> inside the select's field counts as a second input,
+                so the choice's own live region stands beside the field.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                The canvas labels the choice «Korpus»; kunnskapsassistenten says «Dokumentsamling»
+                to readers, and so does the block. One decision covers this and the filter's label
+                (kunnskapsassistenten#178).
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="filter.html" rel="prev"><small>Previous</small>Filter</a>
+        <a class="next" href="documents.html" rel="next"><small>Next</small>Documents</a>
+      </nav>
+    </main>
+  </body>
+</html>
