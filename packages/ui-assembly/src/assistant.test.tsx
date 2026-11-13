@@ -617,6 +617,21 @@ describe('the assistant a layout describes', () => {
     expect(screen.queryByRole('button', { name: /variant/i })).toBeNull();
   });
 
+  it('names the service over its variants in the picker, from the platform’s service title', async () => {
+    const { api } = fakeApi();
+    api.loadModels = vi.fn(async (): Promise<ModelRow[]> => [
+      { ...rows[0], id: 'ka__default', _variant_title: 'Svar med kilder' },
+      { ...rows[0], id: 'ka__fast', _variant_title: 'Rask' },
+    ]);
+    draw(state('knowledge-assistant').layout, api);
+    const list = await screen.findByRole('list', { name: 'KA', hidden: true });
+    expect(
+      within(list)
+        .getAllByRole('button', { hidden: true })
+        .map((button) => button.textContent),
+    ).toEqual(['Svar med kilder', 'Rask']);
+  });
+
   it('lists the threads only with Tråder, and only the service’s own', async () => {
     const { api } = fakeApi();
     const { unmount } = draw(state('without-filter').layout, api);
