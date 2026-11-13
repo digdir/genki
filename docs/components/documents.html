@@ -167,11 +167,10 @@
                 <code>DocumentsInScope</code>: <code>count</code>, the documents the next question
                 reads from; <code>total</code>, the collection's size; <code>corpus</code>, which
                 names it; <code>documents</code>, in the host's order, each with <code>id</code>,
-                <code>title</code>, <code>type</code>, <code>organisation</code>, <code>year</code>,
-                <code>pages</code>, <code>href</code>, where it opens, and <code>included</code>;
-                <code>onIncludedChange</code> with an id and whether it is ticked;
-                <code>defaultOpen</code>, open unless false; <code>headingLevel</code>, 3 by
-                default; and <code>className</code>.
+                <code>title</code>, <code>organisation</code>, <code>year</code>, <code>href</code>,
+                where it opens, and <code>included</code>; <code>onIncludedChange</code> with an id
+                and whether it is ticked; <code>defaultOpen</code>, open unless false;
+                <code>headingLevel</code>, 3 by default; and <code>className</code>.
               </li>
             </ul>
             <h2>Where it goes</h2>
@@ -460,8 +459,8 @@
                 781 dokumenter i Kudos». With neither a count nor documents, nothing is drawn.
               </li>
               <li>
-                With the host's documents: a search by title or organisation, and per document its
-                type as a tag, its organisation, year and pages. With
+                With the host's documents: a search by title or organisation, and per document
+                «Virksomhet, år» under its title, as the dev boards draw it. With
                 <code>onIncludedChange</code> each has a tick and the hint «Mest relevante først.
                 Fjern haken …». Without it there are no ticks, since one that cannot be changed
                 reads as broken: the documents are a plain list, and a title with an

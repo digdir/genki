@@ -402,7 +402,7 @@ describe('the documents in scope', () => {
     });
   });
 
-  it('names each document by the profile’s fields, a period for several years, and links it', async () => {
+  it('names each document’s organisation and year by the profile’s fields, a period for several years, and links it', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -432,7 +432,6 @@ describe('the documents in scope', () => {
         {
           id: '42',
           title: 'Årsrapport 2023',
-          type: 'Årsrapport',
           organisation: 'Digdir',
           year: '2023',
           href: 'https://kudos.dfo.no/dokument/42',
@@ -441,7 +440,6 @@ describe('the documents in scope', () => {
         {
           id: '43',
           title: '43',
-          type: 'Statusrapport',
           organisation: 'NIVA, NILU',
           year: '2019–2021',
           href: 'https://kudos.example/dokument/43',

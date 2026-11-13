@@ -13,19 +13,15 @@ const documents: DocumentInScope[] = [
   {
     id: '1',
     title: 'Evaluering av KI-piloter i staten',
-    type: 'Evaluering',
     organisation: 'Digitaliseringsdirektoratet',
     year: 2024,
-    pages: 52,
     included: true,
   },
   {
     id: '2',
     title: 'Tilsyn med automatiserte vedtak',
-    type: 'Tilsynsrapport',
     organisation: 'Datatilsynet',
     year: 2023,
-    pages: 41,
     included: false,
   },
 ];
@@ -60,7 +56,7 @@ describe('DocumentsInScope', () => {
     expect(toggle.textContent).toContain('Vis');
   });
 
-  it('lists the host’s documents with their type, organisation, year and pages, each a tick', () => {
+  it('lists the host’s documents with «Virksomhet, år» under each title, each a tick', () => {
     const changed: [string, boolean][] = [];
     render(
       <DocumentsInScope
@@ -72,7 +68,7 @@ describe('DocumentsInScope', () => {
     );
     const first = screen.getByRole('checkbox', { name: /Evaluering av KI-piloter/ });
     expect(first.closest('.uib-documents-scope-document')?.textContent).toBe(
-      'Evaluering av KI-piloter i statenEvalueringDigitaliseringsdirektoratet · 2024 · 52 sider',
+      'Evaluering av KI-piloter i statenDigitaliseringsdirektoratet, 2024',
     );
     fireEvent.click(first);
     expect(changed).toEqual([['1', false]]);
@@ -109,8 +105,8 @@ describe('DocumentsInScope', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent),
     ).toEqual([
-      'Evaluering av KI-piloter i statenEvalueringDigitaliseringsdirektoratet · 2024 · 52 sider',
-      'Tilsyn med automatiserte vedtakTilsynsrapportDatatilsynet · 2023 · 41 sider',
+      'Evaluering av KI-piloter i statenDigitaliseringsdirektoratet, 2024',
+      'Tilsyn med automatiserte vedtakDatatilsynet, 2023',
     ]);
   });
 

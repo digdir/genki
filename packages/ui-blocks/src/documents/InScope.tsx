@@ -13,12 +13,9 @@ import { useT } from './i18n.js';
 export interface DocumentInScope {
   id: string;
   title: string;
-  /** Its type, drawn as a tag: «Evaluering». */
-  type?: string | undefined;
   /** Who published it. */
   organisation?: string | undefined;
   year?: number | string | undefined;
-  pages?: number | undefined;
   /** Where the document opens, in a new tab: the title is a link. */
   href?: string | undefined;
   /** Ticked: it is read. Unticked: the reader left it out. */
@@ -121,22 +118,17 @@ export const DocumentsInScope = ({
             ) : (
               <ul className="uib-documents-scope-list" aria-labelledby={`${id}-title`}>
                 {shown.map((document) => {
+                  // «Virksomhet, år» under the title, as the dev boards draw it (dev-filter-panel).
                   const about = [
                     document.organisation,
                     document.year === undefined ? undefined : String(document.year),
-                    document.pages === undefined
-                      ? undefined
-                      : t('documents.pages', { count: document.pages }),
                   ].filter(Boolean);
                   const text = (name: ReactNode) => (
                     <span className="uib-documents-scope-text">
                       <span className="uib-documents-scope-name">{name}</span>
-                      <span className="uib-documents-scope-about">
-                        {document.type ? (
-                          <span className="uib-documents-scope-type">{document.type}</span>
-                        ) : null}
-                        {about.length > 0 ? <span>{about.join(' · ')}</span> : null}
-                      </span>
+                      {about.length > 0 ? (
+                        <span className="uib-documents-scope-about">{about.join(', ')}</span>
+                      ) : null}
                     </span>
                   );
                   return (

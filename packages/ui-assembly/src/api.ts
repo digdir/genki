@@ -527,13 +527,11 @@ export const createGenkiApi = ({
         documents: body.documents.map((d) => {
           const values = d.fields ?? {};
           const href = d.url ?? own?.documentUrl?.(d.id);
-          const type = join(own?.typeField, values);
           const organisation = join(own?.organisationField, values);
           const year = yearField ? yearsOf(values[yearField]) : undefined;
           return {
             id: d.id,
             title: d.title?.trim() || d.id,
-            ...(type ? { type } : {}),
             ...(organisation ? { organisation } : {}),
             ...(year ? { year } : {}),
             ...(href ? { href } : {}),
