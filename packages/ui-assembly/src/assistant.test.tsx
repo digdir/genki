@@ -1459,6 +1459,70 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     ).toBeTruthy();
   });
 
+  describe('with the trial «compact-filter»', () => {
+    const drawTrial = (on: boolean) => {
+      const kept = new Map<string, unknown>([['flags', on ? ['compact-filter'] : []]]);
+      render(
+        <Assistant
+          api={counted().api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={{
+            assistantName: 'KA',
+            signedInAs: 'Kari Marie Nordmann',
+            corpora: { kudos: { typeField: 'type' } },
+            experiments: [{ id: 'compact-filter', title: 'Smalere filter' }],
+          }}
+          storage={{
+            read: (key) => kept.get(key),
+            write: (key, value) => void kept.set(key, value),
+            remove: (key) => void kept.delete(key),
+          }}
+          threadInUrl
+        />,
+      );
+    };
+    const card = () =>
+      screen
+        .getByRole('navigation', { name: 'Tråder og filter' })
+        .querySelector<HTMLElement>('.uib-shell-box');
+    const edge = () => screen.getByRole('separator', { name: 'Endre bredde på tråder og filter' });
+    const columns = () =>
+      filterPanel()
+        .querySelector<HTMLElement>('[style*="--genai-filter-checkboxes-columns"]')
+        ?.style.getPropertyValue('--genai-filter-checkboxes-columns');
+    const shown = () => within(filterPanel()).findByRole('checkbox', { name: /^Årsrapport/ });
+
+    it('draws the filter 230 wide, its ticks in one column, and gives the threads the rest of the card', async () => {
+      drawTrial(true);
+      await shown();
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
+      expect(columns()).toBe('1');
+      expect(edge().getAttribute('aria-valuenow')).toBe('660');
+    });
+
+    it('keeps the filter 230 wide as the card is resized, down to the threads’ 220 beside it', async () => {
+      drawTrial(true);
+      await shown();
+      expect(edge().getAttribute('aria-valuemin')).toBe('450');
+      fireEvent.keyDown(edge(), { key: 'Home' });
+      expect(edge().getAttribute('aria-valuenow')).toBe('450');
+      fireEvent.keyDown(edge(), { key: 'ArrowRight', shiftKey: true });
+      expect(edge().getAttribute('aria-valuenow')).toBe('514');
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('calc(100% - 230px)');
+    });
+
+    it('leaves the filter as it was while the trial is off: 440 wide, two columns, the card at least 660', async () => {
+      drawTrial(false);
+      await shown();
+      expect(card()?.style.getPropertyValue('--uib-shell-lead-width')).toBe('220px');
+      expect(columns()).toBeUndefined();
+      expect(edge().getAttribute('aria-valuemin')).toBe('660');
+      expect(edge().getAttribute('aria-valuenow')).toBe('660');
+    });
+  });
+
   it('leaves «Kunnskapsassistenten»’s filter as it was: a view of the panel, no line under the field', async () => {
     drawNext(counted().api, fromTemplate('knowledge-assistant').layout);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });

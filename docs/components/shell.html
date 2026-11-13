@@ -145,7 +145,10 @@
                 has its own <code>title</code>, a <code>subtitle</code> under it, its
                 <code>children</code>, which scroll on their own, and its <code>width</code>; its
                 <code>label</code> names its region. The panel's <code>size</code> counts both
-                columns, and the panel's own column keeps its width less the companion's. The
+                columns, and the panel's own column keeps its width less the companion's. With
+                <code>keepWidth</code> it is the other way round: the companion keeps its
+                <code>width</code>, and the panel's own column takes every resize, so the panel's
+                <code>size.minWidth</code> is the own column's floor plus the companion's width. The
                 panel's button stands on the companion's row, at the card's edge, and folds both. In
                 a drawer the companion stands under the panel's own column.
               </li>
