@@ -32,10 +32,10 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
   },
   // The same blocks in the dev boards' look (`templateLook`), built here step by step, so
   // «Kunnskapsassistenten» keeps drawing what it draws today.
-  // Fremgangsmåte in both places: the bar over each answer and the tool (dev-verktoy-1).
   'knowledge-assistant-next': {
     primary: ['threads', 'filter', 'settings'],
     main: ['approach', 'chat'],
+    // Fremgangsmåte also as the tool (dev-verktoy-1), beside its bar over each answer.
     secondary: ['approach', 'sources', 'notes'],
   },
   'sources-only': { primary: ['threads', 'filter'], main: ['chat'], secondary: ['sources'] },
