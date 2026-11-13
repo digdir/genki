@@ -114,11 +114,18 @@ For each case the platform sends `POST {baseURL}` with the header `x-genai-contr
 ```json
 {
   "contract": "evaluator@2",
-  "case": { "id": "frist", "input": "Når er fristen?", "referenceAnswer": "1. mars." },
+  "case": {
+    "id": "frist",
+    "input": "Når er fristen?",
+    "referenceAnswer": "Fristen er 1. mars.",
+    "criteria": { "criteria": "Nevner fristen og at den gjelder hele landet" }
+  },
   "answer": "Fristen er 1. mars.",
   "sources": [{ "document": "frister-2026" }]
 }
 ```
+
+`referenceAnswer` and `criteria` are there when the case has them. `criteria` holds the case's named fields for judges (`expected.criteria`), such as `criteria` or `supporting_quotes`.
 
 Answer each metric at once, or as pending with a ticket:
 
