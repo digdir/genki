@@ -26,7 +26,7 @@ These rules replace or extend the decision above once they are built. The ones m
 
 - **One kind of run** (built). A run started in the portal ("Kjør test") is an eval run (`platform.eval.run`), and `EvalRun` is the only run record. Publishing gates, calibration and run comparisons read it. The run also scores the metric of each threshold gate the definition lists that a deterministic evaluator computes, `nynorsk.chrf` (`nynorskReference`) and `klarsprak.overall` (`klarsprakChecklist`) today, without model calls, so the portal's "Kjør testsettet" on the draft can satisfy those gates (tested in `integration.test.ts`). The subject a run records leaves out `spec.riskConfirmation`, which publishing stamps with who confirmed and when.
 - **Evaluators may answer later** (built). An evaluator returns its scores at once or later (`evaluator@2`, ADR 0040).
-- **Holdout stays in the platform.** Holdout cases never leave the platform for a trace sink.
+- **Holdout stays in the platform** (built). Holdout cases never leave the platform for a trace sink.
 - **`expected.criteria`.** A test case carries the named fields judges read in `expected.criteria`, such as `criteria` or `supporting_quotes`. A `criteria` case's criteria move there from `referenceAnswer`, which then holds only a reference answer. Existing test sets are upgraded when they are read, so stored versions keep their numbers (built).
 - **Calibration for every model-based judge.** A judge, built in or a plug-in, blocks a publish only when both hold:
   - its agreement with human calibration labels is a Cohen's kappa of at least 0.6, over at least 30 labels with both verdicts among the judge's own;
@@ -56,4 +56,4 @@ Components change more often than services are published, and a service's test s
 - The calibration rule accepted with ADR 0040 also governs skill publishing (ADR 0024).
 - `benchmarks/README.md` sets the shape of a benchmark folder and its report. Each report rebuilds byte for byte from its committed verdicts and reference, and checks its own instrument with an A/A run and a known loss.
 - Partly built: one benchmark follows the shape so far, and the rule on citing a result is checked in review, not by code. Tests: `refuses_to_compare_records_with_different_references` and `not_worse_needs_the_whole_interval_above_minus_margin` (`benchmarks/benchlib`), `no_reference_test_is_derived_from_a_side_output` (`benchmarks/ingestion/opb`).
-- Not built yet from the amendment: holdout kept out of a trace sink, calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions, and re-running the baseline when a judge changes.
+- Not built yet from the amendment: calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions, and re-running the baseline when a judge changes.

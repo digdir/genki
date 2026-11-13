@@ -42,6 +42,7 @@ import type {
   EgressOptions,
   TenantSecrets,
 } from '@genai/providers-mcp-client';
+import type { TraceDeliveryStore } from '@genai/jobs';
 import type { TraceSinks, TracingOptions } from './trace-connections.js';
 import type { TrackedWork } from './tracked-work.js';
 
@@ -83,6 +84,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   egressOptions?: EgressOptions;
   tracing?: TracingOptions;
   traceSinks?: TraceSinks;
+  traceDeliveries?: TraceDeliveryStore;
   evalSlots?: EvalSlots;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;

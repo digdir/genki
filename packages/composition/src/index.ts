@@ -22,6 +22,7 @@ export * from './schema-labels.js';
 export * from './boot-guard.js';
 export * from './platform-tenant.js';
 export * from './lockdown.js';
+export * from './trace-sinks.js';
 export * from './operation-try.js';
 export * from './media-output.js';
 export * from './operation-governance.js';

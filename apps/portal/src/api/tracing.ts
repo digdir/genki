@@ -16,6 +16,7 @@ export interface TraceConnection extends TraceConnectionInput {
   id: string;
   instance: boolean;
   residencySetBy: 'operator' | 'tenant';
+  removing?: boolean;
 }
 
 export const tracingApi = ({ get, request, tenantPath }: ApiContext) => {

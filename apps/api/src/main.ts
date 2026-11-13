@@ -462,6 +462,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
+  ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
   ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock

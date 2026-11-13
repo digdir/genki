@@ -48,6 +48,7 @@ const tenantTables = [
   'eval_candidates',
   'clients',
   'webhook_deliveries',
+  'trace_deliveries',
   'ingestion_executions',
   'knowledge_job_requests',
   'trigger_runs',
@@ -95,6 +96,7 @@ const definerFunctions = [
   'usage_open_starts(text)',
   'platform_usage_buckets(text[], timestamptz, timestamptz)',
   'platform_usage_unassigned(timestamptz, timestamptz)',
+  'pending_trace_deletes(integer)',
   'due_provider_objects(timestamptz, integer)',
 ];
 
@@ -722,6 +724,27 @@ const migrations: string[] = [
    )`,
   `create index if not exists webhook_deliveries_recent on webhook_deliveries (tenant, client, at desc)`,
   ...tenantIsolation('webhook_deliveries'),
+  `create table if not exists trace_deliveries (
+     tenant text not null,
+     sink text not null,
+     task text not null,
+     trace text not null,
+     state text not null,
+     attempts integer not null default 0,
+     last_error text,
+     updated_at timestamptz not null,
+     primary key (tenant, sink, trace)
+   )`,
+  `create index if not exists trace_deliveries_pending on trace_deliveries (updated_at) where state = 'pending'`,
+  `alter table trace_deliveries add column if not exists judges text[] not null default '{}'`,
+  ...tenantIsolation('trace_deliveries'),
+  `create or replace function pending_trace_deletes(p_limit integer) returns setof trace_deliveries
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from trace_deliveries where state = 'pending'
+         order by updated_at, tenant, sink, trace limit p_limit;
+     end $$`,
   `create table if not exists trigger_runs (
      id text primary key,
      tenant text not null,

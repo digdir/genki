@@ -7,6 +7,9 @@ import {
   defaultPlatformTenant,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
+  allowOf,
+  pinnedFetch,
+  tracingEgress,
 } from '@genai/composition';
 import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
@@ -60,12 +63,19 @@ import {
   type LabelStore,
   type TestSetStore,
 } from '@genai/eval';
-import { klarsprakChecklist, nynorskReference, type TriggerRunStore } from '@genai/jobs';
+import {
+  InMemoryTraceDeliveries,
+  klarsprakChecklist,
+  nynorskReference,
+  type TraceDeliveryStore,
+  type TriggerRunStore,
+} from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
 import {
   createExperimentRouter,
   createTraceExporter,
   observedEventLog,
+  traceIdFor,
 } from '@genai/providers-langfuse';
 import {
   deleteConversationDocuments,
@@ -259,10 +269,7 @@ import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
 import {
-  allowOf,
-  pinnedFetch,
   traceConnectionsModule,
-  tracingEgress,
   type TraceSinks,
   type TracingOptions,
 } from './trace-connections.js';
@@ -447,6 +454,8 @@ export interface PlatformInput {
   appVersion?: string;
   /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
   tracing?: TracingOptions;
+  /** Every trace sent to a tenant's sink, until its delete is confirmed. */
+  traceDeliveries?: TraceDeliveryStore;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -968,8 +977,10 @@ export const createPlatform = async (input: PlatformInput) => {
   const tenantSecrets = new TenantSecrets(vault.resolver(input.secrets));
   const experiments = createExperimentRouter();
   const sinkEgress = tracingEgress(input.egress ?? {}, input.tracing?.devMode);
+  const traceDeliveries = input.traceDeliveries ?? new InMemoryTraceDeliveries();
   const traceSinks: TraceSinks = {
-    open: (run, tenant, connection) =>
+    traceIdOf: (task) => traceIdFor(task),
+    open: (run, tenant, connection, beforeSend) =>
       experiments.open(
         run,
         createTraceExporter(
@@ -989,6 +1000,7 @@ export const createPlatform = async (input: PlatformInput) => {
             tasks: async (id) => (await taskStore.get(id))?.task,
             fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
             serviceName: 'genai-eval',
+            ...(beforeSend ? { beforeSend } : {}),
             experiments: true,
           },
         ),
@@ -1796,6 +1808,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
     tenantSecrets,
     traceSinks,
+    traceDeliveries,
     egressOptions: input.egress ?? {},
     ...(input.tracing ? { tracing: input.tracing } : {}),
     connections,
