@@ -372,7 +372,10 @@ const knowledgeHandlers =
         },
         // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
-        converter: createLocalConverter(),
+        // A PDF page the text layer cannot read is left empty and logged; the rest of the file is kept.
+        converter: createLocalConverter({
+          onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),
+        }),
         ...(nativeOutputs ? { nativeOutputs } : {}),
         heavy: heavySettings,
         runs: knowledgeRunRecords,

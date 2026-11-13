@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { extname } from 'node:path';
 import {
   DocumentTooLargeError,
@@ -10,11 +11,44 @@ import {
 import mammoth from 'mammoth';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+/** A PDF page the text layer could not read, named by the file's sha256 and the page, counted from 1. */
+export interface UnreadablePage {
+  sha256: string;
+  page: number;
+  error: string;
+}
+
 export interface LocalConverterOptions {
   maxBytes?: number;
   maxUnzippedBytes?: number;
   maxPages?: number;
+  /** Told of each PDF page left empty because it could not be read. */
+  onUnreadablePage?: (page: UnreadablePage) => void;
 }
+
+/**
+ * Reads pages 1 to `count`: a page that cannot be read is left empty and reported, and the rest are
+ * kept; a file none of whose pages can be read fails with the first page's error.
+ */
+export const readEachPage = async (
+  count: number,
+  read: (page: number) => Promise<string>,
+  unreadable: (page: number, error: unknown) => void = () => undefined,
+): Promise<string[]> => {
+  const pages: string[] = [];
+  const failed: { page: number; error: unknown }[] = [];
+  for (let n = 1; n <= count; n += 1) {
+    try {
+      pages.push(await read(n));
+    } catch (error) {
+      failed.push({ page: n, error });
+      pages.push('');
+    }
+  }
+  if (count > 0 && failed.length === count) throw failed[0]?.error;
+  for (const { page, error } of failed) unreadable(page, error);
+  return pages;
+};
 
 export const localConverterExtensions = ['.pdf', '.docx', '.md', '.txt', '.html', '.htm'];
 
@@ -102,7 +136,11 @@ const pageText = (items: object[]) => {
 };
 
 /** One markdown string per PDF page; a page with no text layer is empty. */
-const pdfPages = async (file: DocumentFile, maxPages: number) => {
+const pdfPages = async (
+  file: DocumentFile,
+  maxPages: number,
+  onUnreadablePage?: (page: UnreadablePage) => void,
+) => {
   const task = getDocument({
     data: new Uint8Array(file.bytes),
     disableFontFace: true,
@@ -113,13 +151,23 @@ const pdfPages = async (file: DocumentFile, maxPages: number) => {
   try {
     const pdf = await task.promise;
     if (pdf.numPages > maxPages) throw new TooManyPagesError(file.name, maxPages);
-    const pages: string[] = [];
-    for (let n = 1; n <= pdf.numPages; n += 1) {
-      const page = await pdf.getPage(n);
-      pages.push(pageText((await page.getTextContent()).items));
-      page.cleanup();
-    }
-    return pages;
+    return await readEachPage(
+      pdf.numPages,
+      async (n) => {
+        const page = await pdf.getPage(n);
+        try {
+          return pageText((await page.getTextContent()).items);
+        } finally {
+          page.cleanup();
+        }
+      },
+      (page, error) =>
+        onUnreadablePage?.({
+          sha256: createHash('sha256').update(file.bytes).digest('hex'),
+          page,
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+        }),
+    );
   } finally {
     await task.destroy();
   }
@@ -148,7 +196,11 @@ export const createLocalConverter = (options: LocalConverterOptions = {}): Docum
     convert: async (file) => {
       if (file.bytes.byteLength > maxBytes) throw new DocumentTooLargeError(file.name, maxBytes);
       const kind = kindOf(file);
-      if (kind === '.pdf') return { pages: await pdfPages(file, maxPages), converter: textLayer };
+      if (kind === '.pdf')
+        return {
+          pages: await pdfPages(file, maxPages, options.onUnreadablePage),
+          converter: textLayer,
+        };
       if (kind === '.docx') return onePage(await docxToMarkdown(file, maxUnzippedBytes));
       if (kind === '.html' || kind === '.htm')
         return onePage(htmlToMarkdown(new TextDecoder().decode(file.bytes)));
