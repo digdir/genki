@@ -81,7 +81,7 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
-      # The Docling server (docker/docling): docling-serve's image pinned by digest, plus Norwegian Tesseract data.
+      # The Docling server (docker/docling): the parser benchmark winner's Docling and Tesseract on Debian, packages locked.
       - id: docling
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

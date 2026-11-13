@@ -144,7 +144,7 @@ Input from people, systems, tools and documents is checked against what is allow
 
 ## Checking an image against the source
 
-The deploy workflow builds the images reproducibly: with `SOURCE_DATE_EPOCH` set to the commit time, file timestamps rewritten to it, no build cache and a pinned BuildKit. Anyone can rebuild a deployed commit and get the same image digest.
+The deploy workflow builds the images reproducibly: with `SOURCE_DATE_EPOCH` set to the commit time, file timestamps rewritten to it, no build cache and a pinned BuildKit. Anyone can rebuild a deployed commit and get the same image digest. The Docling server's image (`docker/docling`) is the exception: its Python packages are locked, but its Debian packages come from the live mirrors, so a rebuild gets the same versions, not the same digest.
 
 Compare the linux/amd64 image digest, not the digest the container apps run. That one names an index that also holds the provenance and SBOM attestations, which record the workflow run and differ on every build.
 

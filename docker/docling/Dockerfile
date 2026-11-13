@@ -12,6 +12,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-nor \
     && rm -rf /var/lib/apt/lists/* \
     && tesseract --version 2>&1 | head -1 | grep -qx 'tesseract 5.5.0' \
+    && tesseract --list-langs 2>&1 | grep -qx nor && tesseract --list-langs 2>&1 | grep -qx eng \
     && echo "0451eb4f8049ae78196806bf878a389a2f40f1386fe038568cf4441226ba6ef2  /usr/share/tesseract-ocr/5/tessdata/nor.traineddata" | sha256sum -c -
 
 ENV PIP_NO_CACHE_DIR=1 \
@@ -22,7 +23,8 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 # CPU torch from PyTorch's own index first, then every other package at the version in requirements.txt, so each
 # build installs the same code. requirements.txt is what PyPI offered when the benchmark run started (see its header).
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0+cpu torchvision==0.29.2+cpu
+# setuptools comes with torch and is not in the lock (`pip freeze` leaves it out), so it is pinned here.
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0+cpu torchvision==0.29.2+cpu setuptools==78.1.0
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-deps -r /tmp/requirements.txt && pip check \
     && python -c "import torch, sys; sys.exit(0 if torch.__version__ == '2.15.0+cpu' else 'torch replaced: ' + torch.__version__)"
@@ -33,10 +35,10 @@ RUN docling-tools models download -o "$DOCLING_SERVE_ARTIFACTS_PATH" layout tabl
 RUN useradd --uid 1001 --create-home --home-dir /home/docling docling
 USER 1001
 WORKDIR /home/docling
-# Tesseract with Norwegian is the only OCR here, so it is the only OCR a request gets: `auto`, the preset a request
-# without one asks for and the server warms up at start, means Tesseract `nor` too, not RapidOCR, which is not here.
+# Tesseract is the only OCR a request gets, with the languages it names (Norwegian and English are here). `auto`, the
+# preset a request without one asks for and the server warms up at start, means Tesseract `nor`: docling-serve's own
+# `auto` picks RapidOCR, whose package comes with docling but whose models are not in the image.
 ENV HF_HUB_OFFLINE=1 \
-    DOCLING_SERVE_DEFAULT_OCR_PRESET=tesseract \
     DOCLING_SERVE_ALLOWED_OCR_PRESETS='["tesseract"]' \
     DOCLING_SERVE_CUSTOM_OCR_PRESETS='{"auto": {"kind": "tesseract", "lang": ["nor"]}}'
 EXPOSE 5001

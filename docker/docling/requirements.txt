@@ -3,8 +3,9 @@
 #   pip install --uploaded-prior-to 2026-11-11T15:53:38Z docling==2.146.0 docling-slim==2.146.0 \
 #     docling-core==2.105.0 docling-ibm-models==4.0.4 docling-serve==1.38.2
 #   pip freeze --all
-# The cut-off is when the parser benchmark's run 2 started (benchmarks/ingestion/blocks/results/run2.md), so the
-# versions the benchmark did not record, such as docling-parse, are the ones PyPI offered it. Remake it the same way
+# The cut-off is when the parser benchmark's winner started converting: the first `started` (1794412418) in
+# benchmarks/ingestion/blocks/results/azure-D32as_v6-swedencentral-run2/docling-tess/timings.jsonl. So the versions
+# the benchmark did not record, such as docling-parse, are the ones PyPI offered it. Remake it the same way
 # with a new cut-off to upgrade.
 accelerate==1.15.0
 agent-detector==2.0.0

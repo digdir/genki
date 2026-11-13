@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 // The Docling server (ADR 0042, issue 476): its image, the workflows that build and deploy it, and the template.
@@ -56,6 +56,8 @@ describe('the Docling server image', () => {
     expect(dockerfile).toMatch(
       /^RUN pip install --no-deps -r \/tmp\/requirements\.txt && pip check/m,
     );
+    // the torch step pulls in setuptools, which the lock leaves out
+    expect(dockerfile).toMatch(/torchvision==[\d.]+\+cpu setuptools==[\d.]+$/m);
     const lines = read('docker/docling/requirements.txt')
       .split('\n')
       .filter((l) => l && !l.startsWith('#'));
@@ -63,11 +65,18 @@ describe('the Docling server image', () => {
     expect(lines.filter((l) => !/^[\w.-]+==[\w.+-]+$/.test(l))).toEqual([]);
   });
 
-  it('gives every request Tesseract with Norwegian, the only OCR in the image', () => {
+  it('lets requests use only Tesseract, with Norwegian when they name no OCR', () => {
     const dockerfile = read('docker/docling/Dockerfile');
+    expect(dockerfile).not.toContain('DOCLING_SERVE_DEFAULT_OCR_PRESET');
     expect(dockerfile).toContain(`DOCLING_SERVE_ALLOWED_OCR_PRESETS='["tesseract"]'`);
     expect(dockerfile).toContain(
       `DOCLING_SERVE_CUSTOM_OCR_PRESETS='{"auto": {"kind": "tesseract", "lang": ["nor"]}}'`,
+    );
+  });
+
+  it('has Tesseract data for Norwegian and English', () => {
+    expect(read('docker/docling/Dockerfile')).toContain(
+      'tesseract --list-langs 2>&1 | grep -qx nor && tesseract --list-langs 2>&1 | grep -qx eng',
     );
   });
 });
@@ -133,8 +142,9 @@ interface Template {
 
 describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template', () => {
   let built: Template | undefined;
-  const template = (): Template => {
-    built ??= (
+  // `az bicep build` takes several seconds, so once, outside any test's timeout
+  beforeAll(() => {
+    built = (
       JSON.parse(
         execFileSync(
           'az',
@@ -146,6 +156,9 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
         ),
       ) as { resources: Resource[] }
     ).resources.find((r) => r.name === 'containerapps')?.properties.template as Template;
+  }, 120_000);
+  const template = (): Template => {
+    if (!built) throw new Error('the template did not build');
     return built;
   };
   const app = (suffix: string): Resource => {
@@ -160,7 +173,11 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
 
   it('gives the Docling key to the worker and the Docling server only', () => {
     const holders = template()
-      .resources.filter((r) => JSON.stringify(r).includes('doclingKeySecret'))
+      .resources.filter((r) =>
+        /doclingKeySecret|docling-api-key|DOCLING_API_KEY|DOCLING_SERVE_API_KEY/.test(
+          JSON.stringify(r),
+        ),
+      )
       .map((r) => r.name)
       .sort();
     expect(holders).toEqual([docling().name, app('worker').name].sort());
@@ -216,5 +233,30 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
       ['DOCLING_SERVE_LOG_LEVEL', 'WARNING'],
     ])
       expect(env(), name).toContain(`{"name":"${name}","value":"${value}"}`);
+  });
+
+  it('keeps no Docling result past its fetch and mounts no volume', () => {
+    for (const [name, value] of [
+      ['DOCLING_SERVE_SINGLE_USE_RESULTS', 'true'],
+      ['DOCLING_SERVE_RESULT_REMOVAL_DELAY', '1'],
+    ])
+      expect(env(), name).toContain(`{"name":"${name}","value":"${value}"}`);
+    expect(env()).not.toMatch(/"volumes"|"volumeMounts"/);
+  });
+
+  it('lets the Docling server use the platform identity only to pull its image and read its key', () => {
+    const { identitySettings } = docling().properties.configuration as {
+      identitySettings?: { identity: string; lifecycle: string }[];
+    };
+    expect(identitySettings).toEqual([
+      { identity: "[parameters('identityId')]", lifecycle: 'None' },
+    ]);
+  });
+
+  it('gives a Docling conversion ten minutes to finish when its replica is stopped', () => {
+    const { terminationGracePeriodSeconds } = docling().properties.template as {
+      terminationGracePeriodSeconds?: number;
+    };
+    expect(terminationGracePeriodSeconds).toBe(600);
   });
 });
