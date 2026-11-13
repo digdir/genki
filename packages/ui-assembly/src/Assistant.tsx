@@ -149,6 +149,7 @@ const AnswerRow = ({
                 sources: turn.sources,
                 markers: turn.markers,
                 locale: t.locale,
+                documentFootnotes: a.look === 'next',
               });
               void copy(text, { kind: 'answer', sources });
             },
@@ -437,6 +438,8 @@ export const AssistantView = ({
                   follow(turn, target, { turnId: turn.id, document: target });
                 },
                 sourcesUsed: true,
+                // Until genki cites excerpts, the next look marks each cited document.
+                ...(next ? { documentFootnotes: true } : {}),
               }
             : {})}
           onRegenerate={(turn, question) => {
