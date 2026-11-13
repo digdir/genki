@@ -257,11 +257,7 @@ const derivationOf = (converter: string) =>
 type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
 type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
 
-/**
- * The converter errors known to be about the file, and the failure each is stored as. pdf.js
- * throws the last two for a PDF it cannot open and one that needs a password: the file's sha256
- * is checked before converting, so trying the same bytes again would fail the same way.
- */
+/** Converter errors about the file itself, and the failure each is stored as (ADR 0042). */
 const fileRefusals: Readonly<
   Record<string, 'too_large' | 'unsupported_type' | 'conversion_failed'>
 > = {
