@@ -268,6 +268,7 @@ export const baseConfig: AgentLoopRuntimeConfig = {
 export const run = async (opts: {
   scripts: Record<string, Script>;
   retrieval?: AgentRetrieval;
+  withoutDataset?: boolean;
   config?: AgentLoopRuntimeConfig;
   stream?: boolean;
   registry?: ToolRegistry;
@@ -285,7 +286,7 @@ export const run = async (opts: {
       createAgentLoop({
         retrieval: (_ctx, _config, request) => {
           requests.push(request);
-          return r;
+          return opts.withoutDataset ? undefined : r;
         },
         now: () => new Date('2026-10-06T10:00:00Z'),
       }),

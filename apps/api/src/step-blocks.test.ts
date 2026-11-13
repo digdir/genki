@@ -268,6 +268,89 @@ describe('a service that runs a step flow', () => {
   });
 });
 
+describe('a service that searches but has no dataset', () => {
+  const service = (strategy: Record<string, unknown>) => ({
+    apiVersion: 'genai/v1',
+    kind: 'Service',
+    metadata: { tenant, id: 'uten-datasett', name: 'Uten datasett' },
+    spec: {
+      purpose: 'Svar fra kildene',
+      riskClass: 'minimal',
+      input: { accepts: ['text/plain'] },
+      output: { kind: 'answer' },
+      strategy,
+      knowledge: { datasets: [] },
+      model: { primary: 'fake/c-eu', residency: 'eu' },
+    },
+  });
+  const publish = async (...definitions: unknown[]) => {
+    const { platform } = await boot();
+    const results = [];
+    for (const d of definitions)
+      results.push(await platform.definitions.publish(d, 'kari', 'Test', {}));
+    return results;
+  };
+
+  it('a rag service without a dataset is refused at publish', async () => {
+    const [refused] = await publish(
+      service({ id: 'rag-single-shot', version: 1, config: { generate: true } }),
+    );
+
+    expect(refused?.ok ? [] : refused?.errors).toEqual([
+      {
+        path: 'spec.strategy',
+        message: 'rag-single-shot searches a dataset, and spec.knowledge.datasets is empty',
+      },
+    ]);
+  });
+
+  it('a step flow service without a dataset is refused at publish when the flow searches', async () => {
+    const flow = {
+      apiVersion: 'genai/v1',
+      kind: 'StepFlow',
+      metadata: { tenant, id: 'sok-flyt', name: 'Søkeflyt' },
+      spec: {
+        purpose: 'Søker og skriver',
+        steps: [
+          { id: 'sok', block: 'retrieve@1', input: { query: '{{input.query}}' } },
+          { id: 'skriv', block: 'template@1', input: { text: '{{input.query}}' } },
+        ],
+      },
+    };
+    const [stored, refused] = await publish(
+      flow,
+      service({ id: 'step-flow', version: 1, config: { flow: 'sok-flyt@1' } }),
+    );
+
+    expect(stored?.ok).toBe(true);
+    expect(refused?.ok ? [] : refused?.errors).toEqual([
+      {
+        path: 'spec.knowledge.datasets',
+        message:
+          'the step flow sok-flyt@1 searches a dataset in step sok (retrieve@1), and spec.knowledge.datasets is empty',
+      },
+    ]);
+  });
+
+  it('a step flow service without a dataset publishes when the flow does not search', async () => {
+    const flow = {
+      apiVersion: 'genai/v1',
+      kind: 'StepFlow',
+      metadata: { tenant, id: 'skriv-flyt', name: 'Skriveflyt' },
+      spec: {
+        purpose: 'Skriver',
+        steps: [{ id: 'skriv', block: 'template@1', input: { text: '{{input.query}}' } }],
+      },
+    };
+    const [, published] = await publish(
+      flow,
+      service({ id: 'step-flow', version: 1, config: { flow: 'skriv-flyt@1' } }),
+    );
+
+    expect(published?.ok ? [] : published?.errors).toEqual([]);
+  });
+});
+
 describe('a service with a table output', () => {
   const flow = {
     apiVersion: 'genai/v1',
