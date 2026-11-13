@@ -11,8 +11,21 @@ export interface FieldSpec {
   /** The field's name over its row in the next look's filter, singular: «Dokumenttype». */
   heading?: string | undefined;
   kind?: 'year' | undefined;
+  /** For a field of `kind: 'year'`, the years it offers. Without it, 1900 up to this year. */
+  years?: YearBounds | undefined;
   /** The values are integers on the wire. */
   integer?: boolean | undefined;
+}
+
+/**
+ * The years a year field offers, newest first. Anything else it holds, such as page numbers or a
+ * year centuries ahead, is left out, but a value the reader has chosen is always kept.
+ */
+export interface YearBounds {
+  /** The first year offered; 1900 without it. */
+  first?: number | undefined;
+  /** The last year offered; the year it is in Norway without it. */
+  last?: number | undefined;
 }
 
 export interface CorpusProfile {

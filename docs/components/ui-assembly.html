@@ -216,6 +216,10 @@
                 it and goes there. Without it, no «Logg ut» is drawn, in either look.
               </li>
               <li>
+                <code>now</code>: the clock, for the year a year field runs up to; tests give a
+                fixed one.
+              </li>
+              <li>
                 <code>threadInUrl</code>: the thread as <code>?t=</code>, opened only when the id
                 looks like one genki makes, «Innstillinger» as <code>#innstillinger</code>, and the
                 tab's title. With <code>paths</code>, a path per page. <code>allThreads</code> lists
@@ -433,6 +437,14 @@
               <li>
                 A question asked in Dokumentvisning names the document, and searches only that
                 document where the collection declares its number as a filter field.
+              </li>
+              <li>
+                A field the profile marks <code>kind: 'year'</code> offers only years, newest first:
+                from its <code>years.first</code>, 1900 without it, up to its
+                <code>years.last</code>, the year it is in Norway without it (<code>now</code>).
+                Page numbers, parse noise and years far ahead, which genki returns as they are, are
+                left out, but a value the reader has chosen is always kept, so its chip can be
+                removed.
               </li>
               <li>
                 A filter field with every value chosen, as after «Velg alle», narrows nothing, so it
