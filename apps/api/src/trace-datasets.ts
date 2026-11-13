@@ -162,6 +162,8 @@ export const traceDatasets = (deps: {
 
   return {
     ensure,
+    /** The dataset genki recorded for the test set in the connection's project, without asking it. */
+    recorded,
     /** Each test set of the services the connection covers, when the connection is saved. */
     forConnection: async (tenant: string, connection: Connection) => {
       const sets = (

@@ -587,9 +587,12 @@ export const createQualityModule =
             if (error instanceof RunRefused)
               return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
             if (!(error instanceof TraceRefused)) throw error;
-            return problem(c, 409, 'Testkjøringen kan ikke sendes til sporing', [
-              { path: 'trace', message: error.message },
-            ]);
+            return problem(
+              c,
+              409,
+              'Testkjøringen kan ikke sendes til sporing',
+              error.messages.map((message) => ({ path: 'trace', message })),
+            );
           }
         });
 
@@ -607,7 +610,18 @@ export const createQualityModule =
             return problem(c, 404, 'Fant ikke', [
               { path: 'version', message: `no ${version ?? 'published'} version` },
             ]);
-          return c.json(await evals.sendingOf(guard.tenant, service, found));
+          // The judges that reach a run depend on its test set, by its dataset and its name.
+          const testSet = c.req.query('testSet');
+          const set = testSet
+            ? (await deps.evalStores.testSets.list(guard.tenant, service)).find(
+                (s) => s.metadata.id === testSet,
+              )
+            : undefined;
+          if (!set)
+            return problem(c, 404, 'Fant ikke', [
+              { path: 'testSet', message: `no test set ${testSet ?? ''} in the service` },
+            ]);
+          return c.json(await evals.sendingOf(guard.tenant, service, found, set));
         });
 
         app.get('/tenants/:tenant/services/:id/eval-runs', async (c) => {

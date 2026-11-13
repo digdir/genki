@@ -681,7 +681,7 @@ export const integrationsArea = {
     labelsOn: 'Henter etiketter',
     datasets: 'Datasett i Langfuse',
     datasetsHelp:
-      'Ett datasett per testsett i tjenestene koblingen dekker. Hver testkjøring som sendes til Langfuse, knyttes til datasettet til sitt testsett.',
+      'Ett datasett per testsett i tjenestene koblingen dekker. Hver testkjøring som sendes til Langfuse, knyttes til datasettet til sitt testsett. For å la en dommer vurdere ett testsett, velg datasettet i filteret til dommeren i Langfuse, sammen med isExperimentItemRootSpan = true.',
     check: 'Sjekk koblingen',
     checkedOk:
       'Den hemmelige nøkkelen åpner prosjektet {project}. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',

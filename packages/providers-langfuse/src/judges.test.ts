@@ -782,7 +782,7 @@ describe('Langfuse judges', () => {
     expect(await mappingOf(null)).toEqual(evaluator().variableMapping);
   });
 
-  it('counts an enabled rule without the item-root filter, or with a non-LLM evaluator, as a rule genki cannot read', async () => {
+  it('refuses the run for an enabled rule without the item-root filter, and refuses a non-LLM judge', async () => {
     const judges = langfuseJudges(
       api(
         fakeLangfuse({
@@ -798,7 +798,9 @@ describe('Langfuse judges', () => {
       ),
     );
 
-    expect(await judges.others()).toEqual(['alle_spenn']);
+    expect((await judges.forRun('kudos', brev)).refusing.map((r) => r.name)).toEqual([
+      'alle_spenn',
+    ]);
     expect((await judges.list('kudos')).map((j) => [j.rule.name, j.refused?.reason])).toEqual([
       ['svar_oppfyller_kriteriene-eksperimenter', undefined],
       ['kode', 'not-a-model'],
@@ -818,14 +820,14 @@ describe('Langfuse judges', () => {
     );
     const listedJudges = await judges.list('kudos');
 
-    expect(await judges.others()).toEqual([]);
+    expect((await judges.forRun('kudos', brev)).refusing.map((r) => r.name)).toEqual([]);
     // Langfuse does not run it, so no screen lists it; a run that uses it reads why.
     expect(listedJudges.map((j) => j.refused)).toEqual([
       { reason: 'paused', message: pausedMessage },
     ]);
   });
 
-  it('refuses a rule with more than one evaluator, or with a filter beside the item-root filter', async () => {
+  it('refuses a rule with more than one evaluator, or with a filter outside the measured schema', async () => {
     const several = rule();
     several.evaluatorAssignments.push({ evaluatorId: 'dommer-2', variableMapping: null });
     const refusedOf = async (r: FakeRule) =>
@@ -836,7 +838,14 @@ describe('Langfuse judges', () => {
       ).refused?.reason;
 
     expect(await refusedOf(several)).toBe('several-evaluators');
-    // What the upgrade from 4.4.0 leaves beside the item-root filter of a rule on a dataset.
+    expect(
+      await refusedOf(
+        rule({
+          filter: [{ type: 'string', column: 'datasetId', operator: 'starts with', value: 'd' }],
+        }),
+      ),
+    ).toBe('filtered');
+    // What the upgrade from 4.4.0 leaves beside the item-root filter of a rule on a dataset is read.
     expect(
       await refusedOf(
         rule({
@@ -845,7 +854,7 @@ describe('Langfuse judges', () => {
           ],
         }),
       ),
-    ).toBe('filtered');
+    ).toBeUndefined();
   });
 
   it('counts a rule as unreadable when one of its several evaluators is still active, or its evaluator is not listed', async () => {
@@ -876,7 +885,10 @@ describe('Langfuse judges', () => {
     expect((await judges.list('kudos')).map((j) => [j.rule.name, j.refused?.reason])).toEqual([
       ['to_evaluatorer', 'several-evaluators'],
     ]);
-    expect(await judges.others()).toEqual(['ukjent_evaluator', 'ukjent_alle_spenn']);
+    expect((await judges.forRun('kudos', brev)).refusing.map((r) => r.name)).toEqual([
+      'ukjent_evaluator',
+      'ukjent_alle_spenn',
+    ]);
     // With every one of them paused, Langfuse runs nothing: the rule is paused.
     const allPaused = rule({ id: 'regel-5', name: 'alle_pauset' });
     allPaused.evaluatorAssignments = [
@@ -895,7 +907,7 @@ describe('Langfuse judges', () => {
       ),
     );
     expect((await paused.list('kudos')).map((j) => j.refused?.reason)).toEqual(['paused']);
-    expect(await paused.others()).toEqual([]);
+    expect((await paused.forRun('kudos', brev)).refusing.map((r) => r.name)).toEqual([]);
   });
 
   it('refuses judges whose rules share a name, which genki cannot tell apart', async () => {
@@ -942,7 +954,7 @@ describe('Langfuse judges', () => {
         api(fakeLangfuse({ rules: [rule()], evaluators: [evaluator()], evaluationDown: status })),
       );
       await expect(judges.list('kudos')).rejects.toThrow(`HTTP ${status}`);
-      await expect(judges.others()).rejects.toThrow(`HTTP ${status}`);
+      await expect(judges.forRun('kudos', brev)).rejects.toThrow(`HTTP ${status}`);
     }
   });
 
@@ -976,7 +988,7 @@ describe('Langfuse judges', () => {
 const liveHost = process.env.LANGFUSE_LOCAL_URL;
 
 describe.skipIf(!liveHost)('judges on a local Langfuse 4.72.0', () => {
-  it('lists an item-root rule of a live Langfuse 4.72.0 as a judge, and counts a rule without the filter as unreadable', async () => {
+  it("reads the filters of a live Langfuse 4.72.0's rules: a judge of the test set, another test set's judge, a rule on every span", async () => {
     const live = {
       host: liveHost as string,
       publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472',
@@ -1016,21 +1028,376 @@ describe.skipIf(!liveHost)('judges on a local Langfuse 4.72.0', () => {
       created.push(String(rule.id));
     };
     try {
-      await ruleOf(`genki_live_item_${suffix}`, [itemRoot]);
-      await ruleOf(`genki_live_spans_${suffix}`, []);
+      await ruleOf(`genki_live_item_${suffix}`, [itemRoot, onDataset()]);
+      await ruleOf(`genki_live_other_${suffix}`, [itemRoot, onDataset('datasett-vedtak')]);
+      await ruleOf(`genki_live_spans_${suffix}`, [onDataset()]);
+      await ruleOf(`genki_live_env_${suffix}`, [
+        filterOf('environment', 'none of', ['genki-test-runs']),
+      ]);
       const judges = langfuseJudges(live);
 
       const listedJudges = await judges.list('lokal');
-      const others = await judges.others();
+      const found = await judges.forRun('lokal', brev);
+      const names = (list: { rule: { name: string } }[]) => list.map((j) => j.rule.name);
+      const refusing = found.refusing.map((r) => r.name);
 
       expect(listedJudges.find((j) => j.rule.name === `genki_live_item_${suffix}`)).toMatchObject({
         id: `langfuse:lokal/genki_live_item_${suffix}`,
         evaluator: { id: judge.id, name: judge.name },
       });
-      expect(listedJudges.map((j) => j.rule.name)).not.toContain(`genki_live_spans_${suffix}`);
-      expect(others).toContain(`genki_live_spans_${suffix}`);
+      expect(names(found.judges)).toContain(`genki_live_item_${suffix}`);
+      expect(names(found.elsewhere)).toContain(`genki_live_other_${suffix}`);
+      expect(refusing).toContain(`genki_live_spans_${suffix}`);
+      expect([...names(found.judges), ...names(found.elsewhere), ...refusing]).not.toContain(
+        `genki_live_env_${suffix}`,
+      );
     } finally {
       for (const id of created) await call('DELETE', `/api/public/v2/evaluation-rules/${id}`);
     }
+  });
+});
+
+/** A sent run of the test set klarsprak-brev v4, linked to its dataset. */
+const brev = {
+  tenant: '991825827',
+  dataset: 'datasett-brev',
+  environment: 'genki-test-runs',
+  experimentName: 'klarsprak-brev v4',
+};
+
+const filterOf = (column: string, operator: string, value: unknown, type = 'stringOptions') => ({
+  type,
+  column,
+  operator,
+  value,
+});
+
+const onDataset = (id = brev.dataset) => filterOf('datasetId', 'any of', [id]);
+
+/** What forRun makes of each rule: judge, skip, or the refusal's text. */
+const outcomeOf = async (rules: FakeRule[], run = brev) => {
+  const found = await langfuseJudges(
+    api(fakeLangfuse({ rules, evaluators: [evaluator()] })),
+  ).forRun('kudos', run);
+  return Object.fromEntries([
+    ...found.judges.map((j) => [j.rule.name, 'judge']),
+    ...found.elsewhere.map((j) => [j.rule.name, 'skip']),
+    ...found.refusing.map((r) => [r.name, r.message]),
+  ]) as Record<string, string>;
+};
+
+describe("Langfuse rules' filters, read for a run", () => {
+  it("skips a rule whose datasetId filter names another test set's dataset", async () => {
+    const found = await langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [rule({ name: 'vedtak', filter: [onDataset('datasett-vedtak')] })],
+          evaluators: [evaluator()],
+        }),
+      ),
+    ).forRun('kudos', brev);
+
+    expect(found.judges).toEqual([]);
+    expect(found.refusing).toEqual([]);
+    expect(found.elsewhere.map((j) => j.rule.name)).toEqual(['vedtak']);
+  });
+
+  it("takes a rule filtered on this test set's dataset and the item root for a judge", async () => {
+    const found = await langfuseJudges(
+      api(fakeLangfuse({ rules: [rule({ filter: [onDataset()] })], evaluators: [evaluator()] })),
+    ).forRun('kudos', brev);
+
+    expect(found.judges.map((j) => [j.rule.name, j.refused])).toEqual([
+      ['svar_oppfyller_kriteriene-eksperimenter', undefined],
+    ]);
+    expect(found.elsewhere).toEqual([]);
+    expect(found.refusing).toEqual([]);
+  });
+
+  it('refuses the run for a rule that only filters on the dataset, since it judges every span', async () => {
+    const outcome = await outcomeOf([
+      rule({ name: 'alle_spenn', itemRoot: false, filter: [onDataset()] }),
+    ]);
+
+    expect(outcome.alle_spenn).toMatch(/alle_spenn would judge every span/);
+    expect(outcome.alle_spenn).toMatch(/isExperimentItemRootSpan = true/);
+  });
+
+  it("skips a rule that leaves genki's test runs out by environment", async () => {
+    expect(
+      await outcomeOf([
+        rule({
+          name: 'live',
+          itemRoot: false,
+          filter: [filterOf('environment', 'none of', ['genki-test-runs'])],
+        }),
+        rule({
+          id: 'regel-2',
+          name: 'prod',
+          itemRoot: false,
+          filter: [filterOf('environment', 'any of', ['production'])],
+        }),
+      ]),
+    ).toEqual({});
+  });
+
+  it('skips a rule filtered on a trace name genki does not use', async () => {
+    // Digdir's live judges: genki's trace name is its draft's id, new for each run.
+    expect(
+      await outcomeOf([
+        rule({
+          name: 'kunnskapsassistent_relevans',
+          itemRoot: false,
+          filter: [filterOf('traceName', 'any of', ['991825827/kunnskapsassistent'])],
+        }),
+      ]),
+    ).toEqual({});
+  });
+
+  it('refuses the run for a rule filtered on a name alone, since genki names only the root span in advance', async () => {
+    const outcome = await outcomeOf([
+      rule({
+        name: 'navn',
+        itemRoot: false,
+        filter: [filterOf('name', 'any of', ['991825827/kunnskapsassistent'])],
+      }),
+    ]);
+
+    expect(outcome.navn).toMatch(/navn would judge every span/);
+  });
+
+  it('skips an item-root rule filtered on a name the root span does not have', async () => {
+    expect(
+      await outcomeOf([rule({ filter: [filterOf('name', 'any of', ['kunnskapsassistent'])] })]),
+    ).toEqual({ 'svar_oppfyller_kriteriene-eksperimenter': 'skip' });
+  });
+
+  it('reads every operator of the measured filter schema the way Langfuse does', async () => {
+    // Each filter beside the item-root filter: true lets the run's root span through, false not.
+    const cases: [ReturnType<typeof filterOf>, boolean][] = [
+      [filterOf('datasetId', 'any of', ['datasett-brev', 'x']), true],
+      [filterOf('datasetId', 'none of', ['datasett-brev']), false],
+      [filterOf('environment', 'none of', ['production']), true],
+      [filterOf('type', 'any of', ['AGENT']), true],
+      [filterOf('type', 'none of', ['AGENT']), false],
+      [filterOf('traceName', 'none of', ['kunnskapsassistent']), true],
+      [filterOf('name', 'none of', ['kunnskapsassistent']), true],
+      [filterOf('experimentName', '=', 'klarsprak-brev v4', 'string'), true],
+      [filterOf('experimentName', '=', 'klarsprak-brev v3', 'string'), false],
+      [filterOf('experimentName', 'contains', '-brev', 'string'), true],
+      [filterOf('experimentName', 'does not contain', '-brev', 'string'), false],
+      [filterOf('experimentName', 'starts with', 'klarsprak-brev', 'string'), true],
+      [filterOf('experimentName', 'ends with', 'v3', 'string'), false],
+      [filterOf('experimentName', 'is not empty', '', 'string'), true],
+      [filterOf('tags', 'any of', ['tenant:991825827'], 'arrayOptions'), true],
+      [filterOf('tags', 'none of', ['tenant:991825827'], 'arrayOptions'), false],
+      [filterOf('tags', 'all of', ['tenant:991825827', 'production'], 'arrayOptions'), false],
+      [filterOf('isRootObservation', '=', true, 'boolean'), true],
+      [filterOf('isRootObservation', '<>', true, 'boolean'), false],
+      [filterOf('parentObservationId', 'is null', '', 'null'), true],
+      [filterOf('parentObservationId', 'is not null', '', 'null'), false],
+    ];
+    for (const [filter, through] of cases)
+      expect(
+        (await outcomeOf([rule({ filter: [filter] })]))['svar_oppfyller_kriteriene-eksperimenter'],
+        `${filter.column} ${filter.operator} ${JSON.stringify(filter.value)}`,
+      ).toBe(through ? 'judge' : 'skip');
+    // <> false on the item-root column is the item-root filter too.
+    expect(
+      await outcomeOf([
+        rule({
+          itemRoot: false,
+          filter: [filterOf('isExperimentItemRootSpan', '<>', false, 'boolean'), onDataset()],
+        }),
+      ]),
+    ).toEqual({ 'svar_oppfyller_kriteriene-eksperimenter': 'judge' });
+  });
+
+  it('refuses the run for a filter on a column genki cannot know before the run, naming the rule', async () => {
+    const outcome = await outcomeOf([
+      rule({
+        name: 'modell',
+        filter: [onDataset(), filterOf('providedModelName', 'contains', 'gpt', 'string')],
+      }),
+      // Another filter leaves the run out, so what genki cannot know does not matter.
+      rule({
+        id: 'regel-2',
+        name: 'live_feil',
+        itemRoot: false,
+        filter: [
+          filterOf('environment', 'none of', ['genki-test-runs']),
+          filterOf('level', 'any of', ['ERROR']),
+        ],
+      }),
+    ]);
+
+    expect(outcome).toEqual({
+      modell: expect.stringMatching(/modell has a filter on providedModelName/) as string,
+    });
+  });
+
+  it('refuses the run for an operator or value type outside the measured schema', async () => {
+    const outcome = await outcomeOf([
+      rule({ name: 'ukjent_operator', filter: [filterOf('datasetId', 'starts with', ['d'])] }),
+      rule({
+        id: 'regel-2',
+        name: 'ukjent_type',
+        filter: [filterOf('datasetId', 'any of', 'datasett-brev')],
+      }),
+      rule({
+        id: 'regel-3',
+        name: 'ukjent_kolonne',
+        filter: [filterOf('promptLabel', 'any of', ['prod'])],
+      }),
+    ]);
+
+    expect(Object.keys(outcome).sort()).toEqual([
+      'ukjent_kolonne',
+      'ukjent_operator',
+      'ukjent_type',
+    ]);
+    expect(outcome.ukjent_operator).toMatch(/a filter on datasetId that genki cannot read/);
+  });
+
+  it('skips a rule pinned to another experiment id, and lets none of through', async () => {
+    expect(
+      await outcomeOf([
+        rule({ name: 'en_kjoring', filter: [filterOf('experimentId', 'any of', ['kjøring-1'])] }),
+        rule({
+          id: 'regel-2',
+          name: 'ikke_en_kjoring',
+          filter: [onDataset(), filterOf('experimentId', 'none of', ['kjøring-1'])],
+        }),
+      ]),
+    ).toEqual({ en_kjoring: 'skip', ikke_en_kjoring: 'judge' });
+  });
+
+  it("skips a rule filtered on tags genki's traces do not carry", async () => {
+    expect(
+      await outcomeOf([
+        rule({
+          name: 'prod_tagg',
+          itemRoot: false,
+          filter: [filterOf('tags', 'any of', ['production'], 'arrayOptions')],
+        }),
+      ]),
+    ).toEqual({});
+  });
+
+  it('does not take a rule that reaches only the root through isRootObservation for a judge', async () => {
+    const outcome = await outcomeOf([
+      rule({
+        name: 'rot',
+        itemRoot: false,
+        filter: [onDataset(), filterOf('isRootObservation', '=', true, 'boolean')],
+      }),
+    ]);
+
+    expect(outcome.rot).toMatch(
+      /rot judges the run's root spans without isExperimentItemRootSpan = true/,
+    );
+  });
+
+  it('takes an item-root rule without a dataset filter for a judge of every test set', async () => {
+    expect(await outcomeOf([rule()])).toEqual({
+      'svar_oppfyller_kriteriene-eksperimenter': 'judge',
+    });
+    expect(
+      await outcomeOf([rule()], {
+        ...brev,
+        dataset: 'datasett-vedtak',
+        experimentName: 'vedtak v1',
+      }),
+    ).toEqual({ 'svar_oppfyller_kriteriene-eksperimenter': 'judge' });
+  });
+
+  it('puts a paused judge of another test set under elsewhere, so it never stops a run', async () => {
+    const found = await langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [rule({ name: 'vedtak', filter: [onDataset('datasett-vedtak')] })],
+          evaluators: [evaluator({ status: 'paused' })],
+        }),
+      ),
+    ).forRun('kudos', brev);
+
+    expect(found.elsewhere.map((j) => j.rule.name)).toEqual(['vedtak']);
+    expect(found.judges).toEqual([]);
+    expect(found.refusing).toEqual([]);
+  });
+
+  it("takes a nested service's agent span below the root for a span a rule may judge", async () => {
+    // A case that calls another service sends that task's agent span below the case's root.
+    const outcome = await outcomeOf([
+      rule({
+        name: 'agenter',
+        itemRoot: false,
+        filter: [
+          filterOf('type', 'any of', ['AGENT']),
+          filterOf('isRootObservation', '=', false, 'boolean'),
+        ],
+      }),
+    ]);
+
+    expect(outcome.agenter).toMatch(/agenter would judge every span/);
+  });
+
+  it('reads no tags on spans below the root, since Langfuse reads tags per span', async () => {
+    const outcome = await outcomeOf([
+      rule({
+        name: 'uten_virksomhet',
+        itemRoot: false,
+        filter: [filterOf('tags', 'none of', ['tenant:991825827'], 'arrayOptions')],
+      }),
+    ]);
+
+    expect(outcome.uten_virksomhet).toMatch(/uten_virksomhet would judge every span/);
+  });
+
+  it('compares filter text with letter case, as Langfuse does', async () => {
+    expect(
+      await outcomeOf([
+        rule({ filter: [filterOf('experimentName', '=', 'KLARSPRAK-BREV v4', 'string')] }),
+      ]),
+    ).toEqual({ 'svar_oppfyller_kriteriene-eksperimenter': 'skip' });
+  });
+
+  it('refuses a judge whose filter needs a value genki cannot know before the run, so it cannot be taken in use', async () => {
+    const judge = await listed(
+      fakeLangfuse({
+        rules: [rule({ filter: [onDataset(), filterOf('level', 'any of', ['ERROR'])] })],
+        evaluators: [evaluator()],
+      }),
+    );
+
+    expect(judge.refused).toMatchObject({ reason: 'filtered', field: 'level' });
+  });
+
+  it("says the judge changed when its filter no longer reaches the run's dataset", async () => {
+    const project = {
+      rules: [rule({ filter: [onDataset()] })],
+      evaluators: [evaluator()],
+      scores: {
+        [traceIdFor('sak-1')]: [
+          {
+            name: 'svar_oppfyller_kriteriene',
+            value: true,
+            dataType: 'BOOLEAN',
+            metadata: { job_configuration_id: 'regel-1' },
+          },
+        ],
+      },
+    };
+    const judges = langfuseJudges(api(fakeLangfuse(project)));
+    const [snapshot] = (await judges.forRun('kudos', brev)).judges;
+    const judge = judges.evaluator(snapshot as LangfuseJudge, { tenant: 'dfo', content: true });
+    const [pending] = await judge.evaluate(kriteriesak, svar, ctx);
+    // The agency points the rule at another test set while the run waits for its scores.
+    project.rules[0] = rule({ filter: [onDataset('datasett-vedtak')] });
+    const [collected] = (await judge.collect?.([pendingOf(pending as Score)])) ?? [];
+
+    expect(collected?.score.details?.judgeChanged).toEqual([
+      "the rule's filter no longer reaches the run",
+    ]);
   });
 });

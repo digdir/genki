@@ -90,7 +90,7 @@ describe('live Testsett', () => {
     expect(screen.getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
     expect(
       screen.getByText(
-        'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen digdir:',
+        'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen digdir. Velg datasettet i filteret til en dommer i Langfuse for å la den vurdere testsettet:',
       ),
     ).toBeTruthy();
     expectAccessible();
@@ -786,6 +786,180 @@ describe('live Testsett: Langfuse-dommere', () => {
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
     return screen.findByRole('region', { name: 'Resultat per testtilfelle' });
   };
+
+  /** The test set listed with its dataset, and the sending check answered by answer. */
+  const withDataset = (answer: (path: string) => Response | undefined) => (path: string) =>
+    path === '/tenants/999888777/services/rapportassistenten/test-sets'
+      ? Response.json({
+          data: [
+            {
+              id: 'rapport-kjerne',
+              name: 'Kjernespørsmål',
+              cases: 2,
+              dataset: { connection: 'lokal', name: 'genki/rapportassistenten/rapport-kjerne' },
+            },
+          ],
+        })
+      : answer(path);
+  const reaching =
+    (more: Record<string, unknown> = {}) =>
+    (path: string) =>
+      /\/eval-runs\/sending/.test(path)
+        ? Response.json({
+            connection: { id: 'lokal', residency: 'global' },
+            judges: [{ id: judge, name: rule }],
+            ...more,
+          })
+        : connections(path);
+
+  it('shows on the test set the judges that reach it and which are in use', async () => {
+    const { calls } = await openLive(
+      '',
+      {},
+      {},
+      withDataset(
+        reaching({
+          notInUse: ['tone-eksperimenter'],
+          unreadable: ['alle_spenn'],
+          refused: {
+            reason: 'judges-differ',
+            connection: 'lokal',
+            notInUse: ['tone-eksperimenter'],
+            unreadable: ['alle_spenn'],
+          },
+        }),
+      ),
+    );
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(
+      within(judges).getByText('tone-eksperimenter – ikke tatt i bruk under Byggeklosser'),
+    ).toBeTruthy();
+    expect(within(judges).getByText('alle_spenn – stopper sendte kjøringer')).toBeTruthy();
+    expect(calls.some((c) => /\/eval-runs\/sending\?testSet=rapport-kjerne$/.test(c.path))).toBe(
+      true,
+    );
+    expectAccessible();
+  });
+
+  it('says on the test set that the judges could not be read, and keeps the dataset line', async () => {
+    await openLive(
+      '',
+      {},
+      {},
+      withDataset(
+        reaching({
+          judges: [],
+          refused: {
+            reason: 'judges-unreadable',
+            connection: 'lokal',
+            message: 'Langfuse answered HTTP 503 for /api/public/v2/evaluation-rules',
+          },
+        }),
+      ),
+    );
+
+    expect(
+      await screen.findByText(
+        'Dommerne i prosjektet til koblingen lokal kunne ikke leses (HTTP 503), så genki vet ikke hvilke som når testsettet.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
+    expect(
+      screen.queryByRole('list', { name: 'Dommere i Langfuse som når testsettet' }),
+    ).toBeNull();
+  });
+
+  it('reads the judges on the test set from the published version, so a service without a draft makes no failed call', async () => {
+    const { calls } = await openLive('', {}, {}, withDataset(reaching()));
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(calls.some((c) => /\/eval-runs\/sending\?version=draft/.test(c.path))).toBe(false);
+  });
+
+  it('reads the judges on the test set from the draft when the service has no published version', async () => {
+    const answer = reaching();
+    await openLive(
+      '',
+      {},
+      {},
+      withDataset((path) =>
+        /\/eval-runs\/sending\?testSet=/.test(path)
+          ? Response.json(
+              {
+                title: 'Fant ikke',
+                errors: [{ path: 'version', message: 'no published version' }],
+              },
+              { status: 404 },
+            )
+          : answer(path),
+      ),
+    );
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(screen.queryByText(/kunne ikke leses/)).toBeNull();
+  });
+
+  it('shows the judges not in use on the test set while the run is refused for another reason', async () => {
+    await openLive(
+      '',
+      {},
+      {},
+      withDataset(
+        reaching({
+          notInUse: ['tone-eksperimenter'],
+          unreadable: [],
+          refused: { reason: 'residency', service: 'norway', connection: 'global' },
+        }),
+      ),
+    );
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(
+      within(judges).getByText('tone-eksperimenter – ikke tatt i bruk under Byggeklosser'),
+    ).toBeTruthy();
+  });
+
+  it('lists judges for other test sets collapsed on the test set', async () => {
+    await openLive(
+      '',
+      {},
+      {},
+      withDataset(
+        reaching({
+          elsewhere: [{ id: 'langfuse:lokal/vedtak-eksperimenter', name: 'vedtak-eksperimenter' }],
+        }),
+      ),
+    );
+
+    const summary = await screen.findByText('Dommere for andre testsett (1)');
+    const details = summary.closest('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(within(details).getByText('vedtak-eksperimenter')).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('lists in the run dialog only the judges that reach the test set', async () => {
+    const { calls } = await openLive('', {}, {}, reaching());
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+
+    await screen.findByText(`Langfuse-dommerne vurderer bare kjøringer som sendes: ${rule}.`);
+    expect(calls.some((c) => /\/eval-runs\/sending\?.*testSet=rapport-kjerne/.test(c.path))).toBe(
+      true,
+    );
+  });
 
   it('leaves Send til Langfuse unticked when the service uses a Langfuse judge, and says its judges score only a run that is sent', async () => {
     const { writes } = await openLive('', {}, {}, sending());

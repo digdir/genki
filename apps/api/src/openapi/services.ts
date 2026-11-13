@@ -286,7 +286,25 @@ const RunSending = z
       .optional(),
     judges: z
       .array(z.object({ id: z.string(), name: z.string() }))
-      .describe('The Langfuse judges the tenant has taken in use from the connection'),
+      .describe(
+        'The Langfuse judges taken in use from the connection whose filters reach the test set',
+      ),
+    elsewhere: z
+      .array(z.object({ id: z.string(), name: z.string() }))
+      .optional()
+      .describe(
+        "Judges in the project whose filters leave the test set out, such as another test set's",
+      ),
+    notInUse: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Judges that reach the test set and are not taken in use, whatever else refuses the run',
+      ),
+    unreadable: z
+      .array(z.string())
+      .optional()
+      .describe('Rules that reach the test set and refuse a sent run, whatever else refuses it'),
     refused: z
       .union([
         z.object({
@@ -301,10 +319,14 @@ const RunSending = z
           connection: z.string(),
           notInUse: z
             .array(z.string())
-            .describe('Active judges in the project that the tenant has not taken in use'),
+            .describe(
+              'Active judges in the project that reach the test set and are not taken in use',
+            ),
           unreadable: z
             .array(z.string())
-            .describe('Active judges in the project that genki cannot read'),
+            .describe(
+              'Active rules that reach the test set and that genki cannot read: refused judges, rules that would judge every span, and filters genki cannot read',
+            ),
         }),
         z.object({
           reason: z.literal('judges-unreadable'),
@@ -1351,12 +1373,15 @@ export const serviceRoutes: RouteConfig[] = [
           .string()
           .optional()
           .openapi({ description: 'draft, or a version number; defaults to the published one' }),
+        testSet: z.string().openapi({
+          description: 'The test set the run is of: the judges that reach it depend on its dataset',
+        }),
       }),
     },
     responses: {
       200: json(RunSending, 'What the run would send'),
       ...tenantErrors,
-      404: problem('No such version'),
+      404: problem('No such version, or no such test set in the service'),
     },
   }),
   createRoute({

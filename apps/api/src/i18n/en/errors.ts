@@ -154,8 +154,12 @@ export const catalogErrors = {
     '{rule} is not an LLM-as-a-judge evaluator, so it has no model genki can name',
   sinkJudgeSampled:
     '{rule} judges only part of the items it gets, so some cases would never be scored',
-  sinkJudgeFiltered:
-    '{rule} judges only the items its filter lets through, so some cases would never be scored',
+  sinkJudgeFiltered: '{rule} has a filter on {column} that genki cannot read before the run',
+  sinkRuleEverySpan:
+    "{rule} would judge every span of the run's cases; add the filter isExperimentItemRootSpan = true, or leave genki's test runs out with environment none of genki-test-runs",
+  sinkRuleRootOnly:
+    "{rule} judges the run's root spans without isExperimentItemRootSpan = true, which genki needs to read a judge",
+  sinkRuleUnreadEvaluator: '{rule} runs an evaluator genki cannot read',
   sinkJudgeDefaultModel:
     "{rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API",
   sinkJudgeUnsentField: '{rule} reads {field}, which genki does not send',
@@ -457,6 +461,7 @@ export const qualityErrors = {
   testSetRequired: 'the test set is required',
   noTestSetFor: 'no test set {setId} for {service}',
   noVersion: 'no {version} version',
+  noTestSetInService: 'no test set {testSet} in the service',
   noCases: 'The test set has no test cases',
   serviceCannotRun: 'The service cannot run',
   runNotTraced: 'The test run cannot be sent for tracing',
