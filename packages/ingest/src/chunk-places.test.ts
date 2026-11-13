@@ -14,10 +14,21 @@ const chunking: ChunkDocumentConfig = {
 
 const sha = (c: string) => c.repeat(64);
 
+const byPage: ChunkDocumentConfig = {
+  strategy: { kind: 'page', splitMaxLength: 80 },
+  minimumLength: 1,
+  maximumLength: 4000,
+  metadataStyle: 'pr',
+};
+
 /** A document as an index job prepares it: chunked from its joined pages, then placed. */
-const prepared = (id: string, files: { name: string; sha256: string; pages: string[] }[]) => {
+const prepared = (
+  id: string,
+  files: { name: string; sha256: string; pages: string[] }[],
+  config: ChunkDocumentConfig = chunking,
+) => {
   const texts = files.map((f) => joinPages(f.pages));
-  const chunks = chunkDocument(id, texts, chunking);
+  const chunks = chunkDocument(id, texts, config);
   const doc = toIndexDocument(
     id,
     { id, title: 'Årsrapport' },
@@ -83,5 +94,34 @@ describe('chunks in the knowledge database', () => {
     const [chunk] = chunkDocument('4711', [text], chunking);
 
     expect(chunk?.chunk_id).toBe(chunkId('4711', 0, chunk?.content_markdown ?? ''));
+  });
+
+  it('every chunk carries its document, file and page, for a document with an attachment and a page split in two', () => {
+    const long =
+      'Første del av en lang side om tildelingen for året. ' +
+      'Andre del av den samme siden, om midlene til fellesløsninger.';
+    const doc = prepared(
+      'kudos:4f1c',
+      [
+        {
+          name: 'tildelingsbrev.pdf',
+          sha256: sha('c'),
+          pages: ['# Tildeling\n\nKort side.', long],
+        },
+        { name: 'vedlegg.pdf', sha256: sha('d'), pages: ['Vedlegg om rapportering.'] },
+      ],
+      byPage,
+    );
+
+    expect(
+      doc.chunks.map((c) => ({ file: c.file, sha: c.fileSha256, from: c.pageFrom, to: c.pageTo })),
+    ).toEqual([
+      { file: 'tildelingsbrev.pdf', sha: sha('c'), from: 1, to: 1 },
+      { file: 'tildelingsbrev.pdf', sha: sha('c'), from: 2, to: 2 },
+      { file: 'tildelingsbrev.pdf', sha: sha('c'), from: 2, to: 2 },
+      { file: 'vedlegg.pdf', sha: sha('d'), from: 1, to: 1 },
+    ]);
+    expect(doc.id).toBe('kudos:4f1c');
+    expect(new Set(doc.chunks.map((c) => c.id)).size).toBe(4);
   });
 });
