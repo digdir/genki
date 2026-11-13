@@ -38,8 +38,10 @@ export interface CorpusProfile {
   typePlurals?: Readonly<Record<string, string>> | undefined;
   /** The field the document type is in, for the line above. */
   typeField?: string | undefined;
-  /** Where a document lives, from its number, when the source carries no link. */
+  /** Where a document lives, from its number, when the source carries no link. Goes first. */
   documentUrl?: ((documentId: string) => string | undefined) | undefined;
+  /** The same as data: an address per kind of number, `{id}` where it goes. */
+  documentLinks?: Readonly<Partial<Record<DocumentIdPattern, string>>> | undefined;
   /**
    * The facets that describe one document, read by its number for the line under its title in
    * «Dokumenter»: the field holding the number, and the fields to show.
@@ -100,3 +102,6 @@ export interface AssistantExperiment {
   href?: string | undefined;
   hrefLabel?: string | undefined;
 }
+
+/** The kinds of document number a link is chosen by, tried in this order. */
+export type DocumentIdPattern = 'digits' | 'uuid' | 'any';
