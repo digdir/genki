@@ -10,6 +10,7 @@ import {
   moveTo,
   normalised,
   optionInForce,
+  placedAt,
   placeIn,
   placeOf,
   settingsOf,
@@ -18,6 +19,7 @@ import {
   turnOn,
   withSetting,
   zoneOf,
+  zonesOf,
   type AssistantLayout,
   type BuilderState,
 } from './layout.js';
@@ -130,6 +132,86 @@ describe('the layout rules', () => {
     expect(blocksIn(defaultLayout, 'primary')).toEqual(['threads', 'filter', 'settings']);
     expect(blocksIn(defaultLayout, 'main')).toEqual(['approach', 'chat']);
     expect(blocksIn(defaultLayout, 'secondary')).toEqual(['sources', 'document-view']);
+  });
+});
+
+describe('Approach in both its zones', () => {
+  const saved = (zones: Partial<AssistantLayout['zones']>): AssistantLayout => ({
+    version: 1,
+    zones: { primary: [], main: [], secondary: [], ...zones },
+  });
+
+  it('puts Approach in both the main column and the secondary panel', () => {
+    const state = placeIn(empty, 'approach', 'both');
+    expect(blocksIn(state.layout, 'main')).toEqual(['approach']);
+    expect(blocksIn(state.layout, 'secondary')).toEqual(['approach']);
+    expect(placedAt(state.layout, 'approach')).toBe('both');
+    expect(zonesOf(state.layout, 'approach')).toEqual(['main', 'secondary']);
+    expect(layoutProblems(state.layout)).toEqual([]);
+  });
+
+  it('moves Approach from both places to one, and from one to both', () => {
+    const both = placeIn(empty, 'approach', 'both');
+    const tool = moveTo(both, 'approach', 'secondary');
+    expect(placedAt(tool.layout, 'approach')).toBe('secondary');
+    expect(blocksIn(tool.layout, 'main')).toEqual([]);
+    expect(placedAt(moveTo(tool, 'approach', 'both').layout, 'approach')).toBe('both');
+  });
+
+  it('refuses both for a block that stands in one zone at a time', () => {
+    const chat = turnOn(empty, 'chat');
+    expect(moveTo(chat, 'chat', 'both')).toBe(chat);
+    expect(placeIn(empty, 'chat', 'both')).toBe(empty);
+  });
+
+  it('remembers both places when Approach is turned off and on again', () => {
+    const off = turnOff(placeIn(empty, 'approach', 'both'), 'approach');
+    expect(isOn(off.layout, 'approach')).toBe(false);
+    expect(placeOf(off, 'approach')).toBe('both');
+    expect(placedAt(turnOn(off, 'approach').layout, 'approach')).toBe('both');
+  });
+
+  it('keeps one set of options for Approach in both its zones, alike in each', () => {
+    const both = moveTo(
+      withSetting(turnOn(empty, 'approach'), 'approach', 'level', 'detailed'),
+      'approach',
+      'both',
+    );
+    expect(both.layout.zones.main).toEqual([
+      { block: 'approach', settings: { level: 'detailed' } },
+    ]);
+    expect(both.layout.zones.secondary).toEqual(both.layout.zones.main);
+    const back = withSetting(both, 'approach', 'level', 'standard');
+    expect(back.layout.zones.main).toEqual([{ block: 'approach' }]);
+    expect(back.layout.zones.secondary).toEqual([{ block: 'approach' }]);
+  });
+
+  it('reads a saved layout with Approach in one zone as it did before', () => {
+    const card = saved({ main: [{ block: 'approach' }, { block: 'chat' }] });
+    const tool = saved({ main: [{ block: 'chat' }], secondary: [{ block: 'approach' }] });
+    expect(placedAt(card, 'approach')).toBe('main');
+    expect(zonesOf(card, 'approach')).toEqual(['main']);
+    expect(placedAt(tool, 'approach')).toBe('secondary');
+    expect(layoutProblems(card)).toEqual([]);
+    expect(layoutProblems(tool)).toEqual([]);
+  });
+
+  it('finds Approach placed twice in one zone, though it may stand in both', () => {
+    expect(
+      layoutProblems(saved({ main: [{ block: 'approach' }, { block: 'approach' }] })),
+    ).toContainEqual({ rule: 'placed-twice', block: 'approach' });
+  });
+
+  it('holds Approach in both places through a service without steps, and puts it back in both', () => {
+    const both: BuilderState = placeIn({ layout: defaultLayout, chosen: {} }, 'approach', 'both');
+    const away = fitService(both, (id) => id !== 'approach');
+    expect(away.dropped).toEqual(['approach']);
+    expect(isOn(away.state.layout, 'approach')).toBe(false);
+    const back = fitService(away.state, () => true);
+    expect(back.restored).toEqual(['approach']);
+    expect(placedAt(back.state.layout, 'approach')).toBe('both');
+    expect(back.state.layout).toEqual(both.layout);
+    expect(back.state.held).toBeUndefined();
   });
 });
 
@@ -288,6 +370,15 @@ describe('a change of service', () => {
     const byHand = turnOff(start, 'approach');
     const back = fitService(fitService(byHand, chatless).state, everything).state;
     expect(isOn(back.layout, 'approach')).toBe(false);
+  });
+
+  it('holds a block only where it stood last when a service drops it again', () => {
+    const away = fitService(start, chatless).state;
+    const movedByHand = moveTo(turnOn(away, 'chat'), 'chat', 'secondary');
+    const again = fitService(movedByHand, chatless).state;
+    const back = fitService(again, everything).state;
+    expect(zonesOf(back.layout, 'chat')).toEqual(['secondary']);
+    expect(layoutProblems(back.layout)).toEqual([]);
   });
 
   it('keeps what it holds while the reader turns other blocks on and off', () => {

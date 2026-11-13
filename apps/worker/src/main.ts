@@ -536,6 +536,7 @@ const workerJobs = db
           }
         : {}),
       onError: jobError,
+      log,
     })
   : undefined;
 if (workerJobs) late.jobs = workerJobs;

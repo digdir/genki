@@ -102,6 +102,8 @@ export interface ConversationProps {
   onStalled?: ((turn: ConversationAnswer) => void) | undefined;
   /** «Kilder brukt i svaret» under a finished answer. */
   sourcesUsed?: boolean | undefined;
+  /** `Answer`'s `documentFootnotes`: marks per cited document until a service cites excerpts. */
+  documentFootnotes?: boolean | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
   closingQuestion?: boolean | undefined;
   /** Who answers, for a screen reader. Without it, the AI assistant. */
@@ -210,6 +212,7 @@ export const Conversation = ({
   stalledAfter = STALLED_ANSWER_MS,
   onStalled,
   sourcesUsed,
+  documentFootnotes,
   closingQuestion,
   assistantName,
   headingLevel = 3,
@@ -575,6 +578,7 @@ export const Conversation = ({
           target={target?.turnId === turn.id ? answerTarget : undefined}
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
+          documentFootnotes={documentFootnotes}
           closingQuestion={closingQuestion}
           onRegenerate={onRegenerate && (() => regenerate(turn, question))}
           failure={turn.failure}

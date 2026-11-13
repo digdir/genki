@@ -3959,6 +3959,7 @@
                             { type: 'array', items: { type: 'string', pattern: '^\\d{9}$' } },
                           ],
                         },
+                        visibility: { type: 'string', enum: ['tenant', 'internal'] },
                         triggers: {
                           default: [],
                           type: 'array',

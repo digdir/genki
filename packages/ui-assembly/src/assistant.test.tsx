@@ -165,9 +165,16 @@ const send = async (question = 'Hva er fast?') => {
   });
 };
 
+// Read as a whole, since a footnote mark holds the word before it on its own line.
 const ask = async (question?: string) => {
   await send(question);
-  await screen.findByText(/Rapporteringen er fast/);
+  await waitFor(() =>
+    expect(
+      [...document.querySelectorAll('.uib-answer-text')].some((text) =>
+        text.textContent?.includes('Rapporteringen er fast'),
+      ),
+    ).toBe(true),
+  );
 };
 
 const footnotes = () =>
@@ -573,6 +580,24 @@ describe('the assistant a layout describes', () => {
     expect(without.api.loadThreads).not.toHaveBeenCalled();
   });
 
+  it('opens a thread from `?t=` only when its id looks like one genki makes', async () => {
+    for (const id of ['..%2F..%2Fapi%2Fdatasets', '..', '.', 'a%2Fb', 'a%5Cb', 'a%3Fb', 'a.b']) {
+      history.replaceState(null, '', `/?t=${id}`);
+      const { api } = fakeApi();
+      const { unmount } = draw(state('approach-only').layout, api, true);
+      await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+      expect(api.loadThread, id).not.toHaveBeenCalled();
+      unmount();
+    }
+    for (const id of ['V1StGXR8_Z5jdHi6B-myT', '0b6f0a3e-6c1e-4a8e-9f3b-2d4c5e6f7a8b', 't-old']) {
+      history.replaceState(null, '', `/?t=${id}`);
+      const { api } = fakeApi();
+      const { unmount } = draw(state('approach-only').layout, api, true);
+      await waitFor(() => expect(api.loadThread).toHaveBeenCalledWith(id));
+      unmount();
+    }
+  });
+
   // The secondary panel starts folded, as in kunnskapsassistenten, so its tools are hidden.
   const tools = () => document.querySelector<HTMLElement>('.uib-shell-tools');
 
@@ -936,7 +961,10 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   });
 
   it('makes one tool’s name the panel’s title, with no switcher (dev-verktoy-1)', async () => {
-    drawNext(reader, { ...nextLayout, zones: { ...nextLayout.zones, secondary: [] } });
+    drawNext(reader, {
+      ...nextLayout,
+      zones: { ...nextLayout.zones, secondary: [{ block: 'approach' }] },
+    });
     await opened();
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
@@ -1093,7 +1121,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     await opened();
     const h1 = () => screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent);
     expect(h1()).toEqual(['Ny tråd']);
-    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
     await waitFor(() =>
       expect(document.querySelector('.uib-answer')?.textContent).toContain(
         'Rapporteringen er fast',
@@ -1258,7 +1286,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
           threadInUrl
         />,
       );
-      fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
       await screen.findByRole('heading', { level: 1, name: 'En gammel tråd' });
       const width = () =>
         document
@@ -1372,6 +1400,50 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
         .querySelector<HTMLElement>('.uia-chat')
         ?.style.getPropertyValue('--genai-composer-sticky-background'),
     ).toBe('var(--genai-shell-card-background, var(--ds-color-neutral-surface-default))');
+  });
+
+  it('offers no follow-up questions under an answer, which «Kunnskapsassistenten» still offers', async () => {
+    const followUps = { ...reader, followUps: ['Kan du utdype?'] };
+    const { unmount } = drawNext(followUps, fromTemplate('knowledge-assistant').layout);
+    await ask();
+    expect(await screen.findByRole('button', { name: 'Kan du utdype?' })).toBeTruthy();
+    unmount();
+    history.replaceState(null, '', '/');
+    drawNext(followUps);
+    await ask();
+    await screen.findByRole('button', { name: 'Kopier svaret' });
+    expect(screen.queryByRole('button', { name: 'Kan du utdype?' })).toBeNull();
+    expect(document.querySelector('.uib-composer-follow-ups')).toBeNull();
+  });
+
+  it('copies the thread’s link with no note that it works only here, and keeps the answer’s time', async () => {
+    const clipboard: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+    history.replaceState(null, '', '/?t=t-old');
+    drawNext();
+    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    expect(copyLink.hasAttribute('aria-describedby')).toBe(false);
+    expect(document.querySelector('.uib-answer-actions [hidden]')).toBeNull();
+    expect(document.querySelector('.uib-answer-actions time')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(copyLink);
+    });
+    expect(clipboard).toEqual([new URL('/?t=t-old', location.href).href]);
+    expect(document.querySelector('.uib-answer-actions-receipt')?.textContent).toBe(
+      'Lenken til tråden er kopiert.',
+    );
+    expect(document.body.textContent).not.toContain('Virker bare for deg');
+  });
+
+  it('leaves «Kunnskapsassistenten»’s note on the thread’s link as it was', async () => {
+    history.replaceState(null, '', '/?t=t-old');
+    drawNext(reader, fromTemplate('knowledge-assistant').layout);
+    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    const note = document.getElementById(copyLink.getAttribute('aria-describedby') ?? '');
+    expect(note?.textContent).toBe('Virker bare for deg, i denne nettleseren.');
   });
 
   it('leaves «Kunnskapsassistenten» as it was: flush, the hidden name as the h1, the filter first, the links in the foot', async () => {
@@ -1518,9 +1590,47 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     expect(screen.queryByText(/Avgrenset til/)).toBeNull();
   });
 
+  it('says the filter in full in the tool, and only how many it read from in the bar beside it', async () => {
+    drawNext(counted().api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    await askMore('Hva er fast?');
+    const scopes = () =>
+      [...document.querySelectorAll('.uib-approach-scope')].map((scope) => [
+        scope.closest('aside') ? 'tool' : 'bar',
+        scope.textContent,
+      ]);
+    await waitFor(() => expect(scopes()).toHaveLength(2));
+    expect(scopes()).toEqual([
+      ['bar', 'Leste fra 3 dokumenter'],
+      ['tool', 'Leste fra 3 dokumenter:Årsrapport'],
+    ]);
+    const tool = document.querySelector('aside .uib-approach[data-variant="list"]');
+    expect(tool?.querySelector('.uib-approach-footer')?.textContent).toMatch(/^Brukte 1 kilde/);
+  });
+
+  it('draws the bar alone, with the filter in full, when the layout puts Fremgangsmåte only in the main column', async () => {
+    const barOnly = {
+      ...nextLayout,
+      zones: {
+        ...nextLayout.zones,
+        secondary: nextLayout.zones.secondary.filter((placed) => placed.block !== 'approach'),
+      },
+    };
+    drawNext(counted().api, barOnly);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    await askMore('Hva er fast?');
+    await waitFor(() => expect(bars()).toEqual(['FremgangsmåteBrukte 1 kilde']));
+    expect(document.querySelector('aside .uib-approach')).toBeNull();
+    expect(document.querySelector('.uib-approach-scope')?.textContent).toBe(
+      'Leste fra 3 dokumenter:Årsrapport',
+    );
+  });
+
   it('brings back a thread’s last filter when the thread is opened again', async () => {
     drawNext(counted().api);
-    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
     await waitFor(() => expect(answers()).toBe(1));
     await tick(/^Årsrapport/);
     await askMore('Og i år?');
@@ -2104,6 +2214,73 @@ describe('asking, whatever genki has said of the service', () => {
   });
 });
 
+describe('leaving a thread while its answer streams', () => {
+  it('shows the thread asked in, from genki, when the reader comes back to it', async () => {
+    const { api } = fakeApi();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let made = false;
+    api.loadThreads = vi.fn(async () => [
+      ...(made
+        ? [{ id: 't-new', title: 'Hva er nytt?', updatedAt: Date.now(), service: 'ka' }]
+        : []),
+      { id: 't-old', title: 'En gammel tråd', updatedAt: Date.now(), service: 'ka' },
+    ]);
+    api.loadThread = vi.fn(async (id: string) =>
+      id === 't-new'
+        ? {
+            title: 'Hva er nytt?',
+            turns: [
+              {
+                id: 'n1',
+                question: 'Hva er nytt?',
+                askedAt: 1,
+                answer: { text: 'Det nye svaret.', status: 'complete' as const, created: 2 },
+              },
+            ],
+          }
+        : {
+            title: 'En gammel tråd',
+            turns: [
+              {
+                id: 'o1',
+                question: 'Hva var gammelt?',
+                askedAt: 1,
+                answer: { text: 'Det gamle svaret.', status: 'complete' as const, created: 2 },
+              },
+            ],
+          },
+    );
+    api.ask = async function* (params) {
+      made = true;
+      // genki says the new thread twice: the assembly's POST, then the stream itself.
+      yield { type: 'conversation', conversationId: 't-new' };
+      yield { type: 'conversation', conversationId: 't-new' };
+      // The answer is on its way when the reader leaves; leaving aborts it, as fetch does.
+      await new Promise<void>((resolve, reject) => {
+        void held.then(resolve);
+        params.signal.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        );
+      });
+      yield { type: 'text', text: 'Det nye svaret.' };
+    };
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
+    });
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('link', { name: /Hva er nytt\?/ }));
+    });
+    expect(await screen.findByText('Det nye svaret.')).toBeTruthy();
+    expect(screen.queryByText('Det gamle svaret.')).toBeNull();
+    expect(screen.queryByText('Hva var gammelt?')).toBeNull();
+    release();
+  });
+});
+
 describe('the way back to the answer', () => {
   const tab = (name: string) => screen.getByRole('tab', { name, hidden: true });
   const chatBesideSources = () => placeIn(state('sources-only'), 'chat', 'secondary');
@@ -2192,6 +2369,53 @@ describe('the way back to the answer', () => {
   });
 });
 
+describe('footnotes per document in the next look, until genki cites excerpts', () => {
+  const documentMarks = () =>
+    [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].map((mark) =>
+      mark.getAttribute('aria-label'),
+    );
+
+  it('draws a mark per cited document, which opens the document in Kilder', async () => {
+    draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
+    await ask();
+    await waitFor(() => expect(documentMarks()).toEqual(['Kilde 1: Tildelingsbrev 2022']));
+    fireEvent.click(screen.getByRole('link', { name: 'Kilde 1: Tildelingsbrev 2022' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe(
+        'true',
+      ),
+    );
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Tildelingsbrev 2022'));
+    expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
+  });
+
+  it('copies the marks as drawn, with a numbered line per document', async () => {
+    const clipboard: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+    draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
+    await ask();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Kopier svaret' }));
+    });
+    expect(clipboard).toEqual(['Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.']);
+  });
+
+  it('keeps one number per excerpt for an answer that cites excerpts', async () => {
+    await openStored(fromTemplate('knowledge-assistant-next').layout);
+    expect(documentMarks()).toEqual(['Utdrag 1: Tildelingsbrev 2022']);
+  });
+
+  it('leaves «Kunnskapsassistenten» drawing no mark for a document', async () => {
+    draw(fromTemplate('knowledge-assistant').layout, fakeApi().api, true);
+    await ask();
+    expect((await screen.findAllByText('Tildelingsbrev 2022')).length).toBeGreaterThan(0);
+    expect(documentMarks()).toEqual([]);
+  });
+});
+
 describe('copying from an answer', () => {
   let clipboard: string[] = [];
   beforeEach(() => {
@@ -2236,6 +2460,63 @@ describe('copying from an answer', () => {
   });
 });
 
+describe('Kilder in the next look', () => {
+  const read = {
+    index: 2,
+    title: 'Årsrapport 2021',
+    documentId: '43',
+    excerpts: [{ chunkId: 'c2', text: 'Lest, men ikke brukt i svaret.' }],
+  };
+  const drawStored = (template: 'knowledge-assistant' | 'knowledge-assistant-next') => {
+    const { api } = fakeApi();
+    api.loadThread = vi.fn(async () => ({
+      title: 'En gammel tråd',
+      turns: [
+        {
+          id: 'm1',
+          question: 'Hva er fast?',
+          askedAt: 1,
+          answer: {
+            text: answer,
+            status: 'complete' as const,
+            sources: [read, source],
+            markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+            created: 2,
+          },
+        },
+      ],
+    }));
+    history.replaceState(null, '', '/?t=t-old');
+    draw(fromTemplate(template).layout, api, true);
+  };
+  const showKilder = async () => {
+    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    const shown = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
+    if (shown) fireEvent.click(shown);
+    const tab = screen.queryByRole('tab', { name: 'Kilder' });
+    if (tab) fireEvent.click(tab);
+  };
+  const fold = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
+
+  it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)»', async () => {
+    drawStored('knowledge-assistant-next');
+    await showKilder();
+    expect(fold()?.open).toBe(false);
+    expect(fold()?.querySelector('summary')?.textContent).toBe('Andre kilder som ble lest (1)');
+    expect(within(fold() as HTMLElement).getByRole('heading', { name: read.title })).toBeTruthy();
+    const cited = screen.getByRole('list', { name: 'Utdrag svaret bygger på' });
+    expect(within(cited).getByRole('heading', { name: source.title })).toBeTruthy();
+    expect(within(cited).queryByRole('heading', { name: read.title })).toBeNull();
+  });
+
+  it('leaves «Kunnskapsassistenten»’s Kilder listing every source together', async () => {
+    drawStored('knowledge-assistant');
+    await showKilder();
+    await screen.findByRole('heading', { name: read.title });
+    expect(fold()).toBeNull();
+  });
+});
+
 // genki takes feedback on a run, so the host is handed the run behind the answer it is on.
 describe('feedback on an answer', () => {
   const withFeedback = withSetting(state('knowledge-assistant'), 'chat', 'feedback', true).layout;
@@ -2253,10 +2534,10 @@ describe('feedback on an answer', () => {
     );
   const rate = async () => {
     const group = await screen.findByRole('group', { name: 'Tilbakemelding på svaret' });
-    fireEvent.click(within(group).getByRole('button', { name: 'Ja' }));
     await act(async () => {
-      fireEvent.click(within(group).getByRole('button', { name: 'Send' }));
+      fireEvent.click(within(group).getByRole('button', { name: 'Ja' }));
     });
+    return group;
   };
   const withRun = (taskId?: string): AssistantApi => {
     const { api } = fakeApi();
@@ -2286,6 +2567,35 @@ describe('feedback on an answer', () => {
     await ask();
     await rate();
     expect(given).toEqual([expect.objectContaining({ runId: 'task-1', rating: 'up' })]);
+  });
+
+  it('sends the rating on the click, and a comment after it as the whole feedback again', async () => {
+    const given: AssistantFeedback[] = [];
+    drawWith(withRun('task-1'), (feedback) => void given.push(feedback));
+    await ask();
+    const group = await rate();
+    expect(given).toEqual([
+      { answerId: expect.any(String), runId: 'task-1', rating: 'up', reasons: [], comment: '' },
+    ]);
+    await within(group).findByText('Takk!');
+
+    fireEvent.change(within(group).getByRole('textbox', { name: 'Kommentar (valgfritt)' }), {
+      target: { value: 'Godt svar' },
+    });
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: 'Send' }));
+    });
+    expect(given).toHaveLength(2);
+    expect(given[1]).toEqual({
+      answerId: given[0]?.answerId,
+      runId: 'task-1',
+      rating: 'up',
+      reasons: [],
+      comment: 'Godt svar',
+    });
+    await within(group).findByText(
+      'Takk! Tilbakemeldingen lagres for tjenesten, ikke for deg som person.',
+    );
   });
 
   it('hands the host the run id of a stored answer in a thread opened again', async () => {
@@ -2703,5 +3013,94 @@ describe('the assistant in English', () => {
     );
     expect(await screen.findByRole('heading', { name: 'Thread not found' })).toBeTruthy();
     expect(document.title).toMatch(/^Thread not found – /);
+  });
+});
+
+describe('Fremgangsmåte as the card, the tool or both', () => {
+  // genki's agent loop says how long each tool call took when the turn completes.
+  const timedApi = () => {
+    const fake = fakeApi();
+    const plain = fake.api.ask;
+    fake.api.ask = async function* (params) {
+      for await (const event of plain(params)) {
+        if (event.type === 'text' && params.steps)
+          yield {
+            type: 'step',
+            step: {
+              event: 'agent/turn-completed',
+              'tool-calls': [
+                { tool: 'search', 'duration-ms': 2400 },
+                { tool: 'generate_response', 'duration-ms': 900 },
+              ],
+            },
+          };
+        yield event;
+      }
+    };
+    return fake;
+  };
+  const inMain = () =>
+    [...document.querySelectorAll('.uib-approach')].filter((one) => one.closest('main'));
+  const inPanel = () =>
+    [...document.querySelectorAll('.uib-approach')].filter((one) => one.closest('aside'));
+  const times = (root: Element) =>
+    [...root.querySelectorAll('.uib-approach-step-time')].map((time) => time.textContent);
+  const frames = (root: Element) =>
+    root.parentElement?.querySelector('.uia-frames') ? 'frames' : 'none';
+
+  it('draws the card alone, as before, when Fremgangsmåte stands only in the main column', async () => {
+    draw(state('knowledge-assistant').layout, timedApi().api);
+    await ask();
+    expect(inMain()).toHaveLength(1);
+    expect(inPanel()).toHaveLength(0);
+    expect(screen.queryByRole('tab', { name: 'Fremgangsmåte', hidden: true })).toBeNull();
+    const [card] = inMain();
+    if (!card) throw new Error('no card');
+    expect(times(card)).toEqual([]);
+    expect(card.querySelector('.uib-approach-footer')?.textContent).toMatch(
+      /^Brukte 1 kilde · tok/,
+    );
+  });
+
+  it('draws the tool alone, with each step’s time and the totals, when it stands only in the secondary panel', async () => {
+    draw(turnOn(state('approach-only'), 'sources').layout, timedApi().api);
+    await ask();
+    expect(inMain()).toHaveLength(0);
+    expect(inPanel()).toHaveLength(1);
+    const [tool] = inPanel();
+    if (!tool) throw new Error('no tool');
+    expect(times(tool)).toEqual([' · 2,4 s', ' · 0,9 s']);
+    expect(tool.querySelector('.uib-approach-footer')?.textContent).toMatch(
+      /^Brukte 1 kilde · tok/,
+    );
+  });
+
+  it('draws both when it stands in both, the card compact and the tool with the detail', async () => {
+    const both = withSetting(
+      placeIn(state('knowledge-assistant'), 'approach', 'both'),
+      'approach',
+      'level',
+      'detailed',
+    );
+    draw(both.layout, timedApi().api);
+    await ask();
+    const [card] = inMain();
+    const [tool] = inPanel();
+    if (!card || !tool) throw new Error('not in both places');
+    expect(card.closest('.uib-conversation')).not.toBeNull();
+    expect(times(card)).toEqual([]);
+    expect(frames(card)).toBe('none');
+    expect(times(tool)).toEqual([' · 2,4 s', ' · 0,9 s']);
+    expect(frames(tool)).toBe('frames');
+    expect(screen.getByRole('tab', { name: 'Fremgangsmåte', hidden: true })).toBeTruthy();
+  });
+
+  it('keeps the frames in the card at the detailed level when the card stands alone', async () => {
+    const alone = withSetting(state('knowledge-assistant'), 'approach', 'level', 'detailed');
+    draw(alone.layout, timedApi().api);
+    await ask();
+    const [card] = inMain();
+    if (!card) throw new Error('no card');
+    expect(frames(card)).toBe('frames');
   });
 });
