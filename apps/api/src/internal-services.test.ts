@@ -142,13 +142,18 @@ const boot = async () => {
     },
   });
   platform.mount(app, admin);
-  const send = (path: string, as: string, init: { method?: string; body?: unknown } = {}) =>
+  const send = (
+    path: string,
+    as: string,
+    init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
+  ) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
         authorization: `Bearer ${as}`,
         'content-type': 'application/json',
         'change-reason': 'Røyktest etter utrulling',
+        ...init.headers,
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
@@ -772,5 +777,112 @@ describe('eval runs, keys and drafts of an internal service', () => {
     };
 
     expect(feedback.data).toEqual([]);
+  });
+});
+
+describe('what else hides an internal service', () => {
+  it('a deleted internal draft of a never-published service no longer hides its id', async () => {
+    const { send, key } = await boot();
+    const runner = await key({ testRunner: true });
+    const draft = `/tenants/${digdir}/services/smoke-utkast/draft`;
+    await send(draft, runner, {
+      method: 'PUT',
+      body: { definition: internal('smoke-utkast'), files },
+    });
+    const deleted = await send(draft, runner, { method: 'DELETE' });
+
+    const saved = await send(draft, 'eva', {
+      method: 'PUT',
+      body: { definition: testService('smoke-utkast'), files },
+    });
+
+    expect(deleted.status).toBeLessThan(300);
+    expect(saved.status).toBeLessThan(300);
+  });
+
+  it('leaves clients bound to it out of the client list for a tenant admin', async () => {
+    const { send, platform } = await boot();
+    for (const service of ['smoke', 'klarsprak'])
+      await platform.clients.save({
+        definition: {
+          apiVersion: 'genai/v1',
+          kind: 'Client',
+          metadata: { tenant: digdir, id: `${service}-web` },
+          spec: { service, kind: 'server', channels: ['openai'], allowedOrigins: [] },
+        },
+        version: 1,
+        updatedAt: '2026-10-07T10:00:00.000Z',
+        updatedBy: 'drift',
+      });
+
+    const listed = (await (await send(`/tenants/${digdir}/clients`, 'eva')).json()) as {
+      clients: { definition: { metadata: { id: string } } }[];
+    };
+
+    expect(listed.clients.map((c) => c.definition.metadata.id)).toEqual(['klarsprak-web']);
+  });
+
+  it('leaves its test case candidates out for a tenant admin', async () => {
+    const { send, platform } = await boot();
+    for (const service of ['smoke', 'klarsprak'])
+      await platform.evalStores.candidates.save({
+        id: `${service}-kandidat`,
+        tenant: digdir,
+        service,
+        question: 'Hei',
+        sources: [],
+        findings: [],
+        status: 'pending-review',
+        proposedBy: 'test:drift',
+        proposedAt: '2026-10-07T10:00:00.000Z',
+        expiresAt: '2099-10-07T10:00:00.000Z',
+      });
+
+    const listed = await send(`/tenants/${digdir}/testcase-candidates`, 'eva');
+
+    expect(await ids(listed)).toEqual(['klarsprak-kandidat']);
+  });
+
+  it('is not an MCP tool for an API key without the test-runner grant', async () => {
+    const { platform, send, key } = await boot();
+    await platform.definitions.publish(
+      internal('smoke', { exposure: { openai: true, mcp: true } }),
+      'test',
+      'test',
+      files,
+    );
+    const tools = async (as: string) =>
+      (
+        (await (
+          await send('/api/mcp', as, {
+            body: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+            headers: { 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/list' },
+          })
+        ).json()) as { result: { tools: { name: string }[] } }
+      ).result.tools.map((t) => t.name);
+
+    expect(await tools(await key())).not.toContain('smoke__default');
+    expect(await tools(await key({ testRunner: true }))).toContain('smoke__default');
+  });
+
+  it('is not an A2A agent for an API key without the test-runner grant', async () => {
+    const { platform, send, key } = await boot();
+    await platform.definitions.publish(
+      internal('smoke', { exposure: { openai: true, a2a: true } }),
+      'test',
+      'test',
+      files,
+    );
+    const agents = async (as: string) =>
+      (
+        (await (await send('/a2a', as)).json()) as {
+          agents: { supportedInterfaces: { url: string }[] }[];
+        }
+      ).agents.flatMap((a) => a.supportedInterfaces.map((i) => i.url));
+
+    expect(await agents(await key())).not.toContainEqual(expect.stringContaining('smoke__default'));
+    expect(await agents(await key({ testRunner: true }))).toContainEqual(
+      expect.stringContaining('smoke__default'),
+    );
   });
 });

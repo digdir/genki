@@ -213,7 +213,7 @@ import { operationsOverview, type PipelineRuns } from './operations.js';
 import { organizationLookup } from './organizations.js';
 import { locationOf } from './residency.js';
 import { retiredModelMessage, serviceHealth, type ServiceModels } from './service-health.js';
-import { serviceDraftKind, serviceDrafts, type ServiceDraft } from './service-drafts.js';
+import { serviceDrafts } from './service-drafts.js';
 import { serviceSchemaOf } from './service-schema.js';
 import { problem } from './http.js';
 
@@ -1547,10 +1547,7 @@ export const createPlatform = async (input: PlatformInput) => {
     },
     {
       draftDefinition: async (tenant, id) =>
-        (
-          (await configurables.store.history(serviceDraftKind, tenant, id)).at(-1)?.spec as
-            ServiceDraft | undefined
-        )?.definition,
+        (await serviceDrafts(configurables.store, store).draftOf(tenant, id))?.spec.definition,
     },
   );
 
