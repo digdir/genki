@@ -757,6 +757,7 @@ export interface TenantDefinition {
   publishedBy: string | null;
   publishedByName?: string;
   state?: 'active' | 'paused' | 'archived';
+  internal?: boolean;
 }
 
 export interface VersionSummary {

@@ -1,3 +1,4 @@
+import { shownKeys } from './internal-services.js';
 import { randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import {
@@ -126,11 +127,12 @@ const problem = (
 
 export const createKeyPoliciesModule =
   (input: KeyPoliciesDeps): PlatformModuleFactory =>
-  () => {
+  (deps) => {
     const { policies, keys } = input;
     const inUse = async (tenant: string, id: string) =>
       (await keys.list(tenant)).filter((k) => k.policy?.id === id);
-    const idsOf = async (tenant: string, id: string) => (await inUse(tenant, id)).map((k) => k.id);
+    const idsOf = async (tenant: string, id: string) =>
+      (await shownKeys(deps.definitions, tenant, await inUse(tenant, id))).map((k) => k.id);
 
     const handlers: Record<string, AdminHandler> = {
       [keyPolicySaveAction]: async (data, principal) => {
@@ -294,7 +296,11 @@ export const createKeyPoliciesModule =
         app.get(base, async (c) => {
           const guard = await entered(c);
           if ('response' in guard) return guard.response;
-          const all = await keys.list(guard.tenant);
+          const all = await shownKeys(
+            deps.definitions,
+            guard.tenant,
+            await keys.list(guard.tenant),
+          );
           const found = await policies.listPolicies(guard.tenant);
           return c.json({
             data: found.map((p) =>

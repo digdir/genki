@@ -87,11 +87,12 @@
                 til tråden», with when the answer came at the far end.
               </li>
               <li>
-                <strong>Feedback</strong>, as in genki's workspace: «Var svaret nyttig?» with «Ja»
-                and «Nei», then reasons for a no, a comment, «Send» and «Hopp over». Off unless the
-                app asks for it with <code>feedback</code>: kunnskapsassistenten took the feedback
-                under each answer out on 6 October 2026, because it adds a lot of noise under every
-                answer, and has it to be rethought.
+                <strong>Feedback</strong>, after genki's workspace: «Var svaret nyttig?» with «Ja»
+                and «Nei», which send the rating on the click, then optional reasons for a no, a
+                comment, «Send» and «Hopp over». Off unless the app asks for it with
+                <code>feedback</code>: kunnskapsassistenten took the feedback under each answer out
+                on 6 October 2026, because it adds a lot of noise under every answer, and has it to
+                be rethought.
               </li>
               <li><strong>Both</strong>, the copy row first and the feedback under a rule.</li>
             </ul>
@@ -121,9 +122,11 @@
               <li>
                 <code>feedback</code> and <code>onFeedback</code>: the form, off by default, and
                 <code>{ rating, reasons, comment }</code>, the platform's feedback without the task
-                id, which the app adds. <code>feedbackStatus</code> is <code>'sending'</code>,
-                <code>'sent'</code> or <code>'failed'</code>. The form scrolls into sight once when
-                the person opens it.
+                id, which the app adds. It comes on the click on a thumb, with no reasons or
+                comment, and again in full when they are sent or the rating changes; the platform
+                keeps the latest feedback on a run, so the app sends each one as it comes.
+                <code>feedbackStatus</code> is <code>'sending'</code>, <code>'sent'</code> or
+                <code>'failed'</code>. The form scrolls into sight once when the person opens it.
               </li>
               <li>
                 <code>actions</code>: the app's own buttons after the copy buttons.
@@ -322,6 +325,10 @@
                 «Send». The comment is at most 300 characters and asks for no personal data.
               </li>
               <li>
+                When the form closes, after «Send» or «Hopp over», focus goes to the chosen thumb,
+                so it is not lost with the button that had it.
+              </li>
+              <li>
                 The reasons are sent in bokmål whatever language the person reads, as the workspace
                 stores them, so the service reads them the same way.
               </li>
@@ -335,14 +342,18 @@
                 as in kunnskapsassistenten. <code>Tooltip</code> for the link's limit.
               </li>
               <li>
-                Feedback as in the workspace: «Ja» and «Nei» are toggle buttons with
+                Feedback after the workspace: «Ja» and «Nei» are toggle buttons with
                 <code>aria-pressed</code>, a <code>Fieldset</code> of <code>Chip</code> checkboxes
                 for a no, a <code>Textarea</code> with its count, and a status line.
               </li>
               <li>
-                While the app sends, «Send» shows that it is busy and nothing is sent twice. When it
-                is sent, the form closes and the rating can't be changed. When it failed, the form
-                stays for another try.
+                A click on a thumb sends the rating at once and opens the optional form; the status
+                line says «Takk!» when it is saved. «Send» sends the rating again with the reasons
+                and comment, and the form closes when they are saved. «Hopp over» closes it and
+                sends nothing more. The other thumb changes the rating and sends it with the reasons
+                and comment already sent (the reasons only for a no); the chosen thumb again sends
+                nothing, unless the last send failed. While the app sends, «Send» shows that it is
+                busy and nothing more is sent. When a send failed, the form stays for another try.
               </li>
               <li>
                 The block never calls the platform; tests check that it copies and sends nothing.

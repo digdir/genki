@@ -28,6 +28,7 @@ import {
   settingsOf,
   templateLook,
   zoneOf,
+  zonesOf,
   type AssistantLayout,
   type BlockId,
   type Channel,
@@ -48,6 +49,7 @@ import {
   type ShellRequest,
   type SourceTarget,
   type VariantOption,
+  type Zone,
 } from '@genai/ui-blocks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -196,7 +198,12 @@ const firstSentence = (text: string | undefined) => {
   return sentence && sentence.length <= 140 ? sentence : undefined;
 };
 
-const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
+/** A thread id as genki makes them (21 of `[A-Za-z0-9_-]`, or a UUID), so `?t=` names no path. */
+const THREAD_ID = /^[\w-]{1,200}$/;
+const threadInAddress = () => {
+  const id = new URLSearchParams(location.search).get('t');
+  return id && THREAD_ID.test(id) ? id : undefined;
+};
 
 /** The answer with the markers its sources came with: `[N]` names an excerpt only with them. */
 const withMarkers = (
@@ -278,6 +285,8 @@ export const useAssistant = ({
     [layout, met],
   );
   const where = (id: BlockId) => (has(id) ? zoneOf(layout, id) : undefined);
+  /** Whether the block stands in the zone, also when it stands in both its zones. */
+  const standsIn = (id: BlockId, zone: Zone) => has(id) && zonesOf(layout, id).includes(zone);
   const option = (id: BlockId, name: string) => has(id) && optionInForce(layout, id, name, met);
 
   const threadsOn = has('threads');
@@ -482,6 +491,8 @@ export const useAssistant = ({
   const leave = useCallback(
     (id: string | undefined) => {
       abort.current?.abort();
+      // A thread the reader leaves is read from genki when they come back, whoever made it.
+      ownThread.current = undefined;
       setRequest({ action: 'close-drawers' });
       go(id);
     },
@@ -798,6 +809,7 @@ export const useAssistant = ({
         t.approach ? { ...t, approach: { ...t.approach, finishedAt: Date.now() } } : t,
       );
     let frames = 0;
+    let opened = false;
     setWorking(true);
     // Only a question sent from the field empties it, and only of what was sent.
     if (fromField) setDraft((draft) => (draft.trim() === typed.trim() ? '' : draft));
@@ -834,7 +846,9 @@ export const useAssistant = ({
         signal: controller.signal,
       })) {
         if (!alive.current) break;
-        if (event.type === 'conversation' && !startedIn) {
+        // genki names a new thread twice (POST, then stream): only the first opens it.
+        if (event.type === 'conversation' && !startedIn && !opened) {
+          opened = true;
           if (askedWith) keepFilter(event.conversationId, askedWith);
           ownThread.current = event.conversationId;
           go(event.conversationId, true);
@@ -1099,6 +1113,7 @@ export const useAssistant = ({
     retryModels,
     has,
     where,
+    standsIn,
     option,
     footnotes,
     assistantName,
@@ -1249,11 +1264,6 @@ export const useAssistant = ({
     onShellLayout: (next: ShellLayout) => storage?.write('layout', next),
     tool,
     setTool,
-    /** A tool's own button on the folded panel (dev-verktoy-4): the panel opens on that tool. */
-    showTool: (id: string) => {
-      setTool(id);
-      setRequest({ action: 'open', side: 'secondary' });
-    },
     // settings
     level,
     setLevel,

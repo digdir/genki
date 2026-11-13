@@ -1,6 +1,11 @@
 import type { Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
-import type { DefinitionStore, PluginSchemas, ValidationError } from '@genai/definitions';
+import {
+  isInternalService,
+  type DefinitionStore,
+  type PluginSchemas,
+  type ValidationError,
+} from '@genai/definitions';
 import {
   evaluatorOfJudge,
   judgeAgreement,
@@ -650,6 +655,7 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
           latestVersion: latest?.version ?? 0,
           publishedAt: latest?.publishedAt ?? null,
           publishedBy: latest?.publishedBy ?? null,
+          ...(isInternalService(latest?.definition) ? { internal: true } : {}),
         };
       }),
     );

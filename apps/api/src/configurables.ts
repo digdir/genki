@@ -101,6 +101,7 @@ export const createConfigurables = (
     adapters: { knowledge: KnowledgeAdapter[] };
     embeddingResidency?: (model: string) => Residency | undefined;
     testSets: TestSetStore;
+    testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
     usedBy?: (dataset: string) => Promise<DatasetReader[]>;
   }) => {
     const { catalog } = deps;
@@ -126,6 +127,7 @@ export const createConfigurables = (
       rules,
       ingestion,
       testSets: deps.testSets,
+      ...(deps.testSetTaken ? { testSetTaken: deps.testSetTaken } : {}),
       engines: deps.engines ?? (() => []),
       adapters: deps.adapters.knowledge,
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),

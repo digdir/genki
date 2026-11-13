@@ -6,6 +6,7 @@ import type {
   PlaygroundRunRequest,
   TestCaseCandidateRequest,
 } from '../../api/playground';
+import { createApiClient } from '../../api';
 import { examplePlaygroundOptions } from '../../data/playground';
 import { mockFetch } from '../../mock';
 import type { PlaygroundMockOptions } from '../../mock/playground';
@@ -637,6 +638,56 @@ describe('Prøveområde', () => {
         data: btoa(String.fromCharCode(...new TextEncoder().encode('Søker: Eksempel IL'))),
       },
     });
+  });
+
+  it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const setup = examplePlaygroundOptions.services[0]?.versions[0]?.setup;
+    if (!setup) throw new Error('example has no service');
+    const published = (version: number) => ({ version, draft: false, inUse: version === 2, setup });
+    const options: PlaygroundOptions = {
+      ...examplePlaygroundOptions,
+      services: [
+        { id: 'smoke', name: 'Smoke', latestVersion: 2, versions: [published(2), published(1)] },
+      ],
+    };
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options, runs }),
+      token: () => 'kari',
+    });
+    const definition = {
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: { output: { kind: 'answer' } },
+    };
+    const { container } = render(
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
+    const picker = container.querySelector<HTMLSelectElement>('select[id$="-ver"]');
+    if (!picker) throw new Error('the setup shows no version picker');
+    expect([...picker.options].map((o) => o.value)).toEqual(['draft', '2', '1']);
+    expect(picker.value).toBe('draft');
+    fireEvent.change(picker, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål' }), {
+      target: { value: 'Hva er smoke?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.service).toEqual({ id: 'smoke', version: 2 });
   });
 
   it.each<PlaygroundState>(['empty', 'answer', 'compare', 'quota', 'not-allowed', 'error'])(
