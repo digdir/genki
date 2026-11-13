@@ -454,8 +454,7 @@ export const AssistantView = ({
     const suggestions = a.option('chat', 'suggestions') ? (a.profile?.suggestions ?? []) : [];
     const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
-    // The next look's front page gives way to the question once the reader writes one: the
-    // greeting and suggestions are hidden, keeping their room so the field stays where it is.
+    // While a question is written, the next look hides the greeting and suggestions in place.
     const typing = next && start && a.draft !== '';
     return (
       <div
