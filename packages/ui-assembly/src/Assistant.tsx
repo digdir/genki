@@ -411,7 +411,7 @@ export const AssistantView = ({
     } else if (start) {
       middle = (
         <div className="uia-greeting">
-          <Welcome />
+          <Welcome className="uia-welcome" />
           {a.view === 'ready' ? (
             <EmptyState
               title={t('assembly.emptyThreadTitle')}
@@ -470,10 +470,13 @@ export const AssistantView = ({
     // The next look offers no follow-ups under an answer: no board draws them.
     const followUps = a.option('chat', 'followUps') && !next ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
+    // While a question is written, the next look hides the greeting and suggestions in place.
+    const typing = next && start && a.draft !== '';
     return (
       <div
         className="uia-chat"
         data-start={start || undefined}
+        data-typing={typing || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
         style={next ? { ...nextFootnotes, ...(inPanel ? {} : cardGround) } : undefined}

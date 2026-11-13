@@ -1385,6 +1385,49 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     });
   });
 
+  it('hides the greeting and the suggestions while the reader writes a question, and keeps the field’s focus', async () => {
+    drawNext({ ...reader, suggestions: ['Hva er fast?'] });
+    const field = await opened();
+    const chat = document.querySelector<HTMLElement>('.uia-chat');
+    const greeting = screen.getByRole('heading', { name: /Hva lurer du på/ });
+    const suggestions = document.querySelector('.uia-suggestions');
+    expect(greeting.closest('.uia-welcome')).not.toBeNull();
+    expect(suggestions?.textContent).toContain('Hva er fast?');
+    expect(chat?.hasAttribute('data-typing')).toBe(false);
+
+    field.focus();
+    fireEvent.change(field, { target: { value: 'H' } });
+    // Hidden by the sheet, still in the page: nothing moves and nothing is announced.
+    expect(chat?.getAttribute('data-typing')).toBe('true');
+    expect(greeting.isConnected).toBe(true);
+    expect(document.activeElement).toBe(field);
+
+    fireEvent.change(field, { target: { value: '' } });
+    expect(chat?.hasAttribute('data-typing')).toBe(false);
+    expect(document.activeElement).toBe(field);
+
+    // A picked suggestion fills the field and puts the caret there before the list is hidden.
+    fireEvent.click(screen.getByRole('button', { name: 'Hva er fast?' }));
+    expect(document.activeElement).toBe(field);
+    expect(chat?.getAttribute('data-typing')).toBe('true');
+  });
+
+  it('leaves «Kunnskapsassistenten»’s front page as it was while the reader writes', async () => {
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={fromTemplate('knowledge-assistant').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ ...reader, suggestions: ['Hva er fast?'] }}
+        threadInUrl
+      />,
+    );
+    const field = await opened();
+    fireEvent.change(field, { target: { value: 'H' } });
+    expect(document.querySelector('.uia-chat')?.hasAttribute('data-typing')).toBe(false);
+  });
+
   it('keeps the links in the foot when the host names no reader, so «Innstillinger» stays in reach', async () => {
     drawNext({ assistantName: 'KA' });
     await opened();
