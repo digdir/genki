@@ -542,16 +542,24 @@ describe('the documents the answer read but cites nowhere, `foldUncited`', () =>
     expect(current?.closest('.uib-sources-document')?.textContent).toContain(nkom.title);
   });
 
-  it('folds nothing when the answer cites none of them, or without its footnotes', () => {
-    draw({ citations: [], foldUncited: true });
+  it('folds every one when the answer cites none, with no empty list over them', () => {
+    draw({ variant: 'tool', citations: [], foldUncited: true });
+    expect(others()?.querySelector('summary')?.textContent).toBe('Andre kilder som ble lest (2)');
+    expect(titlesIn(others())).toEqual([nkom.title, memo.title]);
+    expect(screen.queryByText('Utdrag svaret bygger på')).toBeNull();
+    expect(document.querySelectorAll('ol.uib-sources-documents')).toHaveLength(1);
+  });
+
+  it('folds nothing without the answer’s footnotes, or while the answer streams', () => {
+    draw({ foldUncited: true });
+    expect(others()).toBeNull();
+    cleanup();
+    draw({ citations: [], answerStatus: 'streaming', foldUncited: true });
     expect(others()).toBeNull();
     expect(titlesIn(screen.getByRole('list', { name: 'Kilder' }))).toEqual([
       nkom.title,
       memo.title,
     ]);
-    cleanup();
-    draw({ foldUncited: true });
-    expect(others()).toBeNull();
   });
 
   it('unfolds them for a search hit in one of them, and not for a hit in a cited one', () => {

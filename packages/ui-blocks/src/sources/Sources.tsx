@@ -998,17 +998,15 @@ export const Sources = ({
       ),
     [sources, order, t, itemId],
   );
-  // With `foldUncited`, the documents nothing cites, when the answer cites at least one.
+  // With `foldUncited`, the documents nothing in the finished answer cites.
   const uncited = useMemo(() => {
-    if (!foldUncited || !pairing) return new Set<number>();
+    if (!foldUncited || !pairing || answerStatus === 'streaming') return new Set<number>();
     const cited = (i: number) =>
       pairing.mode === 'excerpt'
         ? (sources?.[i]?.excerpts ?? []).some((e) => pairing.numbers.has(e.chunkId))
         : pairing.uses.has(prepared[i]?.key ?? '');
-    const all = order.documents;
-    const none = all.filter((i) => !cited(i));
-    return none.length < all.length ? new Set(none) : new Set<number>();
-  }, [foldUncited, pairing, sources, prepared, order]);
+    return new Set(order.documents.filter((i) => !cited(i)));
+  }, [foldUncited, pairing, answerStatus, sources, prepared, order]);
   // The documents as drawn: the cited ones, then the folded ones, which the search follows.
   const shown = useMemo(
     () => [
@@ -1152,7 +1150,7 @@ export const Sources = ({
     );
   // The tool's caption names the list it stands over, «Utdrag svaret bygger på».
   const tool = variant === 'tool';
-  const captioned = tool && !waiting && !empty && Boolean(sources?.length);
+  const captioned = tool && !waiting && !empty && (sources?.length ?? 0) > uncited.size;
   const named = captioned
     ? { 'aria-labelledby': captionId }
     : heading
@@ -1199,6 +1197,7 @@ export const Sources = ({
       ];
     });
   const others = shown.filter((i) => uncited.has(i));
+  const cited = shown.filter((i) => !uncited.has(i));
   return (
     <div className={classes('uib-sources', className)} data-variant={variant} data-color={color}>
       {/* In the page from the first render: a live region announces only a change to it. */}
@@ -1262,9 +1261,11 @@ export const Sources = ({
         />
       ) : sources?.length ? (
         <>
-          <ol key={listKey} className="uib-sources-documents" {...named}>
-            {items(shown.filter((i) => !uncited.has(i)))}
-          </ol>
+          {cited.length > 0 ? (
+            <ol key={listKey} className="uib-sources-documents" {...named}>
+              {items(cited)}
+            </ol>
+          ) : null}
           {others.length > 0 ? (
             <Details key={`others:${listKey}`} ref={othersRef} className="uib-sources-others">
               <Details.Summary>
