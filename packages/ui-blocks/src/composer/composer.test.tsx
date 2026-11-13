@@ -65,16 +65,18 @@ describe('the question field', () => {
     expect(sent).toEqual([]);
   });
 
-  it('sends the question trimmed, and offers no send for an empty one', () => {
+  it('sends the question trimmed, and offers no send for an empty one, still in the tab order', () => {
     const { sent } = draw();
-    expect(sendButton().disabled).toBe(true);
-    fireEvent.keyDown(field(), { key: 'Enter' });
-    type('  Hva sier rapporten?  ');
+    expect(sendButton().getAttribute('aria-disabled')).toBe('true');
     expect(sendButton().disabled).toBe(false);
+    fireEvent.click(sendButton());
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(sent).toEqual([]);
+    type('  Hva sier rapporten?  ');
+    expect(sendButton().hasAttribute('aria-disabled')).toBe(false);
     fireEvent.click(sendButton());
     expect(sent).toEqual(['Hva sier rapporten?']);
   });
-
   it('sends nothing while the assistant answers, and offers «Avbryt» in words instead', () => {
     const cancelled = vi.fn();
     const { sent } = draw({ initial: 'Neste spørsmål', working: true, onCancel: cancelled });
