@@ -121,7 +121,8 @@
                 value is ticked.
               </li>
               <li>
-                <code>failed</code> and <code>onRetry</code>: the facets could not be fetched.
+                <code>failed</code> and <code>onRetry</code>: the facets could not be fetched. A
+                string in <code>failed</code> says why, in place of «Klarte ikke å hente filtrene.».
               </li>
               <li>
                 <code>locked</code>, <code>thread</code> and <code>onNewThread</code>: a thread's
@@ -249,7 +250,8 @@
                 chips, «Velg alle» and «Tøm», the count of each value in the list, and the state in
                 the description: «Ingen avgrensning», «3 av 12 valgt», «Alle 12 valgt, altså ingen
                 avgrensning». Chosen values come first when the list opens, and nothing moves while
-                it is open. More than 100 chosen in one field says so, with the way out.
+                it is open. More than 100 chosen in one field, with more than 100 left out, says so,
+                with the way out: genki takes at most 100 values, chosen or left out.
               </li>
               <li>
                 <strong>One chip for all:</strong> when the field lists two or more values and all

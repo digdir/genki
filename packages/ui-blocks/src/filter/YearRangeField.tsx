@@ -18,6 +18,7 @@ import {
 import { useComboboxTexts, useInSentence, type FieldProps } from './FacetField.js';
 import { useT } from './i18n.js';
 import { chosenFirst, useChosenFirst, useListFollowsField } from './listBehaviour.js';
+import { untickedCount } from './selection.js';
 import {
   documentsIn,
   formatRange,
@@ -116,7 +117,8 @@ export const YearRangeField = ({
         ? t('filter.stateAll', { total })
         : t('filter.stateYears', { count: chosen });
 
-  const overLimit = chosen > max && !allChosen;
+  // As in FacetField: genki takes at most `max` years, chosen or left out.
+  const overLimit = chosen > max && untickedCount(field, selected) > max;
 
   /* Empties the search text, as FacetField does and for the same reason. */
   const clearQuery = () => {
@@ -216,7 +218,9 @@ export const YearRangeField = ({
       </div>
 
       {overLimit && (
-        <ValidationMessage>{t('filter.overLimit', { max, count: chosen })}</ValidationMessage>
+        <ValidationMessage>
+          {t('filter.overLimit', { max, count: chosen, total })}
+        </ValidationMessage>
       )}
 
       <Suggestion

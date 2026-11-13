@@ -47,6 +47,7 @@ import { t } from '../i18n/index.js';
 import { testRunnerRefusedType } from '../test-runner.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
+import { isHiddenTask, shownKeys } from '../internal-services.js';
 
 export interface PortalTaskRow {
   task: string;
@@ -595,6 +596,14 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const environmentOf = (t: Task) =>
     t.service.environment ?? (/@\d+$/.test(t.service.capability.id) ? null : 'prod');
 
+  const withoutHiddenServiceKeys = async (tenant: string) =>
+    shownKeys(deps.definitions, tenant, await deps.apiKeys.list(tenant));
+
+  const withoutHiddenTasks = async (tasks: Task[]) => {
+    const hidden = await Promise.all(tasks.map((t) => isHiddenTask(deps.definitions, t)));
+    return tasks.filter((_, i) => !hidden[i]);
+  };
+
   const tasksOf = async (
     tenant: string,
     keep: (row: PortalTaskRow) => boolean,
@@ -609,11 +618,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
             .filter((t) => t.tenant === tenant && keep(t))
             .map((r) => deps.task(r.task)),
         );
-    return tasks.filter(
-      (t): t is Task =>
-        t !== undefined &&
-        (t.tenant === tenant || t.owner === tenant) &&
-        (originOf(t.service.capability.id) === serviceOrigin) === fromService,
+    return withoutHiddenTasks(
+      tasks.filter(
+        (t): t is Task =>
+          t !== undefined &&
+          (t.tenant === tenant || t.owner === tenant) &&
+          (originOf(t.service.capability.id) === serviceOrigin) === fromService,
+      ),
     );
   };
   const tenantTasks = (tenant: string, keep: (row: PortalTaskRow) => boolean = () => true) =>
@@ -626,11 +637,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const found = deps.taskEnvelopes
       ? await deps.taskEnvelopes(tenant, since ? { since, limit: windowLimit } : {})
       : await tasksOf(tenant, (row) => since === undefined || row.at >= since, fromService);
-    return found.filter(
-      (t) =>
-        (t.tenant === tenant || t.owner === tenant) &&
-        (since === undefined || t.createdAt >= since) &&
-        (originOf(t.service.capability.id) === serviceOrigin) === fromService,
+    return withoutHiddenTasks(
+      found.filter(
+        (t) =>
+          (t.tenant === tenant || t.owner === tenant) &&
+          (since === undefined || t.createdAt >= since) &&
+          (originOf(t.service.capability.id) === serviceOrigin) === fromService,
+      ),
     );
   };
   const tenantTestRunsSince = async (tenant: string, since: string) =>
@@ -1240,7 +1253,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         },
       ];
     });
-    const keys = await keyViews(await deps.apiKeys.list(g.tenant), {
+    const keys = await keyViews(await withoutHiddenServiceKeys(g.tenant), {
       principal: g.principal,
       tenant: g.tenant,
       ...(deps.names ? { names: deps.names } : {}),

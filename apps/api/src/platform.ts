@@ -1,3 +1,4 @@
+import { isHiddenAuditTarget } from './internal-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
@@ -1185,8 +1186,12 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
     const all = await admin.audit(tenant);
-    const entries =
+    const visible =
       principal.kind === 'operator' ? all : all.filter((e) => visibleToTenant(e, tenant));
+    const hidden = await Promise.all(
+      visible.map((e) => isHiddenAuditTarget(store, tenant, e.target)),
+    );
+    const entries = visible.filter((_, i) => !hidden[i]);
     const names = await options.names?.namesOf(
       entries.filter((e) => e.actor.startsWith('employee:')).map((e) => e.actor),
     );
@@ -1209,7 +1214,8 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!acting) return problem(c, 404, 'Not found');
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
-    if (!(await admin.audit(tenant)).some((a) => a.task === task))
+    const entry = (await admin.audit(tenant)).find((a) => a.task === task);
+    if (!entry || (await isHiddenAuditTarget(store, tenant, entry.target)))
       return problem(c, 404, 'Not found');
     const found = await admin.task(task);
     if (!found) return problem(c, 404, 'Not found');

@@ -136,7 +136,8 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           JSON.stringify(conversion.settings),
           conversion.derivation.name,
           conversion.derivation.version,
-          conversion.pages,
+          // PostgreSQL refuses U+0000 in text, and converters read it out of some PDFs (issue 532).
+          conversion.pages.map((page) => page.replaceAll('\u0000', '')),
           conversion.outputPath ?? null,
           conversion.failure ?? null,
         ],

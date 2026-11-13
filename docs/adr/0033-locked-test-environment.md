@@ -82,6 +82,8 @@ A post-deploy smoke test must exercise genki-test fully: run services, use the p
 - **Drafts.** The key opens a draft that is behind the published version the way a read-only login does: it is shown as behind and not rebased, since rebasing is not one of its actions.
 - **Never.** Support sessions, secret values, key creation, rotation and revocation, Maskinporten client registration, tenant settings writes, ingestion and batch runs.
 
+The smoke service is internal (`spec.visibility: internal`, [ADR 0004](0004-service-capability-and-version.md#internal-services)): only operators and a test-runner key see it, so the key lists, runs and publishes `smoke-` services marked internal while tenant members never see them.
+
 The playground checks the key's service grants in the kernel's key grant policy as well, and that policy only passes a playground run for a key granted every service (`*`). A test-runner key that should use the playground is therefore created for all services. The tests in `apps/api/src/test-runner.test.ts` state each rule.
 
 ## Why

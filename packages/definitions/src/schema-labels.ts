@@ -349,6 +349,10 @@ const serviceNb = {
     label: 'Tilgjengelig for',
     help: '* for alle, eller en liste med organisasjonsnumre.',
   },
+  'spec.visibility': {
+    label: 'Synlighet',
+    help: 'internal skjuler tjenesten for alle unntatt operatører.',
+  },
   'spec.triggers': { label: 'Utløsere' },
   ...prefixed('spec.triggers', triggerNb),
   'spec.batch': { label: 'Samlet jobb' },
@@ -490,6 +494,10 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
     label: 'Available to',
     help: '* for everyone, or a list of organisation numbers.',
   },
+  'spec.visibility': {
+    label: 'Visibility',
+    help: 'internal hides the service from everyone but operators.',
+  },
   'spec.triggers': { label: 'Triggers' },
   ...(prefixed('spec.triggers', triggerEn) as Record<string, LabelText>),
   'spec.batch': { label: 'Batch run' },
@@ -558,6 +566,7 @@ const serviceMeta: Record<string, PropertyMeta> = {
   'spec.evaluation': { ...advanced, 'x-order': 82 },
   'spec.improve': { ...advanced, 'x-order': 83 },
   'spec.availableTo': { ...start, 'x-order': 73, 'x-operator': true, 'x-widget': 'list' },
+  'spec.visibility': { ...start, 'x-order': 74, 'x-operator': true },
   'strategy.id': { 'x-widget': 'select' },
 };
 

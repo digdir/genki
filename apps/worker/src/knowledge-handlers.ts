@@ -526,7 +526,13 @@ export const knowledgeWork = (
   const convertError = (record: string, error: unknown) => {
     const code =
       (error as { code?: unknown }).code ?? (error instanceof Error ? error.name : 'Error');
-    return new Error(`converting a file of record ${record} failed: ${String(code)}`);
+    // The code goes on the error too, so the failed-job log can name it (issue 532).
+    return Object.assign(
+      new Error(`converting a file of record ${record} failed: ${String(code)}`),
+      {
+        code: String(code),
+      },
+    );
   };
 
   const convert = admittedConversion(

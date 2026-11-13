@@ -172,9 +172,9 @@
                 answer. Without <code>actions</code>, the row holds the time alone.
               </li>
               <li>
-                <code>search</code>, <code>sourcesUsed</code>, <code>closingQuestion</code>,
-                <code>assistantName</code>, <code>href</code>, <code>citationId</code> and
-                <code>headingLevel</code>.
+                <code>search</code>, <code>sourcesUsed</code>, <code>documentFootnotes</code>,
+                <code>closingQuestion</code>, <code>assistantName</code>, <code>href</code>,
+                <code>citationId</code> and <code>headingLevel</code>.
               </li>
               <li>
                 <code>questionColor</code>, <code>answerColor</code> and <code>color</code> set
@@ -188,6 +188,10 @@
                 small strong line over what the <code>header</code> puts there, and the answer with
                 no card (<code>Answer</code>'s <code>plain</code>). The line is for the eye; the
                 answer's own «… svarte:» tells a screen reader. <code>card</code>, the default.
+              </li>
+              <li>
+                <code>answerLabel</code>: <code>false</code> leaves out that line over a
+                <code>plain</code> answer, as the newer dev boards draw it. On by default.
               </li>
             </ul>
             <h2>Related</h2>
