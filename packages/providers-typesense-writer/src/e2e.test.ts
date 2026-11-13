@@ -11,6 +11,7 @@ import {
   runIngest,
   type ChunkDocumentConfig,
   type IngestResult,
+  onePage,
 } from '@genai/ingest';
 import type { ModelPort } from '@genai/port-model';
 import { keyword, type Value } from '@genai/valuehash';
@@ -115,7 +116,7 @@ const ingestKudos = (markdown: string, done?: Set<string>): Promise<IngestResult
     source: kudosSource({
       documents: [kudosDoc],
       fetchFile: async () => new Uint8Array([37, 80, 68, 70]),
-      converter: { toMarkdown: async () => markdown },
+      converter: { convert: async () => onePage(markdown) },
     }),
     chunking: kudosChunking,
     collections: legacyKudosCollectionIds('KUDOS_preprod_v4_'),

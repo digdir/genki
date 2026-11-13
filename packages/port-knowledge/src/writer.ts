@@ -24,6 +24,14 @@ export interface IndexChunk {
   text: string;
   metadata?: Record<string, unknown>;
   vector?: number[];
+  /** The file the chunk was cut from, by its name in the record, and that file's sha256. */
+  file?: string;
+  fileSha256?: string;
+  /** The first and last page of its file the chunk spans, from 1. */
+  pageFrom?: number;
+  pageTo?: number;
+  /** The headings above the chunk, outermost first, when the converter gives headings. */
+  headingPath?: string[];
 }
 
 export interface IndexPhrase {

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { gunzipSync, gzip } from 'node:zlib';
 import { BlobError, checkPath } from './blob.js';
 
 export type Settings = { readonly [key: string]: unknown };
@@ -45,11 +46,19 @@ export interface NativeOutputContainer {
 }
 
 export interface NativeOutputStore {
-  put(key: NativeOutputKey, output: Uint8Array, pages: number): Promise<NativeOutputEntry>;
+  /** `when` is when the converter finished, the time of the put by default; `bytes` is the gzipped size. */
+  put(
+    key: NativeOutputKey,
+    output: Uint8Array,
+    pages: number,
+    when?: string,
+  ): Promise<NativeOutputEntry & { bytes: number }>;
   get(key: NativeOutputKey): Promise<StoredNativeOutput | undefined>;
   list(sha256: string): Promise<NativeOutputEntry[]>;
   delete(key: NativeOutputKey): Promise<boolean>;
 }
+
+const gzipAsync = promisify(gzip);
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const outputSuffix = '.json.gz';
@@ -113,14 +122,14 @@ export const nativeOutputStore = (
   container: NativeOutputContainer,
   now: () => Date = () => new Date(),
 ): NativeOutputStore => ({
-  put: async (key, output, pages) => {
+  put: async (key, output, pages, when) => {
     const entry = nativeOutputEntry(key);
     const meta: NativeOutputMeta = {
       converter: key.converter,
       version: key.version,
       settings: canonical(key.settings) as Settings,
       pages,
-      when: now().toISOString(),
+      when: when ?? now().toISOString(),
     };
     // The meta goes first, so a listed output always has its meta beside it.
     await container.write(
@@ -128,8 +137,9 @@ export const nativeOutputStore = (
       new TextEncoder().encode(JSON.stringify(meta)),
       'application/json',
     );
-    await container.write(entry.path, gzipSync(output), 'application/gzip');
-    return entry;
+    const zipped = await gzipAsync(output);
+    await container.write(entry.path, zipped, 'application/gzip');
+    return { ...entry, bytes: zipped.byteLength };
   },
   get: async (key) => {
     const entry = nativeOutputEntry(key);
