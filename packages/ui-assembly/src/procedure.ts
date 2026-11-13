@@ -49,6 +49,18 @@ const passagesRead = (frame: StepFrame) => {
   }, 0);
 };
 
+/** The milliseconds genki says each tool call of a turn took, by the call's tool. */
+const callTimes = (frame: StepFrame) => {
+  const calls = frame['tool-calls'];
+  if (!Array.isArray(calls)) return [];
+  return calls.flatMap((call: unknown) => {
+    const { tool, 'duration-ms': ms } = (call ?? {}) as { tool?: unknown; 'duration-ms'?: unknown };
+    return typeof tool === 'string' && typeof ms === 'number' && Number.isFinite(ms) && ms >= 0
+      ? [{ tool, ms }]
+      : [];
+  });
+};
+
 /**
  * The steps so far. Each frame with a title starts a step and ends the one before. A reading step
  * carries the passages genki says it read, as `excerptsRead`. Approach draws a run of the same
@@ -58,14 +70,20 @@ export const stepsOf = (
   approach: Approach,
   working: boolean,
   locale: Locale = 'nb',
+  /** Each step with the time genki says its tool calls took, as `duration`. */
+  timed = false,
 ): ApproachStep[] => {
   const t = translator(locale);
-  const steps: { id: string; title: string; tool?: string; passages: number }[] = [];
+  const steps: { id: string; title: string; tool?: string; passages: number; ms?: number }[] = [];
   for (const frame of approach.frames) {
     const read = passagesRead(frame);
     if (read > 0) {
       const reading = steps.findLast((step) => step.tool === 'read_chunks');
       if (reading) reading.passages += read;
+    }
+    for (const call of callTimes(frame)) {
+      const ran = steps.findLast((step) => step.tool === call.tool);
+      if (ran) ran.ms = (ran.ms ?? 0) + call.ms;
     }
     const title = titleOf(frame, t);
     if (!title) continue;
@@ -81,6 +99,7 @@ export const stepsOf = (
     id: step.id,
     title: step.title,
     ...(step.passages > 0 ? { excerptsRead: step.passages } : {}),
+    ...(timed && step.ms !== undefined ? { duration: step.ms } : {}),
     status: working && at === steps.length - 1 ? 'active' : 'done',
   }));
 };

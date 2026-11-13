@@ -79,7 +79,12 @@
                 <strong>A, card above the answer:</strong> can be collapsed and expanded. A4 has the
                 filter for each answer inside the card.
               </li>
-              <li><strong>B, in the tools panel:</strong> as one of the tools.</li>
+              <li>
+                <strong>B, in the tools panel:</strong> as one of the tools, the detailed one: each
+                step's time, the filter the answer read from, the totals and, at the detailed level,
+                the step frames. The app builder places it as A, as B, or both; beside B, A keeps
+                only the steps, the totals and how many documents the answer read from.
+              </li>
               <li><strong>What is missing:</strong> a section of its own (A3, A3b).</li>
             </ul>
           </div>
@@ -102,7 +107,8 @@
               </li>
               <li>
                 <code>read</code> and <code>used</code>: the documents read and the sources used,
-                for the line at the bottom once the answer is done.
+                for the line at the bottom once the answer is done. The list draws that line only
+                when one of them is given.
               </li>
               <li>
                 <code>open</code> and <code>onOpenChange</code>: a host that keeps the card open or
@@ -124,12 +130,12 @@
               <li>
                 <code>note</code>: after the totals in the head, stronger: «· filteret er endret»,
                 which the host passes only when the answer's filter differs from the previous
-                answer's.
+                answer's. In the list it is a line of its own under the caption.
               </li>
               <li>
-                <code>scope</code>: at the top of the open card, before the steps, such as the
-                filter's <code>FilterRead</code>: «Leste fra 8 781 dokumenter:» and the chosen
-                values as chips.
+                <code>scope</code>: at the top of the open card, or of the list, before the steps,
+                such as the filter's <code>FilterRead</code>: «Leste fra 8 781 dokumenter:» and the
+                chosen values as chips.
               </li>
               <li>
                 <code>variant</code>: <code>list</code> draws the steps as the dev boards'
@@ -137,8 +143,10 @@
                 nothing that folds: the caption «Slik jobbet assistenten med svaret», then each step
                 with a mark (a check on success's tint when done, a spinner while it works), its
                 title, and a grey line under it: its <code>description</code>, or «Leste 11 utdrag
-                nøye» for the excerpts it read. <code>card</code>, the default, is the card above
-                the answer.
+                nøye» for the excerpts it read. Given a <code>note</code>, a <code>scope</code>, or
+                <code>read</code> or <code>used</code>, it draws those as well, and each step's time
+                when the steps carry one. <code>card</code>, the default, is the card above the
+                answer.
               </li>
             </ul>
             <h3>A step</h3>
@@ -159,6 +167,11 @@
               </li>
               <li><code>sourcesUsed</code>: the source numbers the answer used.</li>
               <li><code>missing</code>: the step says what the assistant did not find.</li>
+              <li>
+                <code>duration</code>: how long the step took, in milliseconds, when the platform
+                said. The line shows it, «2,4 s», after the title in the card and at the end of the
+                row in the list, as a <code>&lt;time&gt;</code>; a run adds its steps' times up.
+              </li>
             </ul>
             <h2>Related</h2>
             <ul>
@@ -439,6 +452,26 @@
                   <td><code>--genai-approach-list-line-height</code></td>
                   <td><code>--ds-line-height-md</code></td>
                   <td>the list: the grey line under a step's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-list-note-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the list: the note under the caption</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-time-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>a step's time</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-time-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>a step's time</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-step-time-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a step's time</td>
                 </tr>
                 <tr>
                   <td><code>--genai-approach-subtitle-color</code></td>
