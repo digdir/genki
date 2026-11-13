@@ -146,6 +146,14 @@
               so the order in a zone is the catalogue's, whatever order the blocks were turned on
               in.
             </p>
+            <p>
+              A block marked <code>both</code> may also stand in both its zones at once, each
+              drawing it its own way. Only Fremgangsmåte is: the card over each answer in «Innhold»,
+              the detailed tool in «Høyre panel», or both. <code>placesOf</code> lists the places
+              the builder offers a block, its zones and then <code>both</code>;
+              <code>placeKey</code> names each, «Begge steder» for both, and
+              <code>placesHelpKey</code> says what each place draws.
+            </p>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -211,7 +219,7 @@
                   </tr>
                   <tr>
                     <th scope="row"><code>approach</code> <small>«Fremgangsmåte»</small></th>
-                    <td>main (0), secondary (0)</td>
+                    <td>main (0), secondary (0), or both</td>
                     <td><code>Approach</code></td>
                     <td><code>service:steps</code></td>
                     <td><code>level</code>: <code>standard</code> or <code>detailed</code></td>
@@ -272,7 +280,8 @@
               Choosing one replaces the layout. «Kunnskapsassistenten» has Innstillinger and no
               Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
               After it, <code>knowledge-assistant-next</code> has the same blocks in the look of the
-              «_Ready for dev» boards, built there step by step: <code>templateLook</code> says
+              «_Ready for dev» boards, with Fremgangsmåte in both places, the bar over each answer
+              and the tool, built there step by step: <code>templateLook</code> says
               <code>next</code> for it and <code>current</code> for every other template, and the
               assembly draws the new look only for <code>next</code>, so the others draw what they
               draw today.
@@ -303,7 +312,7 @@
                     </th>
                     <td>threads, filter, settings</td>
                     <td>approach, chat</td>
-                    <td>sources, notes</td>
+                    <td>approach, sources, notes</td>
                   </tr>
                   <tr>
                     <th scope="row"><code>sources-only</code> <small>«Bare kilder»</small></th>
@@ -374,8 +383,11 @@
               </li>
               <li>
                 <code>turnOn</code>, <code>turnOff</code>, <code>moveTo</code> and
-                <code>placeIn</code> keep a block in one zone at a time, and refuse a zone it may
-                not stand in. <code>withSetting</code> keeps only what differs from the default;
+                <code>placeIn</code> keep a block in one zone at a time, or in both its zones when
+                given <code>both</code> for a block that allows it, and refuse a place it may not
+                stand in. <code>placedAt</code> says where a block stands as the builder offers it,
+                and <code>zonesOf</code> every zone it stands in. <code>withSetting</code> keeps
+                only what differs from the default, alike in each zone a block stands in;
                 <code>settingsOf</code> fills the defaults in.
               </li>
               <li>
@@ -393,7 +405,8 @@
                 <code>layoutProblems</code> lists every rule a layout breaks, by name:
                 <code>unknown-block</code>, <code>zone-not-allowed</code>,
                 <code>placed-twice</code>, <code>not-built</code>, <code>missing-partner</code> and
-                <code>needs-unmet</code>. An option left at its default asks nothing.
+                <code>needs-unmet</code>. A block marked <code>both</code> in each of its zones once
+                is not placed twice. An option left at its default asks nothing.
               </li>
               <li>
                 <code>settingsSchema</code> gives a block's options as a JSON Schema (2020-12), with

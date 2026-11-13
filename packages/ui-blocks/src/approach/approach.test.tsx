@@ -346,4 +346,99 @@ describe('the steps as the dev boards’ tool, `variant="list"`', () => {
     ]);
     expect(screen.getByText('Leste de relevante delene nøye')).toBeTruthy();
   });
+
+  it('draws no note, scope or foot when none is given', () => {
+    render(<Approach variant="list" steps={done} working={false} startedAt={started} />);
+    expect(document.querySelector('.uib-approach-note')).toBeNull();
+    expect(document.querySelector('.uib-approach-scope')).toBeNull();
+    expect(document.querySelector('.uib-approach-footer')).toBeNull();
+    expect(document.querySelector('.uib-approach-step-time')).toBeNull();
+  });
+
+  it('draws the note and the scope over the steps, and the totals and the time at the foot, when given', () => {
+    render(
+      <Approach
+        variant="list"
+        steps={done.map((one) => ({ ...one, status: 'done' as const }))}
+        working={false}
+        startedAt={started}
+        finishedAt={started + 12_000}
+        used={3}
+        note="filteret er endret"
+        scope={<p>Leste fra 214 dokumenter</p>}
+      />,
+    );
+    const tool = document.querySelector('.uib-approach') as HTMLElement;
+    const order = [...tool.children].map((child) => child.className);
+    expect(order.slice(0, 4)).toEqual([
+      'uib-approach-caption',
+      'uib-approach-note',
+      'uib-approach-scope',
+      'uib-approach-list',
+    ]);
+    expect(tool.querySelector('.uib-approach-scope')?.textContent).toBe('Leste fra 214 dokumenter');
+    expect(tool.querySelector('.uib-approach-footer')?.textContent).toBe(
+      'Brukte 3 kilder · tok 12 sekunder',
+    );
+  });
+});
+
+describe('the time each step took', () => {
+  const timed: ApproachStep[] = [
+    { id: 'understand', title: 'Forsto spørsmålet', status: 'done', duration: 1_240 },
+    { id: 'search-1', title: 'Lette etter steder', status: 'done', duration: 2_000 },
+    { id: 'search-2', title: 'Lette etter steder', status: 'done', duration: 3_500 },
+    { id: 'write', title: 'Skrev svaret', status: 'done', duration: 14_600 },
+    { id: 'check', title: 'Sjekket svaret', status: 'done' },
+  ];
+  const times = () =>
+    [...document.querySelectorAll('.uib-approach-step-time time')].map((time) => [
+      time.textContent,
+      time.getAttribute('datetime'),
+    ]);
+
+  it('stands at the end of each line in the list, added up over a run, as a time element', () => {
+    render(<Approach variant="list" steps={timed} working={false} startedAt={started} />);
+    expect(times()).toEqual([
+      ['1,2 s', 'PT1.2S'],
+      ['5,5 s', 'PT5.5S'],
+      ['15 s', 'PT14.6S'],
+    ]);
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[3]?.querySelector('.uib-approach-step-time')).toBeNull();
+  });
+
+  it('stands after the title in the card, and in English as in bokmål', () => {
+    render(
+      <InLocale locale="en">
+        <Approach steps={timed} working={false} startedAt={started} open />
+      </InLocale>,
+    );
+    expect(times().map(([text]) => text)).toEqual(['1.2 s', '5.5 s', '15 s']);
+    expect(step('Forsto spørsmålet').textContent).toContain('Forsto spørsmålet · 1.2 s');
+  });
+
+  it('says «under 0,1 s» for a step that took less than it would round up to', () => {
+    render(
+      <Approach
+        variant="list"
+        steps={[{ id: 'read', title: 'Leste', status: 'done', duration: 30 }]}
+        working={false}
+        startedAt={started}
+      />,
+    );
+    expect(times()).toEqual([['under 0,1 s', 'PT0.0S']]);
+  });
+
+  it('is left out of a step that waits', () => {
+    render(
+      <Approach
+        variant="list"
+        steps={[{ id: 'write', title: 'Skrev svaret', status: 'waiting', duration: 900 }]}
+        working
+        startedAt={started}
+      />,
+    );
+    expect(times()).toEqual([]);
+  });
 });

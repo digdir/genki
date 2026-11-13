@@ -397,6 +397,29 @@ export const detectionsOf = (timeline: Record<string, unknown>): string[] =>
       .flatMap((b) => list(b.items).map(String)),
   );
 
+const searchLabels = ['Search', 'Søk'];
+
+const searchedQueriesOf = (timeline: Record<string, unknown>): string[] =>
+  list(timeline.steps).flatMap((step) =>
+    list(record(step).blocks)
+      .map(record)
+      .filter((b) => searchLabels.includes(String(b.label)))
+      .flatMap((b) => (b.kind === 'quote' ? [String(b.text)] : list(b.items).map(String))),
+  );
+
+const detectedValuesOf = (tag: string) =>
+  tag.slice(tag.indexOf(': ') + 2, tag.lastIndexOf(', ')).split(', ');
+
+const onlyInModelQueries = (tag: string, question: string, queries: string[]) => {
+  const lower = (text: string) => text.toLocaleLowerCase('nb');
+  return detectedValuesOf(tag).every(
+    (value) =>
+      value !== '' &&
+      !lower(question).includes(lower(value)) &&
+      queries.some((q) => lower(q).includes(lower(value))),
+  );
+};
+
 const providerLabel = /^(The provider answered|Leverandøren svarte) \d{3}/;
 
 export const providerBlocksOf = (timeline: Record<string, unknown>): string[] =>
@@ -409,7 +432,7 @@ export const providerBlocksOf = (timeline: Record<string, unknown>): string[] =>
 
 export const assessTimeline = (
   result: HttpResult,
-  expect: { detected?: string[]; tokens: boolean; failed?: boolean },
+  expect: { detected?: string[]; question?: string; tokens: boolean; failed?: boolean },
 ): Verdict & { unavailable?: boolean } => {
   if ([401, 403].includes(result.status))
     return {
@@ -436,8 +459,18 @@ export const assessTimeline = (
   if (expect.tokens && list(record(timeline.stats).byModel).length === 0)
     return { ok: false, detail: 'no token stats per model on the timeline' };
   const found = detectionsOf(timeline);
-  if (expect.detected?.length === 0 && found.length)
-    return { ok: false, detail: `unexpected detection ${clip(found.join('; '))}`, retry: true };
+  const fromQuestion =
+    expect.question === undefined
+      ? found
+      : found.filter(
+          (tag) => !onlyInModelQueries(tag, expect.question ?? '', searchedQueriesOf(timeline)),
+        );
+  if (expect.detected?.length === 0 && fromQuestion.length)
+    return {
+      ok: false,
+      detail: `unexpected detection ${clip(fromQuestion.join('; '))}`,
+      retry: true,
+    };
   const missing = (expect.detected ?? []).filter((v) => !found.some((f) => f.includes(v)));
   if (missing.length)
     return { ok: false, detail: `not detected: ${missing.join(', ')}`, retry: true };

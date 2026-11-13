@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { isInternalService } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import {
   caseExpectation,
@@ -18,6 +19,8 @@ import type { LeaseOptions } from './background-lease.js';
 import { VersionConflict, type ConfigEntry } from './config-store.js';
 import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
+import { t } from './i18n/index.js';
+import { hidesInternalServices, isHiddenService } from './internal-services.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
 import { connectionsCovering } from './trace-connections.js';
@@ -235,7 +238,11 @@ export const createQualityModule =
         app.get('/tenants/:tenant/service-drafts', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
-          const found = await evals.drafts.list(guard.tenant);
+          const drafts = await evals.drafts.list(guard.tenant);
+          const hidden = await Promise.all(
+            drafts.map((d) => isHiddenService(deps.definitions, guard.tenant, d.id)),
+          );
+          const found = drafts.filter((_, i) => !hidden[i]);
           const people = await actorNames(deps.configEntries).namesOf(found.map((d) => d.by));
           const data = await Promise.all(
             found.map(async (draft) => {
@@ -281,6 +288,14 @@ export const createQualityModule =
           if (!isRecord(data.definition))
             return problem(c, 400, 'Ugyldig forespørsel', [
               { path: 'definition', message: 'a definition is required' },
+            ]);
+          if (
+            hidesInternalServices() &&
+            isInternalService(data.definition) &&
+            !isInternalService((await evals.draftOf(guard.tenant, param(c, 'id')))?.spec.definition)
+          )
+            return problem(c, 422, 'Ugyldig forespørsel', [
+              { path: 'definition.spec.visibility', message: t('problems.internalOperatorOnly') },
             ]);
           const service = param(c, 'id');
           const latest = (await evals.drafts.latestVersion(guard.tenant, service)) ?? 0;
@@ -642,7 +657,12 @@ export const createQualityModule =
           const guard = await member(c);
           if (guard.response) return guard.response;
           const stored = await evals.runOf(guard.tenant, param(c, 'runId'));
-          if (!stored) return problem(c, 404, 'Fant ikke');
+          if (
+            !stored ||
+            (stored.service !== undefined &&
+              (await isHiddenService(deps.definitions, guard.tenant, stored.service)))
+          )
+            return problem(c, 404, 'Fant ikke');
           if (stored.run.tested) {
             const set = await deps.evalStores.testSets.get(
               guard.tenant,

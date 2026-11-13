@@ -97,6 +97,15 @@
                 tabs or a dropdown.
               </li>
               <li>
+                Fremgangsmåte is the card over each answer in the main column, the tool in the
+                secondary panel, or both, as the layout places it. The tool is the detailed one:
+                each step's time as genki reports it for the step's tool calls, the filter the
+                answer read from with its values, the sources used, how long it took, and the step
+                frames at the detailed level. Beside the tool, the card keeps only the steps, the
+                totals, «filteret er endret» and, in the next look, how many documents the answer
+                read from.
+              </li>
+              <li>
                 Dokumentvisning is a tool in the secondary panel, or takes the conversation's place
                 in the main column while a document is open.
               </li>
@@ -124,6 +133,11 @@
                 on «Tråder».
               </li>
               <li>
+                <strong>The next look's «Kilder»</strong> folds the documents the answer read but
+                cites nowhere under «Andre kilder som ble lest (N)», the Sources block's
+                <code>foldUncited</code>. The cited ones stand as before.
+              </li>
+              <li>
                 <strong>The next look's filter</strong> (dev-filter-panel): its own panel in the
                 threads' card, the shell's <code>companion</code>, titled «Filter» with «Gjelder
                 neste spørsmål», in the filter's <code>panel</code> variant, with «Dokumentene som
@@ -145,6 +159,12 @@
                 narrower than the threads' 220 beside the filter. In a drawer the filter stands
                 under the threads at the drawer's width, its ticks in one column. Off, the filter is
                 as before: 440 of the card's 660, which goes no narrower.
+              </li>
+              <li>
+                <strong>Under the next look's answer</strong>: no follow-up questions over the
+                field, whatever the profile's <code>followUps</code> and Chat's option say, and
+                «Kopier lenke til tråden» with no note that the link works only here: the answer
+                actions' <code>linkOnlyHere</code> is off. The answer's time stays at the row's end.
               </li>
             </ul>
           </div>
@@ -176,9 +196,10 @@
                 it and goes there. Without it, no «Logg ut» is drawn, in either look.
               </li>
               <li>
-                <code>threadInUrl</code>: the thread as <code>?t=</code>, «Innstillinger» as
-                <code>#innstillinger</code>, and the tab's title. With <code>paths</code>, a path
-                per page. <code>allThreads</code> lists every thread under the key.
+                <code>threadInUrl</code>: the thread as <code>?t=</code>, opened only when the id
+                looks like one genki makes, «Innstillinger» as <code>#innstillinger</code>, and the
+                tab's title. With <code>paths</code>, a path per page. <code>allThreads</code> lists
+                every thread under the key.
               </li>
               <li>
                 <code>storage</code>: where the reader's choices are kept, such as
@@ -188,14 +209,15 @@
                 <code>onFeedback</code>, <code>onRename</code> and <code>onDelete</code>: without
                 them, none is offered. <code>onFeedback</code> gets the answer's
                 <code>answerId</code>, the <code>rating</code>, <code>reasons</code> and
-                <code>comment</code>, and <code>runId</code>: genki's id for the run that gave the
-                answer, which <code>POST /api/feedback</code> takes as <code>task</code>. It comes
-                from the stream's <code>genai-task</code> header, or from <code>task</code> on a
-                stored answer, so a proxy passes that header on; without it, <code>runId</code> is
-                left out and the host decides. It comes from the page, so a host whose proxy uses
-                one shared key sends feedback only on runs it made for that reader.
-                <code>onNotice</code>, <code>onThreadChange</code> and
-                <code>onStepsReported</code> tell the host what happened.
+                <code>comment</code>, on the click on a thumb and again in full with a comment, and
+                <code>runId</code>: genki's id for the run that gave the answer, which
+                <code>POST /api/feedback</code> takes as <code>task</code>. It comes from the
+                stream's <code>genai-task</code> header, or from <code>task</code> on a stored
+                answer, so a proxy passes that header on; without it, <code>runId</code> is left out
+                and the host decides. It comes from the page, so a host whose proxy uses one shared
+                key sends feedback only on runs it made for that reader. <code>onNotice</code>,
+                <code>onThreadChange</code> and <code>onStepsReported</code> tell the host what
+                happened.
               </li>
               <li>
                 <code>colorScheme</code> and <code>onColorSchemeChange</code>: the host keeps the
@@ -412,6 +434,13 @@
               <li>
                 Dokumentvisning's hint names what opens a document in the layout: «Vis i dokumentet»
                 in Kilder, or a footnote when Kilder is off.
+              </li>
+              <li>
+                The next look draws a footnote that names a document, the Answer block's
+                <code>documentFootnotes</code>, until genki cites excerpts: one number per cited
+                document, 1, 2, 3 by first citation, leading to the document in «Kilder». «Kopier
+                svaret» copies the same numbers. Answers that cite excerpts keep one number per
+                excerpt.
               </li>
               <li>
                 The assembly measures nothing of the shell's. The shell pads a panel's region as

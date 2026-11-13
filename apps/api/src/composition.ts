@@ -236,6 +236,12 @@ import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { testRunnerView } from './test-runner.js';
 import { compiledCapabilityCache } from './compiled-capabilities.js';
+import {
+  hidingInternalServices,
+  hidingInternalTasks,
+  hidingInternalTestSets,
+  isHiddenService,
+} from './internal-services.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
@@ -1152,14 +1158,17 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const evalStores = {
     ...baseEvalStores,
-    testSets: withTraceDatasets(
-      baseEvalStores.testSets,
-      traceDatasets({
-        configEntries,
-        traceSinks,
-        testSets: baseEvalStores.testSets,
-        ...(input.logger ? { log: input.logger } : {}),
-      }),
+    testSets: hidingInternalTestSets(
+      withTraceDatasets(
+        baseEvalStores.testSets,
+        traceDatasets({
+          configEntries,
+          traceSinks,
+          testSets: baseEvalStores.testSets,
+          ...(input.logger ? { log: input.logger } : {}),
+        }),
+      ),
+      (tenant, id) => isHiddenService(definitions, tenant, id),
     ),
     feedback: feedbackToModules(
       webhooks.feedback(baseEvalStores.feedback, taskStore),
@@ -1406,6 +1415,8 @@ export const createPlatform = async (input: PlatformInput) => {
     adapters: { knowledge: knowledgeAdapters },
     embeddingResidency,
     testSets: evalStores.testSets,
+    testSetTaken: async (tenant, id) =>
+      (await baseEvalStores.testSets.get(tenant, id)) !== undefined,
     usedBy: (dataset) =>
       datasetReaders(
         {
@@ -1519,20 +1530,26 @@ export const createPlatform = async (input: PlatformInput) => {
     compiled.invalidate();
     await sync();
   };
-  const definitions: DefinitionStore = {
-    get: (...args) => store.get(...args),
-    versions: (...args) => store.versions(...args),
-    list: (...args) => store.list(...args),
-    resolve: (...args) => store.resolve(...args),
-    capabilities: () => compiled.get(),
-    publish: async (...args) => {
-      const problems = await checkBeforePublish(args[0], args[1]);
-      if (problems) return { ok: false, errors: problems };
-      const result = await store.publish(...args);
-      if (result.ok) await resync();
-      return result;
+  const definitions: DefinitionStore = hidingInternalServices(
+    {
+      get: (...args) => store.get(...args),
+      versions: (...args) => store.versions(...args),
+      list: (...args) => store.list(...args),
+      resolve: (...args) => store.resolve(...args),
+      capabilities: () => compiled.get(),
+      publish: async (...args) => {
+        const problems = await checkBeforePublish(args[0], args[1]);
+        if (problems) return { ok: false, errors: problems };
+        const result = await store.publish(...args);
+        if (result.ok) await resync();
+        return result;
+      },
     },
-  };
+    {
+      draftDefinition: async (tenant, id) =>
+        (await serviceDrafts(configurables.store, store).draftOf(tenant, id))?.spec.definition,
+    },
+  );
 
   const pin = async (compiled: CompiledCapability, version: number) => {
     const found = await store.get('Service', compiled.service.tenant, compiled.service.id, version);
@@ -1980,7 +1997,7 @@ export const createPlatform = async (input: PlatformInput) => {
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
     tasks: taskIndex,
-    task: async (id) => (await taskStore.get(id))?.task,
+    task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
     webhooks,
     sync: resync,
@@ -2102,6 +2119,7 @@ export const createPlatform = async (input: PlatformInput) => {
         tasks: () => taskIndex.running(),
         allTasks: () => taskIndex.all(),
         catalogSkips: input.catalogSkips ?? [],
+        hiddenService: (tenant, id) => isHiddenService(definitions, tenant, id),
         eval: {
           kernel,
           evalCapability: evalCapability.descriptor.id,
@@ -2117,7 +2135,7 @@ export const createPlatform = async (input: PlatformInput) => {
         authenticate,
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
-        task: async (id) => (await taskStore.get(id))?.task,
+        task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
         ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
         ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),

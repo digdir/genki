@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blockSpec, zones } from './catalogue.js';
-import { blocksIn, layoutProblems } from './layout.js';
+import { blocksIn, layoutProblems, placedAt } from './layout.js';
 import { fromTemplate, templateIds, templateLook, templates } from './templates.js';
 
 describe('the templates', () => {
@@ -43,8 +43,13 @@ describe('the templates', () => {
     expect(blocksIn(layout, 'secondary')).toEqual(['sources']);
   });
 
-  it('give Kunnskapsassistenten’s next look the same blocks, so only the look differs', () => {
-    expect(templates['knowledge-assistant-next']).toEqual(templates['knowledge-assistant']);
+  it('give Kunnskapsassistenten’s next look the same blocks, with Approach also as the tool', () => {
+    const next = templates['knowledge-assistant-next'];
+    const today = templates['knowledge-assistant'];
+    expect(next.primary).toEqual(today.primary);
+    expect(next.main).toEqual(today.main);
+    expect(next.secondary).toEqual(['approach', ...today.secondary]);
+    expect(placedAt(fromTemplate('knowledge-assistant-next').layout, 'approach')).toBe('both');
   });
 
   it('draw the dev boards’ look only for knowledge-assistant-next, and today’s for the rest', () => {

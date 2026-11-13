@@ -100,6 +100,8 @@ const trigger = z.discriminatedUnion('kind', [
 
 const tool = z.union([versionedRef, z.looseObject({ use: versionedRef })]);
 
+export const serviceVisibilities = ['tenant', 'internal'] as const;
+
 export const serviceSpec = z.strictObject({
   purpose: z.string().min(1),
   exampleQuestions: z
@@ -255,6 +257,7 @@ export const serviceSpec = z.strictObject({
       a2aPublicCard: false,
     }),
   availableTo: z.union([z.literal('*'), z.array(orgNumber)]).optional(),
+  visibility: z.enum(serviceVisibilities).optional(),
   triggers: z.array(trigger).default([]),
   batch: z.strictObject({ enabled: z.boolean() }).optional(),
   evaluation: z
