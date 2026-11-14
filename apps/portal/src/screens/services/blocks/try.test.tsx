@@ -301,6 +301,34 @@ describe('answers in more than one thread', () => {
     await release(held);
   });
 
+  it('keeps the question of an answer stopped by drawing the try view again, in its thread', async () => {
+    const first = gate();
+    const client = runs({
+      'Første spørsmål': [delta('Første '), first.shut, result('Første svar.'), finished],
+    });
+    const view = render(preview(client, threadsAndChat));
+    await ask('Første spørsmål');
+    await waitFor(() => expect(answerText()).toContain('Første'));
+    view.unmount();
+    await release(first);
+    render(preview(client, threadsAndChat));
+    await open(/Første spørsmål/);
+    expect(await screen.findByText('Første spørsmål', { selector: 'p' })).toBeTruthy();
+    expect(answerText().trim()).toBe('Første');
+    expect(screen.queryByText('Tråden har ingen meldinger ennå')).toBeNull();
+  });
+
+  it('keeps the question of a failed answer, and why, in its thread when the reader comes back', async () => {
+    render(preview(runs({ 'Første spørsmål': [delta('Første '), failed] }), threadsAndChat));
+    await ask('Første spørsmål');
+    await screen.findByText(failure);
+    await newThread();
+    await open(/Første spørsmål/);
+    expect(await screen.findByText('Første spørsmål', { selector: 'p' })).toBeTruthy();
+    expect(screen.getByText('Svaret kom ikke fram')).toBeTruthy();
+    expect(screen.queryByText('Tråden har ingen meldinger ennå')).toBeNull();
+  });
+
   it('lets the answers in other threads go on when the playground refuses the question on screen', async () => {
     const first = gate();
     render(
