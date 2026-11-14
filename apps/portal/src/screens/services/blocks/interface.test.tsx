@@ -69,6 +69,23 @@ describe('the Grensesnitt tab', () => {
     expectAccessible();
   });
 
+  it('has «Tekster» beside «Maler» and «Byggeklosser», and keeps the words with the layout', async () => {
+    await openInterface();
+    const switcher = within(screen.getByRole('group', { name: 'Byggeklosser og maler' }));
+    for (const name of ['Maler', 'Byggeklosser', 'Tekster'])
+      expect(switcher.getByRole('radio', { name })).toBeTruthy();
+    fireEvent.click(switcher.getByRole('radio', { name: 'Tekster' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Navn' }), {
+      target: { value: 'Rapporthjelpen' },
+    });
+    await waitFor(() =>
+      expect(keptFor('rapportassistenten')?.layout.profile).toEqual({
+        assistantName: 'Rapporthjelpen',
+      }),
+    );
+    expectAccessible();
+  });
+
   it('keeps the layout in this browser when the person goes to another tab and back', async () => {
     await openInterface();
     expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);

@@ -6,8 +6,10 @@ import {
   fromTemplate,
   offerOf,
   turnOff,
+  withProfile,
   type AssistantLayout,
   type BuilderState,
+  type ProfileData,
   type ServiceFacts,
   type TemplateId,
 } from '@genai/ui-blocks/builder';
@@ -26,11 +28,13 @@ import { BlocksPanel } from './BlocksPanel';
 import { LayoutTransfer } from './LayoutTransfer';
 import { startTemplate, type BlocksStart } from './layoutStore';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
+import type { Collection } from './profileEdit';
 import { TemplatesPanel } from './TemplatesPanel';
+import { TextsPanel } from './TextsPanel';
 import type { TryRun } from './TryView';
 import './blocks.css';
 
-type LeftTab = 'chat' | 'blocks' | 'templates';
+type LeftTab = 'chat' | 'blocks' | 'templates' | 'texts';
 
 const leftMin = 320;
 const leftMax = 640;
@@ -94,9 +98,10 @@ export const useBlocksState = (
       setState(next);
       setTemplate(undefined);
     },
-    // Blocks the draft cannot back yet are held, and come in once it can.
+    // Blocks the draft cannot back yet are held, and come in once it can. The words stay: they are
+    // the service's, not the template's.
     pick: (id: TemplateId) => {
-      setState(fitService(fromTemplate(id), offered).state);
+      setState((s) => fitService(withProfile(fromTemplate(id), s.layout.profile), offered).state);
       setTemplate(id);
     },
     // A pasted layout replaces this one, and its blocks the draft cannot back are held.
@@ -104,6 +109,8 @@ export const useBlocksState = (
       setState(fitService({ layout, chosen: {} }, offered).state);
       setTemplate(undefined);
     },
+    // The words are the service's, not a template's: the template stays chosen.
+    setProfile: (profile: ProfileData | undefined) => setState((s) => withProfile(s, profile)),
     restart: () => setConversation((n) => n + 1),
   };
 };
@@ -167,6 +174,7 @@ export const BlocksStep = ({
   state,
   narrow,
   assistant,
+  collections,
   run,
   address,
   onFullscreen,
@@ -175,6 +183,8 @@ export const BlocksStep = ({
   narrow: boolean;
   /** The builder assistant. Without it there is no Chat tab. */
   assistant?: ReactNode;
+  /** The collections the draft searches, whose words «Tekster» edits. Without it, no such tab. */
+  collections?: readonly Collection[] | undefined;
   run: TryRun | undefined;
   address: string;
   onFullscreen: () => void;
@@ -201,6 +211,9 @@ export const BlocksStep = ({
       >
         <ToggleGroup.Item value="templates">{t('builderBlocks.tabTemplates')}</ToggleGroup.Item>
         <ToggleGroup.Item value="blocks">{t('builderBlocks.tabBlocks')}</ToggleGroup.Item>
+        {collections ? (
+          <ToggleGroup.Item value="texts">{t('builderBlocks.tabTexts')}</ToggleGroup.Item>
+        ) : null}
         {assistant ? (
           <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
         ) : null}
@@ -211,6 +224,9 @@ export const BlocksStep = ({
       ) : null}
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />
+      ) : null}
+      {state.tab === 'texts' && collections ? (
+        <TextsPanel layout={state.layout} collections={collections} onChange={state.setProfile} />
       ) : null}
       {state.tab === 'chat' ? null : <LayoutTransfer layout={state.layout} onPaste={state.paste} />}
     </div>

@@ -53,6 +53,15 @@ export const layoutJson = (layout: AssistantLayout) => `${JSON.stringify(layout,
 
 const keyOf = (tenant: string, service: string) => `genki.blocks.${tenant}/${service}`;
 
+/** The rules a profile's limits break, as `profileProblems` names them. */
+const profileRules = new Set<LayoutProblem['rule']>([
+  'profile-too-large',
+  'text-too-long',
+  'too-many',
+  'link-not-https',
+  'unknown-kind',
+]);
+
 /**
  * A held block as it was kept: a built block in a zone it may stand in, with options a layout may
  * hold. Anything else is passed over.
@@ -102,7 +111,10 @@ export const readStart = (raw: string | null): BlocksStart | undefined => {
     template?: unknown;
     held?: unknown;
   };
-  if (!isAssistantLayout(layout) || layoutProblems(layout).length > 0) return undefined;
+  // A text past a limit is kept as typed, where «Tekster» says what to shorten; a block that
+  // breaks a rule is not.
+  if (!isAssistantLayout(layout) || layoutProblems(layout).some((p) => !profileRules.has(p.rule)))
+    return undefined;
   // A held block that is also placed is the placed one.
   const waiting = heldOf(held).filter(
     (entry) =>
