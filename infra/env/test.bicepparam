@@ -31,6 +31,8 @@ param keyVaultSecretNames = [
   'foundry-claude-key'
   'typesense-key'
   'colbert-api-key'
+  'langfuse-public-key'
+  'langfuse-secret-key'
 ]
 
 param appEnv = {
@@ -38,6 +40,11 @@ param appEnv = {
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
+  LANGFUSE_BASE_URL: 'https://langfuse.digdir.cloud'
+  LANGFUSE_INSTANCE_RECEIVES_CONTENT: readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', 'false')
+  TRACES_ENDPOINT: readEnvironmentVariable('TRACES_ENDPOINT', '')
+  TRACES_ENVIRONMENT: 'test'
+  TRACES_RESIDENCY: readEnvironmentVariable('TRACES_RESIDENCY', '')
   GENAI_LOCKDOWN: 'true'
   LOCKDOWN_ENTRA_GROUPS: readEnvironmentVariable('LOCKDOWN_ENTRA_GROUPS', '')
   LOCKDOWN_USER_GROUPS: readEnvironmentVariable('LOCKDOWN_USER_GROUPS', '')
