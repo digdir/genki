@@ -13,6 +13,7 @@ export const blocksUi = {
     intro:
       'Slå på klossene du vil ha i hvert panel. Noen klosser kan stå flere steder, de fleste bare ett sted om gangen.',
     usedIn: 'Står i {panel}. Slår du den på her, flyttes den hit.',
+    held: 'Valgt, men vises ikke ennå. {reasons} Den kommer når tjenesten har det den trenger.',
     groupLeft: 'Venstre panel',
     groupMain: 'Innhold',
     groupRight: 'Høyre panel',
@@ -70,5 +71,10 @@ export const blocksUi = {
     pasteNotBuilt: '{block} er ikke laget ennå.',
     pasteMissingPartner: '{block} trenger {partner}.',
     pasteNeedsUnmet: '{block} kan ikke brukes her.',
+    pasteProfileTooLarge: 'Tekstene i oppsettet er større enn {max} byte.',
+    pasteTextTooLong: '{path} er lengre enn {max} tegn.',
+    pasteTooMany: '{path} har flere enn {max}.',
+    pasteLinkNotHttps: '{path} er ikke en https-adresse.',
+    pasteUnknownKind: '{path} er en felttype portalen ikke kjenner: «{kind}».',
   }),
 };

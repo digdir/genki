@@ -87,6 +87,12 @@ const groups: { zone: Zone; legend: PlainKey }[] = [
 
 const reasons = (t: T, needs: readonly Need[]) => needs.map((need) => t(needKey(need))).join(' ');
 
+/** The person's choice of a block the draft cannot back yet, let go: it stays off. */
+const release = (state: BuilderState, id: BlockId, zone: Zone): BuilderState => {
+  const held = (state.held ?? []).filter((e) => !(e.zone === zone && e.placed.block === id));
+  return { ...state, held: held.length > 0 ? held : undefined };
+};
+
 /** «Valg for …»: the options the draft backs, drawn from their schema; the rest with why not. */
 const BlockOptions = ({
   id,
@@ -180,20 +186,28 @@ export const BlocksPanel = ({
               const elsewhere = at.find((other) => other !== zone);
               const offer = offerOf(id, facts);
               const name = t(blockLabel(id));
-              const description =
-                elsewhere !== undefined && !here && !spec.both
+              // Chosen here, and drawn once the draft can back it.
+              const held =
+                !here &&
+                !offer.offered &&
+                (state.held ?? []).some((e) => e.zone === zone && e.placed.block === id);
+              const description = held
+                ? t('builderBlocks.held', { reasons: reasons(t, offer.unmet) })
+                : elsewhere !== undefined && !here && !spec.both
                   ? t('builderBlocks.usedIn', { panel: t(zoneLabel[elsewhere]).toLowerCase() })
                   : !offer.offered && !offer.planned
                     ? reasons(t, offer.unmet)
                     : t(spec.both ? placesHelpKey(id) : helpKey(id));
               const toggled = () =>
-                here
-                  ? elsewhere
-                    ? moveTo(state, id, elsewhere)
-                    : turnOff(state, id)
-                  : elsewhere && spec.both
-                    ? moveTo(state, id, 'both')
-                    : placeIn(state, id, zone);
+                held
+                  ? release(state, id, zone)
+                  : here
+                    ? elsewhere
+                      ? moveTo(state, id, elsewhere)
+                      : turnOff(state, id)
+                    : elsewhere && spec.both
+                      ? moveTo(state, id, 'both')
+                      : placeIn(state, id, zone);
               return (
                 <Fragment key={id}>
                   <Switch
@@ -201,8 +215,8 @@ export const BlocksPanel = ({
                     position="end"
                     label={offer.planned ? t('builderBlocks.planned', { block: name }) : name}
                     description={description}
-                    checked={here}
-                    disabled={!offer.offered && !here}
+                    checked={here || held}
+                    disabled={!offer.offered && !here && !held}
                     onChange={() => onChange(toggled())}
                   />
                   {here && at[0] === zone && spec.options.length > 0 ? (

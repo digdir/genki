@@ -13,6 +13,7 @@ export const blocksUi = {
     intro:
       'Turn on the blocks you want in each panel. Some blocks can stand in more than one place, most in only one place at a time.',
     usedIn: 'In the {panel}. Turn it on here to move it here.',
+    held: 'Chosen, but not shown yet. {reasons} It comes in once the service has what it needs.',
     groupLeft: 'Left panel',
     groupMain: 'Content',
     groupRight: 'Right panel',
@@ -70,5 +71,10 @@ export const blocksUi = {
     pasteNotBuilt: '{block} is not built yet.',
     pasteMissingPartner: '{block} needs {partner}.',
     pasteNeedsUnmet: '{block} cannot be used here.',
+    pasteProfileTooLarge: 'The texts in the layout are larger than {max} bytes.',
+    pasteTextTooLong: '{path} is longer than {max} characters.',
+    pasteTooMany: '{path} has more than {max}.',
+    pasteLinkNotHttps: '{path} is not an https address.',
+    pasteUnknownKind: '{path} is a kind of field the portal does not know: “{kind}”.',
   },
 } satisfies Translation<typeof source>;

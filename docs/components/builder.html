@@ -518,10 +518,11 @@
             <h2>Open questions</h2>
             <ul>
               <li>
-                Where a layout is stored. The portal's «Grensesnitt» tab keeps a service's layout
-                only in the browser's session storage, per tenant and service, and «Kopier
-                oppsettet» and «Lim inn oppsett» carry it as JSON. Storing it with the service waits
-                for an ADR; V2-0006 proposes a frontend definition in genki.
+                Where a layout is stored. The portal's «Grensesnitt» tab keeps a service's layout,
+                and the <code>held</code> blocks the draft cannot back yet, only in the browser's
+                session storage, per tenant and service, and «Kopier oppsettet» and «Lim inn
+                oppsett» carry the layout as JSON. Storing it with the service waits for an ADR;
+                V2-0006 proposes a frontend definition in genki.
               </li>
               <li>
                 The profile's texts are in one language. A service's example questions, in bokmål

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { defaultLayout, factsFromDefinition, type ServiceFacts } from '@genai/ui-blocks/builder';
+import {
+  blocksIn,
+  defaultLayout,
+  factsFromDefinition,
+  zones,
+  type ServiceFacts,
+} from '@genai/ui-blocks/builder';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BlocksPanel } from './BlocksPanel';
 import { useBlocksState } from './BlocksStep';
@@ -14,8 +20,25 @@ const everyBlock = () => ({ layout: defaultLayout });
 
 const Harness = ({ facts }: { facts?: ServiceFacts | undefined }) => {
   const blocks = useBlocksState(everyBlock, facts);
-  return <BlocksPanel state={blocks.state} facts={blocks.facts} onChange={blocks.change} />;
+  return (
+    <>
+      <BlocksPanel state={blocks.state} facts={blocks.facts} onChange={blocks.change} />
+      <output aria-label="Tegnes">
+        {zones.flatMap((zone) => blocksIn(blocks.layout, zone)).join(' ')}
+      </output>
+    </>
+  );
 };
+
+const descriptionOf = (element: HTMLElement) =>
+  (element.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ')
+    .trim();
+
+/** The blocks the layout draws, whatever the panel shows as chosen. */
+const drawn = () => (screen.getByRole('status', { name: 'Tegnes' }).textContent ?? '').split(' ');
 
 const switchIn = (group: string, name: string | RegExp) =>
   within(screen.getByRole('group', { name: group })).getByRole('switch', {
@@ -53,14 +76,35 @@ describe('the building blocks per panel', () => {
     expect(switchIn('Venstre panel', 'Tråder').disabled).toBe(false);
   });
 
-  it('turns off and disables a block the draft cannot back, and says why', () => {
+  it('keeps a chosen block the draft cannot back as chosen, says why it waits, and does not draw it', () => {
     render(<Harness facts={plainChat} />);
+    const filter = switchIn('Venstre panel', 'Filter');
+    expect(filter.checked).toBe(true);
+    expect(filter.disabled).toBe(false);
+    expect(descriptionOf(filter)).toBe(
+      'Valgt, men vises ikke ennå. Dokumentsamlingen har ingen felt å filtrere på. Den kommer når tjenesten har det den trenger.',
+    );
+    // Not chosen in the content, where it may also stand: only why it cannot be.
+    expect(descriptionOf(switchIn('Innhold', 'Filter'))).toBe(
+      'Dokumentsamlingen har ingen felt å filtrere på.',
+    );
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    expect(drawn()).not.toContain('filter');
+    expect(drawn()).not.toContain('sources');
+    expect(drawn()).toContain('chat');
+  });
+
+  it('lets go of a waiting block turned off, which then stays off and says only why it cannot be on', () => {
+    const { rerender } = render(<Harness facts={plainChat} />);
+    fireEvent.click(switchIn('Venstre panel', 'Filter'));
     const filter = switchIn('Venstre panel', 'Filter');
     expect(filter.checked).toBe(false);
     expect(filter.disabled).toBe(true);
-    expect(screen.getAllByText('Dokumentsamlingen har ingen felt å filtrere på.').length).toBe(2);
-    expect(switchIn('Høyre panel', 'Kilder').disabled).toBe(true);
-    expect(switchIn('Innhold', 'Chat').checked).toBe(true);
+    expect(descriptionOf(filter)).toBe('Dokumentsamlingen har ingen felt å filtrere på.');
+    rerender(<Harness facts={withDataset} />);
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(false);
+    expect(drawn()).not.toContain('filter');
+    expect(drawn()).toContain('sources');
   });
 });
 
@@ -119,10 +163,11 @@ const WithTemplates = ({
 describe('the blocks a draft cannot back yet', () => {
   it('holds them, and puts them back where they stood once the draft can back them', () => {
     const { rerender } = render(<Harness facts={plainChat} />);
-    expect(switchIn('Venstre panel', 'Filter').checked).toBe(false);
+    expect(drawn()).not.toContain('filter');
     rerender(<Harness facts={withDataset} />);
     expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
     expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    expect(drawn()).toEqual(expect.arrayContaining(['filter', 'sources']));
   });
 });
 
@@ -146,7 +191,7 @@ describe('the templates', () => {
     expect(
       screen.getByRole('button', { name: 'Bruk Bare kilder' }).getAttribute('aria-pressed'),
     ).toBe('true');
-    expect(switchIn('Venstre panel', 'Filter').checked).toBe(false);
+    expect(screen.getAllByText(/Valgt, men vises ikke ennå/).length).toBeGreaterThan(0);
     expect(switchIn('Innhold', 'Chat').checked).toBe(true);
     rerender(<WithTemplates facts={withDataset} />);
     expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);

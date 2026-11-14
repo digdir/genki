@@ -48,14 +48,21 @@ export const useBlocksState = (
 ) => {
   const [first] = useState(() => start?.());
   const [state, setState] = useState<BuilderState>(() =>
-    first ? { layout: first.layout, chosen: {} } : fromTemplate(startTemplate),
+    first
+      ? { layout: first.layout, chosen: {}, ...(first.held ? { held: first.held } : {}) }
+      : fromTemplate(startTemplate),
   );
   const [template, setTemplate] = useState<TemplateId | undefined>(() =>
     first ? first.template : startTemplate,
   );
+  // The blocks the draft cannot back yet are kept too, so they come back after a reload.
   useEffect(() => {
-    keep?.({ layout: state.layout, ...(template ? { template } : {}) });
-  }, [keep, state.layout, template]);
+    keep?.({
+      layout: state.layout,
+      ...(template ? { template } : {}),
+      ...(state.held?.length ? { held: state.held } : {}),
+    });
+  }, [keep, state.layout, state.held, template]);
   const [mode, setMode] = useState<PreviewMode>('try');
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);

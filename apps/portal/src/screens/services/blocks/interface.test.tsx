@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { defaultLayout, fromTemplate } from '@genai/ui-blocks/builder';
+import { blocksIn, defaultLayout, fitService, fromTemplate } from '@genai/ui-blocks/builder';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { expectAccessible, go, renderAt } from '../../../test-utils';
 import { keepStart, keptStart, layoutJson, readLayout } from './layoutStore';
@@ -112,7 +112,6 @@ describe('«Lim inn oppsett»', () => {
 
   it('uses a pasted layout that keeps the rules, and keeps it', async () => {
     await openInterface();
-    expect(switchIn('Venstre panel', 'Filter').checked).toBe(false);
     paste(layoutJson(defaultLayout));
     await screen.findByText('Oppsettet du limte inn, er i bruk.');
     expect(switchIn('Høyre panel', 'Fremgangsmåte').checked).toBe(false);
@@ -152,6 +151,61 @@ describe('«Lim inn oppsett»', () => {
 });
 
 describe('the layout kept in this browser', () => {
+  it('keeps the blocks the draft cannot back yet with the layout, so they come back after a reload', async () => {
+    await openInterface();
+    const filter = switchIn('Venstre panel', 'Filter');
+    expect(filter.checked).toBe(true);
+    expect(keptFor('rapportassistenten')?.layout.zones.primary.map((p) => p.block)).not.toContain(
+      'filter',
+    );
+    expect(keptFor('rapportassistenten')?.held?.map((h) => h.placed.block)).toContain('filter');
+    cleanup();
+    await openInterface();
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
+    expect(keptFor('rapportassistenten')?.held?.map((h) => h.placed.block)).toContain('filter');
+  });
+
+  it('puts a kept held block back where it stood once the draft can back it', () => {
+    const [tenant, service] = ['digdir', 'a'];
+    const filter = { zone: 'primary' as const, placed: { block: 'filter' as const } };
+    keepStart(tenant, service, { layout: defaultLayout, held: [filter] });
+    // Placed and held at once: the placed one stands.
+    expect(keptStart(tenant, service)?.held).toBeUndefined();
+    const without = {
+      ...defaultLayout,
+      zones: {
+        ...defaultLayout.zones,
+        primary: defaultLayout.zones.primary.filter((p) => p.block !== 'filter'),
+      },
+    };
+    keepStart(tenant, service, { layout: without, held: [filter] });
+    expect(keptStart(tenant, service)?.held).toEqual([filter]);
+    const start = keptStart(tenant, service) ?? { layout: without };
+    const state = { layout: start.layout, chosen: {}, held: start.held };
+    expect(blocksIn(fitService(state, () => true).state.layout, 'primary')).toContain('filter');
+  });
+
+  it('passes over a kept held block that is not a block, stands where it may not, or is not built', () => {
+    sessionStorage.setItem(
+      'genki.blocks.digdir/e',
+      JSON.stringify({
+        layout: { version: 1, zones: { primary: [], main: [], secondary: [] } },
+        held: [
+          { zone: 'primary', placed: { block: 'filter' } },
+          { zone: 'primary', placed: { block: 'filter' } },
+          { zone: 'secondary', placed: { block: 'filter' } },
+          { zone: 'primary', placed: { block: 'nope' } },
+          { zone: 'primary', placed: { block: 'projects' } },
+          { zone: 'primary', placed: { block: 'threads', settings: { x: [1] } } },
+          'filter',
+        ],
+      }),
+    );
+    expect(keptStart('digdir', 'e')?.held).toEqual([
+      { zone: 'primary', placed: { block: 'filter' } },
+    ]);
+  });
+
   it('is kept per tenant and service, and a stored text that breaks a rule is not read', () => {
     keepStart('digdir', 'a', { layout: defaultLayout });
     keepStart('digdir', 'b', { layout: next, template: 'knowledge-assistant-next' });

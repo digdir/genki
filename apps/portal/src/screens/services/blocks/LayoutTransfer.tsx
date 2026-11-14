@@ -21,8 +21,20 @@ const panelName: Record<'primary' | 'main' | 'secondary', PlainKey> = {
 
 /** One broken rule of a pasted layout, in the portal's words. */
 const problemText = (problem: LayoutProblem, t: T) => {
-  if (problem.rule === 'unknown-block')
-    return t('builderBlocks.pasteUnknownBlock', { block: problem.block });
+  switch (problem.rule) {
+    case 'unknown-block':
+      return t('builderBlocks.pasteUnknownBlock', { block: problem.block });
+    case 'profile-too-large':
+      return t('builderBlocks.pasteProfileTooLarge', { max: problem.max });
+    case 'text-too-long':
+      return t('builderBlocks.pasteTextTooLong', { path: problem.path, max: problem.max });
+    case 'too-many':
+      return t('builderBlocks.pasteTooMany', { path: problem.path, max: problem.max });
+    case 'link-not-https':
+      return t('builderBlocks.pasteLinkNotHttps', { path: problem.path });
+    case 'unknown-kind':
+      return t('builderBlocks.pasteUnknownKind', { path: problem.path, kind: problem.kind });
+  }
   const block = t(blockLabel(problem.block));
   switch (problem.rule) {
     case 'zone-not-allowed':
