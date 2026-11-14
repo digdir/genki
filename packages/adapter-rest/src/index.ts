@@ -3,10 +3,17 @@ import type { PortContext } from '@genai/kernel';
 import { KnowledgeError, kindsOf, type KnowledgeRouter } from '@genai/port-knowledge';
 import { Hono, type Context } from 'hono';
 import { disjunctiveFacets } from './facets.js';
-import { facetRequest } from './filters.js';
+import { documentsRequest, facetRequest, toPortFilters } from './filters.js';
 
 export { disjunctiveFacets, type FacetField, type FacetOption } from './facets.js';
-export { facetRequest, filterMapErrors, toPortFilters, type FieldSpec } from './filters.js';
+export {
+  documentsRequest,
+  facetRequest,
+  filterMapErrors,
+  filterSpecs,
+  toPortFilters,
+  type FieldSpec,
+} from './filters.js';
 
 export interface Authenticator {
   authenticate(request: Request): Promise<Principal | undefined>;
@@ -31,7 +38,7 @@ type Env = { Variables: { principal: Principal } };
 
 const failure = (
   c: Context,
-  status: 400 | 401 | 403 | 404 | 500 | 502,
+  status: 400 | 401 | 403 | 404 | 500 | 501 | 502,
   message: string,
   code: string,
   extra: Record<string, unknown> = {},
@@ -61,16 +68,25 @@ const unauthenticated = (c: Context) =>
     { 'WWW-Authenticate': 'Bearer' },
   );
 
-const queryLimits: Record<string, { min: number; max?: number; optional?: boolean }> = {
+type QueryLimits = Record<string, { min: number; max?: number; optional?: boolean }>;
+
+const datasetQuery: QueryLimits = {
   tenant: { min: 1 },
   'dataset-config-key': { min: 1 },
-  fields: { min: 1, max: 512 },
   filter: { min: 1, max: 16384, optional: true },
 };
 
-const queryErrors = (c: Context) => {
+const facetsQuery: QueryLimits = { ...datasetQuery, fields: { min: 1, max: 512 } };
+
+const documentsQuery: QueryLimits = {
+  ...datasetQuery,
+  limit: { min: 1, max: 16, optional: true },
+  offset: { min: 1, max: 16, optional: true },
+};
+
+const queryErrors = (c: Context, limits: QueryLimits) => {
   const humanized: Record<string, string[]> = {};
-  for (const [name, rule] of Object.entries(queryLimits)) {
+  for (const [name, rule] of Object.entries(limits)) {
     const value = c.req.query(name);
     if (value === undefined) {
       if (!rule.optional) humanized[name] = ['missing required key'];
@@ -118,9 +134,42 @@ export const createRestAdapter = (options: RestAdapterOptions) => {
     };
   };
 
+  const notAuthorized = (c: Context) =>
+    failure(
+      c,
+      403,
+      'API key is not allowed to access the selected dataset',
+      'dataset_not_authorized',
+    );
+
+  const knowledgeFailure = (c: Context, error: KnowledgeError, message: string, code: string) => {
+    if (error.code === 'bad_request') return failure(c, 400, error.message, 'invalid_request');
+    if (error.code === 'forbidden' || error.code === 'residency') return notAuthorized(c);
+    return failure(c, 502, message, code);
+  };
+
+  /** Resolves `tenant` and `dataset-config-key` to a dataset the caller may read. */
+  const openDataset = async (
+    c: Context<Env>,
+  ): Promise<{ ok: true; id: string; ctx: PortContext } | { ok: false; response: Response }> => {
+    const principal = c.get('principal');
+    const id = resolveDataset(c.req.query('tenant') ?? '', c.req.query('dataset-config-key') ?? '');
+    if (!id || !(await visible(principal)).includes(id))
+      return { ok: false, response: notAuthorized(c) };
+    const ctx: PortContext = {
+      tenant: principal.tenant ?? '',
+      principal,
+      task: newTaskId(),
+      signal: c.req.raw.signal,
+      meter: async () => undefined,
+    };
+    return { ok: true, id, ctx };
+  };
+
   app.use('/api/datasets', authenticate);
   app.use('/api/datasets/*', authenticate);
   app.use('/api/facets', authenticate);
+  app.use('/api/documents', authenticate);
 
   async function authenticate(c: Context<Env>, next: () => Promise<void>) {
     const principal = await options.auth.authenticate(c.req.raw);
@@ -177,7 +226,7 @@ export const createRestAdapter = (options: RestAdapterOptions) => {
   });
 
   app.get('/api/facets', async (c) => {
-    const humanized = queryErrors(c);
+    const humanized = queryErrors(c, facetsQuery);
     if (humanized)
       return failure(c, 400, 'Request validation failed', 'invalid_request', {
         details: { in: ['request', 'query-params'], humanized },
@@ -185,40 +234,78 @@ export const createRestAdapter = (options: RestAdapterOptions) => {
     const request = facetRequest(c.req.query('fields'), c.req.query('filter'));
     if (!request.ok) return failure(c, 400, request.error, 'invalid_request');
 
-    const principal = c.get('principal');
-    const id = resolveDataset(c.req.query('tenant') ?? '', c.req.query('dataset-config-key') ?? '');
-    if (!id || !(await visible(principal)).includes(id))
-      return failure(
-        c,
-        403,
-        'API key is not allowed to access the selected dataset',
-        'dataset_not_authorized',
-      );
-
-    const ctx: PortContext = {
-      tenant: principal.tenant ?? '',
-      principal,
-      task: newTaskId(),
-      signal: c.req.raw.signal,
-      meter: async () => undefined,
-    };
+    const opened = await openDataset(c);
+    if (!opened.ok) return opened.response;
     try {
-      const port = options.knowledge.open({ kind: 'dataset', id }, ctx);
+      const port = options.knowledge.open({ kind: 'dataset', id: opened.id }, opened.ctx);
       const fields = await disjunctiveFacets(port, request.fields, request.specs);
       return c.json({ fields }, 200);
     } catch (error) {
-      if (error instanceof KnowledgeError) {
-        if (error.code === 'bad_request') return failure(c, 400, error.message, 'invalid_request');
-        if (error.code === 'forbidden' || error.code === 'residency')
-          return failure(
-            c,
-            403,
-            'API key is not allowed to access the selected dataset',
-            'dataset_not_authorized',
-          );
-        return failure(c, 502, 'Facets are unavailable for this dataset.', 'facets_unavailable');
-      }
+      if (error instanceof KnowledgeError)
+        return knowledgeFailure(
+          c,
+          error,
+          'Facets are unavailable for this dataset.',
+          'facets_unavailable',
+        );
       return failure(c, 500, 'Failed to fetch facets', 'internal_error');
+    }
+  });
+
+  app.get('/api/documents', async (c) => {
+    const humanized = queryErrors(c, documentsQuery);
+    if (humanized)
+      return failure(c, 400, 'Request validation failed', 'invalid_request', {
+        details: { in: ['request', 'query-params'], humanized },
+      });
+    const request = documentsRequest(
+      c.req.query('filter'),
+      c.req.query('limit'),
+      c.req.query('offset'),
+    );
+    if (!request.ok) return failure(c, 400, request.error, 'invalid_request');
+
+    const opened = await openDataset(c);
+    if (!opened.ok) return opened.response;
+    try {
+      const port = options.knowledge.open({ kind: 'dataset', id: opened.id }, opened.ctx);
+      if (!port.documents)
+        return failure(
+          c,
+          501,
+          'This dataset cannot list its documents.',
+          'documents_not_supported',
+        );
+      const filters = toPortFilters(request.specs);
+      const page = await port.documents({
+        ...(Object.keys(filters).length > 0 ? { filters } : {}),
+        limit: request.limit,
+        offset: request.offset,
+      });
+      const declared = Object.keys(port.info().filters);
+      return c.json(
+        {
+          documents: page.documents.slice(0, request.limit).map((d) => ({
+            id: d.id,
+            ...(d.title === undefined ? {} : { title: d.title }),
+            ...(d.url === undefined ? {} : { url: d.url }),
+            fields: Object.fromEntries(
+              declared.filter((f) => Object.hasOwn(d.fields, f)).map((f) => [f, d.fields[f]]),
+            ),
+          })),
+          ...(page.found === undefined ? {} : { found: page.found }),
+        },
+        200,
+      );
+    } catch (error) {
+      if (error instanceof KnowledgeError)
+        return knowledgeFailure(
+          c,
+          error,
+          'Documents are unavailable for this dataset.',
+          'documents_unavailable',
+        );
+      return failure(c, 500, 'Failed to list documents', 'internal_error');
     }
   });
 

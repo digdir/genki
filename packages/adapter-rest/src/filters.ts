@@ -129,6 +129,28 @@ export const toPortFilters = (specs: FieldSpec[]): Record<string, FilterValue> =
   );
 };
 
+export type FilterSpecs = { ok: true; specs: FieldSpec[] } | { ok: false; error: string };
+
+/** Parses the `filter` query parameter that `/api/facets` and `/api/documents` take. */
+export const filterSpecs = (filterParam: string | undefined): FilterSpecs => {
+  let parsed: unknown;
+  if (filterParam !== undefined) {
+    try {
+      parsed = JSON.parse(filterParam) as unknown;
+    } catch {
+      return { ok: false, error: 'filter must be JSON.' };
+    }
+  }
+  if (parsed !== undefined && parsed !== null && !isRecord(parsed))
+    return { ok: false, error: 'filter must be an object with a fields list.' };
+  const errors = isRecord(parsed) ? filterMapErrors(parsed) : [];
+  if (errors.length > 0) return { ok: false, error: `Invalid filter: ${errors.join(' ')}` };
+  return {
+    ok: true,
+    specs: isRecord(parsed) ? (parsed.fields as Record<string, unknown>[]).map(toSpec) : [],
+  };
+};
+
 export type FacetRequest =
   { ok: true; fields: string[]; specs: FieldSpec[] } | { ok: false; error: string };
 
@@ -146,28 +168,40 @@ export const facetRequest = (
         .filter((f) => f.length > 0),
     ),
   ];
-  let parsed: unknown;
-  let invalidJson = false;
-  if (filterParam !== undefined) {
-    try {
-      parsed = JSON.parse(filterParam) as unknown;
-    } catch {
-      invalidJson = true;
-    }
-  }
   if (fields.length === 0) return { ok: false, error: 'fields must name at least one field.' };
   if (fields.length > maxFacetFields)
     return { ok: false, error: `fields takes at most ${maxFacetFields} fields.` };
   if (!fields.every(isFieldName)) return { ok: false, error: 'fields must be plain field names.' };
-  if (invalidJson) return { ok: false, error: 'filter must be JSON.' };
-  if (parsed !== undefined && parsed !== null && !isRecord(parsed))
-    return { ok: false, error: 'filter must be an object with a fields list.' };
-  const errors = isRecord(parsed) ? filterMapErrors(parsed) : [];
-  if (errors.length > 0) return { ok: false, error: `Invalid filter: ${errors.join(' ')}` };
+  const filter = filterSpecs(filterParam);
+  if (!filter.ok) return filter;
 
-  const selected = isRecord(parsed) ? (parsed.fields as Record<string, unknown>[]).map(toSpec) : [];
-  const byField = new Map(selected.map((s) => [s.field, s]));
+  const byField = new Map(filter.specs.map((s) => [s.field, s]));
   const requested = fields.map((f) => byField.get(f) ?? { field: f, selected: [] });
-  const constraints = selected.filter((s) => !fields.includes(s.field));
+  const constraints = filter.specs.filter((s) => !fields.includes(s.field));
   return { ok: true, fields, specs: [...requested, ...constraints] };
+};
+
+export type DocumentsRequestParams =
+  { ok: true; specs: FieldSpec[]; limit: number; offset: number } | { ok: false; error: string };
+
+const maxDocuments = 100;
+const defaultDocuments = 50;
+const digits = /^\d+$/;
+
+export const documentsRequest = (
+  filterParam: string | undefined,
+  limitParam: string | undefined,
+  offsetParam: string | undefined,
+): DocumentsRequestParams => {
+  const limit = limitParam === undefined ? defaultDocuments : Number(limitParam);
+  if (limitParam !== undefined && (!digits.test(limitParam) || limit < 1 || limit > maxDocuments))
+    return { ok: false, error: `limit must be an integer from 1 to ${maxDocuments}.` };
+  const offset = offsetParam === undefined ? 0 : Number(offsetParam);
+  if (offsetParam !== undefined && (!digits.test(offsetParam) || !Number.isSafeInteger(offset)))
+    return { ok: false, error: 'offset must be an integer of 0 or more.' };
+  // Typesense pages by page number, so an offset between pages would be rounded down.
+  if (offset % limit !== 0) return { ok: false, error: 'offset must be a multiple of limit.' };
+  const filter = filterSpecs(filterParam);
+  if (!filter.ok) return filter;
+  return { ok: true, specs: filter.specs, limit, offset };
 };

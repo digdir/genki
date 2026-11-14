@@ -49,9 +49,19 @@ const facetReply = (body: Record<string, unknown>): FakeReply => ({
   },
 });
 
+const withoutDocuments: typeof typesense = {
+  ...typesense,
+  connect: (endpoint) => {
+    const { documents, ...rest } = typesense.connect(endpoint);
+    void documents;
+    return rest;
+  },
+};
+
 const setup = async (
   reply: (body: Record<string, unknown>) => FakeReply = facetReply,
   extra: Partial<RestAdapterOptions> = {},
+  adapter: typeof typesense = typesense,
 ) => {
   const server = await fakeHttp(reply);
   servers.push(server);
@@ -105,7 +115,7 @@ const setup = async (
         },
       ],
     },
-    adapters: [typesense],
+    adapters: [adapter],
     secrets: envSecrets({ K: 'key' }),
   });
   const app = createRestAdapter({
@@ -126,6 +136,41 @@ const get = (app: Awaited<ReturnType<typeof setup>>['app'], path: string, who = 
 
 const facets = (query: Record<string, string>) =>
   `/api/facets?${new URLSearchParams({ tenant: 'digdir', 'dataset-config-key': 'kudos', ...query }).toString()}`;
+
+const documents = (query: Record<string, string> = {}) =>
+  `/api/documents?${new URLSearchParams({ tenant: 'digdir', 'dataset-config-key': 'kudos', ...query }).toString()}`;
+
+const stored = [
+  {
+    doc_num: 'd1',
+    title: 'Tildelingsbrev 2025',
+    url: 'https://kudos.example/d1',
+    type: 'Tildelingsbrev',
+    concerned_years: [2025],
+    content_markdown: 'The whole text of the letter',
+    internal_rank: 7,
+  },
+  {
+    doc_num: 'd2',
+    title: 'Evaluering av tilskudd',
+    type: 'Evaluering',
+    orgs_short: ['DIGDIR'],
+    content_markdown: 'The whole text of the evaluation',
+  },
+];
+
+const documentsReply = (body: Record<string, unknown>): FakeReply => ({
+  status: 200,
+  json: {
+    results: (body.searches as Search[]).map((s) => {
+      const filter = typeof s.filter_by === 'string' ? s.filter_by : '';
+      const hits = stored.filter(
+        (d) => !filter.includes('`Evaluering`') || d.type === 'Evaluering',
+      );
+      return { found: hits.length + 40, hits: hits.map((document) => ({ document })) };
+    }),
+  },
+});
 
 describe('datasets', () => {
   it('lists only the datasets the caller can see, in headless-rag shape', async () => {
@@ -222,6 +267,7 @@ describe('datasets', () => {
       '/api/datasets',
       '/api/datasets/digdir/kudos',
       facets({ fields: 'type' }),
+      documents(),
     ]) {
       const res = await get(app, path, '');
       expect(res.status).toBe(401);
@@ -380,5 +426,206 @@ describe('facets', () => {
 
     expect(res.status).toBe(502);
     expect(await res.json()).toMatchObject({ error: 'Facets are unavailable for this dataset.' });
+  });
+});
+
+describe('documents', () => {
+  it('lists the documents of a dataset with id, title, url and only its declared filter fields', async () => {
+    const { app, server } = await setup(documentsReply);
+
+    const res = await get(app, documents());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      documents: [
+        {
+          id: 'd1',
+          title: 'Tildelingsbrev 2025',
+          url: 'https://kudos.example/d1',
+          fields: { type: 'Tildelingsbrev', concerned_years: [2025], title: 'Tildelingsbrev 2025' },
+        },
+        {
+          id: 'd2',
+          title: 'Evaluering av tilskudd',
+          fields: { type: 'Evaluering', orgs_short: ['DIGDIR'], title: 'Evaluering av tilskudd' },
+        },
+      ],
+      found: 42,
+    });
+    const searched = server.seen.flatMap((r) => r.body.searches as Search[]);
+    expect(searched).toEqual([
+      expect.objectContaining({ collection: DOCS, per_page: 50, page: 1 }),
+    ]);
+  });
+
+  it('never returns a stored field the dataset does not declare as a filter', async () => {
+    const { app } = await setup(documentsReply);
+
+    const text = await (await get(app, documents())).text();
+
+    expect(text).not.toContain('content_markdown');
+    expect(text).not.toContain('The whole text');
+    expect(text).not.toContain('internal_rank');
+    expect(text).not.toContain('doc_num');
+  });
+
+  it('narrows the list by the filter, in the format /api/facets takes', async () => {
+    const { app, server } = await setup(documentsReply);
+    const filter = JSON.stringify({
+      fields: [{ field: 'type', 'selected-options': ['Evaluering'] }],
+    });
+
+    const body = (await (await get(app, documents({ filter }))).json()) as {
+      documents: { id: string }[];
+    };
+
+    expect(body.documents.map((d) => d.id)).toEqual(['d2']);
+    const searched = server.seen.flatMap((r) => r.body.searches as Search[]);
+    expect(searched.map((s) => s.filter_by)).toEqual(['type:=[`Evaluering`]']);
+  });
+
+  it('pages with limit and an offset that is a multiple of it', async () => {
+    const { app, server } = await setup(documentsReply);
+
+    const res = await get(app, documents({ limit: '10', offset: '20' }));
+
+    expect(res.status).toBe(200);
+    const searched = server.seen.flatMap((r) => r.body.searches as Search[]);
+    expect(searched).toEqual([expect.objectContaining({ per_page: 10, page: 3 })]);
+  });
+
+  it('takes a limit of 1 to 100', async () => {
+    const { app, server } = await setup(documentsReply);
+
+    const low = await get(app, documents({ limit: '1' }));
+    const high = await get(app, documents({ limit: '100' }));
+
+    expect([low.status, high.status]).toEqual([200, 200]);
+    const searched = server.seen.flatMap((r) => r.body.searches as Search[]);
+    expect(searched.map((s) => s.per_page)).toEqual([1, 100]);
+  });
+
+  it.each([
+    [{ limit: '0' }, 'limit must be an integer from 1 to 100.'],
+    [{ limit: '101' }, 'limit must be an integer from 1 to 100.'],
+    [{ limit: '-1' }, 'limit must be an integer from 1 to 100.'],
+    [{ limit: '1.5' }, 'limit must be an integer from 1 to 100.'],
+    [{ limit: 'ten' }, 'limit must be an integer from 1 to 100.'],
+    [{ offset: '-1' }, 'offset must be an integer of 0 or more.'],
+    [{ offset: '2.5' }, 'offset must be an integer of 0 or more.'],
+    [{ offset: '1e3' }, 'offset must be an integer of 0 or more.'],
+    [{ offset: '30' }, 'offset must be a multiple of limit.'],
+    [{ limit: '20', offset: '50' }, 'offset must be a multiple of limit.'],
+    [{ filter: '{' }, 'filter must be JSON.'],
+    [
+      { filter: JSON.stringify({ fields: [{ field: 'type', 'selected-options': ['a`b'] }] }) },
+      'Invalid filter: Filter options cannot contain a backtick, a backslash or a control character.',
+    ],
+  ])('refuses %j before searching', async (query, error) => {
+    const { app, server } = await setup(documentsReply);
+
+    const res = await get(app, documents(query));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error, code: 'invalid_request' });
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('refuses an empty limit or an offset too long to be a number as a request validation failure', async () => {
+    const { app, server } = await setup(documentsReply);
+
+    const empty = await get(app, documents({ limit: '' }));
+    const long = await get(app, documents({ offset: '1'.repeat(17) }));
+
+    for (const res of [empty, long]) {
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: 'Request validation failed',
+        code: 'invalid_request',
+      });
+    }
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('refuses missing tenant and dataset-config-key as a request validation failure', async () => {
+    const { app } = await setup(documentsReply);
+
+    const res = await get(app, '/api/documents');
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      details: {
+        humanized: {
+          tenant: ['missing required key'],
+          'dataset-config-key': ['missing required key'],
+        },
+      },
+    });
+  });
+
+  it('refuses a filter on a field the dataset does not declare, before searching', async () => {
+    const { app, server } = await setup(documentsReply);
+    const filter = JSON.stringify({
+      fields: [{ field: 'content_markdown', 'selected-options': ['x'] }],
+    });
+
+    const res = await get(app, documents({ filter }));
+
+    expect(res.status).toBe(400);
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('refuses a dataset the caller cannot see, or one that does not exist, with the same answer', async () => {
+    const { app, server } = await setup(documentsReply);
+
+    const hidden = await get(app, documents({ tenant: 'nav', 'dataset-config-key': 'internal' }));
+    const unknown = await get(app, documents({ 'dataset-config-key': 'nope' }));
+
+    for (const res of [hidden, unknown]) {
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: 'dataset_not_authorized' });
+    }
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('refuses a dataset the caller may not read, though it is shared with its tenant', async () => {
+    const { app, server } = await setup(documentsReply, { mayRead: () => false });
+
+    const res = await get(app, documents());
+
+    expect(res.status).toBe(403);
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('answers 501 when the dataset cannot list its documents', async () => {
+    const { app, server } = await setup(documentsReply, {}, withoutDocuments);
+
+    const res = await get(app, documents());
+
+    expect(res.status).toBe(501);
+    expect(res.headers.get('content-type')).toContain('application/problem+json');
+    expect(await res.json()).toMatchObject({ code: 'documents_not_supported' });
+    expect(server.seen).toHaveLength(0);
+  });
+
+  it('leaves found out when the index does not report it', async () => {
+    const { app } = await setup(() => ({
+      status: 200,
+      json: { results: [{ hits: [{ document: stored[0] }] }] },
+    }));
+
+    const body = (await (await get(app, documents())).json()) as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty('found');
+    expect(body.documents).toHaveLength(1);
+  });
+
+  it('answers 502 when the search index cannot answer', async () => {
+    const { app } = await setup(() => ({ status: 503, json: { message: 'Not Ready or Lagging' } }));
+
+    const res = await get(app, documents());
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ code: 'documents_unavailable' });
   });
 });

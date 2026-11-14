@@ -79,10 +79,14 @@ const DatasetFilter = z.object({
 const ServiceDataset = z
   .object({
     id: z.string().describe('The dataset id, as in `/api/datasets/{id}`.'),
-    tenant: z.string().describe('The owner tenant: `tenant` for `/api/facets` and the ask body.'),
+    tenant: z
+      .string()
+      .describe('The owner tenant: `tenant` for `/api/facets`, `/api/documents` and the ask body.'),
     'dataset-config-key': z
       .string()
-      .describe('`dataset-config-key` for `/api/facets`, `dataset_config_key` in the ask body.'),
+      .describe(
+        '`dataset-config-key` for `/api/facets` and `/api/documents`, `dataset_config_key` in the ask body.',
+      ),
     filters: z.array(DatasetFilter),
   })
   .openapi('ServiceDataset');
@@ -577,6 +581,55 @@ export const frontendRoutes: RouteConfig[] = [
       400: frontendProblem('invalid_request'),
       401: frontendProblem('Invalid or missing credentials'),
       403: frontendProblem('dataset_not_authorized'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/api/documents',
+    summary: 'The documents a filter keeps',
+    request: {
+      query: z.object({
+        tenant: z.string(),
+        'dataset-config-key': z.string(),
+        filter: z.string().optional().describe('JSON, same shape as `filter` on `/api/facets`.'),
+        limit: z
+          .string()
+          .optional()
+          .openapi({ example: '50' })
+          .describe('Integer 1 to 100, 50 if left out.'),
+        offset: z
+          .string()
+          .optional()
+          .openapi({ example: '0' })
+          .describe('A multiple of `limit`, 0 if left out.'),
+      }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          documents: z.array(
+            z.object({
+              id: z.string(),
+              title: z.string().optional(),
+              url: z.string().optional(),
+              fields: z
+                .record(z.string(), z.unknown())
+                .describe('Only the filter fields the dataset declares.'),
+            }),
+          ),
+          found: z
+            .number()
+            .int()
+            .optional()
+            .describe('How many documents match, when the index reports it.'),
+        }),
+        'One page of matching documents, in index order',
+      ),
+      400: frontendProblem('invalid_request'),
+      401: frontendProblem('Invalid or missing credentials'),
+      403: frontendProblem('dataset_not_authorized'),
+      501: frontendProblem('documents_not_supported'),
+      502: frontendProblem('documents_unavailable'),
     },
   }),
   createRoute({

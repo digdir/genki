@@ -201,6 +201,7 @@ describe('Maskinporten clients per tenant', () => {
       await asClient('ukjent', '/v1/models'),
       await mcp('ukjent', 'tools/list'),
       await asClient('ukjent', '/api/tools/call/veileder__default', { query: 'hei' }),
+      await asClient('ukjent', '/api/documents?tenant=digdir&dataset-config-key=kudos'),
     ]) {
       expect(response.status).toBe(403);
       expect(response.headers.get('content-type')).toContain('application/problem+json');

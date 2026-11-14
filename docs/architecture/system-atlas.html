@@ -2179,26 +2179,27 @@
             id: 'adapter-rest',
             plane: 'adapters',
             name: 'REST datasets & facets',
-            note: '/api/datasets, /api/facets',
+            note: '/api/datasets, /api/facets, /api/documents',
             icon: 'api',
             color: '#46d7c8',
             status: 'Protocol adapter',
             packages: ['@genai/adapter-rest'],
             summary:
-              'Read-only REST for datasets and disjunctive facets, straight on the knowledge port.',
+              'Read-only REST for datasets, disjunctive facets and filtered document lists, straight on the knowledge port.',
             description:
               'Lists the datasets a principal may see and computes facet counts for declared fields. Unknown facet fields answer 400 naming the field instead of 502 (ADR 0017).',
             responsibilities: [
               'List and describe datasets, with the filter fields each declares',
               'Disjunctive facet counts with filter mapping',
+              'List the documents a filter keeps, with only the declared filter fields',
             ],
             files: [
               'packages/adapter-rest/src/index.ts',
               'packages/adapter-rest/src/facets.ts',
               'packages/adapter-rest/src/filters.ts',
             ],
-            input: 'GET /api/datasets, /api/facets',
-            output: 'Dataset descriptions, facet options',
+            input: 'GET /api/datasets, /api/facets, /api/documents',
+            output: 'Dataset descriptions, facet options, document pages',
             replaces: [{ module: 'api', how: 'Dataset and facet routes of the headless HTTP API' }],
             edges: [
               {
@@ -2222,7 +2223,7 @@
                 },
               },
             ],
-            keywords: 'rest datasets facets filters',
+            keywords: 'rest datasets facets documents filters',
             schemas: [],
           },
           {

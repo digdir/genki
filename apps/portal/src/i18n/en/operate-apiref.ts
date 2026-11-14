@@ -232,6 +232,12 @@ export const apirefArea = {
     'ds-facets.p.tenant': 'The owner of the dataset',
     'ds-facets.p.dataset-config-key': 'The name of the dataset',
     'ds-facets.p.fields': 'Fields, separated by commas',
+    'ds-documents.summary': 'List the documents a filter keeps',
+    'ds-documents.desc':
+      'The documents that match a filter, with title, link and the fields you can filter on. found is the number of matches.',
+    'ds-documents.p.filter': 'The filter as JSON, the same as for facets',
+    'ds-documents.p.limit': 'At most this many documents, 1 to 100. 50 if left out',
+    'ds-documents.p.offset': 'Skip this many documents first, a multiple of limit',
     'inn-catalog.summary': 'List the settings',
     'inn-catalog.desc':
       'All the settings the platform has, with type, limits and which layers can change them.',

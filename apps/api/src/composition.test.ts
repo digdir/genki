@@ -686,6 +686,11 @@ describe('the composed platform', () => {
         `/api/facets?${new URLSearchParams({ tenant: 'digdir', 'dataset-config-key': key, fields: 'orgs_short' })}`,
       );
 
+    const documents = (key: string) =>
+      call(
+        `/api/documents?${new URLSearchParams({ tenant: 'digdir', 'dataset-config-key': key })}`,
+      );
+
     const listed = JSON.stringify(await (await call('/api/datasets')).json());
     const own = await call('/api/datasets/kudos');
     const other = await call('/api/datasets/public-docs');
@@ -696,6 +701,8 @@ describe('the composed platform', () => {
     expect((await facets('kudos')).status).toBe(200);
     expect(other.status).toBe(404);
     expect((await facets('public-docs')).status).toBe(403);
+    expect((await documents('kudos')).status).toBe(200);
+    expect((await documents('public-docs')).status).toBe(403);
   });
 
   it('names the datasets a service searches on /v1/models and in its schema, with owner tenant, dataset-config-key and filter value types', async () => {

@@ -487,6 +487,13 @@ describe('rate limits and quota', () => {
     expect((await mcp('alle', 'tools/list')).status).toBe(429);
   });
 
+  it('counts document lists against the tenant limit like facets', async () => {
+    const { send } = await boot({ tenantCallsPerMinute: 1 });
+    const documents = '/api/documents?tenant=digdir&dataset-config-key=kudos';
+    expect((await send(documents, 'alle')).status).not.toBe(429);
+    expect((await send(documents, 'alle')).status).toBe(429);
+  });
+
   it('follows a change to the tenant call limit setting', async () => {
     const { mcp, settings } = await boot();
     for (let i = 0; i < 3; i++) expect((await mcp('veileder', 'tools/list')).status).toBe(200);

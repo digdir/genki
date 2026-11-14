@@ -37,6 +37,7 @@ Rate limits apply per key. `401` means no or bad credentials, `403` a key that m
 | Datasets a service searches, with filters   | `_datasets` on `GET /v1/models` (see Datasets and filters)                                                      |
 | Datasets and the filter fields they declare | `GET /api/datasets`, `GET /api/datasets/{id}`                                                                   |
 | Facet values to build filters               | `GET /api/facets?tenant=&dataset-config-key=&fields=a,b&filter=<json>`                                          |
+| The documents a filter keeps                | `GET /api/documents?tenant=&dataset-config-key=&filter=<json>&limit=&offset=`                                   |
 | Feedback                                    | `POST /api/feedback` with `{ "task": "<genai-task header>", "rating": "up" or "down", "comment"?, "reasons"? }` |
 | Media an answer returned                    | `GET /v1/tasks/{task}/media/{id}`, the `url` of an item in `attachments` (see Media in an answer)               |
 
@@ -259,12 +260,14 @@ Start from the service. `_datasets` on its `/v1/models` entry (and `datasets` in
 }
 ```
 
-- `tenant` is the dataset's owner, which may differ from the tenant of your key. Pass it, and `dataset-config-key`, to `/api/facets`. `dataset-config-key` is the dataset id; both are listed so you never derive one from the other.
+- `tenant` is the dataset's owner, which may differ from the tenant of your key. Pass it, and `dataset-config-key`, to `/api/facets` and `/api/documents`. `dataset-config-key` is the dataset id; both are listed so you never derive one from the other.
 - `kinds` are the filter kinds the dataset allows for the field: `select`, `multiselect`, `text`, `range`, `boolean`.
 - `value-type` is `string` or `integer`. Facet values always arrive as strings; for an `integer` field send the chosen values as numbers with `"value-type": "integer"`.
 - A service without `_datasets` searches no dataset and refuses `filters` with `400 invalid_filters`.
 
 `GET /api/facets?tenant=<tenant>&dataset-config-key=<key>&fields=year,organisation&filter=<json>` returns `{ "fields": [{ "field": "year", "options": [{ "value": "2024", "count": 3, "selected": false }] }] }`. Options are sorted by value. With `filter`, each field's counts follow the other fields' selections, and `selected` marks what `filter` chose (disjunctive facets). `403 dataset_not_authorized` means the credential may not read that dataset; `400 invalid_request` a missing parameter or a bad `filter`.
+
+`GET /api/documents?tenant=<tenant>&dataset-config-key=<key>&filter=<json>&limit=50&offset=0` lists the documents the same `filter` keeps: `{ "documents": [{ "id": "d1", "title"?: "…", "url"?: "…", "fields": { "year": 2024 } }], "found"?: 312 }`. `fields` holds only the filter fields the dataset declares, never the rest of the stored document. `found` is the number of matches when the index reports it. `limit` is 1 to 100 (default 50) and `offset` a multiple of `limit` (default 0); other values are `400 invalid_request`. Access and errors are those of `/api/facets`, and a dataset whose index cannot list documents answers `501 documents_not_supported`.
 
 Send the chosen values with the question as `filters`: `{ "fields": [{ "field", "type"?: "multiselect" | "contains" | "not-in-set", "value-type"?: "string" | "integer", "selected-options": [...] }] }`, the same shape as the `filter` parameter of `/api/facets`. A bad shape, or a field the service's datasets do not declare, answers `400` with code `invalid_filters` and `errors: [{ "path": "filters.fields[0].field", "message": "…" }]`. Do not combine `filters` with `overrides.retrieve-filter-by`. `tenant` and `dataset_config_key` in the ask body are optional; when sent they must name one of the service's datasets, or the call answers `403 dataset_not_authorized`.
 

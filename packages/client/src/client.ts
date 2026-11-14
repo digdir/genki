@@ -9,6 +9,9 @@ import type {
   ConversationMessage,
   ConversationPage,
   Dataset,
+  DatasetDocument,
+  DocumentPage,
+  DocumentsRequest,
   FacetField,
   FacetRequest,
   FeedbackRequest,
@@ -490,6 +493,24 @@ export const createClient = (options: ClientOptions) => {
         call,
       );
       return Array.isArray(body.fields) ? (body.fields as FacetField[]) : [];
+    },
+    documents: async (request: DocumentsRequest, call?: CallOptions): Promise<DocumentPage> => {
+      const body = await json(
+        'GET',
+        `/api/documents${query({
+          tenant: request.tenant,
+          'dataset-config-key': request.datasetConfigKey,
+          filter: request.filter ? JSON.stringify(request.filter) : undefined,
+          limit: request.limit,
+          offset: request.offset,
+        })}`,
+        undefined,
+        call,
+      );
+      return {
+        documents: Array.isArray(body.documents) ? (body.documents as DatasetDocument[]) : [],
+        ...(typeof body.found === 'number' ? { found: body.found } : {}),
+      };
     },
     feedback: async (request: FeedbackRequest, call?: CallOptions): Promise<void> => {
       await json(
