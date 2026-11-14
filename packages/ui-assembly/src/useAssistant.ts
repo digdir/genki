@@ -231,6 +231,15 @@ const withMarkers = (
   return markers ? { ...next, markers } : next;
 };
 
+/** genki's default deadline for a run (`defaultServiceLimits` in composition). */
+const RUN_DEADLINE_MS = 300_000;
+
+/** The last question has no stored answer and was asked within genki's deadline for a run. */
+const mayStillCome = (turns: readonly Turn[], at: Date) => {
+  const last = turns.at(-1);
+  return !!last?.question && !last.answer && at.getTime() - last.askedAt < RUN_DEADLINE_MS;
+};
+
 export const useAssistant = ({
   api,
   layout,
@@ -571,12 +580,30 @@ export const useAssistant = ({
     if (refocus?.element.isConnected) refocus.element.focus();
   }, [refocus]);
 
+  // Whether the last question's answer may still come, from the thread as genki last gave it.
+  const [answerMayCome, setAnswerMayCome] = useState(false);
+  // Threads whose last question failed on this page, for which genki stores no answer.
+  const failedHere = useRef(new Set<string>());
+  // Each read and question, so a «Hent på nytt» that lands after a newer one is dropped.
+  const reads = useRef(0);
+  const showThread = (thread: { turns: Turn[]; corpus?: string | undefined }) => {
+    setTurns(thread.turns);
+    setThreadCorpus(thread.corpus);
+    setView('ready');
+    const failed = showing.current !== undefined && failedHere.current.has(showing.current);
+    setAnswerMayCome(!failed && mayStillCome(thread.turns, now()));
+    if (sourcesOn && thread.turns.some((t) => (t.answer?.sources?.length ?? 0) > 0))
+      setRequest({ action: 'offer', side: 'secondary' });
+  };
+
   useEffect(() => {
+    reads.current += 1;
     setSourceTarget(undefined);
     setAnswerTarget(undefined);
     setOpenDoc(undefined);
     setActiveId(undefined);
     setThreadCorpus(undefined);
+    setAnswerMayCome(false);
     if (!currentId) {
       setTurns([]);
       setView('new');
@@ -587,13 +614,6 @@ export const useAssistant = ({
       ownThread.current = undefined;
       return;
     }
-    const show = (thread: { turns: Turn[]; corpus?: string | undefined }) => {
-      setTurns(thread.turns);
-      setThreadCorpus(thread.corpus);
-      setView('ready');
-      if (sourcesOn && thread.turns.some((t) => (t.answer?.sources?.length ?? 0) > 0))
-        setRequest({ action: 'offer', side: 'secondary' });
-    };
     // genki stores an answer once it is done, so its run holds the thread until it is seen.
     const run = [...runs.current].find((one) => one.thread === currentId);
     if (run) {
@@ -602,14 +622,14 @@ export const useAssistant = ({
         shown.current = run;
         setWorking(true);
       }
-      show(run);
+      showThread(run);
       return;
     }
     let gone = false;
     setTurns([]);
     setView('loading');
     api.loadThread(currentId).then(
-      (thread) => !gone && show(thread),
+      (thread) => !gone && showThread(thread),
       (error: Error) => {
         if (gone) return;
         if (error instanceof HttpError && error.status === 404) setView('notfound');
@@ -625,6 +645,24 @@ export const useAssistant = ({
     };
     // `sourcesOn` only decides whether to offer the panel once the thread is read.
   }, [api, currentId, reload, fresh]);
+
+  /** «Hent på nytt»: the thread on screen read again where it stands, asking nothing. */
+  const fetchAgain = () => {
+    const id = currentId;
+    if (!id) return;
+    const read = ++reads.current;
+    // Unless the reader has gone to another thread, or asked in this one, meanwhile.
+    const still = () => reads.current === read && showing.current === id && !shown.current;
+    api.loadThread(id).then(
+      (thread) => still() && showThread(thread),
+      (error: Error) => {
+        if (!still()) return;
+        // A thread gone is gone; otherwise the thread stays on screen to be fetched again.
+        if (error instanceof HttpError && error.status === 404) setView('notfound');
+        else console.error('[assistant] thread', error.message);
+      },
+    );
+  };
 
   // ── Filter fields and facets, only with Filter placed ──
   const [fields, setFields] = useState<readonly FieldSpec[]>();
@@ -854,6 +892,7 @@ export const useAssistant = ({
     const controller = new AbortController();
     const startedIn = currentId;
     const id = `local-${Date.now()}`;
+    reads.current += 1;
     setSourceTarget(undefined);
     // A question about a document names it, in the thread and to the model, and searches only that
     // document where the collection lets a question be narrowed by its number.
@@ -944,6 +983,7 @@ export const useAssistant = ({
         signal: controller.signal,
       })) {
         if (!alive.current) break;
+        if (!heard && startedIn) failedHere.current.delete(startedIn);
         heard = true;
         // genki names a new thread twice (POST, then stream): only the first opens it.
         if (event.type === 'conversation' && !startedIn && !opened) {
@@ -1003,6 +1043,7 @@ export const useAssistant = ({
         return;
       }
       if (!aborted) console.error('[assistant] ask', (error as Error).message);
+      if (!aborted && run.thread) failedHere.current.add(run.thread);
       finish();
       update((a) => ({
         ...a,
@@ -1325,6 +1366,8 @@ export const useAssistant = ({
     view,
     viewError,
     retryThread: () => setReload((n) => n + 1),
+    // Only while the last question's answer may still come.
+    fetchAgain: answerMayCome && view === 'ready' ? fetchAgain : undefined,
     turns,
     conversation,
     // A question waiting to go counts as work: the field offers to stop it.

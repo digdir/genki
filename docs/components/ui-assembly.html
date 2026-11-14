@@ -535,6 +535,18 @@
                 typed in the field stays there.
               </li>
               <li>
+                A page reloaded while an answer comes no longer follows it, but genki goes on and
+                stores the answer when it is done. A thread whose last question genki has stored no
+                answer for, asked less than five minutes ago (genki's default deadline for a run),
+                says the answer may still be on its way, with «Hent på nytt», the Conversation
+                block's <code>onFetchAgain</code>: it reads the thread again in place and asks
+                nothing. A read that fails leaves the thread as it was, unless the thread is gone.
+                Older, read again after that, or a question whose answer failed on this page, it
+                says the question got no answer, with «Generer på nytt». genki says nothing of
+                whether a run is still going on any route the assembly uses, so the time asked is
+                all it has to go by, and the thread is read again only when the reader asks.
+              </li>
+              <li>
                 An assistant that goes stops every answer still coming, in the threads left too, and
                 reports nothing after. «Logg ut» stops them all too, and deleting a thread stops its
                 answer.

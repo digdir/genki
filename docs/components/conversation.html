@@ -145,6 +145,11 @@
                 fikk ikke noe svar» with «Generer på nytt», as Kunnskapsassistenten draws a failed
                 turn after a reload. <code>pending</code> holds that back while an answer to the
                 last question is on its way and the app has no turn for it yet.
+                <code>onFetchAgain</code> is for an answer to the last question that may still come
+                where the app cannot follow it, as after a reload while the service answers: in
+                place of the failure, «Svaret kan fortsatt være på vei. Hent det på nytt om litt.»
+                with «Hent på nytt», which calls it to read the thread again rather than ask again.
+                When the answer comes in that place, focus goes to it, as after «Generer på nytt».
               </li>
               <li>
                 <code>onOpenCitation</code>, <code>onOpenDocument</code>,

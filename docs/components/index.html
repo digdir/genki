@@ -31,6 +31,15 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, a
+            thread opened after a reload while its answer came says the answer may still be on its
+            way, with «Hent på nytt», which reads the thread again rather than asking again. Before,
+            it said the question got no answer, though genki went on and stored it. After five
+            minutes, genki's default deadline for a run, it says so as before. The
+            <a href="conversation.html">Conversation</a> block takes <code>onFetchAgain</code> for
+            it.
+          </li>
+          <li>
             <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>'s
             next look, a page opened on a new thread, as after a reload, starts with no filter, as
             «Ny tråd» does. Before, it took the filter last on screen, often another thread's.
