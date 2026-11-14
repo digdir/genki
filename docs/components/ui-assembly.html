@@ -226,9 +226,10 @@
                 <code>href</code> or an <code>onSelect</code>, and <code>extra</code>, the host's
                 own entries in its own words, such as a way back to an older client, before «Logg
                 ut». A page not given is not drawn. <code>signOut</code> is the host's sign-out, an
-                <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first forgets
-                the reader's choices kept in this browser, the threads' filters included, then calls
-                it and goes there. Without it, no «Logg ut» is drawn, in either look.
+                <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first stops
+                every answer still coming and forgets the reader's choices kept in this browser, the
+                threads' filters included, then calls it and goes there. Without it, no «Logg ut» is
+                drawn, in either look.
               </li>
               <li>
                 The profile drawn is <code>profileOf(layout, profile)</code>: what the host's
@@ -509,7 +510,22 @@
                 The page has one <code>h1</code>, the assistant's name, before the rest of the main
                 column, wherever Chat stands.
               </li>
-              <li>An assistant that goes stops its answer, and reports nothing after.</li>
+              <li>
+                An answer keeps coming while the reader opens another thread or a new one, and asks
+                there. Its thread keeps its turns: opened again, it shows the answer as far as it
+                has come and lets it finish, or as it ended, a failure too, though genki has not
+                stored it yet. The thread genki has stored never takes the place of an answer on its
+                way. A question sent while the thread is read waits until it is read, and one sent
+                while its answer comes waits for it. «Avbryt genereringen» stops the answer on
+                screen. The live region speaks only of the thread on screen. A question still
+                waiting to go when the reader opens another thread, or signs out, is not sent; one
+                typed in the field stays there.
+              </li>
+              <li>
+                An assistant that goes stops every answer still coming, in the threads left too, and
+                reports nothing after. «Logg ut» stops them all too, and deleting a thread stops its
+                answer.
+              </li>
               <li>
                 In the next look, the front page gives way to the question: while the field holds
                 text, the greeting and the suggestions are hidden (<code>data-typing</code> on the
