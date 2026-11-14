@@ -3353,6 +3353,214 @@ describe('leaving a thread while its answer streams', () => {
   });
 });
 
+// genki goes on with an answer when the page that asked is reloaded, and stores it once it is done.
+describe('a thread whose last question genki has stored no answer for yet', () => {
+  const asked = Date.parse('2026-11-14T12:00:00Z');
+  const minutes = (n: number) => n * 60_000;
+  const questionAlone = {
+    title: 'Hva er nytt?',
+    turns: [{ id: 'n1', question: 'Hva er nytt?', askedAt: asked }],
+  };
+  const answered = {
+    title: 'Hva er nytt?',
+    turns: [
+      {
+        id: 'n1',
+        question: 'Hva er nytt?',
+        askedAt: asked,
+        answer: { text: 'Det nye svaret.', status: 'complete' as const, created: asked + 1 },
+      },
+    ],
+  };
+  const oldThread = {
+    title: 'En gammel tråd',
+    turns: [
+      {
+        id: 'o1',
+        question: 'Hva var gammelt?',
+        askedAt: asked - minutes(60),
+        answer: { text: 'Det gamle svaret.', status: 'complete' as const, created: asked },
+      },
+    ],
+  };
+  /** A read the test answers when it says. */
+  const later = () => {
+    let settle: { answer: (thread: typeof answered) => void; refuse: (error: Error) => void } = {
+      answer: () => {},
+      refuse: () => {},
+    };
+    const read = new Promise<typeof answered>((answer, refuse) => {
+      settle = { answer, refuse };
+    });
+    return { read, settle: () => settle };
+  };
+  /** The thread at `address`, read at `at()` after the question. */
+  const open = (read: AssistantApi['loadThread'], at: () => number, address = '/?t=t-new') => {
+    const fake = fakeApi();
+    fake.api.loadThread = vi.fn(read);
+    history.replaceState(null, '', address);
+    render(
+      <Assistant
+        api={fake.api}
+        layout={fromTemplate('knowledge-assistant-next').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        threadInUrl
+        now={() => new Date(asked + at())}
+      />,
+    );
+    return fake;
+  };
+  const stillComing = 'Svaret kan fortsatt være på vei. Hent det på nytt om litt.';
+  const failed = 'Dette spørsmålet fikk ikke noe svar. Noe gikk galt underveis.';
+  const fetchAgain = () => screen.findByRole('button', { name: 'Hent på nytt' });
+
+  it('says the answer to a question asked a minute ago may still come, rather than that it failed', async () => {
+    open(
+      async () => questionAlone,
+      () => minutes(1),
+    );
+    expect(await fetchAgain()).toBeTruthy();
+    expect(screen.getByText(stillComing)).toBeTruthy();
+    expect(screen.queryByText(failed)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Generer på nytt' })).toBeNull();
+  });
+
+  it('reads the thread again with «Hent på nytt» and shows the answer genki has stored, asking nothing', async () => {
+    let reads = 0;
+    const fake = open(
+      async () => (++reads > 1 ? answered : questionAlone),
+      () => minutes(1),
+    );
+    const button = await fetchAgain();
+    button.focus();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(await screen.findByText('Det nye svaret.')).toBeTruthy();
+    expect(screen.queryByText(stillComing)).toBeNull();
+    expect(fake.asked).toEqual([]);
+    expect((document.activeElement as HTMLElement | null)?.dataset.kind).toBe('answer');
+  });
+
+  it('keeps saying the answer may come, with the focus on «Hent på nytt», while genki has stored none', async () => {
+    const fake = open(
+      async () => questionAlone,
+      () => minutes(2),
+    );
+    const button = await fetchAgain();
+    button.focus();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(fake.api.loadThread).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(stillComing)).toBeTruthy();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('says the question got no answer once genki’s deadline for a run has passed', async () => {
+    open(
+      async () => questionAlone,
+      () => minutes(6),
+    );
+    expect(await screen.findByText(failed)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Generer på nytt' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Hent på nytt' })).toBeNull();
+  });
+
+  it('says it got no answer when «Hent på nytt» finds none after the deadline', async () => {
+    let at = minutes(4);
+    open(
+      async () => questionAlone,
+      () => at,
+    );
+    const button = await fetchAgain();
+    at = minutes(6);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(await screen.findByText(failed)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Hent på nytt' })).toBeNull();
+  });
+
+  it('drops a «Hent på nytt» read that comes after the reader opened another thread', async () => {
+    const second = later();
+    let reads = 0;
+    open(
+      async (id) => (id === 't-old' ? oldThread : ++reads > 1 ? second.read : questionAlone),
+      () => minutes(1),
+    );
+    fireEvent.click(await fetchAgain());
+    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await act(async () => second.settle().answer(answered));
+    expect(screen.queryByText('Det nye svaret.')).toBeNull();
+    expect(screen.getByText('Det gamle svaret.')).toBeTruthy();
+  });
+
+  it('drops a «Hent på nytt» read that comes after a question asked meanwhile', async () => {
+    const second = later();
+    let reads = 0;
+    const fake = open(
+      async () => (++reads > 1 ? second.read : questionAlone),
+      () => minutes(1),
+    );
+    fireEvent.click(await fetchAgain());
+    fake.api.ask = async function* (): AsyncGenerator<StreamEvent, void> {
+      yield { type: 'text', text: 'Et raskt svar.' };
+      yield {
+        type: 'done',
+        answer: { id: 'a2', text: 'Et raskt svar.', sources: [], citations: [], noAnswer: false },
+      };
+    };
+    await send('Og nå?');
+    expect(await screen.findByText('Et raskt svar.')).toBeTruthy();
+    await act(async () => second.settle().answer(answered));
+    expect(screen.getByText('Et raskt svar.')).toBeTruthy();
+    expect(screen.queryByText('Det nye svaret.')).toBeNull();
+  });
+
+  it('keeps the thread on screen when «Hent på nytt» cannot read it', async () => {
+    let reads = 0;
+    open(
+      async () => {
+        if (++reads > 1) throw new HttpError(503, '503 Service Unavailable');
+        return questionAlone;
+      },
+      () => minutes(1),
+    );
+    const button = await fetchAgain();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(reads).toBe(2);
+    expect(screen.getByText('Hva er nytt?')).toBeTruthy();
+    expect(screen.getByText(stillComing)).toBeTruthy();
+  });
+
+  it('says a question whose answer failed on this page got no answer, though it was asked a minute ago', async () => {
+    const fake = open(
+      async (id) => (id === 't-old' ? oldThread : questionAlone),
+      () => minutes(1),
+      '/',
+    );
+    fake.api.ask = async function* (): AsyncGenerator<StreamEvent, void> {
+      yield { type: 'conversation', conversationId: 't-new' };
+      throw new HttpError(503, '503 Service Unavailable');
+    };
+    await send('Hva er nytt?');
+    fireEvent.click(await screen.findByRole('link', { name: 'En gammel tråd' }));
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    history.replaceState(null, '', '/?t=t-new');
+    await act(async () => {
+      fireEvent(window, new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByText(failed)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Hent på nytt' })).toBeNull();
+  });
+});
+
 describe('the way back to the answer', () => {
   const tab = (name: string) => screen.getByRole('tab', { name, hidden: true });
   const chatBesideSources = () => placeIn(state('sources-only'), 'chat', 'secondary');

@@ -360,6 +360,75 @@ describe('each answer', () => {
     expect(onRegenerate.mock.calls[0]?.[0]).toMatchObject({ kind: 'answer', status: 'failed' });
   });
 
+  it('says the last question’s answer may still come, with «Hent på nytt», when the app can read it again', () => {
+    const onFetchAgain = vi.fn();
+    const onRegenerate = vi.fn();
+    render(
+      <Conversation turns={[question]} onFetchAgain={onFetchAgain} onRegenerate={onRegenerate} />,
+    );
+    const standIn = document.querySelector<HTMLElement>('[data-still-coming="true"]');
+    expect(standIn?.textContent).toContain(
+      'Svaret kan fortsatt være på vei. Hent det på nytt om litt.',
+    );
+    expect(document.querySelector('[data-unanswered]')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Generer på nytt' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Hent på nytt' }));
+    expect(onFetchAgain).toHaveBeenCalledOnce();
+    expect(onRegenerate).not.toHaveBeenCalled();
+  });
+
+  it('says only of the last question that its answer may still come', () => {
+    render(<Conversation turns={[question, followUp]} onFetchAgain={() => {}} />);
+    expect(document.querySelectorAll('[data-unanswered="true"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-still-coming="true"]')).toHaveLength(1);
+    expect(
+      document.querySelector('[data-still-coming="true"]')?.previousElementSibling?.textContent,
+    ).toContain(followUp.text);
+  });
+
+  it('puts focus on the answer that comes in place of «Hent på nytt»', () => {
+    const Shell = () => {
+      const [shown, setShown] = useState<ConversationTurn[]>([question]);
+      return (
+        <Conversation
+          turns={shown}
+          {...(shown.length === 1 ? { onFetchAgain: () => setShown([question, answer]) } : {})}
+          now={now}
+        />
+      );
+    };
+    render(<Shell />);
+    const button = screen.getByRole('button', { name: 'Hent på nytt' });
+    button.focus();
+    fireEvent.click(button);
+    expect(screen.queryByRole('button', { name: 'Hent på nytt' })).toBeNull();
+    expect(document.activeElement).toBe(items()[1]);
+    expect(document.activeElement?.textContent).toContain('Nkom rapporterer kvartalsvis');
+  });
+
+  it('moves no focus after «Hent på nytt» found nothing and the reader moved focus away', () => {
+    const { rerender } = render(<Conversation turns={[question]} onFetchAgain={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Hent på nytt' });
+    button.focus();
+    fireEvent.click(button);
+    rerender(<Conversation turns={[question]} onFetchAgain={() => {}} />);
+    button.blur();
+    rerender(<Conversation turns={[question]} onFetchAgain={() => {}} now={now} />);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('says in English that the answer may still come', () => {
+    render(
+      <InLocale locale="en">
+        <Conversation turns={[question]} onFetchAgain={() => {}} />
+      </InLocale>,
+    );
+    expect(document.querySelector('[data-still-coming="true"]')?.textContent).toContain(
+      'The answer may still be on its way. Fetch it again in a little while.',
+    );
+    expect(screen.getByRole('button', { name: 'Fetch again' })).toBeTruthy();
+  });
+
   it('draws no such note while an answer is on its way, or while the thread is read', () => {
     render(<Conversation turns={[question]} pending />);
     expect(document.querySelector('[data-unanswered]')).toBeNull();

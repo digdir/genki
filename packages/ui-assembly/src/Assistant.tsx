@@ -434,6 +434,7 @@ export const AssistantView = ({
         <Conversation
           turns={a.conversation}
           loading={a.view === 'loading'}
+          onFetchAgain={a.fetchAgain}
           assistantName={name}
           answerColor="neutral"
           // The next look's answer has no card and no name over it (dev-kilder-hoyre).
