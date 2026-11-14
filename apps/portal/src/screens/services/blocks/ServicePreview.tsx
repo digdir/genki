@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Heading,
-  Paragraph,
-  Spinner,
-  ToggleGroup,
-} from '@digdir/designsystemet-react';
+import { Alert, Button, Card, Heading, Paragraph, ToggleGroup } from '@digdir/designsystemet-react';
 import { ArrowCirclepathIcon, ExpandIcon, ShrinkIcon, XMarkIcon } from '@navikt/aksel-icons';
 import {
   blocksIn,
@@ -16,17 +8,14 @@ import {
   type BlockId,
   type Zone,
 } from '@genai/ui-blocks/builder';
-import { lazy, Suspense, useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
-import { draftServiceOf, type RunProblem } from './draftService';
 import { previewScale, previewWidth } from './preview-size';
 import { describeProblem } from '../../service/publish';
-import type { ReportProblem, TryRun } from './TryView';
-
-// The assistant and its blocks load when the try view is first shown, not with the builder.
-const TryView = lazy(() => import('./TryView'));
+import type { TryRun } from './TryView';
+import { KeepTryView, useKeptTryView } from './TryViewKeeper';
 
 export type PreviewMode = 'setup' | 'try';
 
@@ -58,53 +47,44 @@ const frameLabel: Record<Zone, PlainKey> = {
   secondary: 'builderBlocks.frameRight',
 };
 
-export const ServicePreview = ({
-  layout,
-  mode,
-  address,
-  run,
-  conversation,
-  onMode,
-  onRemove,
-  onReload,
-  onFullscreen,
-  onExitFullscreen,
-  height,
-}: {
+interface ServicePreviewProps {
   layout: AssistantLayout;
   mode: PreviewMode;
   address: string;
   /** What the try view runs on; without it the try view has nothing to ask. */
   run: TryRun | undefined;
-  /** A new number starts the conversation in the try view again. */
-  conversation: number;
   onMode: (mode: PreviewMode) => void;
   onRemove: (id: BlockId) => void;
-  onReload: () => void;
   onFullscreen?: () => void;
   onExitFullscreen?: () => void;
   height?: number;
-}) => {
+}
+
+/** The service's blocks, or its assistant as the nearest `TryViewKeeper` keeps it. */
+export const ServicePreview = (props: ServicePreviewProps) => (
+  <KeepTryView>
+    <Preview {...props} />
+  </KeepTryView>
+);
+
+const Preview = ({
+  layout,
+  mode,
+  address,
+  run,
+  onMode,
+  onRemove,
+  onFullscreen,
+  onExitFullscreen,
+  height,
+}: ServicePreviewProps) => {
   const t = useT();
   const titleId = useId();
-  // A refusal is the draft's, over every thread; a failed answer only over its own thread.
-  const [refusal, setRefusal] = useState<RunProblem>();
-  const [failures, setFailures] = useState<ReadonlyMap<string, RunProblem>>(() => new Map());
-  const [thread, setThread] = useState<string>();
-  const report = useCallback<ReportProblem>((next, at) => {
-    if (at === undefined) {
-      setRefusal(next);
-      return;
-    }
-    setFailures((all) => {
-      if (!next && !all.has(at)) return all;
-      const kept = new Map(all);
-      if (next) kept.set(at, next);
-      else kept.delete(at);
-      return kept;
-    });
-  }, []);
-  const problem = refusal ?? (thread === undefined ? undefined : failures.get(thread));
+  const { place, show, restart, problem } = useKeptTryView();
+  // The try view follows the layout and the draft, on screen or not.
+  useLayoutEffect(() => {
+    show(run ? { layout, run } : undefined);
+  }, [show, layout, run]);
   const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
@@ -134,7 +114,7 @@ export const ServicePreview = ({
           data-size="sm"
           icon
           aria-label={t('builderBlocks.reload')}
-          onClick={onReload}
+          onClick={restart}
         >
           <Icon icon={controlIcons.reload} />
         </Button>
@@ -199,22 +179,7 @@ export const ServicePreview = ({
               <SetupPanel key={zone} zone={zone} layout={layout} onRemove={onRemove} />
             ))
           ) : run ? (
-            <Suspense
-              fallback={
-                <Spinner
-                  aria-label={t('builderBlocks.tryLoading')}
-                  className="service-preview-empty"
-                />
-              }
-            >
-              <TryView
-                key={`${draftServiceOf(run.source)}:${conversation}`}
-                layout={layout}
-                run={run}
-                onProblem={report}
-                onThreadChange={setThread}
-              />
-            </Suspense>
+            <div className="service-preview-slot" ref={place} />
           ) : null}
         </div>
       </div>

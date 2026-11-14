@@ -194,6 +194,12 @@
   overflow: hidden;
 }
 
+/* The try view's place in the frame, and the element the kept assistant is drawn in. */
+.service-preview-slot,
+.service-preview-try {
+  height: 100%;
+}
+
 .service-preview-empty {
   margin: auto;
 }

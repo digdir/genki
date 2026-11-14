@@ -57,7 +57,10 @@ export const InterfaceTab = ({
     [tenant, service],
   );
   const blocks = useBlocksState(start, facts, keep);
-  const run = { api, tenant, source: { definition, files } };
+  const run = useMemo(
+    () => ({ api, tenant, source: { definition, files } }),
+    [api, tenant, definition, files],
+  );
   const id = (definition.metadata as { id?: unknown } | undefined)?.id;
   const address = `${typeof id === 'string' && id ? id : service}.genki.no`;
   return fullscreen ? (

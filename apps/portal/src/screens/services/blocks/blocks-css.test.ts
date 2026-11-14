@@ -34,4 +34,8 @@ describe('the Grensesnitt tab’s stylesheet', () => {
     expect(rule('.service-preview-viewport')).toContain('overflow: auto hidden;');
     expect(rule('.service-preview-viewport')).toContain('justify-content: safe center;');
   });
+
+  it('lets the kept assistant, in its place in the frame, fill the frame', () => {
+    expect(rule('.service-preview-slot,\n.service-preview-try')).toBe('height: 100%;');
+  });
 });
