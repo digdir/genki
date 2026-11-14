@@ -1691,7 +1691,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     ]);
     return fake;
   };
-  const drawNext = (api: AssistantApi, layout = nextLayout) =>
+  const drawNext = (api: AssistantApi, layout = nextLayout, storage?: AssistantStorage) =>
     render(
       <Assistant
         api={api}
@@ -1704,9 +1704,23 @@ describe('the filter in the next look (dev-filter-panel)', () => {
           // The field each document has one value in, which the filter counts exactly by.
           corpora: { kudos: { typeField: 'type' } },
         }}
+        storage={storage}
         threadInUrl
       />,
     );
+  // What the browser kept from an earlier visit: the last filter on screen, and a thread's own.
+  const keptFromBefore = () => {
+    const kept = new Map<string, unknown>([
+      ['filter', { type: ['Årsrapport'] }],
+      ['threadFilters', { 't-old': { type: ['Årsrapport'] } }],
+    ]);
+    const storage: AssistantStorage = {
+      read: (key) => kept.get(key),
+      write: (key, value) => void kept.set(key, value),
+      remove: (key) => void kept.delete(key),
+    };
+    return { kept, storage };
+  };
   const filterPanel = () => screen.getByRole('region', { name: 'Filter for tråden' });
   const tick = async (name: RegExp) => {
     const box = await within(filterPanel()).findByRole('checkbox', { name });
@@ -1885,6 +1899,64 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     );
   });
 
+  it('opens a page on a new thread with no filter, as «Ny tråd» starts one', async () => {
+    const fake = counted();
+    drawNext(fake.api, nextLayout, keptFromBefore().storage);
+    expect(
+      await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Alle' }),
+    ).toBeTruthy();
+    expect(fake.api.loadFacets).not.toHaveBeenCalledWith(
+      { type: ['Årsrapport'] },
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('leaves the stored filter alone when a page opens on a new thread', async () => {
+    const { kept, storage } = keptFromBefore();
+    drawNext(counted().api, nextLayout, storage);
+    await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Alle' });
+    expect(kept.get('filter')).toEqual({ type: ['Årsrapport'] });
+  });
+
+  it('opens a page on a thread with the thread’s own filter', async () => {
+    history.replaceState(null, '', '/?t=t-old');
+    const { kept, storage } = keptFromBefore();
+    kept.set('filter', { type: ['Tildelingsbrev'] });
+    drawNext(counted().api, nextLayout, storage);
+    await waitFor(() => expect(answers()).toBe(1));
+    expect(
+      await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Årsrapport' }),
+    ).toBeTruthy();
+  });
+
+  it('shows a thread asked elsewhere with the filter it was opened with, after a reload too', async () => {
+    const { kept, storage } = keptFromBefore();
+    kept.delete('threadFilters');
+    const { unmount } = drawNext(counted().api, nextLayout, storage);
+    await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Alle' });
+    fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
+    await waitFor(() => expect(answers()).toBe(1));
+    expect(within(filterPanel()).getByRole('button', { name: 'Dokumenttype Alle' })).toBeTruthy();
+    unmount();
+    drawNext(counted().api, nextLayout, storage);
+    await waitFor(() => expect(answers()).toBe(1));
+    expect(
+      await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Alle' }),
+    ).toBeTruthy();
+  });
+
+  it('starts «Ny tråd» with no filter after a page opened on a thread with one', async () => {
+    history.replaceState(null, '', '/?t=t-old');
+    drawNext(counted().api, nextLayout, keptFromBefore().storage);
+    await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Årsrapport' });
+    fireEvent.click(screen.getByRole('link', { name: 'Ny tråd' }));
+    expect(
+      await within(filterPanel()).findByRole('button', { name: 'Dokumenttype Alle' }),
+    ).toBeTruthy();
+  });
+
   it('keeps the filter of a thread asked in while genki names another thread out of sight', async () => {
     const fake = counted();
     const answered = fake.api.ask;
@@ -2039,6 +2111,8 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       ]);
       fake.api.loadFacets = createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' }).loadFacets;
       const kept = new Map<string, unknown>(stored ? [['filter', stored]] : []);
+      // A new thread starts with no filter; a thread asked elsewhere keeps the one stored.
+      if (stored) history.replaceState(null, '', '/?t=t-old');
       render(
         <Assistant
           api={fake.api}
@@ -2190,7 +2264,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       await within(filterPanel()).findByText(tooMany);
       await askMore('Hva er fast?');
       expect(asked).toEqual([]);
-      const answer = document.querySelector<HTMLElement>('.uib-answer');
+      const answer = [...document.querySelectorAll<HTMLElement>('.uib-answer')].at(-1);
       expect(answer?.textContent).toContain('Filteret kan ikke brukes');
       expect(answer?.textContent).toContain(tooMany);
     });
