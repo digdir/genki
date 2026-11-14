@@ -312,3 +312,44 @@ describe('«Personvern og data»', () => {
     expect(clear).toHaveBeenCalledOnce();
   });
 });
+
+describe('the host’s note on a settings page', () => {
+  const note = 'Valgene huskes i denne nettleseren.';
+  const page = () => document.querySelector('.uib-settings-page');
+
+  it('ends each page with the host’s note, under the rows, as quiet small text', () => {
+    const pages = [
+      <SettingsGeneral
+        colorScheme={{ value: 'auto', onChange: () => {} }}
+        key="general"
+        settingsNote={note}
+      />,
+      <SettingsAboutYou key="about-you" name="Kari Marie Nordmann" settingsNote={note} />,
+      <SettingsBeta
+        experiments={[{ id: 't0', title: 'Forsøk 0', on: false }]}
+        key="beta"
+        onExperimentChange={() => {}}
+        settingsNote={note}
+      />,
+      <SettingsPrivacy
+        improve={{ on: false, onChange: () => {} }}
+        key="privacy"
+        settingsNote={note}
+      />,
+    ];
+    for (const drawn of pages) {
+      render(drawn);
+      const last = page()?.lastElementChild;
+      expect(last?.textContent).toBe(note);
+      expect(last?.classList.contains('uib-settings-note')).toBe(true);
+      expect(last?.getAttribute('data-size')).toBe('sm');
+      cleanup();
+    }
+  });
+
+  it('leaves the host’s note off a page with nothing to choose, where it would speak of nothing', () => {
+    render(<SettingsPrivacy settingsNote={note} />);
+    expect(nothingYet()).toBeTruthy();
+    expect(screen.queryByText(note)).toBeNull();
+  });
+});

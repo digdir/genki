@@ -1433,6 +1433,36 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(within(settingsNav()).getByRole('button', { name: 'Beta-funksjoner' })).toBeTruthy();
     });
 
+    it('ends each page with something to choose with the profile’s note, as the current look’s settings do', async () => {
+      const settingsNote = 'Valgene huskes i denne nettleseren.';
+      history.replaceState(null, '', '/#innstillinger');
+      render(
+        <Assistant
+          api={fakeApi().api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={{ ...settingsProfile, settingsNote }}
+          storage={storage}
+          threadInUrl
+          colorScheme="dark"
+          onColorSchemeChange={vi.fn()}
+        />,
+      );
+      const pageEnd = () =>
+        document.querySelector('.uib-settings-page')?.lastElementChild?.textContent;
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      expect(pageEnd()).toBe(settingsNote);
+      go(/^Om deg/);
+      expect(pageEnd()).toBe(settingsNote);
+      go(/^Beta-funksjoner/);
+      expect(pageEnd()).toBe(settingsNote);
+      // genki keeps no privacy choice yet, so the page says so and the note has nothing to speak of.
+      go(/^Personvern og data/);
+      expect(screen.getByText('Ingen valg her ennå.')).toBeTruthy();
+      expect(screen.queryByText(settingsNote)).toBeNull();
+    });
+
     it('goes back to the thread list and the panels with «Tilbake til trådene»', async () => {
       drawSettings();
       await screen.findByRole('heading', { level: 1, name: 'Generelt' });
