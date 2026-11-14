@@ -453,9 +453,54 @@ describe('what a screen reader hears of an answer on its way', () => {
     );
   });
 
+  it('stops saying it is coming when the answer fails, and leaves the failure to its alert', () => {
+    const { rerender } = render(<Conversation turns={[question, coming]} />);
+    expect(region()).toBe('Henter svar.');
+    rerender(<Conversation turns={[question, { ...coming, status: 'failed' }]} />);
+    expect(region()).toBe('');
+    expect(screen.getByRole('alert').textContent).toContain('Noe gikk galt');
+  });
+
+  it('stops saying it is coming when the answer leaves the conversation unended, as when the reader opens another thread', () => {
+    const { rerender } = render(<Conversation turns={[question, coming]} />);
+    expect(region()).toBe('Henter svar.');
+    rerender(<Conversation turns={[]} loading />);
+    rerender(<Conversation turns={[followUp, answer]} />);
+    expect(region()).toBe('');
+    // Back in the thread before the answer is stored: the question stands alone.
+    rerender(<Conversation turns={[]} loading />);
+    rerender(<Conversation turns={[question]} />);
+    expect(region()).toBe('');
+  });
+
+  it('says nothing more of a finished answer once another thread is read in its place', () => {
+    const { rerender } = render(<Conversation turns={[question, coming]} />);
+    rerender(<Conversation turns={[question, { ...coming, status: 'complete' }]} />);
+    expect(region()).toBe('Svaret er ferdig.');
+    rerender(<Conversation turns={[]} loading />);
+    rerender(<Conversation turns={[followUp, answer]} />);
+    expect(region()).toBe('');
+  });
+
+  it('says it is coming again for an answer that comes back on its way', () => {
+    const { rerender } = render(<Conversation turns={[question, coming]} />);
+    rerender(<Conversation turns={[]} loading />);
+    rerender(<Conversation turns={[question, coming]} />);
+    expect(region()).toBe('Henter svar.');
+    rerender(<Conversation turns={[question, { ...coming, status: 'complete' }]} />);
+    expect(region()).toBe('Svaret er ferdig.');
+  });
+
   it('says that the assistant asks back, and nothing of a thread read back', () => {
     const { rerender } = render(<Conversation turns={[question]} pending />);
     rerender(
+      <Conversation turns={[question, clarification]} assistantName="Kunnskapsassistenten" />,
+    );
+    expect(region()).toBe('Kunnskapsassistenten trenger en avklaring.');
+    cleanup();
+    // In place of the answer that was coming.
+    const { rerender: instead } = render(<Conversation turns={[question, coming]} />);
+    instead(
       <Conversation turns={[question, clarification]} assistantName="Kunnskapsassistenten" />,
     );
     expect(region()).toBe('Kunnskapsassistenten trenger en avklaring.');

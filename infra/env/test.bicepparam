@@ -31,13 +31,25 @@ param keyVaultSecretNames = [
   'foundry-claude-key'
   'typesense-key'
   'colbert-api-key'
+  'langfuse-public-key'
+  'langfuse-secret-key'
 ]
+
+// An unset variable comes as an empty value here too.
+var langfuseContent = readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', '')
 
 param appEnv = {
   FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
   FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
+  LANGFUSE_BASE_URL: 'https://langfuse.digdir.cloud'
+  // Operators confirmed Digdir's Langfuse deletes what genki deletes and keeps raw files at most 7 days
+  // (ADR 0011): true unless the variable says otherwise.
+  LANGFUSE_INSTANCE_RECEIVES_CONTENT: empty(langfuseContent) ? 'true' : langfuseContent
+  TRACES_ENDPOINT: readEnvironmentVariable('TRACES_ENDPOINT', '')
+  TRACES_ENVIRONMENT: 'test'
+  TRACES_RESIDENCY: readEnvironmentVariable('TRACES_RESIDENCY', '')
   GENAI_LOCKDOWN: 'true'
   LOCKDOWN_ENTRA_GROUPS: readEnvironmentVariable('LOCKDOWN_ENTRA_GROUPS', '')
   LOCKDOWN_USER_GROUPS: readEnvironmentVariable('LOCKDOWN_USER_GROUPS', '')

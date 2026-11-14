@@ -229,7 +229,7 @@
                   <tr>
                     <td><code>--genai-settings-note-color</code></td>
                     <td><code>--ds-color-neutral-text-subtle</code></td>
-                    <td>the note after the sections, pinned to neutral</td>
+                    <td>the note after the sections or a page's rows, pinned to neutral</td>
                   </tr>
                   <tr>
                     <td><code>--genai-settings-padding-block-end</code></td>
@@ -253,7 +253,10 @@
               a row only for what the app can honour, given as a value and its handler together. A
               choice the app cannot keep is left out, never drawn dead, and a page with nothing to
               choose says «Ingen valg her ennå.». The info box speaks of what the rows do, so it
-              comes with them, and so does the line under «Om deg».
+              comes with them, and so does the line under «Om deg». Each page takes
+              <code>settingsNote</code>, the app's quiet line under the rows, such as where the
+              choices are kept, as <code>Settings</code> ends with its <code>note</code>. It too
+              comes with the rows, so a page with nothing to choose leaves it out.
             </p>
             <ul>
               <li>
@@ -296,7 +299,8 @@
               <li>
                 <code>SettingsPage</code> and <code>SettingsRow</code> for an app's own page: the
                 heading (an <code>h1</code> by default), its <code>lead</code>, its
-                <code>notice</code>, and rows under thin lines.
+                <code>notice</code>, rows under thin lines, and the app's <code>note</code> under
+                them.
               </li>
             </ul>
             <div class="table-wrap">

@@ -1433,6 +1433,36 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(within(settingsNav()).getByRole('button', { name: 'Beta-funksjoner' })).toBeTruthy();
     });
 
+    it('ends each page with something to choose with the profile’s note, as the current look’s settings do', async () => {
+      const settingsNote = 'Valgene huskes i denne nettleseren.';
+      history.replaceState(null, '', '/#innstillinger');
+      render(
+        <Assistant
+          api={fakeApi().api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={{ ...settingsProfile, settingsNote }}
+          storage={storage}
+          threadInUrl
+          colorScheme="dark"
+          onColorSchemeChange={vi.fn()}
+        />,
+      );
+      const pageEnd = () =>
+        document.querySelector('.uib-settings-page')?.lastElementChild?.textContent;
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      expect(pageEnd()).toBe(settingsNote);
+      go(/^Om deg/);
+      expect(pageEnd()).toBe(settingsNote);
+      go(/^Beta-funksjoner/);
+      expect(pageEnd()).toBe(settingsNote);
+      // genki keeps no privacy choice yet, so the page says so and the note has nothing to speak of.
+      go(/^Personvern og data/);
+      expect(screen.getByText('Ingen valg her ennå.')).toBeTruthy();
+      expect(screen.queryByText(settingsNote)).toBeNull();
+    });
+
     it('goes back to the thread list and the panels with «Tilbake til trådene»', async () => {
       drawSettings();
       await screen.findByRole('heading', { level: 1, name: 'Generelt' });
@@ -2653,6 +2683,59 @@ describe('leaving a thread while its answer streams', () => {
     expect(screen.queryByText('Det gamle svaret.')).toBeNull();
     expect(screen.queryByText('Hva var gammelt?')).toBeNull();
     release();
+  });
+
+  it('leaves no «Henter svar.» in the live region when the reader comes back before genki has stored the answer', async () => {
+    const { api } = fakeApi();
+    let made = false;
+    api.loadThreads = vi.fn(async () => [
+      ...(made
+        ? [{ id: 't-new', title: 'Hva er nytt?', updatedAt: Date.now(), service: 'ka' }]
+        : []),
+      { id: 't-old', title: 'En gammel tråd', updatedAt: Date.now(), service: 'ka' },
+    ]);
+    api.loadThread = vi.fn(async (id: string) =>
+      id === 't-new'
+        ? // genki is still writing the answer: the thread holds the question alone.
+          { title: 'Hva er nytt?', turns: [{ id: 'n1', question: 'Hva er nytt?', askedAt: 1 }] }
+        : {
+            title: 'En gammel tråd',
+            turns: [
+              {
+                id: 'o1',
+                question: 'Hva var gammelt?',
+                askedAt: 1,
+                answer: { text: 'Det gamle svaret.', status: 'complete' as const, created: 2 },
+              },
+            ],
+          },
+    );
+    api.ask = async function* (params) {
+      made = true;
+      yield { type: 'conversation', conversationId: 't-new' };
+      // Leaving aborts the answer on its way, as fetch does.
+      await new Promise<void>((_, reject) =>
+        params.signal.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        ),
+      );
+    };
+    draw(state('without-filter').layout, api, true);
+    const region = () =>
+      document.querySelector('.uib-conversation > [aria-live="polite"]')?.textContent;
+    await send('Hva er nytt?');
+    await waitFor(() => expect(region()).toBe('Henter svar.'));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
+    });
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    expect(region()).toBe('');
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('link', { name: /Hva er nytt\?/ }));
+    });
+    await waitFor(() => expect(screen.queryByText('Det gamle svaret.')).toBeNull());
+    expect(await screen.findByText('Hva er nytt?', { selector: 'p' })).toBeTruthy();
+    await waitFor(() => expect(region()).toBe(''));
   });
 });
 
