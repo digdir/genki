@@ -646,21 +646,25 @@ export const useAssistant = ({
     };
   }, [api, filterOn, corpusKey]);
 
+  // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
+  // of each thread's last question asked here is kept, and opening the thread brings it back.
+  // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
+  const look = lookOf(layout);
+  const threadFiltersOn = look === 'next' && filterOn;
+
   // The filter is kept as kunnskapsassistenten keeps it: a field whose values are not all strings
   // is dropped.
   const [chosenSelection, setSelection] = useStoredValue<FilterSelection>(
     storage,
     'filter',
     readSelection,
+    undefined,
+    // The next look's new thread starts with no filter, as «Ny tråd» does.
+    threadFiltersOn && !currentId,
   );
   // Without Filter, nothing narrows the question: the setup's collection as a whole.
   const selection = filterOn ? chosenSelection : {};
 
-  // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
-  // of each thread's last question asked here is kept, and opening the thread brings it back.
-  // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
-  const look = lookOf(layout);
-  const threadFiltersOn = look === 'next' && filterOn;
   const [threadFilters, setThreadFilters] = useStoredValue(
     storage,
     'threadFilters',
@@ -682,7 +686,9 @@ export const useAssistant = ({
     const kept = threadFilters.get(currentId);
     // Kept as asked, so a field with every value chosen is empty there and means the same.
     const asked = narrowing(chosenSelection, facets ?? baseFacets);
-    if (kept && !sameSelection(kept, chosenSelection) && !sameSelection(kept, asked))
+    // A thread asked elsewhere keeps the filter on screen, stored so a reload shows it too.
+    if (!kept) setSelection(chosenSelection);
+    else if (!sameSelection(kept, chosenSelection) && !sameSelection(kept, asked))
       setSelection(kept);
     // Only when another thread opens: a change made in the thread stays.
   }, [currentId, threadFiltersOn]);
