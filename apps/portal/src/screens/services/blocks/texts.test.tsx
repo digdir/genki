@@ -155,6 +155,30 @@ describe('the Tekster panel', () => {
     expect(profile()?.corpora?.byggeregler?.fields?.map((f) => f.id)).toEqual(['aar']);
   });
 
+  it('refuses a document type another row has, and says so, so no row or plural is lost', async () => {
+    render(<Harness />);
+    openCollection();
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til dokumenttype' }));
+    type('Dokumenttype 1', 'Årsrapport');
+    type('Flertall av dokumenttype 1', 'årsrapporter');
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til dokumenttype' }));
+    type('Dokumenttype 2', 'Årsrapport');
+    expect(profile()?.corpora?.byggeregler?.typePlurals).toEqual({
+      Årsrapport: 'årsrapporter',
+      '': '',
+    });
+    await waitFor(() =>
+      expect(descriptionOf(screen.getByRole('textbox', { name: 'Dokumenttype 2' }))).toContain(
+        'Dokumenttypen står allerede i en annen rad.',
+      ),
+    );
+    type('Dokumenttype 2', 'Evaluering');
+    expect(profile()?.corpora?.byggeregler?.typePlurals).toEqual({
+      Årsrapport: 'årsrapporter',
+      Evaluering: '',
+    });
+  });
+
   it('fills in Kunnskapsassistenten’s words with its next template, and keeps the words through a change of template', () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: 'Fyll inn som Kunnskapsassistenten' }));

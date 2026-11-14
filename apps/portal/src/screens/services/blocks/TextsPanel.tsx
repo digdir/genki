@@ -264,6 +264,8 @@ const CollectionTexts = ({
   const at = `profile.corpora.${collection.key}`;
   const fields = fieldsIn(corpus, collection.fields);
   const plurals = pluralRows(corpus);
+  // The row whose type was refused, since another row has it.
+  const [taken, setTaken] = useState<number>();
   const typeFieldId = `${idPrefix}-type-field`;
   return (
     <Details data-color="neutral" className="blocks-options">
@@ -344,14 +346,22 @@ const CollectionTexts = ({
                 data-size="sm"
                 label={t('builderTexts.pluralType', { n: n + 1 })}
                 value={type}
-                onChange={(e) =>
+                error={taken === n ? t('builderTexts.pluralTaken') : undefined}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // The plurals are one per type: a type another row has would merge the two.
+                  if (plurals.some(([other], i) => i !== n && other === value)) {
+                    setTaken(n);
+                    return;
+                  }
+                  setTaken(undefined);
                   onChange((c) =>
                     withPlurals(
                       c,
-                      plurals.map((row, i) => (i === n ? [e.target.value, row[1]] : row)),
+                      plurals.map((row, i) => (i === n ? [value, row[1]] : row)),
                     ),
-                  )
-                }
+                  );
+                }}
               />
               <Textfield
                 data-size="sm"

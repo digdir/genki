@@ -123,6 +123,7 @@ export const blocksUi = {
     plurals: 'Dokumenttyper i flertall',
     pluralType: 'Dokumenttype {n}',
     pluralWord: 'Flertall av dokumenttype {n}',
+    pluralTaken: 'Dokumenttypen står allerede i en annen rad.',
     addPlural: 'Legg til dokumenttype',
     removePlural: 'Fjern dokumenttype {n}',
     linksTitle: 'Lenker til dokumentene',

@@ -122,6 +122,7 @@ export const blocksUi = {
     plurals: 'Document types in the plural',
     pluralType: 'Document type {n}',
     pluralWord: 'Plural of document type {n}',
+    pluralTaken: 'Another row has this document type.',
     addPlural: 'Add a document type',
     removePlural: 'Remove document type {n}',
     linksTitle: 'Links to the documents',
