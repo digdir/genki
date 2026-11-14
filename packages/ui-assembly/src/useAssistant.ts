@@ -156,7 +156,7 @@ interface Asking {
 /** An answer on its way, with the turns of the thread it was asked in. */
 interface Run {
   controller: AbortController;
-  /** genki's id for the thread, once it has named a new one. */
+  /** genki's id for the thread; a new one's once genki has named it. */
   thread: string | undefined;
   turns: Turn[];
   /** The collection the thread was read with. */
@@ -485,7 +485,7 @@ export const useAssistant = ({
   const stopAll = () => {
     for (const run of runs.current) run.controller.abort();
   };
-  // An assistant that goes stops its answers, and reports nothing after: a host that draws another
+  // An assistant that goes stops its answer, and reports nothing after: a host that draws another
   // in its place, as the app builder does for each service, hears only from that one.
   const alive = useRef(true);
   useEffect(() => {
@@ -530,7 +530,7 @@ export const useAssistant = ({
     (id: string | undefined) => {
       if (id === undefined || id !== showing.current) turnAway();
       if (id === undefined) setFresh((n) => n + 1);
-      // A thread the reader leaves is read again when they come back, whoever made it.
+      // A thread the reader leaves is opened afresh when they come back, whoever made it.
       ownThread.current = undefined;
       setRequest({ action: 'close-drawers' });
       go(id);
@@ -586,7 +586,8 @@ export const useAssistant = ({
       ownThread.current = undefined;
       return;
     }
-    const ready = (thread: { turns: Turn[]; corpus?: string | undefined }) => {
+    const show = (thread: { turns: Turn[]; corpus?: string | undefined }) => {
+      setTurns(thread.turns);
       setThreadCorpus(thread.corpus);
       setView('ready');
       if (sourcesOn && thread.turns.some((t) => (t.answer?.sources?.length ?? 0) > 0))
@@ -600,22 +601,14 @@ export const useAssistant = ({
         shown.current = run;
         setWorking(true);
       }
-      setTurns(run.turns);
-      ready(run);
+      show(run);
       return;
     }
     let gone = false;
     setTurns([]);
     setView('loading');
     api.loadThread(currentId).then(
-      (thread) => {
-        if (gone) return;
-        // A question asked while the thread was read comes after its stored turns.
-        const asking = shown.current;
-        if (asking) asking.turns = [...thread.turns, ...asking.turns];
-        setTurns((asked) => [...thread.turns, ...asked]);
-        ready(thread);
-      },
+      (thread) => !gone && show(thread),
       (error: Error) => {
         if (gone) return;
         if (error instanceof HttpError && error.status === 404) setView('notfound');
@@ -673,8 +666,15 @@ export const useAssistant = ({
     readThreadFilters,
     storeThreadFilters,
   );
+  // The latest, for an answer that names its thread after the reader has asked elsewhere.
+  const keptFilters = useRef(threadFilters);
+  useEffect(() => {
+    keptFilters.current = threadFilters;
+  }, [threadFilters]);
   const keepFilter = (thread: string, asked: FilterSelection) => {
-    if (threadFiltersOn) setThreadFilters(new Map(threadFilters).set(thread, asked));
+    if (!threadFiltersOn) return;
+    keptFilters.current = new Map(keptFilters.current).set(thread, asked);
+    setThreadFilters(keptFilters.current);
   };
   useEffect(() => {
     if (!threadFiltersOn || !currentId) return;
@@ -820,12 +820,13 @@ export const useAssistant = ({
 
   /**
    * Asks now, or as soon as it can: once genki has said what the service backs, which decides the
-   * collection, and once the answer still coming in the thread has ended. A failed `/v1/models` is
-   * tried again, and if it fails again the question waits in the field, under the failure.
+   * collection, once the thread is read, and once an answer still coming has ended. A failed
+   * `/v1/models` is tried again; if it or the thread fails, the question waits in the field, under
+   * the failure.
    */
   const send = (question: string, options: Omit<Asking, 'question'> = {}) => {
     const asking = { question, ...options };
-    if (!working && models) {
+    if (!working && models && view !== 'loading') {
       void start(asking);
       return;
     }
@@ -834,13 +835,13 @@ export const useAssistant = ({
   };
   useEffect(() => {
     if (!waiting) return;
-    if (modelsFailed) setWaiting(undefined);
-    else if (models && !working) {
+    if (modelsFailed || view === 'error' || view === 'notfound') setWaiting(undefined);
+    else if (models && !working && view !== 'loading') {
       setWaiting(undefined);
       void start(waiting);
     }
     // `start` is new on every render; what it waits for is what starts it.
-  }, [waiting, models, modelsFailed, working]);
+  }, [waiting, models, modelsFailed, working, view]);
 
   const start = async ({ question: typed, replaces, fromField, about }: Asking) => {
     const controller = new AbortController();
@@ -1245,6 +1246,7 @@ export const useAssistant = ({
     // «Logg ut» forgets what this browser kept of the reader's choices, as kunnskapsassistenten's
     // beforeLogout: the next person on a shared machine starts without them. Then the host's own.
     signOut: () => {
+      setWaiting(undefined);
       stopAll();
       storage?.remove('filter');
       storage?.remove('flags');
