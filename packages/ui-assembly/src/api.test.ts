@@ -359,6 +359,70 @@ describe('a source from the wire', () => {
       'https://example.org/d/d22',
     ]);
   });
+
+  // A stored thread with these tags; none is one asked in another client.
+  const storedThread = (tags: string[]) =>
+    vi.fn(async () =>
+      json({
+        conversation: { id: 't1', topic: 'Ventetid', tags, created: 1 },
+        messages: [
+          { id: 'q', role: 'user', text: 'Ventetid?', created: 1, chunks: [] },
+          {
+            id: 'a',
+            role: 'assistant',
+            text: 'Ned [1].',
+            created: 2,
+            chunks: [],
+            sources: [wireSource],
+          },
+        ],
+      }),
+    );
+  const kudos = { documentLinks: { digits: 'https://example.org/documents/{id}' } };
+  const linksIn = async (api: AssistantApi) =>
+    (await api.loadThread('t1')).turns[0]?.answer?.sources?.map((source) => source.url);
+
+  it('links the documents of a thread that names no collection from the profile’s only collection', async () => {
+    vi.stubGlobal('fetch', storedThread([]));
+    const linked = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: { corpora: { kudos } },
+    });
+    expect(await linksIn(linked)).toEqual(['https://example.org/documents/42']);
+  });
+
+  it('names no collection for a thread that names none, though its documents are linked', async () => {
+    vi.stubGlobal('fetch', storedThread([]));
+    const linked = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: { corpora: { kudos } },
+    });
+    expect((await linked.loadThread('t1')).corpus).toBeUndefined();
+  });
+
+  it('guesses no collection for a thread that names none when the profile describes several', async () => {
+    vi.stubGlobal('fetch', storedThread([]));
+    const several = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: {
+        corpora: { kudos, other: { documentLinks: { any: 'https://other.example/{id}' } } },
+      },
+    });
+    expect(await linksIn(several)).toEqual([undefined]);
+  });
+
+  it('links no document of a thread whose collection the profile does not describe', async () => {
+    vi.stubGlobal('fetch', storedThread(['corpus:other']));
+    const linked = createGenkiApi({
+      baseUrl: '/genki',
+      tenant: 'digdir',
+      profile: { corpora: { kudos } },
+    });
+    expect(await linksIn(linked)).toEqual([undefined]);
+  });
 });
 
 // The run feedback is sent on, from `task` on a stored message.

@@ -219,7 +219,12 @@
                 kind of number, <code>digits</code>, <code>uuid</code> or <code>any</code>, with
                 <code>{id}</code> where the number goes, encoded. A number takes the first that
                 fits, in that order, after the function. Only an http or https address becomes a
-                link, and a layout's only an https one whose host comes before the number.
+                link, and a layout's only an https one whose host comes before the number. A stored
+                thread is linked by the collection its <code>corpus:</code> tag names. One that
+                names none, such as a thread asked in another client, is taken to be in the
+                profile's collection when the profile describes exactly one, and linked by it; with
+                several, none is guessed. A host whose readers also ask in collections it does not
+                describe describes them too, so that no such thread is linked by the wrong one.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
