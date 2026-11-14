@@ -34,6 +34,7 @@ import {
   exhaustionNudge,
   noToolCallHonestMiss,
   noToolCallNudge,
+  toolsOnlySystemPrompt,
   readEvaluatorSystemPrompt,
 } from './index.js';
 
@@ -806,6 +807,69 @@ describe('agent-loop strategy', () => {
 
     expect(out.loops[0]?.tools?.map((t) => t.name)).toContain('klarsprak');
     expect(toolMessages(out.loops[1])[0]).toBe('Klart: vanskelig');
+  });
+
+  const githubRegistry = () =>
+    new ToolRegistry().register({
+      name: 'issues',
+      version: '1',
+      description: 'List open issues',
+      input: z.object({ repo: z.string() }),
+      run: async ({ repo }) => ({
+        parts: [{ mime: 'text/plain', body: { kind: 'text', text: `${repo}: #12 Fiks tavla` } }],
+      }),
+    });
+
+  it('an agent-loop service without a dataset runs with its tools and no search tool', async () => {
+    const out = await run({
+      withoutDataset: true,
+      registry: githubRegistry(),
+      tools: ['issues@1'],
+      config: { ...baseConfig, tools: ['issues@1'] },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('issues', { repo: 'tavla' })]),
+            () => result('Én åpen sak: #12 Fiks tavla.'),
+          ],
+        },
+      },
+    });
+
+    expect(out.task.status).toBe('completed');
+    expect(out.loops[0]?.tools?.map((t) => t.name)).toEqual(['issues']);
+    expect(out.loops[0]?.messages[0]?.content).toContain(toolsOnlySystemPrompt);
+    expect(toolMessages(out.loops[1])[0]).toBe('tavla: #12 Fiks tavla');
+    expect(out.text).toBe('Én åpen sak: #12 Fiks tavla.');
+  });
+
+  it('an agent-loop service without a dataset answers a call to a search tool as an unknown tool', async () => {
+    const out = await run({
+      withoutDataset: true,
+      registry: githubRegistry(),
+      tools: ['issues@1'],
+      config: { ...baseConfig, tools: ['issues@1'] },
+      scripts: {
+        primary: {
+          loop: [() => result('', [call('search', { queries: ['tavla'] })]), () => result('Ok.')],
+        },
+      },
+    });
+
+    expect(toolMessages(out.loops[1])[0]).toBe('Unknown tool: search. Available tools: issues');
+    expect(out.text).toBe('Ok.');
+  });
+
+  it('an agent-loop service without a dataset is not told to search first when the service requires a search', async () => {
+    const out = await run({
+      withoutDataset: true,
+      config: guarded(),
+      scripts: { primary: memory },
+    });
+
+    expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(0);
+    expect(out.text).toBe('Brunost lages av myse.');
+    expect(out.meta).not.toMatchObject({ noAnswer: true });
   });
 
   it('wraps a tool result marked untrusted in untrusted-data framing before it reaches the model', async () => {

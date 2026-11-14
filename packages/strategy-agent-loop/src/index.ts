@@ -33,6 +33,7 @@ import {
   searchScaffold,
   smallTalkCheck,
   systemPromptWithDate,
+  toolsOnlySystemPrompt,
 } from './prompts.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
 import { evaluateRead } from './read-signals.js';
@@ -183,7 +184,19 @@ export type RetrievalFactory = (
   ctx: InvocationContext,
   config: AgentLoopRuntimeConfig,
   request: RetrievalRequest,
-) => AgentRetrieval | Promise<AgentRetrieval>;
+) => AgentRetrieval | undefined | Promise<AgentRetrieval | undefined>;
+
+const noDataset = () => Promise.reject(new Error('the service has no dataset to search'));
+
+const withoutDataset: AgentRetrieval = {
+  search: noDataset,
+  read: noDataset,
+  readRange: noDataset,
+  plan: noDataset,
+  rerank: noDataset,
+  filterFields: noDataset,
+  facets: noDataset,
+};
 
 export const readRetrievalRequest = (input: Input): RetrievalRequest => {
   const data = input.data as Record<string, unknown> | undefined;
@@ -430,7 +443,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     workspace.attached = attachedChunks(input);
     const retrievalRequest = readRetrievalRequest(input);
     const activeFilters = activeFiltersOf(retrievalRequest);
-    const retrieval = await options.retrieval(ctx, config, retrievalRequest);
+    const searchable = await options.retrieval(ctx, config, retrievalRequest);
+    const retrieval = searchable ?? withoutDataset;
     const extra = await openExtraTools(ctx, config);
     const session = new ModelSession(ctx, config.model);
     const synthesisSession = sessionFor(ctx, config.model, 'synthesis', session);
@@ -439,7 +453,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const temperature = settings.temperature ?? 0.1;
     const skills = config.skills ?? [];
     const toolSpecs = [
-      ...agentTools,
+      ...(searchable ? agentTools : []),
       ...(skills.length ? [useSkillTool] : []),
       ...extra.map((t) => t.spec),
     ];
@@ -455,7 +469,11 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       {
         role: 'system',
         content:
-          (settings.instructions ? baseInstructions(settings.instructions) : defaultSystemPrompt) +
+          (settings.instructions
+            ? baseInstructions(settings.instructions)
+            : searchable
+              ? defaultSystemPrompt
+              : toolsOnlySystemPrompt) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
           attachedNote(workspace.attached) +
@@ -559,6 +577,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         const cutOff = turn.toolCalls.length > 0;
         const guard =
           Boolean(settings.noToolCallRetry) &&
+          Boolean(searchable) &&
           workspace.searches.length === 0 &&
           (cutOff || !(await isSmallTalk(query)));
         if (guard && workspace.noToolCallRetries < 2) {
@@ -606,7 +625,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         const started = Date.now();
         let content: string;
         if (!args.ok) content = `Error: ${args.error}`;
-        else if (isBuiltinTool(call.name)) {
+        else if (searchable && isBuiltinTool(call.name)) {
           const outcome: ToolOutcome = yield* withDeltas((push) =>
             runBuiltinTool(
               call.name as BuiltinToolName,
@@ -959,7 +978,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const incomplete = outputChunks()
       .filter((c) => c.title === undefined && c.url === undefined)
       .map((c) => c.chunkId);
-    if (incomplete.length) {
+    if (incomplete.length && searchable) {
       try {
         for (const full of await retrieval.read(incomplete, ctx.signal)) {
           const known = workspace.chunks.get(full.chunkId);

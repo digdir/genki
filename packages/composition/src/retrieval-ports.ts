@@ -18,6 +18,8 @@ export interface RuntimeConfig {
   knowledge?: KnowledgeConfig;
 }
 
+export const hasDataset = (config: RuntimeConfig) => (config.knowledge?.datasets ?? []).length > 0;
+
 export const openRetrievalPorts = async (
   ctx: InvocationContext,
   config: RuntimeConfig,
