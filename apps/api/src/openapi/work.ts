@@ -1202,6 +1202,24 @@ const ServiceEvalRun = z
       .int()
       .optional()
       .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
+    current: z
+      .array(z.object({ case: z.string(), startedAt: z.string() }))
+      .optional()
+      .describe('The cases running now, each with when it started'),
+    secondsPerCase: z
+      .number()
+      .int()
+      .optional()
+      .describe('How long a case has taken on average, from its start to its result'),
+    endsAt: z
+      .string()
+      .optional()
+      .describe('When a running run should be done, at the pace it has kept'),
+    resumed: z
+      .number()
+      .int()
+      .optional()
+      .describe('How many times the run was taken up again after its instance stopped'),
     progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
     metrics: z.record(z.string(), metricSummary),
     incomplete: z.array(
@@ -1233,6 +1251,7 @@ const ServiceEvalRun = z
         output: z.string(),
         pass: z.boolean(),
         reason: z.string().optional(),
+        task: z.string().optional().describe("The case's task, whose timeline shows the run"),
         judges: z
           .array(
             z.object({

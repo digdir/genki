@@ -6028,6 +6028,169 @@
                     sink: { type: 'string', minLength: 1 },
                     avoidAsJudge: { type: 'array', items: { type: 'string' } },
                     sinkJudges: { type: 'array', items: {} },
+                    prior: {
+                      type: 'object',
+                      properties: {
+                        results: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              case: { type: 'string' },
+                              split: { type: 'string', enum: ['train', 'validation', 'holdout'] },
+                              repeat: {
+                                type: 'integer',
+                                minimum: -9007199254740991,
+                                maximum: 9007199254740991,
+                              },
+                              task: { type: 'string' },
+                              tags: { type: 'array', items: { type: 'string' } },
+                              language: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                              scores: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: {
+                                    evaluator: { type: 'string' },
+                                    version: { type: 'string' },
+                                    metric: { type: 'string' },
+                                    value: {
+                                      anyOf: [
+                                        { type: 'number', minimum: 0, maximum: 1 },
+                                        { type: 'null' },
+                                      ],
+                                    },
+                                    applicable: { type: 'boolean' },
+                                    state: {
+                                      type: 'string',
+                                      enum: [
+                                        'scored',
+                                        'not-applicable',
+                                        'pending',
+                                        'failed',
+                                        'missing',
+                                      ],
+                                    },
+                                    reason: { type: 'string' },
+                                    details: {
+                                      type: 'object',
+                                      propertyNames: { type: 'string' },
+                                      additionalProperties: {},
+                                    },
+                                  },
+                                  required: [
+                                    'evaluator',
+                                    'version',
+                                    'metric',
+                                    'value',
+                                    'applicable',
+                                    'state',
+                                  ],
+                                  additionalProperties: false,
+                                },
+                              },
+                            },
+                            required: ['case', 'split', 'repeat', 'task', 'tags', 'scores'],
+                            additionalProperties: false,
+                          },
+                        },
+                        usage: {
+                          type: 'object',
+                          properties: {
+                            answers: {
+                              type: 'object',
+                              properties: {
+                                inputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                outputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                costMicroNok: {
+                                  anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+                                },
+                              },
+                              required: ['inputTokens', 'outputTokens', 'costMicroNok'],
+                              additionalProperties: false,
+                            },
+                            judges: {
+                              type: 'object',
+                              properties: {
+                                inputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                outputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                costMicroNok: {
+                                  anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+                                },
+                              },
+                              required: ['inputTokens', 'outputTokens', 'costMicroNok'],
+                              additionalProperties: false,
+                            },
+                            reported: {
+                              type: 'object',
+                              propertyNames: { type: 'string' },
+                              additionalProperties: {
+                                type: 'object',
+                                properties: {
+                                  inputTokens: {
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                  outputTokens: {
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                  costUsd: {
+                                    anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+                                  },
+                                  unpriced: {
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                  unread: {
+                                    default: 0,
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                },
+                                required: ['inputTokens', 'outputTokens', 'costUsd', 'unpriced'],
+                                additionalProperties: false,
+                              },
+                            },
+                            usdNok: {
+                              type: 'object',
+                              properties: {
+                                rate: { type: 'number', exclusiveMinimum: 0 },
+                                date: { type: 'string', minLength: 1 },
+                              },
+                              required: ['rate', 'date'],
+                              additionalProperties: false,
+                            },
+                          },
+                          required: ['answers'],
+                          additionalProperties: false,
+                        },
+                        servedModels: { type: 'array', items: { type: 'string' } },
+                        services: { type: 'array', items: { type: 'string' } },
+                      },
+                      required: ['results'],
+                      additionalProperties: false,
+                    },
                   },
                   required: ['capability', 'testSet', 'evaluators', 'provenance'],
                   additionalProperties: false,

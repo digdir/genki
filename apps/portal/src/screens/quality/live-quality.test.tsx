@@ -373,6 +373,81 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it('shows what a running run is doing: the cases running now, the time per case and the time left', async () => {
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-pågår',
+          service: 'rapportassistenten',
+          status: 'running',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: null,
+          score: null,
+          passed: 1,
+          total: 3,
+          finished: 1,
+          current: [{ case: 'tc-2', startedAt: '2026-11-11T09:01:00Z' }],
+          secondsPerCase: 42,
+          endsAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+          resumed: 1,
+          cost: 0,
+          cases: [],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history as HTMLElement).findAllByRole('row'))[1] as HTMLElement;
+
+    expect(within(row).getByText('Kjører')).toBeTruthy();
+    expect(within(row).getByText('Kjører nå: tc-2')).toBeTruthy();
+    expect(within(row).getByText('Ca. 42 s per testtilfelle')).toBeTruthy();
+    expect(within(row).getByText('Ca. 10 min igjen')).toBeTruthy();
+    expect(within(row).getByText('Tatt opp igjen etter omstart')).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('links each finished case of a run to its timeline', async () => {
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-ferdig',
+          service: 'rapportassistenten',
+          status: 'completed',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: '2026-11-11T09:20:00Z',
+          score: 1,
+          passed: 1,
+          total: 1,
+          cost: 0,
+          cases: [
+            {
+              caseId: 'tc-1',
+              input: 'Hvor mange tilsyn hadde vi i 2025?',
+              expected: 'Oppgir tallet for 2025.',
+              output: 'Vi hadde 41 tilsyn i 2025.',
+              pass: true,
+              task: 'task-tc-1',
+            },
+          ],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history as HTMLElement).findAllByRole('row'))[1] as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const detail = await screen.findByRole('region', { name: 'Resultat per testtilfelle' });
+
+    const link = await within(detail).findByRole('link', {
+      name: 'Se tidslinjen for testtilfellet tc-1',
+    });
+    expect(link.getAttribute('href')).toBe('#/log/task-tc-1');
+    expectAccessible();
+  });
+
   it('closes the question about marked test cases when every mark is taken off', async () => {
     const { writes } = await openLive();
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

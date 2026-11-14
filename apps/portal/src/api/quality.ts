@@ -53,6 +53,13 @@ export interface EvalRun {
   total?: number | null;
   finished?: number;
   queuePlace?: number;
+  /** The cases running now and when each started. */
+  current?: { case: string; startedAt: string }[];
+  secondsPerCase?: number;
+  /** When the run should be done at the pace it keeps. */
+  endsAt?: string;
+  /** How many times the run was taken up again after a restart. */
+  resumed?: number;
   cost?: number | null;
   metrics?: Record<string, MetricSummary>;
   incomplete?: {
@@ -131,6 +138,7 @@ export interface EvalCaseResult {
   pass: boolean;
   reason?: string;
   judges?: CaseJudgement[];
+  task?: string;
 }
 
 export type RunResidency = 'norway' | 'eu' | 'global';

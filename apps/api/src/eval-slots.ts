@@ -24,11 +24,24 @@ export const evalSlotLimitsFromEnv = (
   };
 };
 
+export const defaultShutdownGraceMs = 100_000;
+
+export const shutdownGraceFromEnv = (env: Record<string, string | undefined>) =>
+  positive(env.SHUTDOWN_GRACE_MS) ?? defaultShutdownGraceMs;
+
 interface Waiter {
   run: string;
   tenant: string;
   seq: number;
   grant: (release: () => void) => void;
+  refuse: (error: Error) => void;
+}
+
+export class SlotsDraining extends Error {
+  constructor() {
+    super('the instance is stopping and starts no new case');
+    this.name = 'SlotsDraining';
+  }
 }
 
 export type QueueWatch = (place: number | undefined) => void;
@@ -44,6 +57,9 @@ export const evalSlots = (wanted: Partial<EvalSlotLimits> = {}) => {
 
   let active = 0;
   let seq = 0;
+  let draining = false;
+  const work = new Set<Promise<unknown>>();
+  const idle: (() => void)[] = [];
   let queue: Waiter[] = [];
   const byTenant = new Map<string, number>();
   const byRun = new Map<string, number>();
@@ -94,6 +110,7 @@ export const evalSlots = (wanted: Partial<EvalSlotLimits> = {}) => {
         bump(byTenant, next.tenant, -1);
         bump(byRun, next.run, -1);
         dispatch();
+        if (active === 0) for (const done of idle.splice(0)) done();
       });
     }
     notify();
@@ -103,8 +120,9 @@ export const evalSlots = (wanted: Partial<EvalSlotLimits> = {}) => {
     if (watch) watchers.set(run, watch);
     return {
       acquire: () =>
-        new Promise<() => void>((resolve) => {
-          queue.push({ run, tenant, seq: ++seq, grant: resolve });
+        new Promise<() => void>((resolve, reject) => {
+          if (draining) return reject(new SlotsDraining());
+          queue.push({ run, tenant, seq: ++seq, grant: resolve, refuse: reject });
           dispatch();
         }),
       end: () => {
@@ -115,7 +133,30 @@ export const evalSlots = (wanted: Partial<EvalSlotLimits> = {}) => {
     };
   };
 
-  return { limits, session, placeOf, inFlight: () => active };
+  const track = (done: Promise<unknown>) => {
+    const settled = done.catch(() => undefined).finally(() => work.delete(settled));
+    work.add(settled);
+  };
+
+  const drain = async () => {
+    draining = true;
+    const refused = queue;
+    queue = [];
+    for (const w of refused) w.refuse(new SlotsDraining());
+    notify();
+    while (work.size > 0) await Promise.all(work);
+    if (active > 0) await new Promise<void>((done) => idle.push(done));
+  };
+
+  return {
+    limits,
+    session,
+    placeOf,
+    inFlight: () => active,
+    track,
+    drain,
+    draining: () => draining,
+  };
 };
 
 export type EvalSlots = ReturnType<typeof evalSlots>;

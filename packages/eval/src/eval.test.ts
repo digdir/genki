@@ -1768,9 +1768,73 @@ describe('platform.eval.run', () => {
     expect(
       events
         .filter((e) => e.type === 'kernel.notice')
-        .map((e) => (e.data as { done: number }).done),
-    ).toEqual([1, 2]);
+        .map((e) => e.data as { kind: string; done?: number; case?: string })
+        .map((n) => (n.kind === 'eval.case' ? n.case : n.done)),
+    ).toEqual(['a', 1, 'b', 2]);
     expect((await kernel.task(kari, run.task)).status).toBe('completed');
+  });
+
+  it('runs only the cases an earlier try of the run did not finish, and keeps what that try found and used', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map(evaluators.map((e) => [e.id, e])),
+      meterAnswers: () => ({ inputTokens: 1, outputTokens: 1, costMicroNok: 1 }),
+    });
+    const kernel = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+    const data = {
+      capability: 'answer',
+      testSet: setOf(),
+      evaluators: ['contract', 'retrieval'],
+      provenance: { commit: 'abc', data: 'd1' },
+    };
+    const whole = await kernel.invoke(kari, 'eval', { data });
+    const [first] = await whole.result;
+    const before = first?.body.kind === 'json' ? (first.body.json as EvalRun) : undefined;
+    const kept = before?.results.filter((r) => r.case === 'a') ?? [];
+    const used = { inputTokens: 100, outputTokens: 50, costMicroNok: 70 };
+
+    const again = await kernel.invoke(kari, 'eval', {
+      data: {
+        ...data,
+        prior: {
+          results: kept,
+          usage: { answers: used },
+          servedModels: before?.provenance.servedModels,
+          services: before?.provenance.services,
+        },
+      },
+    });
+    const events: Event[] = [];
+    for await (const e of again.events) events.push(e);
+    const [part] = await again.result;
+    const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
+
+    expect(
+      events
+        .filter((e) => e.type === 'kernel.notice')
+        .map((e) => e.data as { kind: string; case?: string; done?: number })
+        .map((n) => (n.kind === 'eval.case' ? n.case : n.done)),
+    ).toEqual(['b', 2]);
+    expect(result?.results.map((r) => r.case)).toEqual(['a', 'b']);
+    expect(result?.results[0]?.task).toBe(kept[0]?.task);
+    expect(result?.metrics['answer-pattern']?.mean).toBe(0.5);
+    expect(result?.usage?.answers).toEqual({
+      inputTokens: 101,
+      outputTokens: 51,
+      costMicroNok: 71,
+    });
   });
 
   it('stops an eval run before the next case once the monthly token quota is used up', async () => {
@@ -1875,8 +1939,14 @@ describe('platform.eval.run', () => {
     const notices = events
       .filter((e) => e.type === 'kernel.notice')
       .map((e) => e.data as { kind: string; pending?: number; until?: string });
-    expect(notices.map((n) => n.kind)).toEqual(['eval.progress', 'eval.progress', 'eval.waiting']);
-    expect(notices[2]).toMatchObject({ pending: 2, until: expect.any(String) });
+    expect(notices.map((n) => n.kind)).toEqual([
+      'eval.case',
+      'eval.progress',
+      'eval.case',
+      'eval.progress',
+      'eval.waiting',
+    ]);
+    expect(notices[4]).toMatchObject({ pending: 2, until: expect.any(String) });
     const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
     expect(result?.metrics['judge.later']?.mean).toBe(1);
   });

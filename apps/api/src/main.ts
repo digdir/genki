@@ -40,7 +40,7 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { guardPdfParseLeaks } from '@genai/providers-documents';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
-import { evalSlotLimitsFromEnv } from './eval-slots.js';
+import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
@@ -758,3 +758,20 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
+
+// A deploy stops this instance: start no new test-set case, let the ones running finish, then go.
+const shutdownGraceMs = shutdownGraceFromEnv(process.env);
+let stopping = false;
+const stop = (signal: string) => {
+  if (stopping) process.exit(1);
+  stopping = true;
+  log('api stopping', { signal, casesInFlight: platform.evalSlots.inFlight(), shutdownGraceMs });
+  const deadline = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs).unref());
+  void Promise.race([platform.evalSlots.drain(), deadline]).finally(() => {
+    log('api stopped', { casesInFlight: platform.evalSlots.inFlight() });
+    server.close();
+    process.exit(0);
+  });
+};
+process.on('SIGTERM', () => stop('SIGTERM'));
+process.on('SIGINT', () => stop('SIGINT'));

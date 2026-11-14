@@ -2490,6 +2490,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
+    evalSlots: caseSlots,
     sync: resync,
     mount,
   };
