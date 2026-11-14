@@ -2620,30 +2620,18 @@ describe('asking, whatever genki has said of the service', () => {
 });
 
 describe('leaving a thread while its answer streams', () => {
-  it('shows the thread asked in, from genki, when the reader comes back to it', async () => {
-    const { api } = fakeApi();
-    let release: () => void = () => {};
-    const held = new Promise<void>((resolve) => (release = resolve));
+  // genki's answer, sent a piece at a time by the test; it stops only when aborted, as fetch does.
+  // genki stores the answer once it is done, so until then the thread holds the question alone.
+  const streaming = () => {
+    const { api, asked } = fakeApi();
     let made = false;
     api.loadThreads = vi.fn(async () => [
-      ...(made
-        ? [{ id: 't-new', title: 'Hva er nytt?', updatedAt: Date.now(), service: 'ka' }]
-        : []),
-      { id: 't-old', title: 'En gammel tråd', updatedAt: Date.now(), service: 'ka' },
+      ...(made ? [{ id: 't-new', title: 'Hva er nytt?', updatedAt: 2, service: 'ka' }] : []),
+      { id: 't-old', title: 'En gammel tråd', updatedAt: 1, service: 'ka' },
     ]);
     api.loadThread = vi.fn(async (id: string) =>
       id === 't-new'
-        ? {
-            title: 'Hva er nytt?',
-            turns: [
-              {
-                id: 'n1',
-                question: 'Hva er nytt?',
-                askedAt: 1,
-                answer: { text: 'Det nye svaret.', status: 'complete' as const, created: 2 },
-              },
-            ],
-          }
+        ? { title: 'Hva er nytt?', turns: [{ id: 'n1', question: 'Hva er nytt?', askedAt: 1 }] }
         : {
             title: 'En gammel tråd',
             turns: [
@@ -2656,86 +2644,290 @@ describe('leaving a thread while its answer streams', () => {
             ],
           },
     );
-    api.ask = async function* (params) {
+    const streams: {
+      params: AskParams;
+      send: (...events: (StreamEvent | Error)[]) => Promise<void>;
+    }[] = [];
+    api.ask = (params) => {
+      asked.push(params);
       made = true;
-      // genki says the new thread twice: the assembly's POST, then the stream itself.
-      yield { type: 'conversation', conversationId: 't-new' };
-      yield { type: 'conversation', conversationId: 't-new' };
-      // The answer is on its way when the reader leaves; leaving aborts it, as fetch does.
-      await new Promise<void>((resolve, reject) => {
-        void held.then(resolve);
-        params.signal.addEventListener('abort', () =>
-          reject(new DOMException('aborted', 'AbortError')),
-        );
+      const queue: (StreamEvent | Error)[] = [];
+      let wake = () => {};
+      streams.push({
+        params,
+        // Every event is read, and what it changes drawn, before the test goes on.
+        send: (...events) =>
+          act(async () => {
+            queue.push(...events);
+            wake();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }),
       });
-      yield { type: 'text', text: 'Det nye svaret.' };
+      return (async function* (): AsyncGenerator<StreamEvent, void> {
+        for (;;) {
+          const next = queue.shift();
+          if (next instanceof Error) throw next;
+          if (next) {
+            yield next;
+            if (next.type === 'done') return;
+            continue;
+          }
+          await new Promise<void>((resolve, reject) => {
+            const stop = () => reject(new DOMException('aborted', 'AbortError'));
+            if (params.signal.aborted) stop();
+            params.signal.addEventListener('abort', stop);
+            wake = resolve;
+          });
+        }
+      })();
     };
+    return { api, asked, streams };
+  };
+  const named = { type: 'conversation', conversationId: 't-new' } as const;
+  const done = (text: string): StreamEvent => ({
+    type: 'done',
+    answer: { id: 'a1', text, sources: [], citations: [], noAnswer: false },
+  });
+  const open = async (name: RegExp | string) => {
+    const link = await screen.findByRole('link', { name });
+    await act(async () => {
+      fireEvent.click(link);
+    });
+  };
+  const answerText = () =>
+    [...document.querySelectorAll('.uib-answer-text')].map((text) => text.textContent).join(' ');
+  const region = () =>
+    document.querySelector('.uib-conversation > [aria-live="polite"]')?.textContent;
+
+  it('keeps reading an answer while the reader is in another thread, and shows it as far as it has come on the way back, not the thread genki has stored without it', async () => {
+    const { api, streams } = streaming();
     draw(state('without-filter').layout, api, true);
     await send('Hva er nytt?');
-    await act(async () => {
-      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
-    });
+    const [stream] = streams;
+    // genki names the new thread twice: the assembly's POST, then the stream itself.
+    await stream?.send(named, named, { type: 'text', text: 'Det nye ' });
+    await waitFor(() => expect(answerText()).toContain('Det nye'));
+    await open(/En gammel tråd/);
     expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(await screen.findByRole('link', { name: /Hva er nytt\?/ }));
-    });
-    expect(await screen.findByText('Det nye svaret.')).toBeTruthy();
+    await stream?.send({ type: 'text', text: 'svaret kom' });
+    expect(answerText()).not.toContain('svaret kom');
+    await open(/Hva er nytt\?/);
+    await waitFor(() => expect(answerText()).toContain('Det nye svaret kom'));
     expect(screen.queryByText('Det gamle svaret.')).toBeNull();
     expect(screen.queryByText('Hva var gammelt?')).toBeNull();
-    release();
+    expect(stream?.params.signal.aborted).toBe(false);
+    await stream?.send({ type: 'text', text: ' fram.' }, done('Det nye svaret kom fram.'));
+    await waitFor(() => expect(answerText()).toBe('Det nye svaret kom fram.'));
+    expect(screen.getByRole('button', { name: 'Send spørsmålet' })).toBeTruthy();
   });
 
-  it('leaves no «Henter svar.» in the live region when the reader comes back before genki has stored the answer', async () => {
-    const { api } = fakeApi();
-    let made = false;
-    api.loadThreads = vi.fn(async () => [
-      ...(made
-        ? [{ id: 't-new', title: 'Hva er nytt?', updatedAt: Date.now(), service: 'ka' }]
-        : []),
-      { id: 't-old', title: 'En gammel tråd', updatedAt: Date.now(), service: 'ka' },
-    ]);
-    api.loadThread = vi.fn(async (id: string) =>
-      id === 't-new'
-        ? // genki is still writing the answer: the thread holds the question alone.
-          { title: 'Hva er nytt?', turns: [{ id: 'n1', question: 'Hva er nytt?', askedAt: 1 }] }
-        : {
-            title: 'En gammel tråd',
-            turns: [
-              {
-                id: 'o1',
-                question: 'Hva var gammelt?',
-                askedAt: 1,
-                answer: { text: 'Det gamle svaret.', status: 'complete' as const, created: 2 },
-              },
-            ],
-          },
+  it('keeps an answer asked while genki reads the thread, after the turns genki has stored', async () => {
+    const { api, asked, streams } = streaming();
+    const stored = api.loadThread;
+    let read = () => {};
+    api.loadThread = vi.fn(
+      (id: string) =>
+        new Promise<Awaited<ReturnType<typeof stored>>>((resolve) => {
+          read = () => resolve(stored(id));
+        }),
     );
-    api.ask = async function* (params) {
-      made = true;
-      yield { type: 'conversation', conversationId: 't-new' };
-      // Leaving aborts the answer on its way, as fetch does.
-      await new Promise<void>((_, reject) =>
-        params.signal.addEventListener('abort', () =>
-          reject(new DOMException('aborted', 'AbortError')),
-        ),
-      );
-    };
+    history.replaceState(null, '', '/?t=t-old');
     draw(state('without-filter').layout, api, true);
-    const region = () =>
-      document.querySelector('.uib-conversation > [aria-live="polite"]')?.textContent;
     await send('Hva er nytt?');
-    await waitFor(() => expect(region()).toBe('Henter svar.'));
+    expect(asked[0]?.conversationId).toBe('t-old');
+    await streams[0]?.send({ type: 'text', text: 'Det nye ' });
+    await act(async () => read());
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await streams[0]?.send({ type: 'text', text: 'svaret.' }, done('Det nye svaret.'));
+    await waitFor(() => expect(answerText()).toBe('Det gamle svaret. Det nye svaret.'));
+  });
+
+  it('shows an answer that finished while the reader was in another thread, though genki has not stored it yet', async () => {
+    const { api, streams } = streaming();
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    const [stream] = streams;
+    await stream?.send(named);
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await stream?.send({ type: 'text', text: 'Det nye svaret.' }, done('Det nye svaret.'));
+    expect(screen.getByText('Det gamle svaret.')).toBeTruthy();
+    await open(/Hva er nytt\?/);
+    await waitFor(() => expect(answerText()).toBe('Det nye svaret.'));
+    expect(screen.queryByText('Det gamle svaret.')).toBeNull();
+  });
+
+  it('shows the failure of an answer that failed while the reader was in another thread, as it would have shown it in place', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { api, streams } = streaming();
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    const [stream] = streams;
+    await stream?.send(named, { type: 'text', text: 'Det nye ' });
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await stream?.send(new HttpError(503, '503 Service Unavailable'));
+    expect(screen.queryByRole('button', { name: 'Prøv igjen' })).toBeNull();
+    await open(/Hva er nytt\?/);
+    expect(await screen.findByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('Det gamle svaret.')).toBeNull();
+    quiet.mockRestore();
+  });
+
+  it('lets an answer go on when the reader starts a new thread and asks there, and stops only the answer on screen', async () => {
+    const { api, asked, streams } = streaming();
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    await streams[0]?.send(named);
+    await open('Ny tråd');
+    await send('Hva er annet?');
+    await waitFor(() => expect(asked).toHaveLength(2));
+    expect(asked[1]?.conversationId).toBeUndefined();
     await act(async () => {
-      fireEvent.click(await screen.findByRole('link', { name: /En gammel tråd/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Avbryt genereringen' }));
     });
+    expect(streams[1]?.params.signal.aborted).toBe(true);
+    expect(streams[0]?.params.signal.aborted).toBe(false);
+    await streams[0]?.send({ type: 'text', text: 'Det nye svaret.' }, done('Det nye svaret.'));
+    await open(/Hva er nytt\?/);
+    await waitFor(() => expect(answerText()).toBe('Det nye svaret.'));
+  });
+
+  it('starts a new thread on «Ny tråd» before genki has named the thread of the answer on screen, and keeps that answer for its thread', async () => {
+    const { api, streams } = streaming();
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    await waitFor(() => expect(answerText()).toBe(''));
+    expect(screen.getByText('Hva er nytt?', { selector: 'p' })).toBeTruthy();
+    await open('Ny tråd');
+    await waitFor(() => expect(screen.queryByText('Hva er nytt?', { selector: 'p' })).toBeNull());
+    await streams[0]?.send(
+      named,
+      { type: 'text', text: 'Det nye svaret.' },
+      done('Det nye svaret.'),
+    );
+    // Named while the reader was elsewhere: the address and the screen stay on the new thread.
+    expect(location.search).toBe('');
+    expect(screen.queryByText('Hva er nytt?', { selector: 'p' })).toBeNull();
+    await open(/Hva er nytt\?/);
+    await waitFor(() => expect(answerText()).toBe('Det nye svaret.'));
+  });
+
+  it('says an answer is coming when the reader comes back to it on its way, and nothing of it from another thread', async () => {
+    const { api, streams } = streaming();
+    draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    const [stream] = streams;
+    await stream?.send(named);
+    await waitFor(() => expect(region()).toBe('Henter svar.'));
+    await open(/En gammel tråd/);
     expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
     expect(region()).toBe('');
+    await stream?.send({ type: 'text', text: 'Det nye ' });
+    expect(region()).toBe('');
+    await open(/Hva er nytt\?/);
+    await waitFor(() => expect(region()).toBe('Henter svar.'));
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await stream?.send({ type: 'text', text: 'svaret.' }, done('Det nye svaret.'));
+    expect(region()).toBe('');
+    // Back in a thread whose answer finished elsewhere, as in a thread read back.
+    await open(/Hva er nytt\?/);
+    await waitFor(() => expect(answerText()).toBe('Det nye svaret.'));
+    expect(region()).toBe('');
+  });
+
+  it('asks a question waiting to go in no other thread once the reader opens one, and keeps it in the field', async () => {
+    const { api, asked } = streaming();
+    let answerModels: (found: ModelRow[]) => void = () => {};
+    api.loadModels = vi.fn(
+      () =>
+        new Promise<ModelRow[]>((resolve) => {
+          answerModels = resolve;
+        }),
+    );
+    draw(state('without-filter').layout, api, true);
+    const field = await typeInField('Hva er nytt?');
+    await pressSend();
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    await act(async () => answerModels(rows));
+    await act(async () => {});
+    expect(asked).toHaveLength(0);
+    expect(field.value).toBe('Hva er nytt?');
+  });
+
+  it('stops every answer still coming when it goes, those of threads the reader left too', async () => {
+    const { api, streams } = streaming();
+    const { unmount } = draw(state('without-filter').layout, api, true);
+    await send('Hva er nytt?');
+    await streams[0]?.send(named);
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    unmount();
+    expect(streams[0]?.params.signal.aborted).toBe(true);
+  });
+
+  it('stops every answer still coming on «Logg ut»', async () => {
+    const { api, streams } = streaming();
+    render(
+      <Assistant
+        api={api}
+        layout={state('without-filter').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{
+          assistantName: 'KA',
+          signedInAs: 'Testidentitet: test',
+          signOut: { href: '/auth/logout' },
+        }}
+        threadInUrl
+      />,
+    );
+    await send('Hva er nytt?');
+    await streams[0]?.send(named);
+    await open(/En gammel tråd/);
+    await send('Hva var gammelt igjen?');
+    await waitFor(() => expect(streams).toHaveLength(2));
+    const signOut = await screen.findByRole('link', { name: 'Logg ut' });
+    signOut.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(signOut);
+    expect(streams.map((stream) => stream.params.signal.aborted)).toEqual([true, true]);
+  });
+
+  it('stops the answer still coming in a thread the reader deletes from another', async () => {
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    const { api, streams } = streaming();
+    render(
+      <Assistant
+        api={api}
+        layout={state('without-filter').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        onDelete={async () => {}}
+        threadInUrl
+      />,
+    );
+    await send('Hva er nytt?');
+    await streams[0]?.send(named);
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    const menu = await screen.findByRole('button', { name: 'Flere valg for Hva er nytt?' });
+    fireEvent.click(menu);
+    const row = menu.closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Slett', hidden: true }));
     await act(async () => {
-      fireEvent.click(await screen.findByRole('link', { name: /Hva er nytt\?/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Slett tråden' }));
     });
-    await waitFor(() => expect(screen.queryByText('Det gamle svaret.')).toBeNull());
-    expect(await screen.findByText('Hva er nytt?', { selector: 'p' })).toBeTruthy();
-    await waitFor(() => expect(region()).toBe(''));
+    expect(streams[0]?.params.signal.aborted).toBe(true);
+    expect(screen.getByText('Det gamle svaret.')).toBeTruthy();
   });
 });
 
