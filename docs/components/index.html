@@ -31,6 +31,15 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>14 November 2026:</strong> A host can build on a draft. The
+            <a href="builder.html">builder</a> reads a draft's facts from its definition and has its
+            own entry, <code>@genai/ui-blocks/builder</code>. The
+            <a href="ui-assembly.html">UI assembly</a> and the <a href="shell.html">Shell</a> take
+            <code>frameWidth</code> to draw in a host's preview without its own
+            <code>&lt;main&gt;</code> or <code>h1</code>. <a href="chat.html">Chat</a>'s send button
+            is <code>aria-disabled</code> rather than disabled.
+          </li>
+          <li>
             <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a> always
             draws years as periods and many chosen values as one chip: KA's trials «year-ranges» and
             «compact-filter-chips» are now the standard. The <a href="filter.html">Filter</a>'s

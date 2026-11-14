@@ -185,6 +185,13 @@
                 til skrivefeltet».
               </li>
               <li>
+                <code>frameWidth</code>: drawn in a host's preview of that width, as a builder's try
+                view draws it. The shell lays out for that width, not the window's, leaves the
+                page's <code>&lt;main&gt;</code> and skip links to the host, and titles the main
+                column with an <code>h2</code>. Where a page has no <code>matchMedia</code>, no
+                media query matches.
+              </li>
+              <li>
                 <code>gap</code> and <code>rail</code>: 32 and 67 by default, 12 and 76 for cards.
                 The sums use them, so they must match <code>--genai-shell-gap</code> and the rail's
                 button and padding. In the cards frame the breakpoints count the margins and each

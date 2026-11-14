@@ -869,3 +869,30 @@ describe('the words', () => {
     expect(sharedNb).not.toHaveProperty('shell');
   });
 });
+
+describe('in a host’s preview of a fixed width', () => {
+  it('lays out for the frame’s width, not the window’s', () => {
+    const { container } = draw({ frameWidth: 1280 }, 900);
+    const shell = container.querySelector('.uib-shell');
+    expect(shell?.hasAttribute('data-drawer')).toBe(false);
+    expect(shell?.hasAttribute('data-compact')).toBe(false);
+    cleanup();
+    const { container: narrow } = draw({ frameWidth: 700 }, 1920);
+    expect(narrow.querySelector('.uib-shell')?.hasAttribute('data-compact')).toBe(true);
+  });
+
+  it('leaves the page’s main landmark and skip links to the host', () => {
+    draw({ frameWidth: 1280 });
+    expect(screen.queryByRole('main')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Hopp til hovedinnhold' })).toBeNull();
+    cleanup();
+    draw();
+    expect(screen.getByRole('main')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Hopp til hovedinnhold' })).toBeTruthy();
+  });
+
+  it('titles the main column below the host’s own `h1`', () => {
+    draw({ frameWidth: 1280, frame: 'cards', mainTitle: 'Ny tråd' });
+    expect(screen.getByRole('heading', { level: 2, name: 'Ny tråd' })).toBeTruthy();
+  });
+});
