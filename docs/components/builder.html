@@ -378,12 +378,31 @@
             <ul>
               <li>
                 <code>AssistantLayout</code> is
-                <code>{ version: 1, template?, look?, zones }</code>, with each zone a list of
-                <code>{ block, settings? }</code>. <code>defaultLayout</code> has every built block
-                in its default zone. <code>normalised</code> sorts each zone into the catalogue's
-                order and drops what the catalogue does not hold.
-                <code>isAssistantLayout</code> checks the shape only, and that a look, when there is
-                one, is a known one.
+                <code>{ version: 1, template?, look?, zones, profile? }</code>, with each zone a
+                list of <code>{ block, settings? }</code>. <code>defaultLayout</code> has every
+                built block in its default zone. <code>normalised</code> sorts each zone into the
+                catalogue's order and drops what the catalogue does not hold.
+                <code>isAssistantLayout</code> checks the shape only, that a look, when there is
+                one, is a known one, and that a profile is <code>isProfileData</code>.
+              </li>
+              <li>
+                <code>profile</code> is the layout's words as data, <code>ProfileData</code>, so a
+                service made in the builder looks like itself without host code:
+                <code>assistantName</code>, <code>suggestions</code>, <code>followUps</code>,
+                <code>experiments</code> (<code>id</code>, <code>title</code>,
+                <code>description</code>, <code>href</code>, <code>hrefLabel</code>),
+                <code>settingsNote</code>, and <code>corpora</code>, per collection by its key:
+                <code>label</code>, <code>description</code>, <code>fields</code> (each
+                <code>id</code>, <code>label</code>, <code>heading</code>, <code>kind</code> and
+                <code>years</code>), <code>typeField</code>, <code>typePlurals</code>,
+                <code>documentLinks</code> (an https address per kind of number,
+                <code>digits</code>, <code>uuid</code> or <code>any</code>, with
+                <code>{id}</code> where the number goes) and <code>about</code>. It holds no
+                functions: the reader, the profile menu, the sign-out, the family of services and
+                <code>documentUrl</code> stay in the host's code, and a field's integers are the
+                dataset's. <code>withProfile</code> sets or clears it; a change of template, look or
+                blocks keeps it. The assembly fills it in with the host's own profile, which wins
+                where it says something (<a href="ui-assembly.html">UI assembly</a>).
               </li>
               <li>
                 <code>look</code> is <code>current</code> or <code>next</code>. <code>lookOf</code>
@@ -426,6 +445,18 @@
                 <code>placed-twice</code>, <code>not-built</code>, <code>missing-partner</code> and
                 <code>needs-unmet</code>. A block marked <code>both</code> in each of its zones once
                 is not placed twice. An option left at its default asks nothing.
+              </li>
+              <li>
+                For the profile, each with its <code>path</code>, such as
+                <code>profile.corpora.kudos.fields[0].label</code>: <code>profile-too-large</code>,
+                over 32 KiB as JSON in UTF-8; <code>text-too-long</code>, past
+                <code>profileLimits</code> (80 for a name, label, heading or title, 200 for a
+                suggestion, 500 for a description, 1,000 for the note); <code>too-many</code>, more
+                than 6 suggestions or follow-ups, 20 collections, 30 fields, 200 plurals, 10
+                <code>about</code> fields or 10 experiments; <code>link-not-https</code>, a link or
+                link template that is not an https address whose host comes before
+                <code>{id}</code> and names no user (<code>isHttpsLink</code>); and
+                <code>unknown-kind</code>, a field kind the assembly does not know.
               </li>
               <li>
                 <code>settingsSchema</code> gives a block's options as a JSON Schema (2020-12), with
@@ -489,6 +520,11 @@
               <li>
                 Where a layout is stored. V2-0006 proposes a frontend definition in genki; until
                 then the builder keeps it in the browser.
+              </li>
+              <li>
+                The profile's texts are in one language. A service's example questions, in bokmål
+                and English, could fill <code>suggestions</code> once
+                <code>/v1/models</code> carries them; it does not yet.
               </li>
               <li>
                 The names of the builder's two views, «Oppsett» and «Prøv assistenten», are the
