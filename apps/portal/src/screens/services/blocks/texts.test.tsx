@@ -224,10 +224,8 @@ describe('the try view', () => {
       mode="try"
       address="byggesak.genki.no"
       run={{ api: client.api, tenant: 'eksempel', source: { definition } }}
-      conversation={0}
       onMode={() => undefined}
       onRemove={() => undefined}
-      onReload={() => undefined}
     />
   );
 

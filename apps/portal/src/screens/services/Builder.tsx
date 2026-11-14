@@ -101,6 +101,7 @@ import { describeProblem, publishDraft, type PublishProblem } from '../service/p
 import { VersionsSection } from '../service/VersionsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { InterfaceTab } from './blocks/InterfaceTab';
+import { TryViewKeeper } from './blocks/TryViewKeeper';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -1269,7 +1270,7 @@ export const Builder = ({
 
   const content = <div className={`service-body service-${section}`}>{body}</div>;
 
-  return (
+  const page = (
     <ServicePageContext.Provider value>
       <div className="service-page">
         <ServiceHeader
@@ -1554,4 +1555,6 @@ export const Builder = ({
       </div>
     </ServicePageContext.Provider>
   );
+  // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
+  return <TryViewKeeper>{page}</TryViewKeeper>;
 };

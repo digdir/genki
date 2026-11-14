@@ -87,8 +87,9 @@ export const TryView = ({
     const timer = setTimeout(() => setSettled(corpora), 400);
     return () => clearTimeout(timer);
   }, [corpora]);
-  // `settled` makes it another api for the assistant.
-  const api = useMemo(() => ({ ...entry.api }), [entry, settled]);
+  // `settled`, or a draft changed while the try view was out of sight, makes it another api.
+  const draft = run.source;
+  const api = useMemo(() => ({ ...entry.api }), [entry, settled, draft?.definition, draft?.files]);
   useEffect(() => {
     entry.report = onProblem ?? (() => undefined);
     return () => {

@@ -71,7 +71,6 @@ export const useBlocksState = (
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
-  const [conversation, setConversation] = useState(0);
   const offered = (id: (typeof blockIds)[number]) => offerOf(id, facts).offered;
   // A block the draft can no longer back is held, and comes back where it stood once it can.
   const offeredKey = facts ? blockIds.filter(offered).join(',') : undefined;
@@ -89,7 +88,6 @@ export const useBlocksState = (
     tab,
     width,
     height,
-    conversation,
     setMode,
     setTab,
     setWidth,
@@ -111,7 +109,6 @@ export const useBlocksState = (
     },
     // The words are the service's, not a template's: the template stays chosen.
     setProfile: (profile: ProfileData | undefined) => setState((s) => withProfile(s, profile)),
-    restart: () => setConversation((n) => n + 1),
   };
 };
 
@@ -239,10 +236,8 @@ export const BlocksStep = ({
       mode={state.mode}
       address={address}
       run={run}
-      conversation={state.conversation}
       onMode={state.setMode}
       onRemove={(id) => state.change(turnOff(state.state, id))}
-      onReload={state.restart}
       onFullscreen={onFullscreen}
     />
   );
@@ -298,10 +293,8 @@ export const BlocksFullscreen = ({
         mode={state.mode}
         address={address}
         run={run}
-        conversation={state.conversation}
         onMode={state.setMode}
         onRemove={(id) => state.change(turnOff(state.state, id))}
-        onReload={state.restart}
         onExitFullscreen={onExit}
         height={state.height}
       />

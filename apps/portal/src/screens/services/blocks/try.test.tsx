@@ -28,27 +28,32 @@ afterEach(cleanup);
 
 const noop = () => undefined;
 
+// The draft the try view runs, or `null` for nothing to run it on.
 const preview = (
   client: ReturnType<typeof fakeClient>,
   layout: AssistantLayout,
-  conversation = 0,
+  draft: Record<string, unknown> | null = definition,
 ) => (
   <ServicePreview
     layout={layout}
     mode="try"
     address="byggesak.genki.no"
-    run={{ api: client.api, tenant: 'eksempel', source: { definition } }}
-    conversation={conversation}
+    run={draft ? { api: client.api, tenant: 'eksempel', source: { definition: draft } } : undefined}
     onMode={noop}
     onRemove={noop}
-    onReload={noop}
   />
 );
 
 const tryOut = (layout: AssistantLayout, text = 'Ja, en garasje over 50 m² trenger søknad.') => {
   const client = fakeClient(answered(text));
-  const view = render(preview(client, layout));
-  return { ...client, restart: () => view.rerender(preview(client, layout, 1)) };
+  render(preview(client, layout));
+  return {
+    ...client,
+    restart: () =>
+      act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Start samtalen på nytt' }));
+      }),
+  };
 };
 
 const ask = async (question: string) => {
@@ -91,9 +96,21 @@ describe('the try view', () => {
     const { restart } = tryOut(fromTemplate('chat-only').layout);
     await ask('Trenger jeg søknad for en garasje?');
     await screen.findByText(answer);
-    restart();
+    await restart();
     await screen.findByRole('textbox', { name: /Spørsmål til Byggesaksveileder/ });
     expect(screen.queryByText(answer)).toBeNull();
+  });
+
+  it('keeps no assistant, not even out of sight, once there is nothing to run it on', async () => {
+    const client = fakeClient(answered('Ja.'));
+    const view = render(preview(client, fromTemplate('chat-only').layout));
+    await ask('Trenger jeg søknad for en garasje?');
+    const asked = () => screen.queryByText('Trenger jeg søknad for en garasje?', { selector: 'p' });
+    await waitFor(() => expect(asked()).toBeTruthy());
+    view.rerender(preview(client, fromTemplate('chat-only').layout, null));
+    // Text in an assistant kept out of sight would still be found here.
+    await waitFor(() => expect(asked()).toBeNull());
+    expect(document.querySelector('.uib-answer-text')).toBeNull();
   });
 
   it('says what to do when the layout has no Chat, and shows no example content', async () => {
@@ -151,7 +168,7 @@ describe('a draft the playground cannot run yet', () => {
 });
 
 describe('this visit’s threads', () => {
-  it('are kept when the try view is drawn again, as when the window turns narrow', async () => {
+  it('are kept when the try view goes and comes back, as when the reader leaves the service page', async () => {
     const client = fakeClient(answered('Ja.'));
     const threadsOnly = fromTemplate('approach-only').layout;
     const first = render(preview(client, threadsOnly));
@@ -301,7 +318,7 @@ describe('answers in more than one thread', () => {
     await release(held);
   });
 
-  it('keeps the question of an answer stopped by drawing the try view again, in its thread', async () => {
+  it('keeps the question of an answer stopped when the try view goes, in its thread', async () => {
     const first = gate();
     const client = runs({
       'Første spørsmål': [delta('Første '), first.shut, result('Første svar.'), finished],
@@ -316,6 +333,22 @@ describe('answers in more than one thread', () => {
     expect(await screen.findByText('Første spørsmål', { selector: 'p' })).toBeTruthy();
     expect(answerText().trim()).toBe('Første');
     expect(screen.queryByText('Tråden har ingen meldinger ennå')).toBeNull();
+  });
+
+  it('shows no failure from the draft of another service over a thread of this one', async () => {
+    const client = runs({
+      'Første spørsmål': [delta('Første '), failed],
+      'Andre spørsmål': [delta('Andre '), result('Andre svar.'), finished],
+    });
+    const view = render(preview(client, threadsAndChat));
+    await ask('Første spørsmål');
+    await screen.findByText(failure);
+    // A new service's id follows its name, so a rename makes it another draft, with new threads.
+    const renamed = { ...definition, metadata: { ...definition.metadata, id: 'byggesak-to' } };
+    view.rerender(preview(client, threadsAndChat, renamed));
+    await ask('Andre spørsmål');
+    await waitFor(() => expect(answerText()).toBe('Andre svar.'));
+    expect(screen.queryByText(failure)).toBeNull();
   });
 
   it('keeps the question of a failed answer, and why, in its thread when the reader comes back', async () => {
