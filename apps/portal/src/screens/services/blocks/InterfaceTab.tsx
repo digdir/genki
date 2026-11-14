@@ -5,6 +5,7 @@ import { BlocksFullscreen, BlocksStep, useBlocksState } from './BlocksStep';
 import { draftChannels } from './channels';
 import { useDatasetFilters } from './datasetFilters';
 import { keepStart, keptStart, type BlocksStart } from './layoutStore';
+import { collectionsOf } from './profileEdit';
 
 /**
  * The service page's «Grensesnitt» tab: the building blocks, the templates and the try view, for
@@ -36,7 +37,12 @@ export const InterfaceTab = ({
   onFullscreen: () => void;
   onExitFullscreen: () => void;
 }) => {
-  const datasetFilters = useDatasetFilters(api, datasetsOfDefinition(definition));
+  const datasets = useMemo(() => datasetsOfDefinition(definition), [definition]);
+  const datasetFilters = useDatasetFilters(api, datasets);
+  const collections = useMemo(
+    () => collectionsOf(datasets, (dataset) => datasetFilters[dataset]),
+    [datasets, datasetFilters],
+  );
   const facts = useMemo(
     () =>
       factsFromDefinition(definition, {
@@ -66,6 +72,7 @@ export const InterfaceTab = ({
     <BlocksStep
       state={blocks}
       narrow={narrow}
+      collections={collections}
       run={run}
       address={address}
       onFullscreen={onFullscreen}

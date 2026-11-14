@@ -313,3 +313,15 @@
 .blocks-transfer [role='status'] {
   margin: 0;
 }
+
+/* «Tekster»: a text and what goes with it, side by side where there is room. */
+.blocks-texts-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--ds-size-2);
+}
+
+.blocks-texts-row > .ds-field {
+  flex: 1 1 12rem;
+}
