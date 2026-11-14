@@ -7,6 +7,7 @@ import {
   type Translation,
 } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
+import { enBuilder, nbBuilder } from '@genai/ui-blocks/builder';
 import { build as enBuild } from './en/build';
 import { core as enCore } from './en/core';
 import { data as enData } from './en/data';
@@ -16,13 +17,15 @@ import { core } from './nb/core';
 import { data } from './nb/data';
 import { operate } from './nb/operate';
 
-export const nb = defineCatalogue({ ...core, ...build, ...data, ...operate });
+// The interface tab's block, option, template and reason words are the UI blocks catalogue's own.
+export const nb = defineCatalogue({ ...core, ...build, ...data, ...operate, builder: nbBuilder });
 
 export const en = {
   ...enCore,
   ...enBuild,
   ...enData,
   ...enOperate,
+  builder: enBuilder,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });

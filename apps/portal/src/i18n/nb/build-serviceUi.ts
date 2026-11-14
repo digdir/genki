@@ -6,6 +6,7 @@ export const serviceUi = {
     navLabel: 'Tjenesten',
     sectionOverview: 'Oversikt',
     sectionSetup: 'Oppsett',
+    sectionInterface: 'Grensesnitt',
     sectionTest: 'Test',
     sectionChannels: 'Kanaler og frontend',
     sectionSettings: 'Innstillinger',

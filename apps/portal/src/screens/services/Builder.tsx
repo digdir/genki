@@ -100,6 +100,7 @@ import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
+import { InterfaceTab } from './blocks/InterfaceTab';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -1170,6 +1171,21 @@ export const Builder = ({
             />
           }
           editor={setup(['start'])}
+        />
+      );
+    if (section === 'interface')
+      return (
+        <InterfaceTab
+          api={api}
+          tenant={tenant}
+          service={id}
+          definition={definition}
+          files={files}
+          narrow={narrow}
+          fullscreen={detail === 'preview'}
+          backHref={`#${servicePath(routeId, 'interface')}`}
+          onFullscreen={() => go('interface', '/preview')}
+          onExitFullscreen={() => go('interface')}
         />
       );
     if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
