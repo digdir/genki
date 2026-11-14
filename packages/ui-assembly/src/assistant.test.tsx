@@ -19,6 +19,7 @@ import {
   type AssistantLayout,
   type BuilderState,
   type ModelRow,
+  type ProfileData,
 } from '@genai/ui-blocks';
 import type { AnswerMarker, StreamEvent } from '@genai/client';
 import { InLocale } from '@genai/i18n/react';
@@ -3673,5 +3674,63 @@ describe('in a host’s preview', () => {
     draw(fromTemplate('knowledge-assistant').layout, fakeApi().api);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['KA']);
+  });
+});
+
+// A service made in the builder has no host code: its words come with its layout.
+describe('the profile a layout carries', () => {
+  const data: ProfileData = {
+    assistantName: 'Kunnskapsassistenten',
+    suggestions: ['Hva handler dokumentene i Kudos om?'],
+    settingsNote: 'Valgene huskes i denne nettleseren.',
+  };
+  const layout: AssistantLayout = { ...state('knowledge-assistant').layout, profile: data };
+
+  it('draws the layout’s name, suggestions and settings note when the host passes no profile', async () => {
+    render(<Assistant api={fakeApi().api} layout={layout} service="ka" tenant="digdir" />);
+    expect(
+      await screen.findByRole('textbox', { name: /Spørsmål til Kunnskapsassistenten/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Hva handler dokumentene i Kudos om?' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('link', { name: 'Innstillinger' }));
+    expect(await screen.findByText('Valgene huskes i denne nettleseren.')).toBeTruthy();
+  });
+
+  it('draws the host’s name over the layout’s, and the layout’s suggestions where the host gives none', async () => {
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+      />,
+    );
+    expect(await screen.findByRole('textbox', { name: /Spørsmål til KA/ })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: /Kunnskapsassistenten/ })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Hva handler dokumentene i Kudos om?' }),
+    ).toBeTruthy();
+  });
+
+  it('hands on the host’s own profile when the layout carries none, and both together when it does', async () => {
+    const family = (other: string) => other === 'other';
+    const host: AssistantProfile = { assistantName: 'KA', family };
+    // Made once: the hook reads a new api or layout as a new setup.
+    const own = { api: fakeApi().api, layout: state('knowledge-assistant').layout };
+    const carried = { api: fakeApi().api, layout };
+    const hostOnly = renderHook(() =>
+      useAssistant({ ...own, service: 'ka', tenant: 'digdir', profile: host }),
+    ).result;
+    const both = renderHook(() =>
+      useAssistant({ ...carried, service: 'ka', tenant: 'digdir', profile: host }),
+    ).result;
+    await waitFor(() => expect(hostOnly.current.facts).toBeDefined());
+    await waitFor(() => expect(both.current.facts).toBeDefined());
+    expect(hostOnly.current.profile).toBe(host);
+    expect(both.current.profile).toEqual({ ...data, assistantName: 'KA', family });
+    expect(both.current.assistantName).toBe('KA');
   });
 });
