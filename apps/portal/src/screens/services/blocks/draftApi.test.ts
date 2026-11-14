@@ -190,6 +190,136 @@ describe('the draft API for the try view', () => {
     expect(await draftApi.loadThreads()).toEqual([]);
   });
 
+  it('keeps a question stopped on its way in its thread, with the text that had come', async () => {
+    const stop = new AbortController();
+    const { draftApi } = draft({ definition }, () => [
+      { event: 'delta', setup: 'setup', text: 'Ja, ', channel: 'answer' },
+      new Promise<void>((resolve) => setTimeout(() => (stop.abort(), resolve()), 0)),
+      { event: 'delta', setup: 'setup', text: 'men', channel: 'answer' },
+      result('Ja, men'),
+    ]);
+    const failed = await ask(draftApi, 'Hei', { signal: stop.signal }).catch((e: unknown) => e);
+    expect((failed as Error).name).toBe('AbortError');
+    expect((await draftApi.loadThread('draft-1')).turns).toEqual([
+      {
+        id: 'draft-1-1',
+        question: 'Hei',
+        askedAt: now(),
+        answer: { text: 'Ja, ', status: 'aborted', created: now() },
+      },
+    ]);
+  });
+
+  it('keeps a question stopped after its answer came as stopped, as the reader saw it', async () => {
+    const stop = new AbortController();
+    const { draftApi } = draft({ definition }, () => [
+      { event: 'delta', setup: 'setup', text: 'Ja', channel: 'answer' },
+      result('Ja'),
+      new Promise<void>((resolve) => setTimeout(() => (stop.abort(), resolve()), 0)),
+      { event: 'done', quota: { usedPercent: 0, monthlyTokens: 0 } },
+    ]);
+    await ask(draftApi, 'Hei', { signal: stop.signal }).catch(() => undefined);
+    const [turn] = (await draftApi.loadThread('draft-1')).turns;
+    expect(turn?.answer).toEqual({ text: 'Ja', status: 'aborted', created: now() });
+  });
+
+  it('keeps a question whose answer failed on its way, with the answer’s text that stood and why it failed', async () => {
+    const { draftApi } = draft({ definition }, () => [
+      { event: 'delta', setup: 'setup', text: 'Tenker', channel: 'reasoning' },
+      { event: 'delta', setup: 'setup', text: 'Nei', channel: 'answer' },
+      { event: 'retract', setup: 'setup', reason: 'guardrail' },
+      { event: 'delta', setup: 'setup', text: 'Ja', channel: 'answer' },
+      { event: 'failed', setup: 'setup', problem: { status: 429, title: 'Kvoten er brukt opp' } },
+    ]);
+    await ask(draftApi, 'Hei').catch(() => undefined);
+    expect((await draftApi.loadThread('draft-1')).turns).toEqual([
+      {
+        id: 'draft-1-1',
+        question: 'Hei',
+        askedAt: now(),
+        answer: { text: 'Ja', status: 'failed', created: now(), failure: { kind: 'busy' } },
+      },
+    ]);
+  });
+
+  it('reads a copy of a thread’s turns, so one read before its answer ends stays as it was read', async () => {
+    const held = gate();
+    const { draftApi } = draft({ definition }, () => [
+      { event: 'delta', setup: 'setup', text: 'Ja', channel: 'answer' },
+      held.shut,
+      result('Ja'),
+    ]);
+    const asking = ask(draftApi, 'Hei');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const [read] = (await draftApi.loadThread('draft-1')).turns;
+    held.open();
+    await asking;
+    expect(read?.answer).toBeUndefined();
+    expect((await draftApi.loadThread('draft-1')).turns[0]?.answer?.status).toBe('complete');
+  });
+
+  it('keeps the question of an answer the reader stops reading, as stopped', async () => {
+    const { draftApi } = draft({ definition }, answered('Svar'));
+    const answering = draftApi.ask({
+      question: 'Hei',
+      model: 'byggesak__default',
+      steps: true,
+      signal: new AbortController().signal,
+    });
+    await answering.next();
+    await answering.return(undefined);
+    expect((await draftApi.loadThread('draft-1')).turns).toEqual([
+      {
+        id: 'draft-1-1',
+        question: 'Hei',
+        askedAt: now(),
+        answer: { text: '', status: 'aborted', created: now() },
+      },
+    ]);
+  });
+
+  it('reads a question asked again in its thread as its latest attempt, as genki’s threads read', async () => {
+    let fails = true;
+    const { draftApi } = draft({ definition }, () =>
+      fails
+        ? [{ event: 'delta', setup: 'setup', text: 'Ja', channel: 'answer' }, failed]
+        : answered('Svar')(),
+    );
+    await ask(draftApi, 'Hei  du').catch(() => undefined);
+    fails = false;
+    await ask(draftApi, ' Hei du ', { conversationId: 'draft-1' });
+    expect(
+      (await draftApi.loadThread('draft-1')).turns.map((t) => [t.question, t.answer?.status]),
+    ).toEqual([[' Hei du ', 'complete']]);
+  });
+
+  it('sends only answers that came as history, not one stopped or failed on its way', async () => {
+    const stop = new AbortController();
+    const { draftApi, requests } = draft({ definition }, (request) =>
+      'text' in request.input && request.input.text === 'Feiler'
+        ? [{ event: 'delta', setup: 'setup', text: 'Halvt', channel: 'answer' }, failed]
+        : 'text' in request.input && request.input.text === 'Stoppes'
+          ? [
+              { event: 'delta', setup: 'setup', text: 'Halvt', channel: 'answer' },
+              new Promise<void>((resolve) => setTimeout(() => (stop.abort(), resolve()), 0)),
+            ]
+          : answered('Svar')(),
+    );
+    await ask(draftApi, 'Feiler').catch(() => undefined);
+    await ask(draftApi, 'Stoppes', { conversationId: 'draft-1', signal: stop.signal }).catch(
+      () => undefined,
+    );
+    await ask(draftApi, 'Hei', { conversationId: 'draft-1' });
+    expect(
+      (await draftApi.loadThread('draft-1')).turns.map((t) => [t.question, t.answer?.status]),
+    ).toEqual([
+      ['Feiler', 'failed'],
+      ['Stoppes', 'aborted'],
+      ['Hei', 'complete'],
+    ]);
+    expect(requests[2]?.history).toBeUndefined();
+  });
+
   it('asks nothing and keeps no thread for a run the playground refuses', async () => {
     const { draftApi } = draft({ definition }, () => {
       throw new ApiError(422, {
@@ -260,11 +390,13 @@ describe('the draft API for the try view', () => {
     expect(reported).toEqual([]);
   });
 
-  it('fails a run that ends without an answer', async () => {
+  it('fails a run that ends without an answer, and keeps its question as failed', async () => {
     const { draftApi } = draft({ definition }, () => [
       { event: 'delta', setup: 'setup', text: 'Ja', channel: 'answer' },
     ]);
     await expect(ask(draftApi, 'Hei')).rejects.toThrow('without an answer');
+    const [turn] = (await draftApi.loadThread('draft-1')).turns;
+    expect(turn?.answer?.status).toBe('failed');
   });
 
   it('asks for the playground’s options again after a failed call', async () => {
