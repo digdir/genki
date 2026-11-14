@@ -1398,6 +1398,37 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
       expect(screen.getAllByRole('radio')).toHaveLength(3);
     });
 
+    it('promises under «Generelt», in the menu and over the page, only «Utseende», which the host keeps', async () => {
+      drawSettings();
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      expect(
+        within(settingsNav()).getByRole('button', { name: 'Generelt', description: 'Utseende' }),
+      ).toBeTruthy();
+      expect(document.querySelector('.uib-settings-page-lead')?.textContent).toBe(
+        'Hvordan tjenesten ser ut.',
+      );
+    });
+
+    it('promises nothing under «Generelt» for a host that keeps no colour scheme', async () => {
+      history.replaceState(null, '', '/#innstillinger');
+      render(
+        <Assistant
+          api={fakeApi().api}
+          layout={nextLayout}
+          service="ka"
+          tenant="digdir"
+          profile={settingsProfile}
+          storage={storage}
+          threadInUrl
+        />,
+      );
+      await screen.findByRole('heading', { level: 1, name: 'Generelt' });
+      const general = within(settingsNav()).getByRole('button', { name: 'Generelt' });
+      expect(general.hasAttribute('aria-describedby')).toBe(false);
+      expect(screen.getByText('Ingen valg her ennå.')).toBeTruthy();
+      expect(document.querySelector('.uib-settings-page-lead')).toBeNull();
+    });
+
     it('shows the reader from the sign-in on «Om deg», and says «Personvern og data» has nothing yet', async () => {
       drawSettings();
       await screen.findByRole('heading', { level: 1, name: 'Generelt' });
