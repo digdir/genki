@@ -139,6 +139,68 @@ describe('«Lim inn oppsett»', () => {
     );
   });
 
+  it('names a text past its limit by the field «Tekster» edits it in, not by its path', async () => {
+    await openInterface();
+    const long = 'x'.repeat(81);
+    paste(
+      JSON.stringify({
+        ...defaultLayout,
+        profile: {
+          assistantName: long,
+          suggestions: ['Hva er nytt?', long.repeat(3)],
+          corpora: { kudos: { label: long, fields: [{ id: 'doctype', label: long }] } },
+        },
+      }),
+    );
+    const said = screen.getByText(/^Oppsettet bryter reglene/).textContent ?? '';
+    for (const text of [
+      'Navn (Assistenten) er lengre enn 80 tegn.',
+      'Forslag 2 (Assistenten) er lengre enn 200 tegn.',
+      'Navn på samlingen (Samlingen kudos) er lengre enn 80 tegn.',
+      'Navn i filteret (Samlingen kudos, Feltet doctype) er lengre enn 80 tegn.',
+    ])
+      expect(said).toContain(text);
+    expect(said).not.toContain('profile.');
+  });
+
+  it('names a broken plural and a link that is not https by their fields in «Tekster»', async () => {
+    await openInterface();
+    paste(
+      JSON.stringify({
+        ...defaultLayout,
+        profile: {
+          corpora: {
+            kudos: {
+              typePlurals: { rapport: 'x'.repeat(129) },
+              documentLinks: { digits: 'http://example.no/{id}' },
+            },
+          },
+        },
+      }),
+    );
+    const said = screen.getByText(/^Oppsettet bryter reglene/).textContent ?? '';
+    expect(said).toContain('Flertall av dokumenttype 1 (Samlingen kudos) er lengre enn 128 tegn.');
+    expect(said).toContain(
+      'Nummer med bare sifre (Samlingen kudos, Lenker til dokumentene) er ikke en https-adresse.',
+    );
+  });
+
+  it('names a text «Tekster» does not edit, or one of a collection whose key holds a dot, by its path', async () => {
+    await openInterface();
+    paste(
+      JSON.stringify({
+        ...defaultLayout,
+        profile: {
+          followUps: ['x'.repeat(201)],
+          corpora: { a: { label: 'x'.repeat(81) }, 'a.label': {} },
+        },
+      }),
+    );
+    const said = screen.getByText(/^Oppsettet bryter reglene/).textContent ?? '';
+    expect(said).toContain('profile.followUps[0] er lengre enn 200 tegn.');
+    expect(said).toContain('Navn på samlingen (Samlingen a) er lengre enn 80 tegn.');
+  });
+
   it('says why it refuses text that is not JSON, not a layout, or breaks a rule, and keeps the layout', async () => {
     await openInterface();
     paste('{ not json');

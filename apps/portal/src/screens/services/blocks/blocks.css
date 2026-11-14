@@ -33,7 +33,6 @@
 .blocks-resize:hover,
 .blocks-resize:focus-visible {
   background-color: var(--ds-color-accent-border-default);
-  outline: none;
 }
 
 .blocks-panel {
@@ -170,9 +169,15 @@
   border-radius: var(--ds-border-radius-lg);
 }
 
-/* Menus that float out of the preview are placed in screen pixels, so they undo the zoom. */
-.service-preview-frame .ds-dropdown {
+/* Menus and thread titles float out of the preview in screen pixels, so they undo the zoom. */
+.service-preview-frame .ds-dropdown,
+.service-preview-frame .uib-threads-overlay {
   zoom: calc(1 / var(--preview-scale, 1));
+}
+
+/* A thread's title over its row has the row's text size; its box keeps screen-size padding. */
+.service-preview-frame .uib-threads-overlay > * {
+  zoom: var(--preview-scale, 1);
 }
 
 .service-preview-frame {
@@ -340,4 +345,15 @@
 
 .blocks-texts-row > .ds-field {
   flex: 1 1 12rem;
+}
+
+/* Every suggestion over its remove button, however wide the button's label. */
+.blocks-texts-suggestion {
+  flex-direction: column;
+  align-items: start;
+}
+
+.blocks-texts-suggestion > .ds-field {
+  flex: none;
+  align-self: stretch;
 }

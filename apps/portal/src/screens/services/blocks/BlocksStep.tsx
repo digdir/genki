@@ -5,7 +5,6 @@ import {
   fitService,
   fromTemplate,
   offerOf,
-  turnOff,
   withProfile,
   type AssistantLayout,
   type BuilderState,
@@ -24,7 +23,7 @@ import {
 } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
-import { BlocksPanel } from './BlocksPanel';
+import { BlocksPanel, takeOut } from './BlocksPanel';
 import { LayoutTransfer } from './LayoutTransfer';
 import { startTemplate, type BlocksStart } from './layoutStore';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
@@ -237,7 +236,7 @@ export const BlocksStep = ({
       address={address}
       run={run}
       onMode={state.setMode}
-      onRemove={(id) => state.change(turnOff(state.state, id))}
+      onRemove={(id, zone) => state.change(takeOut(state.state, id, zone))}
       onFullscreen={onFullscreen}
     />
   );
@@ -294,7 +293,7 @@ export const BlocksFullscreen = ({
         address={address}
         run={run}
         onMode={state.setMode}
-        onRemove={(id) => state.change(turnOff(state.state, id))}
+        onRemove={(id, zone) => state.change(takeOut(state.state, id, zone))}
         onExitFullscreen={onExit}
         height={state.height}
       />

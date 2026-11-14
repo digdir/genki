@@ -32,7 +32,7 @@ export const startTemplate: TemplateId = 'knowledge-assistant-next';
 export type ReadLayout =
   | { layout: AssistantLayout }
   | { problem: 'not-json' | 'not-a-layout' }
-  | { problem: 'breaks-rules'; problems: LayoutProblem[] };
+  | { problem: 'breaks-rules'; problems: LayoutProblem[]; pasted: AssistantLayout };
 
 /** Reads a layout from JSON, the shape and the rules; a draft's needs are checked by the tab. */
 export const readLayout = (text: string): ReadLayout => {
@@ -44,7 +44,7 @@ export const readLayout = (text: string): ReadLayout => {
   }
   if (!isAssistantLayout(value)) return { problem: 'not-a-layout' };
   const problems = layoutProblems(value);
-  if (problems.length > 0) return { problem: 'breaks-rules', problems };
+  if (problems.length > 0) return { problem: 'breaks-rules', problems, pasted: value };
   return { layout: normalised(value) };
 };
 
