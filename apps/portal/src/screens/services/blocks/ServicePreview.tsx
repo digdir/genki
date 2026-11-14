@@ -16,7 +16,7 @@ import {
   type BlockId,
   type Zone,
 } from '@genai/ui-blocks/builder';
-import { lazy, Suspense, useId, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
@@ -88,6 +88,13 @@ export const ServicePreview = ({
   const t = useT();
   const titleId = useId();
   const [problem, setProblem] = useState<RunProblem>();
+  // A refused run asked nothing and kept no thread: the assistant starts again, and the reason
+  // above it is all that shows.
+  const [refusals, setRefusals] = useState(0);
+  const report = useCallback((next: RunProblem | undefined) => {
+    setProblem(next);
+    if (next?.refused) setRefusals((n) => n + 1);
+  }, []);
   const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
@@ -191,10 +198,10 @@ export const ServicePreview = ({
               }
             >
               <TryView
-                key={`${draftServiceOf(run.source)}:${conversation}`}
+                key={`${draftServiceOf(run.source)}:${conversation}:${refusals}`}
                 layout={layout}
                 run={run}
-                onProblem={setProblem}
+                onProblem={report}
               />
             </Suspense>
           ) : null}

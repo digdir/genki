@@ -1,10 +1,10 @@
-import { HttpError } from '@genai/ui-assembly';
+import { HttpError, profileOf } from '@genai/ui-assembly';
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../api/error';
 import type { PlaygroundStreamEvent } from '../../../api/playground';
 import { answered, definition, fakeClient as fake, result } from './draft.test-utils';
-import { createDraftApi, narrowedDefinition } from './draftApi';
-import type { DraftSource } from './draftService';
+import { createDraftApi, narrowedDefinition, type DraftApiOptions } from './draftApi';
+import type { DraftSource, RunProblem } from './draftService';
 
 const at = '2026-10-07T10:00:00Z';
 const now = () => new Date(at).getTime();
@@ -32,6 +32,7 @@ const draft = (
   source: DraftSource | undefined,
   events = answered('Svar'),
   more: Parameters<typeof fake>[1] = {},
+  options: Partial<DraftApiOptions> = {},
 ) => {
   const made = fake(events, more);
   return {
@@ -42,6 +43,7 @@ const draft = (
       source: () => source,
       name: 'Prøveområde',
       now,
+      ...options,
     }),
   };
 };
@@ -178,7 +180,63 @@ describe('the draft API for the try view', () => {
     });
     const failed = await ask(draftApi, 'Hei', { signal: stop.signal }).catch((e: unknown) => e);
     expect((failed as Error).name).toBe('AbortError');
-    expect((await draftApi.loadThread('draft-1')).turns).toEqual([]);
+    expect(await draftApi.loadThreads()).toEqual([]);
+  });
+
+  it('keeps no thread for a run the playground refuses, and reports its reason as a refusal', async () => {
+    const reported: (RunProblem | undefined)[] = [];
+    const errors = [{ path: 'setup.spec.purpose', message: 'Too small' }];
+    const { draftApi } = draft(
+      { definition },
+      () => {
+        throw new ApiError(422, {
+          type: 'about:blank',
+          title: 'Invalid setup',
+          status: 422,
+          errors,
+        });
+      },
+      {},
+      { onProblem: (problem) => reported.push(problem) },
+    );
+    const events: unknown[] = [];
+    const failed = await (async () => {
+      for await (const event of draftApi.ask({
+        question: 'Hei',
+        model: 'byggesak__default',
+        steps: true,
+        signal: new AbortController().signal,
+      }))
+        events.push(event);
+    })().catch((error: unknown) => error);
+    expect((failed as HttpError).status).toBe(422);
+    expect(events).toEqual([]);
+    expect(reported).toEqual([{ title: 'Invalid setup', errors, refused: true }]);
+    expect(await draftApi.loadThreads()).toEqual([]);
+  });
+
+  it('reports a run that fails before it starts as a refusal, and one that fails after as not', async () => {
+    const reported: (RunProblem | undefined)[] = [];
+    const failed = { event: 'failed', setup: 'setup', problem: { status: 502, title: 'Feil' } };
+    let started = false;
+    const { draftApi } = draft(
+      { definition },
+      (): PlaygroundStreamEvent[] =>
+        started
+          ? [{ event: 'delta', setup: 'setup', text: 'Ja', channel: 'answer' }, failed as never]
+          : [failed as never],
+      {},
+      { onProblem: (problem) => reported.push(problem) },
+    );
+    await ask(draftApi, 'Hei').catch(() => undefined);
+    expect(await draftApi.loadThreads()).toEqual([]);
+    started = true;
+    await ask(draftApi, 'Hei igjen').catch(() => undefined);
+    expect(reported).toEqual([
+      { title: 'Feil', errors: [], refused: true },
+      { title: 'Feil', errors: [] },
+    ]);
+    expect((await draftApi.loadThreads()).map((t) => t.title)).toEqual(['Hei igjen']);
   });
 
   it('fails a run that ends without an answer', async () => {
@@ -258,6 +316,32 @@ describe('the draft API for the try view', () => {
       { id: 'kommune', label: 'kommune' },
       { id: 'aar', label: 'aar', integer: true },
     ]);
+  });
+
+  it('names the collections, chooses and words the fields, and links a kept answer from the layout’s profile', async () => {
+    const profile = profileOf({
+      profile: {
+        corpora: {
+          byggeregler: {
+            label: 'Regler for bygg',
+            description: 'Lover og forskrifter',
+            fields: [{ id: 'aar', label: 'År', heading: 'Årstall', kind: 'year' }],
+            documentLinks: { any: 'https://regler.example/dok/{id}' },
+          },
+        },
+      },
+    });
+    const { draftApi } = draft({ definition }, answered('Svar'), {}, { profile: () => profile });
+    expect(await draftApi.loadCorpora()).toEqual([
+      { key: 'byggeregler', label: 'Regler for bygg', description: 'Lover og forskrifter' },
+      { key: 'plankart', label: 'plankart' },
+    ]);
+    expect(await draftApi.loadFields('byggeregler')).toEqual([
+      { id: 'aar', label: 'År', heading: 'Årstall', kind: 'year', integer: true },
+    ]);
+    await ask(draftApi, 'Hei', { dataset: { tenant: 'felles', key: 'byggeregler' } });
+    const [turn] = (await draftApi.loadThread('draft-1')).turns;
+    expect(turn?.answer?.sources?.[0]?.url).toBe('https://regler.example/dok/pbl');
   });
 
   it('asks for each dataset’s filter fields by the id the draft names, tenant included', async () => {

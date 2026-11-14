@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { defaultLayout, fromTemplate, type AssistantLayout } from '@genai/ui-blocks/builder';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ApiError } from '../../../api/error';
 import { answered, definition, fakeClient } from './draft.test-utils';
 import { ServicePreview } from './ServicePreview';
 
@@ -123,6 +124,25 @@ describe('a draft the playground cannot run yet', () => {
     await ask('Trenger jeg søknad for en garasje?');
     const notice = await screen.findByText(/Oppsettet er ikke klart til å prøves ennå\./);
     expect(notice.closest('.service-preview-frame')).toBeNull();
+  });
+
+  it('shows only the refusal’s reason: no failed answer, no missing thread, and no thread kept', async () => {
+    const client = fakeClient(() => {
+      throw new ApiError(422, {
+        type: 'about:blank',
+        title: 'Invalid setup',
+        status: 422,
+        errors: [{ path: 'setup.spec.purpose', message: 'Too small' }],
+      });
+    });
+    render(preview(client, fromTemplate('knowledge-assistant-next').layout));
+    await ask('Trenger jeg søknad for en garasje?');
+    await screen.findByText(/Oppsettet er ikke klart til å prøves ennå\./);
+    const frame = document.querySelector('.service-preview-frame') as HTMLElement;
+    await within(frame).findByRole('textbox', { name: /Spørsmål til Byggesaksveileder/ });
+    expect(within(frame).queryByText('Fant ikke tråden')).toBeNull();
+    expect(within(frame).queryByText('Svaret kom ikke fram')).toBeNull();
+    expect(within(frame).queryByText(/Trenger jeg søknad for en garasje/)).toBeNull();
   });
 });
 

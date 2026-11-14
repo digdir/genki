@@ -5,6 +5,8 @@ import {
   sourceFromWire,
   type AnswerData,
   type AssistantApi,
+  type AssistantProfile,
+  type CorpusProfile,
   type FieldSpec,
   type ThreadRow,
   type Turn,
@@ -25,6 +27,7 @@ import type {
   PlaygroundStreamEvent,
 } from '../../../api/playground';
 import { withDraftService } from '../../../components/playground/PlaygroundPanel';
+import type { Problem } from '../../../types';
 import { initialSetup } from '../../../data/playground';
 import { loadDatasetFilters } from './datasetFilters';
 import {
@@ -163,6 +166,11 @@ export interface DraftApiOptions {
   name?: string | undefined;
   /** Why the playground did not run the draft, or nothing once a run answers. */
   onProblem?: ((problem: RunProblem | undefined) => void) | undefined;
+  /**
+   * The profile the assistant is drawn with, read at each call: `profileOf(layout, own)`, so the
+   * fields, the collections' names and a kept answer's links are in its words too.
+   */
+  profile?: (() => AssistantProfile | undefined) | undefined;
   now?: () => number;
 }
 
@@ -173,9 +181,15 @@ export const createDraftApi = ({
   source,
   name,
   onProblem,
+  profile,
   now = () => Date.now(),
 }: DraftApiOptions): AssistantApi => {
   const service = draftServiceOf(source());
+  // A layout's collections are JSON: only its own keys are read.
+  const corpusProfile = (key: string | undefined): CorpusProfile | undefined => {
+    const corpora = profile?.()?.corpora;
+    return key && corpora && Object.hasOwn(corpora, key) ? corpora[key] : undefined;
+  };
   let options: Promise<PlaygroundOptions> | undefined;
   // A failed call is not kept, so the next question asks again.
   const optionsOnce = () =>
@@ -238,26 +252,45 @@ export const createDraftApi = ({
       return { title: kept.title, turns: kept.turns };
     },
 
-    // The draft's own datasets: it searches no other.
+    // The draft's own datasets: it searches no other. Named in the profile's words where it has them.
     loadCorpora: async () => {
       const [own, loaded] = await Promise.all([datasetsOf(), optionsOnce()]);
       return own.flatMap((d) => {
         const key = d['dataset-config-key'] ?? d.id;
         if (!key) return [];
         const named = loaded.datasets.find((o) => o.id === `${d.tenant}/${key}` || o.id === key);
-        return [{ key, label: named?.name ?? key }];
+        const words = corpusProfile(key);
+        return [
+          {
+            key,
+            label: words?.label || named?.name || key,
+            ...(words?.description ? { description: words.description } : {}),
+          },
+        ];
       });
     },
 
-    // The fields the dataset declares, as the frontend contract reads them.
-    loadFields: async (dataset): Promise<readonly FieldSpec[]> =>
-      ((await datasetOf(dataset))?.filters ?? [])
-        .filter((f) => f.kinds?.includes('multiselect'))
-        .map((f) => ({
-          id: f.field,
-          label: f.field,
-          ...(f['value-type'] === 'integer' ? { integer: true } : {}),
-        })),
+    // The fields the dataset declares, as the frontend contract reads them: the profile's choice and
+    // words where it has them, and whether a field's values are integers as the dataset says.
+    loadFields: async (dataset): Promise<readonly FieldSpec[]> => {
+      const offered = ((await datasetOf(dataset))?.filters ?? []).filter((f) =>
+        f.kinds?.includes('multiselect'),
+      );
+      const chosen = corpusProfile(dataset)?.fields;
+      if (chosen)
+        return chosen.flatMap((f) => {
+          const declared = offered.find((o) => o.field === f.id);
+          if (!declared) return [];
+          return f.integer === undefined && declared['value-type'] === 'integer'
+            ? [{ ...f, integer: true }]
+            : [f];
+        });
+      return offered.map((f) => ({
+        id: f.field,
+        label: f.field,
+        ...(f['value-type'] === 'integer' ? { integer: true } : {}),
+      }));
+    },
 
     // One call per field, narrowed by the other fields only: counts «given the others».
     loadFacets: async (selection, dataset, fields) => {
@@ -280,7 +313,13 @@ export const createDraftApi = ({
           const options = (body.fields?.find((f) => f.field === field.id)?.options ?? []).map(
             (o) => ({ value: String(o.value), count: o.count }),
           );
-          return { id: field.id, label: field.label, options };
+          return {
+            id: field.id,
+            label: field.label,
+            ...(field.heading ? { heading: field.heading } : {}),
+            ...(field.kind ? { kind: field.kind } : {}),
+            options,
+          };
         }),
       );
     },
@@ -294,8 +333,9 @@ export const createDraftApi = ({
         created: now(),
         turns: [],
       };
-      threads.set(id, kept);
-      if (!params.conversationId) yield { type: 'conversation', conversationId: id };
+      // The thread is kept, and named to the assistant, once the playground takes the run: a run
+      // it refuses leaves no thread behind, only its reason.
+      let accepted = false;
       const history: PlaygroundHistoryTurn[] = kept.turns
         .flatMap((turn): PlaygroundHistoryTurn[] =>
           turn.answer?.text
@@ -337,11 +377,27 @@ export const createDraftApi = ({
             params.signal,
           )
           .catch((error: unknown) => {
+            // Refused before it started, with the platform's reason: what the draft lacks, a
+            // block the playground may not use, or a spent quota.
+            const status = (error as { status?: unknown } | null)?.status;
+            const problem = (error as { problem?: Problem } | null)?.problem;
+            if (!accepted && typeof status === 'number' && status < 500 && problem?.title)
+              onProblem?.({
+                title: problem.title,
+                ...(problem.detail ? { detail: problem.detail } : {}),
+                errors: problem.errors ?? [],
+                refused: true,
+              });
             throw asHttpError(error);
           }),
       )) {
         if (params.signal.aborted) break;
         if ('setup' in event && event.setup === 'compareWith') continue;
+        if (!accepted && event.event !== 'failed' && event.event !== 'done') {
+          accepted = true;
+          threads.set(id, kept);
+          if (!params.conversationId) yield { type: 'conversation', conversationId: id };
+        }
         if (event.event === 'delta')
           yield event.channel === 'answer'
             ? { type: 'text', text: event.text }
@@ -361,17 +417,24 @@ export const createDraftApi = ({
         } else if (event.event === 'failed') {
           // The host says why in its own words, which the assistant's failure cannot carry.
           const { title, detail, errors = [] } = event.problem;
-          onProblem?.({ title, ...(detail ? { detail } : {}), errors });
+          onProblem?.({
+            title,
+            ...(detail ? { detail } : {}),
+            errors,
+            ...(accepted ? {} : { refused: true }),
+          });
           throw new HttpError(event.problem.status, title);
         } else if (event.event === 'result') {
           onProblem?.(undefined);
           const sources = sourcesOf(event.result.sources);
           const text = answerTextOf(event.result);
           const noAnswer = event.result.noAnswer === true;
+          // Kept with the collection's links, so the thread opened again links as the answer did.
+          const corpus = corpusProfile(params.dataset?.key);
           answer = {
             text,
             status: 'complete',
-            sources: sources.map((s, at) => sourceFromWire(s, undefined, at)),
+            sources: sources.map((s, at) => sourceFromWire(s, corpus, at)),
             noAnswer,
             created: now(),
           };
