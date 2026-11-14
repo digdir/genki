@@ -193,13 +193,15 @@ export const BlocksStep = ({
   const [pane, setPane] = useState<'blocks' | 'preview'>('blocks');
   const switcher = useRef<HTMLFieldSetElement>(null);
   const [fit, setFit] = useState(leftMin);
+  // Measured beside the preview only: on a narrow screen the switcher wraps.
   useLayoutEffect(() => {
+    if (narrow) return;
     const w = switcher.current?.offsetWidth;
     if (w) setFit(Math.max(leftMin, Math.ceil(w)));
-  }, [t]);
+  }, [t, narrow]);
   const width = Math.max(state.width, fit);
   const left = (
-    <div className="blocks-left">
+    <div className="blocks-left" data-narrow={narrow || undefined}>
       <ToggleGroup
         ref={switcher}
         data-size="sm"
