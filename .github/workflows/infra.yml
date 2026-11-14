@@ -78,6 +78,7 @@ jobs:
             echo "api=$(image_of api)"
             echo "worker=$(image_of worker)"
             echo "apps=$(image_of portal)"
+            echo "docling=$(image_of docling)"
           } >> "$GITHUB_OUTPUT"
           api=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
           if [ -n "$api" ]; then
@@ -90,4 +91,4 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" appVersion="${{ steps.current.outputs.version }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}"

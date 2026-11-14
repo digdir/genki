@@ -10,6 +10,7 @@ param tags object = {}
 param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appsImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param doclingImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appVersion string = 'bootstrap'
 
 @description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
@@ -349,6 +350,7 @@ module apps 'modules/containerapps.bicep' = {
     apiImage: apiImage
     workerImage: workerImage
     appsImage: appsImage
+    doclingImage: doclingImage
     appVersion: appVersion
     appEnv: appEnv
     identityEnv: {
@@ -449,6 +451,7 @@ output customDomainVerificationId string = apps.outputs.verificationId
 output dnsNameServers array = createDnsZone && !empty(dnsZoneName) ? dns!.outputs.nameServers : []
 output containerAppName string = apps.outputs.appName
 output workerAppName string = apps.outputs.workerName
+output doclingAppName string = apps.outputs.doclingName
 output registryName string = registry.outputs.name
 output registryLoginServer string = registry.outputs.loginServer
 output keyVaultName string = vault.outputs.name
