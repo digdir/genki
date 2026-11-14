@@ -58,6 +58,7 @@ import {
   filterSet,
   FilterTooLarge,
   HttpError,
+  NotAsked,
   sourceFromWire,
   type AnswerData,
   type AssistantApi,
@@ -877,6 +878,7 @@ export const useAssistant = ({
     if (askedWith && startedIn) keepFilter(startedIn, askedWith);
     let frames = 0;
     let opened = false;
+    let heard = false;
     setWorking(true);
     // Only a question sent from the field empties it, and only of what was sent.
     if (fromField) setDraft((draft) => (draft.trim() === typed.trim() ? '' : draft));
@@ -936,6 +938,7 @@ export const useAssistant = ({
         signal: controller.signal,
       })) {
         if (!alive.current) break;
+        heard = true;
         // genki names a new thread twice (POST, then stream): only the first opens it.
         if (event.type === 'conversation' && !startedIn && !opened) {
           opened = true;
@@ -983,6 +986,16 @@ export const useAssistant = ({
       }
     } catch (error) {
       const aborted = controller.signal.aborted;
+      if (error instanceof NotAsked && !heard) {
+        // Never asked: its thread's turns are as they were, and a typed question is back.
+        run.turns = turns;
+        if (shown.current === run) {
+          setTurns(turns);
+          if (!run.thread && turns.length === 0) setView('new');
+          if (fromField) setDraft((draft) => (draft.trim() ? draft : typed));
+        }
+        return;
+      }
       if (!aborted) console.error('[assistant] ask', (error as Error).message);
       finish();
       update((a) => ({

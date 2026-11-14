@@ -1,6 +1,7 @@
 import {
   filterSet,
   HttpError,
+  NotAsked,
   shortTitle,
   sourceFromWire,
   type AnswerData,
@@ -164,8 +165,8 @@ export interface DraftApiOptions {
   source: () => DraftSource | undefined;
   /** The playground's name in the reader's language, for a run with no draft. */
   name?: string | undefined;
-  /** Why the playground did not run the draft, or nothing once a run answers. */
-  onProblem?: ((problem: RunProblem | undefined) => void) | undefined;
+  /** Why the thread's answer failed, or without a thread why the draft was refused; or nothing. */
+  onProblem?: ((problem: RunProblem | undefined, thread?: string) => void) | undefined;
   /**
    * The profile the assistant is drawn with, read at each call: `profileOf(layout, own)`, so the
    * fields, the collections' names and a kept answer's links are in its words too.
@@ -232,6 +233,7 @@ export const createDraftApi = ({
 
   const threads = new Map<string, Kept>();
   let minted = 0;
+  let asks = 0;
 
   // Every variant's row lists the same datasets: the first row's are the draft's.
   const datasetsOf = async () => (await rowsOf())[0]?._datasets ?? [];
@@ -336,6 +338,14 @@ export const createDraftApi = ({
       // The thread is kept, and named to the assistant, once the playground takes the run: a run
       // it refuses leaves no thread behind, only its reason.
       let accepted = false;
+      const asking = (asks += 1);
+      // A refusal is the draft's, so only the latest question asked in any thread says one.
+      const refuse = (problem: RunProblem, title: string) => {
+        if (asks === asking) onProblem?.(problem);
+        return new NotAsked(title);
+      };
+      onProblem?.(undefined);
+      if (params.conversationId) onProblem?.(undefined, params.conversationId);
       const history: PlaygroundHistoryTurn[] = kept.turns
         .flatMap((turn): PlaygroundHistoryTurn[] =>
           turn.answer?.text
@@ -382,12 +392,14 @@ export const createDraftApi = ({
             const status = (error as { status?: unknown } | null)?.status;
             const problem = (error as { problem?: Problem } | null)?.problem;
             if (!accepted && typeof status === 'number' && status < 500 && problem?.title)
-              onProblem?.({
-                title: problem.title,
-                ...(problem.detail ? { detail: problem.detail } : {}),
-                errors: problem.errors ?? [],
-                refused: true,
-              });
+              throw refuse(
+                {
+                  title: problem.title,
+                  ...(problem.detail ? { detail: problem.detail } : {}),
+                  errors: problem.errors ?? [],
+                },
+                problem.title,
+              );
             throw asHttpError(error);
           }),
       )) {
@@ -417,15 +429,11 @@ export const createDraftApi = ({
         } else if (event.event === 'failed') {
           // The host says why in its own words, which the assistant's failure cannot carry.
           const { title, detail, errors = [] } = event.problem;
-          onProblem?.({
-            title,
-            ...(detail ? { detail } : {}),
-            errors,
-            ...(accepted ? {} : { refused: true }),
-          });
+          const problem = { title, ...(detail ? { detail } : {}), errors };
+          if (!accepted) throw refuse(problem, title);
+          onProblem?.(problem, id);
           throw new HttpError(event.problem.status, title);
         } else if (event.event === 'result') {
-          onProblem?.(undefined);
           const sources = sourcesOf(event.result.sources);
           const text = answerTextOf(event.result);
           const noAnswer = event.result.noAnswer === true;

@@ -1,8 +1,8 @@
 # 0054 An assembly draws an assistant from a layout
 
-Status: proposed, 2026-11-11 (partly built: the layout, its catalogue, rules and templates, and `@genai/ui-assembly`; no app uses the assembly yet; a block in both its zones, 2026-11-13; the host's headers, 2026-11-13; the look a layout setting, and a template's options, 2026-11-13; the profile as data in the layout, 2026-11-14)
+Status: proposed, 2026-11-11 (partly built: the layout, its catalogue, rules and templates, and `@genai/ui-assembly`; a block in both its zones, 2026-11-13; the host's headers, 2026-11-13; the look a layout setting, and a template's options, 2026-11-13; the profile as data in the layout, 2026-11-14; the portal's try view draws it, 2026-11-14; a question the host refuses taken back, 2026-11-14)
 
-Left: where a layout is stored, such as a frontend part of the service definition; the builder's preview in the portal drawing a layout with the assembly; a screen in the builder that edits the profile; texts in more than one language; and suggestions from the service's example questions, which `/v1/models` does not carry. Each needs its own change.
+Left: where a layout is stored, such as a frontend part of the service definition; texts in more than one language; and suggestions from the service's example questions, which `/v1/models` does not carry. Each needs its own change.
 
 ## Context
 
@@ -22,6 +22,7 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 - **`@genai/ui-assembly` is the one UI package that calls genki.** It sits beside `@genai/ui-blocks` among the consumers and depends on `@genai/client`. It holds the state the blocks share (`useAssistant`), places each block of a layout in its zone (`<Assistant>`), and turns genki's answers and stream into the blocks' props. The blocks stay free of fetching.
 - **One interface to genki.** Every call goes through `AssistantApi`. `createGenkiApi` implements it with reads (models, threads, collections, fields, facets), a new thread and a question; tests use a fake.
 - **No key in the page.** `createGenkiApi` takes a `baseUrl` and holds no credentials of its own. A host reaches genki through its own proxy or session, which adds the key or the person's token, or gives `createGenkiApi` a `headers` callback, such as one that returns the person's Bearer token. The assembly calls it before every request, the question's stream included, and a header the assembly sets itself, such as `Accept`, stays its own. Without it, nothing is added. A `401` fails the call with that status, which the assembly calls access, and stops a question at its new thread.
+- **A host may refuse a question before it is asked.** An `ask` that throws `NotAsked` before it yields anything asked nothing: the assembly takes the question out of its thread, with no failed answer, puts a question typed in the field back there while its thread is on screen and the field is empty, and lets the answers in other threads go on. The host says why, as the portal's try view does above the preview. Thrown after it has yielded something, it is a failed answer.
 - **Writes other than a question are the host's.** Feedback goes to the host's `onFeedback`, with the answer's `runId` (genki's task id) when genki gave one; without `onFeedback`, no feedback is offered.
 
 ## Why
@@ -37,7 +38,7 @@ ADR 0053 keeps the UI blocks free of fetching: data in, events out. It left two 
 ## Consequences
 
 - The atlas has a module `ui-assembly` (`docs/architecture/modules/ui-assembly.yaml`), and `docs/components/ui-assembly.html` describes it.
-- No app uses the assembly yet. Kunnskapsassistenten's next client is its first host; the workspace and the builder's preview can follow.
+- The portal's try view, in the service page's «Grensesnitt» tab, is its first host. Kunnskapsassistenten's next client and the workspace can follow.
 - The layout's version 1, `AssistantApi` and the assembly's props are public once the package is published: changing them then breaks a host.
 - The assembly's stylesheet follows the blocks' rules, and its lint refuses literal colours.
 - In the template `knowledge-assistant-next`, Fremgangsmåte stands in both zones. Its look drew the tool for Fremgangsmåte in `main` before this was a choice, so a layout from that template stored earlier with Fremgangsmåte in `main` alone now draws the card alone.

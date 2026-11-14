@@ -23,7 +23,7 @@ import { blockLabel } from './BlocksPanel';
 import { draftServiceOf, type RunProblem } from './draftService';
 import { previewScale, previewWidth } from './preview-size';
 import { describeProblem } from '../../service/publish';
-import type { TryRun } from './TryView';
+import type { ReportProblem, TryRun } from './TryView';
 
 // The assistant and its blocks load when the try view is first shown, not with the builder.
 const TryView = lazy(() => import('./TryView'));
@@ -87,14 +87,24 @@ export const ServicePreview = ({
 }) => {
   const t = useT();
   const titleId = useId();
-  const [problem, setProblem] = useState<RunProblem>();
-  // A refused run asked nothing and kept no thread: the assistant starts again, and the reason
-  // above it is all that shows.
-  const [refusals, setRefusals] = useState(0);
-  const report = useCallback((next: RunProblem | undefined) => {
-    setProblem(next);
-    if (next?.refused) setRefusals((n) => n + 1);
+  // A refusal is the draft's, over every thread; a failed answer only over its own thread.
+  const [refusal, setRefusal] = useState<RunProblem>();
+  const [failures, setFailures] = useState<ReadonlyMap<string, RunProblem>>(() => new Map());
+  const [thread, setThread] = useState<string>();
+  const report = useCallback<ReportProblem>((next, at) => {
+    if (at === undefined) {
+      setRefusal(next);
+      return;
+    }
+    setFailures((all) => {
+      if (!next && !all.has(at)) return all;
+      const kept = new Map(all);
+      if (next) kept.set(at, next);
+      else kept.delete(at);
+      return kept;
+    });
   }, []);
+  const problem = refusal ?? (thread === undefined ? undefined : failures.get(thread));
   const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
@@ -198,10 +208,11 @@ export const ServicePreview = ({
               }
             >
               <TryView
-                key={`${draftServiceOf(run.source)}:${conversation}:${refusals}`}
+                key={`${draftServiceOf(run.source)}:${conversation}`}
                 layout={layout}
                 run={run}
                 onProblem={report}
+                onThreadChange={setThread}
               />
             </Suspense>
           ) : null}
