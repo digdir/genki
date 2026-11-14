@@ -41,7 +41,8 @@ param appEnv = {
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
   LANGFUSE_BASE_URL: 'https://langfuse.digdir.cloud'
-  LANGFUSE_INSTANCE_RECEIVES_CONTENT: readEnvironmentVariable('LANGFUSE_INSTANCE_RECEIVES_CONTENT', 'false')
+  // Operators confirmed Digdir's Langfuse deletes what genki deletes and keeps raw files at most 7 days (ADR 0011).
+  LANGFUSE_INSTANCE_RECEIVES_CONTENT: 'true'
   TRACES_ENDPOINT: readEnvironmentVariable('TRACES_ENDPOINT', '')
   TRACES_ENVIRONMENT: 'test'
   TRACES_RESIDENCY: readEnvironmentVariable('TRACES_RESIDENCY', '')
