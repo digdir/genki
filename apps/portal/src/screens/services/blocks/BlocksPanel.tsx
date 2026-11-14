@@ -38,6 +38,12 @@ import { useT, type PlainKey, type T } from '../../../i18n';
 /** The catalogue key of a block's name. */
 export const blockLabel = (id: BlockId) => nameKey(id);
 
+/** The block out of the zone; one that stands in another zone too stays there. */
+export const takeOut = (state: BuilderState, id: BlockId, zone: Zone) => {
+  const elsewhere = zonesOf(state.layout, id).find((other) => other !== zone);
+  return elsewhere ? moveTo(state, id, elsewhere) : turnOff(state, id);
+};
+
 const helpKey = (id: BlockId) => `${nameKey(id)}Help` as BuilderKey;
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -202,9 +208,7 @@ export const BlocksPanel = ({
                 held
                   ? release(state, id, zone)
                   : here
-                    ? elsewhere
-                      ? moveTo(state, id, elsewhere)
-                      : turnOff(state, id)
+                    ? takeOut(state, id, zone)
                     : elsewhere && spec.both
                       ? moveTo(state, id, 'both')
                       : placeIn(state, id, zone);

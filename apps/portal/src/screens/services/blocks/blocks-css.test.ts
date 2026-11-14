@@ -38,4 +38,33 @@ describe('the Grensesnitt tab’s stylesheet', () => {
   it('lets the kept assistant, in its place in the frame, fill the frame', () => {
     expect(rule('.service-preview-slot,\n.service-preview-try')).toBe('height: 100%;');
   });
+
+  it('undoes the zoom on a thread title shown over its row, as on a menu, so it lands on the row at its text size', () => {
+    expect(
+      rule('.service-preview-frame .ds-dropdown,\n.service-preview-frame .uib-threads-overlay'),
+    ).toBe('zoom: calc(1 / var(--preview-scale, 1));');
+    expect(rule('.service-preview-frame .uib-threads-overlay > *')).toBe(
+      'zoom: var(--preview-scale, 1);',
+    );
+  });
+
+  it('puts every suggestion in «Tekster» over its remove button, however wide the label', () => {
+    expect(rule('.blocks-texts-suggestion')).toBe('flex-direction: column; align-items: start;');
+    expect(rule('.blocks-texts-suggestion > .ds-field')).toBe('flex: none; align-self: stretch;');
+    // As specific as the rows' own rules, so they win only after them.
+    expect(css.indexOf('.blocks-texts-suggestion {')).toBeGreaterThan(
+      css.indexOf('.blocks-texts-row > .ds-field {'),
+    );
+  });
+
+  it('leaves the resize handles the portal’s focus ring, not only a line that changes colour', () => {
+    const focused = rule('.blocks-resize:hover,\n.blocks-resize:focus-visible');
+    expect(focused).toContain('background-color: var(--ds-color-accent-border-default);');
+    const handles = css
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('}')
+      .filter((block) => block.split('{')[0]?.includes('.blocks-resize'));
+    expect(handles.length).toBeGreaterThan(1);
+    expect(handles.join('}')).not.toMatch(/outline|box-shadow/);
+  });
 });

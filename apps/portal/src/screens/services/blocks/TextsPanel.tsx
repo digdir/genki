@@ -148,7 +148,7 @@ export const TextsPanel = ({
           {t('builderTexts.suggestionsHelp', { max: profileLimits.questions })}
         </Fieldset.Description>
         {suggestions.map((text, at) => (
-          <div className="blocks-texts-row" key={at}>
+          <div className="blocks-texts-row blocks-texts-suggestion" key={at}>
             <Textfield
               data-size="sm"
               label={t('builderTexts.suggestion', { n: at + 1 })}

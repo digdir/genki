@@ -94,6 +94,17 @@ describe('the Tekster panel', () => {
     expect(add.disabled).toBe(true);
   });
 
+  it('gives every suggestion row the class that stacks it over its remove button', () => {
+    render(<Harness />);
+    const add = screen.getByRole('button', { name: 'Legg til forslag' });
+    for (let n = 0; n < 6; n += 1) fireEvent.click(add);
+    const rows = screen
+      .getAllByRole('textbox', { name: /^Forslag \d$/ })
+      .map((field) => field.closest('.blocks-texts-row'));
+    // The stylesheet stacks a row with this class, whatever its button's label.
+    expect(rows.every((row) => row?.classList.contains('blocks-texts-suggestion'))).toBe(true);
+  });
+
   it('says a broken limit under the field it concerns, and nowhere else', async () => {
     render(<Harness />);
     type('Navn', 'x'.repeat(81));

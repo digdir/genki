@@ -4,6 +4,7 @@ import {
   blocksIn,
   blockSpec,
   zones,
+  zonesOf,
   type AssistantLayout,
   type BlockId,
   type Zone,
@@ -47,6 +48,17 @@ const frameLabel: Record<Zone, PlainKey> = {
   secondary: 'builderBlocks.frameRight',
 };
 
+const stops = new Set(['.', '!', '?', ':', '…']);
+
+/** A problem's title and detail as one text, with a colon after a title that has no stop. */
+const titled = (title: string, detail: string | undefined) => {
+  const head = title.trimEnd();
+  if (!detail) return title;
+  return head ? `${head}${stops.has(head.slice(-1)) ? '' : ':'} ${detail}` : detail;
+};
+
+const removeButtons = '.preview-card button';
+
 interface ServicePreviewProps {
   layout: AssistantLayout;
   mode: PreviewMode;
@@ -54,7 +66,7 @@ interface ServicePreviewProps {
   /** What the try view runs on; without it the try view has nothing to ask. */
   run: TryRun | undefined;
   onMode: (mode: PreviewMode) => void;
-  onRemove: (id: BlockId) => void;
+  onRemove: (id: BlockId, zone: Zone) => void;
   onFullscreen?: () => void;
   onExitFullscreen?: () => void;
   height?: number;
@@ -85,6 +97,20 @@ const Preview = ({
   useLayoutEffect(() => {
     show(run ? { layout, run } : undefined);
   }, [show, layout, run]);
+  // After a remove, the focus goes to the next «Fjern», else the previous, else the frame's text.
+  const frame = useRef<HTMLDivElement>(null);
+  const [refocus, setRefocus] = useState<number>();
+  useLayoutEffect(() => {
+    if (refocus === undefined) return;
+    setRefocus(undefined);
+    const buttons = frame.current?.querySelectorAll<HTMLElement>(removeButtons) ?? [];
+    const next = buttons[Math.min(refocus, buttons.length - 1)];
+    (next ?? frame.current?.querySelector<HTMLElement>('.service-preview-empty'))?.focus();
+  }, [refocus]);
+  const remove = (id: BlockId, zone: Zone, button: HTMLElement) => {
+    setRefocus([...(frame.current?.querySelectorAll(removeButtons) ?? [])].indexOf(button));
+    onRemove(id, zone);
+  };
   const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
@@ -153,7 +179,7 @@ const Preview = ({
                     .join(' '),
                   notStored: t('playground.notStored'),
                 })
-              : [problem.title, problem.detail].filter(Boolean).join(' ')}
+              : titled(problem.title, problem.detail)}
           </Paragraph>
         </Alert>
       ) : null}
@@ -163,6 +189,7 @@ const Preview = ({
         style={height ? { height: `${height}px` } : undefined}
       >
         <div
+          ref={frame}
           className="service-preview-frame"
           data-mode={mode}
           style={{
@@ -173,10 +200,12 @@ const Preview = ({
           }}
         >
           {used.length === 0 ? (
-            <p className="meta service-preview-empty">{t('builderBlocks.nothingPlaced')}</p>
+            <p className="meta service-preview-empty" tabIndex={-1}>
+              {t('builderBlocks.nothingPlaced')}
+            </p>
           ) : mode === 'setup' ? (
             used.map((zone) => (
-              <SetupPanel key={zone} zone={zone} layout={layout} onRemove={onRemove} />
+              <SetupPanel key={zone} zone={zone} layout={layout} onRemove={remove} />
             ))
           ) : run ? (
             <div className="service-preview-slot" ref={place} />
@@ -194,10 +223,18 @@ const SetupPanel = ({
 }: {
   zone: Zone;
   layout: AssistantLayout;
-  onRemove: (id: BlockId) => void;
+  onRemove: (id: BlockId, zone: Zone, button: HTMLElement) => void;
 }) => {
   const t = useT();
   const ids = blocksIn(layout, zone);
+  // A block in two panels has a «Fjern» in each, named by its panel.
+  const removeLabel = (id: BlockId) =>
+    zonesOf(layout, id).length > 1
+      ? t('builderBlocks.removeBlockFrom', {
+          block: t(blockLabel(id)),
+          panel: t(frameLabel[zone]).toLocaleLowerCase(),
+        })
+      : t('builderBlocks.removeBlock', { block: t(blockLabel(id)) });
   return (
     <div className="preview-panel" data-zone={zone}>
       <span className="preview-panel-name">{t(frameLabel[zone])}</span>
@@ -218,8 +255,8 @@ const SetupPanel = ({
                 variant="tertiary"
                 data-size="sm"
                 icon
-                aria-label={t('builderBlocks.removeBlock', { block: t(blockLabel(id)) })}
-                onClick={() => onRemove(id)}
+                aria-label={removeLabel(id)}
+                onClick={(e) => onRemove(id, zone, e.currentTarget)}
               >
                 <Icon icon={XMarkIcon} size={16} />
               </Button>

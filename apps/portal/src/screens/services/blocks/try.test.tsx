@@ -405,6 +405,38 @@ describe('a run of the draft that fails', () => {
     expect(notice.closest('.service-preview-frame')).toBeNull();
   });
 
+  it('sets a title with no stop at its end apart from the detail, with a colon', async () => {
+    const client = fakeClient(() => [
+      {
+        event: 'failed',
+        setup: 'setup',
+        problem: {
+          status: 502,
+          title: 'Tjenesten feilet underveis',
+          detail: 'the service has no dataset to search',
+        },
+      },
+    ]);
+    render(preview(client, fromTemplate('chat-only').layout));
+    await ask('Trenger jeg søknad for en garasje?');
+    expect(
+      await screen.findByText('Tjenesten feilet underveis: the service has no dataset to search'),
+    ).toBeTruthy();
+  });
+
+  it('says the detail alone when the title has no words', async () => {
+    const client = fakeClient(() => [
+      {
+        event: 'failed',
+        setup: 'setup',
+        problem: { status: 502, title: ' ', detail: 'the service has no dataset to search' },
+      },
+    ]);
+    render(preview(client, fromTemplate('chat-only').layout));
+    await ask('Trenger jeg søknad for en garasje?');
+    expect(await screen.findByText('the service has no dataset to search')).toBeTruthy();
+  });
+
   it('takes why away once the thread’s next question is on its way', async () => {
     const held = gate();
     let runs = 0;
