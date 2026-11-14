@@ -34,6 +34,8 @@ One `Dockerfile`, three targets:
 | `genai-test-console`   | `apps`   | Public             | The console, on `console.genki-test.digdir.cloud`      |
 | `genai-test-docling`   | (own)    | Internal TCP, 5001 | PDF conversions, see [Docling server](#docling-server) |
 
+The API and the worker are sized apart, the same in test and prod. The API has 0.5 vCPU and 1 GiB a replica (`cpu`, `memory` in `infra/main.bicep`). The worker has 2 vCPU and 4 GiB (`workerCpu`, `workerMemory`), and Node's heap gets three quarters of that memory through `NODE_OPTIONS=--max-old-space-size` (3072 MB), since an ingestion run holds its whole listing in memory and a Kudos listing ran out of 1 GiB. `workerMemory` is in whole Gi. A change to the worker by hand in the portal lasts until the next deploy.
+
 In prod the names are `genai-prod-*` and the host names end in `genki.digdir.cloud`. The Docling server has its own image, from `docker/docling/Dockerfile`.
 
 The `api` and `worker` images hold each package's `dist` and the folders in `docker/runtime-assets`: the files the code reads from disk next to itself, such as eval judges, test sets and the seeded services. A test (`scripts/runtime-assets.test.ts`) fails when the code reads such a folder that is not listed.
