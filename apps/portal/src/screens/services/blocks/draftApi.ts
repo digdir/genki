@@ -1,4 +1,5 @@
 import {
+  failureOf,
   filterSet,
   HttpError,
   NotAsked,
@@ -158,6 +159,13 @@ interface Kept {
   turns: Turn[];
 }
 
+/** Each question's latest attempt, as the assembly reads genki's threads, copied from the store. */
+const latestAttempts = (turns: readonly Turn[]): Turn[] => {
+  const question = (turn: Turn) => turn.question.trim().replace(/\s+/g, ' ');
+  const last = new Map(turns.map((turn, at) => [question(turn), at]));
+  return turns.filter((turn, at) => last.get(question(turn)) === at).map((turn) => ({ ...turn }));
+};
+
 export interface DraftApiOptions {
   api: ApiClient;
   tenant: string;
@@ -251,7 +259,7 @@ export const createDraftApi = ({
     loadThread: async (id) => {
       const kept = threads.get(id);
       if (!kept) throw new HttpError(404, 'conversation not found in this visit');
-      return { title: kept.title, turns: kept.turns };
+      return { title: kept.title, turns: latestAttempts(kept.turns) };
     },
 
     // The draft's own datasets: it searches no other. Named in the profile's words where it has them.
@@ -348,7 +356,7 @@ export const createDraftApi = ({
       if (params.conversationId) onProblem?.(undefined, params.conversationId);
       const history: PlaygroundHistoryTurn[] = kept.turns
         .flatMap((turn): PlaygroundHistoryTurn[] =>
-          turn.answer?.text
+          turn.answer?.status === 'complete' && turn.answer.text
             ? [
                 { role: 'user', text: turn.question },
                 { role: 'assistant', text: turn.answer.text },
@@ -374,100 +382,124 @@ export const createDraftApi = ({
       const asked = now();
       const seen = new Set<string>();
       let answer: AnswerData | undefined;
-      for await (const event of queued<PlaygroundStreamEvent>((push) =>
-        api.playground
-          .runStream(
-            tenant,
-            {
-              setup: run,
-              input: { text: params.question },
-              ...(history.length ? { history } : {}),
-            },
-            push,
-            params.signal,
-          )
-          .catch((error: unknown) => {
-            // Refused before it started, with the platform's reason: what the draft lacks, a
-            // block the playground may not use, or a spent quota.
-            const status = (error as { status?: unknown } | null)?.status;
-            const problem = (error as { problem?: Problem } | null)?.problem;
-            if (!accepted && typeof status === 'number' && status < 500 && problem?.title)
-              throw refuse(
-                {
-                  title: problem.title,
-                  ...(problem.detail ? { detail: problem.detail } : {}),
-                  errors: problem.errors ?? [],
-                },
-                problem.title,
-              );
-            throw asHttpError(error);
-          }),
-      )) {
-        if (params.signal.aborted) break;
-        if ('setup' in event && event.setup === 'compareWith') continue;
-        if (!accepted && event.event !== 'failed' && event.event !== 'done') {
-          accepted = true;
-          threads.set(id, kept);
-          if (!params.conversationId) yield { type: 'conversation', conversationId: id };
-        }
-        if (event.event === 'delta')
-          yield event.channel === 'answer'
-            ? { type: 'text', text: event.text }
-            : { type: 'reasoning', text: event.text };
-        else if (event.event === 'retract') yield { type: 'retract' };
-        else if (event.event === 'step' && !seen.has(event.step.id)) {
-          seen.add(event.step.id);
-          const { title, iteration } = event.step;
-          yield {
-            type: 'step',
-            step: {
-              event: 'step',
-              label: title,
-              ...(iteration === undefined ? {} : { iteration }),
-            },
-          } satisfies AskEvent;
-        } else if (event.event === 'failed') {
-          // The host says why in its own words, which the assistant's failure cannot carry.
-          const { title, detail, errors = [] } = event.problem;
-          const problem = { title, ...(detail ? { detail } : {}), errors };
-          if (!accepted) throw refuse(problem, title);
-          onProblem?.(problem, id);
-          throw new HttpError(event.problem.status, title);
-        } else if (event.event === 'result') {
-          const sources = sourcesOf(event.result.sources);
-          const text = answerTextOf(event.result);
-          const noAnswer = event.result.noAnswer === true;
-          // Kept with the collection's links, so the thread opened again links as the answer did.
-          const corpus = corpusProfile(params.dataset?.key);
-          answer = {
-            text,
-            status: 'complete',
-            sources: sources.map((s, at) => sourceFromWire(s, corpus, at)),
-            noAnswer,
+      // Kept once the playground takes the run, with its answer as it ended: stopped or failed too.
+      let turn: Turn | undefined;
+      let partial = '';
+      const ended = (status: 'aborted' | 'failed', error?: unknown) => {
+        if (turn && !turn.answer)
+          turn.answer = {
+            text: partial,
+            status,
             created: now(),
+            ...(status === 'failed' ? { failure: failureOf(error) } : {}),
           };
-          yield {
-            type: 'done',
-            answer: {
-              id: event.result.runId,
+      };
+      try {
+        for await (const event of queued<PlaygroundStreamEvent>((push) =>
+          api.playground
+            .runStream(
+              tenant,
+              {
+                setup: run,
+                input: { text: params.question },
+                ...(history.length ? { history } : {}),
+              },
+              push,
+              params.signal,
+            )
+            .catch((error: unknown) => {
+              // Refused before it started, with the platform's reason: what the draft lacks, a
+              // block the playground may not use, or a spent quota.
+              const status = (error as { status?: unknown } | null)?.status;
+              const problem = (error as { problem?: Problem } | null)?.problem;
+              if (!accepted && typeof status === 'number' && status < 500 && problem?.title)
+                throw refuse(
+                  {
+                    title: problem.title,
+                    ...(problem.detail ? { detail: problem.detail } : {}),
+                    errors: problem.errors ?? [],
+                  },
+                  problem.title,
+                );
+              throw asHttpError(error);
+            }),
+        )) {
+          if (params.signal.aborted) break;
+          if ('setup' in event && event.setup === 'compareWith') continue;
+          if (!accepted && event.event !== 'failed' && event.event !== 'done') {
+            accepted = true;
+            turn = {
+              id: `${id}-${kept.turns.length + 1}`,
+              question: params.question,
+              askedAt: asked,
+            };
+            kept.turns.push(turn);
+            threads.set(id, kept);
+            if (!params.conversationId) yield { type: 'conversation', conversationId: id };
+          }
+          if (event.event === 'delta') {
+            if (event.channel === 'answer') partial += event.text;
+            yield event.channel === 'answer'
+              ? { type: 'text', text: event.text }
+              : { type: 'reasoning', text: event.text };
+          } else if (event.event === 'retract') {
+            partial = '';
+            yield { type: 'retract' };
+          } else if (event.event === 'step' && !seen.has(event.step.id)) {
+            seen.add(event.step.id);
+            const { title, iteration } = event.step;
+            yield {
+              type: 'step',
+              step: {
+                event: 'step',
+                label: title,
+                ...(iteration === undefined ? {} : { iteration }),
+              },
+            } satisfies AskEvent;
+          } else if (event.event === 'failed') {
+            // The host says why in its own words, which the assistant's failure cannot carry.
+            const { title, detail, errors = [] } = event.problem;
+            const problem = { title, ...(detail ? { detail } : {}), errors };
+            if (!accepted) throw refuse(problem, title);
+            onProblem?.(problem, id);
+            throw new HttpError(event.problem.status, title);
+          } else if (event.event === 'result') {
+            const sources = sourcesOf(event.result.sources);
+            const text = answerTextOf(event.result);
+            const noAnswer = event.result.noAnswer === true;
+            // Kept with the collection's links, so the thread opened again links as the answer did.
+            const corpus = corpusProfile(params.dataset?.key);
+            answer = {
               text,
-              conversationId: id,
-              sources,
-              citations: [],
+              status: 'complete',
+              sources: sources.map((s, at) => sourceFromWire(s, corpus, at)),
               noAnswer,
-            },
-          };
+              created: now(),
+            };
+            yield {
+              type: 'done',
+              answer: {
+                id: event.result.runId,
+                text,
+                conversationId: id,
+                sources,
+                citations: [],
+                noAnswer,
+              },
+            };
+          }
         }
+        // A stopped or answerless run fails the turn, so it is not left streaming.
+        if (params.signal.aborted) throw new DOMException('The question was stopped', 'AbortError');
+        if (!answer) throw new Error('the run ended without an answer');
+        if (turn) turn.answer = answer;
+      } catch (error) {
+        ended(params.signal.aborted ? 'aborted' : 'failed', error);
+        throw error;
+      } finally {
+        // The assistant stopped reading the answer before it ended.
+        ended('aborted');
       }
-      // A stopped or answerless run fails the turn, so it is not left streaming.
-      if (params.signal.aborted) throw new DOMException('The question was stopped', 'AbortError');
-      if (!answer) throw new Error('the run ended without an answer');
-      kept.turns.push({
-        id: `${id}-${kept.turns.length + 1}`,
-        question: params.question,
-        askedAt: asked,
-        answer,
-      });
     },
   };
 };
