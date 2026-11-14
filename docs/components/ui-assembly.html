@@ -197,7 +197,12 @@
                 <code>Accept</code> and <code>Content-Type</code> stay the assembly's own. A
                 <code>401</code> fails the call with that status, as <code>HttpError</code> or
                 <code>@genai/client</code>'s <code>ApiError</code>, which the assembly shows as
-                access; a question stops at its new thread.
+                access; a question stops at its new thread. A host's <code>ask</code> that throws
+                <code>NotAsked</code> before it yields anything was refused before it was asked: the
+                assembly takes the question out of its thread, with no failed answer, and puts a
+                question typed in the field back there while its thread is on screen and the field
+                is empty; the host says why. Thrown after it has yielded something, it is a failed
+                answer like any other error.
               </li>
               <li>
                 <code>layout</code>: the builder's layout, zones and options, and its
@@ -525,6 +530,13 @@
                 An assistant that goes stops every answer still coming, in the threads left too, and
                 reports nothing after. «Logg ut» stops them all too, and deleting a thread stops its
                 answer.
+              </li>
+              <li>
+                A question the host's service would not take (<code>NotAsked</code>) is taken back:
+                its thread shows the turns it had, a new one its start, and a question typed in the
+                field is there again if the field is still empty. Refused in a thread the reader has
+                left, it is gone from that thread on return, and not put in the field. The answers
+                in other threads go on.
               </li>
               <li>
                 In the next look, the front page gives way to the question: while the field holds

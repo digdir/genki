@@ -100,6 +100,9 @@ export class HttpError extends Error {
   }
 }
 
+/** Thrown by `ask`, before it yields anything, for a question the service would not take. */
+export class NotAsked extends Error {}
+
 /** What a failed question's status establishes, in the answer block's words. */
 export const failureOf = (error: unknown): AnswerFailure => {
   const status = error instanceof ApiError || error instanceof HttpError ? error.status : undefined;

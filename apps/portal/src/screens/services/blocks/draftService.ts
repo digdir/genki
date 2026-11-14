@@ -36,9 +36,4 @@ export interface RunProblem {
   title: string;
   detail?: string | undefined;
   errors: readonly { path: string; message: string }[];
-  /**
-   * The run never started, so nothing was asked and no thread is kept: the reason is all there is
-   * to show.
-   */
-  refused?: boolean | undefined;
 }

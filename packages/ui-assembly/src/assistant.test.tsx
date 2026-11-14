@@ -30,6 +30,7 @@ import {
   createGenkiApi,
   FACETS_URL_LIMIT,
   HttpError,
+  NotAsked,
   type AskParams,
   type AssistantApi,
 } from './api.js';
@@ -2654,6 +2655,65 @@ describe('asking, whatever genki has said of the service', () => {
   });
 });
 
+describe('a question the service would not take', () => {
+  // A host's service that refuses a question about what is new, before it sends anything or after.
+  const refusing = (late = false) => {
+    const { api, asked } = fakeApi();
+    const answers = api.ask;
+    api.ask = async function* (params): AsyncGenerator<StreamEvent, void> {
+      if (!params.question.includes('nytt')) return yield* answers(params);
+      asked.push(params);
+      if (late) yield { type: 'conversation', conversationId: 't-new' };
+      throw new NotAsked('Invalid setup');
+    };
+    return { api, asked };
+  };
+  const questions = (text: string) => screen.queryAllByText(text, { selector: 'p' });
+  const answers = () =>
+    [...document.querySelectorAll('.uib-answer-text')].map((text) => text.textContent);
+
+  it('is taken back into the field, with its thread’s turns as they were and no failed answer', async () => {
+    const logged = vi.spyOn(console, 'error');
+    onTestFinished(() => logged.mockRestore());
+    const { api, asked } = refusing();
+    history.replaceState(null, '', '/?t=t-old');
+    draw(state('without-filter').layout, api, true);
+    await waitFor(() => expect(answers()).toHaveLength(1));
+    await send('Hva er nytt?');
+    expect(asked).toHaveLength(1);
+    await screen.findByRole('button', { name: 'Send spørsmålet' });
+    expect(questions('Hva er nytt?')).toHaveLength(0);
+    expect(questions('Hva er fast?')).toHaveLength(1);
+    expect(answers()).toHaveLength(1);
+    expect(answers()[0]).toContain('Rapporteringen er fast');
+    expect(screen.queryByText('Svaret kom ikke fram')).toBeNull();
+    const field = screen.getByRole('textbox', { name: /Spørsmål til KA/ }) as HTMLTextAreaElement;
+    expect(field.value).toBe('Hva er nytt?');
+    expect(logged).not.toHaveBeenCalledWith('[assistant] ask', 'Invalid setup');
+  });
+
+  it('leaves a new thread at its start, not an empty thread', async () => {
+    const { api, asked } = refusing();
+    draw(state('without-filter').layout, api);
+    await send('Hva er nytt?');
+    expect(asked).toHaveLength(1);
+    await screen.findByRole('button', { name: 'Send spørsmålet' });
+    expect(questions('Hva er nytt?')).toHaveLength(0);
+    expect(screen.queryByText('Tråden har ingen meldinger ennå')).toBeNull();
+    expect(screen.queryByText('Svaret kom ikke fram')).toBeNull();
+  });
+
+  it('is a failed answer when the service refuses it after it has sent something', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    onTestFinished(() => quiet.mockRestore());
+    const { api } = refusing(true);
+    draw(state('without-filter').layout, api);
+    await send('Hva er nytt?');
+    expect((await screen.findAllByText('Svaret kom ikke fram')).length).toBeGreaterThan(0);
+    expect(questions('Hva er nytt?')).toHaveLength(1);
+  });
+});
+
 describe('leaving a thread while its answer streams', () => {
   // genki's answer, sent a piece at a time by the test; an abort rejects it, as fetch does.
   const streaming = () => {
@@ -2860,6 +2920,20 @@ describe('leaving a thread while its answer streams', () => {
     expect(asked[1]?.conversationId).toBe('t-new');
     expect(screen.getAllByText('Hva er nytt?', { selector: 'p' })).toHaveLength(1);
     expect(failure()).toHaveLength(0);
+  });
+
+  it('takes back a question the service would not take while the reader was in another thread, so its thread is as it was on return', async () => {
+    const { api, streams } = streaming();
+    history.replaceState(null, '', '/?t=t-old');
+    draw(state('without-filter').layout, api, true);
+    await screen.findByText('Det gamle svaret.');
+    await send('Hva er nytt?');
+    await open('Ny tråd');
+    await streams[0]?.send(new NotAsked('Invalid setup'));
+    await open(/En gammel tråd/);
+    expect(await screen.findByText('Det gamle svaret.')).toBeTruthy();
+    expect(screen.queryAllByText('Hva er nytt?', { selector: 'p' })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Send spørsmålet' })).toBeTruthy();
   });
 
   it('lets an answer go on when the reader starts a new thread and asks there', async () => {

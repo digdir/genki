@@ -31,6 +31,15 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view, with answers in
+            more than one thread, shows why an answer failed over that answer's thread only, until
+            the thread's next question goes. Why the playground refused the latest question is about
+            the draft, and shows over every thread until any question goes; a refusal of an older
+            question shows nowhere. A refused question is taken back, through the
+            <a href="ui-assembly.html">UI assembly</a>'s new <code>NotAsked</code>, instead of
+            starting the assistant again, so the answers in other threads go on.
+          </li>
+          <li>
             <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, an
             answer keeps coming while the reader is in another thread, and is there when they come
             back: still on its way, finished or failed, though genki has not stored it yet. Leaving

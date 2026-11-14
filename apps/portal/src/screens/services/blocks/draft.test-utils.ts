@@ -80,9 +80,16 @@ export const answered = (text: string) => (): PlaygroundStreamEvent[] => [
   { event: 'done', quota: { usedPercent: 0, monthlyTokens: 0 } },
 ];
 
+/** A point a run waits at, among its events, until the test opens it. */
+export const gate = () => {
+  let open = () => {};
+  const shut = new Promise<void>((resolve) => (open = resolve));
+  return { shut, open: () => open() };
+};
+
 /** The portal client's parts the try view calls; a run sends nothing once its signal is aborted. */
 export const fakeClient = (
-  events: (request: PlaygroundRunRequest) => PlaygroundStreamEvent[],
+  events: (request: PlaygroundRunRequest) => readonly (PlaygroundStreamEvent | Promise<void>)[],
   { optionsFail = 0, services = [] }: { optionsFail?: number; services?: PlaygroundServices } = {},
 ) => {
   const requests: PlaygroundRunRequest[] = [];
@@ -105,8 +112,9 @@ export const fakeClient = (
       ) => {
         requests.push(structuredClone(body));
         for (const event of events(body)) {
+          if (event instanceof Promise) await event;
           if (signal?.aborted) return;
-          onEvent(event);
+          if (!(event instanceof Promise)) onEvent(event);
         }
       },
     },
