@@ -90,7 +90,12 @@ const fakeWorker = () => {
     redrive: async () => ({ ok: false, message: 'not here' }),
     readmit: async (input) => {
       const run = await executions.get(input.execution);
-      if (!run || run.dataset !== input.dataset || !['queued', 'running'].includes(run.status))
+      if (
+        !run ||
+        run.dataset !== input.dataset ||
+        !['queued', 'running'].includes(run.status) ||
+        run.cancelRequestedAt
+      )
         return { ok: false, message: 'only an open run can be admitted again' };
       const admitted = { ...run, admittedAt: input.at };
       await executions.save(admitted);
@@ -843,6 +848,24 @@ describe('admitting a switch into the knowledge database again', () => {
       await booted.call(`${base('lang')}/pipelines/filer/executions`),
     );
     expect(data[0]).not.toHaveProperty('admissionRunsOutAt');
+  });
+
+  it('a switch whose only run is being cancelled cannot be admitted again', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.executions.save({
+      ...run,
+      cancelRequestedAt: new Date().toISOString(),
+      cancelledBy: 'employee:test:entra',
+    });
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(409);
+    expect(translateMessage((await json<{ title: string }>(response)).title, 'nb')).toBe(
+      'Byttet har ingen åpne kjøringer.',
+    );
   });
 
   it('admitting a switch again needs a reason', async () => {

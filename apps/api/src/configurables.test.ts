@@ -889,6 +889,18 @@ describe('ingestion pipelines', () => {
     ]);
   });
 
+  it('a key not granted the dataset cannot cancel its run or send it back', async () => {
+    const { call, started } = await readmitSetup();
+    const run = `/tenants/${digdir}/datasets/sider/pipelines/nettsider/executions/${started.id}`;
+
+    for (const action of ['cancel', 'redrive'])
+      expect(
+        (await call(`${run}/${action}`, 'nokkel', { body: {}, reason: 'Fyllingen tar lenger tid' }))
+          .status,
+        action,
+      ).toBe(403);
+  });
+
   it('a key not granted the dataset cannot admit its run again', async () => {
     const { call, admitted, readmit } = await readmitSetup();
 

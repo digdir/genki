@@ -282,7 +282,7 @@ const Execution = z
       .string()
       .optional()
       .describe(
-        'In lockdown, on a queued or running run: when its admission runs out and its jobs stop, 24 hours after it was admitted',
+        'In lockdown, on a queued or running run that is not being cancelled: when its admission runs out and its jobs stop, 24 hours after it was admitted',
       ),
     cancelRequestedAt: z.string().optional(),
     generation: z

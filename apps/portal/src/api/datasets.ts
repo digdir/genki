@@ -87,7 +87,7 @@ export interface ExecutionView {
   endedAt?: string;
   startedBy?: string;
   error?: string;
-  /** In lockdown, on a queued or running run: when its admission runs out and its jobs stop. */
+  /** In lockdown, on a queued or running run not being cancelled: when its admission runs out. */
   admissionRunsOutAt?: string;
   /** Set once someone asked to cancel the run; it ends with its jobs. */
   cancelRequestedAt?: string;

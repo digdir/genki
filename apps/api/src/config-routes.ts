@@ -1112,6 +1112,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       return perform(c, guard.principal, 'platform.pipeline.cancel', guard.scope, {
         dataset: item.id,
         id: param(c, 'id'),
@@ -1123,6 +1125,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       const response = await perform(c, guard.principal, 'platform.jobs.redrive', guard.scope, {
         dataset: item.id,
         id: param(c, 'id'),
