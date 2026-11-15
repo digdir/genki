@@ -3,6 +3,12 @@
   max-width: none;
 }
 
+/* The service page's body is narrower and padded on its own; here the column's padding is enough. */
+.service-body.service-interface:has(.blocks-split, .blocks-fullscreen) {
+  max-width: none;
+  padding-inline: 0;
+}
+
 .blocks-split {
   flex: 1;
   min-height: 0;
@@ -23,11 +29,31 @@
 }
 
 .blocks-resize {
+  position: relative;
   flex: 0 0 8px;
   cursor: col-resize;
+  touch-action: none;
   background: var(--ds-color-neutral-border-subtle);
   background-clip: content-box;
   padding: 0 3px;
+}
+
+/* The line is thin; the place to grab it reaches 9 px past the line on each side. */
+.blocks-resize::before {
+  content: '';
+  position: absolute;
+  inset: 0 -6px;
+}
+
+/* Nothing beside a dragged edge is selected while it moves, and the cursor stays the edge's. */
+.blocks-split:has(> .blocks-resize[data-dragging]) {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.blocks-fullscreen:has(> .blocks-resize[data-dragging]) {
+  user-select: none;
+  cursor: row-resize;
 }
 
 .blocks-resize:hover,
@@ -316,6 +342,10 @@
   cursor: row-resize;
   padding: 5px 0;
   background-clip: content-box;
+}
+
+.blocks-resize[data-axis='y']::before {
+  inset: -4px 0;
 }
 
 /* «Kopier oppsettet» and «Lim inn oppsett», under the templates or the blocks. */
