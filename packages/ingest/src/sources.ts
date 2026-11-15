@@ -62,7 +62,7 @@ const kudosTexts = async (
   let tooLarge = false;
   let noUrl = false;
   const limit = options.maxFileBytes;
-  const nameOf = (file: KudosFile) => file.url?.split('/').pop() || `${doc.id}.pdf`;
+  const nameOf = (file: KudosFile) => file.url?.split('/').pop() ?? `${doc.id}.pdf`;
   try {
     for (const file of doc.files ?? []) {
       if (limit !== undefined && Number(file.size ?? 0) > limit) {

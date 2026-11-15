@@ -1067,7 +1067,7 @@ export const knowledgeListingOf = async (
       );
       return sameFile(
         {
-          name: file.url?.split('/').pop() || `${sha256}.pdf`,
+          name: file.url?.split('/').pop() ?? `${sha256}.pdf`,
           bytes,
           ...(file.mimetype ? { mimetype: file.mimetype } : {}),
         },

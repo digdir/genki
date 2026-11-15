@@ -392,15 +392,15 @@ describe('embedding index documents', () => {
         return { vectors: texts.map(() => [0.1, 0.2]) };
       },
     }) as unknown as Parameters<typeof embedIndexDocument>[1];
-  // Figure-heavy pages: 64 chunks of 8,000 bytes are 512,000 bytes, and Azure counted more tokens
-  // than the 300,000 a request may hold (issue 581).
+  // Figure-heavy pages: 64 inputs cut to 8,191 bytes are about 524,000 bytes, and Azure counted
+  // more tokens than the 300,000 a request may hold (issue 581).
   const figurePages = (n: number): IndexDocument => ({
     id: 'kudos:f',
     fields: {},
     chunks: Array.from({ length: n }, (_, i) => ({
       id: `c${i}`,
       position: i,
-      text: `${String(i).padStart(4, '0')}|${'│ 1,2 │'.repeat(1000)}`.slice(0, 8000),
+      text: `${String(i).padStart(4, '0')}|${'│ 1,2 │'.repeat(1000)}`,
     })),
     phrases: [],
   });
