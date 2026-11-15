@@ -135,8 +135,7 @@ const ResizeHandle = ({
   const start = (e: PointerEvent<HTMLDivElement>) => {
     // The main button, a touch or a pen; a right click is a menu, not a drag.
     if (e.button !== 0) return;
-    // Starts no text selection, which the browser could drag away with the release in it, so
-    // focus is moved here by hand for the arrow keys.
+    // No text selection, so focus is moved here by hand for the arrow keys.
     e.preventDefault();
     e.currentTarget.focus();
     // Every move and the release come here until the pointer is let go, wherever it is then.
