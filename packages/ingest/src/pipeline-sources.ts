@@ -1038,7 +1038,7 @@ export const knowledgeListingOf = async (
           record: { ...raw },
           metadata,
           files: (files ?? []).map((f) => ({
-            name: f.uuid ?? f.url,
+            name: f.uuid ?? f.url ?? '',
             ...(f.sha256 ? { sha256: f.sha256 } : {}),
             // A file KUDOS lists as too large is never downloaded, so it gets no convert job.
             ...(f.sha256 && Number(f.size ?? 0) <= maxDocumentBytes ? { converts: true } : {}),
@@ -1067,7 +1067,7 @@ export const knowledgeListingOf = async (
       );
       return sameFile(
         {
-          name: file.url.split('/').pop() ?? `${sha256}.pdf`,
+          name: file.url?.split('/').pop() || `${sha256}.pdf`,
           bytes,
           ...(file.mimetype ? { mimetype: file.mimetype } : {}),
         },
