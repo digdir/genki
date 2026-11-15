@@ -5,6 +5,7 @@ import type {
   AnswerMarker,
   AskHandlers,
   AskRequest,
+  CancelledRun,
   Conversation,
   ConversationMessage,
   ConversationPage,
@@ -271,6 +272,7 @@ export const createClient = (options: ClientOptions) => {
     );
     if (!response.body) throw new ApiError(502, 'The response has no body.');
     const acc = new Accumulator(taskOf(response), versionOf(response));
+    if (acc.taskId !== undefined) yield { type: 'task', taskId: acc.taskId };
     let failure: ApiError | undefined;
     for await (const frame of dataFrames(response.body)) {
       if (frame === '[DONE]') break;
@@ -404,6 +406,10 @@ export const createClient = (options: ClientOptions) => {
     },
     ask,
     stream,
+    cancel: async (taskId: string, call?: CallOptions): Promise<CancelledRun> => {
+      const body = await json('POST', `/v1/tasks/${encodeURIComponent(taskId)}/cancel`, {}, call);
+      return { taskId: String(body.id ?? taskId), status: String(body.status) };
+    },
     conversations: {
       list: async (
         params: { pageSize?: number; pageIndex?: number; tags?: string[] } = {},

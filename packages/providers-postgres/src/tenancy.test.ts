@@ -136,6 +136,23 @@ describe('postgres conversations', () => {
     expect((await conversations.messages(kari, created.id))?.at(-1)?.task).toBe('task-7');
   });
 
+  it('keeps an answer whose run was cancelled marked stopped, and no other answer', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    await conversations.append(kari, created.id, { role: 'assistant', text: 'Hele svaret' });
+    await conversations.append(kari, created.id, {
+      role: 'assistant',
+      text: 'Svaret begy',
+      task: 'task-8',
+      stopped: true,
+    });
+
+    const [whole, stopped] = ((await conversations.messages(kari, created.id)) ?? []).slice(-2);
+
+    expect(whole).not.toHaveProperty('stopped');
+    expect(stopped).toMatchObject({ text: 'Svaret begy', task: 'task-8', stopped: true });
+  });
+
   it('keeps the sources of an answer with their index, title and url', async () => {
     const conversations = store();
     const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });

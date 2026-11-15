@@ -373,6 +373,37 @@ describe('@genai/client requests', () => {
       fieldErrors: [{ path: 'filters.fields[0].field', message: 'Unknown field' }],
     });
   });
+
+  it('cancels a run by its task id with the same credentials, and says where the stop has got to', async () => {
+    const { calls, fetchFn } = recording(() =>
+      Response.json({ id: 'task/1', object: 'task', status: 'running' }, { status: 202 }),
+    );
+    const client = createClient({
+      baseUrl: 'http://api',
+      apiKey: 'k',
+      userId: 'ola',
+      fetch: fetchFn,
+    });
+
+    const cancelled = await client.cancel('task/1');
+
+    expect(calls[0]?.url).toBe('http://api/v1/tasks/task%2F1/cancel');
+    expect(calls[0]?.init.method).toBe('POST');
+    expect(new Headers(calls[0]?.init.headers).get('x-user-id')).toBe('ola');
+    expect(cancelled).toEqual({ taskId: 'task/1', status: 'running' });
+  });
+
+  it('throws the refusal of a cancel for a finished run as an ApiError', async () => {
+    const { fetchFn } = recording(() =>
+      Response.json(
+        { error: { code: 'run_finished', message: 'The run has already finished.' } },
+        { status: 409 },
+      ),
+    );
+    const client = createClient({ baseUrl: 'http://api', fetch: fetchFn });
+
+    await expect(client.cancel('t1')).rejects.toMatchObject({ status: 409, code: 'run_finished' });
+  });
 });
 
 describe('@genai/client stored conversations', () => {
@@ -420,6 +451,18 @@ describe('@genai/client stored conversations', () => {
 
     expect(messages[1]?.markers).toEqual(excerptMarkers);
     expect(messages[1]?.sources).toEqual(excerptSources);
+  });
+
+  it('reads a stored turn whose run was cancelled as stopped, with the text it had made', async () => {
+    const { fetchFn } = stored({ ...reply, text: 'Første [1]', chunks: [], stopped: true });
+
+    const { messages } = await createClient({
+      baseUrl: 'http://api',
+      fetch: fetchFn,
+    }).conversations.get('k1');
+
+    expect(messages[1]).toMatchObject({ text: 'Første [1]', stopped: true });
+    expect(messages[0]).not.toHaveProperty('stopped');
   });
 
   it('reads the sources of a stored turn in the same shape as an answer gives them', async () => {
@@ -491,6 +534,19 @@ describe('@genai/client streaming', () => {
       citations: ['u'],
     });
     expect(answer.sources[0]?.index).toBe(1);
+  });
+
+  it('tells the task id before the first text, so a stream can be stopped while it runs', async () => {
+    const { fetchFn } = recording(() => sse(live, { 'genai-task': 't1' }));
+    const client = createClient({ baseUrl: 'http://api', fetch: fetchFn });
+    const types: string[] = [];
+
+    for await (const event of client.stream({ service: 's', question: 'q' })) {
+      types.push(event.type);
+      if (event.type === 'task') expect(event.taskId).toBe('t1');
+    }
+
+    expect(types.slice(0, 3)).toEqual(['task', 'conversation', 'text']);
   });
 
   it('asks for live streaming, and for steps only when a step handler is given', async () => {

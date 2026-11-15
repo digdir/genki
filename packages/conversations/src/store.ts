@@ -52,6 +52,7 @@ export interface Message {
   diagnostics?: unknown;
   parentId?: string;
   task?: string;
+  stopped?: true;
   attachments?: string[];
   input?: Record<string, unknown>;
 }
@@ -75,6 +76,7 @@ export interface NewMessage {
   diagnostics?: unknown;
   parentId?: string;
   task?: string;
+  stopped?: true;
   attachments?: string[];
   input?: Record<string, unknown>;
 }
@@ -221,6 +223,7 @@ export class InMemoryConversationStore implements ConversationStore {
       ...(input.markers?.length ? { markers: input.markers } : {}),
       ...(input.diagnostics === undefined ? {} : { diagnostics: input.diagnostics }),
       ...(input.task === undefined ? {} : { task: input.task }),
+      ...(input.stopped ? { stopped: true as const } : {}),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       ...(input.input ? { input: input.input } : {}),
       ...(parentId === undefined ? {} : { parentId }),

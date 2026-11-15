@@ -14,6 +14,7 @@ import {
   type KernelOptions,
   type PolicyDecisionPoint,
   type Strategy,
+  type TaskStore,
 } from './index.js';
 
 const kari: Principal = {
@@ -796,6 +797,17 @@ describe('kernel: coalescing streamed text', () => {
   });
 });
 
+const withCancelRequested = (
+  tasks: InMemoryTaskStore,
+  cancelRequested: (ids: readonly string[]) => Promise<string[]>,
+): TaskStore => ({
+  put: (stored) => tasks.put(stored),
+  get: (id) => tasks.get(id),
+  pendingFor: (who) => tasks.pendingFor(who),
+  requestCancel: (id, at) => tasks.requestCancel(id, at),
+  cancelRequested,
+});
+
 describe('kernel: cancelling', () => {
   it('cancels a running task at once, even if the strategy is stuck and ignores the signal', async () => {
     const stuck = strategy('stuck', async function* () {
@@ -840,6 +852,100 @@ describe('kernel: cancelling', () => {
 
     await expect.poll(async () => (await kernel.task(kari, childTask)).status).toBe('cancelled');
     expect((await kernel.task(kari, childTask)).parent).toBe(run.task);
+  });
+
+  it('cancels a task another kernel runs, through the task store they share', async () => {
+    const stuck = strategy('stuck', async function* () {
+      yield { type: 'kernel.part.delta', data: { text: '...' } };
+      await never();
+    });
+    const shared = {
+      strategies: [stuck],
+      capabilities: [capability('ka', 'stuck')],
+      log: new InMemoryEventLog(),
+      tasks: new InMemoryTaskStore(),
+      limits: { cancelPollMs: 10 },
+    };
+    const runner = kernelWith(shared);
+    const elsewhere = kernelWith(shared);
+
+    const run = await runner.invoke(kari, 'ka', {});
+    for await (const e of run.events) if (e.type === 'kernel.part.delta') break;
+    await elsewhere.cancel(kari, run.task);
+
+    await expect(run.result).rejects.toMatchObject({ code: 'cancelled' });
+    expect((await elsewhere.task(kari, run.task)).status).toBe('cancelled');
+  });
+
+  it('stops asking the task store about cancels once it runs no task', async () => {
+    let asked = 0;
+    let open: () => void = () => undefined;
+    const tasks = new InMemoryTaskStore();
+    const counting = withCancelRequested(tasks, (ids) => {
+      asked += 1;
+      return tasks.cancelRequested(ids);
+    });
+    const waits = strategy('waits', async function* () {
+      await new Promise<void>((resolve) => (open = resolve));
+      yield { type: 'kernel.result', data: [textPart('ok')] };
+    });
+    const kernel = kernelWith({
+      strategies: [waits],
+      capabilities: [capability('ka', 'waits')],
+      tasks: counting,
+      limits: { cancelPollMs: 5 },
+    });
+
+    const run = await kernel.invoke(kari, 'ka', {});
+    await expect.poll(() => asked).toBeGreaterThan(0);
+    open();
+    await run.result;
+    const afterEnd = asked;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(asked).toBe(afterEnd);
+  });
+
+  it('asks the task store again after a round that failed', async () => {
+    const tasks = new InMemoryTaskStore();
+    let failures = 1;
+    const flaky = withCancelRequested(tasks, async (ids) => {
+      if (failures-- > 0) throw new Error('the database did not answer');
+      return tasks.cancelRequested(ids);
+    });
+    const stuck = strategy('stuck', async function* () {
+      yield { type: 'kernel.part.delta', data: { text: '...' } };
+      await never();
+    });
+    const shared = {
+      strategies: [stuck],
+      capabilities: [capability('ka', 'stuck')],
+      log: new InMemoryEventLog(),
+      limits: { cancelPollMs: 5 },
+    };
+    const runner = kernelWith({ ...shared, tasks: flaky });
+    const elsewhere = kernelWith({ ...shared, tasks });
+
+    const run = await runner.invoke(kari, 'ka', {});
+    for await (const e of run.events) if (e.type === 'kernel.part.delta') break;
+    await elsewhere.cancel(kari, run.task);
+
+    await expect(run.result).rejects.toMatchObject({ code: 'cancelled' });
+    expect(failures).toBeLessThan(0);
+  });
+
+  it('keeps the entry point a task was started through on the task', async () => {
+    const quick = strategy('quick', async function* () {
+      yield { type: 'kernel.result', data: [textPart('ok')] };
+    });
+    const kernel = kernelWith({ strategies: [quick], capabilities: [capability('ka', 'quick')] });
+
+    const asked = await kernel.invoke(kari, 'ka', {}, { entryPoint: 'openai' });
+    const batch = await kernel.invoke(kari, 'ka', {});
+    await Promise.all([asked.result, batch.result]);
+
+    expect((await kernel.task(kari, asked.task)).entryPoint).toBe('openai');
+    expect(await kernel.task(kari, batch.task)).not.toHaveProperty('entryPoint');
   });
 });
 

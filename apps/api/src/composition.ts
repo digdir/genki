@@ -1779,7 +1779,7 @@ export const createPlatform = async (input: PlatformInput) => {
     req: { method: string; path: string; header(name: string): string | undefined };
   }) =>
     c.req.method === 'POST' &&
-    (c.req.path.startsWith('/v1/') ||
+    ((c.req.path.startsWith('/v1/') && !/^\/v1\/tasks\/[^/]+\/cancel$/.test(c.req.path)) ||
       c.req.path.startsWith('/api/tools/call/') ||
       (c.req.path === '/api/mcp' && c.req.header('mcp-method') === 'tools/call') ||
       c.req.path.startsWith('/a2a/'));

@@ -535,6 +535,14 @@ describe('rate limits and quota', () => {
     }
   });
 
+  it('still takes a cancel of a run when the monthly token quota is used', async () => {
+    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const cancelled = await send('/v1/tasks/no-such-task/cancel', 'veileder', { body: {} });
+
+    expect(cancelled.status).toBe(404);
+    expect(await cancelled.json()).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
   it('still answers MCP tools/list when the monthly token quota is used', async () => {
     const { mcp } = await boot({ monthlyTokens: 100, usedTokens: 150 });
     expect((await mcp('veileder', 'tools/list')).status).toBe(200);
