@@ -45,6 +45,7 @@ import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
+import { admissionRunsOutSoon } from './admission';
 import type { DetailTab } from './DatasetDetail';
 import {
   countText,
@@ -722,7 +723,26 @@ const Loaded = ({
     }
   };
 
+  const readmit = async () => {
+    const execution = runs?.data.find((r) => r.status === 'running');
+    if (!pipeline || !execution) return;
+    setFailure('');
+    try {
+      await api.datasets.readmitExecution(
+        tenant,
+        view.id,
+        pipeline.id,
+        execution.id,
+        tRef.current('datasets.readmitReason'),
+      );
+      await refresh();
+    } catch (error) {
+      setFailure(failureText(tRef.current, error));
+    }
+  };
+
   const latest = runs?.data[0];
+  const runsOut = latest?.status === 'running' ? latest.admissionRunsOutAt : undefined;
   const lastOk = runs?.data.find((r) => r.status === 'succeeded');
   const status: DatasetStatus =
     view.state === 'external'
@@ -800,6 +820,27 @@ const Loaded = ({
               {t('datasets.runningLeave')}
             </span>
           </Alert>
+        ) : null}
+        {runsOut ? (
+          <div className="stack-xs">
+            {admissionRunsOutSoon(runsOut) ? (
+              <Alert data-color="warning" data-size="sm">
+                {t('datasets.admissionSoon', { time: f.dateTime(runsOut) })}
+              </Alert>
+            ) : (
+              <p className="meta">{t('datasets.admission', { time: f.dateTime(runsOut) })}</p>
+            )}
+            {canEdit ? (
+              <Button
+                variant="secondary"
+                data-size="sm"
+                className="align-start"
+                onClick={() => void readmit()}
+              >
+                {t('datasets.readmit')}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         {finished?.status === 'succeeded' ? (
           <Alert data-color={skippedNow.length ? 'warning' : 'success'}>

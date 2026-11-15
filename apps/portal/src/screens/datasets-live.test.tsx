@@ -404,6 +404,39 @@ describe('live dataset detail', () => {
     expect(screen.queryByRole('button', { name: 'Avbryt innlesing' })).toBeNull();
   });
 
+  it("the portal shows when a running run's admission runs out, and admits it again with a reason", async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    let runsOut = '2026-11-15T07:56:00Z';
+    const running = () => ({
+      id: 'r1',
+      status: 'running',
+      startedAt: '2026-11-14T07:56:00Z',
+      admittedAt: runsOut,
+      admissionRunsOutAt: runsOut,
+    });
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    const { calls, fetch } = recorded({}, (url, method) => {
+      if (method === 'GET' && url.endsWith('/pipelines/upload/executions'))
+        return json({ data: [running()], nextRunAt: null });
+      if (method === 'POST' && url.endsWith('/pipelines/upload/executions/r1/readmit')) {
+        runsOut = '2026-11-16T05:00:00Z';
+        return json(running());
+      }
+      return undefined;
+    });
+    await renderLive(veiledere, fetch);
+    const warned = await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/);
+    expect(warned.closest('[data-color="warning"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Slipp inn igjen' }));
+
+    expect(await screen.findByText(/sluppet inn til 16\. november 2026 kl\. 06\.00/)).toBeTruthy();
+    const readmit = calls.find((c) => c.url.endsWith('/executions/r1/readmit'));
+    expect(readmit?.method).toBe('POST');
+    expect(readmit?.reason).toBeTruthy();
+  });
+
   it('shows the refusal text when a second ingestion is started for the same dataset', async () => {
     const { fetch } = recorded({}, (url, method) =>
       method === 'POST' && url.endsWith('/pipelines/upload/execute')

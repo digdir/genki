@@ -922,6 +922,8 @@ export interface EngineSwitch {
     verdict: 'same' | 'better' | 'worse';
   };
   comparisonNote?: string;
+  /** In lockdown, while the switch has open runs: when the first run's admission runs out. */
+  admissionRunsOutAt?: string;
 }
 
 export interface MethodEstimate {
