@@ -48,6 +48,7 @@ import { ErrorState, Loading } from '../../states';
 import { admissionRunsOutSoon } from './admission';
 import type { DetailTab } from './DatasetDetail';
 import {
+  refusalText,
   countText,
   datasetStatus,
   executionStatus,
@@ -723,26 +724,40 @@ const Loaded = ({
     }
   };
 
+  // The open run whose admission runs out first; the list starts with the newest, often a queued one.
+  const admitted = runs?.data
+    .filter(
+      (r) =>
+        (r.status === 'queued' || r.status === 'running') &&
+        r.admissionRunsOutAt &&
+        !r.cancelRequestedAt,
+    )
+    .sort((a, b) => (a.admissionRunsOutAt ?? '').localeCompare(b.admissionRunsOutAt ?? ''))[0];
+  const runsOut = admitted?.admissionRunsOutAt;
+  const [readmitting, setReadmitting] = useState(false);
+  const [readmitFailure, setReadmitFailure] = useState('');
+
   const readmit = async () => {
-    const execution = runs?.data.find((r) => r.status === 'running');
-    if (!pipeline || !execution) return;
-    setFailure('');
+    if (!pipeline || !admitted || readmitting) return;
+    setReadmitFailure('');
+    setReadmitting(true);
     try {
       await api.datasets.readmitExecution(
         tenant,
         view.id,
         pipeline.id,
-        execution.id,
+        admitted.id,
         tRef.current('datasets.readmitReason'),
       );
       await refresh();
     } catch (error) {
-      setFailure(failureText(tRef.current, error));
+      setReadmitFailure(refusalText(tRef.current, error));
+    } finally {
+      setReadmitting(false);
     }
   };
 
   const latest = runs?.data[0];
-  const runsOut = latest?.status === 'running' ? latest.admissionRunsOutAt : undefined;
   const lastOk = runs?.data.find((r) => r.status === 'succeeded');
   const status: DatasetStatus =
     view.state === 'external'
@@ -835,10 +850,16 @@ const Loaded = ({
                 variant="secondary"
                 data-size="sm"
                 className="align-start"
+                loading={readmitting}
                 onClick={() => void readmit()}
               >
                 {t('datasets.readmit')}
               </Button>
+            ) : null}
+            {readmitFailure ? (
+              <Alert data-color="danger" data-size="sm" role="alert">
+                {t('datasets.readmitFailed', { problem: readmitFailure })}
+              </Alert>
             ) : null}
           </div>
         ) : null}

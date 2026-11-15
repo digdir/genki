@@ -677,7 +677,10 @@ export const createEngineSwitchesModule =
     /** The switch's open runs, as the API shows them: in lockdown with when admission runs out. */
     const openRunsOf = async (spec: EngineSwitchSpec) =>
       (await Promise.all((spec.runs ?? []).map((id) => deps.ingestion.execution(id))))
-        .filter((r): r is Execution => r?.status === 'queued' || r?.status === 'running')
+        .filter(
+          (r): r is Execution =>
+            (r?.status === 'queued' || r?.status === 'running') && !r.cancelRequestedAt,
+        )
         .map((r) => deps.ingestion.admission(r));
 
     const withAdmission = async (entry: ConfigEntry<unknown>): Promise<EngineSwitchView> => {
@@ -1867,6 +1870,10 @@ export const createEngineSwitchesModule =
             const g = await withSwitch(c, 'manage-datasets');
             if ('response' in g) return g.response;
             const reason = reasonFrom(c);
+            if (!isReasonLongEnough(reason))
+              return problem(c, 400, 'Begrunnelsen er for kort', [
+                { path: 'change-reason', message: reasonTooShort },
+              ]);
             const by = actor(g.principal.actor ?? g.principal);
             const state = (g.entry.spec as EngineSwitchSpec).state;
             const done = await inTask(

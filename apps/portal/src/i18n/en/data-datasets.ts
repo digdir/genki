@@ -219,6 +219,7 @@ const datasets = {
     'The ingestion is admitted only until {time}. Admit it again before then, or it stops and must start over.',
   readmit: 'Admit again',
   readmitReason: 'Admitted again from the portal',
+  readmitFailed: 'The ingestion could not be admitted again. {problem}',
   ingestionDone: 'The ingestion is done',
   storedDocuments: '{amount} documents have been ingested.',
   someSkipped: '{amount} were skipped:',

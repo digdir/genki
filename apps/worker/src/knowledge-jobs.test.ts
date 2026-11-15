@@ -731,6 +731,26 @@ describe('the worker and the knowledge queues', () => {
     expect(elsewhere).toMatchObject({ ok: false });
   });
 
+  it('a run being cancelled cannot be admitted again', async () => {
+    const at = pipeline();
+    const started = await start(at, new Date(Date.now() - 23 * hour).toISOString());
+    await apiRuns.cancel({
+      dataset: at.dataset,
+      execution: started.id,
+      by: 'employee:test:kari',
+      at: new Date().toISOString(),
+    });
+
+    const refused = await apiRuns.readmit({
+      dataset: at.dataset,
+      execution: started.id,
+      at: new Date().toISOString(),
+    });
+
+    expect(refused).toMatchObject({ ok: false });
+    expect(await run(started.id)).toMatchObject({ admitted_at: started.admittedAt });
+  });
+
   it("a job's data never admits it in lockdown", async () => {
     const id = await insertRun(pipeline(), { status: 'running', admittedAt: null });
     expect(() =>

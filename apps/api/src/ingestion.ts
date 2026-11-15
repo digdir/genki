@@ -934,10 +934,11 @@ export class IngestionService {
       : { ok: false, errors: [{ path: 'execution', message: admitted.message }] };
   }
 
-  /** In lockdown, an open run that runs as jobs says when its admission runs out (ADR 0033). */
+  /** In lockdown, an open run that runs as jobs, and is not being cancelled, says when its admission runs out (ADR 0033). */
   admission(run: Execution): Execution {
     return this.options.admits &&
       run.admittedAt &&
+      !run.cancelRequestedAt &&
       (run.status === 'queued' || run.status === 'running')
       ? { ...run, admissionRunsOutAt: admissionRunsOutAt(run.admittedAt) }
       : run;

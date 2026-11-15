@@ -922,7 +922,7 @@ export interface EngineSwitch {
     verdict: 'same' | 'better' | 'worse';
   };
   comparisonNote?: string;
-  /** In lockdown, while the switch has open runs: when the first run's admission runs out. */
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
   admissionRunsOutAt?: string;
 }
 

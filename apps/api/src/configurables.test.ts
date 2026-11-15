@@ -1,3 +1,4 @@
+import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { textPart, type Principal } from '@genai/contracts';
@@ -35,6 +36,14 @@ const principals: Record<string, Principal> = {
     subject: 'siri',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
+  // An ingest key granted another dataset only.
+  nokkel: {
+    kind: 'agency-system',
+    issuer: LEGACY_KEY_ISSUER,
+    subject: 'key-annet',
+    tenant: digdir,
+    scopes: ['legacy:ingest', 'grant:dataset:annet'],
   },
 };
 
@@ -808,7 +817,8 @@ describe('ingestion pipelines', () => {
     expect((await call(redrive, 'erik', { body: {}, reason: 'Igjen' })).status).toBe(400);
   });
 
-  it('admitting a run again is audited with who and why', async () => {
+  /** A dataset whose run runs as jobs, started by a dataset manager, and its readmit route. */
+  const readmitSetup = async () => {
     const runs = new Map<string, Execution>();
     const admitted: { execution: string; at: string }[] = [];
     const store: JobRunStore = {
@@ -853,6 +863,11 @@ describe('ingestion pipelines', () => {
       await call(`${base}/nettsider/execute`, 'erik', { body: {} }),
     );
     const readmit = `${base}/nettsider/executions/${started.id}/readmit`;
+    return { call, admin, admitted, started, readmit };
+  };
+
+  it('admitting a run again is audited with who and why', async () => {
+    const { call, admin, admitted, started, readmit } = await readmitSetup();
 
     expect(
       (await call(readmit, 'siri', { body: {}, reason: 'Fyllingen tar lenger tid' })).status,
@@ -872,6 +887,15 @@ describe('ingestion pipelines', () => {
         actor: expect.stringContaining('erik'),
       }),
     ]);
+  });
+
+  it('a key not granted the dataset cannot admit its run again', async () => {
+    const { call, admitted, readmit } = await readmitSetup();
+
+    expect(
+      (await call(readmit, 'nokkel', { body: {}, reason: 'Fyllingen tar lenger tid' })).status,
+    ).toBe(403);
+    expect(admitted).toEqual([]);
   });
 
   it('runs a pipeline on the pluggable backend and records the execution', async () => {

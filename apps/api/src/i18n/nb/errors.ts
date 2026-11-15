@@ -224,6 +224,8 @@ export const knowledgeErrors = defineNamespace({
   copyOrReingest: 'method er copy eller reingest',
   retryStopped: 'Bare et bytte som har stoppet kan prøves på nytt.',
   switchEnded: 'Byttet er allerede avsluttet.',
+  switchNoOpenRuns: 'Byttet har ingen åpne kjøringer.',
+  switchRunNotReadmitted: 'Kjøringen kunne ikke slippes inn igjen.',
   switchNotReady: 'Byttet er ikke klart til å tas i bruk.',
   datasetChangedSwitch: 'Datasettet er endret siden byttet startet.',
   engineNotUsed: 'Søkemotoren kunne ikke tas i bruk',

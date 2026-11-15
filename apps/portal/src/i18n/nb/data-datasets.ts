@@ -218,6 +218,7 @@ export const datasets = defineNamespace({
     'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper den og må startes på nytt.',
   readmit: 'Slipp inn igjen',
   readmitReason: 'Sluppet inn igjen fra portalen',
+  readmitFailed: 'Innlesingen kunne ikke slippes inn igjen. {problem}',
   ingestionDone: 'Innlesingen er ferdig',
   storedDocuments: '{amount} dokumenter er lest inn.',
   someSkipped: '{amount} ble hoppet over:',

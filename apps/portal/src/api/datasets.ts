@@ -89,6 +89,8 @@ export interface ExecutionView {
   error?: string;
   /** In lockdown, on a queued or running run: when its admission runs out and its jobs stop. */
   admissionRunsOutAt?: string;
+  /** Set once someone asked to cancel the run; it ends with its jobs. */
+  cancelRequestedAt?: string;
   report?: {
     stored: number;
     skipped: number | SkippedDocument[];

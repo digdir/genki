@@ -187,7 +187,7 @@ export interface EngineSwitch {
   minimumReasonLength: number;
   previousKeptUntil?: string;
   decision?: SwitchDecision;
-  /** In lockdown, while the switch has open runs: when the first run's admission runs out. */
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
   admissionRunsOutAt?: string;
 }
 
