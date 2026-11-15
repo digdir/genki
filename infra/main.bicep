@@ -137,8 +137,13 @@ param alertThresholds object = {
 
 param minReplicas int = 1
 param maxReplicas int = 3
+@description('The API\'s cores and memory a replica.')
 param cpu string = '0.5'
 param memory string = '1Gi'
+@description('The worker\'s cores and memory, apart from the API: a Kudos listing ran out of 1 GiB (issue 338).')
+param workerCpu string = '2'
+@description('In whole Gi: the worker\'s heap is three quarters of it.')
+param workerMemory string = '4Gi'
 
 var baseName = '${namePrefix}-${environmentName}'
 var suffix = uniqueString(resourceGroup().id)
@@ -408,6 +413,8 @@ module apps 'modules/containerapps.bicep' = {
     maxReplicas: maxReplicas
     cpu: cpu
     memory: memory
+    workerCpu: workerCpu
+    workerMemory: workerMemory
   }
 }
 

@@ -47,6 +47,11 @@ param minReplicas int
 param maxReplicas int
 param cpu string
 param memory string
+param workerCpu string
+param workerMemory string
+
+// Three quarters of the worker's memory for Node's heap; the rest for buffers, native code and the runtime.
+var workerHeapMb = int(replace(workerMemory, 'Gi', '')) * 768
 
 resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: insightsName
@@ -255,8 +260,10 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
           {
             name: 'worker'
             image: workerImage
-            resources: { cpu: json(cpu), memory: memory }
-            env: concat(serverEnv, knowledgeEnv.worker, doclingEnv)
+            resources: { cpu: json(workerCpu), memory: workerMemory }
+            env: concat(serverEnv, knowledgeEnv.worker, doclingEnv, [
+              { name: 'NODE_OPTIONS', value: '--max-old-space-size=${workerHeapMb}' }
+            ])
             volumeMounts: dataMount
           },
           // 503 until the worker has reached the knowledge server and found it bound to this platform server.
