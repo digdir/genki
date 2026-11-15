@@ -5,6 +5,7 @@ import {
   type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
+  defaultServiceLimits,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
   allowOf,
@@ -521,6 +522,8 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  /** The clock a thread's last run is held against its deadline with; tests fix it. */
+  now?: () => number;
   evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
@@ -2390,6 +2393,19 @@ export const createPlatform = async (input: PlatformInput) => {
       conversationRoutes({
         store: conversations,
         auth: { authenticate: (request) => callerOf(request) },
+        runOf: async ({ principal }, task) => {
+          const run = await kernel.task(principal, task);
+          return {
+            status: run.status,
+            createdAt: Date.parse(run.createdAt),
+            deadlineMs:
+              registry.all().find((c) => c.descriptor.id === run.service.capability.id)
+                ?.deadlineMs ??
+              input.serviceLimits?.deadlineMs ??
+              defaultServiceLimits.deadlineMs,
+          };
+        },
+        ...(input.now ? { now: input.now } : {}),
         onDeleted: async (owner, id) => {
           await threadErasure?.erase(owner.tenant, id);
           if (blobStore) await deleteConversationDocuments(blobStore, owner.tenant, id);

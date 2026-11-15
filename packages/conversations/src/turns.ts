@@ -76,9 +76,9 @@ export const conversationTurns = (
       await store.append(found.owner, conversationId, message);
       const title = message.role === 'user' ? titleOf(message.text) : '';
       if (title === '') return;
-      const conversation = await store.get(found.owner, conversationId);
+      const conversation = await store.get(found.owner, conversationId).catch(() => undefined);
       if (conversation?.topic === defaultTopic)
-        await store.update(found.owner, conversationId, { topic: title });
+        await store.update(found.owner, conversationId, { topic: title }).catch(() => undefined);
     },
     discard: async (request, conversationId) => {
       const found = await ownerFor(request);

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { InMemoryConversationStore } from '@genai/conversations';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import {
   apiKeyDigest,
@@ -6,17 +7,40 @@ import {
   InMemoryApiKeys,
   type StoredApiKey,
 } from '@genai/identity';
-import { envSecrets } from '@genai/kernel';
-import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
+import { envSecrets, InMemoryEventLog, InMemoryTaskStore } from '@genai/kernel';
+import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
-import { callerFrom, createPlatform } from './composition.js';
+import {
+  callerFrom,
+  createPlatform,
+  defaultServiceLimits,
+  type PlatformInput,
+} from './composition.js';
 import { digdir, files, klarsprak } from './testkit.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => s.close()));
 });
+
+const answered: FakeReply = {
+  status: 200,
+  json: {
+    id: 'c1',
+    object: 'chat.completion',
+    created: 0,
+    model: 'gpt-test',
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant', content: 'Enklere tekst.' },
+        finish_reason: 'stop',
+      },
+    ],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  },
+};
 
 const key = (id: string, extra: Partial<StoredApiKey> = {}): StoredApiKey => ({
   id,
@@ -29,24 +53,14 @@ const key = (id: string, extra: Partial<StoredApiKey> = {}): StoredApiKey => ({
   ...extra,
 });
 
-const boot = async () => {
-  const model = await fakeHttp(() => ({
-    status: 200,
-    json: {
-      id: 'c1',
-      object: 'chat.completion',
-      created: 0,
-      model: 'gpt-test',
-      choices: [
-        {
-          index: 0,
-          message: { role: 'assistant', content: 'Enklere tekst.' },
-          finish_reason: 'stop',
-        },
-      ],
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-    },
-  }));
+const boot = async (
+  options: {
+    reply?: () => FakeReply | Promise<FakeReply>;
+    shared?: Pick<PlatformInput, 'tasks' | 'log' | 'conversations' | 'now'>;
+    publishKlarsprak?: boolean;
+  } = {},
+) => {
+  const model = await fakeHttp(options.reply ?? (() => answered));
   servers.push(model);
   const keys = new InMemoryApiKeys();
   keys.add(key('frontend', { service: 'klarsprak' }));
@@ -77,17 +91,19 @@ const boot = async () => {
       const found = await authenticator.authenticate(request);
       return found && callerFrom(found);
     },
+    ...options.shared,
   });
   const definition = klarsprak({ id: 'klarsprak' });
-  await platform.definitions.publish(
-    {
-      ...definition,
-      spec: { ...definition.spec, model: { primary: 'fake/gpt', residency: 'norway' } },
-    },
-    'test',
-    'test',
-    files,
-  );
+  if (options.publishKlarsprak !== false)
+    await platform.definitions.publish(
+      {
+        ...definition,
+        spec: { ...definition.spec, model: { primary: 'fake/gpt', residency: 'norway' } },
+      },
+      'test',
+      'test',
+      files,
+    );
   const admin = createAdmin({
     store: platform.definitions,
     plugins: platform.plugins,
@@ -207,8 +223,105 @@ describe('frontend contract on a service key bound to a service', () => {
       role: 'assistant',
       task: asked.headers.get('genai-task'),
     });
-    expect(detail.messages.at(-2)).not.toHaveProperty('task');
   });
+});
+
+describe('the run that answers the last question in a conversation', () => {
+  const question = {
+    model: 'klarsprak__default',
+    messages: [{ role: 'user', content: 'Skriv enklere.' }],
+    genai_conversation: true,
+    stream: true,
+  };
+
+  const heldModel = () => {
+    let called: () => void = () => undefined;
+    let release: (reply: FakeReply) => void = () => undefined;
+    const asked = new Promise<void>((resolve) => (called = resolve));
+    const answer = new Promise<FakeReply>((resolve) => (release = resolve));
+    return {
+      reply: () => {
+        called();
+        return answer;
+      },
+      asked,
+      release: (reply: FakeReply) => release(reply),
+    };
+  };
+
+  const messagesOf = async (send: Awaited<ReturnType<typeof boot>>['send'], id: string) =>
+    (
+      (await (await send(`/api/conversations/${id}`, 'ola')).json()) as {
+        messages: Record<string, unknown>[];
+      }
+    ).messages;
+
+  it("says the answer to a thread's last question is still coming while its run goes on", async () => {
+    const model = heldModel();
+    const { send } = await boot({ reply: model.reply });
+    const asked = await send('/v1/chat/completions', 'ola', question);
+    const id = asked.headers.get('genai-conversation') ?? '';
+    await model.asked;
+
+    const going = await messagesOf(send, id);
+    model.release(answered);
+    await asked.text();
+    const done = await messagesOf(send, id);
+
+    expect(going.at(-1)).toMatchObject({
+      role: 'user',
+      task: asked.headers.get('genai-task'),
+      runState: 'running',
+    });
+    expect(done.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(done.some((m) => 'runState' in m)).toBe(false);
+  });
+
+  it('says the run failed when the last question got no answer', async () => {
+    const { send } = await boot({
+      reply: () => ({ status: 400, json: { error: { message: 'refused', type: 'invalid' } } }),
+    });
+    const asked = await send('/v1/chat/completions', 'ola', question);
+    await asked.text();
+
+    const messages = await messagesOf(send, asked.headers.get('genai-conversation') ?? '');
+
+    expect(messages.map((m) => m.role)).toEqual(['user']);
+    expect(messages.at(-1)).toMatchObject({ runState: 'failed' });
+  });
+
+  it.each([
+    ['that lists its service', true],
+    ['that does not list its service', false],
+  ])(
+    'says a run another API process started is still coming until its deadline, then failed, in a process %s',
+    async (_case, publishKlarsprak) => {
+      const shared = {
+        tasks: new InMemoryTaskStore(),
+        log: new InMemoryEventLog(),
+        conversations: new InMemoryConversationStore(),
+      };
+      const model = heldModel();
+      const first = await boot({ reply: model.reply, shared });
+      const asked = await first.send('/v1/chat/completions', 'ola', question);
+      const id = asked.headers.get('genai-conversation') ?? '';
+      await model.asked;
+      const started = Date.parse(
+        (await shared.tasks.get(asked.headers.get('genai-task') ?? ''))?.task.createdAt ?? '',
+      );
+      let at = started + defaultServiceLimits.deadlineMs - 1;
+      const second = await boot({ shared: { ...shared, now: () => at }, publishKlarsprak });
+
+      const within = await messagesOf(second.send, id);
+      at = started + defaultServiceLimits.deadlineMs + 1;
+      const after = await messagesOf(second.send, id);
+      model.release(answered);
+      await asked.text();
+
+      expect(within.at(-1)).toMatchObject({ role: 'user', runState: 'running' });
+      expect(after.at(-1)).toMatchObject({ role: 'user', runState: 'failed' });
+    },
+  );
 });
 
 describe('frontend contract for a form service on a tenant key', () => {
@@ -489,6 +602,24 @@ describe('openapi.json for a frontend', () => {
     expect((stored.markers as { items?: unknown }).items).toEqual(
       (response.markers as { items?: unknown }).items,
     );
+  });
+
+  it('describes the run state of a stored question as running, failed or cancelled', async () => {
+    const { request } = await boot();
+    const spec = (await (
+      await request('/openapi.json', undefined, undefined, { key: '' })
+    ).json()) as {
+      components: {
+        schemas: Record<string, { properties: Record<string, unknown>; required?: string[] }>;
+      };
+    };
+    const stored = spec.components.schemas.StoredMessage;
+
+    expect(stored?.properties.runState).toMatchObject({
+      type: 'string',
+      enum: ['running', 'failed', 'cancelled'],
+    });
+    expect(stored?.required).not.toContain('runState');
   });
 
   it("describes each excerpt's own heading as an optional string", async () => {

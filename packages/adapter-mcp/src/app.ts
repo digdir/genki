@@ -66,7 +66,7 @@ export interface ConversationTurn {
   chunks?: TurnChunk[];
   markers?: TurnMarker[];
   diagnostics?: unknown;
-  /** The run that wrote an assistant turn, which feedback on the answer names. */
+  /** The run that answers a user turn or wrote an assistant turn. */
   task?: string;
 }
 
@@ -79,6 +79,7 @@ export interface McpConversations {
     input: { conversationId?: string; agentId: string },
   ): Promise<OpenedConversation>;
   append(request: Request, conversationId: string, turn: ConversationTurn): Promise<void>;
+  discard?(request: Request, conversationId: string): Promise<void>;
 }
 
 export interface QuotaRefusal {
@@ -370,11 +371,13 @@ export const createMcpApp = (options: McpAppOptions) => {
         ...(entry.agentId === undefined ? {} : { agent_id: entry.agentId }),
       };
 
+      const discard = async () => {
+        if (!requested)
+          await options.conversations
+            ?.discard?.(hooks.request, conversationId)
+            .catch(() => undefined);
+      };
       let run: Run;
-      await options.conversations?.append(hooks.request, conversationId, {
-        role: 'user',
-        text: query ?? '',
-      });
       try {
         run = await kernel.invoke(
           principal,
@@ -390,8 +393,20 @@ export const createMcpApp = (options: McpAppOptions) => {
           },
         );
       } catch (error) {
+        await discard();
         if (error instanceof KernelError)
           return outcomeOf(result(id, toolError(error.message, error.code)));
+        throw error;
+      }
+      try {
+        await options.conversations?.append(hooks.request, conversationId, {
+          role: 'user',
+          text: query ?? '',
+          task: run.task,
+        });
+      } catch (error) {
+        await kernel.cancel(principal, run.task).catch(() => undefined);
+        await discard();
         throw error;
       }
       hooks.onRun?.(run);
