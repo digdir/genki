@@ -234,6 +234,10 @@ export const knowledgeErrors = {
   pipelineOff: 'the pipeline is turned off',
   notSendRunBack: 'not allowed to send this run back',
   onlyJobRunsSentBack: 'only a run that runs as jobs can be sent back',
+  notReadmitRun: 'not allowed to admit this run again',
+  onlyJobRunsReadmitted: 'only a run that runs as jobs can be admitted again',
+  jobRunNotReadmitted:
+    'only a queued or running run that runs as jobs, and is not being cancelled, can be admitted again',
   datasetGone: 'the dataset is gone',
   parquetOneLocation: 'a Parquet source needs exactly one of url, urls and huggingface',
   parquetGlob: 'must be a .parquet glob',

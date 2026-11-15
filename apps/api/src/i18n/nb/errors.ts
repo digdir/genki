@@ -234,6 +234,10 @@ export const knowledgeErrors = defineNamespace({
   pipelineOff: 'innlesingen er slått av',
   notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
   onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
+  notReadmitRun: 'du har ikke lov til å slippe denne kjøringen inn igjen',
+  onlyJobRunsReadmitted: 'bare en kjøring som går som jobber, kan slippes inn igjen',
+  jobRunNotReadmitted:
+    'bare en kjøring i kø eller som pågår, som går som jobber og ikke er i ferd med å avbrytes, kan slippes inn igjen',
   datasetGone: 'datasettet finnes ikke lenger',
   parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url, urls og huggingface',
   parquetGlob: 'må være et .parquet-filmønster',
