@@ -64,6 +64,15 @@ describe('Kudos file fetch', () => {
     expect(error).not.toBeInstanceOf(FileUnreachable);
   });
 
+  it('refuses a Kudos file with no url as unreachable, without fetching', async () => {
+    const seen: string[] = [];
+    const get = server({}, seen);
+    await expect(fetchKudosFile(file({ url: null, sha256: null }), get)).rejects.toBeInstanceOf(
+      FileUnreachable,
+    );
+    expect(seen).toEqual([]);
+  });
+
   it('refuses bytes whose sha256 or size differs from the Kudos listing, or that have no sha256', async () => {
     const get = server({ 'https://kudos.dfo.no/files/abc': pdf });
     await expect(fetchKudosFile(file({ sha256: 'f'.repeat(64) }), get)).rejects.toThrow(/sha256/);
