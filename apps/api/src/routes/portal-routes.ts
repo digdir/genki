@@ -48,6 +48,7 @@ import { testRunnerRefusedType } from '../test-runner.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 import { isHiddenTask, shownKeys } from '../internal-services.js';
+import { rightBeyondHolder } from '../key-policies.js';
 
 export interface PortalTaskRow {
   task: string;
@@ -323,6 +324,7 @@ export const overridable = (value: unknown) =>
 
 export const portalAdminHandlers = (deps: {
   apiKeys: TenantApiKeys;
+  policies?: KeyPolicyStore;
   testRunnerKeys?: boolean;
 }): Record<string, AdminHandler> => ({
   'platform.apikeys.create': async (input, principal) => {
@@ -394,6 +396,16 @@ export const portalAdminHandlers = (deps: {
       return { ok: false, errors: [{ path: 'id', message: 'no active key with that id' }], target };
     if (typeof input.digest !== 'string' || !/^[0-9a-f]{64}$/.test(input.digest))
       return { ok: false, errors: [{ path: 'digest', message: 'not a key digest' }], target };
+    const policyId = old.policy?.id;
+    const policy =
+      (policyId &&
+        (await deps.policies?.listPolicies(input.tenant))?.find((p) => p.id === policyId)) ||
+      old.policy;
+    const beyond = rightBeyondHolder(principal, input.tenant, [
+      ...(old.scopes ?? []),
+      ...(policy?.scopes ?? []),
+    ]);
+    if (beyond) return refused(target, t('problems.keyBeyondRights', { right: beyond }));
     const kept: TenantApiKey = { ...old };
     delete kept.revokedAt;
     delete kept.lastUsedAt;

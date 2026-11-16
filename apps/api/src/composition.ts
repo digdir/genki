@@ -2081,11 +2081,12 @@ export const createPlatform = async (input: PlatformInput) => {
         ? configuredDiagnostics
         : create)(moduleDeps),
   );
+  const keyPolicies =
+    input.keyPolicies ??
+    (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys());
   modules.push(
     createKeyPoliciesModule({
-      policies:
-        input.keyPolicies ??
-        (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys()),
+      policies: keyPolicies,
       keys: apiKeys,
     })(moduleDeps),
   );
@@ -2103,7 +2104,11 @@ export const createPlatform = async (input: PlatformInput) => {
       },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys, testRunnerKeys: testRunnersAllowed }),
+    ...portalAdminHandlers({
+      apiKeys,
+      policies: keyPolicies,
+      testRunnerKeys: testRunnersAllowed,
+    }),
     ...frontendAdminHandlers({
       clients,
       definitions,
