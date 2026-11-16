@@ -169,14 +169,7 @@ export interface DocumentRecords {
    * run, send-back or catch-up writes it.
    */
   fail(record: IndexRecord, reason: string): Promise<void>;
-  /**
-   * Writes new fields for a dataset's documents, without re-chunking or embedding (ADR 0058).
-   * `fill` gives a document's fields in the order a fresh write builds them; a document whose
-   * fields it leaves as they are is unchanged. A changed document takes the next change number,
-   * which every generation holding it applies with its new fields, in one transaction per batch, so
-   * the next run sees it as unchanged. Throws GenerationBusy, writing nothing, when VACUUM holds a
-   * generation.
-   */
+  /** New fields per document from `fill`, batch by batch, nothing embedded; see ADR 0042. */
   refreshFields(
     dataset: string,
     fill: (document: StoredDocument) => Record<string, unknown>,

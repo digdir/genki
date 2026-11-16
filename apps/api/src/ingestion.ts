@@ -241,7 +241,7 @@ export interface JobRuns {
   runs: JobRunStore;
   /** Sends a `knowledge.drop` job for one generation on the knowledge server (ADR 0025). */
   drop?(input: { tenant: string; dataset: string; generation: string }): Promise<void>;
-  /** Sends a `knowledge.fields` job: new fields on a dataset's stored documents (ADR 0058). */
+  /** Sends a `knowledge.fields` job: new fields on a dataset's stored documents (ADR 0042). */
   refreshFields?(input: { tenant: string; dataset: string; fill: string }): Promise<void>;
 }
 
@@ -477,6 +477,18 @@ export class IngestionService {
     if (!drop)
       throw new Error('dropping a generation on the knowledge database needs the job queue');
     await drop(input);
+  }
+
+  /** Whether any pipeline of the dataset has a queued or running run. */
+  async hasOpenRun(scope: string, dataset: string) {
+    for (const pipeline of await this.list(scope, dataset))
+      if (
+        (await this.executions(dataset, pipeline.id)).some(
+          (e) => e.status === 'queued' || e.status === 'running',
+        )
+      )
+        return true;
+    return false;
   }
 
   /** Sends the `knowledge.fields` job that writes new fields on a dataset's stored documents. */

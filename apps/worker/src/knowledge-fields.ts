@@ -15,11 +15,7 @@ const fills: Record<(typeof fieldFills)[number], (doc: StoredDocument) => Record
     'kudos-org-numbers': kudosOrgNumberFields,
   };
 
-/**
- * `knowledge.fields`, sent by an operator through the API: writes new fields on a dataset's stored
- * documents in every generation that holds them, without re-chunking or embedding (ADR 0058).
- * Records copied from another engine are counted and left to the next pipeline run.
- */
+/** `knowledge.fields`: new fields on a dataset's stored documents, nothing embedded (ADR 0042). */
 export const fieldsWork = (deps: FieldsDeps) =>
   queueWork(knowledgeFieldsQueue, async (job) => {
     deps.bound?.();

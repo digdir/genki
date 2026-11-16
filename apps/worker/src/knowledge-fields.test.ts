@@ -67,7 +67,12 @@ const kudosEntry = (uuid: string, ownerOrgnr: number, ownerName: string) => ({
   type: 'Årsrapport',
   publish_date: '2026-03-15',
   owners: [{ org_number: ownerOrgnr, alternative_names: [{ name: ownerName, type: 'display' }] }],
-  recipients: [],
+  recipients: [
+    {
+      org_number: 972417807,
+      alternative_names: [{ name: 'Finansdepartementet', type: 'display' }],
+    },
+  ],
   publishers: [],
   files: [{ uuid: `${uuid}-f`, url: `https://kudos.dfo.no/${uuid}.pdf`, sha256: `${uuid}-sha` }],
 });
@@ -165,6 +170,7 @@ describe('the fields job', () => {
     const backfilled = await row(generation, 'kudos:a1');
     const written = await row(generation, 'kudos:a2');
     expect(backfilled?.fields.owner_orgnr).toEqual(['991825827']);
+    expect(backfilled?.fields.recipient_orgnr).toEqual(['972417807']);
     expect(backfilled?.fields).toEqual(written?.fields);
     expect(backfilled?.fields_text).toBe(written?.fields_text);
   });

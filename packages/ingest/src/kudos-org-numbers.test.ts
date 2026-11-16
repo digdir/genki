@@ -53,6 +53,20 @@ describe('org numbers on a KUDOS document', () => {
     expect(doc.owner_orgnr).toEqual(['972417904']);
     expect(doc).not.toHaveProperty('recipient_orgnr');
   });
+  it('leaves out an org number that is not nine digits', () => {
+    const doc = prepareKudosDoc(
+      letter({
+        owners: [
+          { org_number: 12345, alternative_names: [] },
+          { org_number: '97241790X', alternative_names: [] },
+          { org_number: 972417904, alternative_names: [] },
+        ],
+      }),
+      1,
+    );
+
+    expect(doc.owner_orgnr).toEqual(['972417904']);
+  });
 });
 
 describe('filling org numbers on a stored KUDOS document', () => {

@@ -266,10 +266,7 @@ export const displayNames = (orgs: KudosOrganisation[]) =>
     .filter((n) => n.type === 'display')
     .map((n) => n.name);
 
-/**
- * The org numbers of the organisations in one role, each once, as text. An organisation KUDOS
- * gives without an org number is left out (ADR 0058: a search filters by org number).
- */
+/** The nine-digit org numbers of one role's organisations, each once (ADR 0058). */
 export const orgNumbers = (orgs: KudosOrganisation[]) => [
   ...new Set(
     orgs.flatMap((o) => {
@@ -305,11 +302,7 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
-/**
- * A stored KUDOS document's fields with its owners' and recipients' org numbers from the KUDOS
- * record, in the order a fresh ingest stores them, so a fields-only refresh writes what a fresh
- * ingest would (ADR 0058). Fields the store gave back in another order are put back in order.
- */
+/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
 export const kudosOrgNumberFields = (doc: {
   id: string;
   record: Record<string, unknown>;

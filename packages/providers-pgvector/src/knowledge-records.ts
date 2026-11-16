@@ -347,6 +347,16 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
 
   refreshFields: async (dataset, fill, options = {}) => {
     const batch = options.batch ?? 500;
+    // A run's own generation is written through its own tables until attached: refuse until then.
+    const { rows: standalone } = await writer.query<{ generation: string }>(
+      `select generation from kn_generations where dataset = $1 and state = 'standalone'`,
+      [dataset],
+    );
+    if (standalone[0])
+      throw new KnowledgeError(
+        'bad_request',
+        `${dataset} has a generation not attached yet (${standalone[0].generation}); refresh after its run ends`,
+      );
     const { rows: held } = await writer.query<{ generation: string }>(
       `select generation from kn_generations where dataset = $1 and state <> 'detaching'
         order by generation`,
@@ -371,7 +381,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
                 not exists (select 1 from unnest(owners) o where o <> $3) as copied
            from src_documents
           where dataset = $1 and number > $2::bigint and state is distinct from 'deleted'
-          order by number limit $4`,
+          order by src_documents.number limit $4`,
         [dataset, after, copyOwner, batch],
       );
       if (rows.length === 0) return result;
@@ -385,6 +395,8 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
         continue;
       }
       await transaction(writer, async (client) => {
+        // The change sequence first, then the records, as a listing takes them.
+        await client.query(`select 1 from src_changes where dataset = $1 for update`, [dataset]);
         // In one order, so two refreshes never wait on each other's generations.
         const locked = [];
         for (const generation of generations)

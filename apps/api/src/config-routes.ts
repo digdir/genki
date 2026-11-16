@@ -434,6 +434,15 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
         errors: [{ path: 'fill', message: `fill must be one of ${fieldFills.join(', ')}` }],
         target,
       };
+    if (await deps.ingestion.hasOpenRun(scopeOf(input), dataset))
+      return {
+        ok: false,
+        conflict: true,
+        errors: [
+          { path: 'dataset', message: 'a run of the dataset is open; refresh after it ends' },
+        ],
+        target,
+      };
     await deps.ingestion.refreshFields({ tenant: platformScope, dataset, fill });
     return {
       ok: true,
@@ -1198,7 +1207,7 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       ? { response: guard.response }
       : { principal: guard.principal, scope: platformScope };
   });
-  // Only operators write fields on stored documents, for platform datasets (ADR 0058).
+  // Only operators write fields on stored documents, for platform datasets (ADR 0042).
   app.post('/operator/datasets/:dataset/fields', async (c) => {
     const guard = await operator(c);
     if (guard.response) return guard.response;

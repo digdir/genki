@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   copyOwner,
   GenerationBusy,
+  KnowledgeError,
   type DatasetConfig,
   type DocumentRecords,
   type IndexDocument,
@@ -239,6 +240,54 @@ describe('refreshing document fields', () => {
     expect(after).toBeGreaterThan(before);
     expect(Number(applied.rows[0]?.change)).toBe(after);
     expect(version.rows[0]?.v).toBe(version.rows[0]?.last);
+  });
+
+  it('refuses a refresh while the dataset has a generation that is not attached', async () => {
+    const name = 'digdir/fields-g';
+    const g = await freshGeneration(name);
+    await ingest(name, [g], [listed('h', 991825827)]);
+    await prepareGeneration(owner, dataset(name), `g-fields-run-${generations}`);
+
+    const refused = await records.refreshFields(name, withOwners).catch((e: unknown) => e);
+
+    expect(refused).toBeInstanceOf(KnowledgeError);
+    expect((await docRow(g, 'h'))?.fields).not.toHaveProperty('owner_orgnr');
+  });
+
+  it("locks the dataset's change sequence before its records, as a listing does", async () => {
+    const name = 'digdir/fields-h';
+    const g = await freshGeneration(name);
+    await ingest(name, [g], [listed('i', 991825827)]);
+    const listing = await admin.connect();
+    await listing.query('begin');
+    await listing.query(`select last_change from src_changes where dataset = $1 for update`, [
+      name,
+    ]);
+
+    const refresh = records.refreshFields(name, withOwners);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const record = await listing
+      .query(`select 1 from src_documents where dataset = $1 for update nowait`, [name])
+      .then(() => 'free')
+      .catch(() => 'locked');
+    await listing.query('rollback');
+    listing.release();
+    await refresh;
+
+    expect(record).toBe('free');
+  });
+
+  it('reads every record once when their numbers have different lengths', async () => {
+    const name = 'digdir/fields-i';
+    const g = await freshGeneration(name);
+    await admin.query(`select setval(pg_get_serial_sequence('src_documents', 'number'), 9998)`);
+    await ingest(name, [g], [listed('j', 991825827), listed('k', 974761076)]);
+
+    const first = await records.refreshFields(name, withOwners, { batch: 1 });
+    const again = await records.refreshFields(name, withOwners, { batch: 1 });
+
+    expect(first).toEqual({ generations: 1, updated: 2, unchanged: 0, copied: 0 });
+    expect(again).toEqual({ generations: 1, updated: 0, unchanged: 2, copied: 0 });
   });
 
   it('leaves a copied record to the next pipeline run, and counts it', async () => {

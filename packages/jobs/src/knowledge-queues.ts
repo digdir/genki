@@ -25,7 +25,7 @@ const dropPayload = z.union([
   z.strictObject({ tenant, dataset: id }),
   z.strictObject({ tenant, dataset: id, generation: id }),
 ]);
-/** The fills a fields-only refresh knows; each names the source whose records it reads (ADR 0058). */
+/** The fills a fields-only refresh knows, each by the source whose records it reads (ADR 0042). */
 export const fieldFills = ['kudos-org-numbers'] as const;
 /** A dataset whose stored documents get new fields, without re-chunking or embedding. */
 const fieldsPayload = z.strictObject({ tenant, dataset: id, fill: z.enum(fieldFills) });

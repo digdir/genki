@@ -120,7 +120,7 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
         await started()
       ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
     },
-    // New fields on a dataset's stored documents, written by the worker (ADR 0058).
+    // New fields on a dataset's stored documents, written by the worker (ADR 0042).
     refreshFields: async (input: { tenant: string; dataset: string; fill: string }) => {
       const data = knowledgeFieldsQueue.payload.parse(input);
       await (
