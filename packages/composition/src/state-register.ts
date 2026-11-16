@@ -75,7 +75,7 @@ interface BrregPage {
       overordnetEnhet?: string;
     }[];
   };
-  page?: { totalElements?: number; totalPages?: number };
+  page?: { totalElements?: number; totalPages?: number; number?: number };
 }
 
 /** Every unit of one form, all pages, or an error: never part of the register. */
@@ -94,9 +94,23 @@ const pullForm = async (guard: GuardedRequest, form: 'STAT' | 'ORGL') => {
         `Enhetsregisteret answered HTTP ${response.status} for ${form} page ${n}`,
       );
     const answer = JSON.parse(response.body) as BrregPage;
-    pages = answer.page?.totalPages ?? 0;
-    reported = answer.page?.totalElements ?? 0;
-    for (const u of answer._embedded?.enheter ?? []) {
+    const page = answer.page;
+    const enheter = answer._embedded?.enheter;
+    // Every form has units: a page without its paging, its units or its place is not the register.
+    if (
+      !page ||
+      !Number.isInteger(page.totalPages) ||
+      !Number.isInteger(page.totalElements) ||
+      (page.totalPages ?? 0) < 1 ||
+      (page.totalElements ?? 0) < 1 ||
+      !Array.isArray(enheter) ||
+      (page.number !== undefined && page.number !== n) ||
+      (n > 0 && (page.totalPages !== pages || page.totalElements !== reported))
+    )
+      throw new PartialPull(`Enhetsregisteret gave ${form} page ${n} without its paging or units`);
+    pages = page.totalPages ?? 0;
+    reported = page.totalElements ?? 0;
+    for (const u of enheter) {
       if (!u.organisasjonsnummer || !u.navn || u.organisasjonsform?.kode !== form) continue;
       units.push({
         orgnr: u.organisasjonsnummer,

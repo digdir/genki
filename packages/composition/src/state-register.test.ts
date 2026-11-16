@@ -216,6 +216,36 @@ describe('the state register', () => {
     expect(await registerVersions(configEntries)).toEqual(before);
   });
 
+  it('leaves the register as it was when a page comes back without its paging or units', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await syncRegister({
+      configEntries,
+      guard: guardFor(registerOf([dfd, fin], [digdir, skatt])).guard,
+      now: () => night('2026-11-16'),
+    });
+    const before = await registerVersions(configEntries);
+
+    const results = [];
+    for (const [i, orgl] of [
+      '{}',
+      JSON.stringify({ page: { totalElements: 2, totalPages: 1 } }),
+    ].entries())
+      results.push(
+        await syncRegister({
+          configEntries,
+          guard: guardFor({
+            [brregUnitsUrl('STAT', 0)]: page([dfd, fin]),
+            [brregUnitsUrl('ORGL', 0)]: orgl,
+          }).guard,
+          now: () => night(`2026-11-${17 + i}`),
+        }),
+      );
+
+    expect(results.map((r) => r.ok)).toEqual([false, false]);
+    expect(await registerVersions(configEntries)).toEqual(before);
+    expect((await latestRegisterSync(configEntries))?.failedNights).toBe(2);
+  });
+
   it('reads every page Brønnøysund reports for a form', async () => {
     const configEntries = new InMemoryConfigEntryStore();
     const { guard, asked } = guardFor({
