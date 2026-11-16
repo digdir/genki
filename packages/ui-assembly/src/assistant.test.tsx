@@ -3924,6 +3924,23 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     expect(clipboard).toEqual(['Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.']);
   });
 
+  it('puts the Kildeliste under the answer, which copies itself as Markdown', async () => {
+    const clipboard: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+    draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
+    await ask();
+    expect(screen.queryByText('Kilder brukt i svaret')).toBeNull();
+    fireEvent.click(await screen.findByText('Kildeliste'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Kopier kildeliste' }));
+    });
+    expect(clipboard).toEqual(['- [1] *Tildelingsbrev 2022*. (u.å.).']);
+    expect(screen.getByRole('button', { name: 'Kopiert' })).toBeTruthy();
+  });
+
   it('numbers each footnote as it stands for an answer that cites excerpts', async () => {
     await openStored(fromTemplate('knowledge-assistant-next').layout);
     expect(documentMarks()).toEqual(['Fotnote 1: Tildelingsbrev 2022']);

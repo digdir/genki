@@ -13,6 +13,8 @@ import { distinctNames, isOwn } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { documentNumbers, readFootnotes, type AnswerMarker } from './citations.js';
 import { useT } from './i18n.js';
+import { references } from './referenceList.js';
+import { References } from './References.js';
 import { SourcesUsed, type UsedDocument } from './SourcesUsed.js';
 
 export type AnswerStatus = 'streaming' | 'complete' | 'aborted' | 'failed';
@@ -96,8 +98,16 @@ export interface AnswerProps {
   target?: AnswerTarget | undefined;
   /** Search hits to mark in the text, found in the words the answer is drawn with. */
   highlight?: MarkdownHighlight | undefined;
-  /** «Kilder brukt i svaret» under a finished answer. */
+  /**
+   * «Kilder brukt i svaret» under a finished answer, or with `variant="plain"` the Kildeliste
+   * (dev-kildeliste).
+   */
   sourcesUsed?: boolean | undefined;
+  /**
+   * Shows «Kopier kildeliste» in the Kildeliste of a `plain` answer: the app puts the Markdown on
+   * the clipboard, and the button says «Kopiert» when the promise it returns resolves.
+   */
+  onCopyReferences?: ((markdown: string) => Promise<void> | void) | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
   closingQuestion?: boolean | undefined;
   /** Asks the same question again, offered under a stopped or failed answer. */
@@ -116,9 +126,8 @@ export interface AnswerProps {
   /** Designsystemet's `data-color` for the card, set only when given. */
   color?: string | undefined;
   /**
-   * `plain`, the dev boards' answer (dev-kilder-hoyre): no card around it, and «Kilder brukt i
-   * svaret» with the count in its bar, «Kilder · 3 brukt i svaret», as a numbered list of the
-   * documents. `card`, the default: the answer in a card.
+   * `plain`, the dev boards' answer (dev-kilder-hoyre): no card around it, and the Kildeliste in
+   * place of «Kilder brukt i svaret» (dev-kildeliste). `card`, the default: the answer in a card.
    */
   variant?: 'card' | 'plain' | undefined;
   className?: string | undefined;
@@ -282,6 +291,7 @@ export const Answer = ({
   target,
   highlight,
   sourcesUsed = true,
+  onCopyReferences,
   closingQuestion = false,
   onRegenerate,
   failure,
@@ -470,6 +480,14 @@ export const Answer = ({
     });
   }, [sources, pairing, byExcerpt, byDocument, keys, names]);
 
+  const plain = variant === 'plain';
+  // The Kildeliste, with the numbers the footnotes are drawn with.
+  const referenceList = useMemo(
+    () =>
+      plain ? references(sources ?? [], pairing, { documentFootnotes, numberEachFootnote }) : [],
+    [plain, sources, pairing, documentFootnotes, numberEachFootnote],
+  );
+
   const told =
     failed && failure ? failureText(t, failure, assistantName ?? t('answer.assistant')) : undefined;
   const again =
@@ -488,7 +506,7 @@ export const Answer = ({
       className={classes('uib-answer', className)}
       data-color={color}
       // Not `data-variant`, which is the card's own (`default`, `tinted`).
-      data-plain={variant === 'plain' || undefined}
+      data-plain={plain || undefined}
     >
       <Card.Block className="uib-answer-body">
         <span className="ds-sr-only">
@@ -545,7 +563,10 @@ export const Answer = ({
             ) : null}
           </div>
         ) : null}
-        {finished && sourcesUsed ? (
+        {finished && sourcesUsed && plain ? (
+          <References list={referenceList} onCopy={onCopyReferences} />
+        ) : null}
+        {finished && sourcesUsed && !plain ? (
           <SourcesUsed
             documents={used}
             href={href}
@@ -553,7 +574,6 @@ export const Answer = ({
             onOpenExcerpt={onOpenExcerpt}
             links={usedLinks.current}
             excerptLinks={excerptLinks.current}
-            counted={variant === 'plain'}
           />
         ) : null}
         {finished && closingQuestion ? (

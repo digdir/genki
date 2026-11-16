@@ -468,6 +468,9 @@ export const AssistantView = ({
                   ? {
                       documentFootnotes: true,
                       numberEachFootnote: true,
+                      // The Kildeliste's «Kopier kildeliste» (dev-kildeliste).
+                      onCopyReferences: (_turn: ConversationAnswer, markdown: string) =>
+                        navigator.clipboard.writeText(markdown),
                       ...(a.tool === 'sources' && a.active && a.shownFootnote !== undefined
                         ? { shownFootnote: { turnId: a.active.id, citation: a.shownFootnote } }
                         : {}),

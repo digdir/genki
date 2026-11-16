@@ -184,9 +184,27 @@
               </li>
               <li>
                 <code>variant</code>: <code>plain</code> is the dev boards' answer
-                (dev-kilder-hoyre): no card around it, and «Kilder brukt i svaret» with the count in
-                its bar, «Kilder · 3 brukt i svaret» (dev-filter-panel), the documents numbered,
-                each a link, with no excerpt line under them. <code>card</code>, the default.
+                (dev-kilder-hoyre): no card around it, and the Kildeliste in place of «Kilder brukt
+                i svaret» (dev-kildeliste). <code>card</code>, the default.
+              </li>
+              <li>
+                The Kildeliste, under a finished <code>plain</code> answer with
+                <code>sourcesUsed</code>: Details in a Card, «Kildeliste», closed until the reader
+                opens it. Each cited document once, with every footnote that leads to it in front,
+                «2, 5, 6», by the numbers the footnotes are drawn with, and sorted by the first. The
+                footnotes are a column as wide as the longest, up to <code>--ds-size-22</code>,
+                where they wrap. Then the reference in APA 7's form for a work without an author,
+                since the contract names no publisher: <em>Tittel</em>
+                (versjon). (År). s. 12–13, 27. The pages are those of the cited excerpts, in runs,
+                and the address is a link only when it is a web address. It leads nowhere in
+                Sources; the footnotes in the text do.
+              </li>
+              <li>
+                <code>onCopyReferences</code>: shows «Kopier kildeliste» under the Kildeliste. The
+                app gets the list as Markdown, one bullet per document,
+                <code>- [2, 5, 6] *Tittel*. (2022). s. 12–13, 27. &lt;URL&gt;</code>, with no
+                heading, and puts it on the clipboard. When the promise it returns resolves, the
+                button says «Kopiert» for 2.5 seconds.
               </li>
               <li>
                 <code>highlight</code>: search matches to mark in the text, as the conversation's
@@ -411,6 +429,51 @@
                   <td>note icon size</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-answer-references-column-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>Kildeliste: between the footnotes and the reference</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-divider-spacing</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>Kildeliste: above the line over «Kopier kildeliste»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-divider-spacing-end</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>Kildeliste: under that line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>Kildeliste: its text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-footnotes-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>Kildeliste: the footnotes in front</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-footnotes-max-width</code></td>
+                  <td><code>--ds-size-22</code></td>
+                  <td>Kildeliste: the widest the footnote column gets before they wrap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-line-height</code></td>
+                  <td><code>--ds-body-xs-line-height</code></td>
+                  <td>Kildeliste: its lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-row-gap</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>Kildeliste: between the documents</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-references-spacing</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>Kildeliste: above and under its card</td>
+                </tr>
+                <tr>
                   <td><code>--genai-answer-row-gap</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>the row under the answer: «Generer på nytt» and the app's row</td>
@@ -429,21 +492,6 @@
                   <td><code>--genai-answer-sources-used-excerpts-hover-color</code></td>
                   <td><code>--ds-color-text-default</code></td>
                   <td>an excerpt's link under the pointer</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-sources-used-bar-background</code></td>
-                  <td><code>--ds-color-surface-tinted</code></td>
-                  <td><code>plain</code>: the bar of «Kilder brukt i svaret», over a plain box</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-sources-used-count-color</code></td>
-                  <td><code>--ds-color-text-subtle</code></td>
-                  <td><code>plain</code>: «· 3 brukt i svaret» after «Kilder»</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-sources-used-count-font-weight</code></td>
-                  <td><code>--ds-font-weight-regular</code></td>
-                  <td><code>plain</code>: the count's weight</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-sources-used-icon-size</code></td>
