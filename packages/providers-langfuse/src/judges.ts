@@ -1,5 +1,6 @@
 import {
   answerText,
+  inputOf,
   judgedExpectation,
   type CollectedScore,
   type Evaluator,
@@ -127,14 +128,41 @@ interface RawObservation {
 
 const dataTypes = new Set<string>(['BOOLEAN', 'NUMERIC', 'CATEGORICAL']);
 
-/** $ or a dotted path of plain keys: the paths genki can read to tell whether a field is empty. */
-const pathKeys = (path: string | undefined) => {
-  if (path === undefined || path === '$') return [];
-  return /^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(path) ? path.slice(2).split('.') : undefined;
-};
+const isDigit = (code: number) => code >= 48 && code <= 57;
+const isKeyStart = (code: number) =>
+  (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+const isKeyPart = (code: number) => isKeyStart(code) || isDigit(code);
 
-/** Input and output go as genki's parts, so only the whole of them is what a judge expects. */
-const wholeOnly = new Set(['input', 'output']);
+/**
+ * The steps of a mapping's JSON path: `$`, then `.key` and `[n]` only, read in one pass, since the
+ * path comes from the agency's Langfuse. Any other path (a wildcard, a filter, a slice, a quoted
+ * key or a negative index) is one genki cannot read, and is undefined.
+ */
+const pathSteps = (path: string | undefined): (string | number)[] | undefined => {
+  if (path === undefined) return [];
+  if (!path.startsWith('$')) return undefined;
+  const steps: (string | number)[] = [];
+  let i = 1;
+  while (i < path.length) {
+    let j = i + 1;
+    if (path[i] === '.') {
+      if (j >= path.length || !isKeyStart(path.charCodeAt(j))) return undefined;
+      while (j < path.length && isKeyPart(path.charCodeAt(j))) j += 1;
+      steps.push(path.slice(i + 1, j));
+      i = j;
+    } else if (path[i] === '[') {
+      while (j < path.length && isDigit(path.charCodeAt(j))) j += 1;
+      const digits = path.slice(i + 1, j);
+      const index = Number(digits);
+      if (digits === '' || path[j] !== ']' || (digits.length > 1 && digits.startsWith('0')))
+        return undefined;
+      if (!Number.isSafeInteger(index)) return undefined;
+      steps.push(index);
+      i = j + 1;
+    } else return undefined;
+  }
+  return steps;
+};
 
 /** What genki knows of every run, for what a rule's filters do on any of them. */
 const noRun: RunShape = { tenant: '', environment: '', experimentName: '' };
@@ -193,14 +221,11 @@ const refusalOf = (
         field: m.source,
         message: `${rule.name} reads ${m.source}, which genki does not send`,
       };
-    if (
-      pathKeys(m.jsonPath) === undefined ||
-      (wholeOnly.has(m.source) && (pathKeys(m.jsonPath)?.length ?? 0) > 0)
-    )
+    if (pathSteps(m.jsonPath) === undefined)
       return {
         reason: 'unread-path',
         field: `${m.source} ${m.jsonPath}`,
-        message: `${rule.name} reads ${m.source} at ${m.jsonPath}, a JSON path genki cannot read`,
+        message: `${rule.name} reads ${m.source} at ${m.jsonPath}, a JSON path genki cannot read; genki reads $, .key and [n]`,
       };
   }
   return undefined;
@@ -242,20 +267,27 @@ const isEmpty = (value: unknown) =>
   (typeof value === 'string' && value.trim() === '') ||
   (typeof value === 'object' && Object.keys(value).length === 0);
 
-const at = (value: unknown, keys: string[]) =>
-  keys.reduce<unknown>(
-    (v, k) => (typeof v === 'object' && v !== null ? (v as Record<string, unknown>)[k] : undefined),
-    value,
-  );
+/** What a path's steps find: an index in a list, a key of an object's own. */
+const at = (value: unknown, steps: (string | number)[]) =>
+  steps.reduce<unknown>((v, step) => {
+    if (typeof step === 'number') return Array.isArray(v) ? v[step] : undefined;
+    return typeof v === 'object' && v !== null && !Array.isArray(v) && Object.hasOwn(v, step)
+      ? (v as Record<string, unknown>)[step]
+      : undefined;
+  }, value);
 
 const unanswered: Observation = { answer: '', retrieved: [], citations: [] };
 
-/** The field a mapping reads, as genki would send it for this case. */
+/**
+ * The field a mapping reads for this case. A whole question or answer is checked by its text; a
+ * path reads what genki sends: the task's input, and the parts the case answered.
+ */
 const fieldOf = (m: JudgeMapping, c: TestCase, o: Observation): unknown => {
-  const keys = pathKeys(m.jsonPath) ?? [];
-  if (m.source === 'input') return at(c.input, keys);
-  if (m.source === 'output') return at(answerText(o), keys);
-  if (m.source === 'expected_output') return at(judgedExpectation(c), keys);
+  const steps = pathSteps(m.jsonPath) ?? [];
+  const whole = steps.length === 0;
+  if (m.source === 'input') return whole ? c.input : at(inputOf(c), steps);
+  if (m.source === 'output') return whole ? answerText(o) : at(o.parts, steps);
+  if (m.source === 'expected_output') return at(judgedExpectation(c), steps);
   return 'metadata';
 };
 
