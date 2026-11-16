@@ -1882,6 +1882,7 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing definition or query, or input that does not fit (code invalid_input)'),
       ...tenantErrors,
       422: problem('Invalid definition'),
+      429: problem('The monthly token quota is used up'),
       502: problem('The run failed; `code`, `step` and `runId` say where'),
     },
   }),

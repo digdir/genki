@@ -1,5 +1,6 @@
 import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
+import { quotaRefused } from './rate-limit.js';
 import type { Event, Principal, Task, TaskStatus } from '@genai/contracts';
 import {
   anonymousFeedback,
@@ -356,7 +357,6 @@ export interface EvalDeps {
   runs: EvalRunStore;
   feedback: FeedbackStore;
   candidates: CandidateStore;
-  quotaExhausted?: (tenant: string) => Promise<boolean>;
 }
 
 export interface ExtensionRouteDeps {
@@ -698,10 +698,6 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const guard = await evalGuard(c, tenant, 'manage-services');
     if ('response' in guard) return guard.response;
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    if (await deps.eval.quotaExhausted?.(tenant))
-      return problem(c, 409, t('runs.quotaExhaustedTitle'), [
-        { path: 'quota', message: t('runs.quotaExhaustedDetail') },
-      ]);
     const missing = evalRunFields.filter(([field, valid]) => !valid(body[field]));
     if (missing.length > 0)
       return problem(
@@ -1044,6 +1040,8 @@ const evalRunFields: [string, (value: unknown) => boolean][] = [
 
 const evalProblem = (c: Context, error: unknown) => {
   if (error instanceof AdminRefused) return refusedBy(c, error);
+  const refused = quotaRefused(c, error);
+  if (refused) return refused;
   if (error instanceof Error && error.name === 'EvalAccessError')
     return problem(c, 404, 'Not found');
   if (error instanceof EvalError)

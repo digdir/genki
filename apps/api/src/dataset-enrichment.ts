@@ -19,7 +19,7 @@ import type { CatalogItem } from './catalog-registry.js';
 import { changeReasonOf } from './http.js';
 import { tenantModelRefusal } from './model-access.js';
 import type { ModuleDeps, PlatformModule, PlatformModuleFactory } from './platform-modules.js';
-import { quotaExhausted } from './rate-limit.js';
+import { quotaRefused } from './rate-limit.js';
 
 export const enrichmentOutputTokens = 1000;
 
@@ -198,8 +198,6 @@ export const createDatasetEnrichmentModule =
             return problem(c, 422, 'The model cannot be used', [
               { path: 'model', message: refused },
             ]);
-          const quota = await deps.quota?.(g.tenant, { fresh: true });
-          if (quota?.exhausted) return quotaExhausted(c, quota.monthlyTokens);
           if (!deps.enrichmentTask)
             return problem(c, 503, 'Model use cannot be counted, so no questions are proposed');
           try {
@@ -222,6 +220,8 @@ export const createDatasetEnrichmentModule =
             c.header('genai-task', done.task);
             return c.json({ proposals: done.value });
           } catch (error) {
+            const refused = quotaRefused(c, error);
+            if (refused) return refused;
             return problem(c, 502, 'The model could not propose questions', [
               { path: 'model', message: error instanceof Error ? error.message : String(error) },
             ]);

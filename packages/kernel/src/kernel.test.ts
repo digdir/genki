@@ -282,6 +282,41 @@ describe('kernel: policy and tenants', () => {
     await expect(kernel.task(kari, 't1')).rejects.toMatchObject({ code: 'not_found' });
   });
 
+  it('refuses a run at the monthly token quota before any task exists, and leaves the calls inside a run to the gate', async () => {
+    const asked: { tenant: string; capability?: string }[] = [];
+    let spent = false;
+    const parent = strategy('parent', async function* (ctx) {
+      spent = true;
+      const child = await ctx.invoke('ka', {});
+      yield { type: 'kernel.result', data: await child.result };
+    });
+    const kernel = kernelWith({
+      strategies: [
+        strategy('noop', async function* () {
+          yield { type: 'kernel.result', data: [] };
+        }),
+        { ...parent, requires: { kernel: 1, ports: [], features: ['subinvoke'] } },
+      ],
+      capabilities: [capability('ka', 'noop'), capability('eval', 'parent')],
+      quota: async (call) => {
+        asked.push(call);
+        return spent ? 'the monthly token quota is used up' : undefined;
+      },
+    });
+
+    await (
+      await kernel.invoke(kari, 'eval', {})
+    ).result;
+    const refused = kernel.invoke(kari, 'ka', {});
+
+    await expect(refused).rejects.toMatchObject({ code: 'quota_exhausted' });
+    expect(asked).toEqual([
+      { tenant: '999888777', capability: 'eval' },
+      { tenant: '999888777', capability: 'ka' },
+    ]);
+    await expect(kernel.task(kari, 't3')).rejects.toMatchObject({ code: 'not_found' });
+  });
+
   it("refuses another tenant's capability unless it is shared with that tenant", async () => {
     const kernel = kernelWith({
       strategies: [strategy('noop', async function* () {})],

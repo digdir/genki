@@ -29,7 +29,7 @@ import {
 } from '@genai/port-usage';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, tenantAccess } from '../access.js';
-import { defaultKeyCallsPerMinute } from '../rate-limit.js';
+import { defaultKeyCallsPerMinute, quotaExhausted } from '../rate-limit.js';
 import { actorOf, type Admin, type AdminHandler, type AdminOutcome } from '../admin.js';
 import {
   originOf,
@@ -1640,6 +1640,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       return c.json(invalidInputProblem(result.errors), 400, {
         'content-type': 'application/problem+json',
       });
+    if (!result.ok && result.quota) return quotaExhausted(c, result.quota);
     if (result.ok)
       return c.json(
         { ok: true, task: result.task, answer: result.answer, parts: result.parts },
