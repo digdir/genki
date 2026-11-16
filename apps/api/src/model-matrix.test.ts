@@ -592,6 +592,23 @@ describe('trying a candidate model before release', () => {
     await vi.waitFor(() => expect(deployments).toContain('kandidat'));
   });
 
+  it("a tenant's service manager still cannot run a test set on a draft that uses a candidate model", async () => {
+    const { send, deployments } = await boot(true);
+
+    const started = await send('POST', `/tenants/${tenant}/services/svar/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: service(candidate),
+    });
+    const run = () =>
+      send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`, 'kari');
+
+    expect(started.status).toBe(202);
+    await vi.waitFor(async () => expect((await run()).body.status).toBe('failed'));
+    expect((await run()).body.error).toContain('is not released yet');
+    expect(deployments).not.toContain('kandidat');
+  });
+
   it('a published service still cannot use a candidate model', async () => {
     const { platform, send } = await boot(true);
 
