@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
@@ -14,7 +14,8 @@ import { trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform, platformModules } from './composition.js';
-import { createModelMatrixModule, modelMatrixModule } from './model-matrix.js';
+import { candidateTrialScope, withCandidateTrial } from './model-access.js';
+import { createModelMatrixModule, modelMatrixModule, releaseGate } from './model-matrix.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -38,6 +39,12 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: tenant }],
   },
   operator: { kind: 'operator', issuer: 'test', subject: 'digdir-drift' },
+  'operator-in-tenant': {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'digdir-drift-hos',
+    authorizedFor: [{ org: tenant }],
+  },
   'entra-operator': {
     kind: 'operator',
     issuer: 'test',
@@ -532,5 +539,116 @@ describe('releasing a model nobody can compare against', () => {
       matrixRun: false,
     });
     expect(await visible()).toContain(candidate);
+  });
+});
+
+describe('trying a candidate model before release', () => {
+  const tryInPlayground = (send: Awaited<ReturnType<typeof boot>>['send'], who: string) =>
+    send('POST', `/tenants/${tenant}/playground/runs`, who, {
+      setup: { model: candidate, output: 'text' },
+      input: { text: 'Når er fristen for søknad?' },
+    });
+
+  it('an operator can try a candidate model in the playground', async () => {
+    const { send, deployments } = await boot(true);
+
+    const options = await send(
+      'GET',
+      `/tenants/${tenant}/playground/options`,
+      'operator-in-tenant',
+    );
+    const tried = await tryInPlayground(send, 'operator-in-tenant');
+
+    expect(options.body.models).toContainEqual(
+      expect.objectContaining({ id: candidate, candidate: true }),
+    );
+    expect(tried.status).toBe(200);
+    expect(deployments).toContain('kandidat');
+  });
+
+  it("a tenant's service manager still cannot try a candidate model in the playground", async () => {
+    const { send, deployments } = await boot(true);
+
+    const options = await send('GET', `/tenants/${tenant}/playground/options`, 'kari');
+    const tried = await tryInPlayground(send, 'kari');
+
+    expect((options.body.models as { id: string }[]).map((m) => m.id)).not.toContain(candidate);
+    expect(tried.status).not.toBe(200);
+    expect(JSON.stringify(tried.body)).toContain('is not released yet');
+    expect(deployments).not.toContain('kandidat');
+  });
+
+  it('an operator can run a test set on a draft that uses a candidate model', async () => {
+    const { send, deployments } = await boot(true);
+
+    const started = await send(
+      'POST',
+      `/tenants/${tenant}/services/svar/eval-runs`,
+      'operator-in-tenant',
+      { testSet: 'svar-frister', version: 'draft', definition: service(candidate) },
+    );
+
+    expect(started.status).toBe(202);
+    await vi.waitFor(() => expect(deployments).toContain('kandidat'));
+  });
+
+  it('a published service still cannot use a candidate model', async () => {
+    const { platform, send } = await boot(true);
+
+    const published = await platform.definitions.publish(service(candidate), 'kari', 'bytt');
+    const draft = await send('POST', `/tenants/${tenant}/definitions/test-run`, 'kari', {
+      definition: service(candidate),
+      query: 'Når er fristen for søknad?',
+    });
+
+    expect(published.ok).toBe(false);
+    expect(JSON.stringify(draft.body)).toContain('is not released yet');
+  });
+
+  describe('the release gate', () => {
+    const catalog = {
+      get: (_kind: string, id: string) =>
+        id === candidate
+          ? ({ scope: 'platform', spec: { release: 'candidate' } } as never)
+          : undefined,
+    };
+    const gate = releaseGate({ decide: async () => ({ allow: true }) }, () => catalog);
+    const person: Principal = { kind: 'employee', issuer: 'test', subject: 'ola', tenant };
+    const model = { kind: 'model', id: candidate } as const;
+
+    it('admits a candidate model only for a principal marked to try it', async () => {
+      expect((await gate.decide(person, 'use:model', model)).allow).toBe(false);
+      expect((await gate.decide(withCandidateTrial(person), 'use:model', model)).allow).toBe(true);
+    });
+
+    it('a principal trying a candidate cannot invoke a published service', async () => {
+      const trial = withCandidateTrial(person);
+
+      const published = await gate.decide(trial, 'invoke', {
+        kind: 'capability',
+        id: `${tenant}/svar/default`,
+      });
+      const draft = await gate.decide(trial, 'invoke', {
+        kind: 'capability',
+        id: 'platform/draft/playground/abc',
+      });
+
+      expect(published).toEqual({
+        allow: false,
+        reason: 'a candidate model is tried only in draft runs',
+      });
+      expect(draft.allow).toBe(true);
+    });
+
+    it('an API key confined to its grants never tries a candidate, even with the mark', async () => {
+      const key: Principal = {
+        ...person,
+        kind: 'agency-system',
+        scopes: [candidateTrialScope],
+        confinedTo: { tenant },
+      };
+
+      expect((await gate.decide(key, 'use:model', model)).allow).toBe(false);
+    });
   });
 });
