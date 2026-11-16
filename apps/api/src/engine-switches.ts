@@ -1215,7 +1215,9 @@ export const createEngineSwitchesModule =
       for (const entry of await store.latest({ kind })) {
         if (entry.deleted) continue;
         const spec = entry.spec as EngineSwitchSpec;
-        if (!holdingStates.includes(spec.state) || !intoKnowledge(spec)) continue;
+        // A ready switch is followed only for a fill run sent back, to count what it stored then.
+        if (!(holdingStates.includes(spec.state) || spec.state === 'ready') || !intoKnowledge(spec))
+          continue;
         const scope = entry.scope;
         const ids = spec.runs ?? [];
         if (ids.length === 0) {
@@ -1236,6 +1238,29 @@ export const createEngineSwitchesModule =
         const runs = (await Promise.all(ids.map((id) => deps.ingestion.execution(id)))).filter(
           (r) => r !== undefined,
         );
+        if (spec.state === 'ready') {
+          if (runs.length < ids.length || !runs.every((r) => r.status === 'succeeded')) continue;
+          const failedDocuments = countOfReports(runs, ['failedDocuments']);
+          const documents = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
+          if (
+            documents === spec.progress.documents &&
+            failedDocuments === (spec.failedDocuments ?? 0)
+          )
+            continue;
+          await update(
+            scope,
+            entry.id,
+            (s) => {
+              if (s.state !== 'ready' || !sameRun(s, spec)) return undefined;
+              const counted = { ...s, progress: { ...s.progress, documents } };
+              delete counted.failedDocuments;
+              return failedDocuments > 0 ? { ...counted, failedDocuments } : counted;
+            },
+            systemActor,
+            'Overføringen er telt på nytt',
+          ).catch(() => undefined);
+          continue;
+        }
         const stopped = runs.find((r) => r.status === 'failed' || r.status === 'cancelled');
         if (stopped || runs.length < ids.length) {
           const message = translateMessage(
@@ -2043,6 +2068,15 @@ export const createEngineSwitchesModule =
             if (reason.length < minimum)
               return problem(c, 400, 'Begrunnelsen er for kort', [
                 { path: 'change-reason', message: `Begrunnelsen må ha minst ${minimum} tegn.` },
+              ]);
+            // A fill run sent back runs again: activating would forget it and its refresh run would
+            // wait on it (issue 598).
+            const runs = await Promise.all(
+              (spec.runs ?? []).map((id) => deps.ingestion.execution(id)),
+            );
+            if (runs.some((r) => r?.status === 'queued' || r?.status === 'running'))
+              return problem(c, 409, 'En kjøring i byttet går fortsatt.', [
+                { path: 'runs', message: 'En kjøring i byttet går fortsatt.' },
               ]);
             if (g.item.version !== spec.datasetVersion)
               return problem(c, 409, 'Datasettet er endret siden byttet startet.', [

@@ -87,7 +87,21 @@ const fakeWorker = () => {
       await executions.save(marked);
       return marked;
     },
-    redrive: async () => ({ ok: false, message: 'not here' }),
+    // As the store does: an ended run that ran as jobs is reopened, whatever its dataset's engine.
+    redrive: async (input) => {
+      const run = await executions.get(input.execution);
+      if (
+        !run ||
+        run.dataset !== input.dataset ||
+        !run.runsAsJobs ||
+        !['succeeded', 'failed'].includes(run.status)
+      )
+        return { ok: false, message: 'only an ended run that runs as jobs can be sent back' };
+      const reopened: Execution = { ...run, status: 'running', admittedAt: input.at };
+      delete reopened.endedAt;
+      await executions.save(reopened);
+      return { ok: true, value: reopened };
+    },
     readmit: async (input) => {
       const run = await executions.get(input.execution);
       if (
@@ -781,6 +795,71 @@ describe('switching a dataset into the knowledge database', () => {
     const opened = await started(booted, 'laast');
     expect(opened.state).toBe('running');
     expect(runOf(booted.worker, opened.id)).toMatchObject({ engineSwitch: opened.id });
+  });
+});
+
+describe("sending a switch's fill run back", () => {
+  /** A switch into the knowledge database whose fill ended with dead letters, ready to activate. */
+  const readyWithFailures = async (dataset: string) => {
+    const booted = await boot();
+    await folderDataset(booted, dataset);
+    const opened = await started(booted, dataset);
+    const run = runOf(booted.worker, opened.id) as Execution;
+    await booted.worker.end(run, 'succeeded', { stored: 8, failedDocuments: 2 });
+    expect(await followed(booted, dataset, opened.sid)).toMatchObject({ state: 'ready' });
+    return { booted, opened, run };
+  };
+  const sendBack = (booted: Booted, dataset: string, run: Execution) =>
+    booted.call(`${base(dataset)}/pipelines/filer/executions/${run.id}/redrive`, {
+      body: {},
+      reason: 'Sender døde jobber tilbake',
+    });
+
+  it("a switch's fill run can be sent back before the switch is activated", async () => {
+    const { booted, opened, run } = await readyWithFailures('tilbake');
+
+    const response = await sendBack(booted, 'tilbake', run);
+
+    expect(response.status).toBe(202);
+    expect(await json(response)).toMatchObject({ id: run.id, status: 'running' });
+    const { data } = await json<{ data: Execution[] }>(
+      await booted.call(`${base('tilbake')}/pipelines/filer/executions`),
+    );
+    expect(data.find((r) => r.id === run.id)).toMatchObject({ status: 'running' });
+    expect((await view(booted, 'tilbake', opened.sid)).state).toBe('ready');
+  });
+
+  it('a switch whose fill run is sent back counts what the run then stores', async () => {
+    const { booted, opened, run } = await readyWithFailures('teller');
+    expect(await view(booted, 'teller', opened.sid)).toMatchObject({ failedDocuments: 2 });
+    expect((await sendBack(booted, 'teller', run)).status).toBe(202);
+
+    await booted.worker.end(run, 'succeeded', { stored: 10 });
+    await booted.module.follow();
+
+    const seen = await view(booted, 'teller', opened.sid);
+    expect(seen.state).toBe('ready');
+    expect(seen.progress.documents).toBe(10);
+    expect(seen).not.toHaveProperty('failedDocuments');
+  });
+
+  it('a switch whose sent-back run is still running cannot be activated', async () => {
+    const { booted, opened, run } = await readyWithFailures('venter');
+    expect((await sendBack(booted, 'venter', run)).status).toBe(202);
+    const activate = () =>
+      booted.call(`${base('venter')}/engine-switches/${opened.sid}/activate`, { body: {} });
+
+    const refused = await activate();
+
+    expect(refused.status).toBe(409);
+    const { title } = await json<{ title: string }>(refused);
+    expect(translateMessage(title, 'nb')).toBe('En kjøring i byttet går fortsatt.');
+    expect(translateMessage(title, 'en')).toBe('A run of the switch is still running.');
+    expect(booted.worker.started.filter((r) => r.engineSwitch === opened.id)).toHaveLength(1);
+
+    await booted.worker.end(run, 'succeeded', { stored: 10 });
+    await booted.module.follow();
+    expect((await activate()).status).not.toBe(409);
   });
 });
 

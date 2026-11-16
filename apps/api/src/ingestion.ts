@@ -875,8 +875,11 @@ export class IngestionService {
       );
       return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
     }
+    // Whether the run ran as jobs is the run's own, not its dataset's engine now: a switch's fill
+    // into the knowledge database runs as jobs before the dataset is on it (issue 598). The store
+    // refuses a run that did not.
     const jobs = this.options.jobs;
-    if (!jobs?.runsAsJobs(input.dataset))
+    if (!jobs)
       return {
         ok: false,
         errors: [{ path: 'execution', message: 'only a run that runs as jobs can be sent back' }],
