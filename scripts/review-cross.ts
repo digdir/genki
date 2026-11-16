@@ -667,7 +667,14 @@ export function foundryError(status: number, body: unknown, secret = ''): string
   return message ? `${head}: ${message}` : head;
 }
 
-export const RETRY = { attempts: 6, baseMs: 4_000, capMs: 60_000, budgetMs: 480_000 };
+export const RETRY = {
+  attempts: 6,
+  baseMs: 4_000,
+  capMs: 60_000,
+  budgetMs: 480_000,
+  attemptMs: 300_000,
+  minAttemptMs: 30_000,
+};
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
@@ -698,15 +705,19 @@ export function responsesClient(
     fetch?: typeof fetch;
     sleep?: (ms: number) => Promise<void>;
     log?: (line: string) => void;
+    now?: () => number;
   } = {},
 ) {
   const send = deps.fetch ?? fetch;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const log = deps.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-  let waited = 0;
+  const now = deps.now ?? Date.now;
   return async (body: Record<string, unknown>): Promise<ModelResponse> => {
+    const started = now();
     for (let attempt = 0; ; attempt++) {
       const last = attempt >= RETRY.attempts - 1;
+      const remaining = RETRY.budgetMs - (now() - started);
+      const timeoutMs = Math.min(RETRY.attemptMs, Math.max(RETRY.minAttemptMs, remaining));
       let res: Response | undefined;
       let failure: unknown;
       try {
@@ -714,7 +725,7 @@ export function responsesClient(
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(300_000),
+          signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (error) {
         failure = error;
@@ -725,7 +736,7 @@ export function responsesClient(
         throw new Error(foundryError(res.status, json, token));
       }
       const wait = res ? retryWaitMs(res.headers, attempt) : retryWaitMs(new Headers(), attempt);
-      if (last || waited + wait > RETRY.budgetMs) {
+      if (last || now() - started + wait > RETRY.budgetMs) {
         if (!res) throw failure;
         const json: unknown = await res.json().catch(() => null);
         throw new Error(foundryError(res.status, json, token));
@@ -734,7 +745,6 @@ export function responsesClient(
       log(
         `Foundry ${res ? res.status : 'network error'}, retrying in ${Math.round(wait / 1000)}s (attempt ${attempt + 1} of ${RETRY.attempts})`,
       );
-      waited += wait;
       await sleep(wait);
     }
   };

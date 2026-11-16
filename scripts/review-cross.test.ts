@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   commentBody,
   costUsd,
@@ -590,7 +590,8 @@ describe('the Foundry Responses client', () => {
         { error: { type: 'too_many_requests', code: 'rate_limit_exceeded', message: 'slow down' } },
         { status: 429, headers },
       );
-    const setup = (answers: (() => Response)[]) => {
+    const setup = (answers: (() => Response)[], attemptMs = 0) => {
+      let clock = 0;
       const waits: number[] = [];
       const lines: string[] = [];
       let calls = 0;
@@ -598,11 +599,14 @@ describe('the Foundry Responses client', () => {
         fetch: (async () => {
           const answer = answers[Math.min(calls, answers.length - 1)] ?? ok;
           calls++;
+          clock += attemptMs;
           return answer();
         }) as typeof fetch,
         sleep: async (ms) => {
           waits.push(ms);
+          clock += ms;
         },
+        now: () => clock,
         log: (line) => lines.push(line),
       });
       return { client, waits, lines, calls: () => calls };
@@ -620,6 +624,36 @@ describe('the Foundry Responses client', () => {
       expect(retryWaitMs(new Headers({ 'retry-after': '12' }), 0)).toBe(12_000);
       expect(retryWaitMs(new Headers({ 'x-ratelimit-reset-tokens': '20' }), 0)).toBe(20_000);
       expect(retryWaitMs(new Headers({ 'retry-after': '900' }), 0)).toBe(RETRY.capMs);
+    });
+
+    it('reads retry-after as an HTTP date', () => {
+      const now = Date.parse('2026-11-16T10:00:00Z');
+      const headers = new Headers({ 'retry-after': new Date(now + 10_000).toUTCString() });
+      expect(retryWaitMs(headers, 0, now)).toBe(10_000);
+    });
+
+    it('stops retrying once the total time would pass the budget', async () => {
+      const t = setup([() => limited({ 'retry-after': '60' })], 100_000);
+      await expect(t.client({})).rejects.toThrow('Foundry answered 429');
+      expect(t.calls()).toBeLessThan(RETRY.attempts);
+    });
+
+    it('counts attempt time toward the budget, not only the waits', async () => {
+      const t = setup([() => limited({ 'retry-after': '1' })], 200_000);
+      await expect(t.client({})).rejects.toThrow('Foundry answered 429');
+      expect(t.calls()).toBe(3);
+      expect(t.waits).toEqual([1000, 1000]);
+    });
+
+    it('gives each attempt at most the time left in the budget', async () => {
+      const spy = vi.spyOn(AbortSignal, 'timeout');
+      try {
+        const t = setup([() => limited({ 'retry-after': '1' })], 200_000);
+        await t.client({}).catch(() => undefined);
+        expect(spy.mock.calls.map(([ms]) => ms)).toEqual([300_000, 279_000, 78_000]);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('backs off exponentially on a 429 without a header', async () => {
