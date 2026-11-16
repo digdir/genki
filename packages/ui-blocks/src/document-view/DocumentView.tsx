@@ -89,8 +89,7 @@ const isFileAddress = (url: string) => {
   }
 };
 
-// A phone, upright or on its side: a PDF in a frame shows one page that cannot be scrolled, or
-// nothing at all, and leaves no room for a page beside the view's head and question field.
+// A phone, upright or sideways: a framed PDF there shows one page that cannot scroll, or nothing.
 const SMALL_SCREEN = '(width < 40rem), (height < 30rem)';
 
 export interface DocumentViewProps {

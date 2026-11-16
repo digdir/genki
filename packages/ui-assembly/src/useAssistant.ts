@@ -1174,8 +1174,7 @@ export const useAssistant = ({
   const documentOverChat = documentZone === 'main' && where('chat') === 'main';
   const documentTurn = openDoc ? turns.find((t) => t.id === openDoc.turnId) : undefined;
   const documentAnswer = documentTurn?.answer;
-  // The whole file of the document opened, from the host, while the block's `file` option is on.
-  // Keyed by the document's number: another excerpt of the same document asks nothing again.
+  // The opened document's file from the host, asked once per document while `file` is on.
   const findFile = profile?.documentFile;
   const fileOn = documentOn && option('document-view', 'file') && typeof findFile === 'function';
   const fileSources = documentAnswer?.sources;
