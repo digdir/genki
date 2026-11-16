@@ -27,8 +27,8 @@ The platform keeps a copy of the state's organisation, read from the authorities
 - **The register and the state accounts are read through the egress guard,** which allows only `data.brreg.no` and `statsregnskapet.dfo.no`. KUDOS's actors are read with KUDOS's own client and rate limiter, as ingestion reads KUDOS. The state accounts are zip files: the guard returns the raw bytes, and the CSV inside is inflated as a stream. That way a year's 130 MB never sits in memory at once.
 - **The job.** The worker runs it at 02:40 Oslo time on one replica, under the leader lease `genai-worker-state-register`, and once at start when no register is stored. In order:
   1. It reads the register.
-  2. It reads the latest month of the state accounts, then each year from 2014 to this one that is not yet stored with December, so a year read before DFØ closed it is read again until it holds December.
-  3. It keeps the latest month when its period is new.
+  2. It reads the latest month of the state accounts and keeps it when its period is new.
+  3. It reads each year from 2014 to the latest month's year that is not yet stored with December, so a year read before DFØ closed it is read again until it holds December. In January the new year has no file yet, so it waits.
   4. It reads KUDOS's actors through KUDOS's own rate limiter.
   5. It compares the latest month with the register.
 - **History.** A unit's ministry on a date before the first sync comes from that year's state accounts. A ministry renamed during a year keeps its old name on its own row there, so its code maps to the org number the latest month gives it. On a date after the first sync, it comes from the register version current on that date. A body the register places under Stortinget, SMK, the courts or Sametinget gets no answer from the accounts, which book it under a ministry for the budget only.

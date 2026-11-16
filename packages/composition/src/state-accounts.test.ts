@@ -298,6 +298,45 @@ describe('the state accounts', () => {
     expect(asked).toHaveLength(2);
   });
 
+  it('keeps the latest month on a January night before DFØ has a file for the new year', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const { guard, asked } = guardFor({
+      ...files(month202609.replaceAll('202609', '202611')),
+      [accountsYearUrl(2026)]: zipOf(
+        'statsregnskapet_aar_2026.csv',
+        month202609.replaceAll('202609', '202611'),
+      ),
+    });
+
+    const result = await syncAccounts({
+      configEntries,
+      guard,
+      now: at('2027-01-10T01:45:00Z'),
+      years: [2026, 2027],
+    });
+
+    expect(result.ok).toBe(true);
+    expect((await latestAccounts(configEntries, 'month'))?.period).toBe('202611');
+    expect(asked.map((a) => a.url)).not.toContain(accountsYearUrl(2027));
+  });
+
+  it('keeps one version of a year whose file has not changed', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const answers = {
+      ...files(),
+      [accountsYearUrl(2026)]: zipOf('statsregnskapet_aar_2026.csv', month202609),
+    };
+    for (const day of ['2026-11-17', '2026-11-18'])
+      await syncAccounts({
+        configEntries,
+        guard: guardFor(answers).guard,
+        now: at(`${day}T01:45:00Z`),
+        years: [2026],
+      });
+
+    expect(await configEntries.history('state-accounts', 'platform', 'year-2026')).toHaveLength(1);
+  });
+
   it('reads every year from 2014 to this one', () => {
     expect(accountYears(new Date('2016-03-01T00:00:00Z'))).toEqual([2014, 2015, 2016]);
   });

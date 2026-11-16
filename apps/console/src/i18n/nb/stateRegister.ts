@@ -20,5 +20,5 @@ export const stateRegister = defineNamespace({
   colKind: 'Hva det er',
   kindMismatch: 'Avvik',
   kindBudgetBooking: 'Budsjettføring',
-  kindNotInRegister: 'Ikke i registeret',
+  kindNotInRegister: 'Uten departement i registeret',
 });

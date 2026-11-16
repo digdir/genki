@@ -239,9 +239,9 @@ export const accountYears = (now: Date) => {
 };
 
 /**
- * Reads the latest month, then each year not yet stored up to December, so a year read before DFØ
- * closed it is read again until it holds December; the month is kept when its period is new. A
- * file that cannot be read changes nothing that is stored.
+ * Reads the latest month and keeps it when its period is new, then each year up to the latest
+ * month's year that is not yet stored with December, so a year read before DFØ closed it is read
+ * again until it holds December. A file that cannot be read changes nothing that is stored.
  */
 export const syncAccounts = async (deps: {
   configEntries: ConfigEntryStore;
@@ -251,7 +251,13 @@ export const syncAccounts = async (deps: {
 }): Promise<{ ok: true; period: string } | { ok: false; error: string }> => {
   try {
     const month = await readAccountsZip(await fetchZip(deps.guard, accountsMonthUrl));
-    for (const year of deps.years ?? accountYears(deps.now())) {
+    const stored = await latestAccounts(deps.configEntries, 'month');
+    if (stored?.period !== month.period)
+      await saveAccounts(deps.configEntries, 'month', month, deps.now());
+    // DFØ publishes a year's file with its first month, about two months after it: in January
+    // the new year has no file yet, so years go only to the latest month's year.
+    const lastYear = Number(month.period.slice(0, 4));
+    for (const year of (deps.years ?? accountYears(deps.now())).filter((y) => y <= lastYear)) {
       const kept = await latestAccounts(deps.configEntries, `year-${year}`);
       if (kept?.period.endsWith('12')) continue;
       const entry = await readAccountsZip(
@@ -261,9 +267,6 @@ export const syncAccounts = async (deps: {
       if (kept?.period === entry.period) continue;
       await saveAccounts(deps.configEntries, `year-${year}`, entry, deps.now());
     }
-    const stored = await latestAccounts(deps.configEntries, 'month');
-    if (stored?.period !== month.period)
-      await saveAccounts(deps.configEntries, 'month', month, deps.now());
     return { ok: true, period: month.period };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

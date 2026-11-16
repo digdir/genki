@@ -21,5 +21,5 @@ export const stateRegister = {
   colKind: 'What it is',
   kindMismatch: 'Mismatch',
   kindBudgetBooking: 'Budget booking',
-  kindNotInRegister: 'Not registered',
+  kindNotInRegister: 'No ministry in the register',
 } satisfies Translation<typeof source>;
