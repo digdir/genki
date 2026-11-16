@@ -90,6 +90,8 @@ PostgreSQL 17.11 in a throwaway container, 300 files, seed 7: 18,199 pages and 2
 | Same, scaled to 2.55 million pages               |            24 s |                     3.8 s |
 | Delete and write the largest file (medians, ms)  |          3 + 66 |                    5 + 69 |
 
+Adding the number without a rewrite, tried by hand in a throwaway PostgreSQL 17 container on 16 November 2026: a table of 45,000 conversions with 60 pages each (202 MB), in one transaction with a 5-second lock timeout. `add column id bigint`, a sequence as its default, a unique index on it (12 ms) and `src_conversion_units` with its foreign key all ran, and the table kept its file node. A row inserted afterwards got a number; the earlier rows have none. `create unique index concurrently` in the transaction failed, as PostgreSQL documents.
+
 ## How to run
 
 ```sh

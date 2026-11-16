@@ -52,7 +52,7 @@ PDFs are not the only input. The platform reads Word files, web pages, Markdown 
 
 ### Units and storage
 
-- **A stored conversion gets a number,** `src_conversions.id bigint unique` from a sequence, and its parts are stored one row per unit:
+- **A stored conversion written from now on gets a number,** `src_conversions.id bigint unique` from a sequence, and its parts are stored one row per unit:
 
   ```sql
   create table src_conversion_units (
@@ -77,7 +77,7 @@ PDFs are not the only input. The platform reads Word files, web pages, Markdown 
 - **A read of units a to b reads the rows with `unit <= b and unit_to >= a`,** so a part that started any number of units before is returned. A paragraph can cover 5 pages (Measured).
 - **A unit's label** is what a reader cites it by: a page's printed number, a slide's number, a sheet's name, a section's heading. A page's printed number is a number in a furniture part of the page, such as `12`, `s. 12` or `side 3 av 9`, kept only when the nearest labelled page before it or the nearest after it, each within 2 pages, has the same offset from the physical page number. A label with no labelled page within 2 pages is dropped. A page without one is cited by its physical number.
 - **Deleting a stored conversion deletes its units** through the cascade. A chunk's `conversion` has no foreign key, since `kn_chunks` is partitioned by generation, so cleanup counts the chunks of every kept generation as a use before it deletes a conversion, and `kn_parts` answers a conversion that is gone as not found.
-- **The migration rewrites no table under a lock.** The knowledge server's migrations run in one transaction with a 5-second lock timeout, and `src_conversions` holds the seeded pages. So `id` is added as a nullable column, given its sequence default, filled in batches, and then made unique with an index built concurrently. The writer role is granted the sequence and `src_conversion_units`.
+- **The migration rewrites no table under a lock.** The knowledge server's migrations run in one transaction with a 5-second lock timeout, and `src_conversions` holds the seeded pages. So `id` is added as a nullable column and then given its sequence default, which rewrites nothing, and its unique index is built in the same transaction: 12 ms on 45,000 rows in a throwaway PostgreSQL 17. Rows stored before the migration keep no number and need none, since only a conversion with parts has units or is named by a chunk. Adding the column as `bigserial` would rewrite the table, and an index built concurrently cannot run in a transaction. The writer role is granted the sequence and `src_conversion_units`.
 
 ### Chunks and reads
 
@@ -168,7 +168,7 @@ On the Docling export seeded into stored conversions (Docling 2.123.1), 13 Novem
 
 ## Consequences
 
-- Not built. PDFs are built in four steps, each an issue of its own, after Kudos is the active dataset on the knowledge database (issue 475): derive parts (a TypeScript derivation, `src_conversion_units`, parts derived from Blob storage when an index job needs them); chunk from parts (`parts-unit`, `parts-section`, the chunk columns, candidates ranked by the checks of issue 147); `kn_parts`; and quotes, with ADR 0052 amended. Each other format in Formats is an issue of its own after that.
+- Not built. PDFs are built in four steps, in small issues: derive parts (a TypeScript derivation, table HTML, printed labels, then `src_conversion_units`, with parts derived from Blob storage when an index job needs them); chunk from parts (`parts-unit`, then `parts-section`, the chunk columns, candidates ranked by the checks of issue 147); `kn_parts`; and quotes, with ADR 0052 amended. What changes nothing that runs starts at once: the derivation as a function with its tests, table HTML, printed labels, and the fetch recording the URL a file came from. The table, the chunk columns, the chunkers, `kn_parts` and quotes wait until Kudos is the active dataset on the knowledge database (issue 475). Each other format in Formats is an issue of its own after that.
 - ADR 0042 changes with it: What is stored, Conversion, Identity and chunks, and its list of read functions. It changes again when web pages get parts and their fetched pages are stored (Open).
 - `benchmarks/ingestion/blocks/normalise.py` (format `genki.blocks/1`) is where the PDF derivation starts, not its format: it gives each block one page and box, offsets into Markdown instead of plain text, a furniture flag instead of a layer, and table HTML from the repeated grid.
 - The knowledge server holds at least 7.3 GB more for the seeded Kudos files, and at least 9 GB for all of KUDOS (3.14 million pages). The measured record is smaller than the one decided here: one region a part, table HTML without merged cells, no labels, and heading paths of one step. The first build measures the real one.
