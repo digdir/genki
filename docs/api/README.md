@@ -65,7 +65,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-13: runs judged by an older judge
 
-- `GET /tenants/{tenant}/services/{id}/eval-runs`, `GET /tenants/{tenant}/eval-runs/{runId}` and `GET /eval-runs/compare` add `staleJudges` when a run was judged by an older version of a platform judge, such as `judge:criteria`, than the one in use now. The field is left out otherwise, and nothing else changes.
+- `GET /tenants/{tenant}/services/{id}/eval-runs`, `GET /tenants/{tenant}/eval-runs/{runId}` (the `service` answer only) and `GET /eval-runs/compare` add `staleJudges` when a test-set run was judged by an older version of a platform judge, such as `judge:criteria`, than the one in use now. The field is left out otherwise, and nothing else changes. Capability runs from `GET /tenants/{tenant}/eval-runs` and `GET /eval-runs/{id}` do not carry it.
 
 ### 2026-11-12: only operators change the limits Digdir sets
 
