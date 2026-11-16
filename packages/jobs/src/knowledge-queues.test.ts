@@ -66,6 +66,15 @@ describe('the knowledge queues', () => {
         retryBackoff: true,
         deadLetter: true,
       },
+      {
+        name: 'knowledge.fields',
+        policy: 'singleton',
+        expireInSeconds: 3600,
+        heartbeatSeconds: 60,
+        retryLimit: 2,
+        retryBackoff: true,
+        deadLetter: true,
+      },
     ]);
     expect(knowledgeServerQueues(sixHours).map(contract)).toEqual([
       {

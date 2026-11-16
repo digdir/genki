@@ -133,6 +133,8 @@ export const adminActionRights: Readonly<
   // Knowledge jobs only: ADR 0042 widens ADR 0041, where only operators send jobs back.
   'platform.jobs.redrive': 'manage-datasets',
   'platform.jobs.readmit': 'manage-datasets',
+  // Operators only, through their own route (ADR 0042).
+  'platform.knowledge.fields': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
   'platform.dataset.delete': datasetWrite,
