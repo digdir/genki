@@ -357,6 +357,7 @@ export interface EvalDeps {
   runs: EvalRunStore;
   feedback: FeedbackStore;
   candidates: CandidateStore;
+  runnable?: (principal: Principal, capability: string) => Promise<boolean>;
 }
 
 export interface ExtensionRouteDeps {
@@ -706,6 +707,10 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         'Invalid request',
         missing.map(([field]) => ({ path: field, message: 'required' })),
       );
+    if (deps.eval.runnable && !(await deps.eval.runnable(guard.principal, String(body.capability))))
+      return problem(c, 404, 'Not found', [
+        { path: 'capability', message: 'no such service for this organisation' },
+      ]);
     try {
       const status = await evalService.startRun(guard.principal, {
         ...(body as object),
