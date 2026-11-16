@@ -668,11 +668,11 @@ export const serviceEval = (
         }
         try {
           if (stop || next >= cases.length) return;
+          const index = next++;
           if ((await deps.quota?.(judgeTenant, { fresh: true }))?.exhausted) {
             stop = { error: new Error(quotaStopMessage) };
             return;
           }
-          const index = next++;
           const c = cases[index] as TestCase;
           options.onCaseStart?.();
           const result = await runCase(c);
