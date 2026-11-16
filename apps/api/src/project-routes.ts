@@ -868,7 +868,7 @@ export const createProjectsModule =
                   ),
               );
               if (!paused)
-                projects.checkInBackground(guard.tenant, saved.id, 'Abonnementet fortsetter');
+                void projects.checkInBackground(guard.tenant, saved.id, 'Abonnementet fortsetter');
               return c.json(await shownSubscription(guard, saved));
             } catch (error) {
               return failed(c, error);

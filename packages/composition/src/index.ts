@@ -8,6 +8,7 @@ export * from './failure-log.js';
 export * from './hook-runtime.js';
 export * from './knowledge-context.js';
 export * from './outside-run.js';
+export * from './process-guard.js';
 export * from './recipe-shares.js';
 export * from './retrieval-ports.js';
 export * from './runtime.js';
