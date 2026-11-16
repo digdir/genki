@@ -143,7 +143,7 @@ import {
 } from './extensions.js';
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
-import { publicDatasetState } from './dataset-status.js';
+import { lastImportAt, publicDatasetState } from './dataset-status.js';
 import { datasetDeleteModule } from './dataset-delete.js';
 import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
@@ -1270,6 +1270,10 @@ export const createPlatform = async (input: PlatformInput) => {
   };
 
   const runtime = await createRuntime({
+    lastImport: async (dataset) => {
+      const item = runtime.catalog.get('dataset', dataset);
+      return item ? lastImportAt(config.ingestion, item) : undefined;
+    },
     modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
     catalogs: input.catalogs,
