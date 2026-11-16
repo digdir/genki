@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { secretRefPattern, withoutTrailingSlashes } from '@genai/kernel';
+import {
+  federatedScopePattern,
+  guidPattern,
+  secretRefPattern,
+  withoutTrailingSlashes,
+} from '@genai/kernel';
 import type { RerankAdapter } from './adapter.js';
 import { failureModes, residencies, type FailureMode, type Residency } from './port.js';
 
@@ -10,6 +15,12 @@ const auth = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('api-key'), secret, header: z.string().min(1).optional() }),
   z.strictObject({ kind: z.literal('bearer'), secret }),
   z.strictObject({ kind: z.literal('token-provider'), provider: id }),
+  z.strictObject({
+    kind: z.literal('federated-app'),
+    clientId: z.string().regex(guidPattern, 'a GUID'),
+    tenant: z.string().regex(guidPattern, 'a GUID'),
+    scope: z.string().regex(federatedScopePattern, 'a scope ending in /.default'),
+  }),
 ]);
 
 const connection = z.object({

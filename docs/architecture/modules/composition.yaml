@@ -81,6 +81,20 @@ edges:
     witness:
       file: packages/composition/src/document-scope.ts
       imports: '@genai/port-knowledge'
+  - to: brreg
+    label: Reads the state's organisation nightly
+    kind: http
+    target: http
+    witness:
+      file: packages/composition/src/state-register.ts
+      contains: brregUnitsUrl(form, n)
+  - to: statsregnskapet
+    label: Reads the state accounts to check the register
+    kind: http
+    target: http
+    witness:
+      file: packages/composition/src/state-accounts.ts
+      contains: '[accountsHost]'
   - to: providers-mcp-client
     label: Composes tool sources and the egress guard
     kind: call

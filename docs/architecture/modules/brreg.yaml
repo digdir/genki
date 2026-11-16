@@ -1,0 +1,17 @@
+id: brreg
+plane: external
+name: Enhetsregisteret
+note: Register of the state's organisation
+icon: source
+color: '#607b88'
+status: External
+external: true
+summary: Brønnøysund's open register; each ministry registers which ministry its agencies are under (ADR 0058).
+description: Brønnøysund's open register of units, read nightly for the state's organisation (STAT and ORGL with their parents), under NLOD 2.0 (ADR 0058).
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: brreg enhetsregisteret bronnoysund state organisation external

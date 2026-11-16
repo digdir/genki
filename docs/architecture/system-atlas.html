@@ -2725,6 +2725,7 @@
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
+              "Work knowledge.fields on the platform server - write new fields on a dataset's stored documents in every generation holding them, nothing embedded (ADR 0042)",
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
               "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
@@ -2976,6 +2977,26 @@
                 witness: {
                   file: 'packages/composition/src/document-scope.ts',
                   imports: '@genai/port-knowledge',
+                },
+              },
+              {
+                to: 'brreg',
+                label: "Reads the state's organisation nightly",
+                kind: 'http',
+                target: 'http',
+                witness: {
+                  file: 'packages/composition/src/state-register.ts',
+                  contains: 'brregUnitsUrl(form, n)',
+                },
+              },
+              {
+                to: 'statsregnskapet',
+                label: 'Reads the state accounts to check the register',
+                kind: 'http',
+                target: 'http',
+                witness: {
+                  file: 'packages/composition/src/state-accounts.ts',
+                  contains: '[accountsHost]',
                 },
               },
               {
@@ -5169,6 +5190,29 @@
                             required: ['ref', 'title', 'summary', 'purpose', 'settings'],
                           },
                         },
+                        interfaceBlocks: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string' },
+                              name: {
+                                type: 'object',
+                                properties: { nb: { type: 'string' }, en: { type: 'string' } },
+                                required: ['nb', 'en'],
+                              },
+                              covers: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: { nb: { type: 'string' }, en: { type: 'string' } },
+                                  required: ['nb', 'en'],
+                                },
+                              },
+                            },
+                            required: ['id', 'name', 'covers'],
+                          },
+                        },
                       },
                       required: ['available', 'refused', 'blockedResidencies'],
                     },
@@ -6923,6 +6967,28 @@
                                   provider: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
                                 },
                                 required: ['kind', 'provider'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  kind: { type: 'string', const: 'federated-app' },
+                                  clientId: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                                  },
+                                  tenant: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                                  },
+                                  scope: {
+                                    type: 'string',
+                                    pattern: '^[\\x21-\\x7e]{1,246}\\/\\.default$',
+                                  },
+                                },
+                                required: ['kind', 'clientId', 'tenant', 'scope'],
                                 additionalProperties: false,
                               },
                             ],
@@ -10835,6 +10901,50 @@
             replaces: [],
             edges: [],
             keywords: 'kudos kudos external',
+            schemas: [],
+          },
+          {
+            id: 'brreg',
+            plane: 'external',
+            name: 'Enhetsregisteret',
+            note: "Register of the state's organisation",
+            icon: 'source',
+            color: '#607b88',
+            status: 'External',
+            external: true,
+            summary:
+              "Brønnøysund's open register; each ministry registers which ministry its agencies are under (ADR 0058).",
+            description:
+              "Brønnøysund's open register of units, read nightly for the state's organisation (STAT and ORGL with their parents), under NLOD 2.0 (ADR 0058).",
+            responsibilities: [],
+            files: [],
+            input: '',
+            output: '',
+            replaces: [],
+            edges: [],
+            keywords: 'brreg enhetsregisteret bronnoysund state organisation external',
+            schemas: [],
+          },
+          {
+            id: 'statsregnskapet',
+            plane: 'external',
+            name: 'Statsregnskapet',
+            note: "DFØ's state accounts",
+            icon: 'source',
+            color: '#607b88',
+            status: 'External',
+            external: true,
+            summary:
+              "DFØ's state accounts, which book each agency to its ministry; they check the register and give its history (ADR 0058).",
+            description:
+              "DFØ's state accounts as zip files per year and month, read to check Enhetsregisteret and for each agency's ministry per year, under NLOD 2.0 (ADR 0058).",
+            responsibilities: [],
+            files: [],
+            input: '',
+            output: '',
+            replaces: [],
+            edges: [],
+            keywords: 'statsregnskapet dfo state accounts external',
             schemas: [],
           },
           {

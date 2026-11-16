@@ -997,6 +997,162 @@ describe('ingestion pipelines', () => {
   });
 });
 
+describe("refreshing a dataset's fields", () => {
+  it('lets only an operator start a backfill and audits who started it', async () => {
+    const sent: { tenant: string; dataset: string; fill: string }[] = [];
+    const { call, admin } = await boot({
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => {
+          sent.push(input);
+        },
+      },
+    });
+    const fields = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/fields`;
+    const body = { fill: 'kudos-org-numbers' };
+
+    const byEmployee = await call(fields, 'erik', { body, reason: 'Fyll organisasjonsnumre' });
+    const withoutReason = await call(fields, 'drift', { body, reason: null });
+    const unknownFill = await call(fields, 'drift', {
+      body: { fill: 'alt' },
+      reason: 'Fyll organisasjonsnumre',
+    });
+    const started = await call(fields, 'drift', { body, reason: 'Fyll organisasjonsnumre' });
+
+    expect(byEmployee.status).toBe(403);
+    expect(withoutReason.status).toBe(400);
+    expect(unknownFill.status).toBe(400);
+    expect(started.status).toBe(202);
+    expect(sent).toEqual([
+      { tenant: 'platform', dataset: 'digdir/kudos', fill: 'kudos-org-numbers' },
+    ]);
+    expect((await admin.audit()).filter((e) => e.action === 'platform.knowledge.fields')).toEqual([
+      expect.objectContaining({
+        outcome: 'rejected',
+        target: 'dataset:digdir/kudos',
+        actor: expect.stringContaining('drift'),
+      }),
+      expect.objectContaining({
+        outcome: 'applied',
+        target: 'dataset:digdir/kudos',
+        reason: 'Fyll organisasjonsnumre',
+        actor: expect.stringContaining('drift'),
+      }),
+    ]);
+  });
+});
+
+describe('refusing a refresh of fields', () => {
+  const fields = (dataset: string) => `/operator/datasets/${encodeURIComponent(dataset)}/fields`;
+  const body = { fill: 'kudos-org-numbers' };
+  const reason = 'Fyll organisasjonsnumre';
+
+  it('refuses a backfill while a run of the dataset is open', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    class Holding extends InMemoryIngestionBackend {
+      override async run(...args: Parameters<InMemoryIngestionBackend['run']>) {
+        await held;
+        return super.run(...args);
+      }
+    }
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      ingestion: new Holding(),
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', {
+      body: {
+        id: 'nettsider',
+        name: 'Nettsidene',
+        source: { kind: 'website', sitemap: 'https://www.digdir.no/sitemap.xml' },
+        chunking: { minimumLength: 10, maximumLength: 20 },
+      },
+    });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+
+    const whileOpen = await call(fields('digdir/kudos'), 'drift', { body, reason });
+    release();
+
+    expect(whileOpen.status).toBe(409);
+    expect(sent).toEqual([]);
+  });
+
+  it('refuses a backfill while the run of a deleted pipeline is open', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    class Holding extends InMemoryIngestionBackend {
+      override async run(...args: Parameters<InMemoryIngestionBackend['run']>) {
+        await held;
+        return super.run(...args);
+      }
+    }
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      ingestion: new Holding(),
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', {
+      body: {
+        id: 'nettsider',
+        name: 'Nettsidene',
+        source: { kind: 'website', sitemap: 'https://www.digdir.no/sitemap.xml' },
+        chunking: { minimumLength: 10, maximumLength: 20 },
+      },
+    });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+    await call(`${base}/nettsider`, 'drift', { method: 'DELETE', reason });
+
+    const whileOpen = await call(fields('digdir/kudos'), 'drift', { body, reason });
+    release();
+
+    expect(whileOpen.status).toBe(409);
+    expect(sent).toEqual([]);
+  });
+
+  it("refuses a backfill of a tenant's dataset", async () => {
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+
+    const refused = await call(fields(`${digdir}/sider`), 'drift', { body, reason });
+
+    expect(refused.status).toBe(404);
+    expect(sent).toEqual([]);
+  });
+});
+
 describe('test set write API', () => {
   const firstCase = {
     split: 'validation',

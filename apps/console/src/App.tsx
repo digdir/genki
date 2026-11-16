@@ -20,6 +20,7 @@ import { QualityMatrix } from './screens/QualityMatrix';
 import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
 import { SupportAccess } from './screens/SupportAccess';
+import { StateRegister } from './screens/StateRegister';
 import { TenantServices } from './screens/TenantServices';
 import { Tenants } from './screens/Tenants';
 import { SearchEngines } from './screens/SearchEngines';
@@ -240,6 +241,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/settings': () => <Settings api={api} />,
     '/quality': () => <Quality api={api} />,
     '/search-engines': () => <SearchEngines api={api} />,
+    '/state-register': () => <StateRegister api={api} />,
     '/quality-matrix': () => (
       <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
     ),

@@ -108,6 +108,14 @@
                 block's name and help, every option, template and zone, and a reason for every need,
                 in bokmål and English.
               </li>
+              <li>
+                <strong>The reader's needs</strong>, each block's <code>covers</code>: what a block
+                is for, such as «Enkel tilgang til originaldokumentet» for Dokumentvisning, worded
+                in the same namespace. <code>describedBlocks</code> gives the built blocks with
+                these words to the builder assistant, which the portal sends with each turn; the
+                assistant matches a need the person describes to a block and turns it on with
+                <code>choose_interface_blocks</code>.
+              </li>
             </ul>
           </div>
           <div>

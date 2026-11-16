@@ -16,7 +16,7 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 | Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                        |
 | Blob container `conversions`               | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes |
 | Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                       |
-| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and six alert rules, see the [runbook](../docs/runbook.md#alerts)                       |
+| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and seven alert rules, see the [runbook](../docs/runbook.md#alerts)                     |
 | DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                          |
 
 From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
@@ -304,6 +304,20 @@ The decision point needs, per environment, the Altinn resource, a Maskinporten c
 4. When the delegation works, set `CUSTOM_DOMAINS_STAGE=hostnames` and run infra, then `certificates` and run it again.
 
 After that, run the deploy workflow whenever `main` should go to test; merges do not deploy on their own. Infra changes ride along with the next deploy, or run the infra workflow by hand.
+
+## Deploys users do not notice
+
+The API runs several revisions at once (issue 465). Each revision is labelled in the API's traffic list: `live` gets all requests, `candidate` and `previous` none. A deploy runs in three jobs:
+
+1. `candidate` starts a new API revision, `genai-test-api--r<run id>-<attempt>`, labelled `candidate` with no traffic, and waits until its `/health` at `https://genai-test-api---candidate.<environment domain>` reports the commit. The worker, the web apps and Docling keep their images, and the worker its `APP_VERSION`. It stops the API revisions that no label names any more.
+2. `gate` runs the smoke test (`scripts/smoke/run.ts`) against the candidate's address, without the model review and without a browser, since the web apps still run the old version. It ignores the daily cap on smoke runs, and passes only when no check failed and at least one model check ran. A failed check stops the deploy here: users keep the `live` revision, and the `discard` job stops the candidate, so code that failed runs no schedules on the shared data. It keeps its label until the next deploy.
+3. `deploy-test` moves all traffic to the candidate, labels it `live` and the old one `previous`, deploys the new worker, web apps and Docling, and waits until `/health` reports the commit. The `smoke` workflow then tests the whole platform as before.
+
+The old revision keeps its replicas, so requests and streams it was serving finish there; it stops at the next deploy. Until then it also runs the schedules, as a second replica of the live revision would. The worker and the database are shared by both revisions, and the candidate's API runs the schema migrations at start, so a migration must leave the old code working: add tables and nullable columns or columns with a default, and drop or rename only in a later release.
+
+**Roll back** with the `rollback` workflow (`gh workflow run rollback.yml`). It swaps the `live` and `previous` labels with their traffic, so users get the previous API revision within seconds; running it again moves them forward. It rolls back the API only: for the worker or the web apps, run the deploy workflow on the previous good commit.
+
+`infra.yml` keeps the labels, the API revision and the worker's `APP_VERSION` as they are; after a rollback the template still names the revision now labelled `previous`, and it keeps that label. After a failed gate the template names the stopped candidate: whether `infra.yml` starts it again is not checked in Azure, so run the deploy workflow first. A change to the API's settings reaches users only through the deploy workflow; whether Azure refuses such a change from `infra.yml`, since it reuses the revision's suffix, is not checked in Azure. Prod still runs one revision of each app: it deploys without revision parameters.
 
 ## Validate locally
 

@@ -10,6 +10,7 @@ import {
   type PortContext,
   type PortProvider,
   type SecretResolver,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import type { RerankAdapter, RerankConnection, RerankerConfig } from './adapter.js';
@@ -24,6 +25,7 @@ export interface RerankRouterOptions {
   adapters: RerankAdapter[];
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   maxResidency?: Residency;
   timeoutMs?: number;
   maxDocuments?: number;
@@ -103,7 +105,13 @@ export class RerankRouter implements PortProvider<RerankPort> {
         config: { id: m.id, options: adapter.rerankerOptions.parse(m.options) },
         connection: adapter.connect({
           baseURL: m.baseURL,
-          credential: credentialFor(m.auth, options.secrets, options.tokenProviders, m.baseURL),
+          credential: credentialFor(
+            m.auth,
+            options.secrets,
+            options.tokenProviders,
+            m.baseURL,
+            options.federatedTokens,
+          ),
           options: adapter.endpointOptions.parse({}),
           timeoutMs: options.timeoutMs ?? 10_000,
           fetch: this.#gate.egress(m.endpoint),

@@ -47,6 +47,7 @@ import {
   type StateStore,
   type Strategy,
   type TaskStore,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
@@ -99,7 +100,12 @@ import {
   type ConnectionRegistry,
   type EgressOptions,
 } from '@genai/providers-mcp-client';
-import { azureDeployments, openAiChat, openAiEmbeddings } from '@genai/providers-openai';
+import {
+  azureDeployments,
+  openAiChat,
+  openAiEmbeddings,
+  openAiModels,
+} from '@genai/providers-openai';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import {
   pgvectorEngine,
@@ -288,6 +294,7 @@ export interface RuntimeInput {
   state?: StateStore;
   observe?: (log: EventLog) => EventLog;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   egress?: EgressOptions;
   blobStore?: BlobStore;
   mediaOutput?: MediaOutputConfig;
@@ -414,6 +421,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const discoverySources = [azureDeployments, openAiModels];
   const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
   const rerankAdapters = [colbert];
   const portApis: BuiltInApi[] = [
@@ -486,6 +494,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     secrets: catalogSecrets,
     priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
   });
   const loggedEmbedderRouter = input.logger
     ? loggedEmbedders(
@@ -563,11 +572,12 @@ export const createRuntime = async (input: RuntimeInput) => {
         kind,
         processorRecords: typedCalls,
       }),
-    sources: [azureDeployments],
+    sources: discoverySources,
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     onParameterDropped: (model, parameter) =>
       input.logger?.('model rejected a request parameter', { model, parameter }),
   });
@@ -593,6 +603,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     adapters: rerankAdapters,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
   const migrated = await migrateConnections({
@@ -892,7 +903,13 @@ export const createRuntime = async (input: RuntimeInput) => {
     store: configEntries,
     checks: {
       models: (c) => [
-        ...problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind])),
+        ...problemsOf(
+          parseCatalog(
+            c,
+            models.apis(),
+            discoverySources.map((s) => s.kind),
+          ),
+        ),
         ...embedders.problems(c),
         ...rerank.problems(c),
       ],

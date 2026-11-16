@@ -13,14 +13,14 @@ import {
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { navigate } from '../../hooks';
-import { useT } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import { operationName } from '../../model-operations';
 import { EmptyState } from '../../states';
 import { useTenantNames } from '../../tenant-names';
 import { DialogError, inUseOf, InUseList, ReasonDialog, TableRegion, type InUse } from '../../ui';
 import { connectionSpec, modelsHref, modelsInUse, recordStatus, type AreaProps } from './area-data';
 import { RecordTag } from './ConnectionList';
-import { EndpointForm } from './Endpoints';
+import { discoverySourceLabel, EndpointForm } from './Endpoints';
 import { ProcessorRecordForm } from './ProcessorRecord';
 
 export const Crumbs = ({ trail }: { trail: { label: string; href?: string }[] }) => {
@@ -114,13 +114,32 @@ export const ConnectionDetail = ({ api, data, done, id }: AreaProps & { id: stri
           <dt>{t('connections.address')}</dt>
           <dd>{spec.baseURL ?? '–'}</dd>
           <dt>{t('endpoints.login')}</dt>
-          <dd>{spec.authKind === 'bearer' ? t('endpoints.bearer') : t('endpoints.apiKey')}</dd>
-          <dt>{t('connections.key')}</dt>
           <dd>
-            {spec.secret ?? t('endpoints.noSecret')}
-            <br />
-            <span className="meta">{t('connections.keyStored')}</span>
+            {spec.authKind === 'federated-app'
+              ? t('endpoints.federatedApp')
+              : spec.authKind === 'bearer'
+                ? t('endpoints.bearer')
+                : t('endpoints.apiKey')}
           </dd>
+          {spec.app ? (
+            <>
+              <dt>{t('endpoints.appClientId')}</dt>
+              <dd>{spec.app.clientId}</dd>
+              <dt>{t('endpoints.resourceTenant')}</dt>
+              <dd>{spec.app.tenant}</dd>
+              <dt>{t('endpoints.scope')}</dt>
+              <dd>{spec.app.scope}</dd>
+            </>
+          ) : (
+            <>
+              <dt>{t('connections.key')}</dt>
+              <dd>
+                {spec.secret ?? t('endpoints.noSecret')}
+                <br />
+                <span className="meta">{t('connections.keyStored')}</span>
+              </dd>
+            </>
+          )}
           <dt>{t('endpoints.settings')}</dt>
           <dd>
             {Object.keys(spec.settings).length === 0
@@ -219,6 +238,7 @@ export const ConnectionDetail = ({ api, data, done, id }: AreaProps & { id: stri
               <TableHead>
                 <TableRow>
                   <TableHeaderCell scope="col">{t('connections.colRule')}</TableHeaderCell>
+                  <TableHeaderCell scope="col">{t('connections.colSource')}</TableHeaderCell>
                   <TableHeaderCell scope="col">{t('connections.colIncludes')}</TableHeaderCell>
                   <TableHeaderCell scope="col">{t('connections.colExcludes')}</TableHeaderCell>
                   <TableHeaderCell scope="col">{t('connections.colGetsApis')}</TableHeaderCell>
@@ -233,6 +253,11 @@ export const ConnectionDetail = ({ api, data, done, id }: AreaProps & { id: stri
                         {rule.idPrefix ? <span className="meta">{rule.idPrefix}/…</span> : null}
                       </span>
                     </TableHeaderCell>
+                    <TableCell>
+                      {rule.source && rule.source in discoverySourceLabel
+                        ? t(discoverySourceLabel[rule.source] as PlainKey)
+                        : rule.source}
+                    </TableCell>
                     <TableCell>{rule.include?.join(', ') || t('connections.everything')}</TableCell>
                     <TableCell>{rule.exclude?.join(', ') || '–'}</TableCell>
                     <TableCell>

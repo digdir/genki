@@ -26,6 +26,7 @@ import {
   fileNameOf,
   parseJsonOr,
   runFailedOf,
+  modelChecksRan,
   overallOutcome,
   runModelCheck,
   sourcesOfAnswer,
@@ -155,6 +156,7 @@ export const main = async () => {
     wanted,
     today,
     Number(env.SMOKE_MAX_RUNS_PER_DAY) || 6,
+    env.SMOKE_CAPPED !== 'false',
   );
   const notes = note ? [note] : [];
   if (!key) notes.push('SMOKE_API_KEY is not set, so only the checks without a key ran.');
@@ -704,7 +706,10 @@ export const main = async () => {
   console.log(table);
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${table}\n`);
   if (env.GITHUB_OUTPUT)
-    appendFileSync(env.GITHUB_OUTPUT, `review=${decision.review}\noutcome=${report.outcome}\n`);
+    appendFileSync(
+      env.GITHUB_OUTPUT,
+      `review=${decision.review}\noutcome=${report.outcome}\nmodels=${modelChecksRan(checks)}\n`,
+    );
   return report;
 };
 
