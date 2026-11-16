@@ -45,7 +45,7 @@ const server = (overrides: Partial<HeavyServer> = {}): HeavyServer => ({
   toFreeze: vi.fn(async () => []),
   progress: vi.fn(async () => ({ phase: 'building index', blocks: '10/40' })),
   cancel: vi.fn(async () => undefined),
-  recall: vi.fn(async () => ({ recall: 0.995, queries: 200 })),
+  recall: vi.fn(async () => ({ recall: 0.995, queries: 200, cut: false })),
   baseline: vi.fn(async (_g: string, measured: number) => measured),
   datasetOf: vi.fn(async () => dataset.id),
   ...overrides,
@@ -552,7 +552,7 @@ describe('the nightly checks', () => {
     const t = deps(
       {
         server: server({
-          recall: vi.fn(async () => ({ recall: 0.9, queries: 200 })),
+          recall: vi.fn(async () => ({ recall: 0.9, queries: 200, cut: false })),
           baseline: vi.fn(async () => 0.995),
         }),
       },
@@ -581,6 +581,7 @@ describe('the nightly checks', () => {
             recall: vi.fn(async (_g: string, options: { sample: number }) => ({
               recall: 0.98,
               queries: options.sample,
+              cut: false,
             })),
             baseline: vi.fn(async () => 0.995),
           }),
@@ -607,7 +608,11 @@ describe('the nightly checks', () => {
     const t = deps(
       {
         server: server({
-          recall: vi.fn(async () => ({ recall: 0.995 - recallMargin / 2, queries: 200 })),
+          recall: vi.fn(async () => ({
+            recall: 0.995 - recallMargin / 2,
+            queries: 200,
+            cut: false,
+          })),
           baseline: vi.fn(async () => 0.995),
         }),
       },
@@ -623,17 +628,17 @@ describe('the recall check inside its time', () => {
 
   it('the recall check stops starting searches 90 minutes after the job starts', async () => {
     let clock = night;
-    const stops: boolean[] = [];
+    const stops: (boolean | undefined)[] = [];
     const t = deps({
       now: () => clock,
       server: server({
-        recall: vi.fn(async (_generation: string, options: { stop: () => boolean }) => {
-          stops.push(options.stop());
+        recall: vi.fn(async (_generation: string, options: { stop?: () => boolean }) => {
+          stops.push(options.stop?.());
           clock = minutes(89);
-          stops.push(options.stop());
+          stops.push(options.stop?.());
           clock = minutes(90);
-          stops.push(options.stop());
-          return { recall: 0.995, queries: 200 };
+          stops.push(options.stop?.());
+          return { recall: 0.995, queries: 200, cut: false };
         }),
       }),
     });
@@ -653,7 +658,7 @@ describe('the recall check inside its time', () => {
       {
         server: server({
           chunks: vi.fn(async () => 100_000),
-          recall: vi.fn(async () => ({ recall: 0.98, queries: 50 })),
+          recall: vi.fn(async () => ({ recall: 0.98, queries: 50, cut: true })),
           baseline: vi.fn(async () => 0.995),
         }),
       },
@@ -670,7 +675,7 @@ describe('the recall check inside its time', () => {
         log,
         server: server({
           chunks: vi.fn(async () => 100_000),
-          recall: vi.fn(async () => ({ recall: 0.5, queries: 19 })),
+          recall: vi.fn(async () => ({ recall: 0.5, queries: 19, cut: true })),
         }),
       },
       night,
@@ -682,6 +687,66 @@ describe('the recall check inside its time', () => {
       generation: 'g-docs-1',
       planned: 200,
       queries: 19,
+    });
+  });
+
+  it('a generation with fewer than 20 vectors is still judged', async () => {
+    const log = vi.fn();
+    const t = deps(
+      {
+        log,
+        server: server({
+          chunks: vi.fn(async () => 12),
+          // Every vector it holds was searched: nothing was cut.
+          recall: vi.fn(async () => ({ recall: 1, queries: 12, cut: false })),
+        }),
+      },
+      night,
+    );
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(t.deps.server.baseline).toHaveBeenCalledWith('g-docs-1', 1);
+    expect(log).not.toHaveBeenCalledWith('knowledge recall check cut short', expect.anything());
+  });
+
+  it('a generation reached after the deadline is not sampled', async () => {
+    let clock = night;
+    const log = vi.fn();
+    const sizes: Record<string, number> = { 'g-small': 10, 'g-big': 3_000_000 };
+    const t = deps({
+      now: () => clock,
+      log,
+      datasets: () =>
+        ['g-small', 'g-big'].map((generation) => ({
+          ...dataset,
+          id: `991825827/${generation}`,
+          generation,
+        })),
+      server: server({
+        chunks: vi.fn(async (generation: string) => sizes[generation] ?? 0),
+        recall: vi.fn(async () => {
+          clock = minutes(91);
+          return { recall: 0.995, queries: 200, cut: false };
+        }),
+      }),
+    });
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(vi.mocked(t.deps.server.recall).mock.calls.map(([generation]) => generation)).toEqual([
+      'g-small',
+    ]);
+    expect(log).toHaveBeenCalledWith('knowledge recall check cut short', {
+      generation: 'g-big',
+      planned: 50,
+      queries: 0,
+    });
+  });
+
+  it('a generation without vectors logs that its check was skipped', async () => {
+    const log = vi.fn();
+    const t = deps({ log, server: server({ recall: vi.fn(async () => undefined) }) }, night);
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(log).toHaveBeenCalledWith('knowledge recall check skipped', {
+      generation: 'g-docs-1',
+      reason: 'no vectors',
     });
   });
 

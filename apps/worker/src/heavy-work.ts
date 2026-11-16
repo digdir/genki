@@ -29,7 +29,10 @@ export interface VacuumOptions extends MaintenanceOptions {
 
 export interface RecallSample {
   recall: number;
+  /** The exact searches that ran. */
   queries: number;
+  /** Whether `stop` ended the sample before all its searches ran. */
+  cut: boolean;
 }
 
 /** The knowledge server's heavy work, as the worker's owner login runs it (ADR 0042, "Heavy work"). */
@@ -270,14 +273,23 @@ export const checkWork = (deps: HeavyDeps) =>
     active.sort((a, b) => a.chunks - b.chunks);
     for (const { dataset, generation, chunks } of active) {
       const { sample: planned } = recallQueries(chunks);
+      // Drawing the sample alone reads the whole partition, so past the deadline it is not drawn.
+      if (stop()) {
+        deps.log?.('knowledge recall check cut short', { generation, planned, queries: 0 });
+        continue;
+      }
       deps.log?.('knowledge recall check started', { generation, chunks, planned });
       const sample = await deps.server.recall(generation, {
         sample: planned,
         stop,
         signal: job.signal,
       });
-      if (!sample) continue;
-      if (sample.queries < fewestRecallVerdict) {
+      if (!sample) {
+        deps.log?.('knowledge recall check skipped', { generation, reason: 'no vectors' });
+        continue;
+      }
+      // A generation smaller than the sample is judged on all its vectors; only the deadline cuts.
+      if (sample.cut && sample.queries < fewestRecallVerdict) {
         deps.log?.('knowledge recall check cut short', {
           generation,
           planned,
@@ -289,7 +301,9 @@ export const checkWork = (deps: HeavyDeps) =>
       const dropped = sample.recall < baseline - recallMarginFor(sample.queries);
       deps.log?.('knowledge recall checked', {
         generation,
-        ...sample,
+        recall: sample.recall,
+        queries: sample.queries,
+        cut: sample.cut,
         planned,
         baseline,
         dropped,

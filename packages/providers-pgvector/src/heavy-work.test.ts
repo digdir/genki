@@ -365,7 +365,10 @@ describe('the recall check', () => {
       stop: () => ++asked > 5,
     });
     expect(sample?.queries).toBe(5);
+    expect(sample?.cut).toBe(true);
     expect(sample?.recall).toBeGreaterThan(0.9);
+    // A sample that ran to its end was not cut.
+    expect((await sampleRecall(owner, generation, { sample: 20 }))?.cut).toBe(false);
   });
 
   it('an expired recall check stops its query', async () => {
@@ -379,7 +382,16 @@ describe('the recall check', () => {
       const expired = new AbortController();
       const check = sampleRecall(owner, generation, { sample: 5, signal: expired.signal });
       check.catch(() => undefined);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Abort once the check's query waits on the lock, not after a guessed sleep.
+      for (let tries = 0; tries < 100; tries += 1) {
+        const { rows: waiting } = await admin.query<{ n: number }>(
+          `select count(*)::int as n from pg_stat_activity
+            where wait_event_type = 'Lock' and query like $1`,
+          [`%from ${chunks}%`],
+        );
+        if ((waiting[0]?.n ?? 0) > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       expired.abort();
       const outcome = await Promise.race([
         check.then(
@@ -400,6 +412,24 @@ describe('the recall check', () => {
       await holder.query('rollback');
       holder.release();
     }
+  });
+
+  it('an abort between two searches stops the check', async () => {
+    const { generation } = await loaded(30);
+    const expired = new AbortController();
+    let asked = 0;
+    const check = sampleRecall(owner, generation, {
+      sample: 20,
+      signal: expired.signal,
+      // The abort lands while no query runs, after the second exact search.
+      stop: () => {
+        asked += 1;
+        if (asked === 3) expired.abort();
+        return false;
+      },
+    });
+    await expect(check).rejects.toThrow('the recall check was stopped');
+    expect(asked).toBe(3);
   });
 
   it("a generation's first recall check sets its baseline, and a REINDEX resets it", async () => {

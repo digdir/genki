@@ -237,7 +237,10 @@ export const cancelBackend = (owner: Pool, pid: number) =>
 
 export interface RecallSample {
   recall: number;
+  /** The exact searches that ran. */
   queries: number;
+  /** Whether `stop` ended the sample before all its searches ran. */
+  cut: boolean;
 }
 
 /**
@@ -274,8 +277,12 @@ export const sampleRecall = async (
       if (pid !== undefined) void cancelBackend(owner, pid).catch(() => undefined);
     };
     signal?.addEventListener('abort', cancel, { once: true });
+    // PostgreSQL ignores a cancel that reaches an idle backend, so the signal is also asked
+    // before every query: an abort between two searches, or before the listener, still stops it.
+    const go = () => signal?.throwIfAborted();
     await client.query('begin');
     try {
+      go();
       const { rows: queries } = await client.query<{ vec: string }>(
         `select vec::text as vec from ${chunks} where vec is not null order by random() limit $1`,
         [options.sample],
@@ -289,23 +296,31 @@ export const sampleRecall = async (
           String(options.efSearch),
         ]);
       const ann: string[][] = [];
-      for (const q of queries)
+      for (const q of queries) {
+        go();
         ann.push((await client.query<{ id: string }>(nearest, [q.vec])).rows.map((r) => r.id));
+      }
       await client.query(`set local enable_seqscan = on`);
       await client.query(`set local enable_indexscan = off`);
       await client.query(`set local enable_bitmapscan = off`);
       let hits = 0;
       let wanted = 0;
       let ran = 0;
+      let cut = false;
       for (const [i, q] of queries.entries()) {
-        if (options.stop?.()) break;
+        go();
+        if (options.stop?.()) {
+          cut = true;
+          break;
+        }
+        go();
         const exact = (await client.query<{ id: string }>(nearest, [q.vec])).rows.map((r) => r.id);
         const got = new Set(ann[i]);
         hits += exact.filter((id) => got.has(id)).length;
         wanted += exact.length;
         ran += 1;
       }
-      return { recall: wanted ? hits / wanted : 1, queries: ran };
+      return { recall: wanted ? hits / wanted : 1, queries: ran, cut };
     } catch (error) {
       if (signal?.aborted) throw new Error('the recall check was stopped', { cause: error });
       throw error;
