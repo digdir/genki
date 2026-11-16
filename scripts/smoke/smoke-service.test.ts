@@ -50,6 +50,10 @@ describe('smoke service', () => {
     expect(definition().metadata.id).toBe(plan.service);
   });
 
+  it('is internal, so only operators and the test-runner key see it', () => {
+    expect(definition().spec.visibility).toBe('internal');
+  });
+
   it('belongs to the tenant the plan reads timelines in', () => {
     expect(definition().metadata.tenant).toBe(plan.tenant);
   });

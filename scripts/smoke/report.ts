@@ -61,6 +61,11 @@ export const renderTable = (report: SmokeReport) => {
   ].join('\n');
 };
 
+export const failureLine = (report: SmokeReport) => {
+  const failed = report.checks.filter((c) => c.outcome === 'fail').map((c) => c.id);
+  return `smoke outcome ${report.outcome}: ${failed.join(', ') || 'no failing check recorded'}`;
+};
+
 export const commitStatus = (report: SmokeReport) =>
   report.outcome === 'pass' ? 'success' : report.outcome === 'fail' ? 'failure' : undefined;
 
@@ -329,7 +334,10 @@ export const main = async () => {
     });
     await api(`/repos/${repo}/issues/${issue}`, { method: 'PATCH', body: { state: 'closed' } });
   }
-  if (report.outcome === 'fail') process.exitCode = 1;
+  if (report.outcome === 'fail') {
+    console.error(failureLine(report));
+    process.exitCode = 1;
+  }
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) await main();

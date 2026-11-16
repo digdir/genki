@@ -47,6 +47,10 @@ jobs:
       FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
       TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
       COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+      LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
+      LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
+      TRACES_ENDPOINT: ${{ vars.TRACES_ENDPOINT }}
+      TRACES_RESIDENCY: ${{ vars.TRACES_RESIDENCY }}
       PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
       ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
       LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
@@ -78,6 +82,7 @@ jobs:
             echo "api=$(image_of api)"
             echo "worker=$(image_of worker)"
             echo "apps=$(image_of portal)"
+            echo "docling=$(image_of docling)"
           } >> "$GITHUB_OUTPUT"
           api=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
           if [ -n "$api" ]; then
@@ -90,4 +95,4 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" appVersion="${{ steps.current.outputs.version }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}"

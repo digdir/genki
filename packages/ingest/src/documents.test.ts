@@ -20,6 +20,7 @@ import {
   type DocumentConverter,
   type IndexSink,
   type IngestSource,
+  onePage,
 } from './index.js';
 
 const encoder = new TextEncoder();
@@ -62,11 +63,11 @@ const fakeConverter = (
   return {
     seen,
     extensions: ['.pdf', '.docx'],
-    toMarkdown: async (file) => {
+    convert: async (file) => {
       seen.push(file.name);
       const failure = Object.entries(failures).find(([name]) => file.name.endsWith(name));
       if (failure) throw failure[1];
-      return `# ${file.name}\n\n${new TextDecoder().decode(file.bytes)}`;
+      return onePage(`# ${file.name}\n\n${new TextDecoder().decode(file.bytes)}`);
     },
   };
 };

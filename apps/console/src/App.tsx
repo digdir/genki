@@ -243,7 +243,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/quality-matrix': () => (
       <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
     ),
-    '/tracing': () => <Tracing api={api} />,
+    '/tracing': () => <Tracing api={api} live={live} />,
     '/operations': () => <Operations api={api} />,
     '/diagnostics': () => (
       <Diagnostics
@@ -252,7 +252,14 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         kind={params.get('kind') === 'service' ? 'service' : 'run'}
       />
     ),
-    '/support-access': () => <SupportAccess api={api} tenant={params.get('tenant') ?? undefined} />,
+    '/support-access': () => (
+      <SupportAccess
+        api={api}
+        tenant={params.get('tenant') ?? undefined}
+        tab={params.get('tab') ?? undefined}
+        setting={params.get('setting') ?? undefined}
+      />
+    ),
     '/audit': () => <Audit api={api} />,
     '/platform-defaults': () => <PlatformDefaults />,
     '/schemas': () => <Schemas api={api} initial={params.get('kind') ?? undefined} />,

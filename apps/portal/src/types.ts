@@ -174,6 +174,7 @@ export interface SettingInfo {
   sensitivity: 'normal' | 'secret';
   default: unknown;
   settableAt: string[];
+  operatorOnly?: boolean;
   schema?: Record<string, unknown>;
 }
 
@@ -216,10 +217,11 @@ export type Split = 'train' | 'validation' | 'holdout';
 export interface TestCaseSummary {
   id: string;
   split: Split;
+  type?: string;
   input: string | { data?: unknown; parts?: unknown[] };
   tags: string[];
   needsReview: boolean;
-  expected: { referenceAnswer?: string; sources?: unknown[] };
+  expected: { referenceAnswer?: string; criteria?: Record<string, string>; sources?: unknown[] };
 }
 
 export interface TestSet {
@@ -288,6 +290,7 @@ export interface TaskRow {
   erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
+  environment?: string | null;
   createdAt: string;
   endedAt: string | null;
   usage?: UsageTotals;
@@ -368,6 +371,7 @@ export type WebhookEvent = 'task.completed' | 'feedback.received';
 
 export interface ClientSpec {
   service: string;
+  environments?: string[];
   kind: 'server' | 'browser';
   url?: string;
   channels: ClientChannel[];
@@ -415,6 +419,7 @@ export interface ServiceKeyView extends ApiKeyView {
   lastUsedAt: string | null;
   rotatedFrom: string | null;
   allowedOverrides: string[];
+  environments?: string[];
 }
 
 export interface AccessView {
@@ -450,6 +455,8 @@ export interface UsageReport {
   }[];
   byProject?: { project: string; name: string; usage: UsageTotals }[];
   project?: string;
+  byEnvironment?: { environment: string; usage: UsageTotals }[];
+  environment?: string;
 }
 
 export interface ConnectionView {

@@ -3,7 +3,7 @@ import type { PlainKey } from '../../i18n';
 export type ServiceSection =
   | 'overview'
   | 'setup'
-  | 'blocks'
+  | 'interface'
   | 'advanced'
   | 'test'
   | 'channels'
@@ -18,7 +18,7 @@ export type ServiceSection =
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
   setup: 'service.sectionSetup',
-  blocks: 'builderBlocks.sectionLabel',
+  interface: 'service.sectionInterface',
   advanced: 'service.sectionAdvanced',
   test: 'service.sectionTest',
   channels: 'service.sectionChannels',
@@ -34,7 +34,7 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
 const order: ServiceSection[] = [
   'overview',
   'setup',
-  'blocks',
+  'interface',
   'advanced',
   'test',
   'channels',
@@ -52,14 +52,14 @@ export const availableSections = ({ isNew }: { isNew: boolean }): ServiceSection
     ? order.filter(
         (s) =>
           s === 'setup' ||
-          s === 'blocks' ||
+          s === 'interface' ||
           s === 'advanced' ||
           s === 'test' ||
           s === 'versions' ||
           s === 'developer' ||
           s === 'publish',
       )
-    : order.filter((s) => s !== 'blocks' && s !== 'advanced');
+    : order.filter((s) => s !== 'advanced');
 
 export const developerSections: ServiceSection[] = ['test', 'versions'];
 

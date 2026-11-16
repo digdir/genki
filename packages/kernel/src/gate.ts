@@ -42,7 +42,8 @@ export type GateRefusal =
   | 'maturity'
   | 'processor'
   | 'media'
-  | 'shape';
+  | 'shape'
+  | 'quota';
 
 export const environmentTiers = ['test', 'production'] as const;
 export type EnvironmentTier = (typeof environmentTiers)[number];
@@ -167,6 +168,8 @@ export interface GateOptions {
   tier?: EnvironmentTier;
   media?: MediaOutput;
   mediaInput?: MediaInputSource;
+  /** Why the call's tenant may spend no more tokens now, or undefined when it may. */
+  quota?: (ctx: PortContext) => Promise<string | undefined>;
 }
 
 export interface GateSession {
@@ -250,6 +253,11 @@ export const createGate = (options: GateOptions = {}): Gate => {
         target.processorNote ??
           `endpoint ${target.endpoint ?? ''} has no processor record, so it cannot carry real data`,
       );
+  };
+
+  const withinQuota = async (ctx: PortContext) => {
+    const refusal = await options.quota?.(ctx);
+    if (refusal) throw new GateError('quota', refusal);
   };
 
   const mediaAdmitted = <Res>(payload: GatePayload<Res>) => {
@@ -448,6 +456,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
   ) => {
     try {
       admit(ctx, target);
+      await withinQuota(ctx);
       mediaAdmitted(payload);
       return await guarded(ctx, target, payload, request);
     } catch (error) {
@@ -637,6 +646,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     const guards = distinct(ctx.guards ?? []);
     try {
       admit(ctx, target);
+      await withinQuota(ctx);
       if (sessionOptions.binaryOut && !options.media?.allows(sessionOptions.binaryOut))
         throw new GateError(
           'media',

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { playgroundRun, publishedVersionOf } from './browser.ts';
 import {
   assessCompletion,
   assessFacets,
@@ -403,6 +404,43 @@ describe('timelines', () => {
   it('fails a detection on a question that names nothing', () => {
     const t = timeline(['concerned_years: 2000, ranked higher']);
     expect(assessTimeline(http(200, t), { detected: [], tokens: true }).ok).toBe(false);
+  });
+
+  const searched = (queries: string[], tags: string[]) => ({
+    ...timeline([]),
+    steps: [
+      {
+        type: 'search',
+        blocks: [
+          { kind: 'list', label: 'Search', items: queries },
+          { kind: 'tags', label: 'Found in the search', items: tags },
+        ],
+      },
+    ],
+  });
+  const amount = 'Hva koster et gebyr på 2000 kroner?';
+
+  it('passes a year the model wrote into its own search on a question that names none', () => {
+    const t = searched([amount, 'gebyrbeløp 2022 statistikk'], ['title: 2022, ranked higher']);
+    expect(assessTimeline(http(200, t), { detected: [], question: amount, tokens: true }).ok).toBe(
+      true,
+    );
+  });
+
+  it('fails an amount in the question read as a year', () => {
+    const t = searched([amount, 'gebyr på 2000 kroner'], ['title: 2000, ranked higher']);
+    expect(
+      assessTimeline(http(200, t), { detected: [], question: amount, tokens: true }),
+    ).toMatchObject({ ok: false, detail: 'unexpected detection title: 2000, ranked higher' });
+  });
+
+  it('fails a detection that no search names, as an alias of a word in the question', () => {
+    const question = 'Hva sier DFØ om veiledning?';
+    const t = searched(
+      [question],
+      ['orgs_long: Direktoratet for forvaltning og økonomistyring, ranked higher'],
+    );
+    expect(assessTimeline(http(200, t), { detected: [], question, tokens: true }).ok).toBe(false);
   });
 
   it('fails a run that did not complete', () => {
@@ -888,6 +926,29 @@ describe('the playground screen', () => {
   it('fails when no run was sent', () => {
     expect(assessPlaygroundScreen(screen(), plan).detail).toBe('no playground run was sent');
   });
+
+  it('names the problem type and detail of a refused run', () => {
+    const refused = screen({
+      api: [
+        {
+          path: '/tenants/1/playground/runs/stream',
+          status: 403,
+          problem: 'urn:genai:problem:test-runner-scope',
+          why: 'A test-runner key tries smoke- services in the playground.',
+        },
+      ],
+    });
+    expect(assessPlaygroundScreen(refused, plan).detail).toBe(
+      'the playground run answered 403 urn:genai:problem:test-runner-scope A test-runner key tries smoke- services in the playground.',
+    );
+  });
+
+  it('says why no run was sent when the steps failed', () => {
+    const stuck = screen({ pageErrors: ['Error: no published version'] });
+    expect(assessPlaygroundScreen(stuck, plan).detail).toBe(
+      'no playground run was sent: Error: no published version',
+    );
+  });
 });
 
 describe('an expired session', () => {
@@ -1010,5 +1071,62 @@ describe('the key in lockdown', () => {
   it('is unavailable when the key may not read a key list and is in none it can read', () => {
     expect(assessKeyAdmission([http(403, {}), noKeys], key, true).unavailable).toBe(true);
     expect(assessKeyAdmission([http(403, {}), keys(true)], key, true).ok).toBe(true);
+  });
+});
+
+describe('the playground version', () => {
+  it('picks the newest published version, never the draft', () => {
+    expect(publishedVersionOf(['draft', '2', '10', '3'])).toBe('10');
+  });
+
+  it('picks nothing when only a draft exists', () => {
+    expect(publishedVersionOf(['draft'])).toBeUndefined();
+  });
+
+  const playgroundPage = (versions: string[]) => {
+    const calls: string[] = [];
+    let open = false;
+    const picker = {
+      waitFor: async () => {
+        if (!open) throw new Error('timeout waiting for the version select');
+      },
+      locator: () => ({ evaluateAll: async () => (open ? versions : []) }),
+      selectOption: async (v: string) => void calls.push(`select ${v}`),
+    };
+    const form = {
+      locator: () => ({ fill: async () => void calls.push('fill') }),
+      getByRole: () => ({ click: async () => void calls.push('send') }),
+    };
+    const button = (name: string) => ({
+      first: () => button(name),
+      click: async () => {
+        if (name === 'edit') open = true;
+        if (name === 'apply') open = false;
+        calls.push(name);
+      },
+    });
+    const page = {
+      getByRole: (_: string, o: { name: RegExp }) =>
+        button(
+          o.name.test('Endre oppsett') ? 'edit' : o.name.test('Bruk oppsettet') ? 'apply' : '',
+        ),
+      locator: (q: string) =>
+        q.startsWith('select') ? { first: () => picker } : { filter: () => ({ last: () => form }) },
+      waitForResponse: async () => undefined,
+      waitForTimeout: async () => undefined,
+    };
+    return { page: page as never, calls };
+  };
+
+  it('opens the setup, selects the published version and applies it before sending', async () => {
+    const { page, calls } = playgroundPage(['draft', '4']);
+    await playgroundRun('q')(page);
+    expect(calls).toEqual(['edit', 'select 4', 'apply', 'fill', 'send']);
+  });
+
+  it('sends nothing when the service has no published version', async () => {
+    const { page, calls } = playgroundPage(['draft']);
+    await expect(playgroundRun('q')(page)).rejects.toThrow('no published version');
+    expect(calls).not.toContain('send');
   });
 });

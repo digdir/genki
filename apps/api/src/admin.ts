@@ -1,3 +1,4 @@
+import { publishRefusals } from './internal-services.js';
 import type { Event, Part, Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import {
@@ -11,6 +12,7 @@ import {
   SettingsConflictError,
   type PublishedVersion,
   type SettingsRegistry,
+  type SettingWriter,
   type ValidationError,
 } from '@genai/definitions';
 import {
@@ -190,6 +192,10 @@ export const platformActor = (subject: string, tenant: string): Principal => ({
 });
 
 export const shareOperatorOnlyType = 'urn:genai:problem:share-operator-only';
+export const operatorOnlySettingType = 'urn:genai:problem:operator-only-setting';
+
+export const settingWriterOf = (principal: Principal): SettingWriter =>
+  isOperator(principal) ? 'operator' : 'tenant';
 
 const maySetSharing = (principal: Principal) =>
   isOperator(principal) ||
@@ -273,6 +279,18 @@ export const sharingRefused = (c: Context, errors: ValidationError[]) =>
     { 'content-type': 'application/problem+json' },
   );
 
+export const operatorOnlyRefused = (c: Context, errors: ValidationError[]) =>
+  c.json(
+    {
+      type: operatorOnlySettingType,
+      title: t('problems.operatorOnlySettingTitle'),
+      status: 403,
+      errors,
+    },
+    403,
+    { 'content-type': 'application/problem+json' },
+  );
+
 const asJson = (value: unknown): Part => ({
   mime: 'application/json',
   body: { kind: 'json', json: value },
@@ -327,6 +345,7 @@ export const createAdmin = (options: AdminOptions) => {
     async (definition: unknown, files: PromptFiles): Promise<ValidationError[]> => [
       ...checkImport(definition, files),
       ...(await sharingProblems(definition, principal)),
+      ...(await publishRefusals(store, definition)),
     ];
 
   const confirmedOnImport = (principal: Principal) => (definition: unknown) => {
@@ -353,6 +372,16 @@ export const createAdmin = (options: AdminOptions) => {
     if (!options.models) throw new Error('model administration is not configured');
     return options.models;
   };
+
+  const settingRefused = (
+    result: { errors: ValidationError[]; operatorOnly?: true },
+    target: string,
+  ): Outcome => ({
+    ok: false,
+    errors: result.errors,
+    target,
+    ...(result.operatorOnly ? { type: operatorOnlySettingType } : {}),
+  });
 
   const flushTenant = async (target: string): Promise<Outcome | undefined> => {
     try {
@@ -387,23 +416,28 @@ export const createAdmin = (options: AdminOptions) => {
         target: `${kind}:${metadata.id}@${result.version.version}`,
       };
     },
-    'platform.setting.set': async (input) => {
+    'platform.setting.set': async (input, principal) => {
       const key = String(input.key);
-      const result = settings.setTenant(input.tenant, key, input.value);
+      const result = settings.setTenant(input.tenant, key, input.value, settingWriterOf(principal));
       const conflict = await flushTenant(`setting:${key}`);
       if (conflict) return conflict;
       return result.ok
         ? { ok: true, value: settings.tenant(input.tenant), target: `setting:${key}` }
-        : { ...result, target: `setting:${key}` };
+        : settingRefused(result, `setting:${key}`);
     },
-    'platform.setting.pin': async (input) => {
+    'platform.setting.pin': async (input, principal) => {
       const key = String(input.key);
-      const result = settings.pin(input.tenant, key, (input.version ?? null) as number | null);
+      const result = settings.pin(
+        input.tenant,
+        key,
+        (input.version ?? null) as number | null,
+        settingWriterOf(principal),
+      );
       const conflict = await flushTenant(`pin:${key}`);
       if (conflict) return conflict;
       return result.ok
         ? { ok: true, value: settings.tenant(input.tenant), target: `pin:${key}` }
-        : { ...result, target: `pin:${key}` };
+        : settingRefused(result, `pin:${key}`);
     },
     'platform.default.set': async (input, principal) => {
       const key = String(input.key);
@@ -421,6 +455,7 @@ export const createAdmin = (options: AdminOptions) => {
         onConflict: input.onConflict === 'overwrite' ? 'overwrite' : 'skip',
         actor: actorOf(principal),
         reason: input.reason,
+        writer: settingWriterOf(principal),
         check: async (definition, files) => {
           const sharing = await sharingProblems(definition, principal);
           if (sharing.length > 0) sharingRefused = true;
@@ -436,7 +471,11 @@ export const createAdmin = (options: AdminOptions) => {
             ok: false,
             errors: result.errors,
             target: `tenant:${input.tenant}`,
-            ...(sharingRefused ? { type: shareOperatorOnlyType } : {}),
+            ...(result.operatorOnly
+              ? { type: operatorOnlySettingType }
+              : sharingRefused
+                ? { type: shareOperatorOnlyType }
+                : {}),
           };
     },
     'platform.support.open': async (input, principal) => {

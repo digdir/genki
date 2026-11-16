@@ -136,7 +136,9 @@ const Answer = ({
     !message.table &&
     (!!message.noAnswer || !message.text.trim());
   const procedure = message.procedure?.steps.length ? message.procedure : undefined;
-  const cited = message.sources.filter((s) => s.index !== undefined).length;
+  const cited = new Set(
+    message.sources.flatMap((s) => (s.index === undefined ? [] : [s.document ?? s])),
+  ).size;
   return (
     <div className="answer" aria-busy={message.pending || undefined}>
       {procedure ? (

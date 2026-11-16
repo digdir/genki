@@ -1244,6 +1244,24 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
     expect(turns[1]?.chunks).toHaveLength(3);
   });
 
+  it('stores the run id on the assistant turn, the id feedback on the answer names', async () => {
+    const turns: { role: string; task?: string }[] = [];
+    const { app } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-2', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn);
+        },
+      },
+    });
+
+    await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(turns.map((t) => t.role)).toEqual(['user', 'assistant']);
+    expect(turns[0]).not.toHaveProperty('task');
+    expect(turns[1]?.task).toBe(tasks.at(-1));
+  });
+
   it('answers the conversation store refusal as a tool error without running the service', async () => {
     const { app } = setup({
       conversations: {

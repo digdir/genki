@@ -1,70 +1,32 @@
-import {
-  allBlocks,
-  panels,
-  templateIds,
-  type BlockId,
-  type BlockLayout,
-  type Panel,
-  type TemplateId,
-} from './rules';
+import { keepStart, keptStart, readStart, type BlocksStart } from './layoutStore';
 
-/** The building blocks a new service starts with, when it is made from the playground. */
-export interface BlocksStart {
-  layout: BlockLayout;
-  template?: TemplateId;
-}
+// «Lag en tjeneste av dette» in the playground hands its layout to the new service it goes on to.
+const key = 'genki.blocks.handoff';
 
-const key = 'genki.blocks.start';
+/** The service id the playground keeps its own layout under. */
+export const playgroundLayout = 'playground';
 
-const placements = (value: unknown): Partial<Record<BlockId, Panel>> | undefined => {
-  if (!value || typeof value !== 'object') return undefined;
-  const out: Partial<Record<BlockId, Panel>> = {};
-  for (const [id, panel] of Object.entries(value)) {
-    if (!allBlocks.includes(id as BlockId) || !panels.includes(panel as Panel)) return undefined;
-    out[id as BlockId] = panel as Panel;
-  }
-  return out;
-};
-
-/** Reads a stored start, and gives nothing for anything it does not recognise. */
-export const readStart = (raw: string | null): BlocksStart | undefined => {
-  if (!raw) return undefined;
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  if (!value || typeof value !== 'object') return undefined;
-  const { layout, template } = value as {
-    layout?: { placed?: unknown; chosen?: unknown };
-    template?: unknown;
-  };
-  const placed = placements(layout?.placed);
-  const chosen = placements(layout?.chosen ?? {});
-  if (!placed || !chosen) return undefined;
-  return {
-    layout: { placed, chosen },
-    ...(templateIds.includes(template as TemplateId) ? { template: template as TemplateId } : {}),
-  };
-};
-
-/** Keeps the blocks for the new service the person goes on to make. */
+/** Keeps the playground's layout for the new service the person goes on to make. */
 export const handOver = (start: BlocksStart) => {
   try {
     sessionStorage.setItem(key, JSON.stringify(start));
   } catch {
-    // Without storage the new service starts from the default blocks.
+    // Without storage the new service starts from the default template.
   }
 };
 
-/** Takes the blocks handed over, once. */
-export const takeOver = (): BlocksStart | undefined => {
+/**
+ * Gives a new service the layout handed over, unless it already keeps one. The layout stays handed
+ * over while the service is still `new`, so it follows the draft once the draft has an id.
+ */
+export const takeOver = (tenant: string, service: string) => {
   try {
     const start = readStart(sessionStorage.getItem(key));
-    sessionStorage.removeItem(key);
-    return start;
+    if (!start) return;
+    if (!keptStart(tenant, service)) keepStart(tenant, service, start);
+    if (service !== 'new') sessionStorage.removeItem(key);
   } catch {
-    return undefined;
+    // Without storage there is nothing handed over.
   }
 };
+

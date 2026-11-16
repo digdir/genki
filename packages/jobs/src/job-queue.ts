@@ -77,6 +77,16 @@ export interface JobReads {
 }
 
 export interface JobQueue extends JobReads {
+  /**
+   * Adds an organisation to the job waiting or running under a key, under `tenants`, so its dead
+   * letter is shown to that organisation too. A job that already serves it is left as it is.
+   */
+  serveAlso?(
+    queue: QueueDefinition,
+    key: string,
+    tenant: string,
+    options?: { transaction?: JobTransaction },
+  ): Promise<void>;
   send<T extends JobData>(
     queue: QueueDefinition<T>,
     data: T,
@@ -119,8 +129,31 @@ export interface RunJobs {
   open(run: string): Promise<number>;
   /** The run's dead letters, counted by the queue they failed in. */
   deadLetters(run: string): Promise<Record<string, number>>;
-  /** Cancels the run's jobs that have not started, except in the named queues. */
-  cancel(run: string, options?: { except?: string[] }): Promise<number>;
+  /**
+   * Cancels the run's jobs that have not started, except in the named queues and those whose key
+   * is in `keep`, such as a conversion another run waits on.
+   */
+  cancel(run: string, options?: { except?: string[]; keep?: string[] }): Promise<number>;
+  /** How many jobs of a queue under these keys are waiting, retrying or running. */
+  openKeys?(queue: string, keys: string[]): Promise<number>;
+  /**
+   * A queue's dead letters for these files that another run sent, counted: only those that failed
+   * after the file's first wait began, for a file with no job waiting, retrying or running.
+   */
+  deadFiles?(queue: string, files: { sha256: string; since: Date }[], run: string): Promise<number>;
+  /** Cancels a queue's jobs under these keys that have not started, inside the caller's transaction. */
+  cancelKeys?(queue: string, keys: string[], transaction?: JobTransaction): Promise<number>;
+  /**
+   * Makes a job under a key serve another run's record: its run, organisation, dataset and record,
+   * inside the caller's transaction.
+   */
+  handOver?(
+    queue: string,
+    key: string,
+    from: string,
+    to: { run: string; tenant: string; dataset: string; record: string },
+    transaction?: JobTransaction,
+  ): Promise<void>;
   /** Sends the run's dead letters back to their queues. */
   redrive(run: string): Promise<number>;
   /** Every run with a job that is waiting, retrying or running. */

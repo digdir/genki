@@ -1311,7 +1311,9 @@ describe('batch runs after a restart', () => {
 describe('approval above the per-job limit', () => {
   it('says the estimate needs approval when it is above the tenant limit, and refuses to start without a reason', async () => {
     const env = await boot();
-    expect(env.platform.settings.setTenant(tenant, 'batch.approvalLimitNok', 0.5).ok).toBe(true);
+    expect(
+      env.platform.settings.setTenant(tenant, 'batch.approvalLimitNok', 0.5, 'operator').ok,
+    ).toBe(true);
     const estimate = await estimateFor(env);
 
     expect(estimate.approval).toEqual({ limitNok: 0.5, required: true });
@@ -1643,7 +1645,9 @@ describe('a batch run within the monthly token quota', () => {
     env.state.broken = false;
     const estimate = await estimateFor(env);
     await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
-    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 100).ok).toBe(true);
+    expect(env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', 100, 'operator').ok).toBe(
+      true,
+    );
 
     const next = await estimateFor(env);
     const refused = await env.send('POST', base, 'kari', { estimate: next.id, maxCostNok: 5 });
@@ -1660,7 +1664,12 @@ describe('a batch run within the monthly token quota', () => {
     const reservation = perItem.inputTokens.high + perItem.outputTokens.high;
     const used = env.state.bodies.length * 120;
     expect(
-      env.platform.settings.setTenant(tenant, 'usage.monthlyTokens', used + reservation + 60).ok,
+      env.platform.settings.setTenant(
+        tenant,
+        'usage.monthlyTokens',
+        used + reservation + 60,
+        'operator',
+      ).ok,
     ).toBe(true);
 
     const run = await runTo(env, { estimate: estimate.id, maxCostNok: 50, concurrency: 1 });

@@ -31,12 +31,21 @@ export interface SkippedDocument {
   reason: SkipReason;
 }
 
+/** A converted file of a document, beside its text: its chunks name the file and their pages. */
+export interface SourceFile {
+  name: string;
+  sha256?: string;
+  pages: string[];
+}
+
 export interface SourceDocument {
   key: string;
   docNum: string;
   name?: string;
   skip?: SkipReason;
   texts: string[];
+  /** The converted files behind `texts`, in the same order, when the source converted any. */
+  files?: SourceFile[];
   location?: Location;
   url?: string;
   prepare?(): Promise<SourceDocument>;

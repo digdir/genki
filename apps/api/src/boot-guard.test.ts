@@ -5,6 +5,7 @@ const real = {
   ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
   DATABASE_URL: 'postgres://db/genai',
   ALTINN_PDP_URL: 'https://platform.altinn.no',
+  EMPLOYEE_CLIENT_IDS: 'genki-portal,genki-workspace,genki-console',
 };
 const dev = { GENAI_DEV_MODE: 'true' };
 
@@ -19,7 +20,11 @@ describe('booting the API', () => {
   });
 
   it('uses the mock Altinn rights only in dev mode', () => {
-    const rest = { ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER, DATABASE_URL: real.DATABASE_URL };
+    const rest = {
+      ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER,
+      EMPLOYEE_CLIENT_IDS: real.EMPLOYEE_CLIENT_IDS,
+      DATABASE_URL: real.DATABASE_URL,
+    };
     expect(bootProblems(rest)).toEqual([expect.stringContaining('ALTINN_PDP_URL')]);
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
   });
@@ -34,10 +39,21 @@ describe('booting the API', () => {
   it('refuses to start without a database unless dev mode is on', () => {
     const rest = {
       ANSATTPORTEN_ISSUER: real.ANSATTPORTEN_ISSUER,
+      EMPLOYEE_CLIENT_IDS: real.EMPLOYEE_CLIENT_IDS,
       ALTINN_PDP_URL: real.ALTINN_PDP_URL,
     };
     expect(bootProblems(rest)).toEqual([expect.stringContaining('DATABASE_URL')]);
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
+  });
+
+  it('refuses to start outside dev mode with Ansattporten configured and no trusted employee clients', () => {
+    const untrusted = { ...real, EMPLOYEE_CLIENT_IDS: undefined };
+    expect(bootProblems(untrusted)).toEqual([expect.stringContaining('EMPLOYEE_CLIENT_IDS')]);
+    expect(bootProblems({ ...untrusted, EMPLOYEE_CLIENT_IDS: ' , ' })).toEqual([
+      expect.stringContaining('EMPLOYEE_CLIENT_IDS'),
+    ]);
+    expect(bootProblems(real)).toEqual([]);
+    expect(bootProblems(dev)).toEqual([]);
   });
 
   it('refuses to start with a malformed PLATFORM_TENANT, also in dev mode', () => {

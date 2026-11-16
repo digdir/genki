@@ -48,6 +48,7 @@ export interface ConfigDeps {
   rules: GuardrailRuleRegistry;
   ingestion: IngestionService;
   testSets: TestSetStore;
+  testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
   engines: () => EngineDescription[];
   adapters: KnowledgeAdapter[];
   writers?: IndexWriterRouter;
@@ -62,6 +63,7 @@ export interface ConfigDeps {
     dataset: string,
     pipeline: string,
   ) => Promise<string | undefined>;
+  gateProblem?: (gate: string, metric: string) => string | undefined;
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
 }
 
@@ -265,6 +267,9 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     const id = String(input.id);
     const target = `gate:${scope}/${id}`;
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to change this gate');
+    const metric = (input.spec as { metric?: unknown } | undefined)?.metric;
+    const problem = typeof metric === 'string' ? deps.gateProblem?.(id, metric) : undefined;
+    if (problem) return { ok: false, errors: [{ path: 'metric', message: problem }], target };
     const result = await deps.gates.save({
       scope,
       id,
@@ -439,6 +444,22 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
           ...(sent.conflict ? { conflict: true as const } : {}),
         };
   },
+  'platform.jobs.readmit': async (input, principal) => {
+    const scope = scopeOf(input);
+    const dataset = String(input.dataset);
+    const target = `pipeline:${dataset}/${String(input.id)}`;
+    if (!mayWrite(principal, scope)) return refused(target, 'not allowed to admit this run again');
+    const admitted = await deps.ingestion.readmit({
+      dataset,
+      pipeline: String(input.id),
+      execution: String(input.execution),
+      by: actor(principal),
+      principal,
+    });
+    return admitted.ok
+      ? { ok: true, value: admitted.value, target, audit: { scope, execution: admitted.value.id } }
+      : { ok: false, errors: admitted.errors, target, conflict: true as const };
+  },
   'platform.testset.save': async (input, principal) => {
     const tenant = input.tenant;
     const id = String(input.id ?? '');
@@ -448,6 +469,12 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     if (!/^[a-z0-9][a-z0-9.-]*$/.test(id))
       return { ok: false, errors: [{ path: 'id', message: 'not a valid id' }], target };
     const current = await deps.testSets.get(tenant, id);
+    if (input.op === 'create' && !current && (await deps.testSetTaken?.(tenant, id)))
+      return {
+        ok: false,
+        errors: [{ path: 'id', message: `test set ${id} already exists` }],
+        target,
+      };
     const next = nextSet(current, input, tenant);
     if (!next.ok) return { ok: false, errors: next.errors, target };
     await deps.testSets.put(next.set);
@@ -1085,6 +1112,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       return perform(c, guard.principal, 'platform.pipeline.cancel', guard.scope, {
         dataset: item.id,
         id: param(c, 'id'),
@@ -1096,12 +1125,27 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       const response = await perform(c, guard.principal, 'platform.jobs.redrive', guard.scope, {
         dataset: item.id,
         id: param(c, 'id'),
         execution: param(c, 'execution'),
       });
       return response.status === 200 ? c.json(await response.json(), 202) : response;
+    });
+    app.post(`${base}/datasets/:dataset/pipelines/:id/executions/:execution/readmit`, async (c) => {
+      const guard = await access(c, 'manage-datasets');
+      if ('response' in guard) return guard.response;
+      const item = itemFor(c, guard.scope);
+      if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
+      return perform(c, guard.principal, 'platform.jobs.readmit', guard.scope, {
+        dataset: item.id,
+        id: param(c, 'id'),
+        execution: param(c, 'execution'),
+      });
     });
     app.get(`${base}/datasets/:dataset/pipelines/:id/executions`, async (c) => {
       const guard = await access(c);
@@ -1111,7 +1155,9 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       const refusedKey = keyRefused(c, guard.principal, item);
       if (refusedKey) return refusedKey;
       const pipeline = await deps.ingestion.get(guard.scope, item.id, param(c, 'id'));
-      const executions = await deps.ingestion.executions(item.id, param(c, 'id'));
+      const executions = (await deps.ingestion.executions(item.id, param(c, 'id'))).map((run) =>
+        deps.ingestion.admission(run),
+      );
       return c.json({
         data: seesUsage(guard.principal, guard.scope)
           ? executions

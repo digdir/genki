@@ -1,8 +1,20 @@
 // What a host knows about its service that genki does not say: the assistant's name, its
 // suggested questions, and per collection the labels of its filter fields and where a document
-// lives. kunnskapsassistenten's own choices are one such profile; without one, the assembly uses
-// genki's names as they come.
-import type { ShellProfileProps } from '@genai/ui-blocks';
+// lives. kunnskapsassistenten's own choices are one such profile. A layout may carry the part of
+// it that is data (`ProfileData`), which fills what the host's leaves out; without either, the
+// assembly uses genki's names as they come.
+import {
+  isHttpsLink,
+  type AssistantLayout,
+  type DocumentFile,
+  type DocumentIdPattern,
+  type FieldKind,
+  type ProfileData,
+  type ShellProfileProps,
+  type YearBounds,
+} from '@genai/ui-blocks';
+
+export type { DocumentIdPattern, YearBounds } from '@genai/ui-blocks';
 
 /** One filter field as the reader sees it. */
 export interface FieldSpec {
@@ -10,8 +22,10 @@ export interface FieldSpec {
   label: string;
   /** The field's name over its row in the next look's filter, singular: «Dokumenttype». */
   heading?: string | undefined;
-  kind?: 'year' | undefined;
-  /** The values are integers on the wire. */
+  kind?: FieldKind | undefined;
+  /** For a field of `kind: 'year'`, the years it offers. Without it, 1900 up to this year. */
+  years?: YearBounds | undefined;
+  /** The values are integers on the wire; without it, as the dataset declares the field. */
   integer?: boolean | undefined;
 }
 
@@ -25,8 +39,10 @@ export interface CorpusProfile {
   typePlurals?: Readonly<Record<string, string>> | undefined;
   /** The field the document type is in, for the line above. */
   typeField?: string | undefined;
-  /** Where a document lives, from its number, when the source carries no link. */
+  /** Where a document lives, from its number, when the source carries no link. Goes first. */
   documentUrl?: ((documentId: string) => string | undefined) | undefined;
+  /** The same as data: an address per kind of number, `{id}` where it goes. */
+  documentLinks?: Readonly<Partial<Record<DocumentIdPattern, string>>> | undefined;
   /**
    * The facets that describe one document, read by its number for the line under its title in
    * «Dokumenter»: the field holding the number, and the fields to show.
@@ -53,9 +69,10 @@ export interface AssistantProfile {
   /**
    * The host's pages in the profile menu (next look), each a link or an action, after
    * «Innstillinger». One not given is not drawn, and «Endringslogg» has its dot only when `news`
-   * says something is new.
+   * says something is new. `extra` holds the host's own entries, in its words, before «Logg ut».
    */
-  menu?: Pick<ShellProfileProps, 'feedback' | 'changelog' | 'about' | 'contact'> | undefined;
+  menu?:
+    Pick<ShellProfileProps, 'feedback' | 'changelog' | 'about' | 'contact' | 'extra'> | undefined;
   /**
    * «Logg ut»: the host's sign-out, a full navigation to `href`. The assembly first forgets the
    * reader's choices kept in this browser, then calls `onSignOut`. Without it, no «Logg ut» is drawn.
@@ -66,10 +83,15 @@ export interface AssistantProfile {
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
    */
   family?: ((service: string) => boolean) | undefined;
+  /** A document's whole file for Dokumentvisning, by its number; provisional until genki has a route. */
+  documentFile?:
+    ((documentId: string, signal: AbortSignal) => Promise<DocumentFile | undefined>) | undefined;
   /**
    * The trials the reader may turn on in «Innstillinger», «Eksperimenter». The assembly knows what
-   * kunnskapsassistenten's do: `year-ranges` and `compact-filter-chips` in the filter, and
-   * `filters-right-panel`, which puts the filter over the sources in the secondary panel.
+   * kunnskapsassistenten's do: `filters-right-panel`, which puts the filter over the sources in the
+   * secondary panel, and `compact-filter`, the next look's filter panel 230 px wide with the
+   * threads taking the rest. Years as periods and many values as one chip are no longer trials:
+   * the filter always draws them.
    */
   experiments?: readonly AssistantExperiment[] | undefined;
   /** The note at the foot of «Innstillinger». */
@@ -84,3 +106,77 @@ export interface AssistantExperiment {
   href?: string | undefined;
   hrefLabel?: string | undefined;
 }
+
+/** Only what is set: an `undefined` the host passes says nothing, and fills nothing. */
+const set = <T extends object>(value: T): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as Partial<T>;
+
+const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string) =>
+  record && Object.hasOwn(record, key) ? record[key] : undefined;
+
+/** Each collection of either, the host's fields over the layout's, one by one. */
+const corporaOf = (
+  host: AssistantProfile['corpora'],
+  data: ProfileData['corpora'],
+): AssistantProfile['corpora'] => {
+  if (!host || !data) return host ?? data;
+  const keys = [...new Set([...Object.keys(data), ...Object.keys(host)])];
+  return Object.fromEntries(
+    keys.map((key) => {
+      const hostCorpus = own(host, key);
+      const dataCorpus = own(data, key);
+      return [
+        key,
+        hostCorpus && dataCorpus
+          ? { ...dataCorpus, ...set(hostCorpus) }
+          : (hostCorpus ?? dataCorpus),
+      ];
+    }),
+  ) as AssistantProfile['corpora'];
+};
+
+// A stored layout may not have been checked: only its https links are drawn, as the checks ask.
+const httpsLinks = (data: ProfileData): ProfileData => {
+  const corpora = data.corpora && {
+    corpora: Object.fromEntries(
+      Object.entries(data.corpora).map(([key, corpus]) => [
+        key,
+        corpus.documentLinks
+          ? {
+              ...corpus,
+              documentLinks: Object.fromEntries(
+                Object.entries(corpus.documentLinks).filter(
+                  ([, url]) => url !== undefined && isHttpsLink(url),
+                ),
+              ),
+            }
+          : corpus,
+      ]),
+    ),
+  };
+  const experiments = data.experiments && {
+    experiments: data.experiments.map((experiment) =>
+      experiment.href === undefined || isHttpsLink(experiment.href)
+        ? experiment
+        : { ...experiment, href: undefined, hrefLabel: undefined },
+    ),
+  };
+  return { ...data, ...corpora, ...experiments };
+};
+
+/**
+ * The profile a layout is drawn with: the host's, the layout's own filling what it leaves out.
+ * What the host sets wins whole, an empty list too; each collection is filled value by value.
+ */
+export const profileOf = (
+  layout: Pick<AssistantLayout, 'profile'>,
+  host?: AssistantProfile,
+): AssistantProfile | undefined => {
+  if (!layout.profile) return host;
+  const data = httpsLinks(layout.profile);
+  if (!host) return data;
+  const corpora = corporaOf(host.corpora, data.corpora);
+  return { ...data, ...set(host), ...(corpora ? { corpora } : {}) };
+};

@@ -12,6 +12,7 @@ import { PostgresApiKeys } from './api-keys.js';
 import { PostgresModelClassifications } from './models.js';
 import { PostgresAdminRecords } from './admin-records.js';
 import { PostgresClients } from './clients.js';
+import { PostgresTraceDeliveries } from './trace-deliveries.js';
 import { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 import { PostgresProviderObjects } from './provider-objects.js';
 import { PostgresTriggerRuns } from './trigger-runs.js';
@@ -22,6 +23,7 @@ import {
   PostgresEvalRunStore,
   PostgresFeedbackStore,
   PostgresLabelStore,
+  PostgresSinkLabelStore,
   PostgresTestSetStore,
 } from './eval.js';
 import { PostgresTenantSecrets } from './secrets.js';
@@ -62,6 +64,7 @@ export {
   type PostgresSupportSession,
 } from './admin-records.js';
 export { PostgresClients } from './clients.js';
+export { PostgresTraceDeliveries } from './trace-deliveries.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresProviderObjects } from './provider-objects.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
@@ -81,6 +84,7 @@ export {
   PostgresEvalRunStore,
   PostgresFeedbackStore,
   PostgresLabelStore,
+  PostgresSinkLabelStore,
   PostgresTestSetStore,
 } from './eval.js';
 export { PostgresTenantSecrets } from './secrets.js';
@@ -205,8 +209,10 @@ export const createPostgresStores = async (
       candidates: new PostgresCandidateStore(pool, keys),
     },
     labels: new PostgresLabelStore(pool),
+    sinkLabels: new PostgresSinkLabelStore(pool),
     clients: new PostgresClients(pool),
     webhookDeliveries: new PostgresWebhookDeliveries(pool),
+    traceDeliveries: new PostgresTraceDeliveries(pool),
     triggerRuns: new PostgresTriggerRuns(pool),
     providerObjects: new PostgresProviderObjects(pool),
     configEntries: new PostgresConfigEntries(pool),

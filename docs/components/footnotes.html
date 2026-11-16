@@ -95,7 +95,9 @@
                 <strong>Footnotes that name only documents</strong>, as long as a service cites
                 documents: no footnote is drawn, since footnotes are numbered by excerpt and never
                 by document, and no excerpt number is guessed. «Kilder brukt i svaret» still lists
-                the documents the answer cites.
+                the documents the answer cites. With <code>documentFootnotes</code>, each cited
+                document gets a mark, «Kilde 1», «Kilde 2», in the order the answer first cites
+                them, leading to the document; Sources numbers nothing.
               </li>
               <li>
                 <strong>States:</strong> a skeleton before the first word and a line while it
@@ -117,6 +119,14 @@
                 <code>text</code>, <code>sources</code> and <code>markers</code>: the answer as the
                 contract sends it. <code>[N]</code> is the marker <code>markers</code> names, or the
                 source with <code>index: N</code>.
+              </li>
+              <li>
+                <code>documentFootnotes</code>: until a service cites excerpts, a footnote that
+                names a document is drawn too, with the document's number, 1, 2, 3 in the order the
+                answer first cites it, named «Kilde 1: …». It leads to the document, not an excerpt.
+                «Kilder brukt i svaret» lists the documents in the order of their numbers, and
+                <code>answerCopy</code> takes the same option, so a copied answer keeps them. When
+                the footnotes name excerpts, nothing changes: one number per excerpt.
               </li>
               <li><code>status</code>: streaming, complete, aborted or failed.</li>
               <li>
@@ -503,7 +513,8 @@
             <ul>
               <li>
                 genki-test's services cite documents, so their answers draw no footnotes until
-                answers name their excerpts (digdir/genki#283).
+                answers name their excerpts (digdir/genki#283), except with
+                <code>documentFootnotes</code>, which the next look turns on meanwhile.
               </li>
               <li>
                 kunnskapsassistenten's reference list starts each line with the publisher. The

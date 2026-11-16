@@ -5,19 +5,24 @@ import {
   defaultLayout,
   emptyLayout,
   fitService,
+  isAssistantLayout,
   isOn,
   layoutProblems,
+  lookOf,
   moveTo,
   normalised,
   optionInForce,
+  placedAt,
   placeIn,
   placeOf,
   settingsOf,
   toolMode,
   turnOff,
   turnOn,
+  withLook,
   withSetting,
   zoneOf,
+  zonesOf,
   type AssistantLayout,
   type BuilderState,
 } from './layout.js';
@@ -133,6 +138,86 @@ describe('the layout rules', () => {
   });
 });
 
+describe('Approach in both its zones', () => {
+  const saved = (zones: Partial<AssistantLayout['zones']>): AssistantLayout => ({
+    version: 1,
+    zones: { primary: [], main: [], secondary: [], ...zones },
+  });
+
+  it('puts Approach in both the main column and the secondary panel', () => {
+    const state = placeIn(empty, 'approach', 'both');
+    expect(blocksIn(state.layout, 'main')).toEqual(['approach']);
+    expect(blocksIn(state.layout, 'secondary')).toEqual(['approach']);
+    expect(placedAt(state.layout, 'approach')).toBe('both');
+    expect(zonesOf(state.layout, 'approach')).toEqual(['main', 'secondary']);
+    expect(layoutProblems(state.layout)).toEqual([]);
+  });
+
+  it('moves Approach from both places to one, and from one to both', () => {
+    const both = placeIn(empty, 'approach', 'both');
+    const tool = moveTo(both, 'approach', 'secondary');
+    expect(placedAt(tool.layout, 'approach')).toBe('secondary');
+    expect(blocksIn(tool.layout, 'main')).toEqual([]);
+    expect(placedAt(moveTo(tool, 'approach', 'both').layout, 'approach')).toBe('both');
+  });
+
+  it('refuses both for a block that stands in one zone at a time', () => {
+    const chat = turnOn(empty, 'chat');
+    expect(moveTo(chat, 'chat', 'both')).toBe(chat);
+    expect(placeIn(empty, 'chat', 'both')).toBe(empty);
+  });
+
+  it('remembers both places when Approach is turned off and on again', () => {
+    const off = turnOff(placeIn(empty, 'approach', 'both'), 'approach');
+    expect(isOn(off.layout, 'approach')).toBe(false);
+    expect(placeOf(off, 'approach')).toBe('both');
+    expect(placedAt(turnOn(off, 'approach').layout, 'approach')).toBe('both');
+  });
+
+  it('keeps one set of options for Approach in both its zones, alike in each', () => {
+    const both = moveTo(
+      withSetting(turnOn(empty, 'approach'), 'approach', 'level', 'detailed'),
+      'approach',
+      'both',
+    );
+    expect(both.layout.zones.main).toEqual([
+      { block: 'approach', settings: { level: 'detailed' } },
+    ]);
+    expect(both.layout.zones.secondary).toEqual(both.layout.zones.main);
+    const back = withSetting(both, 'approach', 'level', 'standard');
+    expect(back.layout.zones.main).toEqual([{ block: 'approach' }]);
+    expect(back.layout.zones.secondary).toEqual([{ block: 'approach' }]);
+  });
+
+  it('reads a saved layout with Approach in one zone as it did before', () => {
+    const card = saved({ main: [{ block: 'approach' }, { block: 'chat' }] });
+    const tool = saved({ main: [{ block: 'chat' }], secondary: [{ block: 'approach' }] });
+    expect(placedAt(card, 'approach')).toBe('main');
+    expect(zonesOf(card, 'approach')).toEqual(['main']);
+    expect(placedAt(tool, 'approach')).toBe('secondary');
+    expect(layoutProblems(card)).toEqual([]);
+    expect(layoutProblems(tool)).toEqual([]);
+  });
+
+  it('finds Approach placed twice in one zone, though it may stand in both', () => {
+    expect(
+      layoutProblems(saved({ main: [{ block: 'approach' }, { block: 'approach' }] })),
+    ).toContainEqual({ rule: 'placed-twice', block: 'approach' });
+  });
+
+  it('holds Approach in both places through a service without steps, and puts it back in both', () => {
+    const both: BuilderState = placeIn({ layout: defaultLayout, chosen: {} }, 'approach', 'both');
+    const away = fitService(both, (id) => id !== 'approach');
+    expect(away.dropped).toEqual(['approach']);
+    expect(isOn(away.state.layout, 'approach')).toBe(false);
+    const back = fitService(away.state, () => true);
+    expect(back.restored).toEqual(['approach']);
+    expect(placedAt(back.state.layout, 'approach')).toBe('both');
+    expect(back.state.layout).toEqual(both.layout);
+    expect(back.state.held).toBeUndefined();
+  });
+});
+
 describe('the options on a block', () => {
   it('fills in the defaults and keeps only what differs from them', () => {
     const state = turnOn(empty, 'chat');
@@ -162,6 +247,48 @@ describe('the options on a block', () => {
   it('never puts an option in force that is not built yet', () => {
     const chat = withSetting(turnOn(empty, 'chat'), 'chat', 'attachments', true);
     expect(optionInForce(chat.layout, 'chat', 'attachments')).toBe(false);
+  });
+
+  it('puts follow-ups in force only in the current look, since the next look draws none', () => {
+    const chat = turnOn(empty, 'chat');
+    expect(optionInForce(chat.layout, 'chat', 'followUps')).toBe(true);
+    expect(optionInForce(withLook(chat, 'next').layout, 'chat', 'followUps')).toBe(false);
+    const stored = { ...chat.layout, template: 'knowledge-assistant-next' };
+    expect(optionInForce(stored, 'chat', 'followUps')).toBe(false);
+  });
+});
+
+describe('the look of a layout', () => {
+  it('draws a layout without a look in its template’s, as before the look was a setting', () => {
+    expect(lookOf({ ...emptyLayout, template: 'knowledge-assistant-next' })).toBe('next');
+    expect(lookOf({ ...emptyLayout, template: 'knowledge-assistant' })).toBe('current');
+    expect(lookOf(emptyLayout)).toBe('current');
+  });
+
+  it('draws a layout in its own look, whatever its template', () => {
+    expect(lookOf({ ...emptyLayout, template: 'chat-only', look: 'next' })).toBe('next');
+    expect(lookOf({ ...emptyLayout, template: 'knowledge-assistant-next', look: 'current' })).toBe(
+      'current',
+    );
+  });
+
+  it('keeps the look through every change to the blocks and their options', () => {
+    let state = withLook(empty, 'next');
+    state = on(state, 'chat', 'sources', 'filter');
+    state = moveTo(state, 'filter', 'main');
+    state = turnOff(state, 'sources');
+    state = withSetting(state, 'chat', 'copy', false);
+    state = fitService(state, (id) => id !== 'filter').state;
+    expect(state.layout.look).toBe('next');
+    expect(normalised(state.layout).look).toBe('next');
+  });
+
+  it('reads a stored layout with a known look, and refuses one with a look it does not know', () => {
+    expect(isAssistantLayout({ ...emptyLayout, look: 'next' })).toBe(true);
+    expect(isAssistantLayout({ ...emptyLayout, look: 'current' })).toBe(true);
+    expect(isAssistantLayout(emptyLayout)).toBe(true);
+    expect(isAssistantLayout({ ...emptyLayout, look: 'shiny' })).toBe(false);
+    expect(isAssistantLayout({ ...emptyLayout, look: 1 })).toBe(false);
   });
 });
 
@@ -288,6 +415,15 @@ describe('a change of service', () => {
     const byHand = turnOff(start, 'approach');
     const back = fitService(fitService(byHand, chatless).state, everything).state;
     expect(isOn(back.layout, 'approach')).toBe(false);
+  });
+
+  it('holds a block only where it stood last when a service drops it again', () => {
+    const away = fitService(start, chatless).state;
+    const movedByHand = moveTo(turnOn(away, 'chat'), 'chat', 'secondary');
+    const again = fitService(movedByHand, chatless).state;
+    const back = fitService(again, everything).state;
+    expect(zonesOf(back.layout, 'chat')).toEqual(['secondary']);
+    expect(layoutProblems(back.layout)).toEqual([]);
   });
 
   it('keeps what it holds while the reader turns other blocks on and off', () => {

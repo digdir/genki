@@ -116,4 +116,6 @@ export const tracing = {
   disconnected:
     '{tool} is disconnected. No traces are sent there any more. The platform log is unchanged.',
   disconnectFailed: 'Could not disconnect {tool}. Try again shortly.',
+  liveActionsUnavailable:
+    'Not available yet. The platform cannot save, test or disconnect tools from here.',
 } satisfies Translation<typeof source>;

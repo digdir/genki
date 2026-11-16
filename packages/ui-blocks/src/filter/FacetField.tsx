@@ -9,6 +9,7 @@ import { useImperativeHandle, useRef, type Ref } from 'react';
 import { renderChip, removedDrawnChip, valuesAfter, withDrawnChips } from './drawnChips.js';
 import { useT } from './i18n.js';
 import { chosenFirst, useChosenFirst, useListFollowsField } from './listBehaviour.js';
+import { everyListed, showsAsAll, untickedCount } from './selection.js';
 import type { FilterField } from './types.js';
 
 /** What the filter may do with a field from outside: put the keyboard in it. */
@@ -23,7 +24,7 @@ export interface FieldProps {
   selected: readonly string[];
   /** `said` is for the filter's live region: the change, where u-combobox says nothing. */
   onChange: (values: string[], said?: string) => void;
-  /** One chip for all, or for `compactFrom` or more, chosen values. */
+  /** One chip for `COMPACT_FROM` or more chosen values too; all of two or more listed always are. */
   compact: boolean;
   /** Most values a field may send. */
   max: number;
@@ -75,21 +76,19 @@ export const FacetField = ({
   const total = field.options.length;
   const chosen = selected.length;
   // Every listed value ticked, as `narrowing` reads it; a field with all ticked is not sent.
-  const everyListed = (values: readonly string[]) =>
-    total > 0 && field.options.every((option) => values.includes(option.value));
-  const allChosen = everyListed(selected);
+  const allChosen = everyListed(field, selected);
   const labelOf = (value: string) =>
     field.options.find((option) => option.value === value)?.label ?? value;
 
-  // With many chosen, one drawn chip instead of hundreds, while the list still ticks them.
+  // One drawn chip over those per value: «Alle virksomheter», or by flag «12 virksomheter».
   const isCompact = (values: readonly string[]) =>
-    compactChips && values.length > 0 && (everyListed(values) || values.length >= COMPACT_FROM);
+    showsAsAll(field, values) || (compactChips && values.length >= COMPACT_FROM);
   const compact = isCompact(selected);
   const drawn = compact
     ? [
         {
           key: 'chosen',
-          label: allChosen
+          label: showsAsAll(field, selected)
             ? t('filter.compactAll', { field: name })
             : t('filter.compactSome', { count: chosen, field: name }),
           values: selected,
@@ -120,8 +119,8 @@ export const FacetField = ({
         ? t('filter.stateAll', { total })
         : t('filter.stateSome', { count: chosen, total });
 
-  // The question would be turned away. The way out is in the message: fewer, or all.
-  const overLimit = chosen > max && !allChosen;
+  // genki takes at most `max` values, chosen or left out; the message says the way out.
+  const overLimit = chosen > max && untickedCount(field, selected) > max;
 
   // Cleared after a pick, or the next open shows «Ingen treff»; dispatched so both filters see it.
   const clearQuery = () => {
@@ -215,7 +214,9 @@ export const FacetField = ({
 
       {/* Above the chips, so a hundred chips cannot push it out of sight. */}
       {overLimit && (
-        <ValidationMessage>{t('filter.overLimit', { max, count: chosen })}</ValidationMessage>
+        <ValidationMessage>
+          {t('filter.overLimit', { max, count: chosen, total })}
+        </ValidationMessage>
       )}
 
       <Suggestion

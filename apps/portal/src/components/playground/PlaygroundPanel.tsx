@@ -112,12 +112,14 @@ export interface ServiceDraft {
 const record = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
-const withDraftService = (
+export const withDraftService = (
   options: PlaygroundOptions,
   id: string,
   draft: ServiceDraft,
 ): PlaygroundOptions => {
-  if (!Array.isArray(options.services) || options.services.some((s) => s.id === id)) return options;
+  if (!Array.isArray(options.services)) return options;
+  const existing = options.services.find((s) => s.id === id);
+  if (existing?.versions.some((v) => v.draft)) return options;
   const meta = record(draft.definition.metadata);
   const spec = record(draft.definition.spec);
   const primary = record(spec.model).primary;
@@ -125,24 +127,30 @@ const withDraftService = (
     options.models.find((m) => m.id === primary)?.id ??
     options.models.find((m) => m.status === 'allowed')?.id ??
     '';
+  const draftVersion = {
+    version: 0,
+    draft: true,
+    inUse: false,
+    setup: {
+      model,
+      datasets: [],
+      skills: [],
+      blocks: options.defaultBlocks ?? [],
+      output: record(spec.output).kind === 'fields' ? ('fields' as const) : ('text' as const),
+    },
+  };
+  if (existing)
+    return {
+      ...options,
+      services: options.services.map((s) =>
+        s === existing ? { ...s, versions: [draftVersion, ...s.versions] } : s,
+      ),
+    };
   const service = {
     id,
     name: typeof meta.name === 'string' && meta.name ? meta.name : id,
     latestVersion: 0,
-    versions: [
-      {
-        version: 0,
-        draft: true,
-        inUse: false,
-        setup: {
-          model,
-          datasets: [],
-          skills: [],
-          blocks: options.defaultBlocks ?? [],
-          output: record(spec.output).kind === 'fields' ? ('fields' as const) : ('text' as const),
-        },
-      },
-    ],
+    versions: [draftVersion],
   };
   return { ...options, services: [...options.services, service] };
 };
@@ -200,6 +208,8 @@ const errorText = (error: unknown, model: string, t: T) => {
     return `${error.problem.detail} ${notStored}`;
   if (error instanceof ApiError && error.status === 403) {
     const policy = (error.problem as Partial<PlaygroundRefusal> | undefined)?.policy;
+    const reason = error.problem?.detail;
+    if (!policy && reason) return t('playground.runRefused', { reason, notStored });
     return `${t('playground.refused', { model })}${policy ? ` ${policy.rule}` : ''} ${notStored}`;
   }
   if (error instanceof ApiError && error.status === 422 && error.problem) {

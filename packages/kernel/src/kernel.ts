@@ -653,6 +653,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
           tenant: l.task.tenant,
           principal: l.principal,
           task: l.task.id,
+          capability: l.capability.descriptor.id,
           signal: l.controller.signal,
           meter: (usage, model) => chargeLive(l, usage, { port, ref, ...(model ? { model } : {}) }),
           outputLimit: () => outputLimit(l),
@@ -666,9 +667,15 @@ export const createKernel = (options: KernelOptions): Kernel => {
         };
         return provider.open(ref, portContext) as P;
       },
-      invoke: async (capabilityId, input) => {
+      invoke: async (capabilityId, input, options = {}) => {
         requireFeature(l, 'subinvoke');
-        return invoke(l.principal, capabilityId, input, {}, l);
+        return invoke(
+          l.principal,
+          capabilityId,
+          input,
+          options.evaluation ? { evaluation: options.evaluation } : {},
+          l,
+        );
       },
     };
   };
@@ -780,7 +787,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     await emit(l, { type: 'kernel.task.status', data: { status: 'queued' } }, 'kernel');
     await emit(
       l,
-      { type: 'kernel.task.input', data: { input }, audience: 'audit' },
+      {
+        type: 'kernel.task.input',
+        data: {
+          input,
+          ...(invokeOptions.evaluation ? { evaluation: invokeOptions.evaluation } : {}),
+        },
+        audience: 'audit',
+      },
       principalRef(principal),
     );
     await persist(l);

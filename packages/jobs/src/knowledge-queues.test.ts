@@ -130,6 +130,15 @@ describe('the knowledge queues', () => {
         retryBackoff: false,
         deadLetter: false,
       },
+      {
+        name: 'knowledge.seed',
+        policy: 'exclusive',
+        expireInSeconds: 3600,
+        heartbeatSeconds: 60,
+        retryLimit: 2,
+        retryBackoff: true,
+        deadLetter: true,
+      },
     ]);
     expect(knowledgeServerQueues(30 * sixHours)[0]?.expireInSeconds).toBe(86400);
     expect(convertPriority.upload).toBeGreaterThan(convertPriority.run);

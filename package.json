@@ -30,7 +30,8 @@
     "parity": "npm run parity --workspace apps/parity --",
     "atlas:build": "tsx --conditions=source scripts/build-atlas.ts",
     "atlas:test": "vitest run --root scripts",
-    "conversions:check": "tsx --conditions=source scripts/conversions-check.ts"
+    "conversions:check": "tsx --conditions=source scripts/conversions-check.ts",
+    "conversions:seed": "tsx --conditions=source scripts/conversions-seed.ts"
   },
   "engines": {
     "node": ">=24"

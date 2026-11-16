@@ -138,6 +138,79 @@ describe('the profile menu', () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it('draws the host’s own entries in its words and order, after the menu’s pages and before «Logg ut»', () => {
+    draw({
+      ...everything,
+      extra: [
+        { id: 'old', label: 'Tilbake til gammel versjon', href: '/gammel' },
+        { id: 'help', label: 'Hjelp', onSelect: () => {} },
+      ],
+    });
+    expect(entries()).toEqual([
+      'Innstillinger',
+      'Gi tilbakemelding',
+      'Endringslogg',
+      'Om tjenesten',
+      'Kontakt Digdir',
+      'Tilbake til gammel versjon',
+      'Hjelp',
+      'Logg ut',
+    ]);
+    const lists = menu()?.querySelectorAll('ul') ?? [];
+    expect(lists[1]?.textContent).toBe('Logg ut');
+  });
+
+  it('leads a host’s entry where it says, hands it a plain click, and leaves out one with nowhere to go', () => {
+    const onSelect = vi.fn();
+    draw({
+      extra: [
+        { id: 'old', label: 'Tilbake til gammel versjon', href: '/gammel', onSelect },
+        { id: 'nothing', label: 'Ingenting' },
+      ],
+    });
+    expect(entries()).toEqual(['Tilbake til gammel versjon']);
+    const link = within(menu() as HTMLElement).getByRole('link', {
+      name: 'Tilbake til gammel versjon',
+      hidden: true,
+    });
+    expect(link.getAttribute('href')).toBe('/gammel');
+    expect(fireEvent.click(link)).toBe(false);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a host’s icon out of the entry’s name', () => {
+    draw({
+      extra: [
+        {
+          id: 'old',
+          label: 'Tilbake til gammel versjon',
+          href: '/gammel',
+          icon: <svg data-testid="old-icon" aria-label="Pil" />,
+        },
+      ],
+    });
+    const link = within(menu() as HTMLElement).getByRole('link', {
+      name: 'Tilbake til gammel versjon',
+      hidden: true,
+    });
+    expect(screen.getByTestId('old-icon').closest('[aria-hidden="true"]')).toBeTruthy();
+    expect(link.querySelector('.uib-shell-profile-icon')).toBeTruthy();
+  });
+
+  it('keeps a host’s entry apart from the menu’s own, even under the same id', () => {
+    const warned = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      draw({
+        settings: { href: '/innstillinger' },
+        extra: [{ id: 'settings', label: 'Mine innstillinger', href: '/mine' }],
+      });
+      expect(entries()).toEqual(['Innstillinger', 'Mine innstillinger']);
+      expect(warned).not.toHaveBeenCalled();
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
   it('lets the host forget the reader on «Logg ut», and follows the link to sign out', () => {
     const onSignOut = vi.fn();
     draw({ signOut: { href: '/logg-ut', onSignOut } });

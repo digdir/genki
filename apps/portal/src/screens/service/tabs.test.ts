@@ -3,7 +3,7 @@ import { availableSections, locate, tabSections } from './sections';
 
 describe('service tabs', () => {
   it('leaves the test and definition pages out of a new service tabs but keeps their addresses', () => {
-    expect(tabSections({ isNew: true })).toEqual(['setup', 'blocks', 'advanced', 'developer']);
+    expect(tabSections({ isNew: true })).toEqual(['setup', 'interface', 'advanced', 'developer']);
     const at = locate(
       'new',
       ['services', 'new', 'versions'],
@@ -44,8 +44,8 @@ describe('service tabs', () => {
     expect(at.redirect).toBeUndefined();
   });
 
-  it('shows building blocks only while a service is new', () => {
-    expect(tabSections({ isNew: false })).not.toContain('blocks');
+  it('shows the interface for every service and advanced settings only while it is new', () => {
+    expect(tabSections({ isNew: false })).toContain('interface');
     expect(tabSections({ isNew: false })).not.toContain('advanced');
     expect(tabSections({ isNew: false })).toContain('developer');
   });

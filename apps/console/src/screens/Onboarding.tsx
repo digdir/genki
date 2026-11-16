@@ -203,10 +203,12 @@ const daysSince = (iso: string | undefined, now: number) =>
 const Card = ({
   item,
   reminded,
+  canRemind,
   onRemind,
 }: {
   item: FollowUp;
   reminded: boolean;
+  canRemind: boolean;
   onRemind: () => Promise<void>;
 }) => {
   const t = useT();
@@ -285,7 +287,9 @@ const Card = ({
                   {i === 2 ? <NotDecided /> : null}
                 </span>
                 {text ? <span className="meta">{text}</span> : null}
-                {state === 'late' && !reminded ? (
+                {state !== 'late' || reminded ? null : !canRemind ? (
+                  <span className="meta">{t('onboarding.reminderUnavailable')}</span>
+                ) : (
                   <Button
                     variant="secondary"
                     data-size="sm"
@@ -298,7 +302,7 @@ const Card = ({
                   >
                     {t('onboarding.sendReminder')}
                   </Button>
-                ) : null}
+                )}
               </span>
             </li>
           );
@@ -455,7 +459,7 @@ const RegisterDialog = ({
   );
 };
 
-export const Onboarding = ({ api }: { api: ApiClient; live?: boolean }) => {
+export const Onboarding = ({ api, live = false }: { api: ApiClient; live?: boolean }) => {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
@@ -542,6 +546,7 @@ export const Onboarding = ({ api }: { api: ApiClient; live?: boolean }) => {
               key={item.org}
               item={item}
               reminded={reminded.has(item.org)}
+              canRemind={!live}
               onRemind={remind(item)}
             />
           ))}

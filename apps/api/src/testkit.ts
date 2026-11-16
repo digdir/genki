@@ -18,6 +18,7 @@ import {
   createAuthenticator,
   createMockAltinnPdp,
   InMemoryIdentities,
+  LEGACY_KEY_ISSUER,
   type createTokenVerifier,
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
@@ -87,6 +88,20 @@ export const principals: Record<string, Principal> = {
   },
   operator: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
   'other-operator': { kind: 'operator', issuer: 'test', subject: 'vakt', tenant: digdir },
+  'other-admin-key': {
+    kind: 'agency-system',
+    issuer: LEGACY_KEY_ISSUER,
+    subject: 'key-1',
+    tenant: other,
+    scopes: ['legacy:admin'],
+  },
+  'operator-employed-at-other': {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'drift',
+    tenant: digdir,
+    authorizedFor: [{ org: other, actions: ['write'] }],
+  },
 };
 
 export const auth: Authenticator = {
@@ -144,12 +159,13 @@ export const setup = (
     tenantQuota?: PlatformOptions['tenantQuota'];
     lifecycle?: PlatformOptions['lifecycle'];
     organisationName?: PlatformOptions['organisationName'];
+    settings?: SettingDefinition[];
   } = {},
 ) => {
   let clock = new Date('2026-10-06T10:00:00Z');
   const now = () => clock;
   const store = new InMemoryDefinitionStore(plugins, now);
-  const settings = new SettingsRegistry(settingDefinitions, now);
+  const settings = new SettingsRegistry(options.settings ?? settingDefinitions, now);
   let ids = 0;
   const names = actorNames(new InMemoryConfigEntryStore());
   const admin = createAdmin({

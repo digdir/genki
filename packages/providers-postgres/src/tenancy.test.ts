@@ -147,6 +147,52 @@ describe('postgres conversations', () => {
     expect((await conversations.messages(kari, created.id))?.at(-1)?.sources).toEqual(sources);
   });
 
+  it('keeps the markers of an answer that cites excerpts with the message', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c2', document: 'd1' },
+    ];
+    const sources = [
+      {
+        index: 1,
+        title: 'Rapport',
+        document_id: 'd1',
+        excerpts: [
+          { chunk_id: 'c1', text: 'Første', markers: ['1'] },
+          { chunk_id: 'c2', text: 'Andre', markers: ['2'] },
+        ],
+        markers: ['1', '2'],
+      },
+    ];
+    await conversations.append(kari, created.id, {
+      role: 'assistant',
+      text: '[1] [2]',
+      sources,
+      markers,
+    });
+
+    const stored = (await conversations.messages(kari, created.id))?.at(-1);
+
+    expect(stored?.markers).toEqual(markers);
+    expect(stored?.sources).toEqual(sources);
+  });
+
+  it('reads a message stored without markers as it was, with no markers field', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    const sources = [
+      { index: 1, title: 'Rapport', document_id: 'd1', excerpts: [{ chunk_id: 'c1', text: 'x' }] },
+    ];
+    await conversations.append(kari, created.id, { role: 'assistant', text: '[1]', sources });
+
+    const stored = (await conversations.messages(kari, created.id))?.at(-1);
+
+    expect(stored).not.toHaveProperty('markers');
+    expect(stored?.sources).toStrictEqual(sources);
+  });
+
   it('pages newest first with tag filters, renames, and refuses other owners', async () => {
     let clock = 1_000_000;
     const conversations = new PostgresConversationStore(

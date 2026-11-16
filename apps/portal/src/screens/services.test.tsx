@@ -113,7 +113,7 @@ describe('new service', () => {
   });
 
   it('publishes on a page of its own, with a way back to the tab the person came from', async () => {
-    await renderAt('#/services/new/blocks');
+    await renderAt('#/services/new/interface');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
     const page = await screen.findByRole('region', { name: /^Publiser/ });
@@ -122,7 +122,7 @@ describe('new service', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(
       within(page).getByRole('link', { name: 'Tilbake til tjenesten' }).getAttribute('href'),
-    ).toBe('#/services/new/blocks');
+    ).toBe('#/services/new/interface');
   });
 });
 
@@ -138,6 +138,7 @@ describe('builder', () => {
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Oversikt', '#/services/rapportassistenten'],
       ['Oppsett', '#/services/rapportassistenten/setup'],
+      ['Grensesnitt', '#/services/rapportassistenten/interface'],
       ['Test', '#/services/rapportassistenten/test'],
       ['Kanaler og frontend', '#/services/rapportassistenten/channels'],
       ['Innstillinger', '#/services/rapportassistenten/settings'],

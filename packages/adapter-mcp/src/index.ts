@@ -7,6 +7,7 @@ export {
   type OpenedConversation,
   type QuotaRefusal,
   type TurnChunk,
+  type TurnMarker,
 } from './app.js';
 export { progressTracker } from './progress.js';
 export {

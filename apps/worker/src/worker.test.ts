@@ -2,9 +2,21 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { createRuntime, mayUseModels, resolveCatalog, TenantSecretVault } from '@genai/composition';
+import {
+  createRuntime,
+  mayUseModels,
+  resolveCatalog,
+  TenantSecretVault,
+  type RuntimeInput,
+} from '@genai/composition';
 import { InMemoryDefinitionStore } from '@genai/definitions';
-import { batchResultMime, systemPrincipal, type BatchResult, type TriggerRun } from '@genai/jobs';
+import {
+  batchResultMime,
+  monthlyModelQuota,
+  systemPrincipal,
+  type BatchResult,
+  type TriggerRun,
+} from '@genai/jobs';
 import { envSecrets, InMemoryEventLog, InMemoryStateStore, InMemoryTaskStore } from '@genai/kernel';
 import { InMemoryBlobStore, observable } from '@genai/port-blob';
 import { fakeHttp, type FakeReply, type FakeServer } from '@genai/port-model/testing';
@@ -135,6 +147,7 @@ const setup = async (
   active?: () => boolean,
   blocked?: Parameters<typeof createWorker>[0]['blocked'],
   lockdown = false,
+  modelQuota?: RuntimeInput['modelQuota'],
 ) => {
   const upstream = await fakeHttp(reply);
   servers.push(upstream);
@@ -157,6 +170,7 @@ const setup = async (
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: ownTenantOnly(),
     ...(lockdown ? { admitsModelUse: mayUseModels } : {}),
+    ...(modelQuota ? { modelQuota } : {}),
     log: new InMemoryEventLog(),
     tasks,
     state: new InMemoryStateStore(),
@@ -341,6 +355,44 @@ describe('worker', () => {
       .find((c) => c.descriptor.id === `${tenant}/sortering/default`);
     expect(registered?.budget).toEqual({ inputTokens: 2_000_000 });
     expect(registered?.deadlineMs).toBe(300_000);
+    worker.stop();
+  });
+
+  it('refuses the next model call of a run once its tenant crosses the monthly token quota mid-run', async () => {
+    const held: { upstream?: FakeServer } = {};
+    const modelCalls = () => held.upstream?.seen.filter((r) => r.body.messages).length ?? 0;
+    const { worker, blob, runs, upstream, publish } = await setup(
+      undefined,
+      undefined,
+      false,
+      monthlyModelQuota({
+        monthlyTokens: () => 15,
+        usedTokens: async () => modelCalls() * 15,
+        now: () => new Date(Date.parse('2026-11-16T10:00:00Z') + modelCalls() * 60_000),
+      }),
+    );
+    held.upstream = upstream;
+    await publish({
+      ...classifyFlow,
+      spec: {
+        ...classifyFlow.spec,
+        steps: [
+          { id: 'first', block: 'classify@1', params: { labels: ['tilskudd', 'klage'] } },
+          { id: 'second', block: 'classify@1', params: { labels: ['tilskudd', 'klage'] } },
+        ],
+      },
+    });
+    await publish(sortering);
+    await worker.sync();
+
+    await drop(blob, 'sortering/innboks/brev.txt', 'Jeg klager på vedtaket.');
+    await vi.waitFor(() => expect(runs).toHaveLength(1));
+
+    expect(runs[0]).toMatchObject({
+      outcome: 'failed',
+      error: expect.stringMatching(/monthly token quota/),
+    });
+    expect(modelCalls()).toBe(1);
     worker.stop();
   });
 

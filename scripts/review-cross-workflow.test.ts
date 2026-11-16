@@ -51,6 +51,13 @@ describe('the cross-model review', () => {
     for (const value of Object.values(env)) expect(value).not.toContain('steps.cross');
   });
 
+  it('takes the reasoning effort from a repository variable and calls the Responses API', () => {
+    expect(step('cross')?.env?.CROSS_REVIEW_REASONING).toBe('${{ vars.CROSS_REVIEW_REASONING }}');
+    expect(script).toContain('/openai/v1`');
+    expect(script).toContain('/responses`');
+    expect(script).not.toContain('chat/completions');
+  });
+
   it('runs after the main review, only when it ran, and not on review again', () => {
     expect(job.needs).toBe('review');
     expect(job.if).toContain("needs.review.result != 'skipped'");
@@ -133,5 +140,6 @@ describe('the cross-model review', () => {
   it('is documented with its one-time setup', () => {
     expect(contributing).toContain('CROSS_REVIEW_DEPLOYMENT');
     expect(contributing).toContain('Cognitive Services OpenAI User');
+    expect(contributing).toContain('CROSS_REVIEW_REASONING');
   });
 });

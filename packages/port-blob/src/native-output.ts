@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { gunzipSync, gzip } from 'node:zlib';
 import { BlobError, checkPath } from './blob.js';
 
 export type Settings = { readonly [key: string]: unknown };
@@ -45,11 +46,23 @@ export interface NativeOutputContainer {
 }
 
 export interface NativeOutputStore {
-  put(key: NativeOutputKey, output: Uint8Array, pages: number): Promise<NativeOutputEntry>;
+  /** `when` is when the converter finished, the time of the put by default; `bytes` is the gzipped size. */
+  put(
+    key: NativeOutputKey,
+    output: Uint8Array,
+    pages: number,
+    when?: string,
+  ): Promise<NativeOutputEntry & { bytes: number }>;
   get(key: NativeOutputKey): Promise<StoredNativeOutput | undefined>;
   list(sha256: string): Promise<NativeOutputEntry[]>;
+  /** The outputs of every file whose sha256 starts with `prefix`, 1 to 64 hex characters. */
+  files(prefix: string): Promise<NativeOutputEntry[]>;
+  /** An output by its listed entry, when it and its meta are both there. */
+  read(entry: NativeOutputEntry): Promise<StoredNativeOutput | undefined>;
   delete(key: NativeOutputKey): Promise<boolean>;
 }
+
+const gzipAsync = promisify(gzip);
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const outputSuffix = '.json.gz';
@@ -109,18 +122,34 @@ const entryFromPath = (path: string): NativeOutputEntry | undefined => {
   };
 };
 
+const readEntry = async (
+  container: NativeOutputContainer,
+  entry: NativeOutputEntry,
+): Promise<StoredNativeOutput | undefined> => {
+  const [zipped, meta] = await Promise.all([
+    container.read(entry.path),
+    container.read(entry.metaPath),
+  ]);
+  if (!zipped || !meta) return undefined;
+  return {
+    entry,
+    output: new Uint8Array(gunzipSync(zipped)),
+    meta: JSON.parse(new TextDecoder().decode(meta)) as NativeOutputMeta,
+  };
+};
+
 export const nativeOutputStore = (
   container: NativeOutputContainer,
   now: () => Date = () => new Date(),
 ): NativeOutputStore => ({
-  put: async (key, output, pages) => {
+  put: async (key, output, pages, when) => {
     const entry = nativeOutputEntry(key);
     const meta: NativeOutputMeta = {
       converter: key.converter,
       version: key.version,
       settings: canonical(key.settings) as Settings,
       pages,
-      when: now().toISOString(),
+      when: when ?? now().toISOString(),
     };
     // The meta goes first, so a listed output always has its meta beside it.
     await container.write(
@@ -128,22 +157,11 @@ export const nativeOutputStore = (
       new TextEncoder().encode(JSON.stringify(meta)),
       'application/json',
     );
-    await container.write(entry.path, gzipSync(output), 'application/gzip');
-    return entry;
+    const zipped = await gzipAsync(output);
+    await container.write(entry.path, zipped, 'application/gzip');
+    return { ...entry, bytes: zipped.byteLength };
   },
-  get: async (key) => {
-    const entry = nativeOutputEntry(key);
-    const [zipped, meta] = await Promise.all([
-      container.read(entry.path),
-      container.read(entry.metaPath),
-    ]);
-    if (!zipped || !meta) return undefined;
-    return {
-      entry,
-      output: new Uint8Array(gunzipSync(zipped)),
-      meta: JSON.parse(new TextDecoder().decode(meta)) as NativeOutputMeta,
-    };
-  },
+  get: (key) => readEntry(container, nativeOutputEntry(key)),
   list: async (sha256) => {
     checkSha256(sha256);
     return (await container.list(`${sha256}/`))
@@ -151,6 +169,15 @@ export const nativeOutputStore = (
       .filter((e): e is NativeOutputEntry => e !== undefined)
       .sort((a, b) => a.path.localeCompare(b.path));
   },
+  files: async (prefix) => {
+    if (!/^[0-9a-f]{1,64}$/.test(prefix))
+      throw new BlobError('bad_key', 'a sha256 prefix is 1 to 64 lowercase hex characters');
+    return (await container.list(prefix))
+      .map(entryFromPath)
+      .filter((e): e is NativeOutputEntry => e !== undefined)
+      .sort((a, b) => a.path.localeCompare(b.path));
+  },
+  read: (entry) => readEntry(container, entry),
   delete: async (key) => {
     const entry = nativeOutputEntry(key);
     const removed = await container.remove(entry.path);
@@ -224,9 +251,14 @@ export class FileSystemNativeOutputContainer implements NativeOutputContainer {
       );
       return nested.flat();
     };
-    const folder = prefix.replace(/\/$/, '');
+    // A prefix that is not a whole folder name matches as Blob does: by the start of the path.
+    const folder = prefix.endsWith('/')
+      ? prefix.slice(0, -1)
+      : prefix.split('/').slice(0, -1).join('/');
     const start = folder ? join(this.root, ...folder.split('/')) : this.root;
-    return (await walk(start, folder ? `${folder}/` : '')).sort();
+    return (await walk(start, folder ? `${folder}/` : ''))
+      .filter((path) => path.startsWith(prefix))
+      .sort();
   }
 
   async remove(path: string) {

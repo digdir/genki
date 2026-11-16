@@ -12,6 +12,7 @@ export const problems = defineNamespace({
   notAllowedForTenant: 'Ikke tillatt for denne virksomheten',
   forbiddenEn: 'Ingen tilgang',
   conflict: 'Konflikt',
+  badGateway: 'Feil fra tjenesten bak',
   changedElsewhere: 'Endret et annet sted',
   notAccessDataset: 'Du har ikke tilgang til datasettet',
   needsRight: 'Du trenger rettigheten «{right}»',
@@ -128,6 +129,9 @@ export const problems = defineNamespace({
   shareOperatorOnly:
     'Bare plattformoperatører endrer hvem tjenesten deles med. Behold spec.availableTo slik den er i publisert versjon.',
   shareOperatorOnlyTitle: 'Bare operatører endrer deling',
+  internalOperatorOnly: 'Bare operatører gjør en tjeneste intern.',
+  serviceIdTaken: 'Id-en er allerede i bruk.',
+  operatorOnlySettingTitle: 'Bare Digdir endrer denne grensen for en virksomhet',
   uploadRequestTooLarge: 'Forespørselen er større enn {size} MB. Send filene i flere forespørsler.',
   status400: 'Forespørselen kan ikke leses',
   status401: 'Du er ikke logget inn',

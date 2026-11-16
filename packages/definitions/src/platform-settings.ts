@@ -43,6 +43,11 @@ const setting = <T>(
   settableAt: platformAndTenant,
 });
 
+const limit = <T>(...args: Parameters<typeof setting<T>>): PlatformSetting<T> => ({
+  ...setting(...args),
+  operatorOnly: true,
+});
+
 export const nativeSettings: PlatformSetting[] = [
   setting(
     'knowledge.switchRetentionDays',
@@ -84,7 +89,7 @@ export const nativeSettings: PlatformSetting[] = [
     'assistant',
     'Offer the builder assistant in the service builder.',
   ),
-  setting(
+  limit(
     'assistant.dailyTokens',
     z.number().int().min(0).max(10_000_000),
     200_000,
@@ -171,14 +176,14 @@ export const nativeSettings: PlatformSetting[] = [
     'playground',
     'Offer the playground for trying services, skills and building blocks.',
   ),
-  setting(
+  limit(
     'usage.monthlyTokens',
     z.number().int().min(1),
     50_000_000,
     'usage',
     'Tokens a tenant may use per calendar month; the playground refuses runs once it is used up.',
   ),
-  setting(
+  limit(
     'batch.approvalLimitNok',
     z.number().min(0).max(1_000_000),
     150,
@@ -202,7 +207,7 @@ export const nativeSettings: PlatformSetting[] = [
     'retention',
     'Days the audit envelope of a task (ids, type, actor, usage, versions, times) is kept after it ends; never shorter than the content.',
   ),
-  setting(
+  limit(
     'usage.tenantCallsPerMinute',
     z.number().int().min(1),
     600,

@@ -22,6 +22,7 @@ interface RecordRow {
   state: IndexRecord['state'];
   change: string;
   gone: number;
+  files?: { name: string; sha256: string | null }[];
 }
 
 const toRecord = (row: RecordRow): IndexRecord => ({
@@ -32,6 +33,9 @@ const toRecord = (row: RecordRow): IndexRecord => ({
   state: row.state,
   change: Number(row.change),
   gone: row.gone,
+  ...(row.files
+    ? { files: row.files.map((f) => ({ name: f.name, ...(f.sha256 ? { sha256: f.sha256 } : {}) })) }
+    : {}),
 });
 
 const recordColumns = `number::text, dataset, id, record, state, change::text, gone`;
@@ -97,9 +101,9 @@ const writeFiles = async (
 ) => {
   await client.query(`delete from src_files where dataset = $1 and document = $2`, [dataset, id]);
   await client.query(
-    `insert into src_files (dataset, document, file, sha256, change)
-     select $1, $2, x.name, x.sha256, $3
-       from jsonb_to_recordset($4::jsonb) as x(name text, sha256 text)
+    `insert into src_files (dataset, document, file, sha256, converts, change)
+     select $1, $2, x.name, x.sha256, coalesce(x.converts, false), $3
+       from jsonb_to_recordset($4::jsonb) as x(name text, sha256 text, converts boolean)
      on conflict do nothing`,
     [dataset, id, change, JSON.stringify(files)],
   );
@@ -275,7 +279,10 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
 
   find: async (number) => {
     const { rows } = await writer.query<RecordRow>(
-      `select ${recordColumns} from src_documents where number = $1::bigint`,
+      `select ${recordColumns},
+              coalesce((select jsonb_agg(jsonb_build_object('name', f.file, 'sha256', f.sha256) order by f.file)
+                          from src_files f where f.dataset = d.dataset and f.document = d.id), '[]') as files
+         from src_documents d where number = $1::bigint`,
       [number],
     );
     return rows[0] ? toRecord(rows[0]) : undefined;

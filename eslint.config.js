@@ -16,4 +16,10 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    files: ['apps/api/src/**/*.ts', 'apps/worker/src/**/*.ts'],
+    ignores: ['**/*.test.ts', '**/*.test-utils.ts', 'apps/api/src/testkit.ts'],
+    languageOptions: { parserOptions: { projectService: true } },
+    rules: { '@typescript-eslint/no-floating-promises': 'error' },
+  },
 );

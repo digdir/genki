@@ -398,6 +398,85 @@ describe('engine switch of a platform dataset in the console', () => {
     );
   });
 
+  it("the console shows when a running switch's admission runs out, and warns in its last 4 hours", async () => {
+    const running = switchView('running', { admissionRunsOutAt: '2026-11-15T07:56:00Z' });
+    const routes = {
+      [`GET ${base}/engine`]: (): [number, unknown] => [
+        200,
+        engineOn('platform-pg', { activeSwitch: running }),
+      ],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': (): [number, unknown] => [
+        200,
+        endpoints,
+      ],
+      [`GET ${base}/engine-switches/s1`]: (): [number, unknown] => [200, running],
+    };
+    const early = platform(routes);
+    render(
+      <EngineSwitchSection
+        api={early.api}
+        base={base}
+        pollMs={60_000}
+        now={() => new Date('2026-11-14T12:00:00Z')}
+      />,
+    );
+    const calm = await screen.findByText(/Innlesingen er sluppet inn til 15\.11\.2026.*08:56/);
+    expect(calm.closest('[data-color="warning"]')).toBeNull();
+    cleanup();
+
+    const late = platform(routes);
+    render(
+      <EngineSwitchSection
+        api={late.api}
+        base={base}
+        pollMs={60_000}
+        now={() => new Date('2026-11-15T05:00:00Z')}
+      />,
+    );
+    const warned = await screen.findByText(
+      /Innlesingen er sluppet inn bare til 15\.11\.2026.*08:56/,
+    );
+    expect(warned.closest('[data-color="warning"]')).not.toBeNull();
+  });
+
+  it('the console admits a running switch again with a reason', async () => {
+    const { api, calls } = platform({
+      [`GET ${base}/engine`]: () => [
+        200,
+        engineOn('platform-pg', {
+          activeSwitch: switchView('running', { admissionRunsOutAt: '2026-11-15T07:56:00Z' }),
+        }),
+      ],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [`POST ${base}/engine-switches/s1/readmit`]: () => [
+        200,
+        switchView('running', { admissionRunsOutAt: '2026-11-16T05:00:00Z' }),
+      ],
+    });
+    render(
+      <EngineSwitchSection
+        api={api}
+        base={base}
+        pollMs={60_000}
+        now={() => new Date('2026-11-15T05:00:00Z')}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText('Begrunnelse'), {
+      target: { value: 'Fyllingen av Kudos tar mer enn et døgn' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Slipp inn igjen' }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith('/readmit'))?.reason).toBe(
+        'Fyllingen av Kudos tar mer enn et døgn',
+      ),
+    );
+    expect(
+      await screen.findByText(/Innlesingen er sluppet inn til 16\.11\.2026.*06:00/),
+    ).toBeTruthy();
+  });
+
   it("a failed fill shows the worker's error under a Norwegian lead", async () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [

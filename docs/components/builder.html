@@ -146,6 +146,14 @@
               so the order in a zone is the catalogue's, whatever order the blocks were turned on
               in.
             </p>
+            <p>
+              A block marked <code>both</code> may also stand in both its zones at once, each
+              drawing it its own way. Only Fremgangsmåte is: the card over each answer in «Innhold»,
+              the detailed tool in «Høyre panel», or both. <code>placesOf</code> lists the places
+              the builder offers a block, its zones and then <code>both</code>;
+              <code>placeKey</code> names each, «Begge steder» for both, and
+              <code>placesHelpKey</code> says what each place draws.
+            </p>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -192,8 +200,8 @@
                     <td><code>service:chat</code></td>
                     <td>
                       <code>footnotes</code> (needs <code>component:sources|document-view</code>),
-                      <code>suggestions</code>, <code>followUps</code>, <code>disclaimer</code>,
-                      <code>copy</code>, <code>feedback</code> (off; needs
+                      <code>suggestions</code>, <code>followUps</code> (the current look only),
+                      <code>disclaimer</code>, <code>copy</code>, <code>feedback</code> (off; needs
                       <code>channel:feedback</code>), <code>variantPicker</code> (needs
                       <code>service:variants</code>), <code>attachments</code> (kommer; needs
                       <code>service:documents</code>)
@@ -211,7 +219,7 @@
                   </tr>
                   <tr>
                     <th scope="row"><code>approach</code> <small>«Fremgangsmåte»</small></th>
-                    <td>main (0), secondary (0)</td>
+                    <td>main (0), secondary (0), or both</td>
                     <td><code>Approach</code></td>
                     <td><code>service:steps</code></td>
                     <td><code>level</code>: <code>standard</code> or <code>detailed</code></td>
@@ -228,7 +236,10 @@
                     <td>secondary (3), main (4)</td>
                     <td><code>DocumentView</code></td>
                     <td><code>service:datasets|documents</code></td>
-                    <td>none</td>
+                    <td>
+                      <code>file</code>, «Vis hele dokumentet (beta)»: the whole document from the
+                      host's <code>documentFile</code>
+                    </td>
                   </tr>
                   <tr>
                     <th scope="row"><code>notes</code> <small>«Notater», kommer</small></th>
@@ -272,10 +283,19 @@
               Choosing one replaces the layout. «Kunnskapsassistenten» has Innstillinger and no
               Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
               After it, <code>knowledge-assistant-next</code> has the same blocks in the look of the
-              «_Ready for dev» boards, built there step by step: <code>templateLook</code> says
-              <code>next</code> for it and <code>current</code> for every other template, and the
-              assembly draws the new look only for <code>next</code>, so the others draw what they
-              draw today.
+              «_Ready for dev» boards, with Fremgangsmåte in both places, the bar over each answer
+              and the tool, built there step by step, and Dokumentvisning after Kilder, as
+              Kunnskapsassistenten's next client draws it.
+            </p>
+            <p>
+              A template may also set a look and options that differ from the defaults,
+              <code>templateSetups</code>, which <code>fromTemplate</code> writes into the layout.
+              <code>knowledge-assistant-next</code> sets the look <code>next</code>, Chat's
+              <code>feedback</code> on and <code>followUps</code> off, as Kunnskapsassistenten's
+              next client runs. Fremgangsmåte keeps the <code>standard</code> level there: in the
+              secondary panel it is the detailed tool by its place. The other templates set nothing,
+              so they draw what they draw today. <code>changeTemplate</code> replaces the blocks and
+              keeps the look the layout had, unless the new template sets its own.
             </p>
             <div class="table-wrap">
               <table>
@@ -303,7 +323,7 @@
                     </th>
                     <td>threads, filter, settings</td>
                     <td>approach, chat</td>
-                    <td>sources, notes</td>
+                    <td>approach, sources, document-view, notes</td>
                   </tr>
                   <tr>
                     <th scope="row"><code>sources-only</code> <small>«Bare kilder»</small></th>
@@ -361,11 +381,41 @@
             <h2>The layout and its rules</h2>
             <ul>
               <li>
-                <code>AssistantLayout</code> is <code>{ version: 1, template?, zones }</code>, with
-                each zone a list of <code>{ block, settings? }</code>.
-                <code>defaultLayout</code> has every built block in its default zone.
-                <code>normalised</code> sorts each zone into the catalogue's order and drops what
-                the catalogue does not hold. <code>isAssistantLayout</code> checks the shape only.
+                <code>AssistantLayout</code> is
+                <code>{ version: 1, template?, look?, zones, profile? }</code>, with each zone a
+                list of <code>{ block, settings? }</code>. <code>defaultLayout</code> has every
+                built block in its default zone. <code>normalised</code> sorts each zone into the
+                catalogue's order and drops what the catalogue does not hold.
+                <code>isAssistantLayout</code> checks the shape only, that a look, when there is
+                one, is a known one, and that a profile is <code>isProfileData</code>.
+              </li>
+              <li>
+                <code>profile</code> is the layout's words as data, <code>ProfileData</code>, so a
+                service made in the builder looks like itself without host code:
+                <code>assistantName</code>, <code>suggestions</code>, <code>followUps</code>,
+                <code>experiments</code> (<code>id</code>, <code>title</code>,
+                <code>description</code>, <code>href</code>, <code>hrefLabel</code>),
+                <code>settingsNote</code>, and <code>corpora</code>, per collection by its key:
+                <code>label</code>, <code>description</code>, <code>fields</code> (each
+                <code>id</code>, <code>label</code>, <code>heading</code>, <code>kind</code> and
+                <code>years</code>), <code>typeField</code>, <code>typePlurals</code>,
+                <code>documentLinks</code> (an https address per kind of number,
+                <code>digits</code>, <code>uuid</code> or <code>any</code>, with
+                <code>{id}</code> where the number goes) and <code>about</code>. It holds no
+                functions: the reader, the profile menu, the sign-out, the family of services and
+                <code>documentUrl</code> stay in the host's code, and a field's integers are the
+                dataset's. <code>withProfile</code> sets or clears it; a change of template, look or
+                blocks keeps it. The assembly fills it in with the host's own profile, which wins
+                where it says something (<a href="ui-assembly.html">UI assembly</a>).
+              </li>
+              <li>
+                <code>look</code> is <code>current</code> or <code>next</code>. <code>lookOf</code>
+                reads it, and a layout without it is drawn in its template's look,
+                <code>templateLook</code>: <code>next</code> for
+                <code>knowledge-assistant-next</code>, <code>current</code> for the rest, as before
+                the look was a setting. <code>withLook</code> changes it, and every other change to
+                the blocks and their options keeps it. <code>lookKey</code> gives a look's name in
+                the catalogue's words, «Dagens» and «Ny utgave».
               </li>
               <li>
                 <code>BuilderState</code> adds the builder's screen state: <code>chosen</code>,
@@ -374,8 +424,11 @@
               </li>
               <li>
                 <code>turnOn</code>, <code>turnOff</code>, <code>moveTo</code> and
-                <code>placeIn</code> keep a block in one zone at a time, and refuse a zone it may
-                not stand in. <code>withSetting</code> keeps only what differs from the default;
+                <code>placeIn</code> keep a block in one zone at a time, or in both its zones when
+                given <code>both</code> for a block that allows it, and refuse a place it may not
+                stand in. <code>placedAt</code> says where a block stands as the builder offers it,
+                and <code>zonesOf</code> every zone it stands in. <code>withSetting</code> keeps
+                only what differs from the default, alike in each zone a block stands in;
                 <code>settingsOf</code> fills the defaults in.
               </li>
               <li>
@@ -385,15 +438,29 @@
                 by hand stays off.
               </li>
               <li>
-                <code>optionInForce</code>: an option is in force when it is on, its blocks are
-                placed and its needs are met. Fotnoter is off while both Kilder and Dokumentvisning
-                are, whatever the switch says.
+                <code>optionInForce</code>: an option is in force when it is on, drawn in the
+                layout's look, its blocks are placed and its needs are met. Fotnoter is off while
+                both Kilder and Dokumentvisning are, whatever the switch says, and follow-ups are
+                off in the next look.
               </li>
               <li>
                 <code>layoutProblems</code> lists every rule a layout breaks, by name:
                 <code>unknown-block</code>, <code>zone-not-allowed</code>,
                 <code>placed-twice</code>, <code>not-built</code>, <code>missing-partner</code> and
-                <code>needs-unmet</code>. An option left at its default asks nothing.
+                <code>needs-unmet</code>. A block marked <code>both</code> in each of its zones once
+                is not placed twice. An option left at its default asks nothing.
+              </li>
+              <li>
+                For the profile, each with its <code>path</code>, such as
+                <code>profile.corpora.kudos.fields[0].label</code>: <code>profile-too-large</code>,
+                over 32 KiB as JSON in UTF-8; <code>text-too-long</code>, past
+                <code>profileLimits</code> (80 for a name, label, heading or title, 200 for a
+                suggestion, 500 for a description, 1,000 for the note); <code>too-many</code>, more
+                than 6 suggestions or follow-ups, 20 collections, 30 fields, 200 plurals, 10
+                <code>about</code> fields or 10 experiments; <code>link-not-https</code>, a link or
+                link template that is not an https address whose host comes before
+                <code>{id}</code> and names no user (<code>isHttpsLink</code>); and
+                <code>unknown-kind</code>, a field kind the assembly does not know.
               </li>
               <li>
                 <code>settingsSchema</code> gives a block's options as a JSON Schema (2020-12), with
@@ -410,6 +477,12 @@
                 multiselect fields, <code>_documents</code>, and the
                 <code>_pickable</code> variants, of the service or of a family the host names.
                 <code>servicesIn</code> lists each service once.
+              </li>
+              <li>
+                <code>factsFromDefinition(definition, given)</code> reads the same facts from a
+                draft that is not published yet, as a host's builder holds it.
+                <code>modelRowsFromDefinition</code> lists the draft as the rows genki would list,
+                with each dataset's own filter fields from the host's <code>filtersOf</code>.
               </li>
               <li>
                 The channels come from the host. Whether a service reports steps is not in the row:
@@ -449,8 +522,16 @@
             <h2>Open questions</h2>
             <ul>
               <li>
-                Where a layout is stored. V2-0006 proposes a frontend definition in genki; until
-                then the builder keeps it in the browser.
+                Where a layout is stored. The portal's «Grensesnitt» tab keeps a service's layout,
+                and the <code>held</code> blocks the draft cannot back yet, only in the browser's
+                session storage, per tenant and service, and «Kopier oppsettet» and «Lim inn
+                oppsett» carry the layout as JSON. Storing it with the service waits for an ADR;
+                V2-0006 proposes a frontend definition in genki.
+              </li>
+              <li>
+                The profile's texts are in one language. A service's example questions, in bokmål
+                and English, could fill <code>suggestions</code> once
+                <code>/v1/models</code> carries them; it does not yet.
               </li>
               <li>
                 The names of the builder's two views, «Oppsett» and «Prøv assistenten», are the

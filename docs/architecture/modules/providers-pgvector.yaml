@@ -26,6 +26,7 @@ responsibilities:
   - Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)
   - A per-generation advisory lock that writers take shared and VACUUM exclusively
   - Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample
+  - Stored conversions on the knowledge server - pages per file, converter and derivation, and the records waiting on them (ADR 0042)
 files:
   - packages/providers-pgvector/src/engine.ts
   - packages/providers-pgvector/src/schema.ts
@@ -37,6 +38,7 @@ files:
   - packages/providers-pgvector/src/read-functions.ts
   - packages/providers-pgvector/src/knowledge-records.ts
   - packages/providers-pgvector/src/heavy-work.ts
+  - packages/providers-pgvector/src/knowledge-conversions.ts
 input: Searches and index documents
 output: SQL
 replaces:

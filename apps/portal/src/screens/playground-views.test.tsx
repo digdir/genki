@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { expectAccessible, renderAt } from '../test-utils';
-import { readStart } from './services/blocks/handoff';
 
 document.getAnimations ??= () => [];
 
@@ -44,7 +43,8 @@ describe('the playground', () => {
     const switcher = screen.getByRole('group', { name: 'Byggeklosser og maler' });
     expect(within(switcher).getByRole('radio', { name: 'Byggeklosser' })).toBeTruthy();
     expect(within(switcher).queryByRole('radio', { name: 'Chat' })).toBeNull();
-    expectAccessible(container);
+    // The try view draws its panels in more than one pass.
+    await waitFor(() => expectAccessible(container));
   });
 
   it('starts the preview in «Prøv tjenesten», with «Endre layout» as the other choice', async () => {
@@ -60,28 +60,23 @@ describe('the playground', () => {
 
   it('makes a new service that starts with the building blocks tried in the playground', async () => {
     await renderAt('#/playground');
-    const projects = await screen.findByRole('switch', { name: /^Prosjekter/ });
-    fireEvent.click(projects);
-    expect((projects as HTMLInputElement).checked).toBe(false);
+    await screen.findByRole('heading', { name: 'Forhåndsvisning av tjenesten' });
+    const on = (await screen.findAllByRole('switch')).find(
+      (s) => (s as HTMLInputElement).checked && !(s as HTMLInputElement).disabled,
+    ) as HTMLInputElement;
+    const name = on.getAttribute('aria-label') ?? on.closest('label')?.textContent ?? '';
+    fireEvent.click(on);
+    expect(on.checked).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Lag en tjeneste av dette' }));
     expect(window.location.hash).toBe('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
 
-    go('#/services/new/blocks');
-    const inBuilder = await screen.findByRole('switch', { name: /^Prosjekter/ });
-    expect((inBuilder as HTMLInputElement).checked).toBe(false);
-  });
-});
-
-describe('the building blocks handed to a new service', () => {
-  it('reads only blocks, panels and starting points it knows', () => {
-    expect(
-      readStart('{"layout":{"placed":{"chat":"main"},"chosen":{}},"template":"chatOnly"}'),
-    ).toEqual({ layout: { placed: { chat: 'main' }, chosen: {} }, template: 'chatOnly' });
-    expect(readStart('{"layout":{"placed":{"chat":"top"},"chosen":{}}}')).toBeUndefined();
-    expect(readStart('{"layout":{"placed":{"robot":"main"},"chosen":{}}}')).toBeUndefined();
-    expect(readStart('not json')).toBeUndefined();
-    expect(readStart(null)).toBeUndefined();
+    go('#/services/new/interface');
+    await screen.findByRole('heading', { name: 'Forhåndsvisning av tjenesten' });
+    const inBuilder = (await screen.findAllByRole('switch')).find(
+      (s) => (s.getAttribute('aria-label') ?? s.closest('label')?.textContent ?? '') === name,
+    ) as HTMLInputElement;
+    expect(inBuilder.checked).toBe(false);
   });
 });

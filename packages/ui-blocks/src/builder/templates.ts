@@ -1,11 +1,19 @@
 // The design's eight templates, from board «3 · byggeklosser og forhåndsvisning» («Maler»), in
-// its order. genki #210 holds nine of its own; these are the canvas's, as V2-0007 settles.
+// its order, then the portal's own starting points («Utgangspunkt») that none of those already is.
 //
 // A template lists the blocks the design puts in each zone, also those not built yet: the
 // builder shows them marked «kommer», and `fromTemplate` leaves them out. Fotnoter is Chat's
 // option, on by default, so it is not listed.
-import { blockSpec, type BlockId, type Zone } from './catalogue.js';
-import { normalised, type AssistantLayout, type BuilderState } from './layout.js';
+import { blockSpec, type BlockId, type Look, type Zone } from './catalogue.js';
+import {
+  lookOf,
+  normalised,
+  withLook,
+  withProfile,
+  type AssistantLayout,
+  type BlockSettings,
+  type BuilderState,
+} from './layout.js';
 import type { BuilderKey } from './i18n.js';
 
 export const templateIds = [
@@ -18,6 +26,11 @@ export const templateIds = [
   'without-secondary',
   'without-primary',
   'chat-only',
+  'all-blocks',
+  'notes-focus',
+  'document-focus',
+  'classic',
+  'chat-and-sources',
 ] as const;
 export type TemplateId = (typeof templateIds)[number];
 
@@ -30,12 +43,13 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
     main: ['approach', 'chat'],
     secondary: ['sources', 'notes'],
   },
-  // The same blocks in the dev boards' look (`templateLook`), built here step by step, so
-  // «Kunnskapsassistenten» keeps drawing what it draws today.
+  // The same blocks in the dev boards' look (`templateSetups`), built here step by step, and
+  // Dokumentvisning as kunnskapsassistenten's next client draws it.
   'knowledge-assistant-next': {
     primary: ['threads', 'filter', 'settings'],
     main: ['approach', 'chat'],
-    secondary: ['sources', 'notes'],
+    // Fremgangsmåte also as the tool (dev-verktoy-1), beside its bar over each answer.
+    secondary: ['approach', 'sources', 'document-view', 'notes'],
   },
   'sources-only': { primary: ['threads', 'filter'], main: ['chat'], secondary: ['sources'] },
   'approach-only': { primary: ['threads'], main: ['chat'], secondary: ['approach'] },
@@ -60,17 +74,43 @@ export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readon
     secondary: ['sources', 'document-view'],
   },
   'chat-only': { primary: [], main: ['approach', 'chat'], secondary: [] },
+  // The portal's starting points. Every block where it stands first, in the next look, as the
+  // builder starts.
+  'all-blocks': {
+    primary: ['projects', 'threads', 'filter', 'settings'],
+    main: ['approach', 'chat'],
+    secondary: ['sources', 'document-view', 'notes'],
+  },
+  'notes-focus': { primary: ['projects', 'threads'], main: ['chat'], secondary: ['notes'] },
+  'document-focus': { primary: [], main: ['document-view'], secondary: ['chat', 'sources'] },
+  classic: { primary: ['threads'], main: ['approach', 'chat'], secondary: ['sources'] },
+  'chat-and-sources': { primary: [], main: ['approach', 'chat'], secondary: ['sources'] },
 };
 
-/**
- * The look a layout's template draws. `next` is the «_Ready for dev» boards' (the cards frame, the
- * panels' titles, the profile menu), and every new look sits behind it until it is the only one;
- * `current` is what the other templates draw today.
- */
-export type TemplateLook = 'current' | 'next';
+/** The look a template draws, now `Look`, the layout's own setting. */
+export type TemplateLook = Look;
 
-export const templateLook = (template: string | undefined): TemplateLook =>
-  template === 'knowledge-assistant-next' ? 'next' : 'current';
+/** What a template sets beyond its blocks: its look, and options that differ from the defaults. */
+export interface TemplateSetup {
+  look?: Look | undefined;
+  settings?: Partial<Record<BlockId, BlockSettings>> | undefined;
+}
+
+/**
+ * `knowledge-assistant-next` is kunnskapsassistenten's next client as it runs: the next look, with
+ * feedback under each answer and no follow-ups, which that look does not draw. Fremgangsmåte in
+ * the secondary panel is the detailed tool wherever it stands, so its `level` stays the default.
+ */
+export const templateSetups: Readonly<Partial<Record<TemplateId, TemplateSetup>>> = {
+  'knowledge-assistant-next': {
+    look: 'next',
+    settings: { chat: { feedback: true, followUps: false } },
+  },
+  'all-blocks': {
+    look: 'next',
+    settings: { chat: { feedback: true, followUps: false } },
+  },
+};
 
 /** The catalogue key of a template's name. */
 export const templateKey = (id: TemplateId) =>
@@ -79,24 +119,49 @@ export const templateKey = (id: TemplateId) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join('')}` as BuilderKey;
 
+/** The catalogue key of a look's name, for the builder's choice of look. */
+export const lookKey = (look: Look) =>
+  `builder.look${look.charAt(0).toUpperCase()}${look.slice(1)}` as BuilderKey;
+
 /**
- * The template as a builder state: the blocks that are built, in its zones. `offered` leaves out
- * the blocks the service cannot back, as the builder does. Choosing a template replaces the
- * layout, «Å bytte mal erstatter oppsettet du har nå».
+ * The template as a builder state: the blocks that are built, in its zones, with its look and
+ * options (`templateSetups`). `offered` leaves out the blocks the service cannot back, as the
+ * builder does. Choosing a template replaces the layout, «Å bytte mal erstatter oppsettet du har
+ * nå»; `changeTemplate` keeps the look.
  */
 export const fromTemplate = (
   id: TemplateId,
   offered: (block: BlockId) => boolean = () => true,
 ): BuilderState => {
   const template = templates[id];
+  const setup = templateSetups[id];
   const take = (zone: Zone) =>
     template[zone]
       .filter((block) => blockSpec(block).status === 'built' && offered(block))
-      .map((block) => ({ block }));
+      .map((block) => {
+        const settings = setup?.settings?.[block];
+        return settings ? { block, settings } : { block };
+      });
   const layout: AssistantLayout = normalised({
     version: 1,
     template: id,
+    ...(setup?.look ? { look: setup.look } : {}),
     zones: { primary: take('primary'), main: take('main'), secondary: take('secondary') },
   });
   return { layout, chosen: {} };
+};
+
+/**
+ * Another template chosen in the builder: its blocks and options replace the layout's, the look
+ * stays the one the layout had, unless the template sets its own, and the profile stays: it is the
+ * service's words, not the template's.
+ */
+export const changeTemplate = (
+  state: BuilderState,
+  id: TemplateId,
+  offered?: (block: BlockId) => boolean,
+): BuilderState => {
+  const chosen = withProfile(fromTemplate(id, offered), state.layout.profile);
+  const look = templateSetups[id]?.look ?? lookOf(state.layout);
+  return look === lookOf(chosen.layout) ? chosen : withLook(chosen, look);
 };

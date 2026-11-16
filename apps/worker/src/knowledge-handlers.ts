@@ -2,9 +2,14 @@ import type { Principal } from '@genai/contracts';
 import {
   chunkingOf,
   copyOwner,
+  FileUnreachable,
   indexRecord,
   ingestListing,
   pipelineSpec,
+  ResponseTooLarge,
+  storedConverter,
+  textLayer,
+  type DocumentConverter,
   throttledEmbedder,
   EmbeddingPauses,
   type ChunkDocumentConfig,
@@ -16,29 +21,70 @@ import {
   type RecordTransaction,
 } from '@genai/ingest';
 import {
+  convertPriority,
+  defaultMarkerTimeoutMs,
   heavyWorkStart,
+  knowledgeConvertQueue,
   knowledgeFillQueue,
   knowledgeIndexQueue,
   knowledgeIngestQueue,
   knowledgeKeys,
   type JobQueue,
+  type QueueDefinition,
   type QueueWork,
 } from '@genai/jobs';
-import { GenerationBusy } from '@genai/port-knowledge';
+import {
+  acceptedConverters,
+  conversionKey,
+  GenerationBusy,
+  textLayerDerivation,
+  type ConversionTarget,
+  type ConversionWaiter,
+  type ConverterKey,
+  type StoredConversions,
+} from '@genai/port-knowledge';
 import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
 import type { RunProgress } from './run-progress.js';
+import { seedWork } from './conversion-seed.js';
+import type { NativeOutputStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
-import { admittedWork, type AdmissionDeps } from './knowledge-jobs.js';
+import {
+  admittedConversion,
+  admittedWork,
+  type AdmissionDeps,
+  type KnowledgeJob,
+} from './knowledge-jobs.js';
 
 export interface KnowledgeHandlerDeps {
   /** The document records on the knowledge server, as the writer role. */
   records: DocumentRecords;
   /** The worker's log: an embedder that gives up is logged as `model call failed`. */
   log?: (msg: string, fields: Record<string, unknown>) => void;
-  /** The knowledge server's queue, where index jobs commit with their records. */
-  knowledge: Pick<JobQueue, 'send' | 'sendAgain'>;
+  /** The knowledge server's queue, where index and convert jobs commit with their records. */
+  knowledge: Pick<JobQueue, 'send' | 'sendAgain' | 'serveAlso'>;
+  /**
+   * Stored conversions (ADR 0042): with them, the ingest job sends a convert job for each file a
+   * converter reads that has none, index jobs read stored pages, and convert jobs store them.
+   * Without them, index jobs convert as they load.
+   */
+  conversions?: StoredConversions;
+  /** The converter convert jobs run: the text layer while no Docling host is configured. */
+  converter?: DocumentConverter;
+  /**
+   * The Blob container for converters' native output (#473), keyed by file sha256; the text layer
+   * has none, so nothing is written there until Docling.
+   */
+  nativeOutputs?: {
+    put(
+      key: ConverterKey & { sha256: string },
+      output: Uint8Array,
+      pages: number,
+    ): Promise<{ path: string }>;
+  } & Partial<Pick<NativeOutputStore, 'files' | 'read'>>;
+  /** How many convert jobs this worker works at once; 2 when left out. */
+  convertConcurrency?: number;
   /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
   heavy: { threshold(): number; window(): string; now?: () => Date };
   /** The run's counts on the platform server. */
@@ -58,10 +104,12 @@ export interface KnowledgeHandlerDeps {
   prepare?(dataset: DatasetConfig, generation: string): Promise<void>;
   /** Whether the generation exists, read as the writer, so only a missing one needs the owner. */
   generationExists?(generation: string): Promise<boolean>;
+  /** A run's listing; index jobs pass the stored-conversion reader as its converter. */
   listingOf(
     spec: PipelineSpec,
     scope: KnowledgeListingScope,
     signal: AbortSignal,
+    converter?: DocumentConverter,
   ): Promise<Listing>;
   embedder(
     dataset: DatasetConfig,
@@ -105,6 +153,7 @@ const listingFor = async (
   deps: KnowledgeHandlerDeps,
   run: IngestionExecution,
   signal: AbortSignal,
+  converter?: DocumentConverter,
 ) => {
   if (run.pipeline === copyOwner) {
     if (!run.engineSwitch || !deps.copyListingOf)
@@ -113,7 +162,12 @@ const listingFor = async (
   }
   const spec = await specOf(deps, run);
   return {
-    listing: await deps.listingOf(spec, listingScope(run, deps.admission.platformTenant), signal),
+    listing: await deps.listingOf(
+      spec,
+      listingScope(run, deps.admission.platformTenant),
+      signal,
+      ...(converter ? [converter] : []),
+    ),
     chunking: chunkingOf(spec.chunking),
   };
 };
@@ -189,10 +243,106 @@ export const indexConcurrencyOf = (env: NodeJS.ProcessEnv): number => {
  */
 export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * concurrency + 6);
 
+/** The convert queue as the handlers send to it; its expiry is set where the queues are installed. */
+const convertQueue = knowledgeConvertQueue(defaultMarkerTimeoutMs);
+
+/** What a convert job converts with: the text layer while no Docling host is configured (#477). */
+const conversionTarget = (sha256: string): ConversionTarget => ({
+  sha256,
+  converter: textLayer.name,
+  version: textLayer.version,
+  settings: textLayer.settings,
+});
+
+/** How a converter's pages are derived from its output: `text-layer` 1 for the text layer. */
+const derivationOf = (converter: string) =>
+  converter === textLayer.name ? textLayerDerivation : { name: `${converter}-pages`, version: 1 };
+
+type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
+type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
+
+/** Converter errors about the file itself, and the failure each is stored as (ADR 0042). */
+const fileRefusals: Readonly<
+  Record<string, 'too_large' | 'unsupported_type' | 'conversion_failed'>
+> = {
+  DocumentTooLargeError: 'too_large',
+  TooManyPagesError: 'too_large',
+  UnsupportedDocumentError: 'unsupported_type',
+  InvalidPDFException: 'conversion_failed',
+  PasswordException: 'conversion_failed',
+};
+
+/**
+ * Why a converter refused a file, when its error is known to be about the file. Every other
+ * error, from a bug, a host that timed out or answered with a status, or a Word file the
+ * converter could not read, is not stored: its job is tried again and then dead-lettered.
+ */
+const refusalOf = (error: unknown) =>
+  error instanceof Error && Object.hasOwn(fileRefusals, error.name)
+    ? fileRefusals[error.name]
+    : undefined;
+
+/** Why a convert job's fetch cannot have the file (issue 597); other fetch errors are retried. */
+const fetchRefusalOf = (error: unknown) =>
+  error instanceof FileUnreachable || error instanceof ResponseTooLarge ? 'unreachable' : undefined;
+
+/** A file a convert job could not fetch: tried again unless `fetchRefusalOf` names why. */
+class FetchFailed extends Error {
+  override readonly name = 'FetchFailed';
+  constructor(override readonly cause: unknown) {
+    super('the file could not be fetched');
+  }
+}
+
+/** A conversion stored while an index job it must send still ran: the convert job is tried again. */
+export class IndexJobBusy extends Error {
+  override readonly name = 'IndexJobBusy';
+}
+
+/** Thrown when a conversion was stored while an index job read it: the job's retry reads it. */
+export class ConversionStoredMeanwhile extends Error {
+  override readonly name = 'ConversionStoredMeanwhile';
+}
+
 export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
   const pauses = new EmbeddingPauses();
+  /**
+   * Makes a record wait on a file's conversion and sends its convert job, or, when the job is
+   * already waiting or running, adds the record's organisation to it (ADR 0042, "Jobs"). False
+   * when the conversion is already stored.
+   */
+  const waitOn = (
+    conversions: StoredConversions,
+    sha256: string,
+    waiter: ConversionWaiter,
+    transaction?: RecordTransaction,
+  ) => {
+    const target = conversionTarget(sha256);
+    const key = conversionKey(target);
+    return conversions.wait(
+      target,
+      waiter,
+      async (tx) => {
+        const sent = await deps.knowledge.send(
+          convertQueue,
+          {
+            run: waiter.run,
+            tenant: waiter.tenant,
+            file: sha256,
+            dataset: waiter.dataset,
+            record: waiter.record,
+            tenants: waiter.tenant,
+          },
+          { key, priority: convertPriority.run, transaction: tx },
+        );
+        if (sent === null)
+          await deps.knowledge.serveAlso?.(convertQueue, key, waiter.tenant, { transaction: tx });
+      },
+      transaction,
+    );
+  };
   const ingest = admittedWork(
     knowledgeIngestQueue,
     async ({ job, run, cancelled }) => {
@@ -223,12 +373,32 @@ export const knowledgeWork = (
         pipeline: run.pipeline,
         generation,
         onPlan: (plan) => deps.runs.report(run.id, { ...plan.counts, ...skips() }, 'set'),
-        send: (record: string, transaction: RecordTransaction) =>
-          deps.knowledge.send(
-            knowledgeIndexQueue,
-            { run: run.id, tenant: job.data.tenant, generation, record },
-            { key: knowledgeKeys.index(generation, record), transaction },
-          ),
+        send: async (record: string, transaction: RecordTransaction) => {
+          const index = () =>
+            deps.knowledge.send(
+              knowledgeIndexQueue,
+              { run: run.id, tenant: job.data.tenant, generation, record },
+              { key: knowledgeKeys.index(generation, record), transaction },
+            );
+          const conversions = deps.conversions;
+          if (!conversions) return index();
+          // A file a converter reads with no stored conversion is converted first; its record
+          // waits and the finished conversion sends the index job (ADR 0042, "Ingestion runs").
+          const waiter = {
+            dataset: run.dataset,
+            record,
+            generation,
+            run: run.id,
+            tenant: job.data.tenant,
+          };
+          // A wait left from an earlier run, on a file the record no longer holds or on a
+          // conversion that ended as a dead letter, is ended before the record waits again.
+          await conversions.clear(transaction, run.dataset, record);
+          let waiting = false;
+          for (const file of await conversions.missing(transaction, record, acceptedConverters))
+            waiting = (await waitOn(conversions, file.sha256, waiter, transaction)) || waiting;
+          return waiting ? undefined : index();
+        },
       });
     },
     deps.admission,
@@ -257,7 +427,16 @@ export const knowledgeWork = (
           const signal = job.signal;
           const { dataset } = await datasetOf(deps, run, signal);
           const tenant = tenantOf(run, deps.admission.platformTenant);
-          const found = await listingFor(deps, run, signal);
+          const conversions = deps.conversions;
+          // With stored conversions, the listing reads them instead of converting (ADR 0042).
+          const found = await listingFor(
+            deps,
+            run,
+            signal,
+            conversions
+              ? storedConverter(deps.converter ?? {}, conversions, acceptedConverters)
+              : undefined,
+          );
           const listing = found.listing;
           const chunking = await deps.records.chunking(
             job.data.generation,
@@ -304,6 +483,26 @@ export const knowledgeWork = (
                 chunks = n;
               },
               ...(embedder ? { embedder } : {}),
+              ...(conversions
+                ? {
+                    pending: async (files: { sha256: string }[]) => {
+                      const waiter = {
+                        dataset: run.dataset,
+                        record: job.data.record,
+                        generation: job.data.generation,
+                        run: run.id,
+                        tenant: job.data.tenant,
+                      };
+                      let waiting = false;
+                      for (const file of files)
+                        waiting = (await waitOn(conversions, file.sha256, waiter)) || waiting;
+                      if (!waiting)
+                        throw new ConversionStoredMeanwhile(
+                          'the conversion was stored while the job read it; its retry reads it',
+                        );
+                    },
+                  }
+                : {}),
             });
           } catch (error) {
             if (!(error instanceof GenerationBusy)) throw error;
@@ -326,9 +525,156 @@ export const knowledgeWork = (
       deps.admission,
     );
 
+  /**
+   * A convert job's error names its record by number and the error by its code, never a file name,
+   * a path or a dataset: its dead letter is shown to every organisation waiting on it (ADR 0042).
+   */
+  const convertError = (record: string, error: unknown) => {
+    const code =
+      (error as { code?: unknown }).code ?? (error instanceof Error ? error.name : 'Error');
+    // The code goes on the error too, so the failed-job log can name it (issue 532).
+    return Object.assign(
+      new Error(`converting a file of record ${record} failed: ${String(code)}`),
+      {
+        code: String(code),
+      },
+    );
+  };
+
+  const convert = admittedConversion(
+    convertQueue,
+    async (input) => {
+      try {
+        await convertFile(input);
+      } catch (error) {
+        throw convertError(input.job.data.record, error);
+      }
+    },
+    {
+      ...deps.admission,
+      waiting: async (data) =>
+        ((await deps.conversions?.waiting(conversionTarget(data.file))) ?? []).map((w) => w.run),
+    },
+  );
+
+  /**
+   * The job's file, fetched as its record's own run fetches it, through the same guard and
+   * policies: the sender's record, or, when the sender is gone, the record of the waiting run that
+   * admitted the job.
+   */
+  async function fetchFile(
+    job: ConvertJob['job'],
+    run: IngestionExecution,
+    sender: IngestionExecution | undefined,
+  ) {
+    try {
+      const waiter = sender
+        ? { dataset: job.data.dataset, record: job.data.record }
+        : (await deps.conversions?.waiting(conversionTarget(job.data.file)))?.find(
+            (w) => w.run === run.id,
+          );
+      if (!waiter) throw new Error(`no waiting record of run ${run.id} names the file`);
+      const record = await deps.records.find(waiter.record);
+      if (!record || record.dataset !== waiter.dataset)
+        throw new Error(`record ${waiter.record} is not a record of its dataset`);
+      const { listing } = await listingFor(deps, sender ?? run, job.signal, deps.converter);
+      if (!listing.file) throw new Error(`the source of record ${waiter.record} fetches no file`);
+      return await listing.file(record.record, job.data.file);
+    } catch (error) {
+      throw new FetchFailed(error);
+    }
+  }
+
+  /** The index job of a record whose wait a stored conversion ended. */
+  const sendIndex = (waiter: ConversionWaiter, transaction: RecordTransaction) =>
+    deps.knowledge.send(
+      knowledgeIndexQueue,
+      {
+        run: waiter.run,
+        tenant: waiter.tenant,
+        generation: waiter.generation,
+        record: waiter.record,
+      },
+      { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
+    );
+
+  async function convertFile({ job, run, sender, cancelled }: ConvertJob) {
+    deps.bound?.();
+    const { conversions, converter } = deps;
+    if (!conversions || !converter) throw new Error('this worker keeps no stored conversions');
+    if (await cancelled()) return;
+    // Stored under the key its job and waits name, so the conversion always ends those waits.
+    const key = conversionTarget(job.data.file);
+    let stored: { pages: string[]; output?: Uint8Array; failure?: string };
+    // A conversion stored by an earlier try is not made again: only its waits are ended. A file
+    // stored as unreachable is fetched again, by every try.
+    const kept = await conversions.find(job.data.file, [
+      { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
+    ]);
+    if (kept && kept.failure !== 'unreachable')
+      stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
+    else
+      try {
+        const file = await fetchFile(job, run, sender);
+        const conversion = await converter.convert(file);
+        const made = conversion.converter;
+        if (made.name !== key.converter || made.version !== key.version)
+          throw new Error(
+            `the converter made ${made.name} ${made.version}, not the job's converter`,
+          );
+        stored = {
+          pages: conversion.pages,
+          ...(conversion.output ? { output: conversion.output } : {}),
+        };
+      } catch (error) {
+        const failure =
+          error instanceof FetchFailed ? fetchRefusalOf(error.cause) : refusalOf(error);
+        if (!failure) throw error instanceof FetchFailed ? error.cause : error;
+        // A refusal is stored with no pages, which ends the waits: documents skip the file.
+        stored = { pages: [], failure };
+      }
+    // The native output goes to Blob first, so a stored conversion never names a missing path.
+    const output =
+      stored.output && deps.nativeOutputs
+        ? await deps.nativeOutputs.put(key, stored.output, stored.pages.length)
+        : undefined;
+    const { busy } = await conversions.store(
+      {
+        ...key,
+        derivation: derivationOf(key.converter),
+        pages: stored.pages,
+        ...(output ? { outputPath: output.path } : {}),
+        ...(stored.failure ? { failure: stored.failure } : {}),
+      },
+      sendIndex,
+    );
+    if (busy.length > 0)
+      throw new IndexJobBusy(
+        `${busy.length} record(s) had an index job still queued or running; tried again`,
+      );
+  }
+
   return {
     platform: [ingest as QueueWork],
-    knowledge: [{ ...documentWork(knowledgeIndexQueue), options: documentOptions } as QueueWork],
+    knowledge: [
+      { ...documentWork(knowledgeIndexQueue), options: documentOptions } as QueueWork,
+      ...(deps.conversions
+        ? [{ ...convert, options: { concurrency: deps.convertConcurrency ?? 2 } } as QueueWork]
+        : []),
+      ...(deps.conversions && deps.nativeOutputs?.files && deps.nativeOutputs.read
+        ? [
+            seedWork({
+              conversions: deps.conversions,
+              outputs: deps.nativeOutputs as Required<
+                NonNullable<KnowledgeHandlerDeps['nativeOutputs']>
+              >,
+              sendIndex,
+              ...(deps.log ? { log: deps.log } : {}),
+              ...(deps.bound ? { bound: deps.bound } : {}),
+            }),
+          ]
+        : []),
+    ],
     heavy: [{ ...documentWork(knowledgeFillQueue), options: documentOptions } as QueueWork],
   };
 };

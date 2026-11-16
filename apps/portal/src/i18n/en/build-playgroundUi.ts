@@ -68,6 +68,7 @@ export const playgroundUi = {
     modelSilentWithin:
       '{model} did not respond within 60 seconds. There is nothing wrong with the setup. Try again in a moment. {notStored}',
     refused: '{model} cannot be used in this setup.',
+    runRefused: 'The run was refused: {reason} {notStored}',
     invalidSetup: 'The run was refused: {reason} {notStored}',
     setupNotRunnable: 'something in the “{section}” part does not fit this setup.',
     quotaUsedUp: 'The quota for the month is used up. {notStored}',
@@ -173,6 +174,7 @@ export const playgroundUi = {
     versionHelp:
       'Uses the model, datasets, skills and building blocks in {version}. You can change the model here without changing the service.',
     model: 'Model',
+    candidateModel: 'Not released',
     ruleOwnedBy: 'The rule is owned by {owner}.',
     datasets: 'Datasets',
     skills: 'Skills',

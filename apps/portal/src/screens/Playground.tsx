@@ -11,8 +11,10 @@ import { PlaygroundPanel } from '../components/playground/PlaygroundPanel';
 import { navigate, useNarrow } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
+import { useCallback, useMemo } from 'react';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './services/blocks/BlocksStep';
-import { handOver } from './services/blocks/handoff';
+import { handOver, playgroundLayout } from './services/blocks/handoff';
+import { keepStart, keptStart, type BlocksStart } from './services/blocks/layoutStore';
 import './playground.css';
 
 type View = 'backend' | 'frontend';
@@ -29,19 +31,16 @@ const hrefs: Record<View, string> = {
 export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const t = useT();
   const narrow = useNarrow();
-  const blocks = useBlocksState();
+  const start = useCallback(() => keptStart(tenant, playgroundLayout), [tenant]);
+  const keep = useCallback(
+    (kept: BlocksStart) => keepStart(tenant, playgroundLayout, kept),
+    [tenant],
+  );
+  const blocks = useBlocksState(start, undefined, keep);
+  // Without a draft the try view runs the playground's own setup.
+  const run = useMemo(() => ({ api, tenant }), [api, tenant]);
   const view: View = route.segments[1] === 'backend' ? 'backend' : 'frontend';
   const fullscreen = route.segments[1] === 'preview';
-  const chat = (
-    <PlaygroundPanel
-      key={blocks.conversation}
-      layout="full"
-      bare
-      api={api}
-      tenant={tenant}
-      tenantName={tenantName}
-    />
-  );
   const address = t('playground.frontendAddress');
   const makeService = () => {
     handOver({
@@ -55,7 +54,7 @@ export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
     return (
       <BlocksFullscreen
         state={blocks}
-        chat={chat}
+        run={run}
         address={address}
         backHref="#/playground"
         onExit={() => navigate('/playground')}
@@ -86,7 +85,7 @@ export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
           <BlocksStep
             state={blocks}
             narrow={narrow}
-            chat={chat}
+            run={run}
             address={address}
             onFullscreen={() => navigate('/playground/preview')}
           />

@@ -7,7 +7,7 @@ import {
   type DocumentConverter,
 } from '@genai/ingest';
 import { credentialFor, type SecretResolver } from '@genai/kernel';
-import { createLocalConverter } from '@genai/providers-documents';
+import { createLocalConverter, type UnreadablePage } from '@genai/providers-documents';
 
 const delaysFrom = (raw: string | undefined) => {
   if (raw === undefined) return undefined;
@@ -27,15 +27,22 @@ const timeoutFrom = (raw: string | undefined) => {
 export const documentConverterFrom = (
   env: Record<string, string | undefined>,
   secrets: SecretResolver,
+  log?: (msg: string, fields: Record<string, unknown>) => void,
 ): DocumentConverter | undefined => {
   const choice = env.DOCUMENT_CONVERTER ?? 'local';
+  const localOptions = log
+    ? {
+        onUnreadablePage: (page: UnreadablePage) =>
+          log('a PDF page could not be read', { ...page }),
+      }
+    : {};
   if (choice === 'none') return undefined;
-  if (choice === 'local') return createLocalConverter();
+  if (choice === 'local') return createLocalConverter(localOptions);
   if (choice === 'marker') {
     if (!env.MARKER_URL) throw new Error('DOCUMENT_CONVERTER=marker needs MARKER_URL');
     const retryDelaysMs = delaysFrom(env.MARKER_RETRY_DELAYS_MS);
     const timeoutMs = timeoutFrom(env.MARKER_TIMEOUT_MS);
-    const local = createLocalConverter();
+    const local = createLocalConverter(localOptions);
     return byExtension([
       {
         converter: markerConverter({

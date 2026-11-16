@@ -3,6 +3,12 @@
   max-width: none;
 }
 
+/* The service page's body is narrower and padded on its own; here the column's padding is enough. */
+.service-body.service-interface:has(.blocks-split, .blocks-fullscreen) {
+  max-width: none;
+  padding-inline: 0;
+}
+
 .blocks-split {
   flex: 1;
   min-height: 0;
@@ -23,17 +29,36 @@
 }
 
 .blocks-resize {
+  position: relative;
   flex: 0 0 8px;
   cursor: col-resize;
+  touch-action: none;
   background: var(--ds-color-neutral-border-subtle);
   background-clip: content-box;
   padding: 0 3px;
 }
 
+/* The line is thin; the place to grab it reaches 9 px past the line on each side. */
+.blocks-resize::before {
+  content: '';
+  position: absolute;
+  inset: 0 -6px;
+}
+
+/* Nothing beside a dragged edge is selected while it moves, and the cursor stays the edge's. */
+.blocks-split:has(> .blocks-resize[data-dragging]) {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.blocks-fullscreen:has(> .blocks-resize[data-dragging]) {
+  user-select: none;
+  cursor: row-resize;
+}
+
 .blocks-resize:hover,
 .blocks-resize:focus-visible {
   background-color: var(--ds-color-accent-border-default);
-  outline: none;
 }
 
 .blocks-panel {
@@ -161,19 +186,24 @@
   background: var(--ds-color-neutral-background-tinted);
 }
 
-/* The space the service is drawn in. The frame inside is drawn at a fixed width and zoomed to fit;
-   it scrolls sideways only below the smallest zoom. */
+/* Zoomed to fit; below the smallest zoom it scrolls sideways, from its left edge. */
 .service-preview-viewport {
   display: flex;
-  justify-content: center;
+  justify-content: safe center;
   width: 100%;
   overflow: auto hidden;
   border-radius: var(--ds-border-radius-lg);
 }
 
-/* Menus that float out of the preview are placed in screen pixels, so they undo the zoom. */
-.service-preview-frame .ds-dropdown {
+/* Menus and thread titles float out of the preview in screen pixels, so they undo the zoom. */
+.service-preview-frame .ds-dropdown,
+.service-preview-frame .uib-threads-overlay {
   zoom: calc(1 / var(--preview-scale, 1));
+}
+
+/* A thread's title over its row has the row's text size; its box keeps screen-size padding. */
+.service-preview-frame .uib-threads-overlay > * {
+  zoom: var(--preview-scale, 1);
 }
 
 .service-preview-frame {
@@ -185,6 +215,20 @@
   box-sizing: border-box;
   border-radius: var(--ds-border-radius-lg);
   background: var(--ds-color-neutral-surface-tinted);
+}
+
+/* The assistant fills the frame, as tall as a laptop's window. */
+.service-preview-frame[data-mode='try'] {
+  display: block;
+  height: 720px;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The try view's place in the frame, and the element the kept assistant is drawn in. */
+.service-preview-slot,
+.service-preview-try {
+  height: 100%;
 }
 
 .service-preview-empty {
@@ -201,18 +245,15 @@
   min-width: 0;
 }
 
-.preview-panel[data-panel='left'],
-.try-left {
+.preview-panel[data-zone='primary'] {
   flex: 0 0 26%;
 }
 
-.preview-panel[data-panel='main'],
-.try-main {
+.preview-panel[data-zone='main'] {
   flex: 1 1 48%;
 }
 
-.preview-panel[data-panel='right'],
-.try-right {
+.preview-panel[data-zone='secondary'] {
   flex: 0 0 30%;
 }
 
@@ -258,109 +299,6 @@
   color: var(--ds-color-neutral-text-subtle);
 }
 
-.try-left > [data-bottom='true'] {
-  margin-top: auto;
-}
-
-.try-label {
-  font-weight: 500;
-  font-size: var(--ds-font-size-3);
-}
-
-.try-item {
-  font-size: var(--ds-font-size-3);
-  padding: var(--ds-size-2) var(--ds-size-3);
-  border-radius: var(--ds-border-radius-md);
-}
-
-.try-settings {
-  justify-content: flex-start;
-  color: var(--ds-color-neutral-text-subtle);
-}
-
-.try-item[data-selected='true'] {
-  background: var(--ds-color-accent-surface-tinted);
-  color: var(--ds-color-accent-text-default);
-}
-
-.try-filter-summary {
-  margin: 0;
-  font-size: var(--ds-font-size-3);
-  padding: var(--ds-size-3);
-  border-radius: var(--ds-border-radius-md);
-  background: var(--ds-color-neutral-background-tinted);
-}
-
-.try-link {
-  color: var(--ds-color-accent-text-subtle);
-  text-decoration: underline;
-}
-
-.try-steps {
-  margin: 0;
-  padding-left: var(--ds-size-5);
-}
-
-.try-sources {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-size-3);
-}
-
-.try-source {
-  display: flex;
-  gap: var(--ds-size-2);
-}
-
-.try-source-title {
-  font-size: var(--ds-font-size-3);
-  font-weight: 500;
-}
-
-.try-footnote {
-  flex: 0 0 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--ds-border-radius-full);
-  font-size: var(--ds-font-size-1);
-  background: var(--ds-color-accent-surface-tinted);
-  color: var(--ds-color-accent-text-default);
-}
-
-.try-document {
-  padding: var(--ds-size-3);
-  border-radius: var(--ds-border-radius-md);
-  border: 1px dashed var(--ds-color-neutral-border-subtle);
-}
-
-.try-chat {
-  flex: 1;
-  min-height: 360px;
-  display: flex;
-  flex-direction: column;
-}
-
-.try-chat > .playground-panel {
-  flex: 1;
-  padding-bottom: var(--ds-size-6);
-}
-
-.try-chat .playground-input {
-  margin-top: auto;
-}
-
-.try-chat .try-footnotes {
-  margin: auto 0 0;
-}
-
-.try-chat:has(.try-footnotes) .playground-input {
-  margin-top: 0;
-}
-
 .blocks-fullscreen {
   display: flex;
   flex-direction: column;
@@ -378,9 +316,15 @@
   overflow: visible;
 }
 
-.try-tool-trigger {
-  justify-content: space-between;
-  width: 100%;
+/* Narrow: the switcher wraps to a second line rather than run past the screen's edge. */
+.blocks-left[data-narrow] .blocks-switcher {
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  block-size: auto;
+}
+
+.blocks-left[data-narrow] .blocks-switcher > * {
+  block-size: var(--dsc-togglegroup-button-size);
 }
 
 .blocks-fullscreen .service-preview-frame {
@@ -400,8 +344,46 @@
   background-clip: content-box;
 }
 
-.try-tool-heading {
+.blocks-resize[data-axis='y']::before {
+  inset: -4px 0;
+}
+
+/* «Kopier oppsettet» and «Lim inn oppsett», under the templates or the blocks. */
+.blocks-transfer {
+  margin-top: var(--ds-size-8);
+  padding-top: var(--ds-size-6);
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.blocks-transfer-actions {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: var(--ds-size-2);
+}
+
+.blocks-transfer [role='status'] {
+  margin: 0;
+}
+
+/* «Tekster»: a text and what goes with it, side by side where there is room. */
+.blocks-texts-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--ds-size-2);
+}
+
+.blocks-texts-row > .ds-field {
+  flex: 1 1 12rem;
+}
+
+/* Every suggestion over its remove button, however wide the button's label. */
+.blocks-texts-suggestion {
+  flex-direction: column;
+  align-items: start;
+}
+
+.blocks-texts-suggestion > .ds-field {
+  flex: none;
+  align-self: stretch;
 }

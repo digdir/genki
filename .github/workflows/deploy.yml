@@ -23,7 +23,7 @@ jobs:
   build:
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     environment: test
     permissions:
       contents: read
@@ -33,6 +33,7 @@ jobs:
       api: ${{ steps.image.outputs.api }}
       worker: ${{ steps.image.outputs.worker }}
       apps: ${{ steps.image.outputs.apps }}
+      docling: ${{ steps.image.outputs.docling }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
@@ -80,17 +81,28 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
+      # The Docling server (docker/docling): the parser benchmark winner's Docling and Tesseract on Debian, packages locked.
+      - id: docling
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: docker/docling
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-docling:${{ github.sha }}
       - id: image
         env:
           SERVER: ${{ steps.registry.outputs.server }}
           API_DIGEST: ${{ steps.api.outputs.digest }}
           WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
           APPS_DIGEST: ${{ steps.apps.outputs.digest }}
+          DOCLING_DIGEST: ${{ steps.docling.outputs.digest }}
         run: |
           {
             echo "api=$SERVER/genai-api@$API_DIGEST"
             echo "worker=$SERVER/genai-worker@$WORKER_DIGEST"
             echo "apps=$SERVER/genai-apps@$APPS_DIGEST"
+            echo "docling=$SERVER/genai-docling@$DOCLING_DIGEST"
           } >> "$GITHUB_OUTPUT"
           row() {
             platform=$(docker buildx imagetools inspect --raw "$SERVER/genai-$1@$2" |
@@ -107,6 +119,7 @@ jobs:
             row api "$API_DIGEST"
             row worker "$WORKER_DIGEST"
             row apps "$APPS_DIGEST"
+            row docling "$DOCLING_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-test:
@@ -169,6 +182,9 @@ jobs:
           FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
           TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+          LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
+          TRACES_ENDPOINT: ${{ vars.TRACES_ENDPOINT }}
+          TRACES_RESIDENCY: ${{ vars.TRACES_RESIDENCY }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
           LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
@@ -182,7 +198,7 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
             --parameters infra/env/test.bicepparam \
-            --parameters apiImage="${{ steps.api.outputs.image }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" appVersion="${{ steps.api.outputs.version }}" \
+            --parameters apiImage="${{ steps.api.outputs.image }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" appVersion="${{ steps.api.outputs.version }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: api skipped
@@ -202,6 +218,71 @@ jobs:
             sleep 15
           done
           echo "health check did not report ${{ github.sha }}"; exit 1
+
+  changelog:
+    needs: deploy-test
+    if: github.ref == 'refs/heads/main'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: smoke-review
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - id: login
+        if: vars.AZURE_REVIEW_FOUNDRY_RESOURCE != ''
+        continue-on-error: true
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_REVIEW_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_REVIEW_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_REVIEW_SUBSCRIPTION_ID }}
+      - name: Collect the pull requests since the previous deploy and summarise them
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.sha }}
+          FOUNDRY_RESOURCE: ${{ steps.login.outcome == 'success' && vars.AZURE_REVIEW_FOUNDRY_RESOURCE || '' }}
+          MODEL: ${{ vars.DELIVERY_MODEL || vars.SMOKE_REVIEW_MODEL || 'claude-sonnet-5-5' }}
+        run: node scripts/delivery.ts collect
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deploy-changelog
+          path: delivery-out/changelog.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+  release:
+    needs: [deploy-test, changelog]
+    if: always() && github.ref == 'refs/heads/main' && needs.deploy-test.result == 'success'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: deploy-changelog
+          path: delivery-out
+      - name: Create the release for this deploy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: node scripts/delivery.ts release
 
   deploy-prod:
     needs: [build, deploy-test]
@@ -245,6 +326,7 @@ jobs:
           copy_image genai-api "${{ needs.build.outputs.api }}" api
           copy_image genai-worker "${{ needs.build.outputs.worker }}" worker
           copy_image genai-apps "${{ needs.build.outputs.apps }}" apps
+          copy_image genai-docling "${{ needs.build.outputs.docling }}" docling
       - id: deploy
         env:
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
@@ -265,6 +347,8 @@ jobs:
           FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
           TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+          LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
+          LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
           KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
@@ -274,7 +358,7 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
             --parameters infra/env/prod.bicepparam \
-            --parameters apiImage="${{ steps.image.outputs.api }}" workerImage="${{ steps.image.outputs.worker }}" appsImage="${{ steps.image.outputs.apps }}" appVersion="${{ github.sha }}" \
+            --parameters apiImage="${{ steps.image.outputs.api }}" workerImage="${{ steps.image.outputs.worker }}" appsImage="${{ steps.image.outputs.apps }}" doclingImage="${{ steps.image.outputs.docling }}" appVersion="${{ github.sha }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: smoke

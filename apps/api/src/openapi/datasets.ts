@@ -278,6 +278,12 @@ const Execution = z
       .optional()
       .describe('Runs as knowledge jobs in the worker and ends when its jobs have ended'),
     admittedAt: z.string().optional().describe('When the API last admitted the run'),
+    admissionRunsOutAt: z
+      .string()
+      .optional()
+      .describe(
+        'In lockdown, on a queued or running run that is not being cancelled: when its admission runs out and its jobs stop, 24 hours after it was admitted',
+      ),
     cancelRequestedAt: z.string().optional(),
     generation: z
       .string()
@@ -446,6 +452,12 @@ const EngineSwitch = z
       })
       .optional(),
     comparisonNote: z.string().optional(),
+    admissionRunsOutAt: z
+      .string()
+      .optional()
+      .describe(
+        'In lockdown, while the switch has open runs: the earliest time one of their admissions runs out',
+      ),
     generation: z
       .string()
       .describe('The generation the switch fills; on the knowledge database, g-<yyyymmdd>-<6 hex>'),
@@ -902,7 +914,25 @@ const pipelineRoutes = (base: Base): RouteConfig[] => {
         400: either('Missing reason, or the run does not run as jobs or has not ended'),
         ...guarded(base, 'manage-datasets'),
         404: either('No such dataset'),
-        409: either('The pipeline has another open run'),
+        409: either(
+          'The pipeline has another open run, or the run wrote to a generation its switch discarded',
+        ),
+      },
+    }),
+    createRoute({
+      method: 'post',
+      path: `${root}/{id}/executions/{execution}/readmit`,
+      summary: `Admit a queued or running run that runs as knowledge jobs again from now; its jobs stay as they are and go on for another 24 hours in lockdown (${who(base, 'manage-datasets')}, audited, locked in lockdown for others than trusted logins)`,
+      request: {
+        params: params({ id, execution: param('a1b2c3') }),
+        headers: reasonHeader,
+      },
+      responses: {
+        200: audited(Execution, 'The run, admitted again'),
+        400: either('Missing reason'),
+        ...guarded(base, 'manage-datasets'),
+        404: either('No such dataset'),
+        409: either('The run is not queued or running, or does not run as jobs'),
       },
     }),
     createRoute({
@@ -1002,6 +1032,18 @@ const engineRoutes = (base: Base): RouteConfig[] => {
     }),
     createRoute({
       method: 'post',
+      path: `${root}/engine-switches/{sid}/readmit`,
+      summary: `Admit the switch's open runs again from now, so their jobs go on for another 24 hours in lockdown (${who(base, 'manage-datasets')}, audited, locked in lockdown for others than trusted logins)`,
+      request: { params: switchParams, headers: reasonHeader },
+      responses: {
+        200: audited(EngineSwitch, 'Admitted again'),
+        400: problem('A missing reason'),
+        ...failures,
+        409: problem('The switch has no open runs'),
+      },
+    }),
+    createRoute({
+      method: 'post',
       path: `${root}/engine-switches/{sid}/cancel`,
       summary: `Stop an open switch and drop what it wrote (${who(base, 'manage-datasets')}, audited)`,
       request: { params: switchParams, headers: reasonHeader },
@@ -1025,7 +1067,9 @@ const engineRoutes = (base: Base): RouteConfig[] => {
         ),
         400: problem('Reason too short, or the change was refused'),
         ...failures,
-        409: problem('Not ready, the dataset changed, or the engine cannot be opened'),
+        409: problem(
+          'Not ready, the dataset changed, the engine cannot be opened, or a run of the switch is still open',
+        ),
       },
     }),
     createRoute({

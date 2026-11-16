@@ -104,7 +104,8 @@ import { DeveloperSection, isDeveloperTool } from '../service/DeveloperSection';
 import { IntegrationService, IntegrationTab } from '../developer-routes';
 import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
-import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
+import { InterfaceTab } from './blocks/InterfaceTab';
+import { TryViewKeeper } from './blocks/TryViewKeeper';
 import { takeOver } from './blocks/handoff';
 import '../service/service.css';
 
@@ -445,7 +446,8 @@ export const Builder = ({
   const pushMsg = (m: ChatMessage) => setMessages((ms) => [...ms, m]);
   const addCard = (cid: string, card: ChangeCard) => setExtra((x) => ({ ...x, [cid]: card }));
   const split = !narrow;
-  const blocks = useBlocksState(isNew ? takeOver : undefined);
+  // A layout made in the playground follows the new service made from it.
+  useState(() => (isNew ? takeOver(tenant, id) : undefined));
   const [resultWish, setResultWish] = useState('');
   const showPane = (p: 'assistent' | 'tjeneste') => !split && setPane(p);
 
@@ -1122,7 +1124,6 @@ export const Builder = ({
   const name = service.metadata.name || t('services.newServiceName');
   const sections = tabSections({ isNew });
   const withAssistant = !readOnly && (section === 'setup' || section === 'test');
-  const ownLayout = section === 'blocks';
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -1432,6 +1433,8 @@ export const Builder = ({
           editor={setup(['start'])}
         />
       );
+    // The interface tab is drawn below, where it can hold the builder assistant.
+    if (section === 'interface') return null;
     if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
     if (section === 'quality') return <QualitySection {...screenProps} id={id} />;
     if (section === 'batch')
@@ -1632,43 +1635,28 @@ export const Builder = ({
     />
   );
 
-  const previewChat = (
-    <PlaygroundPanel
-      key={blocks.conversation}
-      layout="full"
-      bare
-      context="service"
-      name={serviceId}
-      api={api}
-      tenant={tenant}
-      tenantName={tenantName}
-      serviceDraft={{ definition, files }}
-    />
+  const content = (
+    <div className={`service-body service-${section}`}>
+      {section === 'interface' ? (
+        <InterfaceTab
+          api={api}
+          tenant={tenant}
+          service={id}
+          definition={definition}
+          files={files}
+          narrow={narrow}
+          fullscreen={detail === 'preview'}
+          backHref={`#${servicePath(routeId, 'interface')}`}
+          {...(readOnly ? {} : { assistant: assistantPanel })}
+          onFullscreen={() => go('interface', '/preview')}
+          onExitFullscreen={() => go('interface')}
+        />
+      ) : (
+        body
+      )}
+    </div>
   );
-  const previewAddress = `${serviceId}.genki.no`;
-
-  const content = <div className={`service-body service-${section}`}>{body}</div>;
-  const blocksContent =
-    detail === 'preview' ? (
-      <BlocksFullscreen
-        state={blocks}
-        chat={previewChat}
-        address={previewAddress}
-        backHref={`#${servicePath(routeId, 'blocks')}`}
-        onExit={() => go('blocks')}
-      />
-    ) : (
-      <BlocksStep
-        state={blocks}
-        narrow={!split}
-        assistant={assistantPanel}
-        chat={previewChat}
-        address={previewAddress}
-        onFullscreen={() => go('blocks', '/preview')}
-      />
-    );
-
-  return (
+  const page = (
     <DeveloperView.Provider value={!isNew}>
       <ServicePageContext.Provider value>
         <div className="service-page">
@@ -1787,9 +1775,7 @@ export const Builder = ({
               onResolve={resolveOpenConflicts}
             />
           ) : null}
-          {ownLayout ? (
-            blocksContent
-          ) : !withAssistant ? (
+          {!withAssistant ? (
             content
           ) : split ? (
             <BuilderSplit>
@@ -1812,4 +1798,6 @@ export const Builder = ({
       </ServicePageContext.Provider>
     </DeveloperView.Provider>
   );
+  // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
+  return <TryViewKeeper>{page}</TryViewKeeper>;
 };

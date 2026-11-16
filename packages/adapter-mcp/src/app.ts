@@ -54,11 +54,20 @@ export interface TurnChunk {
   contentMarkdown: string;
 }
 
+export interface TurnMarker {
+  marker: string;
+  chunk_id: string;
+  document: string;
+}
+
 export interface ConversationTurn {
   role: 'user' | 'assistant';
   text: string;
   chunks?: TurnChunk[];
+  markers?: TurnMarker[];
   diagnostics?: unknown;
+  /** The run that wrote an assistant turn, which feedback on the answer names. */
+  task?: string;
 }
 
 export type OpenedConversation =
@@ -188,13 +197,26 @@ const datasetScope = (args: Record<string, unknown>, entry: CapabilityEntry) => 
 
 const text = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
-const assistantTurn = (output: ToolOutput): ConversationTurn => {
+const turnMarkers = (v: unknown): TurnMarker[] =>
+  (Array.isArray(v) ? v : []).flatMap((m) => {
+    if (!isRecord(m)) return [];
+    const marker = text(m.marker);
+    const chunkId = text(m.chunk_id);
+    const document = text(m.document);
+    return marker === undefined || chunkId === undefined || document === undefined
+      ? []
+      : [{ marker, chunk_id: chunkId, document }];
+  });
+
+const assistantTurn = (output: ToolOutput, task: string): ConversationTurn => {
   const s = output.structured;
   const chunks = Array.isArray(s.chunks) ? (s.chunks as Record<string, unknown>[]) : [];
+  const markers = turnMarkers(s.markers);
   const attribution = isRecord(s.search_attribution) ? [s.search_attribution] : [];
   return {
     role: 'assistant',
     text: output.text,
+    task,
     chunks: chunks.slice(0, 20).map((c) => {
       const docNum = text(c.doc_num);
       return {
@@ -204,6 +226,7 @@ const assistantTurn = (output: ToolOutput): ConversationTurn => {
         contentMarkdown: text(c.content_markdown) ?? '',
       };
     }),
+    ...(markers.length ? { markers } : {}),
     diagnostics: {
       ...(isRecord(s.execution_metadata) ? { 'execution-metadata': s.execution_metadata } : {}),
       'backend-issues': [],
@@ -404,7 +427,7 @@ export const createMcpApp = (options: McpAppOptions) => {
 
       const output = mapOutput(parts);
       await options.conversations
-        ?.append(hooks.request, conversationId, assistantTurn(output))
+        ?.append(hooks.request, conversationId, assistantTurn(output, run.task))
         .catch(() => undefined);
       const models = await modelsOf(run.task);
       return outcomeOf(

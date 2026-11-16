@@ -8,6 +8,7 @@ import {
 } from '@genai/identity';
 import { createLocalJWKSet } from 'jose';
 import { isDevMode } from './boot-guard.js';
+import { employeeClientIds } from './lockdown.js';
 
 type Env = Record<string, string | undefined>;
 type RegisteredClients = NonNullable<
@@ -69,6 +70,7 @@ export const loginIssuers = async ({
         env.ANSATTPORTEN_ISSUER,
         env.ANSATTPORTEN_JWKS_URI ?? `${env.ANSATTPORTEN_ISSUER}/jwks.json`,
       ),
+      trustedClients: employeeClientIds(env),
       registeredClients,
       ...(trustedEntra ? { trustedEntra } : {}),
     });

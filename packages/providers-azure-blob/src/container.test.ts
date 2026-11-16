@@ -15,9 +15,15 @@ vi.mock('@azure/identity', () => ({
     }
     getToken = async () => null;
   },
+  AzureCliCredential: class {
+    getToken = async () => null;
+  },
 }));
+import { AzureCliCredential } from '@azure/identity';
+import { StorageSharedKeyCredential } from '@azure/storage-blob';
 import {
   AzureNativeOutputContainer,
+  operatorNativeOutputContainer,
   nativeOutputStoreFromEnv,
   type BlobContainerClient,
 } from './container.js';
@@ -138,5 +144,23 @@ describe('nativeOutputStoreFromEnv', () => {
       },
     );
     expect(azure.container).toBeInstanceOf(AzureNativeOutputContainer);
+  });
+});
+
+describe('operatorNativeOutputContainer', () => {
+  const url = 'https://genkitestdata.blob.core.windows.net/conversions';
+
+  it("an operator's upload signs with the az CLI login, or with the account key only when given one", async () => {
+    const login = await operatorNativeOutputContainer(url);
+    expect((login.client as { credential?: unknown }).credential).toBeInstanceOf(
+      AzureCliCredential,
+    );
+    const keyed = await operatorNativeOutputContainer(url, { key: 'a2V5' });
+    expect((keyed.client as { credential?: unknown }).credential).toBeInstanceOf(
+      StorageSharedKeyCredential,
+    );
+    await expect(operatorNativeOutputContainer(`${url}?sv=1&sig=abc`)).rejects.toThrow(
+      /CONVERSIONS_BLOB_URL|SAS/,
+    );
   });
 });

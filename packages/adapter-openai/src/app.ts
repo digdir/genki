@@ -31,7 +31,9 @@ import {
   noAnswerOf,
   provenanceOf,
   sourcesOf,
+  type AnswerMarker,
   type OwuiSource,
+  type SourceExcerpt,
   type SourceRecord,
 } from './sources.js';
 import {
@@ -138,6 +140,7 @@ export interface AskTurn {
   text: string;
   chunks?: { chunkId: string; docTitle: string; docNum?: string; contentMarkdown: string }[];
   sources?: StoredSource[];
+  markers?: AnswerMarker[];
   task?: string;
   attachments?: string[];
   input?: Record<string, unknown>;
@@ -148,7 +151,8 @@ export interface StoredSource {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string; position?: number }[];
+  excerpts: SourceExcerpt[];
+  markers?: string[];
 }
 
 export interface AskConversations {
@@ -1229,6 +1233,7 @@ const storedSource = (s: OwuiSource): StoredSource => ({
   ...(s.url === undefined ? {} : { url: s.url }),
   ...(s.document_id === undefined ? {} : { document_id: s.document_id }),
   excerpts: s.excerpts,
+  ...(s.markers === undefined ? {} : { markers: s.markers }),
 });
 
 export const datasetOf = (d: ServiceDataset) => ({
@@ -1240,11 +1245,13 @@ export const datasetOf = (d: ServiceDataset) => ({
 
 const assistantTurn = (parts: Part[], task: string): AskTurn => {
   const { sources } = sourcesBundle(parts);
+  const markers = markersOf(parts);
   return {
     role: 'assistant',
     task,
     text: answerOf(parts),
     ...(sources.length ? { sources: sources.map(storedSource) } : {}),
+    ...(markers.length ? { markers } : {}),
     chunks: sourcesOf(parts)
       .slice(0, 20)
       .map((r) => ({

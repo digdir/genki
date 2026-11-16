@@ -43,7 +43,17 @@ interface CaseDraft {
   split: string;
   input: string;
   referenceAnswer: string;
+  /** The case as stored: a save replaces the whole case, so it keeps what the form does not edit. */
+  stored?: TestCaseSummary;
 }
+
+/** The field holds a criteria case's criteria, otherwise the reference answer. */
+const judgedOnCriteria = (stored?: TestCaseSummary) =>
+  stored?.type === 'criteria' || stored?.expected.criteria !== undefined;
+
+/** Criteria fields other than the one the form edits, which a save keeps. */
+const otherCriteria = (stored?: TestCaseSummary) =>
+  Object.keys(stored?.expected.criteria ?? {}).filter((k) => k !== 'criteria');
 
 const CaseForm = ({
   initial,
@@ -68,6 +78,13 @@ const CaseForm = ({
     const next: Record<string, string> = {};
     if (!/^[a-z0-9][a-z0-9-]*$/.test(draft.id)) next.id = t('config.caseIdInvalid');
     if (!draft.input.trim()) next.input = t('config.caseInputMissing');
+    // A criteria case without criteria would have its reference answer read as its criteria.
+    if (
+      judgedOnCriteria(draft.stored) &&
+      !draft.referenceAnswer.trim() &&
+      otherCriteria(draft.stored).length === 0
+    )
+      next.expected = t('config.caseCriteriaMissing');
     const reasonError = reasonProblem(t, reason);
     if (reasonError) next.reason = reasonError;
     setErrors(next);
@@ -94,13 +111,22 @@ const CaseForm = ({
         {errors.input ? <Field.Description role="alert">{errors.input}</Field.Description> : null}
       </Field>
       <Field>
-        <Label htmlFor={`svar-${initial.id || 'ny'}`}>{t('config.caseExpectedLabel')}</Label>
+        <Label htmlFor={`svar-${initial.id || 'ny'}`}>
+          {t(
+            judgedOnCriteria(draft.stored)
+              ? 'config.caseCriteriaLabel'
+              : 'config.caseExpectedLabel',
+          )}
+        </Label>
         <Textarea
           id={`svar-${initial.id || 'ny'}`}
           rows={3}
           value={draft.referenceAnswer}
           onChange={(e) => setDraft({ ...draft, referenceAnswer: e.target.value })}
         />
+        {errors.expected ? (
+          <Field.Description role="alert">{errors.expected}</Field.Description>
+        ) : null}
       </Field>
       <Field>
         <Label htmlFor={`del-${initial.id || 'ny'}`}>{t('config.caseSplitLabel')}</Label>
@@ -136,13 +162,34 @@ const CaseForm = ({
   );
 };
 
-const caseBody = (draft: CaseDraft) => ({
-  split: draft.split,
-  input: draft.input.trim(),
-  ...(draft.referenceAnswer.trim()
-    ? { expected: { referenceAnswer: draft.referenceAnswer.trim() } }
-    : {}),
-});
+const caseBody = (draft: CaseDraft) => {
+  const text = draft.referenceAnswer.trim();
+  const without = (o: object, keys: string[]) =>
+    Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+  const stored = draft.stored?.expected ?? {};
+  const storedCriteria = judgedOnCriteria(draft.stored) ? (stored.criteria ?? {}) : undefined;
+  const rest = draft.stored ? without(draft.stored, ['id', 'expected']) : {};
+  const others = without(stored, ['criteria', 'referenceAnswer']);
+  // The field holds a criteria case's criteria, otherwise the reference answer.
+  const criteria = storedCriteria
+    ? {
+        ...Object.fromEntries(Object.entries(storedCriteria).filter(([k]) => k !== 'criteria')),
+        ...(text ? { criteria: text } : {}),
+      }
+    : undefined;
+  const reference = storedCriteria ? stored.referenceAnswer : text || undefined;
+  const expected = {
+    ...others,
+    ...(reference ? { referenceAnswer: reference } : {}),
+    ...(criteria && Object.keys(criteria).length > 0 ? { criteria } : {}),
+  };
+  return {
+    ...rest,
+    split: draft.split,
+    input: draft.input.trim(),
+    ...(Object.keys(expected).length > 0 ? { expected } : {}),
+  };
+};
 
 const emptyCase = (id = ''): CaseDraft => ({
   id,
@@ -226,7 +273,9 @@ const SetCases = ({
                   id: c.id,
                   split: c.split,
                   input: inputText(c.input),
-                  referenceAnswer: c.expected.referenceAnswer ?? '',
+                  referenceAnswer:
+                    c.expected.criteria?.criteria ?? c.expected.referenceAnswer ?? '',
+                  stored: c,
                 }}
                 fixedId
                 busy={busy}

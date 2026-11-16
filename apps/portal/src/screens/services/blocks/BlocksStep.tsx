@@ -1,6 +1,19 @@
 import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Tabs, TabsList, TabsPanel, TabsTab, ToggleGroup } from '@digdir/designsystemet-react';
 import {
+  blockIds,
+  fitService,
+  fromTemplate,
+  offerOf,
+  withProfile,
+  type AssistantLayout,
+  type BuilderState,
+  type ProfileData,
+  type ServiceFacts,
+  type TemplateId,
+} from '@genai/ui-blocks/builder';
+import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -10,50 +23,91 @@ import {
 } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
-import { BlocksPanel } from './BlocksPanel';
-import type { BlocksStart } from './handoff';
-import { defaultLayout, turnOff, type BlockLayout, type TemplateId } from './rules';
+import { BlocksPanel, takeOut } from './BlocksPanel';
+import { LayoutTransfer } from './LayoutTransfer';
+import { startTemplate, type BlocksStart } from './layoutStore';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
+import type { Collection } from './profileEdit';
 import { TemplatesPanel } from './TemplatesPanel';
+import { TextsPanel } from './TextsPanel';
+import type { TryRun } from './TryView';
 import './blocks.css';
 
-type LeftTab = 'chat' | 'blocks' | 'templates';
+type LeftTab = 'chat' | 'blocks' | 'templates' | 'texts';
 
 const leftMin = 320;
 const leftMax = 640;
 const fullHeightMin = 480;
 const fullHeightMax = 1400;
 
-export const useBlocksState = (start?: () => BlocksStart | undefined) => {
+/**
+ * The builder's blocks, and the facts of the draft they are for when it has any. Without a kept
+ * start it starts from {@link startTemplate}; `keep` is told each layout the person makes.
+ */
+export const useBlocksState = (
+  start?: () => BlocksStart | undefined,
+  facts?: ServiceFacts | undefined,
+  keep?: (start: BlocksStart) => void,
+) => {
   const [first] = useState(() => start?.());
-  const [layout, setLayout] = useState<BlockLayout>(first?.layout ?? defaultLayout);
-  const [template, setTemplate] = useState<TemplateId | undefined>(first ? first.template : 'all');
+  const [state, setState] = useState<BuilderState>(() =>
+    first
+      ? { layout: first.layout, chosen: {}, ...(first.held ? { held: first.held } : {}) }
+      : fromTemplate(startTemplate),
+  );
+  const [template, setTemplate] = useState<TemplateId | undefined>(() =>
+    first ? first.template : startTemplate,
+  );
+  // The blocks the draft cannot back yet are kept too, so they come back after a reload.
+  useEffect(() => {
+    keep?.({
+      layout: state.layout,
+      ...(template ? { template } : {}),
+      ...(state.held?.length ? { held: state.held } : {}),
+    });
+  }, [keep, state.layout, state.held, template]);
   const [mode, setMode] = useState<PreviewMode>('try');
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
-  const [conversation, setConversation] = useState(0);
+  const offered = (id: (typeof blockIds)[number]) => offerOf(id, facts).offered;
+  // A block the draft can no longer back is held, and comes back where it stood once it can.
+  const offeredKey = facts ? blockIds.filter(offered).join(',') : undefined;
+  useEffect(() => {
+    if (offeredKey === undefined) return;
+    const backed = new Set(offeredKey.split(','));
+    setState((s) => fitService(s, (id) => backed.has(id)).state);
+  }, [offeredKey]);
   return {
-    layout,
+    state,
+    layout: state.layout,
+    facts,
     template,
     mode,
     tab,
     width,
     height,
-    conversation,
     setMode,
     setTab,
     setWidth,
     setHeight,
-    change: (next: BlockLayout) => {
-      setLayout(next);
+    change: (next: BuilderState) => {
+      setState(next);
       setTemplate(undefined);
     },
-    pick: (id: TemplateId, next: BlockLayout) => {
-      setLayout(next);
+    // Blocks the draft cannot back yet are held, and come in once it can. The words stay: they are
+    // the service's, not the template's.
+    pick: (id: TemplateId) => {
+      setState((s) => fitService(withProfile(fromTemplate(id), s.layout.profile), offered).state);
       setTemplate(id);
     },
-    restart: () => setConversation((n) => n + 1),
+    // A pasted layout replaces this one, and its blocks the draft cannot back are held.
+    paste: (layout: AssistantLayout) => {
+      setState(fitService({ layout, chosen: {} }, offered).state);
+      setTemplate(undefined);
+    },
+    // The words are the service's, not a template's: the template stays chosen.
+    setProfile: (profile: ProfileData | undefined) => setState((s) => withProfile(s, profile)),
   };
 };
 
@@ -75,17 +129,25 @@ const ResizeHandle = ({
   onChange: (v: number) => void;
 }) => {
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  /** Where the drag began, and the size then; undefined when nothing is being dragged. */
+  const [drag, setDrag] = useState<{ from: number; size: number }>();
+  const at = (e: PointerEvent<HTMLDivElement>) => (axis === 'x' ? e.clientX : e.clientY);
   const start = (e: PointerEvent<HTMLDivElement>) => {
-    const from = axis === 'x' ? e.clientX : e.clientY;
-    const size = value;
-    const move = (ev: globalThis.PointerEvent) =>
-      onChange(clamp(axis === 'x' ? size + (ev.clientX - from) : size + (ev.clientY - from)));
-    const stop = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
+    // The main button, a touch or a pen; a right click is a menu, not a drag.
+    if (e.button !== 0) return;
+    // No text selection, so focus is moved here by hand for the arrow keys.
+    e.preventDefault();
+    e.currentTarget.focus();
+    // Every move and the release come here until the pointer is let go, wherever it is then.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ from: at(e), size: value });
+  };
+  const stop = () => setDrag(undefined);
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    if (!drag) return;
+    // No button is down: the release happened where the page could not see it.
+    if (e.buttons === 0) return stop();
+    onChange(clamp(drag.size + at(e) - drag.from));
   };
   const grow = axis === 'x' ? 'ArrowRight' : 'ArrowDown';
   const shrink = axis === 'x' ? 'ArrowLeft' : 'ArrowUp';
@@ -106,7 +168,12 @@ const ResizeHandle = ({
       aria-valuemax={max}
       aria-valuenow={value}
       tabIndex={0}
+      data-dragging={drag ? '' : undefined}
       onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onLostPointerCapture={stop}
       onKeyDown={key}
     />
   );
@@ -116,7 +183,8 @@ export const BlocksStep = ({
   state,
   narrow,
   assistant,
-  chat,
+  collections,
+  run,
   address,
   onFullscreen,
 }: {
@@ -124,7 +192,9 @@ export const BlocksStep = ({
   narrow: boolean;
   /** The builder assistant. Without it there is no Chat tab. */
   assistant?: ReactNode;
-  chat: ReactNode;
+  /** The collections the draft searches, whose words «Tekster» edits. Without it, no such tab. */
+  collections?: readonly Collection[] | undefined;
+  run: TryRun | undefined;
   address: string;
   onFullscreen: () => void;
 }) => {
@@ -132,13 +202,15 @@ export const BlocksStep = ({
   const [pane, setPane] = useState<'blocks' | 'preview'>('blocks');
   const switcher = useRef<HTMLFieldSetElement>(null);
   const [fit, setFit] = useState(leftMin);
+  // Measured beside the preview only: on a narrow screen the switcher wraps.
   useLayoutEffect(() => {
+    if (narrow) return;
     const w = switcher.current?.offsetWidth;
     if (w) setFit(Math.max(leftMin, Math.ceil(w)));
-  }, [t]);
+  }, [t, narrow]);
   const width = Math.max(state.width, fit);
   const left = (
-    <div className="blocks-left">
+    <div className="blocks-left" data-narrow={narrow || undefined}>
       <ToggleGroup
         ref={switcher}
         data-size="sm"
@@ -150,17 +222,24 @@ export const BlocksStep = ({
       >
         <ToggleGroup.Item value="templates">{t('builderBlocks.tabTemplates')}</ToggleGroup.Item>
         <ToggleGroup.Item value="blocks">{t('builderBlocks.tabBlocks')}</ToggleGroup.Item>
+        {collections ? (
+          <ToggleGroup.Item value="texts">{t('builderBlocks.tabTexts')}</ToggleGroup.Item>
+        ) : null}
         {assistant ? (
           <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
         ) : null}
       </ToggleGroup>
       {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
-        <BlocksPanel layout={state.layout} onChange={state.change} />
+        <BlocksPanel state={state.state} facts={state.facts} onChange={state.change} />
       ) : null}
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />
       ) : null}
+      {state.tab === 'texts' && collections ? (
+        <TextsPanel layout={state.layout} collections={collections} onChange={state.setProfile} />
+      ) : null}
+      {state.tab === 'chat' ? null : <LayoutTransfer layout={state.layout} onPaste={state.paste} />}
     </div>
   );
   const preview = (
@@ -168,10 +247,9 @@ export const BlocksStep = ({
       layout={state.layout}
       mode={state.mode}
       address={address}
-      chat={chat}
+      run={run}
       onMode={state.setMode}
-      onRemove={(id) => state.change(turnOff(state.layout, id))}
-      onReload={state.restart}
+      onRemove={(id, zone) => state.change(takeOut(state.state, id, zone))}
       onFullscreen={onFullscreen}
     />
   );
@@ -204,13 +282,13 @@ export const BlocksStep = ({
 
 export const BlocksFullscreen = ({
   state,
-  chat,
+  run,
   address,
   backHref,
   onExit,
 }: {
   state: BlocksState;
-  chat: ReactNode;
+  run: TryRun | undefined;
   address: string;
   backHref: string;
   onExit: () => void;
@@ -226,10 +304,9 @@ export const BlocksFullscreen = ({
         layout={state.layout}
         mode={state.mode}
         address={address}
-        chat={chat}
+        run={run}
         onMode={state.setMode}
-        onRemove={(id) => state.change(turnOff(state.layout, id))}
-        onReload={state.restart}
+        onRemove={(id, zone) => state.change(takeOut(state.state, id, zone))}
         onExitFullscreen={onExit}
         height={state.height}
       />

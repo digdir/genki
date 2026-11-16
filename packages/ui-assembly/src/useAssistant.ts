@@ -16,6 +16,7 @@ import {
   blockSpec,
   documentCount,
   factsFromModels,
+  fieldValueLabels,
   isDisplayLevel,
   isEmptySelection,
   isOn,
@@ -25,8 +26,10 @@ import {
   sameSelection,
   serviceOf,
   settingsOf,
-  templateLook,
+  lookOf,
+  targetPosition,
   zoneOf,
+  zonesOf,
   type AssistantLayout,
   type BlockId,
   type Channel,
@@ -36,6 +39,7 @@ import {
   type ConversationTurn,
   type CorpusOption,
   type DisplayLevel,
+  type DocumentFileStatus,
   type DocumentItem,
   type DocumentQuestion,
   type DocumentViewReturn,
@@ -47,12 +51,16 @@ import {
   type ShellRequest,
   type SourceTarget,
   type VariantOption,
+  type Zone,
 } from '@genai/ui-blocks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   failureOf,
+  FILTER_VALUES_LIMIT,
   filterSet,
+  FilterTooLarge,
   HttpError,
+  NotAsked,
   sourceFromWire,
   type AnswerData,
   type AssistantApi,
@@ -61,11 +69,14 @@ import {
 } from './api.js';
 import { useT } from './i18n.js';
 import type { StepFrame } from './procedure.js';
-import type { AssistantProfile, FieldSpec } from './profile.js';
+import { profileOf, type AssistantProfile, type FieldSpec } from './profile.js';
 import { useStoredValue, type AssistantStorage } from './storage.js';
+import { currentYear, withinYears } from './years.js';
 
 export interface AssistantFeedback {
   answerId: string;
+  /** genki's run (`task` in `POST /api/feedback`), when given; see the component page. */
+  runId?: string | undefined;
   rating: 'up' | 'down';
   reasons: readonly string[];
   comment?: string | undefined;
@@ -79,6 +90,7 @@ export interface AssistantOptions {
   tenant: string;
   /** The variant to start from, a model id; the service's default without it. */
   model?: string | undefined;
+  /** What the host knows of its service; it wins over the layout's own `profile` where it says something. */
   profile?: AssistantProfile | undefined;
   /** The channels the client is given; all three by default. */
   channels?: readonly Channel[] | undefined;
@@ -117,6 +129,8 @@ export interface AssistantOptions {
   onThreadChange?: ((id: string | undefined) => void) | undefined;
   /** An answer asked with steps came back with them, or without any. */
   onStepsReported?: ((reported: boolean) => void) | undefined;
+  /** The clock, for the year a year field's values run up to; tests give a fixed one. */
+  now?: (() => Date) | undefined;
 }
 
 export type View = 'new' | 'loading' | 'ready' | 'notfound' | 'error';
@@ -140,6 +154,17 @@ interface Asking {
   fromField?: boolean | undefined;
   /** Asked in Dokumentvisning, about this document, as the block hands it over. */
   about?: DocumentQuestion | undefined;
+}
+
+/** An answer on its way, with the turns of the thread it was asked in. */
+interface Run {
+  controller: AbortController;
+  /** genki's id for the thread; a new one's once genki has named it. */
+  thread: string | undefined;
+  turns: Turn[];
+  /** The collection the thread was read with. */
+  corpus: string | undefined;
+  ended: boolean;
 }
 
 // kunnskapsassistenten's threadHeading.ts: the first sentence, cut on a word at 80.
@@ -191,7 +216,31 @@ const firstSentence = (text: string | undefined) => {
   return sentence && sentence.length <= 140 ? sentence : undefined;
 };
 
-const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
+/** A thread id as genki makes them (21 of `[A-Za-z0-9_-]`, or a UUID), so `?t=` names no path. */
+const THREAD_ID = /^[\w-]{1,200}$/;
+const threadInAddress = () => {
+  const id = new URLSearchParams(location.search).get('t');
+  return id && THREAD_ID.test(id) ? id : undefined;
+};
+
+/** The answer with the markers its sources came with: `[N]` names an excerpt only with them. */
+const withMarkers = (
+  answer: AnswerData,
+  markers: AnswerData['markers'] | undefined,
+): AnswerData => {
+  const next = { ...answer };
+  delete next.markers;
+  return markers ? { ...next, markers } : next;
+};
+
+/** genki's default deadline for a run (`defaultServiceLimits` in composition). */
+const RUN_DEADLINE_MS = 300_000;
+
+/** The last question has no stored answer and was asked within genki's deadline for a run. */
+const mayStillCome = (turns: readonly Turn[], at: Date) => {
+  const last = turns.at(-1);
+  return !!last?.question && !last.answer && at.getTime() - last.askedAt < RUN_DEADLINE_MS;
+};
 
 export const useAssistant = ({
   api,
@@ -199,7 +248,7 @@ export const useAssistant = ({
   service,
   tenant,
   model: givenModel,
-  profile,
+  profile: hostProfile,
   channels = ['conversations', 'facets', 'feedback'],
   threadInUrl = false,
   paths,
@@ -213,9 +262,13 @@ export const useAssistant = ({
   onDelete,
   onThreadChange,
   onStepsReported,
+  now = () => new Date(),
 }: AssistantOptions) => {
   // ── What the service can back, and what the layout holds ──
   const t = useT();
+  // The host's profile, the layout's filling the rest; the host's own object when the layout has
+  // none, so a host that passes one keeps its identity.
+  const profile = useMemo(() => profileOf(layout, hostProfile), [layout.profile, hostProfile]);
   const [models, setModels] = useState<ModelRow[]>();
   // Why genki could not say: the status it answered with, or none when it was not reached. The
   // error's own message is the browser's or genki's, in their language, so it goes to the console.
@@ -263,6 +316,8 @@ export const useAssistant = ({
     [layout, met],
   );
   const where = (id: BlockId) => (has(id) ? zoneOf(layout, id) : undefined);
+  /** Whether the block stands in the zone, also when it stands in both its zones. */
+  const standsIn = (id: BlockId, zone: Zone) => has(id) && zonesOf(layout, id).includes(zone);
   const option = (id: BlockId, name: string) => has(id) && optionInForce(layout, id, name, met);
 
   const threadsOn = has('threads');
@@ -295,6 +350,7 @@ export const useAssistant = ({
           id: row.id,
           title: row._variant_title ?? row.title ?? row.id,
           ...(description ? { description } : {}),
+          ...(row._service_title ? { service: row._service_title } : {}),
         };
       });
   }, [models, facts]);
@@ -419,16 +475,28 @@ export const useAssistant = ({
   const [currentId, setCurrentId] = useState<string | undefined>(() =>
     urlThreads ? threadInAddress() : undefined,
   );
+  // The thread on screen as the reader last chose it, ahead of the render that shows it.
+  const showing = useRef(currentId);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [threadCorpus, setThreadCorpus] = useState<string>();
   const [view, setView] = useState<View>(currentId ? 'loading' : 'new');
   // As `modelsFailed`: the status genki answered with, or none when it was not reached.
   const [viewError, setViewError] = useState<{ status?: number }>();
   const [reload, setReload] = useState(0);
+  // Each «Ny tråd», so one on a new thread's page opens another.
+  const [fresh, setFresh] = useState(0);
   const ownThread = useRef<string>(undefined);
-  const abort = useRef<AbortController>(undefined);
+  // Every answer on its way, and those that ended in a thread the reader has not come back to.
+  const runs = useRef(new Set<Run>());
+  // The run of the thread on screen, which the screen follows.
+  const shown = useRef<Run>(undefined);
+  // Whether the answer on screen is still coming.
   const [working, setWorking] = useState(false);
+  const [waiting, setWaiting] = useState<Asking>();
   const [request, setRequest] = useState<ShellRequest>();
+  const stopAll = () => {
+    for (const run of runs.current) run.controller.abort();
+  };
   // An assistant that goes stops its answer, and reports nothing after: a host that draws another
   // in its place, as the app builder does for each service, hears only from that one.
   const alive = useRef(true);
@@ -436,7 +504,7 @@ export const useAssistant = ({
     alive.current = true;
     return () => {
       alive.current = false;
-      abort.current?.abort();
+      stopAll();
     };
   }, []);
   // Without Tråder, no thread is kept in the address, so a `?t=` there is taken away.
@@ -458,14 +526,24 @@ export const useAssistant = ({
         history.pushState(null, '', url);
       }
       setPage('chat');
+      showing.current = id;
       setCurrentId(id);
     },
     [urlThreads, threadInUrl, hrefOf, home],
   );
+  // The answer on screen goes on out of sight, and a question waiting to go is dropped.
+  const turnAway = () => {
+    shown.current = undefined;
+    setWorking(false);
+    setWaiting(undefined);
+  };
   /** Opening a thread or «Ny tråd» shuts an open drawer, which would cover it. */
   const leave = useCallback(
     (id: string | undefined) => {
-      abort.current?.abort();
+      if (id === undefined || id !== showing.current) turnAway();
+      if (id === undefined) setFresh((n) => n + 1);
+      // A thread the reader leaves is opened afresh when they come back, whoever made it.
+      ownThread.current = undefined;
       setRequest({ action: 'close-drawers' });
       go(id);
     },
@@ -474,9 +552,12 @@ export const useAssistant = ({
   useEffect(() => {
     if (!threadInUrl) return;
     const onPop = () => {
-      abort.current?.abort();
       setPage(onSettingsAddress() ? 'settings' : 'chat');
-      if (urlThreads) setCurrentId(threadInAddress());
+      if (!urlThreads) return;
+      const id = threadInAddress();
+      if (id !== showing.current) turnAway();
+      showing.current = id;
+      setCurrentId(id);
     };
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
@@ -501,12 +582,30 @@ export const useAssistant = ({
     if (refocus?.element.isConnected) refocus.element.focus();
   }, [refocus]);
 
+  // Whether the last question's answer may still come, from the thread as genki last gave it.
+  const [answerMayCome, setAnswerMayCome] = useState(false);
+  // Threads whose last question failed on this page, for which genki stores no answer.
+  const failedHere = useRef(new Set<string>());
+  // Each read and question, so a «Hent på nytt» that lands after a newer one is dropped.
+  const reads = useRef(0);
+  const showThread = (thread: { turns: Turn[]; corpus?: string | undefined }) => {
+    setTurns(thread.turns);
+    setThreadCorpus(thread.corpus);
+    setView('ready');
+    const failed = showing.current !== undefined && failedHere.current.has(showing.current);
+    setAnswerMayCome(!failed && mayStillCome(thread.turns, now()));
+    if (sourcesOn && thread.turns.some((t) => (t.answer?.sources?.length ?? 0) > 0))
+      setRequest({ action: 'offer', side: 'secondary' });
+  };
+
   useEffect(() => {
+    reads.current += 1;
     setSourceTarget(undefined);
     setAnswerTarget(undefined);
     setOpenDoc(undefined);
     setActiveId(undefined);
     setThreadCorpus(undefined);
+    setAnswerMayCome(false);
     if (!currentId) {
       setTurns([]);
       setView('new');
@@ -517,18 +616,22 @@ export const useAssistant = ({
       ownThread.current = undefined;
       return;
     }
+    // genki stores an answer once it is done, so its run holds the thread until it is seen.
+    const run = [...runs.current].find((one) => one.thread === currentId);
+    if (run) {
+      if (run.ended) runs.current.delete(run);
+      else {
+        shown.current = run;
+        setWorking(true);
+      }
+      showThread(run);
+      return;
+    }
     let gone = false;
     setTurns([]);
     setView('loading');
     api.loadThread(currentId).then(
-      (thread) => {
-        if (gone) return;
-        setTurns(thread.turns);
-        setThreadCorpus(thread.corpus);
-        setView('ready');
-        if (sourcesOn && thread.turns.some((t) => (t.answer?.sources?.length ?? 0) > 0))
-          setRequest({ action: 'offer', side: 'secondary' });
-      },
+      (thread) => !gone && showThread(thread),
       (error: Error) => {
         if (gone) return;
         if (error instanceof HttpError && error.status === 404) setView('notfound');
@@ -543,7 +646,25 @@ export const useAssistant = ({
       gone = true;
     };
     // `sourcesOn` only decides whether to offer the panel once the thread is read.
-  }, [api, currentId, reload]);
+  }, [api, currentId, reload, fresh]);
+
+  /** «Hent på nytt»: the thread on screen read again where it stands, asking nothing. */
+  const fetchAgain = () => {
+    const id = currentId;
+    if (!id) return;
+    const read = ++reads.current;
+    // Unless the reader has gone to another thread, or asked in this one, meanwhile.
+    const still = () => reads.current === read && showing.current === id && !shown.current;
+    api.loadThread(id).then(
+      (thread) => still() && showThread(thread),
+      (error: Error) => {
+        if (!still()) return;
+        // A thread gone is gone; otherwise the thread stays on screen to be fetched again.
+        if (error instanceof HttpError && error.status === 404) setView('notfound');
+        else console.error('[assistant] thread', error.message);
+      },
+    );
+  };
 
   // ── Filter fields and facets, only with Filter placed ──
   const [fields, setFields] = useState<readonly FieldSpec[]>();
@@ -551,6 +672,8 @@ export const useAssistant = ({
     if (!filterOn || !corpusKey) return;
     let gone = false;
     setFields(undefined);
+    // The values another collection has say nothing of this one's.
+    setBaseFacets(undefined);
     api.loadFields(corpusKey).then(
       (found) => !gone && setFields(found),
       (error: Error) => {
@@ -563,66 +686,105 @@ export const useAssistant = ({
     };
   }, [api, filterOn, corpusKey]);
 
+  // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
+  // of each thread's last question asked here is kept, and opening the thread brings it back.
+  // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
+  const look = lookOf(layout);
+  const threadFiltersOn = look === 'next' && filterOn;
+
   // The filter is kept as kunnskapsassistenten keeps it: a field whose values are not all strings
   // is dropped.
   const [chosenSelection, setSelection] = useStoredValue<FilterSelection>(
     storage,
     'filter',
     readSelection,
+    undefined,
+    // The next look's new thread starts with no filter, as «Ny tråd» does.
+    threadFiltersOn && !currentId,
   );
   // Without Filter, nothing narrows the question: the setup's collection as a whole.
   const selection = filterOn ? chosenSelection : {};
 
-  // In the next look the filter belongs to the thread («9 · Filtrering», choices 1 to 3): the filter
-  // of each thread's last question asked here is kept, and opening the thread brings it back.
-  // genki keeps no filter with a turn, so a thread asked elsewhere leaves the filter as it is.
-  const look = templateLook(layout.template);
-  const threadFiltersOn = look === 'next' && filterOn;
   const [threadFilters, setThreadFilters] = useStoredValue(
     storage,
     'threadFilters',
     readThreadFilters,
     storeThreadFilters,
   );
+  // The latest, for an answer that names its thread after the reader has asked elsewhere.
+  const keptFilters = useRef(threadFilters);
+  useEffect(() => {
+    keptFilters.current = threadFilters;
+  }, [threadFilters]);
   const keepFilter = (thread: string, asked: FilterSelection) => {
-    if (threadFiltersOn) setThreadFilters(new Map(threadFilters).set(thread, asked));
+    if (!threadFiltersOn) return;
+    keptFilters.current = new Map(keptFilters.current).set(thread, asked);
+    setThreadFilters(keptFilters.current);
   };
   useEffect(() => {
     if (!threadFiltersOn || !currentId) return;
     const kept = threadFilters.get(currentId);
-    if (kept && !sameSelection(kept, chosenSelection)) setSelection(kept);
+    // Kept as asked, so a field with every value chosen is empty there and means the same.
+    const asked = narrowing(chosenSelection, facets ?? baseFacets);
+    // A thread asked elsewhere keeps the filter on screen, stored so a reload shows it too.
+    if (!kept) setSelection(chosenSelection);
+    else if (!sameSelection(kept, chosenSelection) && !sameSelection(kept, asked))
+      setSelection(kept);
     // Only when another thread opens: a change made in the thread stays.
   }, [currentId, threadFiltersOn]);
   const [facets, setFacets] = useState<FilterField[]>();
   const [baseFacets, setBaseFacets] = useState<FilterField[]>();
-  const [facetsFailed, setFacetsFailed] = useState(false);
+  const [facetsFailed, setFacetsFailed] = useState<boolean | string>(false);
+  const tooLarge = (error: FilterTooLarge) =>
+    t('assembly.filterTooLarge', {
+      field: fields?.find((field) => field.id === error.field)?.label ?? error.field,
+      max: FILTER_VALUES_LIMIT,
+    });
   const [facetsKey, setFacetsKey] = useState(0);
   useEffect(() => {
     if (!filterOn || !fields || !corpusKey) return;
     let gone = false;
     setFacetsFailed(false);
-    api.loadFacets(selection, corpusKey, fields).then(
-      (found) => {
-        if (gone) return;
-        setFacets(found);
-        if (isEmptySelection(selection)) setBaseFacets(found);
-      },
+    // Year fields bounded everywhere, so «Velg alle» on the years narrows nothing, as «Alle år».
+    const thisYear = currentYear(now());
+    const facetsOf = async (
+      asked: FilterSelection,
+      keep: FilterSelection,
+      lists?: readonly FilterField[],
+    ) =>
+      withinYears(
+        await (lists
+          ? api.loadFacets(asked, corpusKey, fields, lists)
+          : api.loadFacets(asked, corpusKey, fields)),
+        fields,
+        keep,
+        thisYear,
+      );
+    const load = async () => {
+      if (isEmptySelection(selection)) {
+        const found = await facetsOf(selection, selection);
+        if (!gone) setBaseFacets(found);
+        return found;
+      }
+      // A field with every value in the collection (the facets of nothing) chosen narrows nothing.
+      const base = baseFacets ?? (await facetsOf({}, {}));
+      if (!gone && !baseFacets) setBaseFacets(base);
+      // The reader's own choices are kept in the list, also those narrowing leaves out.
+      return facetsOf(narrowing(selection, base), selection, base);
+    };
+    load().then(
+      (found) => !gone && setFacets(found),
       (error: Error) => {
         if (gone) return;
         console.error('[assistant] facets', error.message);
-        setFacetsFailed(true);
+        setFacetsFailed(error instanceof FilterTooLarge ? tooLarge(error) : true);
       },
     );
     return () => {
       gone = true;
     };
-    // `selection` is new on every render without Filter; with it, it is the state.
+    // `selection` is new on every render without Filter; `baseFacets` is set here, not a cause.
   }, [api, filterOn, chosenSelection, facetsKey, corpusKey, fields]);
-  useEffect(() => {
-    if (!filterOn || baseFacets || isEmptySelection(chosenSelection) || !fields || !corpusKey)
-      return;
-    api.loadFacets({}, corpusKey, fields).then(setBaseFacets, () => {});
-  }, [api, filterOn, baseFacets, chosenSelection, corpusKey, fields]);
 
   const chooseCorpus = (key: string) => {
     // A new collection starts a new thread with an empty filter (kunnskapsassistenten's useCorpus).
@@ -705,13 +867,13 @@ export const useAssistant = ({
 
   /**
    * Asks now, or as soon as it can: once genki has said what the service backs, which decides the
-   * collection, and once an answer still coming has ended. A failed `/v1/models` is tried again,
-   * and if it fails again the question waits in the field, under the failure.
+   * collection, once the thread is read, and once an answer still coming has ended. A failed
+   * `/v1/models` is tried again; if it or the thread fails, the question waits in the field, under
+   * the failure.
    */
-  const [waiting, setWaiting] = useState<Asking>();
   const send = (question: string, options: Omit<Asking, 'question'> = {}) => {
     const asking = { question, ...options };
-    if (!working && models) {
+    if (!working && models && view !== 'loading') {
       void start(asking);
       return;
     }
@@ -720,19 +882,19 @@ export const useAssistant = ({
   };
   useEffect(() => {
     if (!waiting) return;
-    if (modelsFailed) setWaiting(undefined);
-    else if (models && !working) {
+    if (modelsFailed || view === 'error' || view === 'notfound') setWaiting(undefined);
+    else if (models && !working && view !== 'loading') {
       setWaiting(undefined);
       void start(waiting);
     }
     // `start` is new on every render; what it waits for is what starts it.
-  }, [waiting, models, modelsFailed, working]);
+  }, [waiting, models, modelsFailed, working, view]);
 
   const start = async ({ question: typed, replaces, fromField, about }: Asking) => {
     const controller = new AbortController();
-    abort.current = controller;
     const startedIn = currentId;
     const id = `local-${Date.now()}`;
+    reads.current += 1;
     setSourceTarget(undefined);
     // A question about a document names it, in the thread and to the model, and searches only that
     // document where the collection lets a question be narrowed by its number.
@@ -742,31 +904,28 @@ export const useAssistant = ({
     const question = aboutTitle
       ? t('assembly.aboutDocument', { title: aboutTitle, question: typed })
       : typed;
+    // A field with every value it lists chosen narrows nothing, so it is neither sent nor said.
+    const narrowed = filterOn ? narrowing(selection, facets ?? baseFacets) : undefined;
     const narrowedTo =
       toDocument && aboutTitle
         ? [aboutTitle]
-        : (facets ?? []).flatMap((field) => [...(selection[field.id] ?? [])]);
-    const filters =
+        : (facets ?? []).flatMap((field) => fieldValueLabels(field, narrowed?.[field.id] ?? []));
+    // Built as the question goes, so a filter genki cannot take fails it before any request.
+    const filtersOf = () =>
       toDocument && documentId
         ? filterSet({ [toDocument.id]: [documentId] }, [toDocument])
-        : filterOn
-          ? filterSet(narrowing(selection, facets), fields ?? [])
+        : narrowed
+          ? filterSet(narrowed, fields ?? [], facets ?? baseFacets)
           : undefined;
     // What the filter was, and how many documents it read from, for the answer's «Fremgangsmåte».
-    const askedWith = filterOn && !toDocument ? narrowing(selection, facets) : undefined;
+    const askedWith = toDocument ? undefined : narrowed;
     const readFrom = askedWith
       ? documentCount(facets, askedWith, corpusProfile?.typeField)
       : undefined;
     if (askedWith && startedIn) keepFilter(startedIn, askedWith);
-    const change = (update: (turn: Turn) => Turn) =>
-      setTurns((all) => all.map((t) => (t.id === id ? update(t) : t)));
-    const update = (patch: (answer: AnswerData) => AnswerData) =>
-      change((t) => (t.answer ? { ...t, answer: patch(t.answer) } : t));
-    const finish = () =>
-      change((t) =>
-        t.approach ? { ...t, approach: { ...t.approach, finishedAt: Date.now() } } : t,
-      );
     let frames = 0;
+    let opened = false;
+    let heard = false;
     setWorking(true);
     // Only a question sent from the field empties it, and only of what was sent.
     if (fromField) setDraft((draft) => (draft.trim() === typed.trim() ? '' : draft));
@@ -785,11 +944,34 @@ export const useAssistant = ({
         ...(readFrom === undefined ? {} : { documents: readFrom }),
       },
     };
-    setTurns((all) =>
-      replaces && all.some((t) => t.id === replaces)
-        ? all.map((t) => (t.id === replaces ? asked : t))
-        : [...all, asked],
-    );
+    const run: Run = {
+      controller,
+      thread: startedIn,
+      turns:
+        replaces && turns.some((t) => t.id === replaces)
+          ? turns.map((t) => (t.id === replaces ? asked : t))
+          : [...turns, asked],
+      corpus: threadCorpus,
+      ended: false,
+    };
+    runs.current.add(run);
+    shown.current = run;
+    setTurns(run.turns);
+    // The run keeps its thread's turns; the screen follows them while the thread is on it.
+    const change = (update: (turn: Turn) => Turn) => {
+      run.turns = run.turns.map((t) => (t.id === id ? update(t) : t));
+      if (shown.current === run) setTurns(run.turns);
+    };
+    const update = (patch: (answer: AnswerData) => AnswerData) =>
+      change((t) => (t.answer ? { ...t, answer: patch(t.answer) } : t));
+    const finish = () =>
+      change((t) =>
+        t.approach ? { ...t, approach: { ...t.approach, finishedAt: Date.now() } } : t,
+      );
+    const offerSources = (found: number) => {
+      if (sourcesOn && found > 0 && shown.current === run)
+        setRequest({ action: 'offer', side: 'secondary' });
+    };
     const fromWire = (raw: Parameters<typeof sourceFromWire>[0], at: number) =>
       sourceFromWire(raw, corpusProfile, at);
     try {
@@ -797,16 +979,24 @@ export const useAssistant = ({
         question,
         model,
         conversationId: startedIn,
-        filters,
+        filters: filtersOf(),
         dataset: corpusKey ? { tenant: ownDataset?.tenant || tenant, key: corpusKey } : undefined,
         steps: approachOn,
         signal: controller.signal,
       })) {
         if (!alive.current) break;
-        if (event.type === 'conversation' && !startedIn) {
+        if (!heard && startedIn) failedHere.current.delete(startedIn);
+        heard = true;
+        // genki names a new thread twice (POST, then stream): only the first opens it.
+        if (event.type === 'conversation' && !startedIn && !opened) {
+          opened = true;
+          run.thread = event.conversationId;
           if (askedWith) keepFilter(event.conversationId, askedWith);
-          ownThread.current = event.conversationId;
-          go(event.conversationId, true);
+          // Named while the reader is elsewhere, it waits in the list.
+          if (shown.current === run) {
+            ownThread.current = event.conversationId;
+            go(event.conversationId, true);
+          }
           reloadThreads();
         } else if (event.type === 'step') {
           frames += 1;
@@ -819,39 +1009,66 @@ export const useAssistant = ({
         } else if (event.type === 'text') update((a) => ({ ...a, text: a.text + event.text }));
         else if (event.type === 'retract') update((a) => ({ ...a, text: '' }));
         else if (event.type === 'sources') {
-          update((a) => ({ ...a, sources: event.sources.map(fromWire) }));
-          if (sourcesOn && event.sources.length > 0)
-            setRequest({ action: 'offer', side: 'secondary' });
+          update((a) => withMarkers({ ...a, sources: event.sources.map(fromWire) }, event.markers));
+          offerSources(event.sources.length);
         } else if (event.type === 'done') {
           finish();
-          update((a) => ({
-            ...a,
-            text: event.answer.text || a.text,
-            sources: event.answer.sources.map(fromWire),
-            noAnswer: event.answer.noAnswer,
-            status: 'complete',
-            created: Date.now(),
-          }));
-          if (sourcesOn && event.answer.sources.length > 0)
-            setRequest({ action: 'offer', side: 'secondary' });
+          update((a) =>
+            withMarkers(
+              {
+                ...a,
+                text: event.answer.text || a.text,
+                sources: event.answer.sources.map(fromWire),
+                noAnswer: event.answer.noAnswer,
+                status: 'complete',
+                created: Date.now(),
+                ...(event.answer.taskId ? { runId: event.answer.taskId } : {}),
+              },
+              event.answer.markers,
+            ),
+          );
+          offerSources(event.answer.sources.length);
           if (approachOn) stepsReported.current?.(frames > 0);
           reloadThreads();
         }
       }
     } catch (error) {
       const aborted = controller.signal.aborted;
+      if (error instanceof NotAsked && !heard) {
+        // Never asked: its thread's turns are as they were, and a typed question is back.
+        run.turns = turns;
+        if (shown.current === run) {
+          setTurns(turns);
+          if (!run.thread && turns.length === 0) setView('new');
+          if (fromField) setDraft((draft) => (draft.trim() ? draft : typed));
+        }
+        return;
+      }
       if (!aborted) console.error('[assistant] ask', (error as Error).message);
+      if (!aborted && run.thread) failedHere.current.add(run.thread);
       finish();
       update((a) => ({
         ...a,
         status: aborted ? 'aborted' : 'failed',
         error: (error as Error).message,
-        ...(aborted ? {} : { failure: failureOf(error) }),
+        ...(aborted
+          ? {}
+          : {
+              failure:
+                error instanceof FilterTooLarge
+                  ? { kind: 'filter' as const, message: tooLarge(error) }
+                  : failureOf(error),
+            }),
       }));
       if (!aborted) reloadThreads();
     } finally {
-      setWorking(false);
-      if (abort.current === controller) abort.current = undefined;
+      run.ended = true;
+      // Kept for its thread only if it ended out of sight, in a thread genki has named.
+      if (shown.current === run || !run.thread) runs.current.delete(run);
+      if (shown.current === run) {
+        shown.current = undefined;
+        setWorking(false);
+      }
     }
   };
 
@@ -957,6 +1174,42 @@ export const useAssistant = ({
   const documentOverChat = documentZone === 'main' && where('chat') === 'main';
   const documentTurn = openDoc ? turns.find((t) => t.id === openDoc.turnId) : undefined;
   const documentAnswer = documentTurn?.answer;
+  // The opened document's file from the host, asked once per document while `file` is on.
+  const findFile = profile?.documentFile;
+  const fileOn = documentOn && option('document-view', 'file') && typeof findFile === 'function';
+  const fileSources = documentAnswer?.sources;
+  const fileSource =
+    fileOn && openDoc && fileSources
+      ? fileSources[targetPosition(fileSources, openDoc.target)]
+      : undefined;
+  const fileOf = fileSource ? (fileSource.documentId ?? '') : undefined;
+  const findFileRef = useRef(findFile);
+  findFileRef.current = findFile;
+  const [found, setFound] = useState<{ documentId: string; file: DocumentFileStatus }>();
+  useEffect(() => {
+    const find = findFileRef.current;
+    if (!fileOf || typeof find !== 'function') return;
+    const controller = new AbortController();
+    // A result for a document no longer open is dropped: the call was aborted on the way out.
+    const settle = (file: DocumentFileStatus) => {
+      if (!controller.signal.aborted) setFound({ documentId: fileOf, file });
+    };
+    Promise.resolve()
+      .then(() => find(fileOf, controller.signal))
+      .then(
+        (file) => settle(file ? { status: 'ready', file } : { status: 'none' }),
+        () => settle({ status: 'failed' }),
+      );
+    return () => controller.abort();
+  }, [fileOf]);
+  const documentFile: DocumentFileStatus | undefined =
+    fileOf === undefined
+      ? undefined
+      : fileOf === ''
+        ? { status: 'none' }
+        : found?.documentId === fileOf
+          ? found.file
+          : { status: 'loading' };
   // The document keeps to the answer it was opened from, whichever answer Kilder shows after.
   const documentCitations = useMemo(
     () =>
@@ -1045,7 +1298,7 @@ export const useAssistant = ({
   return {
     // what is placed
     layout,
-    // The template's look: `next` draws the dev boards' frame, titles and profile menu.
+    // The layout's look: `next` draws the dev boards' frame, titles and profile menu.
     look,
     facts,
     modelsFailed,
@@ -1055,6 +1308,7 @@ export const useAssistant = ({
     retryModels,
     has,
     where,
+    standsIn,
     option,
     footnotes,
     assistantName,
@@ -1075,7 +1329,8 @@ export const useAssistant = ({
     facets,
     baseFacets,
     facetsFailed,
-    retryFacets: () => setFacetsKey((n) => n + 1),
+    // A filter genki cannot take fails the same way again: it is changed, not retried.
+    retryFacets: typeof facetsFailed === 'string' ? undefined : () => setFacetsKey((n) => n + 1),
     // How many documents the next question reads from, and the collection in all, exactly from the
     // facets; undefined while a count is missing.
     readFrom: filterOn
@@ -1089,6 +1344,8 @@ export const useAssistant = ({
     // «Logg ut» forgets what this browser kept of the reader's choices, as kunnskapsassistenten's
     // beforeLogout: the next person on a shared machine starts without them. Then the host's own.
     signOut: () => {
+      setWaiting(undefined);
+      stopAll();
       storage?.remove('filter');
       storage?.remove('flags');
       storage?.remove('corpus');
@@ -1106,6 +1363,11 @@ export const useAssistant = ({
     deleteThread: onDelete
       ? async (thread: ThreadRow) => {
           await onDelete(thread);
+          for (const run of runs.current)
+            if (run.thread === thread.id) {
+              run.controller.abort();
+              runs.current.delete(run);
+            }
           setDeleted((all) => new Set(all).add(thread.id));
           if (thread.id === currentId) leave(undefined);
         }
@@ -1142,13 +1404,16 @@ export const useAssistant = ({
     view,
     viewError,
     retryThread: () => setReload((n) => n + 1),
+    // Only while the last question's answer may still come.
+    fetchAgain: answerMayCome && view === 'ready' ? fetchAgain : undefined,
     turns,
     conversation,
     // A question waiting to go counts as work: the field offers to stop it.
     working: working || waiting !== undefined,
+    // «Avbryt genereringen» stops the answer on screen, not those in other threads.
     cancel: () => {
       setWaiting(undefined);
-      abort.current?.abort();
+      shown.current?.controller.abort();
     },
     send,
     draft,
@@ -1184,6 +1449,7 @@ export const useAssistant = ({
     documentOverChat,
     openDoc,
     documentAnswer,
+    documentFile,
     documentCitations,
     documentIndex: Math.max(
       0,
@@ -1204,11 +1470,6 @@ export const useAssistant = ({
     onShellLayout: (next: ShellLayout) => storage?.write('layout', next),
     tool,
     setTool,
-    /** A tool's own button on the folded panel (dev-verktoy-4): the panel opens on that tool. */
-    showTool: (id: string) => {
-      setTool(id);
-      setRequest({ action: 'open', side: 'secondary' });
-    },
     // settings
     level,
     setLevel,

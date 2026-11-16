@@ -626,7 +626,9 @@ describe('the playground', () => {
   it('a run is refused with 429 once the monthly tokens are used up', async () => {
     const { settings, blobs, model, call, run } = await boot();
     expect((await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(200);
-    expect(settings.setTenant(tenant, 'usage.monthlyTokens', 10)).toMatchObject({ ok: true });
+    expect(settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator')).toMatchObject({
+      ok: true,
+    });
     const before = model.seen.length;
 
     const res = await run({ setup: own('Svar på bokmål.'), input: { file: { sample: true } } });

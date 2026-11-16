@@ -197,6 +197,9 @@ describe('the invariants', () => {
   it('point only to tests that exist under the name they give', () => {
     const named = [...invariants.matchAll(/`([^`]+\.test\.ts)`, "([^"]+)"/g)];
     expect(named.length).toBeGreaterThan(0);
-    for (const [, file = '', name = ''] of named) expect(read(file)).toContain(`it('${name}'`);
+    for (const [, file = '', name = ''] of named) {
+      const quoted = `'${name}'`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(read(file)).toMatch(new RegExp(`\\bit(?:\\.each\\([\\w.]*\\))?\\(\\s*${quoted}`));
+    }
   });
 });

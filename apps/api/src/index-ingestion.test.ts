@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DocumentConverter } from '@genai/ingest';
+import { onePage, type DocumentConverter } from '@genai/ingest';
 import { mayUseModels } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import { envSecrets } from '@genai/kernel';
@@ -53,9 +53,9 @@ const jobFor = (
 
 const converted: string[] = [];
 const converter: DocumentConverter = {
-  toMarkdown: async (file) => {
+  convert: async (file) => {
     converted.push(file.name);
-    return `# ${file.name}\n\nKonvertert tekst fra ${file.name}.`;
+    return onePage(`# ${file.name}\n\nKonvertert tekst fra ${file.name}.`);
   },
 };
 

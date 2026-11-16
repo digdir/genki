@@ -1397,7 +1397,7 @@ describe('settings and datasets at run time', () => {
   ) => {
     const settings = new SettingsRegistry(platformSettings);
     for (const d of platformSettings)
-      if (tenantSettable(d)) settings.setTenant('991825827', d.key, d.default);
+      if (tenantSettable(d)) settings.setTenant('991825827', d.key, d.default, 'operator');
     const applied: unknown[] = [];
     const log = new (class extends InMemoryEventLog {
       override async append(event: Parameters<InMemoryEventLog['append']>[0]) {

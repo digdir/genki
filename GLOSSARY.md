@@ -79,12 +79,20 @@ What a converter itself returns for one file, such as a `DoclingDocument`, kept 
 _Avoid_: raw output, JSON dump
 
 **Stored conversion**:
-The text per page derived from one file's conversion, kept so that no file is converted twice by a converter its pipeline keeps: keyed by the file's sha256, the converter, its version and settings, and the derivation and its version.
+The text derived from one file's conversion, per page or as conversion parts, kept so that no file is converted twice by a converter its pipeline keeps: keyed by the file's sha256, the converter, its version and settings, and the derivation and its version.
 _Avoid_: parse, extraction, cache (alone)
 
 **Derivation**:
-How the text the chunker reads is made from a native output, such as `docling-pages`. A new derivation reads the Blob copy and needs no download and no converter call.
+How the text the chunker reads is made from a native output or from another stored conversion, such as `docling-pages`, `docling-parts` or `text-layer-parts`. A new derivation needs no download and no converter call.
 _Avoid_: post-processing, normalisation
+
+**Conversion part**:
+One piece of a stored conversion, in reading order: a heading, paragraph, list item, table, picture, caption, footnote or piece of furniture, with its place in each unit it covers (a box on a page or slide, or a locator into the source) and its span in the conversion's text. Shared by every document and dataset that holds the file (ADR 0055).
+_Avoid_: block, element, document part, segment
+
+**Furniture**:
+The parts of a file that a reader sees but that carry nothing of their own, such as page headers and footers, page numbers and a site's menu. The converter marks them. Kept in the stored conversion so it can be drawn, never chunked or cited.
+_Avoid_: boilerplate, chrome, artefact
 
 **Kept conversion**:
 A stored conversion from a converter a pipeline keeps, such as Docling, which is never converted again unless an upgrade is chosen. One from a converter the pipeline only accepts, such as the text layer, is replaced by a replacement run.

@@ -27,6 +27,7 @@ import {
   verdictLabels,
 } from '../../data/search-engines';
 import { useT, type T } from '../../i18n';
+import { admissionRunsOutSoon } from './admission';
 
 export type SwitchOutcome =
   | { kind: 'cancelled' }
@@ -168,6 +169,19 @@ export const EngineSwitch = ({
           tRef.current('searchEngine.switchCancelReason'),
         );
       onClose({ kind: 'cancelled' });
+    });
+
+  const readmit = () =>
+    act(async () => {
+      if (sw)
+        setSw(
+          await api.searchEngines.readmitSwitch(
+            tenant,
+            datasetId,
+            sw.id,
+            tRef.current('searchEngine.swReadmitReason'),
+          ),
+        );
     });
 
   const giveUp = () =>
@@ -516,6 +530,29 @@ export const EngineSwitch = ({
           <p aria-live="polite" className="engine-p">
             {progText}
           </p>
+          {sw?.admissionRunsOutAt && !failed ? (
+            <div className="stack-xs">
+              {admissionRunsOutSoon(sw.admissionRunsOutAt) ? (
+                <Alert data-color="warning" data-size="sm">
+                  {t('searchEngine.swAdmissionSoon', { time: f.dateTime(sw.admissionRunsOutAt) })}
+                </Alert>
+              ) : (
+                <p className="engine-p">
+                  {t('searchEngine.swAdmission', { time: f.dateTime(sw.admissionRunsOutAt) })}
+                </p>
+              )}
+              <div className="actions">
+                <Button
+                  variant="secondary"
+                  data-size="sm"
+                  loading={busy}
+                  onClick={() => void readmit()}
+                >
+                  {t('searchEngine.swReadmit')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {failed ? (
             <Alert data-color="danger">
               <Heading level={4} data-size="2xs">

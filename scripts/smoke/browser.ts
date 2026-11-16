@@ -22,6 +22,39 @@ const settle = 30_000;
 export const screenFile = (app: string, path: string) =>
   `${app}-${path.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'home'}`;
 
+export const publishedVersionOf = (values: string[]) =>
+  values
+    .filter((v) => /^\d+$/.test(v))
+    .sort((a, b) => Number(b) - Number(a))
+    .at(0);
+
+export const playgroundRun = (question: string) => async (page: Page) => {
+  await page
+    .getByRole('button', { name: /^(Endre oppsett|Change setup)$/ })
+    .first()
+    .click();
+  const picker = page.locator('select[id$="-ver"]').first();
+  await picker.waitFor({ timeout: settle }).catch(() => {
+    throw new Error('the playground setup shows no version picker for the smoke service');
+  });
+  const published = publishedVersionOf(
+    await picker.locator('option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value)),
+  );
+  if (!published) throw new Error('the smoke service has no published version in the playground');
+  await picker.selectOption(published);
+  await page.getByRole('button', { name: /^(Bruk oppsettet|Use the setup)$/ }).click();
+  const form = page
+    .locator('form')
+    .filter({ has: page.locator('textarea') })
+    .last();
+  await form.locator('textarea').fill(question);
+  await form.getByRole('button', { name: 'Send' }).click();
+  await page
+    .waitForResponse((r) => r.url().includes('/playground/runs'), { timeout: 150_000 })
+    .catch(() => undefined);
+  await page.waitForTimeout(2_000);
+};
+
 export const sessionFor = (
   app: 'portal' | 'console',
   token: string,
@@ -76,11 +109,13 @@ export const openBrowser = async (target: BrowserTarget) => {
         status: response.status(),
       };
       api.push(call);
-      if (call.status === 403)
+      if (call.status >= 400)
         bodies.push(
           response.json().then(
-            (body: { type?: unknown } | null) => {
+            (body: { type?: unknown; title?: unknown; detail?: unknown } | null) => {
               if (typeof body?.type === 'string') call.problem = body.type;
+              const why = typeof body?.detail === 'string' ? body.detail : body?.title;
+              if (typeof why === 'string') call.why = target.redact(why);
             },
             () => undefined,
           ),
@@ -158,18 +193,7 @@ export const openBrowser = async (target: BrowserTarget) => {
     }
   };
 
-  const runPlayground = (question: string) => async (page: Page) => {
-    const form = page
-      .locator('form')
-      .filter({ has: page.locator('textarea') })
-      .last();
-    await form.locator('textarea').fill(question);
-    await form.getByRole('button', { name: 'Send' }).click();
-    await page
-      .waitForResponse((r) => r.url().includes('/playground/runs'), { timeout: 150_000 })
-      .catch(() => undefined);
-    await page.waitForTimeout(2_000);
-  };
+  const runPlayground = playgroundRun;
 
   return { visit, runPlayground, close: () => browser.close() };
 };

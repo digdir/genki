@@ -302,7 +302,9 @@ describe('the builder assistant API', () => {
 
   it('a turn stops at the rest of the daily budget, and later turns do not call the model', async () => {
     const { settings, turn, chatCount } = await boot([{ text: 'Hei.', tokens: [30, 10] }]);
-    expect(settings.setTenant(tenant, 'assistant.dailyTokens', 25)).toMatchObject({ ok: true });
+    expect(settings.setTenant(tenant, 'assistant.dailyTokens', 25, 'operator')).toMatchObject({
+      ok: true,
+    });
 
     const first = await json(await turn({ message: 'Hjelp meg' }));
     const calls = chatCount();

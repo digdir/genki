@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  cleanup,
+  configure,
+  fireEvent,
+  getConfig,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import { strategyRoutes } from '../mock/strategies';
@@ -43,6 +51,17 @@ const catalog = [
     default: 'user',
     settableAt: ['platform', 'tenant', 'service', 'call'],
     schema: { type: 'string', enum: ['user', 'bokmal', 'nynorsk'] },
+  },
+  {
+    key: 'usage.monthlyTokens',
+    description: 'Tokens a tenant may use per calendar month.',
+    category: 'usage',
+    axis: 'service',
+    sensitivity: 'normal',
+    default: 50_000_000,
+    settableAt: ['platform', 'tenant'],
+    operatorOnly: true,
+    schema: { type: 'integer', minimum: 1 },
   },
 ];
 
@@ -170,6 +189,9 @@ const renderLive = async (path: string, fetch: typeof globalThis.fetch) => {
 
 const grid = () => screen.findByRole('region', { name: 'Innstillinger per lag' });
 
+const defaultTimeout = getConfig().asyncUtilTimeout;
+beforeAll(() => configure({ asyncUtilTimeout: 5000 }));
+afterAll(() => configure({ asyncUtilTimeout: defaultTimeout }));
 beforeEach(() => {
   window.location.hash = '';
 });
@@ -188,11 +210,26 @@ describe('live settings', () => {
     expect(within(region).getByRole('button', { name: 'Måte å flette søkene på' })).toBeTruthy();
   });
 
+  it('shows a limit Digdir sets read-only to the organisation, with a note that Digdir sets it', async () => {
+    const { calls, fetch } = platform();
+    await renderLive('#/settings', fetch);
+    fireEvent.click(await within(await grid()).findByRole('button', { name: 'Tokens per måned' }));
+    const side = await screen.findByRole('dialog');
+
+    const edit = within(side).getByRole('region', { name: 'Digdir setter denne grensen' });
+    expect(within(edit).getByText(/Ta kontakt med Digdir/)).toBeTruthy();
+    expect(within(side).queryByLabelText(/Verdi/)).toBeNull();
+    expect(within(side).queryByRole('button', { name: 'Forhåndsvis endring' })).toBeNull();
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+
   it('saves a tenant value with a reason and lists the changelog from the platform', async () => {
     const { calls, fetch } = platform();
     await renderLive('#/settings', fetch);
-    fireEvent.click(within(await grid()).getByRole('button', { name: 'Treff som hentes (top-k)' }));
-    const side = screen.getByRole('dialog');
+    fireEvent.click(
+      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+    );
+    const side = await screen.findByRole('dialog');
 
     const log = await within(side).findByRole('region', { name: 'Endringer her' });
     expect(within(log).getByText(/Plattformstandard v2: 80/)).toBeTruthy();
@@ -216,8 +253,10 @@ describe('live settings', () => {
   it('publishes a service value as a new version with the reason', async () => {
     const { calls, fetch } = platform();
     await renderLive('#/services/ka/settings', fetch);
-    fireEvent.click(within(await grid()).getByRole('button', { name: 'Treff som hentes (top-k)' }));
-    const side = screen.getByRole('dialog');
+    fireEvent.click(
+      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+    );
+    const side = await screen.findByRole('dialog');
 
     fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: '40' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));

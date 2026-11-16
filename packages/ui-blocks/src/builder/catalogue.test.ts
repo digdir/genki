@@ -11,6 +11,9 @@ import {
   nameKey,
   needWords,
   optionKey,
+  placeKey,
+  placesHelpKey,
+  placesOf,
   settingsSchema,
   zones,
 } from './catalogue.js';
@@ -105,6 +108,26 @@ describe('the block catalogue', () => {
     ]);
   });
 
+  it('offers Approach in the main column, in the secondary panel or in both, and every other block one zone at a time', () => {
+    expect(placesOf('approach')).toEqual(['main', 'secondary', 'both']);
+    expect(blockCatalogue.filter((spec) => spec.both).map((spec) => spec.id)).toEqual(['approach']);
+    expect(placesOf('chat')).toEqual(['main', 'secondary']);
+    expect(placesOf('sources')).toEqual(['secondary']);
+  });
+
+  it('lets only a block with exactly two zones stand in both', () => {
+    for (const spec of blockCatalogue.filter((s) => s.both))
+      expect(spec.zones, spec.id).toHaveLength(2);
+  });
+
+  it('names every place, «Begge steder» too, and says what each place draws for a block that may stand in both', () => {
+    for (const spec of blockCatalogue)
+      for (const place of placesOf(spec.id)) expect(has(placeKey(place)), place).toBe(true);
+    expect(nb.builder.zoneBoth).toBe('Begge steder');
+    for (const spec of blockCatalogue.filter((s) => s.both))
+      expect(has(placesHelpKey(spec.id)), spec.id).toBe(true);
+  });
+
   it('makes Footnotes an option of Chat that needs Sources or Document view, not a block of its own', () => {
     expect(blockIds).not.toContain('footnotes');
     const footnotes = blockCatalogue
@@ -119,6 +142,14 @@ describe('the block catalogue', () => {
     expect(view?.members).toEqual(['DocumentView']);
     expect(view?.zones).toEqual(['secondary', 'main']);
     expect(view?.needs).toEqual(['service:datasets|documents']);
+  });
+
+  it('offers the whole document in Document view as a switch, on by default and marked beta in both languages', () => {
+    const view = blockCatalogue.find((s) => s.id === 'document-view');
+    expect(view?.options).toEqual([{ id: 'file', kind: 'switch', default: true }]);
+    expect(nb.builder.documentViewFile).toBe('Vis hele dokumentet (beta)');
+    expect(en.builder.documentViewFile).toBe('Show the whole document (beta)');
+    expect(nb.builder.documentViewFileHelp).toMatch(/Av: dokumentvisningen viser bare utdragene$/);
   });
 
   it('puts Settings in the foot of the primary panel', () => {

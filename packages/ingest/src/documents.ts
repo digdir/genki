@@ -1,5 +1,14 @@
 import { extname } from 'node:path';
-import { NoTextLayerError, type DocumentConverter, type DocumentFile } from './converter.js';
+import { createHash } from 'node:crypto';
+import {
+  ConversionPending,
+  ConversionRefused,
+  NoTextLayerError,
+  isPdfFile,
+  joinPages,
+  type DocumentConverter,
+  type DocumentFile,
+} from './converter.js';
 import { htmlToPage, type ContentExtractor } from './html.js';
 import type { SkipReason } from './pipeline.js';
 
@@ -67,7 +76,14 @@ export const websiteSkipReasonFor = (
     : undefined;
 };
 
-export type ReadDocument = { text: string; title?: string } | { skip: SkipReason };
+/** A converted file's pages and hash, so its chunks can name the file and the pages they span. */
+export interface ReadFile {
+  name: string;
+  sha256: string;
+  pages: string[];
+}
+
+export type ReadDocument = { text: string; title?: string; file?: ReadFile } | { skip: SkipReason };
 
 export interface ReadDocumentOptions {
   converter?: DocumentConverter;
@@ -99,8 +115,17 @@ export const readDocument = async (
     if (!options.converter || !convertibleExtensions(options.converter).includes(kind))
       return { skip: 'unsupported_type' };
     try {
-      return { text: await options.converter.toMarkdown(file) };
+      const sha256 = createHash('sha256').update(file.bytes).digest('hex');
+      const conversion = await options.converter.convert(file);
+      if (isPdfFile(file) && conversion.pages.every((p) => p.trim() === ''))
+        throw new NoTextLayerError(file.name);
+      return {
+        text: joinPages(conversion.pages),
+        file: { name: file.name, sha256, pages: conversion.pages },
+      };
     } catch (error) {
+      if (error instanceof ConversionPending) throw error;
+      if (error instanceof ConversionRefused) return { skip: error.reason };
       return { skip: error instanceof NoTextLayerError ? 'no_text' : 'conversion_failed' };
     }
   };

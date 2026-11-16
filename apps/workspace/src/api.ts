@@ -91,11 +91,20 @@ const documentRulesOf = (m: ModelEntry): DocumentRules | undefined => {
 interface OwuiSource {
   source?: { name?: string; id?: string; url?: string };
   metadata?: { name?: string }[];
+  title?: string;
+  url?: string;
   excerpt?: string;
   excerpts?: { chunk_id?: string; text?: string }[];
+  markers?: string[];
   index?: number;
   version?: string | number;
   published_at?: string;
+}
+
+interface Marker {
+  marker: string;
+  chunk_id: string;
+  document: string;
 }
 
 interface Chunk {
@@ -104,6 +113,7 @@ interface Chunk {
     finish_reason?: string | null;
   }[];
   sources?: OwuiSource[];
+  markers?: unknown;
   citations?: string[];
   retract?: boolean;
   no_answer?: boolean;
@@ -119,9 +129,9 @@ const linkable = (url: string | undefined) =>
 
 const passageLength = 1200;
 
-const passageOf = (s: OwuiSource) => {
-  const cited = s.excerpts?.find((e) => e.chunk_id === s.source?.id && e.text?.trim());
-  const text = (cited?.text ?? s.excerpt ?? '')
+const passageOf = (s: OwuiSource, chunkId = s.source?.id) => {
+  const cited = s.excerpts?.find((e) => e.chunk_id === chunkId && e.text?.trim());
+  const text = (cited?.text ?? (chunkId === s.source?.id ? s.excerpt : undefined) ?? '')
     .replace(/^#+\s*/gm, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -129,16 +139,97 @@ const passageOf = (s: OwuiSource) => {
   return text.length > passageLength ? `${text.slice(0, passageLength).trimEnd()}…` : text;
 };
 
-export const sourcesFrom = (chunk: Chunk, locale: Locale = 'nb'): Source[] => {
-  if (chunk.sources?.length)
-    return chunk.sources.map((s) => ({
-      title: s.metadata?.[0]?.name ?? s.source?.name ?? translator(locale)('api.untitledSource'),
-      ...linkable(s.source?.url),
-      ...(passageOf(s) ? { excerpt: passageOf(s) as string } : {}),
+const provenanceOf = (s: OwuiSource) => ({
+  ...(s.version !== undefined && s.version !== '' ? { version: String(s.version) } : {}),
+  ...(s.published_at ? { publishedAt: s.published_at } : {}),
+});
+
+const markersIn = (value: unknown): Marker[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (m): m is Marker =>
+          typeof m === 'object' &&
+          m !== null &&
+          typeof m.marker === 'string' &&
+          /^\d+$/.test(m.marker) &&
+          typeof m.chunk_id === 'string' &&
+          typeof m.document === 'string',
+      )
+    : [];
+
+const sourcesIn = (value: unknown): OwuiSource[] =>
+  Array.isArray(value)
+    ? value.filter((s): s is OwuiSource => typeof s === 'object' && s !== null)
+    : [];
+
+const chunkSource = (c: Record<string, unknown>): OwuiSource => ({
+  ...(typeof c.docTitle === 'string' && c.docTitle ? { title: c.docTitle } : {}),
+  excerpts:
+    typeof c.chunkId === 'string' && typeof c.contentMarkdown === 'string'
+      ? [{ chunk_id: c.chunkId, text: c.contentMarkdown }]
+      : [],
+});
+
+// One numbered source per marker, showing the excerpt that marker names.
+const markedSources = (markers: Marker[], sources: OwuiSource[], untitled: string): Source[] =>
+  markers.flatMap((m) => {
+    const s = sources.find(
+      (c) => c.markers?.includes(m.marker) || c.excerpts?.some((e) => e.chunk_id === m.chunk_id),
+    );
+    if (!s) return [];
+    const excerpt = passageOf(s, m.chunk_id);
+    return [
+      {
+        title:
+          (m.chunk_id === s.source?.id ? s.metadata?.[0]?.name : undefined) ??
+          s.title ??
+          s.source?.name ??
+          untitled,
+        index: Number(m.marker),
+        document: m.document,
+        ...linkable(s.source?.url ?? s.url),
+        ...(excerpt ? { excerpt } : {}),
+        ...provenanceOf(s),
+      },
+    ];
+  });
+
+// Each source under the `index` its answer gave it, as streamed or as stored.
+const indexedSources = (sources: OwuiSource[], untitled: string): Source[] =>
+  sources.map((s) => {
+    const excerpt = passageOf(s, s.source?.id ?? s.excerpts?.[0]?.chunk_id);
+    return {
+      title: s.metadata?.[0]?.name ?? s.source?.name ?? s.title ?? untitled,
+      ...linkable(s.source?.url ?? s.url),
+      ...(excerpt ? { excerpt } : {}),
       ...(typeof s.index === 'number' ? { index: s.index } : {}),
-      ...(s.version !== undefined && s.version !== '' ? { version: String(s.version) } : {}),
-      ...(s.published_at ? { publishedAt: s.published_at } : {}),
-    }));
+      ...provenanceOf(s),
+    };
+  });
+
+// A turn with only chunks cites by document: `[n]` is the n-th document its chunks name.
+const chunkDocuments = (chunks: Record<string, unknown>[], untitled: string): Source[] => {
+  const documents = new Map<unknown, Source>();
+  for (const c of chunks) {
+    const key = typeof c.docNum === 'string' && c.docNum ? c.docNum : c.chunkId;
+    if (documents.has(key)) continue;
+    documents.set(key, {
+      title: typeof c.docTitle === 'string' && c.docTitle ? c.docTitle : untitled,
+      index: documents.size + 1,
+      ...(typeof c.contentMarkdown === 'string' && c.contentMarkdown.trim()
+        ? { excerpt: c.contentMarkdown.replace(/\s+/g, ' ').trim().slice(0, passageLength) }
+        : {}),
+    });
+  }
+  return [...documents.values()];
+};
+
+export const sourcesFrom = (chunk: Chunk, locale: Locale = 'nb'): Source[] => {
+  const markers = markersIn(chunk.markers);
+  if (markers.length && chunk.sources?.length)
+    return markedSources(markers, chunk.sources, translator(locale)('api.untitledSource'));
+  if (chunk.sources?.length)
+    return indexedSources(chunk.sources, translator(locale)('api.untitledSource'));
   return (chunk.citations ?? []).map((url, i) => ({ title: url, index: i + 1, ...linkable(url) }));
 };
 
@@ -387,22 +478,20 @@ export const createWorkspaceApi = ({
                 : {}),
             };
           const chunks = Array.isArray(m.chunks) ? (m.chunks as Record<string, unknown>[]) : [];
+          const markers = markersIn(m.markers);
+          const stored = sourcesIn(m.sources);
+          const untitled = translator(locale())('api.untitledSource');
           return {
             id: `saved-${i}`,
             role: 'assistant',
             text,
             lang: detectLang(text),
             ...(typeof m.task === 'string' && m.task ? { task: m.task } : {}),
-            sources: chunks.map((c, n) => ({
-              title:
-                typeof c.docTitle === 'string' && c.docTitle
-                  ? c.docTitle
-                  : translator(locale())('api.untitledSource'),
-              index: n + 1,
-              ...(typeof c.contentMarkdown === 'string' && c.contentMarkdown.trim()
-                ? { excerpt: c.contentMarkdown.replace(/\s+/g, ' ').trim().slice(0, 1200) }
-                : {}),
-            })),
+            sources: markers.length
+              ? markedSources(markers, [...stored, ...chunks.map(chunkSource)], untitled)
+              : stored.length
+                ? indexedSources(stored, untitled)
+                : chunkDocuments(chunks, untitled),
           };
         });
       },

@@ -230,9 +230,15 @@ export const SettingPanel = ({
 
   const liveService = liveMode && el === 'T' && serviceId !== undefined && s.type !== 'secret';
   const isDraft = el === 'T' && !liveService;
-  const canEditHere = s.scope.includes(
-    el === 'V' ? 'virksomhet' : el === 'T' ? 'tjeneste' : 'datasett',
-  );
+  const setByDigdir = el === 'V' && !!s.setByDigdir;
+  const canEditHere =
+    !setByDigdir &&
+    s.scope.includes(el === 'V' ? 'virksomhet' : el === 'T' ? 'tjeneste' : 'datasett');
+  const editHeading = canEditHere
+    ? t('settings.panelNewValue')
+    : setByDigdir
+      ? t('settings.panelSetByDigdir')
+      : t('settings.panelCannotHere');
   const pinned = ctx.kind !== 'tenant' ? s.pins?.[ctx.target] : undefined;
   const live = el === 'V' && s.apiKey !== undefined && s.type !== 'secret';
   const layerLabel = t('settings.panelLayerOf', {
@@ -504,13 +510,11 @@ export const SettingPanel = ({
           ) : null}
         </ol>
       </div>
-      <section
-        className="panel-edit stack-sm"
-        aria-label={canEditHere ? t('settings.panelNewValue') : t('settings.panelCannotHere')}
-      >
+      <section className="panel-edit stack-sm" aria-label={editHeading}>
         <Heading level={3} data-size="2xs">
-          {canEditHere ? t('settings.panelNewValue') : t('settings.panelCannotHere')}
+          {editHeading}
         </Heading>
+        {setByDigdir ? <Paragraph>{t('settings.panelSetByDigdirHelp')}</Paragraph> : null}
         {canEditHere ? (
           <>
             {s.type === 'secret' ? (
