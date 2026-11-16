@@ -19,6 +19,7 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   readUsdNok,
+  keepRunningOnRejection,
   runtimeBlocksOf,
   saveUsdNok,
   scheduleUsdNok,
@@ -41,6 +42,7 @@ import {
   costOf,
   deleteSinkTraces,
   InMemoryTriggerRuns,
+  monthlyModelQuota,
   monthlyQuotaGate,
   recordTriggerRuns,
   scheduleProviderObjectSweep,
@@ -67,7 +69,7 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
-import { createLocalConverter, guardPdfParseLeaks } from '@genai/providers-documents';
+import { createLocalConverter } from '@genai/providers-documents';
 import {
   createTraceExporter,
   langfuseTraceSink,
@@ -118,8 +120,7 @@ import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
-// pdf.js can leave a page's parse error unhandled; that page is already left empty (ADR 0042).
-guardPdfParseLeaks(log);
+keepRunningOnRejection(log);
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
@@ -618,6 +619,14 @@ if (lockdown) log('lockdown: the worker runs no triggers and refuses every model
 const blob = new FileSystemBlobStore(blobDir);
 const vault = new TenantSecretVault(db?.tenantSecrets);
 const eventLog = db?.log ?? new InMemoryEventLog();
+const monthlyTokens = (tenant: string) => {
+  const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
+  return typeof value === 'number' && value > 0 ? value : 50_000_000;
+};
+const usedTokens = async (tenant: string, since: string) =>
+  db
+    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
+    : 0;
 const runtime = await createRuntime({
   platformTenant,
   catalogs: {
@@ -645,6 +654,7 @@ const runtime = await createRuntime({
         ),
   policy: ownTenantOnly(),
   ...(lockdown ? { admitsModelUse: mayUseModels } : {}),
+  modelQuota: monthlyModelQuota({ monthlyTokens, usedTokens }),
   log: eventLog,
   tasks,
   prices,
@@ -740,14 +750,6 @@ const paused = async (binding: TriggerBinding) => {
   return Boolean(latest && !latest.deleted);
 };
 
-const monthlyTokens = (tenant: string) => {
-  const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
-  return typeof value === 'number' && value > 0 ? value : 50_000_000;
-};
-const usedTokens = async (tenant: string, since: string) =>
-  db
-    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
-    : 0;
 const pricedModels = runtime.prices as Record<string, TokenPrice | undefined>;
 
 const lease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-triggers') : undefined;

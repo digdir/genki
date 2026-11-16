@@ -19,6 +19,7 @@ import {
   contractAssertions,
   defaultObserve,
   criteriaJudge,
+  currentJudgeVersions,
   evalRun,
   evalRunStrategy,
   evaluateGates,
@@ -35,6 +36,7 @@ import {
   rubricJudge,
   runEval,
   score,
+  staleJudges,
   type EvalContext,
   type EvalRun,
   type Evaluator,
@@ -626,6 +628,37 @@ describe('eval runner', () => {
       [1, { answers: { inputTokens: 10, outputTokens: 2, costMicroNok: 5 } }],
       [2, { answers: { inputTokens: 20, outputTokens: 4, costMicroNok: 10 } }],
     ]);
+  });
+
+  it('hands each evaluator the parts the case answered', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const answer = kernelTarget(kernel, kari, 'answer');
+    const parts = [
+      { mime: 'text/plain', body: { kind: 'text' as const, text: 'Klagefristen er tre uker.' } },
+      {
+        mime: 'application/json',
+        body: { kind: 'json' as const, json: { sources: [{ document: 'forvaltningsloven' }] } },
+      },
+    ];
+    const seen: unknown[] = [];
+    const sees: Evaluator = {
+      id: 'ser-delene',
+      version: '1',
+      kind: 'deterministic',
+      evaluate: async (_c, o) => {
+        seen.push(o.parts);
+        return [];
+      },
+    };
+
+    await runEval({
+      testSet: setOf(),
+      evaluators: [sees],
+      provenance: { commit: 'abc', data: 'd' },
+      target: { ...answer, invoke: async (input) => ({ ...(await answer.invoke(input)), parts }) },
+    });
+
+    expect(seen).toEqual([parts, parts]);
   });
 
   it("checks the judge's family only against language models the run used", async () => {
@@ -1509,6 +1542,60 @@ describe('comparing runs', () => {
     const c = compareRuns(baseline, candidate, 'recall@10', { allowDifferent: ['commit'] });
     expect(c.difference).toBe(0.5);
     expect(c.n).toBe(30);
+    expect(c).not.toHaveProperty('staleJudges');
+  });
+
+  it('names the judges in a comparison that were recorded at an older version than the current judge', () => {
+    const older = ['judge:criteria@1+foundry/claude'];
+    const c = compareRuns(
+      fakeRun(
+        cases(10, () => 0),
+        { judges: older },
+      ),
+      fakeRun(
+        cases(10, () => 1),
+        { judges: older },
+      ),
+      'recall@10',
+    );
+
+    expect(c.staleJudges).toEqual(older);
+    expect(c.difference).toBe(1);
+  });
+});
+
+describe('stale judges', () => {
+  const current = currentJudgeVersions['judge:criteria'];
+
+  it("calls a judge stale when its run recorded an older version than the platform's judge has now", () => {
+    expect(
+      staleJudges(['judge:criteria@1+foundry/claude', `judge:criteria@${current}+foundry/claude`]),
+    ).toEqual(['judge:criteria@1+foundry/claude']);
+  });
+
+  it('never calls a judge stale whose current version the platform does not know', () => {
+    expect(staleJudges(['judge:answer-quality@1+foundry/claude', 'anthropic-judge'])).toEqual([]);
+  });
+
+  it('does not call the criteria judge stale in a run it judges now', async () => {
+    const judge = criteriaJudge(async () => ({
+      id: 'foundry/claude',
+      family: 'anthropic',
+      complete: async () => '{"scores": {"criteria": 1}, "rationale": "ok"}',
+    }));
+
+    await judge.evaluate(
+      caseOf({
+        id: 'k',
+        type: 'criteria',
+        expected: { sources: [], criteria: { criteria: 'hi' } },
+      }),
+      observation({ answer: 'hi' }),
+      ctx,
+    );
+
+    expect(judge.judge).toBe(`judge:criteria@${current}+foundry/claude`);
+    expect(staleJudges([judge.judge as string])).toEqual([]);
   });
 });
 

@@ -136,6 +136,11 @@ const kaPlatform: typeof fetch = async (input, init) => {
     };
     return json({ latest, versions: [latest] });
   }
+  if (url.endsWith('/services/kunnskapsassistenten/environments'))
+    return json({
+      latestVersion: 1,
+      environments: [{ name: 'prod', version: 1, followsPublishes: true, previousVersion: null }],
+    });
   return emptyPlatform(input, init);
 };
 
