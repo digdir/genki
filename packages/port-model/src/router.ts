@@ -176,6 +176,9 @@ const needed = (request: ChatRequest): Capability[] => [
 const glob = (pattern: string) =>
   new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
 
+const discoveredId = (prefix: string, deployment: string) =>
+  `${prefix}/${deployment}`.toLowerCase().replace(/[^\w./-]+/g, '-');
+
 const matches = (name: string, include: string[], exclude: string[]) =>
   include.some((p) => glob(p).test(name)) && !exclude.some((p) => glob(p).test(name));
 
@@ -369,13 +372,18 @@ export class ModelRouter implements PortProvider<ModelPort> {
         const listing = this.#catalog.endpoints[from] as CatalogEndpoint;
         const key = `${rule.source}:${from}`;
         if (!listed.has(key)) {
+          const base = source.family ? listing.families[source.family] : '';
           listed.set(
             key,
-            source.list({
-              baseURL: listing.baseURL,
-              credential: this.#credentials.get(from) as Credential,
-              timeoutMs: this.options.timeoutMs ?? 15_000,
-            }),
+            base === undefined
+              ? Promise.reject(
+                  new Error(`${from} does not offer the ${source.family} family to list through`),
+                )
+              : source.list({
+                  baseURL: source.family ? familyURL(listing, base) : listing.baseURL,
+                  credential: this.#credentials.get(from) as Credential,
+                  timeoutMs: this.options.timeoutMs ?? 15_000,
+                }),
           );
         }
         const apis = rule.apis ?? defaultBindings(Object.keys(endpoint.families), this.#apis) ?? {};
@@ -386,7 +394,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
           >)) {
             if (!matches(found.deployment, rule.include, rule.exclude)) continue;
             if (staticPairs.has(`${name}/${found.deployment}`)) continue;
-            const id = `${prefix}/${found.deployment}`.toLowerCase();
+            const id = discoveredId(prefix, found.deployment);
             if (discovered.has(id)) continue;
             discovered.set(id, {
               model: {

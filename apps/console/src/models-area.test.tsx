@@ -148,7 +148,31 @@ describe('Modeller: connections', () => {
     const rules = screen.getByRole('region', { name: 'Regler for oppdagelse' });
     expect(within(rules).getByText('claude-*')).toBeTruthy();
     expect(within(rules).getByText('anthropic/messages@1')).toBeTruthy();
+    expect(within(rules).getAllByText('Utrullinger i Azure')).toHaveLength(2);
     expect(screen.getByText('DBA-2026-17')).toBeTruthy();
+  });
+
+  it('a discovery rule can list models from the OpenAI model list instead of Azure deployments', async () => {
+    const { changes, fetch } = recorded();
+    await signedIn('#/models?connection=foundry', fetch);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rediger tilkoblingen' }));
+    const panel = await dialog('Rediger foundry');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til regel' }));
+    const source = within(panel).getByRole('combobox', { name: 'Listes fra (regel 3)' });
+    expect((source as HTMLSelectElement).value).toBe('azure-deployments');
+    fireEvent.change(source, { target: { value: 'openai-models' } });
+    typeInto(within(panel).getByLabelText('Tar med (regel 3)'), 'aivar:*');
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre tilkobling' }));
+
+    expect(await screen.findByText(/Tilkoblingen foundry er lagret/)).toBeTruthy();
+    const put = changes().find((c) => c.method === 'PUT') as Call;
+    expect((put.body as { discovery: unknown[] }).discovery[2]).toEqual({
+      source: 'openai-models',
+      apis: {},
+      include: ['aivar:*'],
+    });
   });
 
   it('shows the settings and the named keys of a connection, the keys by secret name', async () => {

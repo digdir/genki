@@ -25,6 +25,22 @@ endpoints:
         apis: { chat: anthropic/messages@1 }
 ```
 
+A discovery rule names its `source`. `azure-deployments` reads the deployment list of an Azure resource, from the root of `baseURL`. `openai-models` reads `GET {openai family base}/models`, for any other connection that speaks the OpenAI API, such as the AI gateway; the connection must offer the `openai` family. The source sends the connection's own credential: a bearer token or an api-key without a header as `Authorization: Bearer`, an api-key with a header in that header. `include` and `exclude` match the listed id as the provider writes it:
+
+```yaml
+endpoints:
+  ai-gateway:
+    baseURL: https://api.aivar.no/v1
+    auth: { kind: bearer, secret: secret://platform/ai-gateway-key }
+    families: { openai: '' }
+    discovery:
+      - source: openai-models
+        include: ['aivar:*', 'sigma2:*']
+        apis: { chat: openai/chat-completions@1 }
+```
+
+A discovered model gets the id `<idPrefix>/<deployment>` in lower case, with characters other than letters, digits, `_`, `.`, `/` and `-` replaced by `-`, as the console does when a model is added by hand: `aivar:borealis` becomes `ai-gateway/aivar-borealis`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency, family or capabilities, so the operator sets them then. A listing that fails is reported for its connection in the refresh result.
+
 An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed` and so on) and a family. `GET /operator/apis` lists every API Genki can bind: built-in implementations and operation descriptors, under one id each. The built-in APIs are:
 
 | API                         | Kind     | Family      | Notes                                                  |

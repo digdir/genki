@@ -442,4 +442,20 @@ export const azureDeployments: DiscoverySource = {
   },
 };
 
+export const openAiModels: DiscoverySource = {
+  kind: 'openai-models',
+  family: 'openai',
+  list: async (endpoint) => {
+    const response = await fetch(`${withoutTrailingSlashes(endpoint.baseURL)}/models`, {
+      headers: await authHeaders(endpoint.credential, 'authorization'),
+      signal: AbortSignal.timeout(endpoint.timeoutMs),
+    });
+    if (!response.ok) throw new Error(`listing models failed with HTTP ${response.status}`);
+    const body = (await response.json()) as { data?: unknown };
+    return (Array.isArray(body.data) ? (body.data as { id?: unknown }[]) : []).flatMap((m) =>
+      typeof m?.id === 'string' && m.id ? [{ deployment: m.id }] : [],
+    );
+  },
+};
+
 export { openAiEmbeddings, openAiEmbeddingsApi } from './embeddings.js';

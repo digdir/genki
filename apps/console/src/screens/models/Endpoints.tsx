@@ -46,6 +46,11 @@ export const capabilityLabel: Record<Capability, PlainKey> = {
   reasoning: 'endpoints.capReasoning',
 };
 
+export const discoverySourceLabel: Record<string, PlainKey> = {
+  'azure-deployments': 'connections.sourceAzureDeployments',
+  'openai-models': 'connections.sourceOpenAiModels',
+};
+
 const modelSlug = (deployment: string) =>
   deployment
     .trim()
@@ -419,6 +424,27 @@ export const EndpointForm = ({
             return (
               <div className="stack-sm rule-box" key={index}>
                 <span className="label-strong">{t('connections.ruleN', { n })}</span>
+                <div className="field">
+                  <Label htmlFor={`rule-source-${index}`}>
+                    {t('connections.ruleSource', { n })}
+                  </Label>
+                  {index === 0 ? (
+                    <Paragraph data-size="sm">{t('connections.ruleSourceHint')}</Paragraph>
+                  ) : null}
+                  <Select
+                    id={`rule-source-${index}`}
+                    value={draft.rule.source ?? ''}
+                    onChange={(e) =>
+                      setRule(index, { rule: { ...draft.rule, source: e.target.value } })
+                    }
+                  >
+                    {Object.entries(discoverySourceLabel).map(([source, label]) => (
+                      <SelectOption key={source} value={source}>
+                        {t(label)}
+                      </SelectOption>
+                    ))}
+                  </Select>
+                </div>
                 <Textfield
                   label={t('connections.ruleInclude', { n })}
                   description={index === 0 ? t('connections.rulePatternsHint') : undefined}
