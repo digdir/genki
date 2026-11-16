@@ -744,7 +744,7 @@ export const integrationsArea = {
     guideConnect:
       "Someone who manages the services connects them to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
     guideJudge:
-      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. In its filter, pick genki/<service-id>/<test-set-id> under Dataset and add isExperimentItemRootSpan = true. The judge names its own model, not the project's or the organisation's default model.",
+      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Choose Experiments as the target and pick genki/<service-id>/<test-set-id> under Dataset. Langfuse adds isExperimentItemRootSpan = true itself. The judge names its own model, not the project's or the organisation's default model.",
     guideMapping:
       'The judge reads the whole question and answer, or a path into them with $, .key and [n]. A text question is at input $.parts[0].body.text, and the answer at output $[0].body.text.',
     guideAdopt:

@@ -739,9 +739,9 @@ export const integrationsArea = {
       'En dommer i Langfuse kan vurdere testkjøringene til en tjeneste. genki viser vurderingene på kjøringen, ved siden av sine egne mål.',
     guideSteps: 'Fire steg',
     guideConnect:
-      'Den som forvalter tjenestene, kobler dem til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
+      'Den som administrerer tjenestene, kobler dem til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
     guideJudge:
-      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. I filteret velger du genki/<tjeneste-id>/<testsett-id> under Dataset og legger til isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet eller organisasjonen.',
+      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. Velg Experiments som mål og genki/<tjeneste-id>/<testsett-id> under Dataset. Langfuse legger selv til isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet eller organisasjonen.',
     guideMapping:
       'Dommeren leser hele spørsmålet og svaret, eller en sti i dem med $, .nøkkel og [n]. Et spørsmål i tekst ligger på input $.parts[0].body.text, og svaret på output $[0].body.text.',
     guideAdopt:
