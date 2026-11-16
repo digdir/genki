@@ -7,6 +7,7 @@ import { exampleUsage, mockFetch } from '../../mock';
 import { RightsProvider } from '../../Shell';
 import { renderAt } from '../../test-utils';
 import type { ClientView } from '../../types';
+import { RunsTab } from '../log/RunsTab';
 import { draftOf, specOf } from './ClientForm';
 import { LogSection } from './LogSection';
 import { ServiceKeys } from './ServiceKeys';
@@ -27,7 +28,10 @@ interface Call {
   headers: Headers;
 }
 
-const platform = (routes: Record<string, (call: Call) => unknown>) => {
+const platform = (
+  routes: Record<string, (call: Call) => unknown>,
+  { slow = false }: { slow?: boolean } = {},
+) => {
   const calls: Call[] = [];
   const fetch: typeof globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -40,6 +44,7 @@ const platform = (routes: Record<string, (call: Call) => unknown>) => {
       headers: new Headers(init?.headers),
     };
     calls.push(call);
+    if (slow) await new Promise((resolve) => setTimeout(resolve, 20));
     const handler = routes[`${method} ${path.split('?')[0] ?? ''}`];
     if (!handler)
       return new Response(JSON.stringify({ title: 'Not found', status: 404 }), { status: 404 });
@@ -203,6 +208,70 @@ describe('service environments in the portal', () => {
     expect(rollback?.body).toEqual({ version: 1 });
   });
 
+  it('keeps the success message on screen while the versions reload after a change', async () => {
+    let promoted = false;
+    const after = () => ({
+      latestVersion: 3,
+      environments: [env('prod', 3, false, 2), env('test', 3, true)],
+    });
+    const { api } = platform(
+      {
+        [`GET ${definitionPath}`]: history,
+        [`GET ${environmentsPath}`]: () => (promoted ? after() : staged()),
+        [`POST ${environmentsPath}/prod/promote`]: () => {
+          promoted = true;
+          return after();
+        },
+      },
+      { slow: true },
+    );
+    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ta versjonen test kjører i bruk i prod' }),
+    );
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Testerne er fornøyde' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk i prod' }));
+
+    expect(await screen.findByText('prod kjører nå versjon 3.')).toBeTruthy();
+    const list = screen.getByRole('list', { name: 'Miljøer' });
+    await waitFor(() => expect(within(list).getAllByText('Kjører versjon 3')).toHaveLength(2));
+    expect(screen.getByText('prod kjører nå versjon 3.')).toBeTruthy();
+  });
+
+  it('removes an environment with a reason after the owner confirms', async () => {
+    let removed = false;
+    const { api, calls } = platform({
+      [`GET ${definitionPath}`]: history,
+      [`GET ${environmentsPath}`]: () => ({
+        latestVersion: 3,
+        environments: removed
+          ? [env('prod', 3, true)]
+          : [env('prod', 3, false, 2), env('test', 3, true)],
+      }),
+      [`DELETE ${environmentsPath}/test`]: () => {
+        removed = true;
+        return { latestVersion: 3, environments: [env('prod', 3, true)] };
+      },
+    });
+    render(asManager(<Versions api={api} tenant={tenant} serviceId="klarsprak" />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Fjern test' }));
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Testmiljøet trengs ikke lenger' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern test' }));
+
+    expect(await screen.findByText('test er fjernet.')).toBeTruthy();
+    const remove = calls.find((c) => c.method === 'DELETE');
+    expect(remove?.path).toBe(`${environmentsPath}/test`);
+    expect(reasonOf(remove)).toBe('Testmiljøet trengs ikke lenger');
+    expect(await screen.findByText(/Tjenesten har bare prod/)).toBeTruthy();
+  });
+
   it('marks each version with the environments that run it', async () => {
     const { api } = platform({
       [`GET ${definitionPath}`]: history,
@@ -268,6 +337,39 @@ describe('service environments in the portal', () => {
     expect((screen.getByLabelText('Miljø') as HTMLSelectElement).value).toBe('test');
     expect(calls.some((c) => /\/tasks\?service=klarsprak&environment=test$/.test(c.path))).toBe(
       true,
+    );
+  });
+
+  it('filters the run log by environment only once a service is chosen', async () => {
+    const { api, calls } = platform({
+      [`GET /tenants/${tenant}/overview`]: () => ({
+        services: [{ id: 'klarsprak', name: 'Klarspråk' }],
+      }),
+      [`GET /tenants/${tenant}/tasks`]: () => ({ data: [], total: 0 }),
+      [`GET ${environmentsPath}`]: staged,
+    });
+    render(
+      <RunsTab
+        api={api}
+        tenant={tenant}
+        runId={undefined}
+        itemIndex={undefined}
+        canReveal={false}
+        live
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByRole('option', { name: 'Klarspråk' })).toBeTruthy();
+    expect(screen.queryByLabelText('Miljø')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Tjeneste'), { target: { value: 'klarsprak' } });
+    fireEvent.change(await screen.findByLabelText('Miljø'), { target: { value: 'test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Søk' }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => /\/tasks\?service=klarsprak&environment=test$/.test(c.path))).toBe(
+        true,
+      ),
     );
   });
 

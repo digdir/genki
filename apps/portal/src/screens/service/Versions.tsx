@@ -59,6 +59,7 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
   const [state, retry] = useAsync(
     (signal) => api.getDefinition(tenant, 'Service', serviceId, signal),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const [environments, retryEnvironments] = useAsync(
     (signal) =>
@@ -68,6 +69,7 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
           e instanceof ApiError && e.status === 404 ? undefined : Promise.reject(e),
         ),
     [api, tenant, serviceId, round],
+    { keepPreviousFor: `${tenant}/${serviceId}` },
   );
   const canManage = useRights().has('manage-services');
   const [open, setOpen] = useState<number>();

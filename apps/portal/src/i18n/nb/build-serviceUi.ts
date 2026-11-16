@@ -185,7 +185,7 @@ export const serviceUi = {
     remove: 'Fjern',
     removeLabel: 'Fjern {name}',
     removeConfirm:
-      'Kall som ber om {name}, blir avvist, og nøkler og frontender som bare kan bruke {name}, slutter å virke. Er det det siste miljøet ved siden av prod, får prod nye versjoner igjen.',
+      'Kall som ber om {name}, blir avvist, og nøkler og frontender som bare kan bruke {name}, slutter å virke. Det siste miljøet ved siden av prod kan bare fjernes når prod kjører den nyeste versjonen, og da får prod nye versjoner igjen.',
     removeSubmit: 'Fjern {name}',
     removed: '{name} er fjernet.',
     reason: 'Begrunnelse',

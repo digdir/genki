@@ -185,7 +185,7 @@ export const serviceUi = {
     remove: 'Remove',
     removeLabel: 'Remove {name}',
     removeConfirm:
-      'Calls that ask for {name} are refused, and keys and frontends that may use only {name} stop working. If it is the last environment besides prod, prod gets new versions again.',
+      'Calls that ask for {name} are refused, and keys and frontends that may use only {name} stop working. The last environment besides prod can be removed only once prod runs the newest version, and prod then gets new versions again.',
     removeSubmit: 'Remove {name}',
     removed: '{name} is removed.',
     reason: 'Reason',
