@@ -40,6 +40,7 @@ export const navigation: NavGroup[] = [
       { path: '/catalog', label: 'shell.pageCatalog' },
       { path: '/building-blocks', label: 'shell.pageBuildingBlocks' },
       { path: '/search-engines', label: 'shell.pageSearchEngines' },
+      { path: '/state-register', label: 'shell.pageStateRegister' },
       { path: '/shared-services', label: 'shell.pageSharedServices' },
       { path: '/settings', label: 'shell.pageSettings' },
       { path: '/quality', label: 'shell.pageQuality' },

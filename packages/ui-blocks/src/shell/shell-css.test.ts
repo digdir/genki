@@ -98,10 +98,8 @@ describe('the Shell styles', () => {
       '--uib-shell-lead-width',
       '--uib-shell-main-max-width',
       '--uib-shell-main-min-width',
-      '--uib-shell-primary-drawer-width',
       '--uib-shell-primary-min-width',
       '--uib-shell-primary-width',
-      '--uib-shell-secondary-drawer-width',
       '--uib-shell-secondary-min-width',
       '--uib-shell-secondary-width',
     ]);
@@ -128,8 +126,31 @@ describe('the Shell styles', () => {
   });
 
   it('hide what React hides, which the layer would otherwise show', () => {
-    expect(css).toContain('.uib-shell-content[hidden] { display: none; }');
-    expect(css).toContain('.uib-shell-drawer[open] { display: flex;');
+    expect(css).toContain('.uib-shell-content[hidden], .uib-shell-fill[hidden] { display: none; }');
+  });
+
+  it('fill the shell’s own box with an open panel in a narrow window, with no dialog or backdrop', () => {
+    expect(css).toContain('.uib-shell[data-drawer] { position: relative; }');
+    expect(css).toContain(
+      '.uib-shell[data-drawer] > .uib-shell-side { position: static; container-type: normal; }',
+    );
+    expect(css).toContain(
+      '.uib-shell-fill { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; container-type: inline-size;',
+    );
+    // The main column's own layers, such as its pinned head, stay under the panel.
+    expect(css).toContain('.uib-shell[data-drawer] > .uib-shell-main { isolation: isolate; }');
+    expect(css).not.toMatch(/::backdrop|dialog|uib-shell-drawer\b|drawer-width/);
+    expect(css).toContain('.uib-shell-close { flex: 0 0 auto; margin-inline-start: auto; }');
+  });
+
+  it('never hide the main column, so it comes back as it was when the panel over it closes', () => {
+    const rules = css.match(/[^{}]*\{[^{}]*\}/g) ?? [];
+    const hiding = rules.filter(
+      (rule) =>
+        /\.uib-shell-main(?![\w-])[^{]*\{/.test(rule) &&
+        /(?:display: none|visibility: hidden|content-visibility)/.test(rule),
+    );
+    expect(hiding).toEqual([]);
   });
 
   it('put the rails in one row at the top in the bar, and the main column under it in full', () => {
@@ -189,7 +210,7 @@ describe('the Shell styles', () => {
 
   it('align the head row of a card to its top, so a title beside a 44 button stays on the others’ line', () => {
     expect(css).toContain(
-      ".uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header { align-items: start; }",
+      ".uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header, .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-fill > .uib-shell-box > .uib-shell-header { align-items: start; }",
     );
   });
 
@@ -210,10 +231,11 @@ describe('the Shell markup', () => {
     const at = lines.flatMap((line, index) =>
       line.includes('data-color="neutral"') ? [index] : [],
     );
-    expect(at).toHaveLength(1);
+    // The panel's button, and the close button of a panel that fills the shell.
+    expect(at).toHaveLength(2);
     for (const index of at) {
       expect(lines[index - 1]?.trim()).toMatch(/^\/\/ Pinned to neutral, as kunnskapsassistenten/);
-      expect(lines[index - 2]).toContain('uib-shell-toggle');
+      expect(lines[index - 2]).toMatch(/uib-shell-(?:toggle|close)/);
     }
   });
 });

@@ -369,6 +369,8 @@ export const Builder = ({
   const [undone, setUndone] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState<Record<string, SpecPatch>>({});
   const [assisted, setAssisted] = useState<Record<string, AssistedChange>>({});
+  const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
+  const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
   const readOnly = !rights.has('manage-services');
   const readOnlyRef = useRef(readOnly);
@@ -803,6 +805,11 @@ export const Builder = ({
   }, [remoteDraft]);
 
   const applyProposal = (entry: TurnEntry, proposal: AssistantProposal) => {
+    if (proposal.kind === 'interface' && proposal.blocks?.length) {
+      setAdding({ key: proposalKey(entry.id, proposal.id), blocks: proposal.blocks });
+      goTab('interface');
+      return;
+    }
     if (!proposal.after) return;
     const after = specChanges(
       asServiceDefinition(entry.draft).spec,
@@ -1366,6 +1373,29 @@ export const Builder = ({
     </section>
   );
 
+  const assistantPanel = (
+    <AssistantPanel
+      messages={messages}
+      cardFor={cardFor}
+      undone={undone}
+      done={done}
+      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
+      typing={typing}
+      composer={composer}
+      suggestions={suggestions}
+      userName={userName}
+      tenantName={tenantName}
+      assistant={assistant}
+      canApprove={canApprove}
+      onDecide={decide}
+      onComposer={setComposer}
+      onSend={send}
+      onShow={showCard}
+      onUndo={toggleUndo}
+      onAction={action}
+    />
+  );
+
   const body = (() => {
     if (section === 'publish') return publishPage;
     if (section === 'overview')
@@ -1433,8 +1463,24 @@ export const Builder = ({
           editor={setup(['start'])}
         />
       );
-    // The interface tab is drawn below, where it can hold the builder assistant.
-    if (section === 'interface') return null;
+    if (section === 'interface')
+      return (
+        <InterfaceTab
+          api={api}
+          tenant={tenant}
+          service={id}
+          definition={definition}
+          files={files}
+          narrow={narrow}
+          fullscreen={detail === 'preview'}
+          backHref={`#${servicePath(routeId, 'interface')}`}
+          adding={adding}
+          onAdded={clearAdding}
+          {...(readOnly ? {} : { assistant: assistantPanel })}
+          onFullscreen={() => go('interface', '/preview')}
+          onExitFullscreen={() => go('interface')}
+        />
+      );
     if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
     if (section === 'quality') return <QualitySection {...screenProps} id={id} />;
     if (section === 'batch')
@@ -1612,50 +1658,7 @@ export const Builder = ({
     );
   })();
 
-  const assistantPanel = (
-    <AssistantPanel
-      messages={messages}
-      cardFor={cardFor}
-      undone={undone}
-      done={done}
-      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
-      typing={typing}
-      composer={composer}
-      suggestions={suggestions}
-      userName={userName}
-      tenantName={tenantName}
-      assistant={assistant}
-      canApprove={canApprove}
-      onDecide={decide}
-      onComposer={setComposer}
-      onSend={send}
-      onShow={showCard}
-      onUndo={toggleUndo}
-      onAction={action}
-    />
-  );
-
-  const content = (
-    <div className={`service-body service-${section}`}>
-      {section === 'interface' ? (
-        <InterfaceTab
-          api={api}
-          tenant={tenant}
-          service={id}
-          definition={definition}
-          files={files}
-          narrow={narrow}
-          fullscreen={detail === 'preview'}
-          backHref={`#${servicePath(routeId, 'interface')}`}
-          {...(readOnly ? {} : { assistant: assistantPanel })}
-          onFullscreen={() => go('interface', '/preview')}
-          onExitFullscreen={() => go('interface')}
-        />
-      ) : (
-        body
-      )}
-    </div>
-  );
+  const content = <div className={`service-body service-${section}`}>{body}</div>;
   const page = (
     <DeveloperView.Provider value={!isNew}>
       <ServicePageContext.Provider value>

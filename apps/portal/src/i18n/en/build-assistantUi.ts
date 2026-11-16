@@ -8,6 +8,7 @@ export const assistantUi = {
     typing: 'The assistant is typing',
     changeTag: 'Change',
     newFlows: 'Also makes the step flow {ids} and publishes it to the library.',
+    interfaceBlocks: 'Turns on in the interface: {names}.',
     flowReason: 'Builder assistant: {title}',
     flowPublishFailed: 'Could not publish the step flow, so the change was not used.',
     undoneTag: 'Undone',

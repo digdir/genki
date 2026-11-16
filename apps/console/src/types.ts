@@ -1104,7 +1104,9 @@ export interface DiscoveryRule {
 
 export interface ModelEndpointInput {
   baseURL: string;
-  auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
+  auth:
+    | { kind: 'api-key' | 'bearer'; secret: string; header?: string }
+    | { kind: 'federated-app'; clientId: string; tenant: string; scope: string };
   families: Record<string, string>;
   discovery?: DiscoveryRule[];
   settings?: Record<string, string>;

@@ -1,5 +1,10 @@
-import { datasetsOfDefinition, factsFromDefinition } from '@genai/ui-blocks/builder';
-import { useCallback, useMemo, type ReactNode } from 'react';
+import {
+  datasetsOfDefinition,
+  factsFromDefinition,
+  isBlockId,
+  type BlockId,
+} from '@genai/ui-blocks/builder';
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { ApiClient } from '../../../api';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './BlocksStep';
 import { draftChannels } from './channels';
@@ -20,7 +25,9 @@ export const InterfaceTab = ({
   narrow,
   fullscreen,
   backHref,
+  adding,
   assistant,
+  onAdded,
   onFullscreen,
   onExitFullscreen,
 }: {
@@ -35,8 +42,10 @@ export const InterfaceTab = ({
   /** The preview on its own, larger. */
   fullscreen: boolean;
   backHref: string;
-  /** The builder assistant, in the «Chat» tab beside the blocks. */
+  /** Blocks the builder assistant chose, turned on once per key. */
+  adding?: { key: string; blocks: readonly string[] } | undefined;
   assistant?: ReactNode;
+  onAdded?: () => void;
   onFullscreen: () => void;
   onExitFullscreen: () => void;
 }) => {
@@ -60,6 +69,14 @@ export const InterfaceTab = ({
     [tenant, service],
   );
   const blocks = useBlocksState(start, facts, keep);
+  const added = useRef<string | undefined>(undefined);
+  const { add } = blocks;
+  useEffect(() => {
+    if (!adding || added.current === adding.key) return;
+    added.current = adding.key;
+    add(adding.blocks.filter((id): id is BlockId => isBlockId(id)));
+    onAdded?.();
+  }, [adding, add, onAdded]);
   const run = useMemo(
     () => ({ api, tenant, source: { definition, files } }),
     [api, tenant, definition, files],

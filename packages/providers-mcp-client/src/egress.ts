@@ -59,7 +59,10 @@ export interface EgressRequest {
 export interface EgressResponse {
   status: number;
   headers: IncomingHttpHeaders;
+  /** The body as UTF-8 text. */
   body: string;
+  /** The body as it came, for a file that is not text, such as a zip. */
+  bytes?: Uint8Array;
 }
 
 export type PrivateNetworkEntry = { kind: 'cidr'; cidr: Cidr } | { kind: 'host'; host: string };
@@ -257,13 +260,15 @@ export class EgressGuard {
             }
             chunks.push(chunk);
           });
-          res.on('end', () =>
+          res.on('end', () => {
+            const bytes = Buffer.concat(chunks);
             finish(undefined, {
               status: res.statusCode ?? 0,
               headers: res.headers,
-              body: Buffer.concat(chunks).toString('utf8'),
-            }),
-          );
+              body: bytes.toString('utf8'),
+              bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+            });
+          });
           res.on('error', () => finish(new EgressError('network', 'the response failed')));
         },
       );

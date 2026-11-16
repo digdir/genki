@@ -23,6 +23,8 @@ import {
   runtimeBlocksOf,
   saveUsdNok,
   scheduleUsdNok,
+  scheduleRegisterSync,
+  stateRegisterGuard,
   TenantSecretVault,
   traceSinkAccess,
   tracesContent,
@@ -64,9 +66,20 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
-import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai/ingest';
+import {
+  copyListing,
+  copyOwner,
+  knowledgeListingOf,
+  kudosClient,
+  kudosProd,
+  type CopyIds,
+} from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
-import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import {
+  aiGatewayUsageSource,
+  federatedAppTokens,
+  gatewayUsageConfigFromEnv,
+} from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 import { createLocalConverter } from '@genai/providers-documents';
@@ -88,6 +101,7 @@ import {
   ingestSender,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  managedIdentityTokenSource,
   platformId,
   PostgresDefinitionStore,
   PostgresJobRunRecords,
@@ -103,6 +117,7 @@ import {
   workerDevModeWarning,
 } from './boot-guard.js';
 import { followPublished } from './follow.js';
+import { afterRegisterSync, onRegisterStale, syncRegisterAtStart } from './state-register-job.js';
 import {
   knowledgeRuntimeInput,
   startHealthServer,
@@ -210,6 +225,9 @@ if (knowledgeRefused.length > 0) {
   process.exit(1);
 }
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+const federatedTokens = federatedAppTokens({
+  assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+});
 if (gatewayUsage.problems.length > 0) {
   log('refusing to start', { problems: gatewayUsage.problems });
   process.exit(1);
@@ -222,6 +240,7 @@ const polledSources: PolledSource[] =
           source: aiGatewayUsageSource(gatewayUsage.config, {
             secrets: envSecrets(),
             egress: new EgressGuard(egressOptions),
+            federatedTokens,
           }),
           since: gatewayUsage.config.since,
         },
@@ -629,6 +648,7 @@ const usedTokens = async (tenant: string, since: string) =>
     : 0;
 const runtime = await createRuntime({
   platformTenant,
+  federatedTokens,
   catalogs: {
     models: catalogs.models.catalog,
     knowledge: catalogs.knowledge.catalog,
@@ -898,6 +918,31 @@ if (db)
     })
     .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
 
+// The state's organisation (ADR 0058): Enhetsregisteret nightly, on one replica under a lease.
+const stateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-state-register') : undefined;
+const stateJob = db
+  ? {
+      configEntries: db.configEntries,
+      guard: stateRegisterGuard(),
+      kudos: kudosClient({ profile: kudosProd }),
+      log,
+    }
+  : undefined;
+const stateRegister = stateJob
+  ? scheduleRegisterSync({
+      configEntries: stateJob.configEntries,
+      guard: stateJob.guard,
+      ...(stateLease ? { active: () => stateLease.tryAcquire() } : {}),
+      afterSync: afterRegisterSync(stateJob),
+      onStale: onRegisterStale(log),
+      onError: (error) => log('state register sync failed', { error: String(error) }),
+    })
+  : undefined;
+if (stateJob)
+  void syncRegisterAtStart({ ...stateJob, ...(stateLease ? { lease: stateLease } : {}) }).catch(
+    (error: unknown) => log('state register sync failed', { error: String(error) }),
+  );
+
 const sweepLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
   : undefined;
@@ -985,6 +1030,7 @@ const stop = () => {
   knowledgeProgress.stop();
   retention?.stop();
   exchangeRate?.stop();
+  stateRegister?.stop();
   providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);

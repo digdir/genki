@@ -76,6 +76,49 @@ const openInstructions = () => {
 const settled = (panel: HTMLElement) =>
   waitFor(() => expect(panel.querySelector('.stream-cursor')).toBeNull(), slow);
 
+const interfaceReply = () => ({
+  turnId: 'turn-interface',
+  status: 'completed' as const,
+  message: 'Dokumentvisning gir leserne tilgang til originaldokumentet.',
+  proposals: [
+    {
+      id: 'p-interface',
+      level: 1 as const,
+      kind: 'interface' as const,
+      title: 'Legg til Dokumentvisning',
+      detail: '',
+      blocks: ['document-view'],
+      validation: { ok: true },
+      requiresApproval: false,
+      appliedToDraft: false as const,
+    },
+  ],
+  usage: { tokens: 10, budgetLeftToday: 199_990, dailyBudget: 200_000 },
+});
+
+const blocksSwitcher = 'Byggeklosser og maler';
+
+const documentView = () =>
+  within(screen.getByRole('group', { name: 'Høyre sidepanel' })).getByRole('switch', {
+    name: 'Dokumentvisning',
+  }) as HTMLInputElement;
+
+const askForDocumentView = async (turns: AssistantTurnRequest[] = []) => {
+  sessionStorage.clear();
+  await renderAt(
+    '#/services/soknadsuttrekk/interface',
+    withAssistant({ turns, reply: interfaceReply }),
+  );
+  const switcher = await screen.findByRole('group', { name: blocksSwitcher });
+  if (documentView().checked) fireEvent.click(documentView());
+  expect(documentView().checked).toBe(false);
+  fireEvent.click(within(switcher).getByRole('radio', { name: 'Chat' }));
+  const panel = screen.getByRole('complementary', { name: 'Byggeassistent' });
+  say(panel, 'Leserne må ha enkel tilgang til originaldokumentet');
+  await within(panel).findByText('Slår på i grensesnittet: Dokumentvisning.', {}, slow);
+  fireEvent.click(within(switcher).getByRole('radio', { name: 'Byggeklosser' }));
+};
+
 describe('builder assistant', () => {
   it('streaming sets aria-live off and announces completed paragraphs', async () => {
     const panel = await open('#/services/soknadsuttrekk/setup?assistent=strommer');
@@ -207,6 +250,29 @@ describe('builder assistant', () => {
       }),
     );
     expect(instructions().value).toContain('Slå opp søkeren');
+  });
+
+  it('sends the interface blocks with their needs, and turns on the block the assistant chose', async () => {
+    const turns: AssistantTurnRequest[] = [];
+    await askForDocumentView(turns);
+
+    await waitFor(() => expect(documentView().checked).toBe(true));
+    expect(turns[0]?.interfaceBlocks?.find((b) => b.id === 'document-view')?.covers).toContainEqual(
+      { nb: 'Enkel tilgang til originaldokumentet', en: 'Easy access to the original document' },
+    );
+  });
+
+  it('keeps a block the assistant turned on off after the person turns it off and leaves the tab', async () => {
+    await askForDocumentView();
+    await waitFor(() => expect(documentView().checked).toBe(true));
+    fireEvent.click(documentView());
+
+    go('#/services/soknadsuttrekk/settings');
+    await waitFor(() => expect(screen.queryByRole('group', { name: blocksSwitcher })).toBeNull());
+    go('#/services/soknadsuttrekk/interface');
+    await screen.findByRole('group', { name: blocksSwitcher });
+
+    expect(documentView().checked).toBe(false);
   });
 
   it('a variant proposal with a new step flow publishes the flow, then adds the variant to the draft', async () => {

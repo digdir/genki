@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { describedBlocks } from '@genai/ui-blocks/builder';
 import type { ApiClient } from '../../../api';
 import type {
   AssistantEvent,
@@ -72,7 +73,7 @@ export const isAlternative = (entry: TurnEntry, proposal: AssistantProposal) =>
 export const appliesDirectly = (entry: TurnEntry, proposal: AssistantProposal) =>
   proposal.level === 1 &&
   proposal.validation.ok &&
-  !!proposal.after &&
+  (!!proposal.after || proposal.kind === 'interface') &&
   !isAlternative(entry, proposal);
 
 interface Options {
@@ -286,7 +287,7 @@ export const useAssistant = ({ api, tenant, service, definition, onMessage, onAp
       const result = await api.assistant.turn(
         tenant,
         service,
-        { ...request, draft: { definition: draft } },
+        { ...request, draft: { definition: draft }, interfaceBlocks: describedBlocks() },
         api.assistant.streams ? onEvent : undefined,
       );
       if (result.turn?.turnId) lastTurn.current = result.turn.turnId;

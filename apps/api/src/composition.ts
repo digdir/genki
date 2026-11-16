@@ -171,6 +171,7 @@ import {
   type Strategy,
   type TaskStore,
   type ThreadErasure,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
@@ -275,6 +276,7 @@ import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { stateRegisterModule } from './state-register.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -359,6 +361,7 @@ export const platformModules: PlatformModuleFactory[] = [
   playgroundModule,
   engineSwitchesModule,
   knowledgeEndpointsModule,
+  stateRegisterModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
@@ -449,6 +452,7 @@ export interface PlatformInput {
   catalogs: Catalogs;
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   definitions: (
     plugins: PluginSchemas,
     sharedSkill?: SkillFinder,
@@ -1318,6 +1322,7 @@ export const createPlatform = async (input: PlatformInput) => {
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
