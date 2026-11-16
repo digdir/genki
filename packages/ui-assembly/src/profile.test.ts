@@ -106,8 +106,12 @@ describe('the profile a layout is drawn with', () => {
     expect(drawn?.corpora?.kudos?.label).toBe('Kudos');
   });
 
-  it('keeps what only host code can give: the reader, the menu, the sign-out, the family and a link function', () => {
+  it('keeps what only host code can give: the reader, the menu, the sign-out, the family, a link function and a file function', () => {
     const documentUrl = (id: string) => `https://example.org/${id}`;
+    const documentFile = async (id: string) => ({
+      url: `/files/${id}`,
+      mediaType: 'application/pdf',
+    });
     const family = (service: string) => service === 'ka';
     const onSelect = () => {};
     const host: AssistantProfile = {
@@ -116,6 +120,7 @@ describe('the profile a layout is drawn with', () => {
       menu: { feedback: { onSelect } },
       signOut: { href: '/auth/logout' },
       family,
+      documentFile,
       corpora: { kudos: { documentUrl } },
     };
     const drawn = profileOf(layout, host);
@@ -124,6 +129,7 @@ describe('the profile a layout is drawn with', () => {
     expect(drawn?.menu?.feedback).toEqual({ onSelect });
     expect(drawn?.signOut).toEqual({ href: '/auth/logout' });
     expect(drawn?.family).toBe(family);
+    expect(drawn?.documentFile).toBe(documentFile);
     expect(drawn?.corpora?.kudos?.documentUrl).toBe(documentUrl);
     expect(drawn?.corpora?.kudos?.documentLinks).toEqual(data.corpora?.kudos?.documentLinks);
   });

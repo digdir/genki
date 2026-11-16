@@ -174,7 +174,8 @@ export const blocksLane = {
       'The judge scores only part of the answers it gets, so some cases would never be scored. Set sampling to 100 % in Langfuse to use it.',
     judgeRefusedFiltered:
       "The judge has a filter on {field}, which genki can't read before the run. Remove that filter in Langfuse, or leave the test runs out with another filter.",
-    judgeRefusedPath: 'The judge reads {field}, a JSON path genki cannot read.',
+    judgeRefusedPath:
+      'The judge reads {field}, a JSON path genki cannot read. genki reads $, .key and [n], such as $[0].body.text.',
     judgeRefusedSeveral:
       'The rule runs more than one evaluator. Give the rule one evaluator in Langfuse to use it.',
     judgeRefusedPaused: 'The evaluator is paused in Langfuse.',

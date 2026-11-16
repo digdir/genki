@@ -447,7 +447,11 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     outcome.servedModels.forEach((m) => servedModels.add(m));
     if (outcome.service) services.add(outcome.service);
     if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
-    const observation: Observation = observe(outcome.parts, outcome.events);
+    // The parts go along as they were answered, for a sink's judge that reads a path in them.
+    const observation: Observation = {
+      ...observe(outcome.parts, outcome.events),
+      parts: outcome.parts,
+    };
     const ctx: EvalContext = {
       ...(options.id ? { run: options.id } : {}),
       task: outcome.task,
