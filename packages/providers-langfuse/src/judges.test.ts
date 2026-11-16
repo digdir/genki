@@ -456,7 +456,7 @@ describe('Langfuse judges', () => {
       return performance.now() - started;
     };
 
-    expect(await quickly(`$${'[0'.repeat(100_000)}`)).toBeLessThan(1000);
+    expect(await quickly(`$${'[0]'.repeat(100_000)}!`)).toBeLessThan(1000);
     expect(await quickly(`$${'.a'.repeat(100_000)}!`)).toBeLessThan(1000);
     expect((await long(`$${'[0]'.repeat(1000)}`)).refused).toBeUndefined();
   });
