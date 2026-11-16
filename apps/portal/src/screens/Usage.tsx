@@ -78,10 +78,10 @@ const UsageView = ({
   live,
   quota,
   models,
-  project,
+  scoped,
   onProject,
 }: {
-  project: string | undefined;
+  scoped: boolean;
   onProject: (id: string) => void;
   report: UsageReport;
   tenantName: string;
@@ -324,7 +324,7 @@ const UsageView = ({
       </div>
 
       <section aria-labelledby="kvote-h" className="usage-quota-grid">
-        <div className="usage-quota" hidden={project !== undefined}>
+        <div className="usage-quota" hidden={scoped}>
           <div className="row-between">
             <h2 id="kvote-h" className="usage-h-small">
               {t('usage.quotaIn', { month })}
@@ -620,9 +620,9 @@ const UsageView = ({
         <p className="meta">{t('usage.costNote')}</p>
       </section>
 
-      {project === undefined ? <UsageSources report={report} /> : null}
+      {!scoped ? <UsageSources report={report} /> : null}
 
-      {project === undefined && report.byProject?.length ? (
+      {!scoped && report.byProject?.length ? (
         <section aria-labelledby="prosjekt-h" className="stack-sm">
           <div className="row-between">
             <Heading level={2} data-size="sm" id="prosjekt-h">
@@ -812,17 +812,22 @@ const UsageView = ({
 export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
-  const ids = { project: useId() };
+  const ids = { project: useId(), environment: useId() };
   const [project, setProject] = useState<string>();
+  const [environment, setEnvironment] = useState<string>();
   const [projects, setProjects] = useState<{ project: string; name: string }[]>([]);
+  const [environments, setEnvironments] = useState<string[]>([]);
   const [usage, retry] = useAsync(
     async (signal) => {
-      const report = withPricing(await api.usage(tenant, 190, signal, project));
-      if (project === undefined) setProjects(report.byProject ?? []);
+      const report = withPricing(await api.usage(tenant, 190, signal, project, environment));
+      if (project === undefined && environment === undefined) setProjects(report.byProject ?? []);
+      if (environment === undefined)
+        setEnvironments((report.byEnvironment ?? []).map((e) => e.environment));
       return report;
     },
-    [api, tenant, project],
+    [api, tenant, project, environment],
   );
+  const scoped = project !== undefined || environment !== undefined;
   const projectName = projects.find((p) => p.project === project)?.name ?? project;
   const [settings] = useAsync(
     (signal) => api.tenantEffectiveSettings(tenant, signal),
@@ -852,6 +857,30 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
           </Button>
         ) : null}
       </div>
+      {environments.length > 1 || environment !== undefined ? (
+        <div className="stack-sm">
+          <Field className="usage-period">
+            <Label htmlFor={ids.environment}>{t('usage.environment')}</Label>
+            <Select
+              id={ids.environment}
+              value={environment ?? ''}
+              onChange={(e) => setEnvironment(e.target.value || undefined)}
+            >
+              <option value="">{t('usage.allEnvironments')}</option>
+              {environments.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {environment !== undefined ? (
+            <Alert data-color="info" data-size="sm">
+              {t('usage.environmentScope', { environment, tenant: tenantName })}
+            </Alert>
+          ) : null}
+        </div>
+      ) : null}
       {projects.length ? (
         <div className="stack-sm">
           <Field className="usage-period">
@@ -909,7 +938,18 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
           <Skeleton variant="rectangle" height={280} aria-hidden="true" />
         </>
       ) : null}
-      {state.status === 'ready' && !hasData && project !== undefined ? (
+      {state.status === 'ready' && !hasData && environment !== undefined ? (
+        <div className="usage-empty">
+          <Heading level={2} data-size="xs">
+            {t('usage.emptyEnvironmentTitle')}
+          </Heading>
+          <p className="usage-empty-text">{t('usage.emptyEnvironmentText')}</p>
+        </div>
+      ) : null}
+      {state.status === 'ready' &&
+      !hasData &&
+      environment === undefined &&
+      project !== undefined ? (
         <div className="usage-empty">
           <Heading level={2} data-size="xs">
             {t('usage.emptyProjectTitle')}
@@ -917,7 +957,7 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
           <p className="usage-empty-text">{t('usage.emptyProjectText')}</p>
         </div>
       ) : null}
-      {state.status === 'ready' && !hasData && project === undefined ? (
+      {state.status === 'ready' && !hasData && !scoped ? (
         <div className="usage-empty">
           <Heading level={2} data-size="xs">
             {t('usage.emptyTitle')}
@@ -942,7 +982,7 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
           setDialog={setDialog}
           quota={quota}
           models={models.status === 'ready' ? models.data : null}
-          project={project}
+          scoped={scoped}
           onProject={setProject}
         />
       ) : null}

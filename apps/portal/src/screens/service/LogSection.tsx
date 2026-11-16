@@ -1,4 +1,5 @@
-import { Heading, Link, Table, Tag } from '@digdir/designsystemet-react';
+import { Field, Heading, Label, Link, Select, Table, Tag } from '@digdir/designsystemet-react';
+import { useState } from 'react';
 import type { ApiClient } from '../../api';
 import { profileFor } from '../../data/organisations';
 import { notPriced, statusOf } from '../../format';
@@ -32,10 +33,25 @@ export const LogSection = ({
     micro === null || micro === undefined
       ? notPriced
       : f.currency(micro / 1_000_000, { digits: 2 });
+  const [environment, setEnvironment] = useState('');
+  const [environments] = useAsync(
+    async (signal) =>
+      live
+        ? ((
+            await api.environments.list(tenant, id, signal).catch(() => undefined)
+          )?.environments.map((e) => e.name) ?? [])
+        : [],
+    [api, tenant, id, live],
+  );
+  const names = environments.status === 'ready' ? environments.data : [];
+  const staged = names.length > 1;
   const [state, retry] = useAsync(
     async (signal) =>
-      (await api.tasks(tenant, { service: id }, signal)).data.filter((r) => r.service === id),
-    [api, tenant, id],
+      (
+        await api.tasks(tenant, { service: id, ...(environment ? { environment } : {}) }, signal)
+      ).data.filter((r) => r.service === id),
+    [api, tenant, id, environment],
+    { keepPreviousFor: id },
   );
   const canReveal = profileFor(tenant, tenantName).rights.includes('Administrere tjenester');
   const href = (run: string) => `#${servicePath(id, 'log', `/${encodeURIComponent(run)}`)}`;
@@ -68,6 +84,23 @@ export const LogSection = ({
         {t('serviceLog.heading')}
       </Heading>
       <p className="meta">{t('serviceLog.intro')}</p>
+      {staged ? (
+        <Field className="fe-field-md" data-size="sm">
+          <Label htmlFor="svc-log-env">{t('serviceLog.environment')}</Label>
+          <Select
+            id="svc-log-env"
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value)}
+          >
+            <Select.Option value="">{t('serviceLog.allEnvironments')}</Select.Option>
+            {names.map((name) => (
+              <Select.Option key={name} value={name}>
+                {name}
+              </Select.Option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
       {state.status === 'loading' ? <Loading label={t('serviceLog.loading')} /> : null}
       {state.status === 'error' ? <ErrorState error={state.error} onRetry={retry} /> : null}
       {state.status === 'ready' && state.data.length === 0 ? (
@@ -82,6 +115,9 @@ export const LogSection = ({
               <Table.Row>
                 <Table.HeaderCell scope="col">{t('serviceLog.colRun')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('serviceLog.colBy')}</Table.HeaderCell>
+                {staged ? (
+                  <Table.HeaderCell scope="col">{t('serviceLog.colEnvironment')}</Table.HeaderCell>
+                ) : null}
                 <Table.HeaderCell scope="col">{t('serviceLog.colStatus')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('serviceLog.colStarted')}</Table.HeaderCell>
                 {usageShown ? (
@@ -105,6 +141,7 @@ export const LogSection = ({
                       <Link href={href(r.id)}>{r.excerpt || r.serviceName || r.id}</Link>
                     </Table.Cell>
                     <Table.Cell>{actorText(r.actor, t)}</Table.Cell>
+                    {staged ? <Table.Cell>{r.environment ?? '–'}</Table.Cell> : null}
                     <Table.Cell>
                       <Tag data-size="sm" data-color={s.color}>
                         {s.text}
