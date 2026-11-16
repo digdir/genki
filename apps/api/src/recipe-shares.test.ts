@@ -63,7 +63,7 @@ const serviceUsing = (
     ...base,
     spec: {
       ...base.spec,
-      knowledge: { ...base.spec.knowledge, datasets: [{ dataset: 'veiledere' }] },
+      knowledge: { datasets: [{ dataset: 'veiledere' }] },
       variants: [
         'default',
         {
