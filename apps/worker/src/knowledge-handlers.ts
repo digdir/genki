@@ -288,8 +288,9 @@ const refusalOf = (error: unknown) =>
  * fetch error, such as a network error, is tried again.
  */
 const fetchRefusalOf = (error: unknown) =>
-  // A file gets a convert job only when its source lists it under the limit, so a download past
-  // it is not the listed file: kept as unreachable, never as too large under bytes not seen.
+  // A file gets a convert job only when its source lists it under the limit or with no size, so a
+  // download past it is not what was listed: kept as unreachable, never as too large under a
+  // sha256 whose bytes were not seen.
   error instanceof FileUnreachable || error instanceof ResponseTooLarge ? 'unreachable' : undefined;
 
 /** A file a convert job could not fetch: tried again unless `fetchRefusalOf` names why. */
@@ -613,12 +614,11 @@ export const knowledgeWork = (
     const key = conversionTarget(job.data.file);
     let stored: { pages: string[]; output?: Uint8Array; failure?: string };
     // A conversion stored by an earlier try is not made again: only its waits are ended. A file
-    // stored as unreachable is fetched again by a new job, not by a retry, which a busy index job
-    // causes after the store.
+    // stored as unreachable is fetched again, by every try.
     const kept = await conversions.find(job.data.file, [
       { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
     ]);
-    if (kept && (kept.failure !== 'unreachable' || job.retryCount > 0))
+    if (kept && kept.failure !== 'unreachable')
       stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
     else
       try {

@@ -1291,44 +1291,7 @@ describe('stored conversions', () => {
     expect(s.sent.filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
   }, 60_000);
 
-  it('a convert job tried again after a busy index job does not fetch an unreachable file again', async () => {
-    await clearConvertJobs();
-    let fetches = 0;
-    const s = await scenario({
-      fetchError: () => {
-        fetches += 1;
-        return new FileUnreachable('KUDOS answered 404');
-      },
-    });
-    await s.file('opptatt-borte.pdf', reportOf('opptatt-borte'));
-    const { run, sent } = await ingest(s);
-    const record = (
-      await admin.query<{ number: string }>(
-        `select number::text from src_documents where dataset = $1`,
-        [s.dataset.id],
-      )
-    ).rows[0]?.number as string;
-    const index = queues.find((q) => q.name === 'knowledge.index') as QueueDefinition;
-    const key = `${s.generation}#${record}`;
-    await knowledgeQueue.send(
-      index,
-      { run, tenant: ORG, generation: s.generation, record },
-      { key },
-    );
-    const convert = handler(s.work.knowledge, 'knowledge.convert');
-    const [convertJob] = sent;
-
-    await expect(convert(job('knowledge.convert', convertJob?.data ?? {}))).rejects.toThrow(
-      /IndexJobBusy/,
-    );
-    await admin.query(`delete from pgboss.job where singleton_key = $1`, [key]);
-    await convert({ ...job('knowledge.convert', convertJob?.data ?? {}), retryCount: 1 });
-
-    expect(fetches).toBe(1);
-    expect(s.sent.filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
-  }, 60_000);
-
-  it('a convert job fetches a file stored as unreachable again', async () => {
+  it('a convert job fetches a file stored as unreachable again, also on a retry', async () => {
     await clearConvertJobs();
     const s = await scenario();
     const pdf = reportOf('igjen');
@@ -1348,10 +1311,14 @@ describe('stored conversions', () => {
       async () => null,
     );
 
+    // A retry too, as after a network error on the first try.
     await handler(
       s.work.knowledge,
       'knowledge.convert',
-    )(job('knowledge.convert', sent[0]?.data ?? {}));
+    )({
+      ...job('knowledge.convert', sent[0]?.data ?? {}),
+      retryCount: 1,
+    });
 
     expect(s.converted).toEqual(['igjen.pdf']);
     const { rows } = await admin.query(`select failure from src_conversions where sha256 = $1`, [
