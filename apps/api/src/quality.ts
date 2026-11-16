@@ -21,6 +21,7 @@ import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
 import { t } from './i18n/index.js';
 import { hidesInternalServices, isHiddenService } from './internal-services.js';
+import { candidatesIn, withCandidateTrial } from './model-access.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
 import { connectionsCovering } from './trace-connections.js';
@@ -112,17 +113,27 @@ export const serviceDraftActions = [
 
 export const createQualityModule =
   (
-    options: { onBackground?: (work: Promise<void>) => void; leases?: LeaseOptions } = {},
+    options: {
+      onBackground?: (work: Promise<void>) => void;
+      leases?: LeaseOptions;
+      resumeEveryMs?: number;
+    } = {},
   ): PlatformModuleFactory =>
   (deps) => {
-    const evals = serviceEval(deps, options.leases);
-    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
-    const improving = improvements(deps, evals);
     const background = (work: Promise<void>) => {
       work.catch(() => undefined);
       options.onBackground?.(work);
     };
+    const evals = serviceEval(deps, options.leases, background);
+    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
+    const improving = improvements(deps, evals);
     background(improving.recover());
+    background(evals.resumeAbandoned());
+    const sweep = setInterval(
+      () => background(evals.resumeAbandoned()),
+      options.resumeEveryMs ?? 30_000,
+    );
+    sweep.unref?.();
 
     return {
       id: 'quality',
@@ -147,7 +158,11 @@ export const createQualityModule =
           const tenant = param(c, 'tenant');
           const entered = enterTenant(c, mountDeps.access, principal, tenant, right);
           if ('response' in entered) return { response: entered.response };
-          return { principal: entered.principal, tenant };
+          return {
+            principal: entered.principal,
+            tenant,
+            operator: principal.kind === 'operator',
+          };
         };
 
         const inTask = async <T>(
@@ -580,6 +595,10 @@ export const createQualityModule =
               { path: 'variant', message: `no variant ${variant}` },
             ]);
           const subject = variant ? { ...found, variant } : found;
+          const trial =
+            guard.operator &&
+            subject.version === 'draft' &&
+            candidatesIn(deps.catalog, subject.definition).length > 0;
           const split = isCaseSplit(data.split) ? data.split : undefined;
           if (casesIn(set, split, only).length === 0)
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
@@ -587,7 +606,7 @@ export const createQualityModule =
             ]);
           try {
             const started = await evals.startRun(
-              principal,
+              trial ? withCandidateTrial(principal) : principal,
               tenant,
               service,
               set,

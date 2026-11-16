@@ -758,7 +758,7 @@ export const createApiClient = ({
     engineSwitchAction: (
       base: string,
       sid: string,
-      action: 'retry' | 'cancel' | 'activate' | 'rollback',
+      action: 'retry' | 'cancel' | 'activate' | 'rollback' | 'readmit',
       reason: string,
     ) =>
       call<EngineSwitch>('POST', `${base}/engine-switches/${encodeURIComponent(sid)}/${action}`, {

@@ -31,9 +31,11 @@ import {
   type ConversationStore,
 } from '@genai/conversations';
 import {
+  flowDatasetProblems,
   flowInputProblems,
   flowTableProblems,
   flowUsesOf,
+  missingDatasetProblems,
   platformSettings,
   SettingsRegistry,
   strategyKey,
@@ -1457,6 +1459,11 @@ export const createPlatform = async (input: PlatformInput) => {
       return problems.length > 0 ? problems : undefined;
     }
     if (d.kind === 'Service') {
+      const unsearchable = missingDatasetProblems(
+        d,
+        (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+      );
+      if (unsearchable.length > 0) return unsearchable;
       const flowOf = async (flowRef: string) => {
         const at = flowRef.lastIndexOf('@');
         const id = flowRef.slice(0, at);
@@ -1472,6 +1479,13 @@ export const createPlatform = async (input: PlatformInput) => {
           ? [
               ...flowInputProblems(d, flow, flowRef),
               ...flowTableProblems(d, flow, flowRef),
+              ...(await flowDatasetProblems(
+                d,
+                flow,
+                flowRef,
+                (block) => blocks.get(block)?.needsDataset === true,
+                flowOf,
+              )),
               ...(await describedStepProblems(d, flow, flowRef, {
                 descriptors: runtime.descriptors,
                 governance: runtime.governance,
@@ -2490,6 +2504,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
+    evalSlots: caseSlots,
     sync: resync,
     mount,
   };

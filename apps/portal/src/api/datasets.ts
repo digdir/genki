@@ -88,6 +88,10 @@ export interface ExecutionView {
   endedAt?: string;
   startedBy?: string;
   error?: string;
+  /** In lockdown, on a queued or running run not being cancelled: when its admission runs out. */
+  admissionRunsOutAt?: string;
+  /** Set once someone asked to cancel the run; it ends with its jobs. */
+  cancelRequestedAt?: string;
   report?: {
     stored: number;
     skipped: number | SkippedDocument[];
@@ -210,6 +214,19 @@ export const datasetsApi = (ctx: ApiContext) => {
       ctx.request<ExecutionView>(
         'POST',
         `${pipeline(tenant, id, pipelineId)}/executions/${enc(execution)}/cancel`,
+        {},
+        reasonHeader(reason),
+      ),
+    readmitExecution: (
+      tenant: string,
+      id: string,
+      pipelineId: string,
+      execution: string,
+      reason: string,
+    ) =>
+      ctx.request<ExecutionView>(
+        'POST',
+        `${pipeline(tenant, id, pipelineId)}/executions/${enc(execution)}/readmit`,
         {},
         reasonHeader(reason),
       ),

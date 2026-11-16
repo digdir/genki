@@ -213,6 +213,13 @@ export const datasets = defineNamespace({
   changesNotSaved: 'Endringene ble ikke lagret. {problem}',
   saving: 'Lagrer',
   runningLeave: 'Innlesingen pågår. Siden oppdateres av seg selv, og du kan gå fra den.',
+  admission:
+    'Innlesingen er sluppet inn til {time}. Da stopper den i det låste miljøet, om den ikke slippes inn igjen.',
+  admissionSoon:
+    'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper den og må startes på nytt.',
+  readmit: 'Slipp inn igjen',
+  readmitReason: 'Sluppet inn igjen fra portalen',
+  readmitFailed: 'Innlesingen kunne ikke slippes inn igjen. {problem}',
   ingestionDone: 'Innlesingen er ferdig',
   storedDocuments: '{amount} dokumenter er lest inn.',
   someSkipped: '{amount} ble hoppet over:',
@@ -463,6 +470,12 @@ export const searchEngine = defineNamespace({
   swStoppedText:
     '{target} svarte ikke. {current} brukes fortsatt, og tjenestene merker ingenting. Det som er overført, blir liggende til du prøver igjen eller avbryter.',
   swTechnical: 'Teknisk melding: {message}',
+  swAdmission:
+    'Innlesingen er sluppet inn til {time}. Da stopper overføringen i det låste miljøet, om den ikke slippes inn igjen.',
+  swAdmissionSoon:
+    'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper overføringen og må startes på nytt.',
+  swReadmit: 'Slipp inn igjen',
+  swReadmitReason: 'Sluppet inn igjen fra portalen',
   swMayClose:
     'Du kan lukke siden. Overføringen fortsetter, og du får beskjed på Oversikt når den er ferdig.',
   swQuality: 'Kvalitet på testsettet',

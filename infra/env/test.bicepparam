@@ -10,13 +10,14 @@ param minReplicas = 1
 param maxReplicas = 2
 
 // Test's own knowledge server (ADR 0042). Small to start (8 GiB, 64 GB): compute moves up or down with a short
-// restart, the disk only grows. Geo-redundant backup is set only when the server is created.
+// restart, the disk only grows. Autogrow took the disk to 128 GB in November 2026, and the template follows it,
+// since Azure refuses a smaller size. Geo-redundant backup is set only when the server is created.
 // The workflows pass an unset variable as an empty value, which the default does not cover.
 var knowledgeStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', '')
 param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
 param knowledgePostgresSkuName = 'Standard_D2ds_v5'
 param knowledgePostgresSkuTier = 'GeneralPurpose'
-param knowledgePostgresStorageSizeGB = 64
+param knowledgePostgresStorageSizeGB = 128
 param knowledgePostgresVCores = 2
 param knowledgePostgresBackupRetentionDays = 7
 param knowledgePostgresGeoRedundantBackup = 'Disabled'

@@ -181,6 +181,8 @@ export interface EngineSwitchView {
   previousKeptUntil?: string;
   canRollback: boolean;
   decision?: SwitchDecision;
+  /** In lockdown, when the first of its open runs' admission runs out (ADR 0033). */
+  admissionRunsOutAt?: string;
 }
 
 export interface CopyCounts {
@@ -236,11 +238,12 @@ export const engineSwitchActions = [
   'platform.engine-switch.retry',
   'platform.engine-switch.cancel',
   'platform.engine-switch.activate',
+  'platform.engine-switch.readmit',
 ] as const;
 
 class Refusal extends Error {
   constructor(
-    readonly status: 400 | 404 | 409,
+    readonly status: 400 | 403 | 404 | 409,
     message: string,
     readonly path = 'to',
     readonly detail?: string,
@@ -669,6 +672,23 @@ export const createEngineSwitchesModule =
           new Date(keptUntil).getTime() > now().getTime(),
         ...(decision ? { decision } : {}),
       };
+    };
+
+    /** The switch's open runs, as the API shows them: in lockdown with when admission runs out. */
+    const openRunsOf = async (spec: EngineSwitchSpec) =>
+      (await Promise.all((spec.runs ?? []).map((id) => deps.ingestion.execution(id))))
+        .filter(
+          (r): r is Execution =>
+            (r?.status === 'queued' || r?.status === 'running') && !r.cancelRequestedAt,
+        )
+        .map((r) => deps.ingestion.admission(r));
+
+    const withAdmission = async (entry: ConfigEntry<unknown>): Promise<EngineSwitchView> => {
+      const view = viewOf(entry);
+      const [first] = (await openRunsOf(entry.spec as EngineSwitchSpec))
+        .flatMap((r) => (r.admissionRunsOutAt ? [r.admissionRunsOutAt] : []))
+        .sort();
+      return first ? { ...view, admissionRunsOutAt: first } : view;
     };
 
     const switchesOf = async (tenant: string, dataset: string) =>
@@ -1561,7 +1581,7 @@ export const createEngineSwitchesModule =
         usedBy: await usedBy(item),
         canSwitch: item.scope === tenant,
         retentionDays: retentionDays(tenant),
-        ...(open ? { activeSwitch: viewOf(open) } : {}),
+        ...(open ? { activeSwitch: await withAdmission(open) } : {}),
         ...(last && lastSpec && keptUntil && new Date(keptUntil).getTime() > now().getTime()
           ? {
               previous: {
@@ -1645,7 +1665,8 @@ export const createEngineSwitchesModule =
             if ('response' in g) return g.response;
             const item = ownDataset(g.tenant, c.req.param('id') ?? '');
             if (!item) return problem(c, 404, 'Not found');
-            return c.json({ data: (await switchesOf(g.tenant, item.id)).map(viewOf).reverse() });
+            const switches = await switchesOf(g.tenant, item.id);
+            return c.json({ data: (await Promise.all(switches.map(withAdmission))).reverse() });
           });
 
           app.get(`${base}/engine-switches/estimate`, async (c) => {
@@ -1841,7 +1862,51 @@ export const createEngineSwitchesModule =
           app.get(`${base}/engine-switches/:sid`, async (c) => {
             const g = await withSwitch(c);
             if ('response' in g) return g.response;
-            return c.json(viewOf(g.entry));
+            return c.json(await withAdmission(g.entry));
+          });
+
+          // Admits the switch's open runs again from now, so a fill longer than a day goes on (ADR 0033).
+          app.post(`${base}/engine-switches/:sid/readmit`, async (c) => {
+            const g = await withSwitch(c, 'manage-datasets');
+            if ('response' in g) return g.response;
+            const reason = reasonFrom(c);
+            if (!isReasonLongEnough(reason))
+              return problem(c, 400, 'Begrunnelsen er for kort', [
+                { path: 'change-reason', message: reasonTooShort },
+              ]);
+            const by = actor(g.principal.actor ?? g.principal);
+            const state = (g.entry.spec as EngineSwitchSpec).state;
+            const done = await inTask(
+              c,
+              g.principal,
+              g.tenant,
+              'platform.engine-switch.readmit',
+              `engine-switch:${g.entry.id}`,
+              reason,
+              async () => {
+                const open = await openRunsOf(g.entry.spec as EngineSwitchSpec);
+                if (open.length === 0)
+                  throw new Refusal(409, 'Byttet har ingen åpne kjøringer.', 'state', state);
+                for (const run of open) {
+                  const admitted = await deps.ingestion.readmit({
+                    dataset: g.item.id,
+                    execution: run.id,
+                    by,
+                    principal: g.principal,
+                  });
+                  if (!admitted.ok)
+                    throw new Refusal(
+                      admitted.errors.some((e) => e.path === 'principal') ? 403 : 409,
+                      admitted.errors[0]?.message ?? 'Kjøringen kunne ikke slippes inn igjen.',
+                      'state',
+                      state,
+                    );
+                }
+                return g.entry;
+              },
+            ).catch((error: unknown) => refusalResponse(c, error));
+            if (done instanceof Response) return done;
+            return c.json(await withAdmission(done));
           });
 
           app.post(`${base}/engine-switches/:sid/retry`, async (c) => {

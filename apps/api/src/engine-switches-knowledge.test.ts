@@ -88,6 +88,19 @@ const fakeWorker = () => {
       return marked;
     },
     redrive: async () => ({ ok: false, message: 'not here' }),
+    readmit: async (input) => {
+      const run = await executions.get(input.execution);
+      if (
+        !run ||
+        run.dataset !== input.dataset ||
+        !['queued', 'running'].includes(run.status) ||
+        run.cancelRequestedAt
+      )
+        return { ok: false, message: 'only an open run can be admitted again' };
+      const admitted = { ...run, admittedAt: input.at };
+      await executions.save(admitted);
+      return { ok: true, value: admitted };
+    },
   };
   const end = async (
     run: Execution | undefined,
@@ -279,14 +292,18 @@ const boot = async (
   platform.mount(app, admin);
   const call = (
     path: string,
-    init: { method?: string; body?: unknown; as?: string; session?: string } = {},
+    init: { method?: string; body?: unknown; as?: string; session?: string; reason?: string } = {},
   ) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
         authorization: `Bearer ${init.as ?? shared.as ?? 'kari'}`,
         'content-type': 'application/json',
-        'change-reason': encodeURIComponent('Flytter til kunnskapsdatabasen'),
+        ...(init.reason === ''
+          ? {}
+          : {
+              'change-reason': encodeURIComponent(init.reason ?? 'Flytter til kunnskapsdatabasen'),
+            }),
         ...(init.session ? { 'support-session': init.session } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
@@ -764,6 +781,154 @@ describe('switching a dataset into the knowledge database', () => {
     const opened = await started(booted, 'laast');
     expect(opened.state).toBe('running');
     expect(runOf(booted.worker, opened.id)).toMatchObject({ engineSwitch: opened.id });
+  });
+});
+
+describe('admitting a switch into the knowledge database again', () => {
+  const hours = (n: number) => n * 3_600_000;
+  /** A running switch in lockdown whose run was admitted 20 hours ago. */
+  const admittedLongAgo = async (lockdown = true) => {
+    const booted = await boot({ lockdown, as: 'entra' });
+    await folderDataset(booted, 'lang');
+    const opened = await started(booted, 'lang');
+    const run = runOf(booted.worker, opened.id) as Execution;
+    const admittedAt = new Date(Date.now() - hours(20)).toISOString();
+    await booted.worker.executions.save({ ...run, admittedAt });
+    return { booted, opened, run: { ...run, admittedAt } };
+  };
+  const admittedAtOf = async (booted: Booted, id: string) =>
+    (await booted.worker.executions.get(id))?.admittedAt;
+
+  it('admitting a switch again admits each of its open runs', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(200);
+    const admittedAt = await admittedAtOf(booted, run.id);
+    expect(Date.parse(admittedAt ?? '')).toBeGreaterThan(Date.now() - 60_000);
+    expect(await json(response)).toMatchObject({
+      sid: opened.sid,
+      state: 'running',
+      admissionRunsOutAt: new Date(Date.parse(admittedAt ?? '') + hours(24)).toISOString(),
+    });
+    expect(
+      (await booted.admin.audit(digdir)).filter(
+        (e) => e.action === 'platform.engine-switch.readmit',
+      ),
+    ).toEqual([expect.objectContaining({ reason: 'Flytter til kunnskapsdatabasen' })]);
+  });
+
+  it('a switch with no open runs cannot be admitted again, and says so in both languages', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.end(run, 'succeeded', { stored: 1 });
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(409);
+    const { title } = await json<{ title: string }>(response);
+    expect(translateMessage(title, 'nb')).toBe('Byttet har ingen åpne kjøringer.');
+    expect(translateMessage(title, 'en')).toBe('The switch has no open runs.');
+  });
+
+  it('a run being cancelled says nothing about its admission, and neither does its switch', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.executions.save({
+      ...run,
+      cancelRequestedAt: new Date().toISOString(),
+      cancelledBy: 'employee:test:entra',
+    });
+
+    expect(await view(booted, 'lang', opened.sid)).not.toHaveProperty('admissionRunsOutAt');
+    const { data } = await json<{ data: Execution[] }>(
+      await booted.call(`${base('lang')}/pipelines/filer/executions`),
+    );
+    expect(data[0]).not.toHaveProperty('admissionRunsOutAt');
+  });
+
+  it('a switch whose only run is being cancelled cannot be admitted again', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    await booted.worker.executions.save({
+      ...run,
+      cancelRequestedAt: new Date().toISOString(),
+      cancelledBy: 'employee:test:entra',
+    });
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+    });
+
+    expect(response.status).toBe(409);
+    expect(translateMessage((await json<{ title: string }>(response)).title, 'nb')).toBe(
+      'Byttet har ingen åpne kjøringer.',
+    );
+  });
+
+  it('admitting a switch again needs a reason', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+
+    const response = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+      reason: '',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await admittedAtOf(booted, run.id)).toBe(run.admittedAt);
+  });
+
+  it('a caller who may not run ingestion in lockdown cannot admit a run again', async () => {
+    const { booted, opened, run } = await admittedLongAgo();
+    const kari = principals.kari as Principal;
+
+    const bySwitch = await booted.call(`${base('lang')}/engine-switches/${opened.sid}/readmit`, {
+      body: {},
+      as: 'kari',
+    });
+    const byRun = await booted.call(
+      `${base('lang')}/pipelines/filer/executions/${run.id}/readmit`,
+      { body: {}, as: 'kari' },
+    );
+    const inService = await booted.platform.ingestion.readmit({
+      dataset: run.dataset,
+      execution: run.id,
+      by: 'kari',
+      principal: kari,
+    });
+
+    expect(bySwitch.status).toBe(403);
+    expect(byRun.status).toBe(403);
+    expect(inService).toMatchObject({ ok: false, errors: [{ path: 'principal' }] });
+    expect(await admittedAtOf(booted, run.id)).toBe(run.admittedAt);
+  });
+
+  it('in lockdown, an open run and a running switch say when their admission runs out, and outside lockdown they do not', async () => {
+    const runsOut = (admittedAt: string) =>
+      new Date(Date.parse(admittedAt) + hours(24)).toISOString();
+    const runs = async (booted: Booted) =>
+      (
+        await json<{ data: Execution[] }>(
+          await booted.call(`${base('lang')}/pipelines/filer/executions`),
+        )
+      ).data;
+
+    const locked = await admittedLongAgo(true);
+    expect(await view(locked.booted, 'lang', locked.opened.sid)).toMatchObject({
+      admissionRunsOutAt: runsOut(locked.run.admittedAt),
+    });
+    expect((await runs(locked.booted))[0]).toMatchObject({
+      id: locked.run.id,
+      admissionRunsOutAt: runsOut(locked.run.admittedAt),
+    });
+
+    const open = await admittedLongAgo(false);
+    expect(await view(open.booted, 'lang', open.opened.sid)).not.toHaveProperty(
+      'admissionRunsOutAt',
+    );
+    expect((await runs(open.booted))[0]).not.toHaveProperty('admissionRunsOutAt');
   });
 });
 

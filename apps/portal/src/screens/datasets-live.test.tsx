@@ -2,6 +2,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
+import { createApiClient } from '../api';
+import { RightsProvider } from '../Shell';
+import { LiveDatasetDetail } from './datasets/LiveDatasetDetail';
 import { mockAnsattporten } from '../auth';
 import { exampleOrganisations, mockFetch, type FeatureMockOptions } from '../mock';
 import { exampleLiveDatasets } from '../mock/datasets';
@@ -429,6 +432,129 @@ describe('live dataset detail', () => {
       within(screen.getByRole('list', { name: 'Innlesinger' })).getByText('Avbrutt'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Avbryt innlesing' })).toBeNull();
+  });
+
+  it("the portal shows when a running run's admission runs out, and admits it again with a reason", async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    let runsOut = '2026-11-15T07:56:00Z';
+    const running = () => ({
+      id: 'r1',
+      status: 'running',
+      startedAt: '2026-11-14T07:56:00Z',
+      admittedAt: runsOut,
+      admissionRunsOutAt: runsOut,
+    });
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    const { calls, fetch } = recorded({}, (url, method) => {
+      if (method === 'GET' && url.endsWith('/pipelines/upload/executions'))
+        return json({ data: [running()], nextRunAt: null });
+      if (method === 'POST' && url.endsWith('/pipelines/upload/executions/r1/readmit')) {
+        runsOut = '2026-11-16T05:00:00Z';
+        return json(running());
+      }
+      return undefined;
+    });
+    await renderLive(veiledere, fetch);
+    const warned = await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/);
+    expect(warned.closest('[data-color="warning"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Slipp inn igjen' }));
+
+    expect(await screen.findByText(/sluppet inn til 16\. november 2026 kl\. 06\.00/)).toBeTruthy();
+    const readmit = calls.find((c) => c.url.endsWith('/executions/r1/readmit'));
+    expect(readmit?.method).toBe('POST');
+    expect(readmit?.reason).toBeTruthy();
+  });
+
+  /** Open runs as the API lists them, newest start first, with how readmits answer. */
+  const openRuns = (runs: Record<string, unknown>[], readmit?: () => Response) => {
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    return recorded({}, (url, method) => {
+      if (method === 'GET' && url.endsWith('/pipelines/upload/executions'))
+        return json({ data: runs, nextRunAt: null });
+      if (method === 'POST' && url.endsWith('/readmit'))
+        return readmit?.() ?? json(runs.find((r) => url.includes(`/${String(r.id)}/`)));
+      return undefined;
+    });
+  };
+  const queued = {
+    id: 'q1',
+    status: 'queued',
+    startedAt: '2026-11-15T04:00:00Z',
+    admissionRunsOutAt: '2026-11-16T04:00:00Z',
+  };
+  const runningSoon = {
+    id: 'r1',
+    status: 'running',
+    startedAt: '2026-11-14T07:56:00Z',
+    admissionRunsOutAt: '2026-11-15T07:56:00Z',
+  };
+
+  it('the portal shows the open run whose admission runs out first, whichever the list shows first', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    const { calls, fetch } = openRuns([queued, runningSoon]);
+    await renderLive(veiledere, fetch);
+
+    expect(
+      await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Slipp inn igjen' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/executions/r1/readmit'))).toBe(true),
+    );
+  });
+
+  it('a refused readmit says why, with the detail from the platform', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    const { fetch } = openRuns(
+      [runningSoon],
+      () =>
+        new Response(
+          JSON.stringify({
+            type: 'urn:genai:problem:locked-environment',
+            title: 'Innlesing er låst i dette miljøet',
+            detail: 'Bare innlogginger fra Entra ID kan lese inn i det låste miljøet.',
+            status: 403,
+          }),
+          { status: 403, headers: { 'content-type': 'application/problem+json' } },
+        ),
+    );
+    await renderLive(veiledere, fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Slipp inn igjen' }));
+
+    expect(
+      await screen.findByText(
+        /Innlesingen kunne ikke slippes inn igjen\..*Bare innlogginger fra Entra ID kan lese inn/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Vi fikk ikke startet innlesingen/)).toBeNull();
+  });
+
+  it('the portal offers Admit again only with the dataset right', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    const { fetch } = openRuns([runningSoon]);
+    const api = createApiClient({ baseUrl: '/api', fetch, token: () => 'ingrid' });
+    render(
+      <RightsProvider value={['use-services']}>
+        <LiveDatasetDetail
+          api={api}
+          tenant="999888777"
+          tenantName="Testdepartementet"
+          id="999888777/veiledere"
+          initialTab="ingestions"
+        />
+      </RightsProvider>,
+    );
+
+    expect(
+      await screen.findByText(/sluppet inn bare til 15\. november 2026 kl\. 08\.56/),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Slipp inn igjen' })).toBeNull();
   });
 
   it('shows the refusal text when a second ingestion is started for the same dataset', async () => {

@@ -130,11 +130,27 @@ export interface RunEvalOptions {
     total: number,
     usage?: EvalRun['usage'],
     result?: EvalRun['results'][number],
+    served?: Served,
   ) => void;
+  onCaseStart?: (item: { case: string; repeat: number }) => void;
   /** Case slots: up to perRun cases at a time, each started once acquire grants a slot. */
   slots?: { perRun: number; acquire: () => Promise<() => void> };
+  /** What an earlier attempt of the run finished: those cases are kept, not run again. */
+  prior?: PriorAttempt;
   onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
+}
+
+export interface Served {
+  servedModels: string[];
+  services: string[];
+}
+
+export interface PriorAttempt {
+  servedModels?: string[] | undefined;
+  services?: string[] | undefined;
+  results: EvalRun['results'];
+  usage?: EvalRun['usage'] | undefined;
 }
 
 export const inputOf = (c: TestCase): Input =>
@@ -382,15 +398,17 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
 
   const startedAt = now().toISOString();
   const results: EvalRun['results'] = [];
-  const servedModels = new Set<string>();
-  const services = new Set<string>();
+  const prior = options.prior;
+  const servedModels = new Set<string>(prior?.servedModels ?? []);
+  const services = new Set<string>(prior?.services ?? []);
   const total = cases.length * repeats;
-  const answered: UsageSummary[] = [];
+  const answered: UsageSummary[] = prior?.usage ? [prior.usage.answers] : [];
+  const judgedBefore = prior?.usage?.judges ? [prior.usage.judges] : [];
   const annotate = (task: string, score: Score) =>
     target.annotate ? target.annotate(task, score) : Promise.resolve();
   const usageSoFar = (): EvalRun['usage'] => {
     if (!options.meterAnswers) return undefined;
-    const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    const judged = [...judgedBefore, ...evaluators.flatMap((e) => (e.usage ? [e.usage()] : []))];
     // A sink's judges share what they report, so one key may come from several evaluators.
     const reported = Object.fromEntries(
       evaluators
@@ -407,12 +425,15 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const work = Array.from({ length: repeats }, (_, repeat) =>
     cases.map((c) => ({ c, repeat })),
   ).flat();
-  const done: (EvalRun['results'][number] | undefined)[] = Array.from({ length: work.length });
+  const done: (EvalRun['results'][number] | undefined)[] = work.map(({ c, repeat }) =>
+    prior?.results.find((r) => r.case === c.id && r.repeat === repeat),
+  );
   const finished = () => done.filter((r): r is EvalRun['results'][number] => r !== undefined);
-  let finishedCount = 0;
+  let finishedCount = finished().length;
   const runCase = async (index: number) => {
     const { c, repeat } = work[index] as { c: TestCase; repeat: number };
     options.signal?.throwIfAborted();
+    options.onCaseStart?.({ case: c.id, repeat });
     let outcome: TargetResult;
     try {
       outcome = await target.invoke(inputOf(c), { case: c, repeat });
@@ -465,16 +486,27 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       scores: scores.map((s) => keptInRun(byId.get(s.evaluator), s)),
     };
     finishedCount += 1;
-    options.onProgress?.(finishedCount, total, usageSoFar(), done[index]);
+    options.onProgress?.(finishedCount, total, usageSoFar(), done[index], {
+      servedModels: [...servedModels].sort(),
+      services: [...services].sort(),
+    });
   };
+  const todo = work.flatMap((_, index) => (done[index] ? [] : [index]));
   let next = 0;
   let stop: { error: unknown } | undefined;
   const worker = async () => {
-    while (!stop && next < work.length) {
-      const release = options.slots ? await options.slots.acquire() : () => undefined;
+    while (!stop && next < todo.length) {
+      let release: () => void;
       try {
-        if (stop || next >= work.length) return;
-        await runCase(next++);
+        release = options.slots ? await options.slots.acquire() : () => undefined;
+      } catch (error) {
+        // The other workers finish the cases they have before the run stops.
+        stop ??= { error };
+        return;
+      }
+      try {
+        if (stop || next >= todo.length) return;
+        await runCase(todo[next++] as number);
       } catch (error) {
         stop ??= { error };
       } finally {
@@ -483,7 +515,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     }
   };
   await Promise.all(
-    Array.from({ length: Math.max(1, Math.min(options.slots?.perRun ?? 1, work.length)) }, worker),
+    Array.from({ length: Math.min(options.slots?.perRun ?? 1, todo.length) }, worker),
   );
   if (stop) throw stop.error;
   results.push(...finished());

@@ -74,6 +74,32 @@ const costText = (t: T, f: Format, r: EvalRun) =>
 
 const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
 
+const leftText = (t: T, endsAt: string) => {
+  const minutes = Math.ceil((Date.parse(endsAt) - Date.now()) / 60_000);
+  return minutes > 0 ? t('quality.runLeft', { minutes }) : t('quality.runLeftSoon');
+};
+
+/** What a run is doing: the cases running now, its pace and the time left. */
+const RunActivity = ({ run }: { run: EvalRun }) => {
+  const { t } = usePortalFormat();
+  const running = run.status === 'running';
+  const lines = [
+    ...(running && run.current?.length
+      ? [t('quality.runNow', { cases: run.current.map((c) => c.case).join(', ') })]
+      : []),
+    ...(running && typeof run.secondsPerCase === 'number'
+      ? [t('quality.runPace', { seconds: run.secondsPerCase })]
+      : []),
+    ...(running && run.endsAt ? [leftText(t, run.endsAt)] : []),
+    ...(run.resumed ? [t('quality.runResumed')] : []),
+  ];
+  return lines.map((line) => (
+    <div key={line} className="small">
+      {line}
+    </div>
+  ));
+};
+
 const metricKeys: Record<string, PlainKey> = {
   'exact-text': 'quality.metricExactText',
   'non-empty-answer': 'quality.metricNonEmpty',
@@ -467,6 +493,14 @@ const RunDetail = ({
                     </Fragment>
                   ))}
                 </dl>
+                {c.task ? (
+                  <Link
+                    href={`#/log/${encodeURIComponent(c.task)}`}
+                    aria-label={t('quality.caseTimelineFor', { case: c.caseId })}
+                  >
+                    {t('quality.caseTimeline')}
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -736,6 +770,7 @@ export const RunHistory = ({
                       <Tag data-size="sm" data-color={color}>
                         {text}
                       </Tag>
+                      <RunActivity run={r} />
                     </Table.Cell>
                     <Table.Cell className="right numeric">{percent(f, r.score)}</Table.Cell>
                     <Table.Cell>{passedText(t, r)}</Table.Cell>
