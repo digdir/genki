@@ -209,6 +209,48 @@ describe('builder assistant', () => {
     expect(instructions().value).toContain('Slå opp søkeren');
   });
 
+  it('sends the interface blocks with their needs, and turns on the block the assistant chose', async () => {
+    sessionStorage.clear();
+    const turns: AssistantTurnRequest[] = [];
+    const reply = () => ({
+      turnId: 'turn-interface',
+      status: 'completed' as const,
+      message: 'Dokumentvisning gir leserne tilgang til originaldokumentet.',
+      proposals: [
+        {
+          id: 'p-interface',
+          level: 1 as const,
+          kind: 'interface' as const,
+          title: 'Legg til Dokumentvisning',
+          detail: '',
+          blocks: ['document-view'],
+          validation: { ok: true },
+          requiresApproval: false,
+          appliedToDraft: false as const,
+        },
+      ],
+      usage: { tokens: 10, budgetLeftToday: 199_990, dailyBudget: 200_000 },
+    });
+    await renderAt('#/services/soknadsuttrekk/interface', withAssistant({ turns, reply }));
+    const switcher = await screen.findByRole('group', { name: 'Byggeklosser og maler' });
+    const documentView = () =>
+      within(screen.getByRole('group', { name: 'Høyre panel' })).getByRole('switch', {
+        name: 'Dokumentvisning',
+      }) as HTMLInputElement;
+    expect(documentView().checked).toBe(false);
+    fireEvent.click(within(switcher).getByRole('radio', { name: 'Chat' }));
+    const panel = screen.getByRole('complementary', { name: 'Byggeassistent' });
+
+    say(panel, 'Leserne må ha enkel tilgang til originaldokumentet');
+
+    await within(panel).findByText('Slår på i grensesnittet: Dokumentvisning.', {}, slow);
+    fireEvent.click(within(switcher).getByRole('radio', { name: 'Byggeklosser' }));
+    await waitFor(() => expect(documentView().checked).toBe(true));
+    expect(turns[0]?.interfaceBlocks?.find((b) => b.id === 'document-view')?.covers).toContainEqual(
+      { nb: 'Enkel tilgang til originaldokumentet', en: 'Easy access to the original document' },
+    );
+  });
+
   it('a variant proposal with a new step flow publishes the flow, then adds the variant to the draft', async () => {
     const flow = {
       apiVersion: 'genai/v1',

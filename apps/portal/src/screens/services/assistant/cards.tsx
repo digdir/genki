@@ -15,6 +15,7 @@ import {
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
+import { isBlockId, nameKey } from '@genai/ui-blocks/builder';
 import { Fragment, useId, useState } from 'react';
 import type {
   AssistantPolicy,
@@ -384,6 +385,13 @@ export const ChangeProposalCard = ({
             ids: proposal.flows
               .map((f) => String((f.metadata as { id?: unknown } | undefined)?.id ?? ''))
               .join(', '),
+          })}
+        </span>
+      ) : null}
+      {proposal.blocks?.length ? (
+        <span className="meta">
+          {t('assistant.interfaceBlocks', {
+            names: proposal.blocks.map((id) => (isBlockId(id) ? t(nameKey(id)) : id)).join(', '),
           })}
         </span>
       ) : null}

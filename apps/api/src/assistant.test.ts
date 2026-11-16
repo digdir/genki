@@ -678,6 +678,56 @@ describe('the builder assistant API', () => {
     ]);
   });
 
+  it('gives the model the interface blocks the portal sends, and returns the block it chose', async () => {
+    const { turn, requests } = await boot([
+      {
+        calls: [
+          {
+            name: 'choose_interface_blocks',
+            args: { title: 'Legg til Dokumentvisning', blocks: ['document-view'] },
+          },
+        ],
+      },
+      { text: 'Dokumentvisning gir tilgang til originaldokumentet.' },
+    ]);
+    const interfaceBlocks = [
+      {
+        id: 'document-view',
+        name: { nb: 'Dokumentvisning', en: 'Document view' },
+        covers: [
+          {
+            nb: 'Enkel tilgang til originaldokumentet',
+            en: 'Easy access to the original document',
+          },
+        ],
+      },
+    ];
+
+    const body = await json(
+      await turn({
+        message: 'Leserne må ha enkel tilgang til originaldokumentet',
+        interfaceBlocks,
+      }),
+    );
+
+    expect(requests[0]?.[0]?.content).toContain('Enkel tilgang til originaldokumentet');
+    expect(body.proposals).toMatchObject([
+      { level: 1, kind: 'interface', blocks: ['document-view'], appliedToDraft: false },
+    ]);
+  });
+
+  it('refuses interface blocks with an id that is not a block id', async () => {
+    const { turn, chatCount } = await boot([]);
+
+    const res = await turn({
+      message: 'Hei',
+      interfaceBlocks: [{ id: 'Document View!', name: { nb: 'x', en: 'x' }, covers: [] }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(chatCount()).toBe(0);
+  });
+
   it('the step flow route proposes level 1 patches against the step flow draft', async () => {
     const { turn } = await boot([
       {
