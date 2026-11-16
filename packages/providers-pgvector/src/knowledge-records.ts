@@ -482,6 +482,10 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
 
   gone: (record, run) =>
     transaction(writer, async (client) => {
+      // The change sequence before the record, as a listing and a refresh take them.
+      await client.query(`select 1 from src_changes where dataset = $1 for update`, [
+        record.dataset,
+      ]);
       const { rows } = await client.query<RecordRow>(
         `update src_documents set gone = gone + 1, gone_run = $2
           where number = $1::bigint and gone_run is distinct from $2

@@ -277,6 +277,35 @@ describe('refreshing document fields', () => {
     expect(record).toBe('free');
   });
 
+  it("marks a record gone after taking the dataset's change sequence, as a refresh does", async () => {
+    const name = 'digdir/fields-j';
+    const g = await freshGeneration(name);
+    await ingest(name, [g], [listed('l', 991825827)]);
+    const { rows } = await admin.query<{ number: string }>(
+      `select number::text from src_documents where dataset = $1 and id = 'l'`,
+      [name],
+    );
+    const found = await records.find(rows[0]?.number ?? '0');
+    if (!found) throw new Error('no record');
+    // The second 404 in another run deletes the record with the next change number.
+    const record = await records.gone(found, 'run-0');
+    const refresh = await admin.connect();
+    await refresh.query('begin');
+    await refresh.query(`select 1 from src_changes where dataset = $1 for update`, [name]);
+
+    const gone = records.gone(record, 'run-1');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const row = await refresh
+      .query(`select 1 from src_documents where dataset = $1 for update nowait`, [name])
+      .then(() => 'free')
+      .catch(() => 'locked');
+    await refresh.query('rollback');
+    refresh.release();
+    await gone;
+
+    expect(row).toBe('free');
+  });
+
   it('reads every record once when their numbers have different lengths', async () => {
     const name = 'digdir/fields-i';
     const g = await freshGeneration(name);

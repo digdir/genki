@@ -479,16 +479,14 @@ export class IngestionService {
     await drop(input);
   }
 
-  /** Whether any pipeline of the dataset has a queued or running run. */
-  async hasOpenRun(scope: string, dataset: string) {
-    for (const pipeline of await this.list(scope, dataset))
-      if (
-        (await this.executions(dataset, pipeline.id)).some(
-          (e) => e.status === 'queued' || e.status === 'running',
-        )
-      )
-        return true;
-    return false;
+  /** The dataset's queued, running or waiting runs, deleted pipelines' included. */
+  async openRuns(scope: string, dataset: string) {
+    const open = new Set(['queued', 'running', 'waiting']);
+    const runs = this.running(dataset).map((r) => r.id);
+    for (const pipeline of await this.pipelineIdsEver(scope, dataset))
+      for (const run of await this.executions(dataset, pipeline))
+        if (open.has(run.status)) runs.push(run.id);
+    return [...new Set(runs)];
   }
 
   /** Sends the `knowledge.fields` job that writes new fields on a dataset's stored documents. */

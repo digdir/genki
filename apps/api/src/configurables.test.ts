@@ -1084,6 +1084,43 @@ describe('refusing a refresh of fields', () => {
     expect(sent).toEqual([]);
   });
 
+  it('refuses a backfill while the run of a deleted pipeline is open', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    class Holding extends InMemoryIngestionBackend {
+      override async run(...args: Parameters<InMemoryIngestionBackend['run']>) {
+        await held;
+        return super.run(...args);
+      }
+    }
+    const sent: unknown[] = [];
+    const { call } = await boot({
+      ingestion: new Holding(),
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => void sent.push(input),
+      },
+    });
+    const base = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/pipelines`;
+    await call(base, 'drift', {
+      body: {
+        id: 'nettsider',
+        name: 'Nettsidene',
+        source: { kind: 'website', sitemap: 'https://www.digdir.no/sitemap.xml' },
+        chunking: { minimumLength: 10, maximumLength: 20 },
+      },
+    });
+    await call(`${base}/nettsider/execute`, 'drift', { body: {} });
+    await call(`${base}/nettsider`, 'drift', { method: 'DELETE', reason });
+
+    const whileOpen = await call(fields('digdir/kudos'), 'drift', { body, reason });
+    release();
+
+    expect(whileOpen.status).toBe(409);
+    expect(sent).toEqual([]);
+  });
+
   it("refuses a backfill of a tenant's dataset", async () => {
     const sent: unknown[] = [];
     const { call } = await boot({

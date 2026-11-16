@@ -434,7 +434,7 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
         errors: [{ path: 'fill', message: `fill must be one of ${fieldFills.join(', ')}` }],
         target,
       };
-    if (await deps.ingestion.hasOpenRun(scopeOf(input), dataset))
+    if ((await deps.ingestion.openRuns(scopeOf(input), dataset)).length > 0)
       return {
         ok: false,
         conflict: true,

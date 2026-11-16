@@ -1284,6 +1284,7 @@ const fieldRoutes: RouteConfig[] = [
       400: problem('No change reason, or an unknown fill'),
       ...operatorOnly,
       404: problem('No such platform dataset'),
+      409: problem('A run of the dataset is open'),
     },
   }),
 ];

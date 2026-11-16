@@ -60,14 +60,7 @@ export const datasetDeleteModule: PlatformModuleFactory = (deps): PlatformModule
         dataset,
       );
 
-    const openRuns = async (scope: string, dataset: string) => {
-      const open = new Set(['queued', 'running', 'waiting']);
-      const runs = deps.ingestion.running(dataset).map((r) => r.id);
-      for (const pipeline of await deps.ingestion.pipelineIdsEver(scope, dataset))
-        for (const run of await deps.ingestion.executions(dataset, pipeline))
-          if (open.has(run.status)) runs.push(run.id);
-      return [...new Set(runs)];
-    };
+    const openRuns = (scope: string, dataset: string) => deps.ingestion.openRuns(scope, dataset);
 
     const remove = async (c: Context, principal: Principal, scope: string, item: CatalogItem) => {
       const reason = changeReasonOf(c)?.trim() ?? '';
