@@ -1,24 +1,28 @@
 import { createFormat } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
+import { translator } from '../../i18n';
 import { durationBetween, formatDuration } from './format';
 
+const nb = [createFormat('nb'), translator('nb')] as const;
+const en = [createFormat('en'), translator('en')] as const;
+
 describe('formatDuration', () => {
-  it('writes an hour or more as hours and whole minutes, in the language of the format', () => {
-    expect(formatDuration(4530, createFormat('nb'))).toBe('1 t 15 min');
-    expect(formatDuration(4530, createFormat('en'))).toBe('1 h 15 min');
-    expect(formatDuration(7200, createFormat('nb'))).toBe('2 t 0 min');
+  it('writes an hour or more as hours and whole minutes, from the catalogue of the language', () => {
+    expect(formatDuration(4530, ...nb)).toBe('1 t 15 min');
+    expect(formatDuration(4530, ...en)).toBe('1 h 15 min');
+    expect(formatDuration(7200, ...nb)).toBe('2 t 0 min');
   });
 
   it('keeps minutes and seconds under an hour', () => {
-    expect(formatDuration(1200, createFormat('nb'))).toBe('20 min');
-    expect(formatDuration(1203, createFormat('nb'))).toBe('20 min 3 s');
-    expect(formatDuration(0.25, createFormat('nb'))).toBe('250 ms');
+    expect(formatDuration(1200, ...nb)).toBe('20 min');
+    expect(formatDuration(1203, ...nb)).toBe('20 min 3 s');
+    expect(formatDuration(0.25, ...nb)).toBe('250 ms');
   });
 
   it('carries a fraction of a second into the next minute, never writing 60 s', () => {
-    expect(formatDuration(1259.6, createFormat('nb'))).toBe('21 min');
-    expect(formatDuration(1259.4, createFormat('nb'))).toBe('20 min 59 s');
-    expect(formatDuration(3599.6, createFormat('nb'))).toBe('1 t 0 min');
+    expect(formatDuration(1259.6, ...nb)).toBe('21 min');
+    expect(formatDuration(1259.4, ...nb)).toBe('20 min 59 s');
+    expect(formatDuration(3599.6, ...nb)).toBe('1 t 0 min');
   });
 });
 

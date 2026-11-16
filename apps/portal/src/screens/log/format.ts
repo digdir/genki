@@ -48,13 +48,16 @@ export const formatOffset = (seconds: number, f: Format) =>
       ? `+${f.decimal(seconds)} s`
       : `+${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
 
-export const formatDuration = (seconds: number, f: Format): string => {
+export const formatDuration = (seconds: number, f: Format, t: T): string => {
   if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
   if (seconds < 60) return `${f.decimal(seconds)} s`;
   // Whole seconds first, so 59.6 s left over carries into the next minute instead of showing as 60 s.
   const whole = Math.round(seconds);
   if (whole >= 3600)
-    return `${Math.floor(whole / 3600)} ${f.locale === 'en' ? 'h' : 't'} ${Math.floor((whole % 3600) / 60)} min`;
+    return t('logRun.batchDuration', {
+      hours: Math.floor(whole / 3600),
+      minutes: Math.floor((whole % 3600) / 60),
+    });
   return whole % 60 === 0 ? `${whole / 60} min` : `${Math.floor(whole / 60)} min ${whole % 60} s`;
 };
 

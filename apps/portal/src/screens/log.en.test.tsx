@@ -58,6 +58,7 @@ describe('Log in English', () => {
     const now = new Date('2026-10-09T10:00:00Z');
     expect(relativeTime('2026-10-09T08:52:00Z', t, f, now)).toBe('Today at 10:52');
     expect(formatOffset(4.7, f)).toBe('+4.7 s');
-    expect(formatDuration(125, f)).toBe('2 min 5 s');
+    expect(formatDuration(125, f, t)).toBe('2 min 5 s');
+    expect(formatDuration(4530, f, t)).toBe('1 h 15 min');
   });
 });

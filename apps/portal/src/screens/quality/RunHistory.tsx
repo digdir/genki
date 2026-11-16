@@ -772,7 +772,7 @@ export const RunHistory = ({
                 return (
                   <Table.Row key={r.id}>
                     <Table.Cell>{dateTime(r.startedAt)}</Table.Cell>
-                    <Table.Cell>{took === undefined ? '–' : formatDuration(took, f)}</Table.Cell>
+                    <Table.Cell>{took === undefined ? '–' : formatDuration(took, f, t)}</Table.Cell>
                     <Table.Cell>{versionText(t, r.version)}</Table.Cell>
                     <Table.Cell>{r.model ? modelLabel(r.model, modelList) : '–'}</Table.Cell>
                     <Table.Cell>
