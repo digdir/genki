@@ -31,7 +31,7 @@ The platform keeps a copy of the state's organisation, read from the authorities
   3. It reads the latest month and keeps it when its period is new.
   4. It reads KUDOS's actors through KUDOS's own rate limiter.
   5. It compares the latest month with the register.
-- **History.** A unit's ministry on a date before the first sync comes from that year's state accounts. On a date after the first sync, it comes from the register version current on that date.
+- **History.** A unit's ministry on a date before the first sync comes from that year's state accounts. On a date after the first sync, it comes from the register version current on that date. A body the register places under Stortinget, SMK, the courts or Sametinget gets no answer from the accounts, which book it under a ministry for the budget only.
 - **The monthly check.** Each agency in the latest month is compared with its top unit in the register:
   - **Same:** the accounts give the same ministry.
   - **Budget booking:** the register's top unit is not one of the accounts' ministries, as for Stortinget, SMK, the courts and Sametinget.
@@ -60,7 +60,7 @@ The platform keeps a copy of the state's organisation, read from the authorities
 
 - New egress hosts for the worker: `data.brreg.no`, `statsregnskapet.dfo.no`, and `kudos.dfo.no`, which ingestion already uses.
 - An answer about a reorganisation can be up to a day behind the register, and the register itself has lagged by weeks: Digdir's move to DFD on 1 January 2024 was registered on 23 January.
-- History before the first sync has the year resolution of the state accounts. The accounts book Stortinget's bodies under FIN, which the history shows as it is.
+- History before the first sync has the year resolution of the state accounts, and none for the bodies of Stortinget, SMK, the courts and Sametinget.
 - Not built yet:
   - The tool and its use by a service (issue 621).
   - Owner and recipient org numbers on KUDOS documents, so a search can filter by them (issue 620).

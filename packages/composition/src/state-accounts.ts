@@ -256,7 +256,9 @@ export const syncAccounts = async (deps: {
 
 /**
  * A unit's ministry on a date: from the register version that was current then, or, before
- * genki's first sync, from that year's state accounts.
+ * genki's first sync, from that year's state accounts. A body the register places under a top
+ * unit that is not one of the accounts' ministries (Stortinget, SMK, the courts, Sametinget) is
+ * booked under a ministry for the budget only, so the accounts give no answer for it.
  */
 export const ministryOn = async (
   configEntries: ConfigEntryStore,
@@ -274,7 +276,15 @@ export const ministryOn = async (
   const year = date.getUTCFullYear();
   const accounts = await latestAccounts(configEntries, `year-${year}`);
   const ministry = accounts?.agencies.find((a) => a.orgnr === orgnr)?.ministry;
-  return ministry ? { orgnr: ministry, source: accountsSource, asOf: String(year) } : undefined;
+  if (!accounts || !ministry) return undefined;
+  // A ministry then or now: DFD did not exist in 2022, but it is one of today's ministries.
+  const ministries = new Set([
+    ...Object.values(accounts.ministries),
+    ...Object.values((await latestAccounts(configEntries, 'month'))?.ministries ?? {}),
+  ]);
+  const registerTop = ministryChain(versions.at(-1)?.register.units ?? [], orgnr).at(-1)?.orgnr;
+  if (registerTop && !ministries.has(registerTop)) return undefined;
+  return { orgnr: ministry, source: accountsSource, asOf: String(year) };
 };
 
 /**

@@ -29,6 +29,7 @@ const year2022 = csv([
   row('202212', ...kdd, '991825827', 'Digitaliseringsdirektoratet'),
   row('202212', ...fin, '972417807', 'Finansdepartementet'),
   row('202212', ...fin, '974761076', 'Skatteetaten'),
+  row('202212', ...fin, '974760223', 'Riksrevisjonen'),
 ]);
 
 /** Sept 2026: Digdir under DFD; Riksrevisjonen booked under FIN; Skatteetaten booked under KDD by mistake. */
@@ -179,6 +180,35 @@ describe('the state accounts', () => {
       asOf: '2026-11-17T01:40:00.000Z',
     });
     expect(before2014).toBeUndefined();
+  });
+
+  it('leaves a budget booking out of the history before the first sync', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await syncAccounts({
+      configEntries,
+      guard: guardFor(files()).guard,
+      now: at('2026-11-17T01:45:00Z'),
+      years: [2022],
+    });
+    await syncRegister({
+      configEntries,
+      guard: guardFor(register).guard,
+      now: at('2026-11-17T01:40:00Z'),
+    });
+
+    const riksrevisjonen = await ministryOn(
+      configEntries,
+      '974760223',
+      new Date('2022-06-01T12:00:00Z'),
+    );
+    const skatteetaten = await ministryOn(
+      configEntries,
+      '974761076',
+      new Date('2022-06-01T12:00:00Z'),
+    );
+
+    expect(riksrevisjonen).toBeUndefined();
+    expect(skatteetaten?.orgnr).toBe('972417807');
   });
 
   it('flags an agency whose ministry differs between the register and the latest state accounts', async () => {
