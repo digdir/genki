@@ -627,7 +627,12 @@ const VerifyResult = z
 
 const DiscoveryRule = z
   .object({
-    source: z.string().openapi({ example: 'azure-deployments' }),
+    source: z
+      .string()
+      .openapi({ example: 'azure-deployments' })
+      .describe(
+        'azure-deployments for an Azure resource, openai-models for GET {openai family base}/models',
+      ),
     from: z.string().optional().describe('Another connection to list deployments through'),
     idPrefix: z
       .string()
