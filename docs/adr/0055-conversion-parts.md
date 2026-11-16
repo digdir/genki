@@ -47,7 +47,7 @@ PDFs are not the only input. The platform reads Word files, web pages, Markdown 
 ### Derivations
 
 - **`docling-parts` 1** is made from a `DoclingDocument` in Blob storage, with no download and no converter call. It computes the offsets itself while it joins the text, and does not use Docling's per-item `charspan`.
-- **`text-layer-parts` 1** is made from a PDF's stored `text-layer` 1 conversion: one `text` part per page, its region the whole page. A file gets real parts once Docling replaces its text layer. Word files, web pages and Markdown are stored as `text-layer` 1 too, as one page of text; they get no parts from this derivation and wait for their own (Formats, below).
+- **`text-layer-parts` 1** is made from a PDF's stored `text-layer` 1 conversion: one `text` part per page, its region the whole page. A file gets real parts once Docling replaces its text layer. Word files are stored as `text-layer` 1 too, as one page of text, and web pages and Markdown are read by the index job and not stored; none of them gets parts from this derivation, and each waits for its own (Formats, below).
 - Both are derivations as ADR 0042 defines them: stored beside `docling-pages` 1 and `text-layer` 1, chosen by the generation's recipe, and removed by `knowledge.cleanup` once no record or kept generation uses them. Two things change in the code for that: today the converter fixes the derivation (`derivationOf` in `apps/worker/src/knowledge-handlers.ts`), and the cleanup job is not built (issue 141). Other formats get derivations of their own (Formats, below).
 
 ### Units and storage
