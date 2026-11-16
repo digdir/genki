@@ -199,7 +199,7 @@ describe('the Shell styles', () => {
 
   it('align the head row of a card to its top, so a title beside a 44 button stays on the others’ line', () => {
     expect(css).toContain(
-      ".uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header { align-items: start; }",
+      ".uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header, .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-fill > .uib-shell-box > .uib-shell-header { align-items: start; }",
     );
   });
 
