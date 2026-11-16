@@ -1215,11 +1215,16 @@ export const createEngineSwitchesModule =
       for (const entry of await store.latest({ kind })) {
         if (entry.deleted) continue;
         const spec = entry.spec as EngineSwitchSpec;
-        // A ready switch is followed only for a fill run sent back, to count what it stored then.
-        if (!(holdingStates.includes(spec.state) || spec.state === 'ready') || !intoKnowledge(spec))
-          continue;
+        // A ready switch whose runs are still its fill's is followed to count a sent-back run.
+        const filledReady =
+          spec.state === 'ready' && !spec.decisions.some((d) => d.action === 'activate');
+        if (!(holdingStates.includes(spec.state) || filledReady) || !intoKnowledge(spec)) continue;
         const scope = entry.scope;
         const ids = spec.runs ?? [];
+        if (spec.state === 'ready') {
+          await recount(entry, spec).catch(() => undefined);
+          continue;
+        }
         if (ids.length === 0) {
           // Runs that never started: the instance stopped between saving the switch and starting them.
           if (now().getTime() - new Date(spec.updatedAt).getTime() > staleAfterMs)
@@ -1238,29 +1243,6 @@ export const createEngineSwitchesModule =
         const runs = (await Promise.all(ids.map((id) => deps.ingestion.execution(id)))).filter(
           (r) => r !== undefined,
         );
-        if (spec.state === 'ready') {
-          if (runs.length < ids.length || !runs.every((r) => r.status === 'succeeded')) continue;
-          const failedDocuments = countOfReports(runs, ['failedDocuments']);
-          const documents = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
-          if (
-            documents === spec.progress.documents &&
-            failedDocuments === (spec.failedDocuments ?? 0)
-          )
-            continue;
-          await update(
-            scope,
-            entry.id,
-            (s) => {
-              if (s.state !== 'ready' || !sameRun(s, spec)) return undefined;
-              const counted = { ...s, progress: { ...s.progress, documents } };
-              delete counted.failedDocuments;
-              return failedDocuments > 0 ? { ...counted, failedDocuments } : counted;
-            },
-            systemActor,
-            'Overføringen er telt på nytt',
-          ).catch(() => undefined);
-          continue;
-        }
         const stopped = runs.find((r) => r.status === 'failed' || r.status === 'cancelled');
         if (stopped || runs.length < ids.length) {
           const message = translateMessage(
@@ -1341,6 +1323,49 @@ export const createEngineSwitchesModule =
           `${percent} prosent overført`,
         ).catch(() => undefined);
       }
+    };
+
+    /** A ready switch's counts once its fill runs have all succeeded again after a send-back. */
+    const recount = async (entry: { scope: string; id: string }, spec: EngineSwitchSpec) => {
+      const ids = spec.runs ?? [];
+      const runs = (await Promise.all(ids.map((id) => deps.ingestion.execution(id)))).filter(
+        (r) => r !== undefined,
+      );
+      if (ids.length === 0 || runs.length < ids.length) return;
+      if (!runs.every((r) => r.status === 'succeeded')) return;
+      const failedDocuments = countOfReports(runs, ['failedDocuments']);
+      const documents = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
+      const copied =
+        spec.method === 'copy'
+          ? copyCountsOf(
+              runs,
+              (
+                await Promise.all(
+                  (spec.earlierRuns ?? []).map((id) => deps.ingestion.execution(id)),
+                )
+              ).filter((r) => r !== undefined),
+            )
+          : undefined;
+      if (
+        documents === spec.progress.documents &&
+        failedDocuments === (spec.failedDocuments ?? 0) &&
+        JSON.stringify(copied) === JSON.stringify(spec.copied)
+      )
+        return;
+      await update(
+        entry.scope,
+        entry.id,
+        (s) => {
+          if (s.state !== 'ready' || !sameRun(s, spec) || s.runs?.join() !== ids.join())
+            return undefined;
+          const counted = { ...s, progress: { ...s.progress, documents } };
+          delete counted.failedDocuments;
+          if (copied) counted.copied = copied;
+          return failedDocuments > 0 ? { ...counted, failedDocuments } : counted;
+        },
+        systemActor,
+        'Overføringen er telt på nytt',
+      );
     };
 
     /** The minute timer: switches that stopped answering, then the runs of switches into the knowledge database. */
@@ -1639,6 +1664,17 @@ export const createEngineSwitchesModule =
         ? { model: value.model, dimensions: value.dimensions as number }
         : undefined;
     };
+
+    deps.ingestion.refuseSendBackWith(async (run) => {
+      if (!run.engineSwitch || !run.generation) return undefined;
+      for (const entry of await store.latest({ kind })) {
+        const spec = entry.spec as EngineSwitchSpec;
+        if (entry.id !== run.engineSwitch || spec.dataset !== run.dataset) continue;
+        if (spec.cleanup.some((c) => c.generation === run.generation))
+          return 'Kjøringen skrev til en generasjon byttet har forkastet.';
+      }
+      return undefined;
+    });
 
     deps.ingestion.holdWith(async (dataset) => {
       for (const entry of await store.latest({ kind })) {
@@ -2069,8 +2105,7 @@ export const createEngineSwitchesModule =
               return problem(c, 400, 'Begrunnelsen er for kort', [
                 { path: 'change-reason', message: `Begrunnelsen må ha minst ${minimum} tegn.` },
               ]);
-            // A fill run sent back runs again: activating would forget it and its refresh run would
-            // wait on it (issue 598).
+            // A sent-back fill run still open would be forgotten by activating (issue 598).
             const runs = await Promise.all(
               (spec.runs ?? []).map((id) => deps.ingestion.execution(id)),
             );

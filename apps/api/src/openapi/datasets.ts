@@ -914,7 +914,9 @@ const pipelineRoutes = (base: Base): RouteConfig[] => {
         400: either('Missing reason, or the run does not run as jobs or has not ended'),
         ...guarded(base, 'manage-datasets'),
         404: either('No such dataset'),
-        409: either('The pipeline has another open run'),
+        409: either(
+          'The pipeline has another open run, or the run wrote to a generation its switch discarded',
+        ),
       },
     }),
     createRoute({
@@ -1065,7 +1067,9 @@ const engineRoutes = (base: Base): RouteConfig[] => {
         ),
         400: problem('Reason too short, or the change was refused'),
         ...failures,
-        409: problem('Not ready, the dataset changed, or the engine cannot be opened'),
+        409: problem(
+          'Not ready, the dataset changed, the engine cannot be opened, or a run of the switch is still open',
+        ),
       },
     }),
     createRoute({

@@ -93,6 +93,7 @@ const fakeWorker = () => {
       if (
         !run ||
         run.dataset !== input.dataset ||
+        run.pipeline !== input.pipeline ||
         !run.runsAsJobs ||
         !['succeeded', 'failed'].includes(run.status)
       )
@@ -860,6 +861,97 @@ describe("sending a switch's fill run back", () => {
     await booted.worker.end(run, 'succeeded', { stored: 10 });
     await booted.module.follow();
     expect((await activate()).status).not.toBe(409);
+  });
+});
+
+describe("following a ready switch's runs", () => {
+  it('a ready switch whose refresh never started stays ready', async () => {
+    const clock = { now: new Date() };
+    const booted = await boot({ clock });
+    await folderDataset(booted, 'stille');
+    const opened = await toReady(booted, 'stille');
+    booted.worker.jobRuns.runs.start = async () => {
+      throw new Error('the instance stopped before the refresh run started');
+    };
+    await booted.call(`${base('stille')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    for (let i = 0; i < 3; i++) {
+      clock.now = new Date(clock.now.getTime() + 3 * 60_000);
+      await booted.module.follow();
+    }
+
+    expect((await view(booted, 'stille', opened.sid)).state).toBe('ready');
+  });
+
+  it("a ready switch after a failed activation keeps its fill's counts", async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'publisering');
+    const opened = await toReady(booted, 'publisering');
+    await booted.call(`${base('publisering')}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    // The refresh run ends, and the switch goes back to ready with its refresh run as it would
+    // after a publish that failed.
+    const refresh = runOf(booted.worker, opened.id, 1);
+    await booted.worker.end(refresh, 'succeeded', { stored: 1 });
+    const entry = (await booted.entries.latest({ kind: 'engine-switch' })).find(
+      (e) => e.id === opened.id,
+    );
+    if (!entry) throw new Error('no switch entry');
+    await booted.entries.append({
+      ...entry,
+      spec: { ...(entry.spec as object), state: 'ready', runs: [refresh?.id] },
+      version: entry.version + 1,
+    } as never);
+
+    await booted.module.follow();
+
+    expect((await view(booted, 'publisering', opened.sid)).progress.documents).toBe(3);
+  });
+
+  it('a copy whose run is sent back counts what it copied then', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi-tilbake');
+    const ready = await copiedToReady(
+      booted,
+      'kopi-tilbake',
+      {},
+      { stored: 3, failedDocuments: 2 },
+    );
+    expect(ready.copy).toMatchObject({ copied: 3, failed: 2 });
+    const run = runOf(booted.worker, ready.id) as Execution;
+    await booted.worker.executions.save({ ...run, status: 'running' });
+    await booted.worker.end(run, 'succeeded', { stored: 5 });
+
+    await booted.module.follow();
+
+    expect((await view(booted, 'kopi-tilbake', ready.sid)).copy).toMatchObject({
+      copied: 5,
+      failed: 0,
+    });
+  });
+
+  it('a run of a cancelled switch cannot be sent back', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'forkastet');
+    const opened = await started(booted, 'forkastet');
+    const run = runOf(booted.worker, opened.id) as Execution;
+    await booted.worker.end(run, 'failed', {}, 'the listing failed');
+    await booted.module.follow();
+    expect(
+      (
+        await booted.call(`${base('forkastet')}/engine-switches/${opened.sid}/cancel`, {
+          body: {},
+        })
+      ).status,
+    ).toBe(200);
+
+    const response = await booted.call(
+      `${base('forkastet')}/pipelines/filer/executions/${run.id}/redrive`,
+      { body: {}, reason: 'Sender døde jobber tilbake' },
+    );
+
+    expect(response.status).toBe(409);
+    expect((await booted.worker.executions.get(run.id))?.status).toBe('failed');
   });
 });
 
