@@ -96,10 +96,7 @@ const withoutNul = (text: string) => text.replaceAll('\u0000', '');
 const jsonWithoutNul = (value: unknown) =>
   JSON.stringify(value, (_, v: unknown) => (typeof v === 'string' ? withoutNul(v) : v));
 
-/**
- * Writes a document's fields alone, as a fresh write would (`fields_text` from the fields in the
- * order given), inside the caller's transaction; its chunks and phrases stay as they are.
- */
+/** Writes a document's fields and `fields_text` alone, in the caller's transaction; chunks stay. */
 export const updateDocumentFields = (
   client: PoolClient,
   target: Pick<DocumentTarget, 'generation' | 'via'>,
