@@ -1473,6 +1473,9 @@ const evalRoutes: RouteConfig[] = [
       403: problem('Missing right'),
       429: problem('The monthly token quota is used up'),
       ...memberRead,
+      404: problem(
+        'No access to the tenant, or capability names no service the organisation may use, at that version',
+      ),
     },
   }),
   createRoute({

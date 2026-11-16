@@ -864,6 +864,21 @@ export const capabilityResolver = (
   };
 };
 
+export const resolvesTo = async (
+  resolver: CapabilityResolver,
+  principal: Principal,
+  capability: string,
+) => {
+  const at = capability.lastIndexOf('@');
+  const version = at > 0 ? Number(capability.slice(at + 1)) : NaN;
+  const pinned = Number.isInteger(version) && version > 0;
+  const name = pinned ? capability.slice(0, at) : capability;
+  const resolved = await resolver.resolve(principal, name, pinned ? { version } : {});
+  if (!resolved.ok) return false;
+  const served = resolved.entry.capability;
+  return served === name || served === `${name}@${resolved.entry.version}`;
+};
+
 export type OptionCache = Map<string, { at: number; options: Promise<FacetCount[]> }>;
 
 export const facetOptions = (
@@ -1629,14 +1644,19 @@ export const createPlatform = async (input: PlatformInput) => {
     );
     if (!variant) return undefined;
     const id = `${variant.capability.descriptor.id}@${version}`;
+    const shared = compiled.capability.descriptor.availableTo;
+    const descriptor = { ...variant.capability.descriptor, id };
+    if (shared === undefined) delete descriptor.availableTo;
+    else descriptor.availableTo = shared;
     const pinned: CompiledCapability = {
       ...variant,
-      capability: {
-        ...variant.capability,
-        descriptor: { ...variant.capability.descriptor, id },
-      },
+      capability: { ...variant.capability, descriptor },
     };
-    if (!registry.all().some((c) => c.descriptor.id === id)) {
+    const registered = registry.all().find((c) => c.descriptor.id === id);
+    if (
+      !registered ||
+      JSON.stringify(registered.descriptor.availableTo) !== JSON.stringify(shared)
+    ) {
       const decorated = limited(
         await decorate(pinned.capability, {
           compiled: pinned,
@@ -2154,6 +2174,7 @@ export const createPlatform = async (input: PlatformInput) => {
           kernel,
           evalCapability: evalCapability.descriptor.id,
           ...evalStores,
+          runnable: (principal, capability) => resolvesTo(resolver, principal, capability),
         },
       });
     if (admin) {
