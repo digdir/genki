@@ -18,6 +18,7 @@ import {
   judgedAgainst,
   runState,
   splitsFor,
+  staleJudges,
   sumUsage,
   type CaseSplit,
   type CaseType,
@@ -253,6 +254,7 @@ export const runSummary = (
   const passed = counted.filter((r) => passes(r.scores)).length;
   const used = [run.usage?.answers, run.usage?.judges].filter((u) => u !== undefined);
   const usage = used.length > 0 ? sumUsage(used) : undefined;
+  const stale = staleJudges(run.provenance.judges);
   return {
     id: run.id,
     status: state,
@@ -283,6 +285,7 @@ export const runSummary = (
     metrics: run.metrics,
     incomplete: run.incomplete,
     judges: run.provenance.judges,
+    ...(stale.length > 0 ? { staleJudges: stale } : {}),
     cost: usage ? usage.costMicroNok : null,
     tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
     ...(run.error ? { error: run.error } : {}),

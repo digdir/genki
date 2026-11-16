@@ -70,6 +70,8 @@ export interface EvalRun {
     of?: number;
   }[];
   judges?: string[];
+  /** Judges recorded at an older version than the one in use now. */
+  staleJudges?: string[];
   /** Why a failed or interrupted run stopped. */
   error?: string;
   /** Langfuse judges: advisory, shown apart from genki's metrics. */

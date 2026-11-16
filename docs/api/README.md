@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-13: runs judged by an older judge
+
+- `GET /tenants/{tenant}/services/{id}/eval-runs`, `GET /tenants/{tenant}/eval-runs/{runId}` and `GET /eval-runs/compare` add `staleJudges` when a run was judged by an older version of a platform judge, such as `judge:criteria`, than the one in use now. The field is left out otherwise, and nothing else changes.
+
 ### 2026-11-12: only operators change the limits Digdir sets
 
 - `PUT` and `DELETE /tenants/{tenant}/settings/{key}`, `PUT /tenants/{tenant}/pins/{key}` and `POST /tenants/{tenant}/import` answer 403 `urn:genai:problem:operator-only-setting` when someone other than an operator in a support session sets, removes or pins `usage.monthlyTokens`, `usage.tenantCallsPerMinute`, `assistant.dailyTokens` or `batch.approvalLimitNok` for a tenant. A dry run of `PUT /tenants/{tenant}/settings/{key}` or of the import answers the same 403. Importing a bundle that keeps a limit at its current value is fine.

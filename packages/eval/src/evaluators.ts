@@ -67,6 +67,8 @@ export interface Evaluator {
 /** The evaluator of a provenance judge: judge:criteria@2+foundry/claude is judge:criteria. */
 export const evaluatorOfJudge = (judge: string) => /^([^@+]+)@[^+]+\+/.exec(judge)?.[1] ?? judge;
 
+export const judgeVersionOf = (judge: string) => /^[^@+]+@([^+]+)\+/.exec(judge)?.[1];
+
 export class EvalError extends Error {
   constructor(message: string) {
     super(message);

@@ -215,6 +215,9 @@ export const qualityArea = {
     runResumed: 'Taken up again after a restart',
     caseTimeline: 'See the timeline',
     caseTimelineFor: 'See the timeline for test case {case}',
+    runStaleJudge: 'Older judge',
+    runStaleJudges:
+      'Judged by an older version of {judges} than the one in use now, so its scores cannot be compared with runs judged by the current one.',
     runQueued: 'Waiting for a free slot, number {place} in line',
     passedOf: '{passed} of {total}',
     passedOfFinished: '{passed} of {finished}, {finished} of {total} run',
