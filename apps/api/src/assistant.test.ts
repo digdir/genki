@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import type { z } from '@hono/zod-openapi';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
@@ -11,6 +12,7 @@ import { createAdmin } from './admin.js';
 import type { AssistantTurn } from './assistant.js';
 import { resolveCatalog } from './catalogs.js';
 import { localeMiddleware } from './i18n/index.js';
+import { serviceRoutes } from './openapi/services.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform } from './composition.js';
 import { proposalKind, type CatalogProposal } from './proposals.js';
@@ -246,6 +248,17 @@ const lowerTemperature = {
 };
 
 const json = async (res: Response) => (await res.json()) as AssistantTurn;
+
+const documentedTurn = () => {
+  const route = serviceRoutes.find(
+    (r) => r.method === 'post' && r.path === '/tenants/{tenant}/services/{id}/assistant/turns',
+  );
+  const responses = route?.responses as
+    Record<number, { content: Record<string, { schema: z.ZodType }> }> | undefined;
+  const schema = responses?.[200]?.content['application/json']?.schema;
+  if (!schema) throw new Error('no documented assistant turn schema');
+  return schema;
+};
 
 const sseEvents = (text: string) =>
   text
@@ -714,6 +727,9 @@ describe('the builder assistant API', () => {
     expect(body.proposals).toMatchObject([
       { level: 1, kind: 'interface', blocks: ['document-view'], appliedToDraft: false },
     ]);
+    const documented = documentedTurn().safeParse(body);
+    expect(documented.error?.issues ?? []).toEqual([]);
+    expect(documented.data).toEqual(body);
   });
 
   it('refuses interface blocks with an id that is not a block id', async () => {

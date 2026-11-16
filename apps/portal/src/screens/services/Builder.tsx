@@ -303,6 +303,7 @@ export const Builder = ({
   const [saved, setSaved] = useState<Record<string, SpecPatch>>({});
   const [assisted, setAssisted] = useState<Record<string, AssistedChange>>({});
   const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
+  const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
   const readOnly = !rights.has('manage-services');
   const readOnlyRef = useRef(readOnly);
@@ -1215,6 +1216,7 @@ export const Builder = ({
           fullscreen={detail === 'preview'}
           backHref={`#${servicePath(routeId, 'interface')}`}
           adding={adding}
+          onAdded={clearAdding}
           {...(readOnly ? {} : { assistant: assistantPanel })}
           onFullscreen={() => go('interface', '/preview')}
           onExitFullscreen={() => go('interface')}

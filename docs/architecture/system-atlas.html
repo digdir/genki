@@ -5169,6 +5169,29 @@
                             required: ['ref', 'title', 'summary', 'purpose', 'settings'],
                           },
                         },
+                        interfaceBlocks: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string' },
+                              name: {
+                                type: 'object',
+                                properties: { nb: { type: 'string' }, en: { type: 'string' } },
+                                required: ['nb', 'en'],
+                              },
+                              covers: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: { nb: { type: 'string' }, en: { type: 'string' } },
+                                  required: ['nb', 'en'],
+                                },
+                              },
+                            },
+                            required: ['id', 'name', 'covers'],
+                          },
+                        },
                       },
                       required: ['available', 'refused', 'blockedResidencies'],
                     },

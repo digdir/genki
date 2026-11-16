@@ -27,6 +27,7 @@ export const InterfaceTab = ({
   backHref,
   adding,
   assistant,
+  onAdded,
   onFullscreen,
   onExitFullscreen,
 }: {
@@ -44,6 +45,7 @@ export const InterfaceTab = ({
   /** Blocks the builder assistant chose, turned on once per key. */
   adding?: { key: string; blocks: readonly string[] } | undefined;
   assistant?: ReactNode;
+  onAdded?: () => void;
   onFullscreen: () => void;
   onExitFullscreen: () => void;
 }) => {
@@ -73,7 +75,8 @@ export const InterfaceTab = ({
     if (!adding || added.current === adding.key) return;
     added.current = adding.key;
     add(adding.blocks.filter((id): id is BlockId => isBlockId(id)));
-  }, [adding, add]);
+    onAdded?.();
+  }, [adding, add, onAdded]);
   const run = useMemo(
     () => ({ api, tenant, source: { definition, files } }),
     [api, tenant, definition, files],

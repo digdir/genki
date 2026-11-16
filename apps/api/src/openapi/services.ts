@@ -643,7 +643,7 @@ const BatchExport = z
 const proposalShape = {
   id: z.string(),
   level: z.number().int().min(1).max(4),
-  kind: z.enum(['change', 'connector', 'building_block', 'platform_change']),
+  kind: z.enum(['change', 'connector', 'building_block', 'platform_change', 'interface']),
   title: z.string(),
   detail: z.string(),
   section: z.string().optional(),
@@ -660,6 +660,8 @@ const proposalShape = {
   quality: z.string().optional(),
   platformChange: record.optional(),
   approval: z.object({ right: z.string() }).optional(),
+  flows: z.array(record).optional(),
+  blocks: z.array(z.string()).optional(),
 };
 
 const AssistantTurn = z
