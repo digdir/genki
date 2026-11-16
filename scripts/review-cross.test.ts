@@ -274,11 +274,15 @@ describe('the read-only tools the model gets', () => {
     },
   );
 
-  it('refuses a tracked file that is not a regular file without blocking on it', () => {
-    const root = mkdtempSync(join(tmpdir(), 'cross-'));
-    execFileSync('mkfifo', [join(root, 'pipe')]);
-    expect(diskWorkspace(root, ['pipe']).read('pipe')).toBeNull();
-  });
+  // Windows has no named pipes on the file system, so there is no file that is not a regular file to try.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a tracked file that is not a regular file without blocking on it',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'cross-'));
+      execFileSync('mkfifo', [join(root, 'pipe')]);
+      expect(diskWorkspace(root, ['pipe']).read('pipe')).toBeNull();
+    },
+  );
 
   it('refuses a tracked file over one megabyte', () => {
     const root = mkdtempSync(join(tmpdir(), 'cross-'));
