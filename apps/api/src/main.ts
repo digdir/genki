@@ -29,6 +29,7 @@ import {
   knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  managedIdentityTokenSource,
   PostgresDefinitionStore,
   PostgresJobRuns,
   postgresSourceFromEnv,
@@ -83,7 +84,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import {
   bootProblems,
   devModeWarning,
@@ -449,6 +450,9 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const platform = await createPlatform({
   platformTenant,
+  federatedTokens: federatedAppTokens({
+    assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+  }),
   appVersion: version,
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),

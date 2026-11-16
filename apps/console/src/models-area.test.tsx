@@ -316,6 +316,44 @@ describe('Modeller: connections', () => {
     expect(document.body.textContent).not.toContain('sk-hemmelig');
   });
 
+  it("adds a connection that signs in with genki's own identity, with no secret field", async () => {
+    const { calls, fetch } = recorded();
+    await signedIn('#/models', fetch);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ny tilkobling' }));
+    const panel = await dialog('Ny tilkobling');
+    typeInto(within(panel).getByLabelText('Navn'), 'gateway');
+    typeInto(within(panel).getByLabelText('Adresse (base URL)'), 'https://api.gateway.example/v1');
+    typeInto(within(panel).getByLabelText('Innlogging'), 'federated-app');
+    expect(within(panel).queryByLabelText('Navn på hemmeligheten')).toBeNull();
+    typeInto(
+      within(panel).getByLabelText('Appens klient-ID'),
+      '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+    );
+    typeInto(within(panel).getByLabelText('Leietaker for tjenesten'), 'digdir');
+    typeInto(within(panel).getByLabelText('Scope'), 'api://gateway/.default');
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til tilkobling' }));
+    expect(await within(panel).findByText(/Skriv en GUID/)).toBeTruthy();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+
+    typeInto(
+      within(panel).getByLabelText('Leietaker for tjenesten'),
+      '11111111-2222-3333-4444-555555555555',
+    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til tilkobling' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({
+      id: 'gateway',
+      auth: {
+        kind: 'federated-app',
+        clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+        tenant: '11111111-2222-3333-4444-555555555555',
+        scope: 'api://gateway/.default',
+      },
+    });
+  });
+
   it('a processor record is registered on the connection, with errors next to each field', async () => {
     await signedIn('#/models?connection=local-model');
     fireEvent.click(await screen.findByRole('button', { name: 'Registrer avtale' }));

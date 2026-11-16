@@ -6945,6 +6945,28 @@
                                 required: ['kind', 'provider'],
                                 additionalProperties: false,
                               },
+                              {
+                                type: 'object',
+                                properties: {
+                                  kind: { type: 'string', const: 'federated-app' },
+                                  clientId: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                                  },
+                                  tenant: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                                  },
+                                  scope: {
+                                    type: 'string',
+                                    pattern: '^[\\x21-\\x7e]{1,246}\\/\\.default$',
+                                  },
+                                },
+                                required: ['kind', 'clientId', 'tenant', 'scope'],
+                                additionalProperties: false,
+                              },
                             ],
                           },
                           families: {

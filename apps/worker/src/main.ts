@@ -75,7 +75,11 @@ import {
   type CopyIds,
 } from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
-import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import {
+  aiGatewayUsageSource,
+  federatedAppTokens,
+  gatewayUsageConfigFromEnv,
+} from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 import { createLocalConverter } from '@genai/providers-documents';
@@ -97,6 +101,7 @@ import {
   ingestSender,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  managedIdentityTokenSource,
   platformId,
   PostgresDefinitionStore,
   PostgresJobRunRecords,
@@ -220,6 +225,9 @@ if (knowledgeRefused.length > 0) {
   process.exit(1);
 }
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+const federatedTokens = federatedAppTokens({
+  assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+});
 if (gatewayUsage.problems.length > 0) {
   log('refusing to start', { problems: gatewayUsage.problems });
   process.exit(1);
@@ -232,6 +240,7 @@ const polledSources: PolledSource[] =
           source: aiGatewayUsageSource(gatewayUsage.config, {
             secrets: envSecrets(),
             egress: new EgressGuard(egressOptions),
+            federatedTokens,
           }),
           since: gatewayUsage.config.since,
         },
@@ -639,6 +648,7 @@ const usedTokens = async (tenant: string, since: string) =>
     : 0;
 const runtime = await createRuntime({
   platformTenant,
+  federatedTokens,
   catalogs: {
     models: catalogs.models.catalog,
     knowledge: catalogs.knowledge.catalog,

@@ -11,6 +11,7 @@ import {
   type PortContext,
   type PortProvider,
   type SecretResolver,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import {
@@ -34,6 +35,7 @@ export interface EmbeddingRouterOptions {
   adapters: EmbeddingAdapter[];
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   priceOf?: (id: string) => UnitPrices | undefined;
   maxResidency?: Residency;
   maxRetries?: number;
@@ -114,7 +116,13 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     for (const [name, spec] of Object.entries(result.catalog.connections)) {
       credentials.set(
         name,
-        credentialFor(spec.auth, options.secrets, options.tokenProviders, spec.baseURL),
+        credentialFor(
+          spec.auth,
+          options.secrets,
+          options.tokenProviders,
+          spec.baseURL,
+          options.federatedTokens,
+        ),
       );
       extras.set(name, {
         ...(spec.settings ? { settings: spec.settings } : {}),
