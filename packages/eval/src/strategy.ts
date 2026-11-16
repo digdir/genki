@@ -11,7 +11,7 @@ import {
   type WaitOptions,
 } from './runner.js';
 import { judgedExpectation } from './cases.js';
-import { splits, testSet } from './schema.js';
+import { evalRun, splits, testSet } from './schema.js';
 
 export const evalRunConfig = z.strictObject({
   id: z.string().min(1).optional(),
@@ -27,6 +27,15 @@ export const evalRunConfig = z.strictObject({
   avoidAsJudge: z.array(z.string()).optional(),
   /** The sink's judges as they were when the run started, for forRun to score with. */
   sinkJudges: z.array(z.unknown()).optional(),
+  /** The cases an earlier attempt of the run finished, kept and not run again. */
+  prior: z
+    .strictObject({
+      results: evalRun.shape.results,
+      usage: evalRun.shape.usage,
+      servedModels: z.array(z.string()).optional(),
+      services: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 export type EvalRunConfig = z.input<typeof evalRunConfig>;
 
@@ -60,7 +69,7 @@ export interface EvalStrategyDeps {
 }
 
 export interface EvalNotice {
-  kind: 'eval.progress' | 'eval.waiting' | 'eval.queued';
+  kind: 'eval.progress' | 'eval.waiting' | 'eval.queued' | 'eval.case';
   [key: string]: unknown;
 }
 
@@ -151,13 +160,16 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       ...(deps.meterAnswers ? { meterAnswers: deps.meterAnswers } : {}),
       signal: ctx.signal,
       ...(slots ? { slots } : {}),
-      onProgress: (done, total, usage, result) =>
+      ...(options.prior ? { prior: options.prior } : {}),
+      onCaseStart: (item) => notify({ kind: 'eval.case', ...item }),
+      onProgress: (done, total, usage, result, served) =>
         notify({
           kind: 'eval.progress',
           done,
           total,
           ...(usage ? { usage } : {}),
           ...(result ? { result } : {}),
+          ...(served ? { served } : {}),
         }),
       onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {

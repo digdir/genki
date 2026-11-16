@@ -129,6 +129,8 @@ export const problems = {
   shareOperatorOnly:
     'Only platform operators change who the service is shared with. Keep spec.availableTo as it is in the published version.',
   shareOperatorOnlyTitle: 'Only operators change sharing',
+  internalOperatorOnly: 'Only operators make a service internal.',
+  serviceIdTaken: 'The id is already in use.',
   operatorOnlySettingTitle: 'Only Digdir changes this limit for an organisation',
   uploadRequestTooLarge:
     'The request is larger than {size} MB. Send the files in several requests.',

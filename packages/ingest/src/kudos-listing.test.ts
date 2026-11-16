@@ -232,6 +232,70 @@ describe('a Kudos listing', () => {
     expect(loaded.texts).toEqual(['Mål og resultater for året.']);
   });
 
+  /** A stored converter whose conversions are pages, or a failure for the files named in it. */
+  const storedWith = (failures: Record<string, string>) =>
+    storedConverter(
+      { extensions: ['.pdf'] },
+      {
+        find: async (sha256) => ({
+          sha256,
+          converter: 'text-layer',
+          version: '1',
+          settings: {},
+          derivation: { name: 'text-layer', version: 1 },
+          ...(failures[sha256]
+            ? { pages: [], failure: failures[sha256] }
+            : { pages: ['Mål og resultater for året.'] }),
+        }),
+      },
+      [{ converter: 'text-layer', derivation: { name: 'text-layer', version: 1 }, kept: false }],
+    );
+
+  it('a document with an unreachable file is read from its other files', async () => {
+    const two = doc(3);
+    const [pdfFile] = two.files ?? [];
+    const gone = {
+      uuid: 'f3c',
+      url: `https://kudos.dfo.no/dokument/${uuid(3)}/filer/vedlegg.pdf`,
+      sha256: 'e'.repeat(64),
+      size: 10,
+      mimetype: 'application/pdf',
+    };
+    const { access } = fakeKudos({
+      docs: [{ ...two, files: [gone, ...(pdfFile ? [pdfFile] : [])] }],
+    });
+    const listing = await knowledgeListingOf(
+      spec({ types: ['Årsrapport'] }),
+      { kudos: access, converter: storedWith({ [gone.sha256]: 'unreachable' }) },
+      scope,
+      signal,
+    );
+    const [listed] = await all(listing);
+    const loaded = await listing.load(listed?.record ?? {});
+
+    expect(loaded.skip).toBeUndefined();
+    expect(loaded.texts).toEqual(['Mål og resultater for året.']);
+  });
+
+  it('a document whose only file is unreachable is skipped as unreachable', async () => {
+    const one = doc(4);
+    const { access } = fakeKudos({ docs: [one] });
+    const failures = Object.fromEntries(
+      (one.files ?? []).map((f) => [f.sha256 as string, 'unreachable']),
+    );
+    const listing = await knowledgeListingOf(
+      spec({ types: ['Årsrapport'] }),
+      { kudos: access, converter: storedWith(failures) },
+      scope,
+      signal,
+    );
+    const [listed] = await all(listing);
+    const loaded = await listing.load(listed?.record ?? {});
+
+    expect(loaded.texts).toEqual([]);
+    expect(loaded.skip).toBe('unreachable');
+  });
+
   it('a Kudos listing asks KUDOS by type and publish year, 50 a page', async () => {
     const { access, calls } = fakeKudos({ docs: [doc(1)] });
     await all(
@@ -249,6 +313,32 @@ describe('a Kudos listing', () => {
       expect(c.searchParams.get('per_page')).toBe('50');
       expect(c.searchParams.get('query')).toBeNull();
     }
+  });
+
+  it('a Kudos listing without types lists all of KUDOS newest first', async () => {
+    const byDate = (docs: KudosDocument[], sort: string) =>
+      [...docs].sort((a, b) =>
+        sort === 'newest'
+          ? String(b.publish_date).localeCompare(String(a.publish_date))
+          : String(a.publish_date).localeCompare(String(b.publish_date)),
+      );
+    const { access, calls } = fakeKudos({
+      docs: [
+        doc(1, { type: 'Årsrapport', publish_date: '2019-03-01' }),
+        doc(2, { type: 'Instruks', publish_date: '2025-10-01' }),
+        doc(3, { type: 'Tildelingsbrev', publish_date: '2022-01-15' }),
+      ],
+      order: byDate,
+    });
+    const listed = await all(await listingFor({ since: '1900-01-01' }, access));
+
+    const lists = calls.filter((c) => c.pathname === '/api/v0/documents');
+    expect(lists.length).toBeGreaterThan(0);
+    for (const c of lists) {
+      expect(c.searchParams.get('type')).toBeNull();
+      expect(c.searchParams.get('sort')).toBe('newest');
+    }
+    expect(listed.map((d) => d.id)).toEqual([2, 3, 1].map((n) => `kudos:${uuid(n)}`));
   });
 
   it('a Kudos pipeline with orgs lists each org by actor_name', async () => {

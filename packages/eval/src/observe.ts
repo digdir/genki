@@ -22,6 +22,8 @@ export interface Observation {
   citations: ObservedSource[];
   fields?: Record<string, unknown>;
   decisions?: ObservedDecision[];
+  /** The parts the case answered, as a sink receives them, for a judge that reads a path in them. */
+  parts?: Part[];
 }
 
 export type Observe = (parts: Part[], events: Event[]) => Observation;

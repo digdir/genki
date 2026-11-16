@@ -1,0 +1,30 @@
+title: Publiser og del en tjeneste
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/services/smoke/channels
+signedIn: true
+ready: Endepunkter
+steps:
+  - say: Når tjenesten er prøvd og testet, publiserer dere den. Hver publisering blir en ny versjon, og en tidligere versjon kan tas i bruk igjen.
+    hold: 1
+  - say: Under Kanaler og frontend står adressene tjenesten kan nås på. Fagsystemer kaller den gjennom et API.
+    do:
+      - [find, role, heading, hover, --name, Endepunkter]
+    hold: 1
+  - say: For å gi et fagsystem tilgang lager dere en API-nøkkel. En nøkkel her virker bare for denne ene tjenesten.
+    do:
+      - [find, role, button, click, --name, Lag API-nøkkel]
+      - [wait, --text, Ny API-nøkkel for tjenesten, --timeout, '30000']
+  - say: Nøkkelen får et navn, så dere ser hvem som bruker den. Vi lager den ikke i denne demoen.
+    do:
+      - [find, label, Navn, fill, Saksbehandlingssystemet, --exact]
+    hold: 1
+  - say: Nøkkelen vises bare én gang, og dere lagrer den i et hemmelighetslager. Dere kan trekke den tilbake når som helst.
+    hold: 1
+  - say: Vil dere lage en egen nettside eller app for tjenesten, registrerer dere den som en egen brukerflate. Ansatte kan da logge inn med Ansattporten.
+    do:
+      - [find, role, button, hover, --name, Registrer brukerflate]
+    hold: 1
+  - say: Slik går en tjeneste fra idé til bruk i GenKI. Lag den, prøv den, test den, og del den.
+    hold: 2

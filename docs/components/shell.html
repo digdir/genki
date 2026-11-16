@@ -6,7 +6,7 @@
     <title>Shell · Components</title>
     <meta
       name="description"
-      content="Three columns that hold the other blocks: a primary panel, the main column and a secondary panel, which fold, resize and become drawers."
+      content="Three columns that hold the other blocks: a primary panel, the main column and a secondary panel, which fold, resize and, open in a narrow window, fill the shell."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -35,9 +35,9 @@
             <p class="summary">
               Three columns, as in Visual Studio Code: a primary panel, the main column and a
               secondary panel. The panels are slots: the shell knows nothing of threads or sources.
-              A panel folds to a rail, is resized by dragging, clicking or the keys, and becomes a
-              drawer over the main column in a narrow window. The shell reports every change; the
-              app stores it.
+              A panel folds to a rail, is resized by dragging, clicking or the keys, and, open in a
+              narrow window, fills the shell in place of the main column. The shell reports every
+              change; the app stores it.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
@@ -129,15 +129,15 @@
                 there, such as the filter's <code>pinIn</code>; a stable function),
                 <code>foot</code> and <code>footPinned</code>, <code>railFoot</code> (what the
                 folded panel shows at its bottom, such as the reader's avatar; not in the top row),
-                <code>rail</code> (what the folded panel shows under its button, such as a button
-                per tool that opens the panel on it, dev-verktoy-4, on a drawer's rail too; not in
-                the top row), <code>title</code> (the panel's visible name, an <code>h2</code> on
-                its row: «Tråder», «Verktøy»), <code>size</code> (<code>width</code>,
-                <code>minWidth</code>, <code>maxWidth</code>), <code>defaultCollapsed</code> and
-                <code>landmark</code>. A host may change a panel's <code>size</code> while the page
-                is open, as the next look's primary panel goes from the threads with their filter to
-                the settings menu: the panel is then drawn within its new floor and ceiling, and the
-                width it had comes back with its old size.
+                <code>rail</code> (what the folded panel shows under its button, such as «Ny tråd»,
+                dev-navbar, on a narrow window's rail too; not in the top row),
+                <code>title</code> (the panel's visible name, an <code>h2</code> on its row:
+                «Tråder», «Verktøy»), <code>size</code> (<code>width</code>, <code>minWidth</code>,
+                <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>. A
+                host may change a panel's <code>size</code> while the page is open, as the next
+                look's primary panel goes from the threads with their filter to the settings menu:
+                the panel is then drawn within its new floor and ceiling, and the width it had comes
+                back with its old size.
               </li>
               <li>
                 <code>companion</code>: a second column in the panel's card, towards the main
@@ -149,8 +149,8 @@
                 <code>keepWidth</code> it is the other way round: the companion keeps its
                 <code>width</code>, and the panel's own column takes every resize, so the panel's
                 <code>size.minWidth</code> is the own column's floor plus the companion's width. The
-                panel's button stands on the companion's row, at the card's edge, and folds both. In
-                a drawer the companion stands under the panel's own column.
+                panel's button stands on the companion's row, at the card's edge, and folds both.
+                Where the panel fills the shell, the companion stands under the panel's own column.
               </li>
               <li>
                 <code>children</code> and <code>mainPinned</code>: the main column, and what stays
@@ -173,8 +173,9 @@
               <li>
                 <code>request</code>: <code>open</code> a panel the reader asked for, such as by a
                 footnote; <code>offer</code> one that has new content, such as an answer with
-                sources; or <code>close-drawers</code>, such as after choosing a thread. A new
-                object is acted on once.
+                sources; or <code>close-drawers</code>, which closes a panel that fills the shell in
+                a narrow window, such as after choosing a thread (the name is kept from the drawers
+                the shell had before). A new object is acted on once.
               </li>
               <li>
                 <code>compactBar</code>: the top row below 774, on by default. <code>false</code>
@@ -183,6 +184,16 @@
               <li>
                 <code>skipLinks</code>: more skip links after «Hopp til hovedinnhold», such as «Hopp
                 til skrivefeltet».
+              </li>
+              <li>
+                <code>frameWidth</code>: drawn in a host's preview of that width, as a builder's try
+                view draws it. The shell lays out for that width, not the window's, leaves the
+                page's <code>&lt;main&gt;</code> and skip links to the host, and titles the main
+                column with an <code>h2</code>. A frame too narrow for an open panel beside the main
+                column gets the same panel over the shell, inside the frame, as the builder's 1280
+                with the threads and their filter 660 wide: the host's page around it stays in reach
+                and is never dimmed. Where a page has no <code>matchMedia</code>, no media query
+                matches.
               </li>
               <li>
                 <code>gap</code> and <code>rail</code>: 32 and 67 by default, 12 and 76 for cards.
@@ -283,12 +294,24 @@
                 November; until then growing back opened nothing).
               </li>
               <li>
-                <strong>Drawers below 1139:</strong> both panels stand as rails, and an open panel
-                is Designsystemet's modal <code>Dialog</code> over the main column, in from its own
-                edge, at the design's width and never wider than the window: focus is trapped,
-                Escape closes it, focus goes back, and it has «Lukk …». Entering drawer mode folds
-                both, so nothing opens over the answer by itself (17 September); leaving it opens
-                again what it folded, where only one fits the one that does not yield (12 November).
+                <strong>One panel over the shell below 1139:</strong> both panels stand as rails,
+                and an open panel fills the shell's own box, its whole width and height, with its
+                title, its head and «Lukk …» on one row. It is no dialog: nothing dims the page and
+                nothing goes to the browser's top layer, so a host's page around the shell, such as
+                a builder's preview, stays as it is. While it is open the main column and the other
+                panel are inert, out of reach of Tab and screen readers, but stay in the page, so
+                the chat comes back where it was, and the skip links are left out. The focus goes to
+                «Lukk …» as it opens, unless the host's page outside the shell has it (in a preview,
+                also when nothing on it has the focus); «Lukk …» and Escape close it, and the focus
+                goes back to what opened it, the panel's button or a footnote in the answer, or to
+                the panel's button when that is gone. Escape is the panel's last: a dialog open in
+                it closes first, a search field with text in it clears first, and an Escape that
+                something in the panel takes, such as an open menu or a field, leaves it open. One
+                panel is open at a time. Going below 1139 folds both, so nothing opens over the
+                answer by itself (17 September); going above it opens again what it folded, where
+                only one fits the one that does not yield (12 November). Until 16 November the open
+                panel was Designsystemet's modal <code>Dialog</code>, whose backdrop dimmed a host's
+                whole page.
               </li>
               <li>
                 <strong>The top row below 774</strong> (kunnskapsassistenten#120): two rails and a
@@ -296,10 +319,10 @@
                 above the main column, which gets the whole width. The row holds the two icon
                 buttons, the primary panel's first and the secondary panel's last, each on the text
                 edge from its own side of the window, 16 px on a phone: in the row a rail is as wide
-                as its button and that edge on each side. They open the same drawers, which close
-                with Escape and give the focus back to the button. Grid placement, not other markup,
-                so what is in the panels keeps its state and the tab order stays primary button,
-                main column, secondary button.
+                as its button and that edge on each side. They open the same panels over the whole
+                shell, the row included, which close with «Lukk …» or Escape and give the focus back
+                to the button. Grid placement, not other markup, so what is in the panels keeps its
+                state and the tab order stays primary button, main column, secondary button.
               </li>
               <li>
                 <strong>Focus:</strong> when a panel folds with the focus in it, the focus goes to
@@ -331,12 +354,12 @@
               <code>data-size</code>, and reads every token through its own variable, with the token
               as the fallback. The chrome is pinned to the neutral family on purpose, as
               kunnskapsassistenten's shell: the page, the panels, the cards, the rails, the top row,
-              the drawer, the borders and lines, the titles and the profile menu's top stay grey
-              whatever <code>data-color</code> the app sets, because accent belongs to the content
-              and to what can be pressed. The avatars and the dot on «Endringslogg» are accent, as
-              the design draws them, by <code>data-color</code> in the markup. The separator's line
-              takes the accent role without a family. The widths are not tokens: the shell sets them
-              from its own sums.
+              the panel that fills the shell, the borders and lines, the titles and the profile
+              menu's top stay grey whatever <code>data-color</code> the app sets, because accent
+              belongs to the content and to what can be pressed. The avatars and the dot on
+              «Endringslogg» are accent, as the design draws them, by <code>data-color</code> in the
+              markup. The separator's line takes the accent role without a family. The widths are
+              not tokens: the shell sets them from its own sums.
             </p>
             <div class="table-wrap">
               <table>
@@ -473,7 +496,7 @@
                   <tr>
                     <td><code>--genai-shell-drawer-background</code></td>
                     <td><code>--ds-color-neutral-surface-default</code></td>
-                    <td>a drawer, and its pinned head (pinned)</td>
+                    <td>an open panel that fills the shell, and its pinned head (pinned)</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-border-color</code></td>
@@ -605,7 +628,7 @@
                   <tr>
                     <td><code>--genai-shell-drawer-close-margin</code></td>
                     <td><code>--ds-size-3</code></td>
-                    <td>around a drawer's close button</td>
+                    <td>above the head row and «Lukk …» of a panel that fills the shell</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-gap</code></td>
@@ -905,6 +928,11 @@
                 answer with sources) or opened (a footnote).
               </li>
               <li>
+                A modal dialog stands in the browser's top layer, over the whole page and not only
+                over the shell. In the builder's preview its backdrop dimmed the builder too, so the
+                narrow window's open panel fills the shell's own box instead (16 November).
+              </li>
+              <li>
                 Which content sits in which panel is the app's. Kunnskapsassistenten puts threads
                 and the filter in the primary panel, as two views with «Filtrer dokumenter» and «←
                 Tråder» between them, and tries the filter over the sources behind the experiment
@@ -915,10 +943,11 @@
                 Decisions behind it: the vision of 8 September (VS Code's structure, resizable
                 columns, named after their role), 14 September (one panel below 1440, the sources
                 give way to 336), 15 September (the 67 px rail; a pointer path without dragging), 17
-                September (drawers below 1139; no edge where there is nothing to drag), 21 September
-                (the height budget: the panel's controls on one row, «Skjul» as an icon button), 9
-                November (the top row below 774 is the standard; kunnskapsassistenten has it behind
-                the experiment <code>mobile-top-row</code>), and the issues above.
+                September (drawers below 1139, an open panel over the shell since 16 November; no
+                edge where there is nothing to drag), 21 September (the height budget: the panel's
+                controls on one row, «Skjul» as an icon button), 9 November (the top row below 774
+                is the standard; kunnskapsassistenten has it behind the experiment
+                <code>mobile-top-row</code>), and the issues above.
               </li>
             </ul>
           </div>

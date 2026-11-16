@@ -25,6 +25,8 @@ export const logArea = {
     query: 'Run ID or service',
     service: 'Service',
     allServices: 'All services',
+    environment: 'Environment',
+    allEnvironments: 'All environments',
     status: 'Status',
     allStatuses: 'All statuses',
     trigger: 'Trigger',

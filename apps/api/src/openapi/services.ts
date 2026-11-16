@@ -254,6 +254,13 @@ export const SinkJudgeSummary = z
   .openapi('SinkJudgeSummary');
 
 /** Run fields for its Langfuse judges. */
+export const staleJudgesField = z
+  .array(z.string())
+  .optional()
+  .describe(
+    "The judges recorded at an older version than the platform's judge has now; their scores are not comparable with the current judge's",
+  );
+
 export const sinkJudgeFields = {
   sinkJudges: z.array(SinkJudgeSummary),
   experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
@@ -382,6 +389,24 @@ const EvalRunSummary = z
       .int()
       .optional()
       .describe('Set while the run waits for a free case slot on its instance; 1 is next in line'),
+    current: z
+      .array(z.object({ case: z.string(), startedAt: z.string() }))
+      .optional()
+      .describe('The cases running now, each with when it started'),
+    secondsPerCase: z
+      .number()
+      .int()
+      .optional()
+      .describe('How long a case has taken on average, from its start to its result'),
+    endsAt: z
+      .string()
+      .optional()
+      .describe('When a running run should be done, at the pace it has kept'),
+    resumed: z
+      .number()
+      .int()
+      .optional()
+      .describe('How many times the run was taken up again after its instance stopped'),
     progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
     metrics: z.record(z.string(), metricSummary),
     incomplete: z.array(
@@ -394,6 +419,7 @@ const EvalRunSummary = z
       }),
     ),
     judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+    staleJudges: staleJudgesField,
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),
@@ -617,7 +643,7 @@ const BatchExport = z
 const proposalShape = {
   id: z.string(),
   level: z.number().int().min(1).max(4),
-  kind: z.enum(['change', 'connector', 'building_block', 'platform_change']),
+  kind: z.enum(['change', 'connector', 'building_block', 'platform_change', 'interface']),
   title: z.string(),
   detail: z.string(),
   section: z.string().optional(),
@@ -634,6 +660,8 @@ const proposalShape = {
   quality: z.string().optional(),
   platformChange: record.optional(),
   approval: z.object({ right: z.string() }).optional(),
+  flows: z.array(record).optional(),
+  blocks: z.array(z.string()).optional(),
 };
 
 const AssistantTurn = z

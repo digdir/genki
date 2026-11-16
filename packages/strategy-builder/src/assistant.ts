@@ -172,6 +172,11 @@ const args = {
     permissions: z.array(permission).default([]),
     quality: z.string().optional(),
   }),
+  choose_interface_blocks: z.object({
+    title: z.string().min(1),
+    detail: z.string().default(''),
+    blocks: z.array(z.string().min(1)).min(1).max(20),
+  }),
   propose_platform_change: z.object({
     title: z.string().min(1),
     summary: z.string().min(1),
@@ -387,6 +392,19 @@ const toolSpecs: Record<ToolName, ToolSpec> = {
       ['title', 'detail'],
     ),
   },
+  choose_interface_blocks: {
+    name: 'choose_interface_blocks',
+    description:
+      'Nivå 1: velg byggeklosser til grensesnittet ut fra behovene brukeren beskriver hos leserne. Velg klossene der et behov i katalogen «interface-blocks» dekker det brukeren ber om, med id-ene slik de står der. Plattformen sjekker valget; det blir ikke brukt før brukeren godtar det.',
+    parameters: objectSchema(
+      {
+        title: str('Kort tittel, for eksempel Legg til Dokumentvisning'),
+        detail: str('Hvilket behov hver kloss dekker'),
+        blocks: { type: 'array', items: { type: 'string' }, description: 'Id-ene til klossene' },
+      },
+      ['title', 'blocks'],
+    ),
+  },
   propose_platform_change: {
     name: 'propose_platform_change',
     description:
@@ -436,6 +454,8 @@ const toolsFor = (input: BuilderTurnInput): ToolSpec[] => {
       'propose_building_block',
       'propose_platform_change',
     );
+  if (input.target === 'service' && input.context.interfaceBlocks?.length)
+    names.push('choose_interface_blocks');
   if (input.intent === 'improve-instructions') names.push('improve_instructions');
   if (input.intent === 'suggest-test-cases') names.push('suggest_test_cases');
   return names.map((n) => toolSpecs[n]);
@@ -804,6 +824,49 @@ export async function* runTurn(
     );
   };
 
+  const chooseInterfaceBlocks = (raw: unknown): Handled => {
+    if (failures > maxRetries)
+      return {
+        content:
+          'Grensen for nye forsøk i denne runden er nådd. Forklar brukeren hva som ikke gikk.',
+        events: [],
+      };
+    const parsed = args.choose_interface_blocks.safeParse(raw);
+    if (!parsed.success)
+      return refused(
+        'Valg av klosser med ugyldig format',
+        'PATCH_INVALID',
+        reasonFor('PATCH_INVALID', '', issues(parsed.error)),
+      );
+    const { title, detail } = parsed.data;
+    const blocks = [...new Set(parsed.data.blocks)];
+    const known = (input.context.interfaceBlocks ?? []).map((b) => b.id);
+    const unknown = blocks.filter((id) => !known.includes(id));
+    if (unknown.length > 0)
+      return refused(
+        `${title}: ${blocks.join(', ')}`,
+        'VALIDATION_UNKNOWN_REFERENCE',
+        `Klossen ${unknown.join(', ')} finnes ikke i grensesnittet. Klosser: ${known.join(', ')}.`,
+      );
+    const proposal: AssistantProposal = {
+      id: newId(),
+      level: 1,
+      kind: 'interface',
+      title,
+      detail,
+      section: 'interface',
+      blocks,
+      validation: { ok: true },
+      requiresApproval: false,
+      appliedToDraft: false,
+    };
+    proposals.push(proposal);
+    return {
+      content: `Valget er godkjent av plattformen og vist til brukeren som «${title}». Det er ikke brukt før brukeren godtar det.`,
+      events: [{ type: 'proposal', data: proposal }],
+    };
+  };
+
   const stored = (proposal: AssistantProposal): Handled => {
     if (hasSensitive(proposal)) return { content: refuse(secretsRule), events: [] };
     const shown = withApproval(proposal);
@@ -916,6 +979,8 @@ export async function* runTurn(
           ...(quality ? { quality } : {}),
         });
       }
+      case 'choose_interface_blocks':
+        return chooseInterfaceBlocks(raw);
       case 'propose_platform_change': {
         const parsed = args.propose_platform_change.safeParse(raw);
         if (!parsed.success)

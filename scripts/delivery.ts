@@ -1,4 +1,4 @@
-// What genki delivered: a release per deploy, a weekly Slack summary and a Slack alert on a red smoke test.
+// What genki delivered: a release per deploy and a weekly Slack summary.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -106,7 +106,13 @@ export interface Changelog {
   summary: Summary | null;
 }
 
-export const limits = { prs: 60, bodyChars: 500, maxTokens: 1200 };
+export const limits = {
+  prs: 60,
+  bodyChars: 500,
+  maxTokens: 16000,
+  pointChars: 240,
+  slackChars: 40000,
+};
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -163,16 +169,20 @@ const filesOf = async (api: Api, repo: string, number: number) => {
 export const pullsOf = async (api: Api, repo: string, numbers: number[]): Promise<Pr[]> => {
   const prs: Pr[] = [];
   for (const number of numbers.slice(0, limits.prs)) {
-    const found = await api(`/repos/${repo}/pulls/${number}`, { allow: [404] });
-    if (found.status === 404) continue;
-    const pull = found.body as PullResponse;
-    prs.push({
-      number,
-      title: pull.title,
-      url: pull.html_url,
-      body: (pull.body ?? '').slice(0, limits.bodyChars),
-      area: areaOf(await filesOf(api, repo, number)),
-    });
+    try {
+      const found = await api(`/repos/${repo}/pulls/${number}`, { allow: [404] });
+      if (found.status === 404) continue;
+      const pull = found.body as PullResponse;
+      prs.push({
+        number,
+        title: pull.title,
+        url: pull.html_url,
+        body: (pull.body ?? '').slice(0, limits.bodyChars),
+        area: areaOf(await filesOf(api, repo, number)),
+      });
+    } catch {
+      notice(`Could not read pull request #${number}, so it is left out.`);
+    }
   }
   return prs;
 };
@@ -247,8 +257,7 @@ const prData = (prs: Pr[], commits: Commit[] = []) =>
     fenceData(
       [
         ...prs.map(
-          (p) =>
-            `#${p.number} [${areaNames[p.area]}] ${oneLine(p.title, 200)}\n${oneLine(p.body, limits.bodyChars)}`,
+          (p) => `#${p.number} ${oneLine(p.title, 200)}\n${oneLine(p.body, limits.bodyChars)}`,
         ),
         ...commits.map((c) => `commit ${short(c.sha)}: ${oneLine(c.headline, 200)}`),
       ].join('\n\n'),
@@ -269,13 +278,34 @@ export const summaryPrompt = (log: Pick<Changelog, 'prs' | 'commits'>) => ({
   user: `Pull requests i denne deployen:\n${prData(publicPrs(log.prs), log.commits)}`,
 });
 
-export const weeklyPrompt = (prs: Pr[]) => ({
+export interface ServicePrs {
+  name: string;
+  prs: Pr[];
+}
+
+const servicesNote =
+  'services har én oppføring per tjeneste med egne pull requests under, med nøyaktig samme navn. Tjenestene er egne produkter som bruker genki. Skriv om dem på samme måte, og bland dem ikke inn i sections.';
+
+export const weeklyPrompt = (prs: Pr[], services: ServicePrs[] = []) => ({
   system: [
-    'Du skriver en kort ukesoppsummering på norsk bokmål til kolleger i Digdir om hva som er levert i genki, en felles plattform for KI-tjenester, denne uka.',
+    'Du skriver ukas endringslogg for genki, Digdirs felles plattform for KI-tjenester, på norsk bokmål. Den går til alle som er involvert: kolleger i Digdir og i virksomhetene som bruker genki. De fleste leser ikke kode.',
     untrustedNote,
-    'Svar bare med JSON: {"delivered": ["en setning i klart språk om en viktig leveranse"]}. Tre til seks punkter, det viktigste først, skrevet for folk som ikke leser koden. Slå sammen små endringer som hører sammen, og hopp over rene CI- og verktøyendringer med mindre de betyr noe for andre. Ingen lenker, ingen markdown, ingen omtale av personer.',
+    'Svar bare med JSON: {"sections": [{"heading": "kort overskrift", "points": ["én eller to hele setninger"]}], "services": [{"name": "tjenestens navn", "points": ["én eller to hele setninger"]}]}.',
+    'sections handler om genki. Ta med hver endring som brukere, virksomheter eller de som drifter genki vil merke, hver i sitt eget punkt, og ikke noe mer. Hvor mange punkter det blir, avhenger bare av hva som skjedde: en rolig uke gir få, en travel uke flere. Del punktene i grupper med en kort overskrift, det viktigste først.',
+    ...(services.length ? [servicesNote] : []),
+    `Hvert punkt er én eller to hele setninger på høyst ${limits.pointChars - 40} tegn om hva folk nå kan gjøre, eller hva som er endret for dem.`,
+    'Skriv bare det som faktisk er endret. genki-endringene er deployet til testmiljøet genki-test. Endringene i tjenestene er slått sammen i koden, men er ikke nødvendigvis ute hos brukerne. Si aldri at noe er tatt i bruk, lastet inn, kan fylles inn eller er ute hos brukerne når endringen bare gjør det mulig: skriv da at det er klargjort. Dokumenter som er konvertert, men ikke lagt inn i kunnskapsbasen, er klargjort.',
+    'Slå sammen små endringer som hører sammen. Hopp over intern teknikk som tester, CI, verktøy, avhengigheter, omskriving av kode og forsøk med egne frontender for enkelttjenester, med mindre det endrer noe folk kan bruke. Endringer i genki som bare gjelder én tjenestes egen frontend hører til den tjenesten, eller utelates.',
+    'Skriv enkelt og konkret. Unngå fagord, forkortelser og interne navn, som «utdrag», «MCP», «endepunkt» eller navn på biblioteker, filer, eksportformater og miljøvariabler. Ikke nevn id-er, piksler, klienter, verter eller byggeklosser, og ikke skriv om hvordan noe er bygget. Si heller hva det betyr for leseren.',
+    'Ingen lenker, ingen markdown, ingen nummer på pull requests, ingen omtale av personer.',
   ].join('\n'),
-  user: `Pull requests deployet til genki-test denne uka:\n${prData(prs)}`,
+  user: [
+    `Pull requests deployet til genki-test denne uka:\n${prData(publicPrs(prs))}`,
+    ...services.map(
+      (service) =>
+        `Pull requests slått sammen i ${service.name} denne uka:\n${prData(service.prs)}`,
+    ),
+  ].join('\n\n'),
 });
 
 const jsonIn = (text: string): Record<string, unknown> | null => {
@@ -289,12 +319,6 @@ const jsonIn = (text: string): Record<string, unknown> | null => {
     return null;
   }
 };
-
-const strings = (value: unknown, max: number, chars: number) =>
-  (Array.isArray(value) ? value : [])
-    .filter((c): c is string => typeof c === 'string' && c.trim() !== '')
-    .slice(0, max)
-    .map((c) => oneLine(c, chars));
 
 const heading = (value: unknown, max: number) => {
   let text = typeof value === 'string' ? oneLine(value, max) : '';
@@ -324,9 +348,47 @@ export const parseSummary = (text: string): Summary | null => {
   };
 };
 
-export const parseDelivered = (text: string): string[] | null => {
-  const delivered = strings(jsonIn(text)?.delivered, 6, 250);
-  return delivered.length ? delivered : null;
+export const wholeSentences = (text: string, max: number) => {
+  const flat = oneLine(text, Number.POSITIVE_INFINITY);
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max + 1);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  return end > 0 ? flat.slice(0, end + 1) : '';
+};
+
+export interface Section {
+  heading: string;
+  points: string[];
+}
+
+const pointsOf = (value: unknown) =>
+  (Array.isArray(value) ? (value as unknown[]) : [])
+    .filter((p): p is string => typeof p === 'string')
+    .map((p) => wholeSentences(p, limits.pointChars))
+    .filter((p) => p !== '');
+
+const itemsOf = (value: unknown) =>
+  (Array.isArray(value) ? (value as unknown[]) : []).map((raw) =>
+    raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {},
+  );
+
+export interface WeeklyAnswer {
+  sections: Section[];
+  services: Record<string, string[]>;
+}
+
+export const parseWeekly = (text: string, names: string[] = []): WeeklyAnswer | null => {
+  const value = jsonIn(text);
+  const sections = itemsOf(value?.sections)
+    .map((item) => ({ heading: heading(item.heading, 60), points: pointsOf(item.points) }))
+    .filter((section) => section.points.length);
+  const services: Record<string, string[]> = {};
+  for (const item of itemsOf(value?.services)) {
+    const name = names.find((n) => n === item.name);
+    const points = pointsOf(item.points);
+    if (name && points.length) services[name] = [...(services[name] ?? []), ...points];
+  }
+  return sections.length || Object.keys(services).length ? { sections, services } : null;
 };
 
 export type Complete = (request: { system: string; user: string }) => Promise<string>;
@@ -360,7 +422,7 @@ export const foundryComplete =
         system,
         messages: [{ role: 'user', content: user }],
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(180_000),
     });
     if (!res.ok) throw new Error(`Foundry answered ${res.status}`);
     const body = (await res.json()) as { content?: { type: string; text?: string }[] };
@@ -496,6 +558,9 @@ const osloHour = (at: Date) =>
 
 export const summaryHour = 13;
 
+const lateAllowance = 2 * 60 * 60 * 1000;
+const earlyAllowance = 60 * 1000;
+
 export const weeklyDue = (schedule: string, now: Date) => {
   if (!schedule) return true;
   const match = /^(\d{1,2}) (\d{1,2}) /.exec(schedule);
@@ -509,8 +574,64 @@ export const weeklyDue = (schedule: string, now: Date) => {
       Number(match[1]),
     ),
   );
-  return osloHour(planned) === summaryHour;
+  const late = now.getTime() - planned.getTime();
+  return osloHour(planned) === summaryHour && late >= -earlyAllowance && late <= lateAllowance;
 };
+
+export const postedArtifact = 'weekly-posted';
+
+export const weeklyPostedThisWeek = async (api: Api, repo: string, runId: number, now: Date) => {
+  const week = isoWeekKey(now.toISOString());
+  const { body } = await api(
+    `/repos/${repo}/actions/workflows/weekly-summary.yml/runs?branch=main&per_page=30`,
+  );
+  const runs =
+    (body as { workflow_runs?: { id: number; created_at: string }[] } | undefined)?.workflow_runs ??
+    [];
+  for (const run of runs.filter((r) => r.id !== runId && isoWeekKey(r.created_at) === week)) {
+    const found = await api(
+      `/repos/${repo}/actions/runs/${run.id}/artifacts?name=${postedArtifact}`,
+    );
+    const artifacts =
+      (found.body as { artifacts?: { name: string; expired: boolean }[] } | undefined)?.artifacts ??
+      [];
+    if (artifacts.some((a) => a.name === postedArtifact && !a.expired)) return true;
+  }
+  return false;
+};
+
+export const weeklyDecision = async (deps: {
+  schedule: string;
+  now: () => Date;
+  api: Api;
+  repo: string;
+  runId: number;
+}): Promise<{ due: boolean; reason: string | null }> => {
+  const at = deps.now();
+  if (!weeklyDue(deps.schedule, at))
+    return {
+      due: false,
+      reason:
+        'This schedule is not the one for 13:00 in Oslo today, or it started more than two hours late; nothing to do.',
+    };
+  try {
+    if (await weeklyPostedThisWeek(deps.api, deps.repo, deps.runId, at))
+      return {
+        due: false,
+        reason: 'The weekly summary already went out this week; nothing to do.',
+      };
+  } catch {
+    notice('Could not check earlier runs, so the summary is treated as not yet posted.');
+  }
+  return { due: true, reason: null };
+};
+
+export interface ServiceWeek {
+  name: string;
+  repo: string;
+  prs: Pr[];
+  points: string[] | null;
+}
 
 export interface Week {
   repo: string;
@@ -519,8 +640,63 @@ export interface Week {
   releases: { tag: string; url: string }[];
   prs: Pr[];
   more: number;
-  delivered: string[] | null;
+  sections: Section[] | null;
+  services: ServiceWeek[];
 }
+
+export interface Service {
+  name: string;
+  repo: string;
+}
+
+const repoName = /^[A-Za-z0-9][\w.-]{0,99}\/[A-Za-z0-9][\w.-]{0,99}$/;
+
+export const servicesOf = (config: string): Service[] =>
+  config
+    .split(',')
+    .map((entry) => {
+      const at = entry.indexOf('=');
+      return { name: entry.slice(0, at).trim(), repo: entry.slice(at + 1).trim() };
+    })
+    .filter((s) => s.name && s.name.length <= 60 && repoName.test(s.repo));
+
+interface MergedPull extends PullResponse {
+  merged_at: string | null;
+  updated_at: string;
+  user?: { type?: string } | null;
+}
+
+export const mergedBetween = async (api: Api, repo: string, from: Date, to: Date) => {
+  const { body: info } = await api(`/repos/${repo}`);
+  const branch = (info as { default_branch?: string } | undefined)?.default_branch ?? 'main';
+  const merged: MergedPull[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const { body } = await api(
+      `/repos/${repo}/pulls?state=closed&base=${encodeURIComponent(branch)}&sort=updated&direction=desc&per_page=100&page=${page}`,
+    );
+    const list = (body as MergedPull[] | undefined) ?? [];
+    merged.push(
+      ...list.filter(
+        (p) =>
+          p.merged_at &&
+          new Date(p.merged_at) >= from &&
+          new Date(p.merged_at) < to &&
+          p.user?.type !== 'Bot',
+      ),
+    );
+    if (list.length < 100 || list.some((p) => new Date(p.updated_at) < from)) break;
+  }
+  return merged
+    .sort((a, b) => (a.merged_at ?? '').localeCompare(b.merged_at ?? ''))
+    .slice(0, limits.prs)
+    .map((p): Pr => ({
+      number: p.number,
+      title: p.title,
+      url: p.html_url,
+      body: (p.body ?? '').slice(0, limits.bodyChars),
+      area: 'other',
+    }));
+};
 
 interface ReleaseResponse {
   tag_name: string;
@@ -548,12 +724,32 @@ export const collectWeek = async (deps: {
   repo: string;
   now: () => Date;
   complete: Complete | null;
+  services?: Service[];
 }): Promise<Week> => {
   const to = deps.now();
   const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
   const releases = await deployReleasesBetween(deps.api, deps.repo, from, to);
   const numbers = [...new Set(releases.flatMap((r) => prsInRelease(r.body ?? '')))];
   const prs = await pullsOf(deps.api, deps.repo, numbers);
+  const services: ServiceWeek[] = [];
+  for (const service of deps.services ?? []) {
+    try {
+      const merged = await mergedBetween(deps.api, service.repo, from, to);
+      if (merged.length) services.push({ ...service, prs: merged, points: null });
+    } catch {
+      notice(`Could not read the pull requests of ${service.name}.`);
+    }
+  }
+  const answer =
+    publicPrs(prs).length || services.length
+      ? await ask(deps.complete, weeklyPrompt(prs, services), (text) =>
+          parseWeekly(
+            text,
+            services.map((s) => s.name),
+          ),
+        )
+      : null;
+  for (const service of services) service.points = answer?.services[service.name] ?? null;
   return {
     repo: deps.repo,
     from: from.toISOString(),
@@ -561,72 +757,95 @@ export const collectWeek = async (deps: {
     releases: releases.map((r) => ({ tag: r.tag_name, url: r.html_url })),
     prs,
     more: Math.max(0, numbers.length - limits.prs),
-    delivered: prs.length ? await ask(deps.complete, weeklyPrompt(prs), parseDelivered) : null,
+    sections: answer?.sections.length ? answer.sections : null,
+    services,
   };
 };
 
-const day = (iso: string) =>
-  new Intl.DateTimeFormat('nb-NO', {
+const osloParts = (iso: string) => {
+  const parts = new Intl.DateTimeFormat('nb-NO', {
     timeZone: 'Europe/Oslo',
-    day: 'numeric',
+    year: 'numeric',
     month: 'long',
-  }).format(new Date(iso));
-
-const maxListed = 50;
-
-export const weeklyText = (week: Week): string | null => {
-  if (!week.prs.length) return null;
-  const deploys = week.releases.length === 1 ? 'én deploy' : `${week.releases.length} deployer`;
-  const lines = [
-    `*Levert i genki denne uka* (${day(week.from)} til ${day(week.to)}, ${deploys} til genki-test)`,
-  ];
-  if (week.delivered) lines.push('', ...week.delivered.map((d) => `• ${escapeText(d, 250)}`));
-  let listed = 0;
-  for (const group of grouped(week.prs)) {
-    if (listed >= maxListed) break;
-    lines.push('', `*${areaNames[group.area]}*`);
-    for (const pr of group.prs) {
-      if (listed++ >= maxListed) break;
-      lines.push(`• <${pr.url}|#${pr.number}> ${escapeText(pr.title, 200)}`);
-    }
-  }
-  const rest = Math.max(0, week.prs.length - maxListed) + week.more;
-  if (rest > 0) lines.push('', `… og ${rest} til.`);
-  lines.push('', `<https://github.com/${week.repo}/releases|Alle deployer som releaser på GitHub>`);
-  return lines.join('\n');
+    day: 'numeric',
+  }).formatToParts(new Date(iso));
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return { year: Number(part('year')), month: part('month'), day: Number(part('day')) };
 };
 
-export interface SmokeOutcome {
-  sha: string;
-  outcome: string;
-  failing: string[];
-  runUrl: string;
+const isoWeekParts = (iso: string) => {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo' }).format(new Date(iso));
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+  return {
+    year: date.getUTCFullYear(),
+    week: Math.ceil(((date.getTime() - yearStart) / 86_400_000 + 1) / 7),
+  };
+};
+
+export const isoWeek = (iso: string) => isoWeekParts(iso).week;
+
+const isoWeekKey = (iso: string) => {
+  const { year, week } = isoWeekParts(iso);
+  return `${year}-${week}`;
+};
+
+const dateRange = (fromIso: string, toIso: string) => {
+  const from = osloParts(fromIso);
+  const to = osloParts(toIso);
+  const start = from.month === to.month ? `${from.day}.` : `${from.day}. ${from.month}`;
+  return `${start} til ${to.day}. ${to.month}`;
+};
+
+const changes = (n: number) => (n === 1 ? 'én endring' : `${n} endringer`);
+
+interface Block {
+  title: string;
+  lines: string[];
 }
 
-export const smokeOutcomeOf = (bundle: unknown, sha: string, runUrl: string): SmokeOutcome => {
-  const b = (bundle ?? {}) as {
-    report?: { sha?: string; outcome?: string; checks?: { id: string; outcome: string }[] };
-  };
-  return {
-    sha: b.report?.sha || sha,
-    outcome: b.report?.outcome ?? 'fail',
-    failing: (b.report?.checks ?? []).filter((c) => c.outcome === 'fail').map((c) => c.id),
-    runUrl,
-  };
+const bullets = (points: string[]) => points.map((p) => `• ${escapeText(p, p.length)}`);
+
+const genkiBlocks = (week: Week): Block[] => {
+  if (week.sections)
+    return week.sections.map((s) => ({
+      title: s.heading ? `*${escapeText(s.heading, 60)}*` : '',
+      lines: bullets(s.points),
+    }));
+  if (!week.prs.length)
+    return [{ title: '', lines: ['genki-test fikk ingen nye endringer denne uka.'] }];
+  if (!publicPrs(week.prs).length)
+    return [{ title: '', lines: ['Denne uka var det bare interne forbedringer i genki-test.'] }];
+  return [
+    { title: '', lines: [`genki-test fikk ${changes(week.prs.length + week.more)} denne uka.`] },
+  ];
 };
 
-export const smokeAlertText = (s: SmokeOutcome): string | null => {
-  if (s.outcome !== 'fail') return null;
-  const lines = [
-    `*Røyktesten av \`${short(escapeText(s.sha, 40))}\` på genki-test feilet* (<${s.runUrl}|kjøring>)`,
-  ];
-  if (!s.failing.length) lines.push('Jobben stoppet før den skrev et resultat. Se loggen.');
-  else
-    lines.push(
-      ...s.failing.slice(0, 15).map((id) => `• \`${escapeText(id, 120).replace(/`/g, "'")}\``),
-    );
-  if (s.failing.length > 15) lines.push(`… og ${s.failing.length - 15} til.`);
-  return lines.join('\n');
+const serviceBlock = (service: ServiceWeek): Block => ({
+  title: `*${escapeText(service.name, 60)}*`,
+  lines: service.points
+    ? bullets(service.points)
+    : [`${escapeText(service.name, 60)} fikk ${changes(service.prs.length)} denne uka.`],
+});
+
+const render = (head: string, blocks: Block[], tail: string) =>
+  [head, ...blocks.flatMap((b) => ['', ...(b.title ? [b.title] : []), ...b.lines]), '', tail].join(
+    '\n',
+  );
+
+export const weeklyText = (week: Week): string | null => {
+  const services = week.services ?? [];
+  if (!week.prs.length && !services.length) return null;
+  const head = `*Nytt i genki, uke ${isoWeek(week.to)}* (${dateRange(week.from, week.to)})`;
+  const tail = `<https://github.com/${week.repo}/releases|Alle endringer på GitHub>`;
+  const blocks = [...genkiBlocks(week), ...services.map(serviceBlock)];
+  while (render(head, blocks, tail).length > limits.slackChars && blocks.length) {
+    const last = blocks[blocks.length - 1];
+    last?.lines.pop();
+    if (!last?.lines.length) blocks.pop();
+  }
+  return render(head, blocks, tail);
 };
 
 export interface SlackConfig {
@@ -736,7 +955,7 @@ const model = (): Complete | null => {
   const resource = process.env.FOUNDRY_RESOURCE ?? '';
   const name = process.env.MODEL ?? '';
   if (NAME.test(resource) && NAME.test(name)) return foundryComplete(resource, name, foundryToken);
-  notice('No model is configured, so the text is the plain list.');
+  notice('No model is configured, so the text is written without one.');
   return null;
 };
 
@@ -767,13 +986,22 @@ const commands: Record<string, () => Promise<void>> = {
     notice(url ? `Release ${log.tag} created.` : `Release ${log.tag} already exists.`);
   },
   'weekly-due': async () => {
-    const due = weeklyDue(process.env.SCHEDULE ?? '', new Date());
-    if (!due) notice('This schedule is the one for the other half of the year; nothing to do.');
+    const { due, reason } = await weeklyDecision({
+      ...required(),
+      schedule: process.env.SCHEDULE ?? '',
+      now: () => new Date(),
+    });
+    if (reason) notice(reason);
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `due=${due}\n`);
   },
   'weekly-collect': async () => {
     const env = required();
-    const week = await collectWeek({ ...env, now: () => new Date(), complete: model() });
+    const week = await collectWeek({
+      ...env,
+      now: () => new Date(),
+      complete: model(),
+      services: servicesOf(process.env.WEEKLY_SERVICES ?? ''),
+    });
     writeFileSync(join(outDir(), 'week.json'), JSON.stringify(week, null, 2));
   },
   'weekly-post': async () => {
@@ -781,17 +1009,10 @@ const commands: Record<string, () => Promise<void>> = {
     if (!week) return notice('No weekly summary was collected, so nothing is posted.');
     const text = weeklyText(week);
     if (!text) return notice('Nothing was deployed this week, so nothing is posted.');
-    reportPost(await postToSlack(slackConfig(), text, slackPost), 'the weekly summary');
-  },
-  'smoke-alert': async () => {
-    const outcome = smokeOutcomeOf(
-      readJson(join(process.env.SMOKE_OUT || 'smoke-out', 'bundle.json')),
-      process.env.SMOKE_SHA ?? '',
-      process.env.SMOKE_RUN_URL ?? '',
-    );
-    const text = smokeAlertText(outcome);
-    if (!text) return notice(`The smoke test ended ${outcome.outcome}, so nothing is posted.`);
-    reportPost(await postToSlack(slackConfig(), text, slackPost), 'the smoke failure');
+    const posted = await postToSlack(slackConfig(), text, slackPost);
+    reportPost(posted, 'the weekly summary');
+    if (!('reason' in posted))
+      writeFileSync(join(outDir(), 'posted.json'), JSON.stringify({ postedAt: new Date() }));
   },
 };
 

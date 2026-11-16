@@ -19,6 +19,7 @@ import {
   contractAssertions,
   defaultObserve,
   criteriaJudge,
+  currentJudgeVersions,
   evalRun,
   evalRunStrategy,
   evaluateGates,
@@ -35,6 +36,7 @@ import {
   rubricJudge,
   runEval,
   score,
+  staleJudges,
   type EvalContext,
   type EvalRun,
   type Evaluator,
@@ -626,6 +628,37 @@ describe('eval runner', () => {
       [1, { answers: { inputTokens: 10, outputTokens: 2, costMicroNok: 5 } }],
       [2, { answers: { inputTokens: 20, outputTokens: 4, costMicroNok: 10 } }],
     ]);
+  });
+
+  it('hands each evaluator the parts the case answered', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const answer = kernelTarget(kernel, kari, 'answer');
+    const parts = [
+      { mime: 'text/plain', body: { kind: 'text' as const, text: 'Klagefristen er tre uker.' } },
+      {
+        mime: 'application/json',
+        body: { kind: 'json' as const, json: { sources: [{ document: 'forvaltningsloven' }] } },
+      },
+    ];
+    const seen: unknown[] = [];
+    const sees: Evaluator = {
+      id: 'ser-delene',
+      version: '1',
+      kind: 'deterministic',
+      evaluate: async (_c, o) => {
+        seen.push(o.parts);
+        return [];
+      },
+    };
+
+    await runEval({
+      testSet: setOf(),
+      evaluators: [sees],
+      provenance: { commit: 'abc', data: 'd' },
+      target: { ...answer, invoke: async (input) => ({ ...(await answer.invoke(input)), parts }) },
+    });
+
+    expect(seen).toEqual([parts, parts]);
   });
 
   it("checks the judge's family only against language models the run used", async () => {
@@ -1509,6 +1542,60 @@ describe('comparing runs', () => {
     const c = compareRuns(baseline, candidate, 'recall@10', { allowDifferent: ['commit'] });
     expect(c.difference).toBe(0.5);
     expect(c.n).toBe(30);
+    expect(c).not.toHaveProperty('staleJudges');
+  });
+
+  it('names the judges in a comparison that were recorded at an older version than the current judge', () => {
+    const older = ['judge:criteria@1+foundry/claude'];
+    const c = compareRuns(
+      fakeRun(
+        cases(10, () => 0),
+        { judges: older },
+      ),
+      fakeRun(
+        cases(10, () => 1),
+        { judges: older },
+      ),
+      'recall@10',
+    );
+
+    expect(c.staleJudges).toEqual(older);
+    expect(c.difference).toBe(1);
+  });
+});
+
+describe('stale judges', () => {
+  const current = currentJudgeVersions['judge:criteria'];
+
+  it("calls a judge stale when its run recorded an older version than the platform's judge has now", () => {
+    expect(
+      staleJudges(['judge:criteria@1+foundry/claude', `judge:criteria@${current}+foundry/claude`]),
+    ).toEqual(['judge:criteria@1+foundry/claude']);
+  });
+
+  it('never calls a judge stale whose current version the platform does not know', () => {
+    expect(staleJudges(['judge:answer-quality@1+foundry/claude', 'anthropic-judge'])).toEqual([]);
+  });
+
+  it('does not call the criteria judge stale in a run it judges now', async () => {
+    const judge = criteriaJudge(async () => ({
+      id: 'foundry/claude',
+      family: 'anthropic',
+      complete: async () => '{"scores": {"criteria": 1}, "rationale": "ok"}',
+    }));
+
+    await judge.evaluate(
+      caseOf({
+        id: 'k',
+        type: 'criteria',
+        expected: { sources: [], criteria: { criteria: 'hi' } },
+      }),
+      observation({ answer: 'hi' }),
+      ctx,
+    );
+
+    expect(judge.judge).toBe(`judge:criteria@${current}+foundry/claude`);
+    expect(staleJudges([judge.judge as string])).toEqual([]);
   });
 });
 
@@ -1768,9 +1855,73 @@ describe('platform.eval.run', () => {
     expect(
       events
         .filter((e) => e.type === 'kernel.notice')
-        .map((e) => (e.data as { done: number }).done),
-    ).toEqual([1, 2]);
+        .map((e) => e.data as { kind: string; done?: number; case?: string })
+        .map((n) => (n.kind === 'eval.case' ? n.case : n.done)),
+    ).toEqual(['a', 1, 'b', 2]);
     expect((await kernel.task(kari, run.task)).status).toBe('completed');
+  });
+
+  it('runs only the cases an earlier try of the run did not finish, and keeps what that try found and used', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map(evaluators.map((e) => [e.id, e])),
+      meterAnswers: () => ({ inputTokens: 1, outputTokens: 1, costMicroNok: 1 }),
+    });
+    const kernel = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+    const data = {
+      capability: 'answer',
+      testSet: setOf(),
+      evaluators: ['contract', 'retrieval'],
+      provenance: { commit: 'abc', data: 'd1' },
+    };
+    const whole = await kernel.invoke(kari, 'eval', { data });
+    const [first] = await whole.result;
+    const before = first?.body.kind === 'json' ? (first.body.json as EvalRun) : undefined;
+    const kept = before?.results.filter((r) => r.case === 'a') ?? [];
+    const used = { inputTokens: 100, outputTokens: 50, costMicroNok: 70 };
+
+    const again = await kernel.invoke(kari, 'eval', {
+      data: {
+        ...data,
+        prior: {
+          results: kept,
+          usage: { answers: used },
+          servedModels: before?.provenance.servedModels,
+          services: before?.provenance.services,
+        },
+      },
+    });
+    const events: Event[] = [];
+    for await (const e of again.events) events.push(e);
+    const [part] = await again.result;
+    const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
+
+    expect(
+      events
+        .filter((e) => e.type === 'kernel.notice')
+        .map((e) => e.data as { kind: string; case?: string; done?: number })
+        .map((n) => (n.kind === 'eval.case' ? n.case : n.done)),
+    ).toEqual(['b', 2]);
+    expect(result?.results.map((r) => r.case)).toEqual(['a', 'b']);
+    expect(result?.results[0]?.task).toBe(kept[0]?.task);
+    expect(result?.metrics['answer-pattern']?.mean).toBe(0.5);
+    expect(result?.usage?.answers).toEqual({
+      inputTokens: 101,
+      outputTokens: 51,
+      costMicroNok: 71,
+    });
   });
 
   it('stops an eval run before the next case once the monthly token quota is used up', async () => {
@@ -1875,8 +2026,14 @@ describe('platform.eval.run', () => {
     const notices = events
       .filter((e) => e.type === 'kernel.notice')
       .map((e) => e.data as { kind: string; pending?: number; until?: string });
-    expect(notices.map((n) => n.kind)).toEqual(['eval.progress', 'eval.progress', 'eval.waiting']);
-    expect(notices[2]).toMatchObject({ pending: 2, until: expect.any(String) });
+    expect(notices.map((n) => n.kind)).toEqual([
+      'eval.case',
+      'eval.progress',
+      'eval.case',
+      'eval.progress',
+      'eval.waiting',
+    ]);
+    expect(notices[4]).toMatchObject({ pending: 2, until: expect.any(String) });
     const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
     expect(result?.metrics['judge.later']?.mean).toBe(1);
   });

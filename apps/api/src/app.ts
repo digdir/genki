@@ -26,6 +26,12 @@ import { refuseOutsideTestRunnerScope } from './test-runner.js';
 import { requestTiming, type RequestTimingOptions } from './request-timing.js';
 import type { ServiceDrafts } from './service-drafts.js';
 import { kernelTaskReader, type TaskReader } from './timeline.js';
+import {
+  hidingInternalServices,
+  hidingInternalTasks,
+  internalServiceViewer,
+  refuseHiddenServices,
+} from './internal-services.js';
 
 const Health = z
   .object({ status: z.literal('ok'), version: z.string(), lockdown: z.boolean() })
@@ -125,13 +131,16 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     app.use('*', rememberActorNames(authentication.auth, options.platform.names));
 
   if (options.platform && authentication) {
-    const { store, plugins, settings } = options.platform;
+    const { plugins, settings } = options.platform;
+    const store = hidingInternalServices(options.platform.store);
     const { caller, auth } = authentication;
+    app.use('*', internalServiceViewer(caller));
     if (options.platform.loginRefusal)
       app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
     app.use('*', refuseOutsideTestRunnerScope(caller));
     app.use('*', requireChangeReason(caller));
+    app.use('/tenants/:tenant/*', refuseHiddenServices(store));
     const admin =
       options.platform.admin ??
       createAdmin({
@@ -143,13 +152,14 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.platform.names ? { names: options.platform.names } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
-    const tasks =
+    const reader =
       options.platform.tasks ??
       kernelTaskReader(admin.kernel, {
         kind: 'operator',
         issuer: 'platform',
         subject: 'task-reader',
       });
+    const tasks = { ...reader, task: hidingInternalTasks(store, (id) => reader.task(id)) };
     registerDefinitionRoutes(app, {
       store,
       plugins,

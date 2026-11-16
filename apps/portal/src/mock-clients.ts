@@ -112,7 +112,12 @@ export const clientMock = (initial: ClientView[] = exampleClients) => {
       return reply({ keys: keys.filter((k) => k.service === serviceKeys[2]) });
     if (serviceKeys && method === 'POST') {
       if (needsReason()) return invalid('change-reason', 'a reason is required');
-      const input = body() as { name?: string; client?: string; allowedOverrides?: string[] };
+      const input = body() as {
+        name?: string;
+        client?: string;
+        allowedOverrides?: string[];
+        environments?: string[];
+      };
       if (!input.name) return invalid('name', 'a name is required');
       const apiKey: ServiceKeyView = {
         id: `skey-${keys.length + 1}`,
@@ -130,6 +135,7 @@ export const clientMock = (initial: ClientView[] = exampleClients) => {
         lastUsedAt: null,
         rotatedFrom: null,
         allowedOverrides: input.allowedOverrides ?? [],
+        environments: input.environments ?? [],
       };
       keys = [apiKey, ...keys];
       return reply({ key: mockKey, apiKey }, 201);

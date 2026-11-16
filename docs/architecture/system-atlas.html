@@ -1628,6 +1628,27 @@
                 },
               },
               {
+                to: 'ui-blocks',
+                label:
+                  "The interface tab's block catalogue, layout rules, templates and a draft's facts",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/portal/src/screens/services/blocks/BlocksPanel.tsx',
+                  imports: '@genai/ui-blocks',
+                },
+              },
+              {
+                to: 'ui-assembly',
+                label: "The assistant a layout describes, in the interface tab's try view",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/portal/src/screens/services/blocks/TryView.tsx',
+                  imports: '@genai/ui-assembly',
+                },
+              },
+              {
                 to: 'docs-content',
                 label: 'Links on the public pages',
                 kind: 'call',
@@ -1989,7 +2010,8 @@
               'packages/ui-assembly/src/api.ts',
               'packages/ui-assembly/src/i18n.ts',
             ],
-            input: 'A layout, a service and a way to reach genki',
+            input:
+              "A layout and its profile, a service, the host's profile if any, and a way to reach genki",
             output: 'A rendered assistant',
             replaces: [],
             edges: [
@@ -2704,6 +2726,7 @@
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
+              "Work knowledge.fields on the platform server - write new fields on a dataset's stored documents in every generation holding them, nothing embedded (ADR 0042)",
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
               "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
@@ -2955,6 +2978,26 @@
                 witness: {
                   file: 'packages/composition/src/document-scope.ts',
                   imports: '@genai/port-knowledge',
+                },
+              },
+              {
+                to: 'brreg',
+                label: "Reads the state's organisation nightly",
+                kind: 'http',
+                target: 'http',
+                witness: {
+                  file: 'packages/composition/src/state-register.ts',
+                  contains: 'brregUnitsUrl(form, n)',
+                },
+              },
+              {
+                to: 'statsregnskapet',
+                label: 'Reads the state accounts to check the register',
+                kind: 'http',
+                target: 'http',
+                witness: {
+                  file: 'packages/composition/src/state-accounts.ts',
+                  contains: '[accountsHost]',
                 },
               },
               {
@@ -3960,6 +4003,7 @@
                             { type: 'array', items: { type: 'string', pattern: '^\\d{9}$' } },
                           ],
                         },
+                        visibility: { type: 'string', enum: ['tenant', 'internal'] },
                         triggers: {
                           default: [],
                           type: 'array',
@@ -5147,6 +5191,29 @@
                             required: ['ref', 'title', 'summary', 'purpose', 'settings'],
                           },
                         },
+                        interfaceBlocks: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string' },
+                              name: {
+                                type: 'object',
+                                properties: { nb: { type: 'string' }, en: { type: 'string' } },
+                                required: ['nb', 'en'],
+                              },
+                              covers: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: { nb: { type: 'string' }, en: { type: 'string' } },
+                                  required: ['nb', 'en'],
+                                },
+                              },
+                            },
+                            required: ['id', 'name', 'covers'],
+                          },
+                        },
                       },
                       required: ['available', 'refused', 'blockedResidencies'],
                     },
@@ -6027,6 +6094,169 @@
                     sink: { type: 'string', minLength: 1 },
                     avoidAsJudge: { type: 'array', items: { type: 'string' } },
                     sinkJudges: { type: 'array', items: {} },
+                    prior: {
+                      type: 'object',
+                      properties: {
+                        results: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              case: { type: 'string' },
+                              split: { type: 'string', enum: ['train', 'validation', 'holdout'] },
+                              repeat: {
+                                type: 'integer',
+                                minimum: -9007199254740991,
+                                maximum: 9007199254740991,
+                              },
+                              task: { type: 'string' },
+                              tags: { type: 'array', items: { type: 'string' } },
+                              language: { type: 'string', enum: ['nb', 'nn', 'en'] },
+                              scores: {
+                                type: 'array',
+                                items: {
+                                  type: 'object',
+                                  properties: {
+                                    evaluator: { type: 'string' },
+                                    version: { type: 'string' },
+                                    metric: { type: 'string' },
+                                    value: {
+                                      anyOf: [
+                                        { type: 'number', minimum: 0, maximum: 1 },
+                                        { type: 'null' },
+                                      ],
+                                    },
+                                    applicable: { type: 'boolean' },
+                                    state: {
+                                      type: 'string',
+                                      enum: [
+                                        'scored',
+                                        'not-applicable',
+                                        'pending',
+                                        'failed',
+                                        'missing',
+                                      ],
+                                    },
+                                    reason: { type: 'string' },
+                                    details: {
+                                      type: 'object',
+                                      propertyNames: { type: 'string' },
+                                      additionalProperties: {},
+                                    },
+                                  },
+                                  required: [
+                                    'evaluator',
+                                    'version',
+                                    'metric',
+                                    'value',
+                                    'applicable',
+                                    'state',
+                                  ],
+                                  additionalProperties: false,
+                                },
+                              },
+                            },
+                            required: ['case', 'split', 'repeat', 'task', 'tags', 'scores'],
+                            additionalProperties: false,
+                          },
+                        },
+                        usage: {
+                          type: 'object',
+                          properties: {
+                            answers: {
+                              type: 'object',
+                              properties: {
+                                inputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                outputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                costMicroNok: {
+                                  anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+                                },
+                              },
+                              required: ['inputTokens', 'outputTokens', 'costMicroNok'],
+                              additionalProperties: false,
+                            },
+                            judges: {
+                              type: 'object',
+                              properties: {
+                                inputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                outputTokens: {
+                                  type: 'integer',
+                                  minimum: 0,
+                                  maximum: 9007199254740991,
+                                },
+                                costMicroNok: {
+                                  anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+                                },
+                              },
+                              required: ['inputTokens', 'outputTokens', 'costMicroNok'],
+                              additionalProperties: false,
+                            },
+                            reported: {
+                              type: 'object',
+                              propertyNames: { type: 'string' },
+                              additionalProperties: {
+                                type: 'object',
+                                properties: {
+                                  inputTokens: {
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                  outputTokens: {
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                  costUsd: {
+                                    anyOf: [{ type: 'number', minimum: 0 }, { type: 'null' }],
+                                  },
+                                  unpriced: {
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                  unread: {
+                                    default: 0,
+                                    type: 'integer',
+                                    minimum: 0,
+                                    maximum: 9007199254740991,
+                                  },
+                                },
+                                required: ['inputTokens', 'outputTokens', 'costUsd', 'unpriced'],
+                                additionalProperties: false,
+                              },
+                            },
+                            usdNok: {
+                              type: 'object',
+                              properties: {
+                                rate: { type: 'number', exclusiveMinimum: 0 },
+                                date: { type: 'string', minLength: 1 },
+                              },
+                              required: ['rate', 'date'],
+                              additionalProperties: false,
+                            },
+                          },
+                          required: ['answers'],
+                          additionalProperties: false,
+                        },
+                        servedModels: { type: 'array', items: { type: 'string' } },
+                        services: { type: 'array', items: { type: 'string' } },
+                      },
+                      required: ['results'],
+                      additionalProperties: false,
+                    },
                   },
                   required: ['capability', 'testSet', 'evaluators', 'provenance'],
                   additionalProperties: false,
@@ -6738,6 +6968,28 @@
                                   provider: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
                                 },
                                 required: ['kind', 'provider'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  kind: { type: 'string', const: 'federated-app' },
+                                  clientId: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                                  },
+                                  tenant: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+                                  },
+                                  scope: {
+                                    type: 'string',
+                                    pattern: '^[\\x21-\\x7e]{1,246}\\/\\.default$',
+                                  },
+                                },
+                                required: ['kind', 'clientId', 'tenant', 'scope'],
                                 additionalProperties: false,
                               },
                             ],
@@ -10650,6 +10902,50 @@
             replaces: [],
             edges: [],
             keywords: 'kudos kudos external',
+            schemas: [],
+          },
+          {
+            id: 'brreg',
+            plane: 'external',
+            name: 'Enhetsregisteret',
+            note: "Register of the state's organisation",
+            icon: 'source',
+            color: '#607b88',
+            status: 'External',
+            external: true,
+            summary:
+              "Brønnøysund's open register; each ministry registers which ministry its agencies are under (ADR 0058).",
+            description:
+              "Brønnøysund's open register of units, read nightly for the state's organisation (STAT and ORGL with their parents), under NLOD 2.0 (ADR 0058).",
+            responsibilities: [],
+            files: [],
+            input: '',
+            output: '',
+            replaces: [],
+            edges: [],
+            keywords: 'brreg enhetsregisteret bronnoysund state organisation external',
+            schemas: [],
+          },
+          {
+            id: 'statsregnskapet',
+            plane: 'external',
+            name: 'Statsregnskapet',
+            note: "DFØ's state accounts",
+            icon: 'source',
+            color: '#607b88',
+            status: 'External',
+            external: true,
+            summary:
+              "DFØ's state accounts, which book each agency to its ministry; they check the register and give its history (ADR 0058).",
+            description:
+              "DFØ's state accounts as zip files per year and month, read to check Enhetsregisteret and for each agency's ministry per year, under NLOD 2.0 (ADR 0058).",
+            responsibilities: [],
+            files: [],
+            input: '',
+            output: '',
+            replaces: [],
+            edges: [],
+            keywords: 'statsregnskapet dfo state accounts external',
             schemas: [],
           },
           {

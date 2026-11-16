@@ -233,6 +233,11 @@ export const SetupForm = ({
               <span className="playground-model">
                 {m.name}
                 <DataLocationTag location={m.dataLocation} />
+                {m.candidate ? (
+                  <Tag data-size="sm" data-color="warning">
+                    {t('playground.candidateModel')}
+                  </Tag>
+                ) : null}
                 {m.status === 'allowed' ? null : (
                   <Tag
                     data-size="sm"

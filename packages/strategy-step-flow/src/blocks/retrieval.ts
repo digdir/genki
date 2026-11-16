@@ -87,6 +87,7 @@ const searchInOrder = async (
 export const retrieveBlock: Block<z.infer<typeof retrieveInput>, z.infer<typeof retrieveParams>> = {
   name: 'retrieve',
   version: '1',
+  needsDataset: true,
   description: 'Plan queries and retrieve chunks from the service dataset',
   input: retrieveInput,
   params: retrieveParams,
@@ -149,6 +150,7 @@ const rerankParams = z.strictObject({
 export const rerankBlock: Block<z.infer<typeof rerankInput>, z.infer<typeof rerankParams>> = {
   name: 'rerank',
   version: '1',
+  needsDataset: true,
   description: 'Rerank chunks and assemble the context the model reads',
   input: rerankInput,
   params: rerankParams,

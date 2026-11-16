@@ -1,6 +1,7 @@
 import { sourceLinkRules, type Principal } from '@genai/contracts';
 import { testCase, testSet, type TestSet, type TestSetStore } from '@genai/eval';
 import { guardrailSchemas, ruleKinds } from '@genai/guardrails';
+import { fieldFills } from '@genai/jobs';
 import {
   filterValueTypes,
   type DatasetDraft,
@@ -48,6 +49,7 @@ export interface ConfigDeps {
   rules: GuardrailRuleRegistry;
   ingestion: IngestionService;
   testSets: TestSetStore;
+  testSetTaken?: (tenant: string, id: string) => Promise<boolean>;
   engines: () => EngineDescription[];
   adapters: KnowledgeAdapter[];
   writers?: IndexWriterRouter;
@@ -421,6 +423,34 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
         }
       : { ok: false, errors: cancelled.errors, target, conflict: true as const };
   },
+  'platform.knowledge.fields': async (input, principal) => {
+    const dataset = String(input.dataset);
+    const fill = String(input.fill ?? '');
+    const target = `dataset:${dataset}`;
+    if (principal.kind !== 'operator') return refused(target, 'only an operator refreshes fields');
+    if (!(fieldFills as readonly string[]).includes(fill))
+      return {
+        ok: false,
+        errors: [{ path: 'fill', message: `fill must be one of ${fieldFills.join(', ')}` }],
+        target,
+      };
+    if ((await deps.ingestion.openRuns(scopeOf(input), dataset)).length > 0)
+      return {
+        ok: false,
+        conflict: true,
+        errors: [
+          { path: 'dataset', message: 'a run of the dataset is open; refresh after it ends' },
+        ],
+        target,
+      };
+    await deps.ingestion.refreshFields({ tenant: platformScope, dataset, fill });
+    return {
+      ok: true,
+      value: { dataset, fill, status: 'sent' },
+      target,
+      audit: { scope: scopeOf(input), fill },
+    };
+  },
   'platform.jobs.redrive': async (input, principal) => {
     const scope = scopeOf(input);
     const dataset = String(input.dataset);
@@ -443,6 +473,22 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
           ...(sent.conflict ? { conflict: true as const } : {}),
         };
   },
+  'platform.jobs.readmit': async (input, principal) => {
+    const scope = scopeOf(input);
+    const dataset = String(input.dataset);
+    const target = `pipeline:${dataset}/${String(input.id)}`;
+    if (!mayWrite(principal, scope)) return refused(target, 'not allowed to admit this run again');
+    const admitted = await deps.ingestion.readmit({
+      dataset,
+      pipeline: String(input.id),
+      execution: String(input.execution),
+      by: actor(principal),
+      principal,
+    });
+    return admitted.ok
+      ? { ok: true, value: admitted.value, target, audit: { scope, execution: admitted.value.id } }
+      : { ok: false, errors: admitted.errors, target, conflict: true as const };
+  },
   'platform.testset.save': async (input, principal) => {
     const tenant = input.tenant;
     const id = String(input.id ?? '');
@@ -452,6 +498,12 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     if (!/^[a-z0-9][a-z0-9.-]*$/.test(id))
       return { ok: false, errors: [{ path: 'id', message: 'not a valid id' }], target };
     const current = await deps.testSets.get(tenant, id);
+    if (input.op === 'create' && !current && (await deps.testSetTaken?.(tenant, id)))
+      return {
+        ok: false,
+        errors: [{ path: 'id', message: `test set ${id} already exists` }],
+        target,
+      };
     const next = nextSet(current, input, tenant);
     if (!next.ok) return { ok: false, errors: next.errors, target };
     await deps.testSets.put(next.set);
@@ -1089,6 +1141,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       return perform(c, guard.principal, 'platform.pipeline.cancel', guard.scope, {
         dataset: item.id,
         id: param(c, 'id'),
@@ -1100,12 +1154,27 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       const response = await perform(c, guard.principal, 'platform.jobs.redrive', guard.scope, {
         dataset: item.id,
         id: param(c, 'id'),
         execution: param(c, 'execution'),
       });
       return response.status === 200 ? c.json(await response.json(), 202) : response;
+    });
+    app.post(`${base}/datasets/:dataset/pipelines/:id/executions/:execution/readmit`, async (c) => {
+      const guard = await access(c, 'manage-datasets');
+      if ('response' in guard) return guard.response;
+      const item = itemFor(c, guard.scope);
+      if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
+      return perform(c, guard.principal, 'platform.jobs.readmit', guard.scope, {
+        dataset: item.id,
+        id: param(c, 'id'),
+        execution: param(c, 'execution'),
+      });
     });
     app.get(`${base}/datasets/:dataset/pipelines/:id/executions`, async (c) => {
       const guard = await access(c);
@@ -1115,7 +1184,9 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       const refusedKey = keyRefused(c, guard.principal, item);
       if (refusedKey) return refusedKey;
       const pipeline = await deps.ingestion.get(guard.scope, item.id, param(c, 'id'));
-      const executions = await deps.ingestion.executions(item.id, param(c, 'id'));
+      const executions = (await deps.ingestion.executions(item.id, param(c, 'id'))).map((run) =>
+        deps.ingestion.admission(run),
+      );
       return c.json({
         data: seesUsage(guard.principal, guard.scope)
           ? executions
@@ -1135,6 +1206,21 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     return guard.response
       ? { response: guard.response }
       : { principal: guard.principal, scope: platformScope };
+  });
+  // Only operators write fields on stored documents, for platform datasets (ADR 0042).
+  app.post('/operator/datasets/:dataset/fields', async (c) => {
+    const guard = await operator(c);
+    if (guard.response) return guard.response;
+    const item = deps.catalog.get(
+      'dataset',
+      deps.catalog.qualify(platformScope, param(c, 'dataset')),
+    );
+    if (!item || item.scope !== platformScope) return problem(c, 404, 'Not found');
+    const response = await perform(c, guard.principal, 'platform.knowledge.fields', platformScope, {
+      dataset: item.id,
+      fill: (await body(c)).fill,
+    });
+    return response.status === 200 ? c.json(await response.json(), 202) : response;
   });
   pipelineRoutes('/tenants/:tenant', async (c, right) => {
     const guard = await member(c, right);

@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Documents · Components</title>
+    <meta
+      name="description"
+      content="The documents behind the answer on screen, the reader's own documents with a place to add more, and the documents the next question reads from."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Documents</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="documents"
+        data-component="documents"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="documents-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="documents-title">Documents</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Inside Filter</span>
+            </div>
+            <p class="summary">
+              Lists the documents behind the answer on screen, and the reader's own documents with a
+              place to add more. A third part, for the filter's panel, says how many documents the
+              next question reads from.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Dokumenter», «Dine dokumenter» and «Dokumentene som blir med»</dd>
+              <dt>Sits in</dt>
+              <dd>The filter, under its fields, in the primary sidebar</dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/226"
+                  >kunnskapsassistenten#226</a
+                >
+              </dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Documents</code>, <code>OwnDocuments</code> and
+                <code>DocumentsInScope</code> in <code>@genai/ui-blocks</code>
+              </dd>
+              <dt>Made from</dt>
+              <dd>
+                <code>filters/DocumentsList</code>, <code>filters/OwnDocuments</code> and
+                <code>filters/uploadText</code> in kunnskapsassistenten; «Dokumentene som blir med»
+                from the dev boards (dev-filter-panel)
+              </dd>
+              <dt>In the builder</dt>
+              <dd>
+                Part of the filter block: <code>Documents</code> is its <code>documents</code>
+                switch, on by default
+              </dd>
+              <dt>Canvas</dt>
+              <dd>00-Filter (FI-P1-Foretrukket-filter)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="130" y="12" width="50" height="100" rx="10" opacity="0.55" />
+            <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+            <rect class="s-bar" x="20" y="21" width="40" height="6" rx="3" />
+            <rect class="s-accent" x="20" y="33" width="66" height="5" rx="2.5" />
+            <rect class="s-bar" x="20" y="41" width="44" height="4" rx="2" />
+            <rect class="s-accent" x="20" y="51" width="58" height="5" rx="2.5" />
+            <rect class="s-bar" x="20" y="59" width="38" height="4" rx="2" />
+            <rect class="s-soft" x="18" y="72" width="94" height="30" rx="6" />
+            <path class="s-accent" d="M60 82l5-5 5 5h-3v5h-4v-5z" />
+            <rect class="s-bar" x="44" y="92" width="42" height="4" rx="2" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                <code>Documents</code>: the reader should see which documents the answer on screen
+                came from, with a link to each where there is one.
+              </li>
+              <li>
+                <code>OwnDocuments</code>: the reader can add documents of their own, or will be
+                able to.
+              </li>
+              <li>
+                <code>DocumentsInScope</code>: the filter's panel should say how many documents the
+                next question reads from.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>
+                To show what each document says. That is <a href="sources.html">Sources</a>, with
+                the excerpts.
+              </li>
+              <li>
+                To mix the reader's uploads into the collection's list. They have their own section.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>Before an answer:</strong> «Dokumentene som er relevante for søket ditt
+                vises her.»
+              </li>
+              <li>
+                <strong>Five or fewer:</strong> all of them. <strong>More:</strong> five, «Viser 5
+                av 7 dokumenter.» and «Vis flere dokumenter».
+              </li>
+              <li>
+                <strong>Upload on:</strong> «Dine dokumenter» with the tag «Ny», a drop zone and the
+                reader's files.
+              </li>
+              <li>
+                <strong>Upload off:</strong> the zone switched off, the tag «Kommer snart», and what
+                is coming.
+              </li>
+              <li>
+                <strong>In scope, open or folded:</strong> the count, and the documents with a tick
+                each where the host has them.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>Documents</code>: <code>documents</code>, the documents behind the answer on
+                screen, where a new array starts the list over; <code>corpus</code>, the collection,
+                which names the list; <code>corpusLine</code>, drawn under «Dokumenter», such as
+                <a href="corpus.html"><code>CorpusLine</code></a
+                >; <code>visible</code>, the rows before «Vis flere dokumenter», 5 by default;
+                <code>headingLevel</code>, 3 by default; and <code>className</code>.
+              </li>
+              <li>
+                A document is <code>id</code>, <code>title</code>, <code>url</code> where it can be
+                read, <code>about</code>, its type, organisation and year for the line under the
+                title, and <code>own</code> for the reader's upload, which this list leaves out.
+              </li>
+              <li>
+                <code>OwnDocuments</code>: <code>documents</code>, the reader's files;
+                <code>onUpload</code>, called with one file at a time, and without which the zone
+                says «Kommer snart»; <code>onRemove</code> with a file's id; <code>accept</code> for
+                the file input; <code>types</code>, the types taken as a reader writes them, «PDF»
+                and «.docx»; <code>maxBytes</code>, the largest file; <code>headingLevel</code>, 4
+                by default; and <code>className</code>.
+              </li>
+              <li>
+                A file is <code>id</code>, <code>name</code>, <code>type</code>,
+                <code>size</code> in bytes, <code>status</code> (uploading, ready or failed),
+                <code>progress</code> from 0 to 100 while uploading, and <code>error</code> when it
+                failed: too large, the wrong type, failed, or upload not available.
+              </li>
+              <li>
+                <code>DocumentsInScope</code>: <code>count</code>, the documents the next question
+                reads from; <code>total</code>, the collection's size; <code>corpus</code>, which
+                names it; <code>documents</code>, most relevant first, each with <code>id</code>,
+                <code>title</code>, <code>type</code>, <code>organisation</code>, <code>year</code>,
+                <code>pages</code> and <code>included</code>; <code>onIncludedChange</code> with an
+                id and whether it is ticked; <code>defaultOpen</code>, open unless false;
+                <code>headingLevel</code>, 3 by default; and <code>className</code>.
+              </li>
+            </ul>
+            <h2>Where it goes</h2>
+            <ul>
+              <li>
+                In the UI assembly, under the filter's fields when the layout's filter has
+                <code>documents</code> on: <code>Documents</code> with the answer's documents, or
+                <code>DocumentsInScope</code> with the count and the total in the filter's panel.
+                genki lists no documents for a filter and cannot leave one out, so that box draws no
+                list and no ticks there.
+              </li>
+              <li>The UI assembly draws no <code>OwnDocuments</code> yet.</li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="filter.html">Filter</a>: the panel the lists sit in</li>
+              <li><a href="corpus.html">Corpus choice</a>: the line above the list</li>
+              <li>
+                <a href="sources.html">Sources</a>: the same documents, with what each one says
+              </li>
+              <li>
+                <a href="chat.html">Chat</a>: attachments in the question field, with
+                <code>types</code> and <code>maxBytes</code> named as here
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The three parts sit in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follow
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and read every token through their own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. The muted text is pinned to neutral on
+              purpose, so it stays grey whatever family the links beside it follow; why an upload
+              failed is pinned to danger; and «Dokumentene som blir med» keeps the dev boards'
+              neutral box, with its fold and the type tags in accent. In the markup, «Vis flere
+              dokumenter» and «Fjern» are pinned to neutral, as kunnskapsassistenten draws them.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-documents-error-color</code></td>
+                  <td><code>--ds-color-danger-text-default</code></td>
+                  <td>why an upload failed</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font of the lists and the reader's documents</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in each section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-heading-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between «Dine dokumenter» and its tag</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-muted-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the count, the lines under the titles, and a refused drop</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-own-item-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between a file and «Fjern»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-own-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the reader's files</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-zone-icon-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the upload icon</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-zone-off-background</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td>the drop zone, switched off</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-border-color</code></td>
+                  <td><code>--ds-color-neutral-surface-tinted</code></td>
+                  <td>
+                    «Dokumentene som blir med»: the box's border, and the line under a document
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the box's border, and the line under a document</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-checkbox-size</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>a document's tick</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-document-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>a document's padding, top and bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-focus-color</code></td>
+                  <td><code>--ds-color-focus-outer</code></td>
+                  <td>the fold button's focus ring</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-focus-width</code></td>
+                  <td><code>--ds-border-width-focus</code></td>
+                  <td>the fold button's focus ring</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-color</code></td>
+                  <td><code>--ds-color-accent-text-subtle</code></td>
+                  <td>«Skjul» and «Vis» with the chevron</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>«Skjul» and «Vis»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-fold-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>beside the chevron, under a document's title, and between its details</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap in the box and its title row, and between a document's details</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-name-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>a document's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the box's padding, top and bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the box's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-quiet-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the hint, and a document's details</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-radius</code></td>
+                  <td><code>--ds-border-radius-xl</code></td>
+                  <td>the box's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-search-height</code></td>
+                  <td><code>--ds-size-10</code></td>
+                  <td>the search field's height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-small-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the count, «Skjul» and a document's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-background</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>the ground under the count</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-padding-block</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the count's padding, top and bottom</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-padding-inline</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the count's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-summary-radius</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
+                  <td>the corners of the count and the search field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-tiny-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>the hint, and a document's details</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-color</code></td>
+                  <td><code>--ds-color-neutral-text-default</code></td>
+                  <td>«Dokumentene som blir med» and the count</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>«Dokumentene som blir med»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-title-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>«Dokumentene som blir med»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>a document's type tag</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>a document's type tag</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>a type tag's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-documents-scope-type-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>a type tag's corners</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                <strong><code>Documents</code>:</strong> «Dokumenter», the corpus line, and the list
+                named by a heading one level down, «Fra Kudos», or «Fra standardsamlingen» when the
+                collection is not known. A title with a <code>url</code> is a link that opens in a
+                new tab and says so to a screen reader; without one it is text, and the line under
+                it says «uten lenke». The reader's uploads are left out of the list and its count.
+              </li>
+              <li>
+                «Vis flere dokumenter» shows the rest, goes, and moves focus to the list, which is
+                focusable but not in the tab order. The next answer's documents start over at five.
+              </li>
+              <li>
+                <strong><code>OwnDocuments</code>:</strong> «Dine dokumenter» with a tag, and
+                Designsystemet's file upload, «Last opp egne dokumenter», with the types and size
+                the host gives, such as «Kun PDF og .docx for øyeblikket, maks 20 MB». Files go up
+                one at a time; a file that fails does not stop the next, and the same file can be
+                picked again.
+              </li>
+              <li>
+                Each file shows its name, type and size, «Laster opp … 40 %» while it goes up, and
+                why it failed. A size is written as a file manager does, in decimal units; the limit
+                is in the unit the host checks it in.
+              </li>
+              <li>
+                A live region already in the page says when a file starts, is ready or failed, never
+                the percentage, and nothing about files there when it was drawn. «Fjern» has the
+                file's name in its name; after a remove, focus goes to the next file, else the one
+                before, else the file picker.
+              </li>
+              <li>
+                Without <code>onUpload</code>, the zone stays, switched off: its input is disabled,
+                so it takes no tab stop, and it says what is coming. A file dropped on the section
+                gets «Opplasting er ikke tilgjengelig i denne tjenesten ennå.» instead of opening in
+                the browser.
+              </li>
+              <li>
+                <strong><code>DocumentsInScope</code>:</strong> «Dokumentene som blir med», a
+                heading whose whole row folds the box with «Skjul» and «Vis». The count reads
+                «Assistenten leser fra 8 781 av 45 778 dokumenter i Kudos», or without a total «… 8
+                781 dokumenter i Kudos». With neither a count nor documents, nothing is drawn.
+              </li>
+              <li>
+                With the host's documents: «Mest relevante først», a search by title or
+                organisation, and a tick per document with its type as a tag, its organisation, year
+                and pages. Without <code>onIncludedChange</code> the ticks are switched off, so none
+                seems to work that does not.
+              </li>
+              <li>The words are the block's own catalogue, in bokmål and English.</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                A title that is not a link reads as broken unless the row says why, so the line
+                under it says «uten lenke».
+              </li>
+              <li>
+                A switched-off drop zone must still take the drop, or the browser opens the file and
+                the reader loses the page.
+              </li>
+              <li>
+                A screen reader hears that a file started, is ready or failed, and no percentage:
+                three announcements per file (WCAG 4.1.3).
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Where do own documents live? genki takes documents with each question, in text
+                formats only, while kunnskapsassistenten's upload is for PDF and .docx kept per
+                reader. Per reader, per thread or per project?
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="corpus.html" rel="prev"><small>Previous</small>Corpus choice</a>
+        <a class="next" href="projects.html" rel="next"><small>Next</small>Projects</a>
+      </nav>
+    </main>
+  </body>
+</html>

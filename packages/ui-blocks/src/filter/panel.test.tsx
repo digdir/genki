@@ -77,6 +77,31 @@ describe('the panel variant', () => {
     expect(row(/^Virksomhet/).textContent).toBe('Virksomhet Alle');
   });
 
+  it('says «Alle» in a row only when it lists two or more values and every one is chosen', () => {
+    const every = orgs.options.map((option) => option.value);
+    const { unmount } = render(
+      <Host initial={{ type: ['Evaluering', 'Tilsynsrapport', 'Årsrapport'], org: every }} />,
+    );
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Alle');
+    expect(row(/^Virksomhet/).textContent).toBe('Virksomhet Alle');
+    unmount();
+    // Another field narrowed the list to one value, chosen alone or with another.
+    const one = [{ ...types, options: types.options.slice(0, 1) }];
+    const { unmount: gone } = render(<Host fields={one} initial={{ type: ['Evaluering'] }} />);
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Evaluering');
+    gone();
+    render(<Host fields={one} initial={{ type: ['Evaluering', 'Tilsynsrapport'] }} />);
+    expect(row(/^Dokumenttype/).textContent).toBe('Dokumenttype Evaluering, Tilsynsrapport');
+  });
+
+  it('says «Alle år» in a year row with nothing chosen, and years in a row as one period', () => {
+    const { unmount } = render(<Host />);
+    expect(row(/^Publiseringsår/).textContent).toBe('Publiseringsår Alle år');
+    unmount();
+    render(<Host initial={{ year: ['2020', '2021', '2022', '2025'] }} />);
+    expect(row(/^Publiseringsår/).textContent).toBe('Publiseringsår 2020–2022, 2025');
+  });
+
   it('opens the first row, and one row at a time', () => {
     render(<Host />);
     expect(row(/^Dokumenttype/).getAttribute('aria-expanded')).toBe('true');

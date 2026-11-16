@@ -23,7 +23,13 @@ export interface CompiledCapability {
   publicName: string;
   aliases: string[];
   variantTitle?: { nb: string; en: string };
+  internal?: true;
 }
+
+export const isInternalService = (definition: unknown) =>
+  (definition as { kind?: unknown; spec?: { visibility?: unknown } } | undefined)?.kind ===
+    'Service' &&
+  (definition as { spec?: { visibility?: unknown } }).spec?.visibility === 'internal';
 
 export const capabilityId = (tenant: string, service: string, variant: string) =>
   `${tenant}/${service}/${variant}`;
@@ -148,6 +154,7 @@ export const toCapabilities = (
       ...(variantTitleOf(variant)
         ? { variantTitle: variantTitleOf(variant) as { nb: string; en: string } }
         : {}),
+      ...(spec.visibility === 'internal' ? { internal: true as const } : {}),
     };
   });
 };

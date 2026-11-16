@@ -19,9 +19,12 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   readUsdNok,
+  keepRunningOnRejection,
   runtimeBlocksOf,
   saveUsdNok,
   scheduleUsdNok,
+  scheduleRegisterSync,
+  stateRegisterGuard,
   TenantSecretVault,
   traceSinkAccess,
   tracesContent,
@@ -41,6 +44,7 @@ import {
   costOf,
   deleteSinkTraces,
   InMemoryTriggerRuns,
+  monthlyModelQuota,
   monthlyQuotaGate,
   recordTriggerRuns,
   scheduleProviderObjectSweep,
@@ -62,9 +66,20 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
-import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai/ingest';
+import {
+  copyListing,
+  copyOwner,
+  knowledgeListingOf,
+  kudosClient,
+  kudosProd,
+  type CopyIds,
+} from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
-import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import {
+  aiGatewayUsageSource,
+  federatedAppTokens,
+  gatewayUsageConfigFromEnv,
+} from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
 import { nativeOutputStoreFromEnv } from '@genai/providers-azure-blob';
 import { createLocalConverter } from '@genai/providers-documents';
@@ -86,6 +101,7 @@ import {
   ingestSender,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  managedIdentityTokenSource,
   platformId,
   PostgresDefinitionStore,
   PostgresJobRunRecords,
@@ -101,6 +117,7 @@ import {
   workerDevModeWarning,
 } from './boot-guard.js';
 import { followPublished } from './follow.js';
+import { afterRegisterSync, onRegisterStale, syncRegisterAtStart } from './state-register-job.js';
 import {
   knowledgeRuntimeInput,
   startHealthServer,
@@ -108,6 +125,7 @@ import {
 } from './knowledge-binding.js';
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
+import { fieldsWork } from './knowledge-fields.js';
 import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
 import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
@@ -118,6 +136,7 @@ import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
+keepRunningOnRejection(log);
 
 const root = join(import.meta.dirname, '..', '..', '..');
 const envFile = join(root, '.env.local');
@@ -207,6 +226,9 @@ if (knowledgeRefused.length > 0) {
   process.exit(1);
 }
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+const federatedTokens = federatedAppTokens({
+  assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+});
 if (gatewayUsage.problems.length > 0) {
   log('refusing to start', { problems: gatewayUsage.problems });
   process.exit(1);
@@ -219,6 +241,7 @@ const polledSources: PolledSource[] =
           source: aiGatewayUsageSource(gatewayUsage.config, {
             secrets: envSecrets(),
             egress: new EgressGuard(egressOptions),
+            federatedTokens,
           }),
           since: gatewayUsage.config.since,
         },
@@ -385,7 +408,10 @@ const knowledgeHandlers =
         },
         // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
-        converter: createLocalConverter(),
+        // A PDF page the text layer cannot read is left empty and logged; the rest of the file is kept.
+        converter: createLocalConverter({
+          onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),
+        }),
         ...(nativeOutputs ? { nativeOutputs } : {}),
         heavy: heavySettings,
         runs: knowledgeRunRecords,
@@ -513,6 +539,15 @@ const workerJobs = db
               }),
             ]
           : []),
+        ...(knowledgeWriter
+          ? [
+              fieldsWork({
+                records: knowledgeRecordsOf(knowledgeWriter),
+                bound: () => knowledgeBinding.knowledgeBound(),
+                log,
+              }),
+            ]
+          : []),
       ],
       ...(knowledgeHandlers
         ? {
@@ -531,6 +566,7 @@ const workerJobs = db
           }
         : {}),
       onError: jobError,
+      log,
     })
   : undefined;
 if (workerJobs) late.jobs = workerJobs;
@@ -612,8 +648,17 @@ if (lockdown) log('lockdown: the worker runs no triggers and refuses every model
 const blob = new FileSystemBlobStore(blobDir);
 const vault = new TenantSecretVault(db?.tenantSecrets);
 const eventLog = db?.log ?? new InMemoryEventLog();
+const monthlyTokens = (tenant: string) => {
+  const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
+  return typeof value === 'number' && value > 0 ? value : 50_000_000;
+};
+const usedTokens = async (tenant: string, since: string) =>
+  db
+    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
+    : 0;
 const runtime = await createRuntime({
   platformTenant,
+  federatedTokens,
   catalogs: {
     models: catalogs.models.catalog,
     knowledge: catalogs.knowledge.catalog,
@@ -639,6 +684,7 @@ const runtime = await createRuntime({
         ),
   policy: ownTenantOnly(),
   ...(lockdown ? { admitsModelUse: mayUseModels } : {}),
+  modelQuota: monthlyModelQuota({ monthlyTokens, usedTokens }),
   log: eventLog,
   tasks,
   prices,
@@ -734,14 +780,6 @@ const paused = async (binding: TriggerBinding) => {
   return Boolean(latest && !latest.deleted);
 };
 
-const monthlyTokens = (tenant: string) => {
-  const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
-  return typeof value === 'number' && value > 0 ? value : 50_000_000;
-};
-const usedTokens = async (tenant: string, since: string) =>
-  db
-    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
-    : 0;
 const pricedModels = runtime.prices as Record<string, TokenPrice | undefined>;
 
 const lease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-triggers') : undefined;
@@ -890,6 +928,31 @@ if (db)
     })
     .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
 
+// The state's organisation (ADR 0058): Enhetsregisteret nightly, on one replica under a lease.
+const stateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-state-register') : undefined;
+const stateJob = db
+  ? {
+      configEntries: db.configEntries,
+      guard: stateRegisterGuard(),
+      kudos: kudosClient({ profile: kudosProd }),
+      log,
+    }
+  : undefined;
+const stateRegister = stateJob
+  ? scheduleRegisterSync({
+      configEntries: stateJob.configEntries,
+      guard: stateJob.guard,
+      ...(stateLease ? { active: () => stateLease.tryAcquire() } : {}),
+      afterSync: afterRegisterSync(stateJob),
+      onStale: onRegisterStale(log),
+      onError: (error) => log('state register sync failed', { error: String(error) }),
+    })
+  : undefined;
+if (stateJob)
+  void syncRegisterAtStart({ ...stateJob, ...(stateLease ? { lease: stateLease } : {}) }).catch(
+    (error: unknown) => log('state register sync failed', { error: String(error) }),
+  );
+
 const sweepLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
   : undefined;
@@ -977,6 +1040,7 @@ const stop = () => {
   knowledgeProgress.stop();
   retention?.stop();
   exchangeRate?.stop();
+  stateRegister?.stop();
   providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);

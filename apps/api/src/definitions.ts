@@ -1,3 +1,4 @@
+import { publishRefusals } from './internal-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
@@ -341,7 +342,10 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     const lacking = tenant && refusedRight(c, principal, tenant, 'manage-services');
     if (lacking) return lacking;
     if (!validated.ok) return problem(c, 422, 'Invalid definition', { errors: validated.errors });
-    const errors = admin.check(validated.definition, read.files);
+    const errors = [
+      ...admin.check(validated.definition, read.files),
+      ...(await publishRefusals(store, validated.definition)),
+    ];
     if (errors.length > 0) return problem(c, 422, 'Invalid definition', { errors });
     const warnings = definitionWarnings(validated.definition);
     return c.json({ valid: true as const, ...(warnings.length ? { warnings } : {}) }, 200);

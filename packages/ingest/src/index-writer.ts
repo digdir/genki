@@ -79,6 +79,13 @@ export const toIndexDocument = (
  */
 export const maxEmbeddingBytes = 8191;
 
+/**
+ * The most one embedding request may hold, in UTF-8 bytes. Azure refuses a text-embedding-3 request
+ * over 300,000 tokens, and every token is at least one byte, so this many bytes never pass it.
+ * Figures and tables can come to under 2 bytes a token, so 64 inputs can (issue 581).
+ */
+export const maxEmbeddingRequestBytes = 300_000;
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: false });
 
@@ -103,14 +110,26 @@ export const embedIndexDocument = async (
 ): Promise<IndexDocument> => {
   const texts = [...new Set([...doc.chunks, ...doc.phrases].map((t) => t.text))];
   const vectors = new Map<string, number[]>();
-  for (let at = 0; at < texts.length; at += batchSize) {
-    const batch = texts.slice(at, at + batchSize);
-    const result = await embedder.embed(batch.map(embeddingInput));
+  // A request ends at `batchSize` inputs or before its bytes pass the budget; each input is under it.
+  for (let at = 0; at < texts.length;) {
+    const batch: string[] = [];
+    const inputs: string[] = [];
+    let size = 0;
+    for (const text of texts.slice(at, at + batchSize)) {
+      const input = embeddingInput(text);
+      const bytes = encoder.encode(input).length;
+      if (inputs.length > 0 && size + bytes > maxEmbeddingRequestBytes) break;
+      batch.push(text);
+      inputs.push(input);
+      size += bytes;
+    }
+    const result = await embedder.embed(inputs);
     batch.forEach((text, i) => {
       const vector = result.vectors[i];
       if (!vector) throw new Error(`the embedder returned no vector for text ${at + i}`);
       vectors.set(text, vector);
     });
+    at += batch.length;
   }
   const withVector = <T extends { text: string }>(item: T) => ({
     ...item,

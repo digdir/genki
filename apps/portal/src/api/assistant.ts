@@ -1,3 +1,4 @@
+import type { DescribedBlock } from '@genai/ui-blocks/builder';
 import type { ApiContext } from '../api';
 
 export type AssistantIntent = 'chat' | 'improve-instructions' | 'suggest-test-cases';
@@ -5,7 +6,8 @@ export type AssistantStatus = 'completed' | 'refused' | 'unavailable' | 'budget_
 export type AssistantUnavailableReason =
   'not_published' | 'no_model' | 'model_failed' | 'empty_result';
 export type ProposalLevel = 1 | 2 | 3 | 4;
-export type ProposalKind = 'change' | 'connector' | 'building_block' | 'platform_change';
+export type ProposalKind =
+  'change' | 'connector' | 'building_block' | 'platform_change' | 'interface';
 export type PlatformChangeStatus = 'sent' | 'under_review' | 'planned' | 'rejected';
 
 export interface JsonPatchOp {
@@ -108,6 +110,7 @@ export interface AssistantProposal {
   quality?: string;
   platformChange?: PlatformChange;
   flows?: Record<string, unknown>[];
+  blocks?: string[];
 }
 
 export interface AssistantTurn {
@@ -131,6 +134,7 @@ export interface AssistantTurnRequest {
   intent?: AssistantIntent;
   previousTurn?: string;
   stream?: boolean;
+  interfaceBlocks?: DescribedBlock[];
 }
 
 export type AssistantEvent =
