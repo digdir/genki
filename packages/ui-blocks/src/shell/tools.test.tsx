@@ -132,7 +132,7 @@ describe('the tinted switcher, the dev boards’', () => {
     return false;
   };
 
-  // The panel as the shell turns it into a drawer: a new pinned region, and the tools drawn anew.
+  // The panel as the shell moves it to fill a narrow shell: a new pinned region, the tools anew.
   const Panel = ({ drawer }: { drawer: boolean }) => {
     const [region, setRegion] = useState<HTMLDivElement | null>(null);
     const tools = (
@@ -143,10 +143,10 @@ describe('the tinted switcher, the dev boards’', () => {
       />
     );
     return drawer ? (
-      <dialog key="drawer" open>
+      <div key="fill" className="uib-shell-fill">
         <div ref={setRegion} data-testid="drawer-region" />
         {tools}
-      </dialog>
+      </div>
     ) : (
       <aside key="panel">
         <div ref={setRegion} data-testid="panel-region" />
@@ -155,7 +155,7 @@ describe('the tinted switcher, the dev boards’', () => {
     );
   };
 
-  it('keeps its menu when the panel becomes a drawer and back, drawn only in a region in the page', () => {
+  it('keeps its menu when the panel moves to fill the shell and back, drawn only in a region in the page', () => {
     const before = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'togglePopover');
     Object.defineProperty(HTMLElement.prototype, 'togglePopover', {
       configurable: true,

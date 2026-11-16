@@ -1,5 +1,5 @@
-import { Button, Dialog, Heading, SkipLink, Tooltip } from '@digdir/designsystemet-react';
-import { SidebarLeftIcon, SidebarRightIcon } from '@navikt/aksel-icons';
+import { Button, Heading, SkipLink, Tooltip } from '@digdir/designsystemet-react';
+import { SidebarLeftIcon, SidebarRightIcon, XMarkIcon } from '@navikt/aksel-icons';
 import {
   useCallback,
   useEffect,
@@ -25,7 +25,6 @@ import {
   defaultMainSize,
   defaultPanelSizes,
   defaultRail,
-  drawerPlacement,
   fittedWidths,
   growthDirection,
   initialState,
@@ -75,8 +74,8 @@ export interface ShellPanel {
   /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
   railFoot?: ReactNode;
   /**
-   * What the folded panel shows under its button, such as «Ny tråd» (dev-navbar), on a drawer's
-   * rail as well. Not in the top row.
+   * What the folded panel shows under its button, such as «Ny tråd» (dev-navbar), also on the
+   * rail of a narrow window, where an open panel fills the shell. Not in the top row.
    */
   rail?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
@@ -88,7 +87,7 @@ export interface ShellPanel {
   /**
    * A second column in the panel's card, towards the main column, with a title of its own and the
    * panel's button: the design's filter beside the threads (dev-filter-panel). It folds with the
-   * panel, and stands under the panel's own column in a drawer.
+   * panel, and stands under the panel's own column where the panel fills the shell.
    */
   companion?: ShellCompanion | undefined;
 }
@@ -112,7 +111,10 @@ export interface ShellCompanion {
   keepWidth?: boolean | undefined;
 }
 
-/** Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`. */
+/**
+ * Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`, which
+ * closes a panel that fills the shell in a narrow window. That name is kept for compatibility.
+ */
 export type ShellRequest =
   { action: 'open' | 'offer'; side: ShellSide } | { action: 'close-drawers' };
 
@@ -278,15 +280,15 @@ export const Shell = ({
     });
   }
 
-  // Entering drawer mode folds both, since a drawer is modal; leaving it opens again what it
-  // folded, as far as the window has room: where only one fits, the one that does not yield.
+  // Entering drawer mode folds both, so nothing fills the shell by itself; leaving it opens again
+  // what it folded, as far as the window has room: where only one fits, the one that does not yield.
   const [appliedDrawer, setAppliedDrawer] = useState(false);
   if (drawer !== appliedDrawer) {
     setAppliedDrawer(drawer);
     setState((current) => {
       if (drawer) return shellSides.reduce(withWindowFold, current);
       if (!narrow) return shellSides.reduce(withWindowRoom, current);
-      // A drawer the reader left open keeps the one place; the other waits for a wider window.
+      // A panel the reader left open keeps the one place; the other waits for a wider window.
       if (!current.collapsed[otherSide(keep)]) return current;
       const kept = withWindowRoom(current, keep);
       return kept.collapsed[keep] ? withWindowRoom(kept, otherSide(keep)) : kept;
@@ -305,12 +307,13 @@ export const Shell = ({
     } else if (request?.action === 'offer') {
       const { side } = request;
       setState((current) => {
-        // Never as a drawer, never over the reader's choice, never at the other panel's cost.
+        // Never over the whole shell, never over the reader's choice, never at the other's cost.
         const room = !narrow || current.collapsed[otherSide(side)];
         if (!current.collapsed[side] || current.dismissed[side] || drawer || !room) return current;
         return withChosen(fitted(current, side, false), side);
       });
     } else if (request?.action === 'close-drawers' && drawer) {
+      // Named for the drawers the shell once had: it closes a panel that fills the shell.
       setState((current) =>
         shellSides.reduce(
           (next, side) =>
@@ -356,11 +359,18 @@ export const Shell = ({
     [measureMain],
   );
 
+  // In a narrow window an open panel fills the shell; what it covers is out of reach.
+  const present = { primary, secondary };
+  const filled = drawer
+    ? shellSides.find((side) => present[side] && !state.collapsed[side])
+    : undefined;
+
   const sideProps = {
     geometry: sums,
     state,
     viewport,
     drawer,
+    filled,
     cards,
     onToggle: (side: ShellSide) => byReader(side, (current) => !current.collapsed[side]),
     onCollapse: (side: ShellSide, collapsed: boolean) => byReader(side, () => collapsed),
@@ -408,6 +418,7 @@ export const Shell = ({
         <Main
           className={classes('uib-shell-main', mainFocusable && 'ds-focus--inset')}
           id={mainId}
+          inert={filled !== undefined}
           // Observes only whether the focus is on the region itself.
           onBlur={(event) => {
             if (event.target === event.currentTarget) setMainHoldsFocus(false);
@@ -437,8 +448,10 @@ interface SideProps {
   geometry: ShellGeometry;
   state: ShellState;
   viewport: number;
-  /** Draw an open panel over the main column rather than beside it. */
+  /** A narrow window: an open panel fills the shell rather than standing beside the main column. */
   drawer: boolean;
+  /** The panel that fills the shell, if one does. */
+  filled: ShellSide | undefined;
   /** The cards frame: the panel is a card, its button an icon. */
   cards: boolean;
   onToggle: (side: ShellSide) => void;
@@ -446,7 +459,7 @@ interface SideProps {
   onWidth: (side: ShellSide, width: number) => void;
 }
 
-/** One side panel: a rail when folded, a drawer in a narrow window. */
+/** One side panel: a rail when folded; open in a narrow window, it fills the shell. */
 const Side = ({
   side,
   panel,
@@ -454,6 +467,7 @@ const Side = ({
   state,
   viewport,
   drawer,
+  filled: filledSide,
   cards,
   onToggle,
   onCollapse,
@@ -469,7 +483,11 @@ const Side = ({
   const Icon = side === 'primary' ? SidebarLeftIcon : SidebarRightIcon;
 
   const toggle = useRef<HTMLButtonElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const fill = useRef<HTMLDivElement>(null);
   const element = useRef<HTMLElement>(null);
+  const filled = filledSide === side;
+  const covered = filledSide !== undefined && !filled;
   const [content, setContentElement] = useState<HTMLDivElement | null>(null);
   const [pinned, setPinned] = useState<HTMLDivElement | null>(null);
   useScrollPadding(content, pinned, !collapsed);
@@ -512,6 +530,36 @@ const Side = ({
     if (lost) toggle.current?.focus();
   }, [hasFocus, collapsed, resizing, content]);
 
+  // Focus in as it fills the shell, unless the host's page outside has it; back to the button after.
+  const wasFilled = useRef(false);
+  useLayoutEffect(() => {
+    if (filled === wasFilled.current) return;
+    wasFilled.current = filled;
+    const active = document.activeElement;
+    const nowhere = active === null || active === document.body;
+    if (filled) {
+      const inShell = element.current?.parentElement?.contains(active) ?? false;
+      if (nowhere || inShell) close.current?.focus();
+    } else if (nowhere || (fill.current?.contains(active) ?? false)) toggle.current?.focus();
+  }, [filled]);
+
+  // Escape closes it last, as a dialog's would: a menu or field that takes Escape prevents it.
+  const collapse = useRef(onCollapse);
+  useEffect(() => {
+    collapse.current = onCollapse;
+  });
+  useEffect(() => {
+    if (!filled) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
+      if (!(event.target instanceof Node) || !fill.current?.contains(event.target)) return;
+      event.preventDefault();
+      collapse.current(side, true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [filled, side]);
+
   // Focus lent to a dialog comes back to the button if the panel folded meanwhile.
   const lentToDialog = useRef(false);
   useEffect(() => {
@@ -547,7 +595,7 @@ const Side = ({
   const footScrolls = !panel.footPinned && panel.foot != null;
   const foot = panel.foot == null ? null : <div className="uib-shell-foot">{panel.foot}</div>;
 
-  // One definition for the row and the drawer. A closed `<dialog>` hides it without `hidden`.
+  // One definition for the row and the fill, which hides it with its own `hidden`.
   const panelContent = (
     <div
       aria-label={focusable ? panel.label : undefined}
@@ -599,6 +647,23 @@ const Side = ({
     </Tooltip>
   );
 
+  // Closes the panel that fills the shell, at the end of its head row.
+  const closeButton = (
+    <Button
+      aria-label={t('shell.closePanel', { panel: name })}
+      className="uib-shell-close"
+      // Pinned to neutral, as kunnskapsassistenten draws it: the panel's own control.
+      data-color="neutral"
+      data-size={cards ? 'md' : 'sm'}
+      icon
+      onClick={() => onCollapse(side, true)}
+      ref={close}
+      variant="tertiary"
+    >
+      <XMarkIcon aria-hidden />
+    </Button>
+  );
+
   const title = panel.title ? (
     <Heading className="uib-shell-title" data-size="xs" level={2}>
       {panel.title}
@@ -636,10 +701,11 @@ const Side = ({
     <Landmark
       aria-label={panel.label}
       className="uib-shell-side"
-      // What stands here on the row: a drawer leaves a rail, open or shut.
+      // What stands here on the row: a narrow window keeps a rail, the panel open or shut.
       data-collapsed={railed || undefined}
       data-drawer={drawer || undefined}
       data-side={side}
+      inert={covered}
       onBlur={(event) => {
         const to = event.relatedTarget;
         const leaving = !element.current?.contains(to);
@@ -654,6 +720,7 @@ const Side = ({
       <div
         className="uib-shell-box"
         data-companion={withCompanion || undefined}
+        inert={filled}
         style={
           withCompanion ? ({ '--uib-shell-lead-width': leadWidth } as CSSProperties) : undefined
         }
@@ -665,7 +732,7 @@ const Side = ({
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
           {toggleLast && !withCompanion ? toggleButton : null}
         </div>
-        {/* On the rail a drawer leaves too, so its parts are one click away in a narrow window. */}
+        {/* On a narrow window's rail too, so its parts are one click away. */}
         {railed && panel.rail != null ? <div className="uib-shell-rail">{panel.rail}</div> : null}
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}
@@ -675,28 +742,28 @@ const Side = ({
         {withCompanion ? companionSection(toggleButton) : null}
       </div>
 
-      {/* A native modal dialog, kept mounted so what is in it keeps its state. */}
+      {/* In the shell's own box, no dialog: kept mounted so what is in it keeps its state. */}
       {drawer ? (
-        <Dialog
-          aria-label={panel.label}
-          className="uib-shell-drawer"
-          closeButton={t('shell.closePanel', { panel: name })}
+        <div
+          className="uib-shell-fill"
           data-side={side}
-          onClose={() => onCollapse(side, true)}
-          open={!collapsed}
-          placement={drawerPlacement(side)}
+          hidden={collapsed}
+          ref={fill}
+          // A click on its text keeps the focus, and so Escape, in the panel.
+          tabIndex={-1}
         >
           <div className="uib-shell-box">
             <div className="uib-shell-header">
               {title}
               <div className="uib-shell-head">{panel.head}</div>
+              {closeButton}
             </div>
             {panelContent}
             {footScrolls ? null : foot}
-            {/* Under the panel's own column: a drawer is one column wide. */}
+            {/* Under the panel's own column: the fill is one column wide. */}
             {companionSection(null)}
           </div>
-        </Dialog>
+        </div>
       ) : null}
 
       {/* Not on a rail, except while the drag that folded the panel is held, so it can reopen it. */}
