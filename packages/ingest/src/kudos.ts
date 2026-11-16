@@ -60,6 +60,18 @@ export interface KudosPage {
   meta: { current_page: number; last_page: number; total?: number };
 }
 
+/** One page of `/api/v0/actors`: every organisation KUDOS knows, with its org number and names. */
+export interface KudosActorPage {
+  data: {
+    uuid?: string;
+    org_number?: number | string | null;
+    name?: string;
+    actor_type?: string;
+    alternative_names?: { name: string; type: string }[];
+  }[];
+  meta: { current_page: number; last_page: number; total?: number };
+}
+
 /** One listing of `/documents`: a type, an actor and publish years, in one order. */
 export interface KudosSearch {
   type?: string;
@@ -205,6 +217,15 @@ export const kudosClient = (options: KudosClientOptions) => {
       };
       return { documents: documents(), total: () => total };
     },
+
+    /** One page of KUDOS's actors, fifty to a page as `/documents`. */
+    actors: (n: number) =>
+      getJson<KudosActorPage>(
+        `${options.profile.baseUrl}/api/v0/actors?${new URLSearchParams({
+          page: String(n),
+          per_page: String(kudosPageSize),
+        }).toString()}`,
+      ),
 
     document: (id: number | string) =>
       getJson<KudosDocument>(`${options.profile.baseUrl}${options.profile.documentPath}/${id}`),

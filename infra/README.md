@@ -16,7 +16,7 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 | Storage account with the file share `data` | Mounted at `/data` in the API and worker: uploads and other blobs (`BLOB_DIR=/data/blobs`)                                                                        |
 | Blob container `conversions`               | In the same account: converters' native output (ADR 0042), blob versioning, earlier versions deleted 30 days after they were written, the knowledge worker writes |
 | Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                                                                       |
-| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and six alert rules, see the [runbook](../docs/runbook.md#alerts)                       |
+| Alerts (`alertsEnabled`)                   | Action group `<name>-alerts`, an availability test on the API's `/health` and seven alert rules, see the [runbook](../docs/runbook.md#alerts)                     |
 | DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name                                                          |
 
 From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
@@ -101,6 +101,31 @@ Each environment has a knowledge server of its own (ADR 0042), set up as its pla
 - **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). Prod's pools need at most 102: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, for 3 API replicas, plus 2 for the job. Test's need at most 82, for 2 replicas.
 - **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
 - **Only its own logins connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to the environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left, or while another role holds one of the logins with inherit or set.
+
+### Disk tier
+
+`knowledgePostgresPerformanceTier` sets the disk's performance tier. Empty, the default, sends no tier, as the template did before it had one. What Azure then does to a tier raised by hand is not documented; in test, three deploys that sent no tier kept the hand-raised P30 (2026-11-14 17:00 and 17:21, 2026-11-15 06:53 UTC). Test sets `P30` (issue 599); prod sets none.
+
+A disk's size sets its lowest tier, and a 128 GB disk can go up to P50 ([Azure: performance tiers](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-change-performance)). At 128 GB ([Azure: disk targets](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-scalability-targets)):
+
+| Tier            | Base IOPS | Base MB/s |
+| --------------- | --------: | --------: |
+| P10 (the floor) |       500 |       100 |
+| P15             |     1,100 |       125 |
+| P20             |     2,300 |       150 |
+| P30             |     5,000 |       200 |
+
+The server's compute has limits of its own: `Standard_D2ds_v5` supports at most 3,750 IOPS and 85 MiB/s ([Azure: compute](https://learn.microsoft.com/en-us/azure/postgresql/compute-storage/concepts-compute)). The page does not say how they combine with the disk's, and the recall check below reads past both.
+
+Disks of the P20 size and smaller burst on credits, to 3,500 IOPS and 170 MB/s for up to 30 minutes ([Azure: disk bursting](https://learn.microsoft.com/en-us/azure/virtual-machines/disk-bursting)); whether a disk raised to a higher tier still bursts is not documented. In test, the Kudos fill ran out of burst credits on 2026-11-14, and at P30 on 2026-11-15 it read at hourly maxima of 3,600 to 4,200 IOPS.
+
+**For a full fill or a new embedding model,** raise the tier first and step it back afterwards:
+
+1. Set `knowledgePostgresPerformanceTier = 'P30'` in `infra/env/<env>.bicepparam` and run infra. Both `infra.yml` and `deploy.yml` deploy `main.bicep` with the environment's parameters, so merge the raise to main before the fill. A tier raised above the file's only by hand (`az postgres flexible-server update -g <resource group> -n <server> --performance-tier P30`) or from a branch makes every infra and deploy run fail for 12 hours (step 3), and the first run after that lowers it, fill or not.
+2. Run the fill. Watch `disk_iops_consumed_percentage` and `disk_bandwidth_consumed_percentage` on the server in Azure Monitor: at 100 % the disk is holding the fill back.
+3. After the fill, set the file back to the lower tier, and merge it no sooner than 12 hours after the raise. Azure lowers a tier only 12 hours after the last raise, and refuses an earlier change with `PerformanceTierCannotBeDowngradedBefore12HoursError`, so an earlier infra or deploy run fails ([Azure: scale storage performance](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-scale-storage-performance)). Whether a tier change restarts a flexible server is not documented.
+
+Size the tier by the two `consumed_percentage` metrics, not by `read_iops` or `read_throughput`. The nightly recall check (`knowledge.check`, ADR 0042) runs from the window's start, one sequential scan per sample over the partition of each active generation on the knowledge server. On 2026-11-16 it took 63 minutes, for 160 samples at about 625,000 chunks, and takes longer above 2 million chunks, where its floor of 50 samples reads more than its budget, or when chunks are larger. From 00:00 to 01:03 UTC it read about 6,000 IOPS and 204 MB/s, while both consumed metrics stayed at 0 to 10 %.
 
 ### Stages
 

@@ -20,6 +20,7 @@ All log alerts read the Container Apps tables in the environment's Log Analytics
 | `api-errors`     | 2        | `ContainerAppHTTPLogs` for the API: share of responses with status 500 or above. Status 0 (the client went away) does not count                                                               | At least 5 % over 15 minutes, with at least 20 requests                            |
 | `model-provider` | 2        | `model call failed` (a chat or embedding call) with `code` `unavailable` or `rate_limited`, from the API and the worker                                                                       | At least 5 in 15 minutes                                                           |
 | `ingestion`      | 3        | `ingestion run failed`, `knowledge job refused`, `knowledge server unreachable`, `knowledge reconciler failed` or `job queue error`, from the API and the worker                              | At least 1 in an hour, checked every 15 minutes                                    |
+| `state-register` | 3        | `state register stale`: the worker's nightly read of Enhetsregisteret (ADR 0058) failed for the second night in a row or more; the log line has `lastGood`, `failedNights` and `error`        | At least 1 in an hour. The threshold is fixed at 1, not in `alertThresholds`       |
 | `altinn`         | 2        | `altinn actions failed` (a decision point lookup, including its Maskinporten and Altinn token exchange) and `altinn token not fetched at boot`, from the API                                  | At least 3 in 15 minutes                                                           |
 | `login-keys`     | 1        | `login keys not fetched`: the API could not fetch the signing keys (JWKS) of Ansattporten or Maskinporten                                                                                     | At least 1 in 15 minutes                                                           |
 
@@ -84,6 +85,8 @@ ContainerAppConsoleLogs
 | order by TimeGenerated asc
 ```
 
+**State register stale.** The worker could not read Enhetsregisteret for two nights or more. The line has `lastGood`, `failedNights` and `error`. Answers about which ministry an agency is under keep the register from `lastGood`, and the console's Statens organisering shows the same dates. Check that the register answers from outside (`curl -s 'https://data.brreg.no/enhetsregisteret/api/enheter?organisasjonsform=STAT&size=1'`). The next good night clears it.
+
 **Altinn unavailable.** The `error` field says which step failed. Logins still work, but people get no rights from Altinn while it lasts, so they see less than they should. Check the Altinn status (tt02 in test), the Maskinporten client and its key (`altinn-pdp-maskinporten-key` in Key Vault) and the subscription key (`altinn-subscription-key`).
 
 **Ansattporten or Maskinporten keys unavailable.** Every login with that issuer fails with 401 until the keys can be fetched. The line has the `issuer`, the `uri` and the `status` or `error`. Check that the URI answers from outside (`curl -i <uri>`) and that `ANSATTPORTEN_ISSUER` or `MASKINPORTEN_JWKS_URI` is right. The API fetches the keys again on the next login, so it recovers by itself once the issuer answers.
@@ -109,9 +112,11 @@ echo '{"msg":"ingestion run failed","dataset":"drill","pipeline":"drill","execut
 for i in 1 2 3; do echo '{"msg":"altinn actions failed","error":"drill","drill":true}' > /proc/1/fd/1; done
 # login-keys
 echo '{"msg":"login keys not fetched","issuer":"drill","uri":"drill","status":503,"drill":true}' > /proc/1/fd/1
+# state-register
+echo '{"msg":"state register stale","lastGood":"drill","failedNights":2,"error":"drill","drill":true}' > /proc/1/fd/1
 ```
 
-If the shell cannot write to `/proc/1/fd/1`, lower the rule's threshold instead, as for `api-errors` below. The lines take a few minutes to reach the workspace, and the rule fires on its next evaluation: within about 10 minutes, 25 for `ingestion`. The alert resolves by itself once the window has passed.
+If the shell cannot write to `/proc/1/fd/1`, lower the rule's threshold instead, as for `api-errors` below. The lines take a few minutes to reach the workspace, and the rule fires on its next evaluation: within about 10 minutes, 25 for `ingestion` and an hour for `state-register`. The alert resolves by itself once the window has passed.
 
 `api-errors`: there is no safe way to make the API answer 5xx on purpose. In the portal, open the rule `genai-test-api-errors`, set its threshold to 0 and save. Make at least 20 requests (`for i in $(seq 25); do curl -s -o /dev/null https://api.genki-test.digdir.cloud/health; done`) and wait for the email. Then set the threshold back to 5, or run the infra workflow.
 

@@ -275,6 +275,7 @@ import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { stateRegisterModule } from './state-register.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -359,6 +360,7 @@ export const platformModules: PlatformModuleFactory[] = [
   playgroundModule,
   engineSwitchesModule,
   knowledgeEndpointsModule,
+  stateRegisterModule,
   assistantModule,
   proposalsModule,
   connectorsModule,

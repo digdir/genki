@@ -354,6 +354,33 @@ describe('live dataset detail', () => {
     expectAccessible();
   });
 
+  it('the portal says a document was skipped because its file could not be fetched', async () => {
+    const { fetch } = recorded({
+      executions: {
+        '999888777/veiledere/upload': [
+          {
+            id: 'ex-veiledere-1',
+            status: 'succeeded',
+            startedAt: '2026-10-07T09:12:00Z',
+            endedAt: '2026-10-07T09:13:10Z',
+            report: {
+              stored: 6,
+              skipped: 1,
+              skippedDocuments: [{ document: 'Årsrapport 2019', reason: 'unreachable' }],
+              failed: [],
+            },
+          },
+        ],
+      },
+    });
+    await renderLive(veiledere, fetch);
+    const runs = await screen.findByRole('list', { name: 'Innlesinger' });
+    fireEvent.click(within(runs).getByRole('button', { expanded: false }));
+    const skipped = within(runs).getByRole('list', { name: 'Hoppet over' });
+
+    expect(within(skipped).getByText('Filen kunne ikke hentes fra kilden.')).toBeTruthy();
+  });
+
   it('says "Ikke oppgitt" when the API gives no effective residency', async () => {
     const { fetch } = recorded();
     await renderLive(`#/datasets/${encodeURIComponent('digdir/kudos')}`, fetch);
