@@ -17,7 +17,7 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
-import { sinkJudgeFields } from './services.js';
+import { sinkJudgeFields, staleJudgesField } from './services.js';
 
 /** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
 const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
@@ -1232,6 +1232,7 @@ const ServiceEvalRun = z
       }),
     ),
     judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+    staleJudges: staleJudgesField,
     cost: z
       .number()
       .nullable()
@@ -1536,6 +1537,7 @@ const evalRoutes: RouteConfig[] = [
           meanCandidate: z.number(),
           difference: z.number(),
           ci: z.tuple([z.number(), z.number()]),
+          staleJudges: staleJudgesField,
         }),
         'Comparison',
       ),

@@ -78,6 +78,7 @@ export const documentsBlock: Block<
 > = {
   name: 'documents',
   version: '1',
+  needsDataset: true,
   description: "List documents from the service's datasets by filters or ids, without generating",
   input: documentsInput,
   params: documentsParams,
@@ -133,6 +134,7 @@ const hitsOf = (chunks: FlowChunk[]) =>
 export const readDocumentBlock: Block<z.infer<typeof readInput>, z.infer<typeof readParams>> = {
   name: 'read-document',
   version: '1',
+  needsDataset: true,
   description: "Read one document's chunks, optionally reranked by a question and cut to the best",
   input: readInput,
   params: readParams,

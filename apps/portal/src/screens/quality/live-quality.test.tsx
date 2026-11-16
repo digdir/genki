@@ -390,6 +390,45 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it('marks a run judged by an older version of a judge, in the history and in its metrics', async () => {
+    const older = 'judge:criteria@1+foundry-openai/gpt-41-dommer';
+    const run = {
+      service: 'rapportassistenten',
+      status: 'completed',
+      testSet: 'rapport-kjerne',
+      version: 'published' as const,
+      startedAt: '2026-11-11T09:00:00Z',
+      endedAt: '2026-11-11T09:20:00Z',
+      score: 1,
+      passed: 1,
+      total: 1,
+      metrics: { 'judge.criteria': { mean: 1, ci: [1, 1] as [number, number], n: 1 } },
+      cases: [{ caseId: 'o1', input: 'Hei', expected: 'Hilser', output: 'Hei!', pass: true }],
+    };
+    await openLive('', {
+      runs: [
+        { ...run, id: 'eldre', judges: [older], staleJudges: [older] },
+        { ...run, id: 'na', judges: ['judge:criteria@2+foundry-openai/gpt-41-dommer'] },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const [stale, current] = (await within(history as HTMLElement).findAllByRole('row')).slice(
+      1,
+    ) as HTMLElement[];
+
+    expect(within(stale as HTMLElement).getByText('Eldre dommer')).toBeTruthy();
+    expect(within(current as HTMLElement).queryByText('Eldre dommer')).toBeNull();
+    fireEvent.click(
+      within(stale as HTMLElement).getByRole('button', { name: /^Vis resultatet fra/ }),
+    );
+    expect(
+      await screen.findByText(
+        `Vurdert av en eldre versjon av ${older} enn den som brukes nå, så poengene kan ikke sammenlignes med kjøringer vurdert av den nåværende.`,
+      ),
+    ).toBeTruthy();
+    expectAccessible();
+  });
+
   it('shows a run that waits for a free slot as waiting, with its place in line', async () => {
     await openLive('', {
       runs: [

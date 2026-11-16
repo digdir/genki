@@ -3,6 +3,8 @@ import { splitFor } from './drafting.js';
 import {
   answerText,
   contractAssertions,
+  evaluatorOfJudge,
+  judgeVersionOf,
   rubricJudge,
   type EvalContext,
   type Evaluator,
@@ -139,6 +141,18 @@ export const criteriaJudgePrompt = (criteria: string): JudgePrompt => ({
 });
 
 export const criteriaJudgeId = 'judge:criteria';
+
+export const currentJudgeVersions: Readonly<Record<string, string>> = {
+  [criteriaJudgeId]: criteriaPromptRef.version,
+};
+
+/** The judges a run recorded at another version than the platform's judge of that name has now. */
+export const staleJudges = (judges: readonly string[], current = currentJudgeVersions) =>
+  judges.filter((judge) => {
+    const now = current[evaluatorOfJudge(judge)];
+    const version = judgeVersionOf(judge);
+    return now !== undefined && version !== undefined && version !== now;
+  });
 
 /** Scores criteria cases, with a model picked once per run from another family. */
 export const criteriaJudge = (

@@ -578,6 +578,40 @@ describe('eval runs for a service', () => {
     });
   });
 
+  it('marks a run judged by an older version of the criteria judge as stale, in the list, the run and a comparison', async () => {
+    const env = await boot();
+    const current = await runPublished(env);
+    const stored = await env.platform.evalStores.runs.get(current);
+    if (!stored) throw new Error('no run');
+    const older = `judge:criteria@1+${judgeId}`;
+    for (const id of ['eldre-1', 'eldre-2'])
+      await env.platform.evalStores.runs.save({
+        ...stored,
+        run: { ...stored.run, id, provenance: { ...stored.run.provenance, judges: [older] } },
+      });
+
+    const listed = (await env.send('GET', `${services}/eval-runs`)).body.data as {
+      id: string;
+      staleJudges?: string[];
+    }[];
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/eldre-1`)).body;
+    const compared = await env.send(
+      'GET',
+      '/eval-runs/compare?baseline=eldre-1&candidate=eldre-2&metric=refusal',
+    );
+    const againstCurrent = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=eldre-1&candidate=${current}&metric=refusal`,
+    );
+
+    expect(listed.find((r) => r.id === 'eldre-1')?.staleJudges).toEqual([older]);
+    expect(listed.find((r) => r.id === current)).not.toHaveProperty('staleJudges');
+    expect(run.staleJudges).toEqual([older]);
+    expect(compared.status).toBe(200);
+    expect(compared.body.staleJudges).toEqual([older]);
+    expect(againstCurrent.status).toBe(400);
+  });
+
   it('never judges with a model the service may answer with, its fallback too', async () => {
     const env = await boot();
     const withFallback = structuredClone(service) as { spec: { model: Record<string, unknown> } };

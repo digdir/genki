@@ -213,6 +213,9 @@ export const qualityArea = {
     runResumed: 'Tatt opp igjen etter omstart',
     caseTimeline: 'Se tidslinjen',
     caseTimelineFor: 'Se tidslinjen for testtilfellet {case}',
+    runStaleJudge: 'Eldre dommer',
+    runStaleJudges:
+      'Vurdert av en eldre versjon av {judges} enn den som brukes nå, så poengene kan ikke sammenlignes med kjøringer vurdert av den nåværende.',
     runQueued: 'Venter på ledig plass, nr. {place} i køen',
     passedOf: '{passed} av {total}',
     passedOfFinished: '{passed} av {finished}, {finished} av {total} kjørt',

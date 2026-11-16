@@ -46,6 +46,7 @@ export interface Block<I = unknown, P = unknown> {
   params: z.ZodType<P>;
   output: z.ZodType;
   framesStepText?: boolean;
+  needsDataset?: boolean;
   run: BlockRun<I, P>;
 }
 

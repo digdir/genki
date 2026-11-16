@@ -9,6 +9,7 @@ import {
   type Evaluator,
   type PendingScore,
 } from './evaluators.js';
+import { staleJudges } from './cases.js';
 import { defaultObserve, type Observation, type Observe } from './observe.js';
 import {
   sumUsage,
@@ -578,7 +579,7 @@ export const compareRuns = (
   candidate: EvalRun,
   metric: string,
   options: CompareOptions = {},
-): PairedComparison => {
+): PairedComparison & { staleJudges?: string[] } => {
   if (
     baseline.testSet.id !== candidate.testSet.id ||
     baseline.testSet.version !== candidate.testSet.version
@@ -599,9 +600,15 @@ export const compareRuns = (
   const b = perCaseMeans(candidate, metric, options.tag, options.split);
   const shared = [...a.keys()].filter((k) => b.has(k)).sort();
   if (shared.length === 0) throw new EvalError(`no cases scored on ${metric} in both runs`);
-  return pairedBootstrap(
-    shared.map((k) => a.get(k) as number),
-    shared.map((k) => b.get(k) as number),
-    options,
-  );
+  const stale = staleJudges([
+    ...new Set([...baseline.provenance.judges, ...candidate.provenance.judges]),
+  ]).sort();
+  return {
+    ...pairedBootstrap(
+      shared.map((k) => a.get(k) as number),
+      shared.map((k) => b.get(k) as number),
+      options,
+    ),
+    ...(stale.length > 0 ? { staleJudges: stale } : {}),
+  };
 };

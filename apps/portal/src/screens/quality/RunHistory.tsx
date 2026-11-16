@@ -291,6 +291,11 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
           {t('quality.runJudges', { judges: judges.join(', ') })}
         </Paragraph>
       ) : null}
+      {run.staleJudges?.length ? (
+        <Paragraph data-size="sm">
+          {t('quality.runStaleJudges', { judges: run.staleJudges.join(', ') })}
+        </Paragraph>
+      ) : null}
       {(run.incomplete ?? [])
         .filter((i) => !sink.has(i.evaluator))
         .map((i) => (
@@ -775,6 +780,14 @@ export const RunHistory = ({
                         {text}
                       </Tag>
                       <RunActivity run={r} />
+                      {r.staleJudges?.length ? (
+                        <>
+                          {' '}
+                          <Tag data-size="sm" data-color="warning">
+                            {t('quality.runStaleJudge')}
+                          </Tag>
+                        </>
+                      ) : null}
                     </Table.Cell>
                     <Table.Cell className="right numeric">{percent(f, r.score)}</Table.Cell>
                     <Table.Cell>{passedText(t, r)}</Table.Cell>

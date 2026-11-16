@@ -21,6 +21,7 @@ output:
         inputTokens?: { number: { min: 0 } }
         outputTokens?: { number: { min: 0 } }
         requests?: { number: { min: 0 } }
+        units?: json
         costMicroNok?: { number: { min: 0 } }
 request:
   method: POST
@@ -68,6 +69,10 @@ wire:
             object:
               text_tokens?: { number: { integer: true, min: 0 } }
               image_tokens?: { number: { integer: true, min: 0 } }
+          output_tokens_details?:
+            object:
+              text_tokens?: { number: { integer: true, min: 0 } }
+              image_tokens?: { number: { integer: true, min: 0 } }
 errors:
   - { status: 429, kind: rate-limited }
   - { status: 400, kind: invalid }
@@ -79,7 +84,19 @@ result:
     { $each: $response.data, $map: { image: $item.b64_json, revisedPrompt: $item.revised_prompt } }
   usage: $usage
 usage:
-  input-token: $response.usage.input_tokens
-  output-token: $response.usage.output_tokens
+  input-token:
+    $coalesce:
+      - $response.usage.input_tokens_details.text_tokens
+      - $sub:
+          - $response.usage.input_tokens
+          - $coalesce: [$response.usage.input_tokens_details.image_tokens, 0]
+  image-input-token: { $from: $response.usage.input_tokens_details.image_tokens, $omitWhen: [0] }
+  output-token: { $from: $response.usage.output_tokens_details.text_tokens, $omitWhen: [0] }
+  image-output-token:
+    $coalesce:
+      - $response.usage.output_tokens_details.image_tokens
+      - $sub:
+          - $response.usage.output_tokens
+          - $coalesce: [$response.usage.output_tokens_details.text_tokens, 0]
   request: 1
 stream: none

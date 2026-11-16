@@ -30,6 +30,7 @@ const refusalCodes: Record<GateRefusal, ModelError['code']> = {
   processor: 'refused',
   media: 'refused',
   shape: 'bad_request',
+  quota: 'refused',
 };
 
 export const modelRefusal = (refusal: GateRefusal, message: string) =>
