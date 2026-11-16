@@ -97,7 +97,7 @@ param knowledgePostgresSkuName string = 'Standard_D2ds_v5'
 param knowledgePostgresSkuTier string = 'GeneralPurpose'
 param knowledgePostgresStorageSizeGB int = 64
 
-@description('The knowledge disk\'s performance tier, such as P30; empty leaves the tier as Azure has it. See infra/README.md, "Disk tier".')
+@description('The knowledge disk\'s performance tier, such as P30; empty sends none. See infra/README.md, "Disk tier".')
 param knowledgePostgresPerformanceTier string = ''
 
 @description('The vCores of knowledgePostgresSkuName, for the worker (KNOWLEDGE_VCORES).')

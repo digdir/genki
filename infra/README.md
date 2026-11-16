@@ -104,7 +104,7 @@ Each environment has a knowledge server of its own (ADR 0042), set up as its pla
 
 ### Disk tier
 
-`knowledgePostgresPerformanceTier` sets the disk's performance tier. Empty, the default, sends no tier, as the template did before it had one; what Azure then does to a tier raised by hand is not documented. Test sets `P30` (issue 599); prod sets none.
+`knowledgePostgresPerformanceTier` sets the disk's performance tier. Empty, the default, sends no tier, as the template did before it had one. What Azure then does to a tier raised by hand is not documented; in test, three deploys that sent no tier kept the hand-raised P30 (2026-11-14 17:00 and 17:21, 2026-11-15 06:53 UTC). Test sets `P30` (issue 599); prod sets none.
 
 A disk's size sets its lowest tier, and a 128 GB disk can go up to P50 ([Azure: performance tiers](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-change-performance)). At 128 GB ([Azure: disk targets](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-scalability-targets)):
 
@@ -115,15 +115,17 @@ A disk's size sets its lowest tier, and a 128 GB disk can go up to P50 ([Azure: 
 | P20             |     2,300 |       150 |
 | P30             |     5,000 |       200 |
 
-Managed disks up to P20 also burst on credits, to 3,500 IOPS and 170 MB/s for up to 30 minutes ([Azure: disk bursting](https://learn.microsoft.com/en-us/azure/virtual-machines/disk-bursting)). In test, the Kudos fill ran out of burst credits on 2026-11-14 and ran at 3,600 to 4,100 read IOPS once the disk was at P30.
+The server's compute has limits of its own: `Standard_D2ds_v5` supports at most 3,750 IOPS and 85 MiB/s ([Azure: compute](https://learn.microsoft.com/en-us/azure/postgresql/compute-storage/concepts-compute)). The page does not say how they combine with the disk's, and the recall check below reads past both.
+
+Disks of the P20 size and smaller burst on credits, to 3,500 IOPS and 170 MB/s for up to 30 minutes ([Azure: disk bursting](https://learn.microsoft.com/en-us/azure/virtual-machines/disk-bursting)); whether a disk raised to a higher tier still bursts is not documented. In test, the Kudos fill ran out of burst credits on 2026-11-14, and at P30 on 2026-11-15 it read at hourly maxima of 3,600 to 4,100 IOPS.
 
 **For a full fill or a new embedding model,** raise the tier first and step it back afterwards:
 
-1. Set `knowledgePostgresPerformanceTier = 'P30'` in `infra/env/<env>.bicepparam` and run infra. A tier changed only by hand (`az postgres flexible-server update -g <resource group> -n <server> --performance-tier P30`) goes back to the file's tier on the next infra run.
+1. Set `knowledgePostgresPerformanceTier = 'P30'` in `infra/env/<env>.bicepparam` and run infra. Both `infra.yml` and `deploy.yml` deploy `main.bicep` with the environment's parameters, so a tier changed only by hand (`az postgres flexible-server update -g <resource group> -n <server> --performance-tier P30`) goes back to the file's tier, when it sets one, on the next infra or deploy run.
 2. Run the fill. Watch `disk_iops_consumed_percentage` and `disk_bandwidth_consumed_percentage` on the server in Azure Monitor: at 100 % the disk is holding the fill back.
-3. After the fill, set the file back to the lower tier and run infra. Azure lowers a tier only 12 hours after the last raise, and refuses an earlier change with `PerformanceTierCannotBeDowngradedBefore12HoursError` ([Azure: scale storage performance](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-scale-storage-performance)). Whether a tier change restarts a flexible server is not documented.
+3. After the fill, set the file back to the lower tier, and merge it no sooner than 12 hours after the raise. Azure lowers a tier only 12 hours after the last raise, and refuses an earlier change with `PerformanceTierCannotBeDowngradedBefore12HoursError`, so an earlier infra or deploy run fails ([Azure: scale storage performance](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-scale-storage-performance)). Whether a tier change restarts a flexible server is not documented.
 
-Size the tier by the two `consumed_percentage` metrics, not by `read_iops` or `read_throughput`. The nightly recall check (`knowledge.check`, ADR 0042) runs one exact search per sample over the whole active partition from the window's start, for about an hour. On 2026-11-16, from 00:00 to 01:03 UTC, it read about 6,000 IOPS and 204 MB/s, while both consumed metrics stayed at 0 to 10 %.
+Size the tier by the two `consumed_percentage` metrics, not by `read_iops` or `read_throughput`. The nightly recall check (`knowledge.check`, ADR 0042) runs from the window's start, one sequential scan per sample over the partition of each active generation on the knowledge server. On 2026-11-16 it took 63 minutes, for 160 samples at about 625,000 chunks, and takes longer as a generation grows. From 00:00 to 01:03 UTC it read about 6,000 IOPS and 204 MB/s, while both consumed metrics stayed at 0 to 10 %.
 
 ### Stages
 
