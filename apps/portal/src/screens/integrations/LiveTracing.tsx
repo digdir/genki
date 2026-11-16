@@ -2,6 +2,9 @@ import {
   Alert,
   Button,
   Checkbox,
+  Details,
+  DetailsContent,
+  DetailsSummary,
   Field,
   Fieldset,
   Heading,
@@ -9,12 +12,19 @@ import {
   Paragraph,
   Select,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
   Tag,
   Textfield,
 } from '@digdir/designsystemet-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { TraceConnection, TraceInstance, Residency } from '../../api/tracing';
+import { CopyButton } from '../../components/CopyButton';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
@@ -149,6 +159,71 @@ const problemText = (t: T, error: unknown) =>
     ? error.problem.errors.map((e) => e.message).join('. ')
     : t('integLangfuse.failed');
 
+/** The two lines of a judge's filter in Langfuse that point it at one test set's dataset. */
+const filterLines = (dataset: string) =>
+  `datasetId any of [${dataset}]\nisExperimentItemRootSpan = true`;
+
+/** The rows of the guide's table: what one thing is in Langfuse, and where genki shows it. */
+const whereRows = [
+  ['integLangfuse.guideDatasetLangfuse', 'integLangfuse.guideDatasetGenki'],
+  ['integLangfuse.guideJudgeLangfuse', 'integLangfuse.guideJudgeGenki'],
+  ['integLangfuse.guideExperimentLangfuse', 'integLangfuse.guideExperimentGenki'],
+  ['integLangfuse.guideTraceLangfuse', 'integLangfuse.guideTraceGenki'],
+] as const;
+
+/** How a team gets its Langfuse judges to score genki's test runs, step by step. */
+const Guide = ({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) => {
+  const t = useT();
+  const stepsId = useId();
+  return (
+    <Details
+      open={open}
+      // Only a toggle the person made differs from what was rendered; the rest echo the prop.
+      onToggle={(e) => {
+        const now = (e.target as HTMLDetailsElement).open;
+        if (now !== open) onToggle(now);
+      }}
+    >
+      <DetailsSummary>{t('integLangfuse.guide')}</DetailsSummary>
+      <DetailsContent>
+        <div className="stack-sm">
+          <Paragraph data-size="sm">{t('integLangfuse.guideIntro')}</Paragraph>
+          <Paragraph data-size="sm" id={stepsId}>
+            <strong>{t('integLangfuse.guideSteps')}</strong>
+          </Paragraph>
+          <ol aria-labelledby={stepsId}>
+            <li>{t('integLangfuse.guideConnect')}</li>
+            <li>
+              {t('integLangfuse.guideJudge')} {t('integLangfuse.guideMapping')}
+            </li>
+            <li>{t('integLangfuse.guideAdopt')}</li>
+            <li>{t('integLangfuse.guideRun')}</li>
+          </ol>
+          <Paragraph data-size="sm">{t('integLangfuse.guideLive')}</Paragraph>
+          <Paragraph data-size="sm">{t('integLangfuse.guideCopy')}</Paragraph>
+          <Table data-size="sm">
+            <caption>{t('integLangfuse.guideWhere')}</caption>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell scope="col">{t('integLangfuse.guideInLangfuse')}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t('integLangfuse.guideInGenki')}</TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {whereRows.map(([langfuse, genki]) => (
+                <TableRow key={langfuse}>
+                  <TableCell>{t(langfuse)}</TableCell>
+                  <TableCell>{t(genki)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </DetailsContent>
+    </Details>
+  );
+};
+
 export const LiveTracing = ({
   api,
   tenant,
@@ -182,6 +257,8 @@ export const LiveTracing = ({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string>();
   const [checked, setChecked] = useState<Record<string, string>>({});
+  // Kept here, outside what reloads, so a reload never folds or opens the guide the person set.
+  const [guideOpen, setGuideOpen] = useState<boolean>();
 
   const close = () => {
     setDraft(undefined);
@@ -325,6 +402,7 @@ export const LiveTracing = ({
         {t('integLangfuse.heading')}
       </Heading>
       <Paragraph data-size="sm">{t('integLangfuse.intro')}</Paragraph>
+      <Guide open={guideOpen ?? connections.length === 0} onToggle={setGuideOpen} />
       {connections.length === 0 ? (
         <Paragraph data-size="sm">{t('integLangfuse.none')}</Paragraph>
       ) : (
@@ -369,8 +447,13 @@ export const LiveTracing = ({
                   <Paragraph data-size="sm">{t('integLangfuse.datasetsHelp')}</Paragraph>
                   <ul className="plain-list" aria-labelledby={`datasets-${c.id}`}>
                     {c.datasets.map((d) => (
-                      <li key={d.id}>
+                      <li key={d.id} className="row-gap">
                         <code>{d.name}</code>
+                        <CopyButton
+                          text={filterLines(d.name)}
+                          label={t('integLangfuse.copyLines')}
+                          ariaLabel={t('integLangfuse.copyLinesFor', { dataset: d.name })}
+                        />
                       </li>
                     ))}
                   </ul>

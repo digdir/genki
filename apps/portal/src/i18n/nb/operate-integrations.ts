@@ -734,5 +734,42 @@ export const integrationsArea = {
     removingFlash: 'Koblingen {id} fjernes når alt den har fått, er slettet i Langfuse.',
     removed: 'Koblingen {id} er fjernet.',
     failed: 'Koblingen ble ikke lagret.',
+    guide: 'Slik vurderer Langfuse-dommere testkjøringene',
+    guideIntro:
+      'En dommer i Langfuse kan vurdere testkjøringene til en tjeneste. genki viser vurderingene på kjøringen, ved siden av sine egne mål.',
+    guideSteps: 'Fire steg',
+    guideConnect:
+      'Koble tjenestene til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
+    guideJudge:
+      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. Filteret har datasetId any of [genki/<tjeneste-id>/<testsett-id>] og isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet.',
+    guideMapping:
+      'Dommeren leser hele spørsmålet og svaret, eller en sti i dem med $, .nøkkel og [n]. Et spørsmål i tekst ligger på input $.parts[0].body.text, og svaret på output $[0].body.text.',
+    guideAdopt:
+      'Ta dommeren i bruk under Byggeklosser › Katalog › Dommere. Der står det også hvorfor genki ikke kan bruke en dommer.',
+    guideRun: 'Kjør testsettet med «Send kjøringen til Langfuse» krysset av.',
+    guideLive:
+      'Har prosjektet en dommer for live-trafikk, trenger den environment none of [genki-test-runs]. Ellers starter ikke testkjøringen.',
+    guideCopy:
+      'Knappen ved hvert datasett under kopierer de to filterlinjene, med datasettet fylt inn.',
+    guideWhere: 'Hvor det vises',
+    guideInLangfuse: 'I Langfuse',
+    guideInGenki: 'I genki',
+    guideDatasetLangfuse:
+      'Ett datasett per testsett, genki/<tjeneste-id>/<testsett-id>, uten elementer',
+    guideDatasetGenki:
+      'Koblingen lister datasettene, og testsettet viser navnet på datasettet sitt',
+    guideJudgeLangfuse: 'Dommeren: en evalueringsregel dere skriver',
+    guideJudgeGenki:
+      'En byggekloss under Byggeklosser › Katalog › Dommere, med navnet til regelen, eller avvist med grunnen',
+    guideExperimentLangfuse:
+      'Hver sendte kjøring: et eksperiment på datasettet, med navnet til testsettet og versjonen, for eksempel rapport-kjerne v3',
+    guideExperimentGenki:
+      'Kjøringen, med boksen krysset av, og «Venter på vurderinger» mens dommerne jobber',
+    guideTraceLangfuse:
+      'Hvert testtilfelle: en trace i miljøet genki-test-runs, med vurderingene til dommerne',
+    guideTraceGenki:
+      'Langfuse-vurderingene på kjøringen, adskilt fra målene til genki, med kostnad, samsvar med etiketter og en lenke til eksperimentet',
+    copyLines: 'Kopier filterlinjer',
+    copyLinesFor: 'Kopier filterlinjene for {dataset}',
   }),
 } as const;

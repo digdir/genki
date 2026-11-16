@@ -375,6 +375,80 @@ describe('Integrasjoner: Langfuse', () => {
   });
 });
 
+describe('Integrasjoner: Langfuse, the guide', () => {
+  const guideSummary = 'Slik vurderer Langfuse-dommere testkjøringene';
+  const guideOf = (section: HTMLElement) => {
+    const details = within(section).getByText(guideSummary).closest('details');
+    if (!details) throw new Error('the guide is not a details element');
+    return details;
+  };
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  afterEach(() => {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('shows the Langfuse guide open while the organisation has no connection', async () => {
+    const { section } = await renderTracing({ connections: [] });
+    await within(section).findByText('Ingen tjenester er koblet til Langfuse.');
+
+    const guide = guideOf(section);
+    expect(guide.open).toBe(true);
+    const steps = within(guide).getByRole('list', { name: 'Fire steg' });
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(4);
+    const table = within(guide).getByRole('table', { name: 'Hvor det vises' });
+    expect(within(table).getAllByRole('row')).toHaveLength(5);
+    expect(within(guide).getByText(/environment none of \[genki-test-runs\]/)).toBeTruthy();
+    await expectAccessible(section);
+  });
+
+  it('folds the Langfuse guide once the organisation has a connection', async () => {
+    const { section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    expect(guideOf(section).open).toBe(false);
+  });
+
+  it('keeps the guide open or folded as the person chose when the connections reload', async () => {
+    const { section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+    fireEvent.click(within(section).getByText(guideSummary));
+    expect(guideOf(section).open).toBe(true);
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Endre' }));
+    const form = within(section).getByRole('form', { name: 'Endre Langfuse-koblingen' });
+    fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
+      target: { value: 'Legger til en tjeneste' },
+    });
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Postsortering' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText('Koblingen digdir er lagret.')).toBeTruthy();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    expect(guideOf(section).open).toBe(true);
+  });
+
+  it("copies a dataset's two filter lines from the button beside it", async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void copied.push(text) },
+    });
+    const { section } = await renderTracing();
+    const list = await within(section).findByRole('list', { name: 'Datasett i Langfuse' });
+
+    fireEvent.click(
+      within(list).getByRole('button', {
+        name: 'Kopier filterlinjene for genki/rapportassistenten/rapport-kjerne',
+      }),
+    );
+
+    expect(copied).toEqual([
+      'datasetId any of [genki/rapportassistenten/rapport-kjerne]\nisExperimentItemRootSpan = true',
+    ]);
+  });
+});
+
 describe('Integrasjoner: Langfuse, picked from lists', () => {
   const newForm = async (options?: Parameters<typeof renderTracing>[0]) => {
     const rendered = await renderTracing(options);

@@ -737,5 +737,42 @@ export const integrationsArea = {
       'The connection {id} is removed once everything it received is deleted in Langfuse.',
     removed: 'The connection {id} is removed.',
     failed: 'The connection was not saved.',
+    guide: 'How Langfuse judges score the test runs',
+    guideIntro:
+      "A judge in Langfuse can score a service's test runs. genki shows the scores on the run, beside its own metrics.",
+    guideSteps: 'Four steps',
+    guideConnect:
+      "Connect the services to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
+    guideJudge:
+      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Its filter has datasetId any of [genki/<service-id>/<test-set-id>] and isExperimentItemRootSpan = true. The judge names its own model, not the project's default model.",
+    guideMapping:
+      'The judge reads the whole question and answer, or a path into them with $, .key and [n]. A text question is at input $.parts[0].body.text, and the answer at output $[0].body.text.',
+    guideAdopt:
+      'Adopt the judge under Building blocks › Catalogue › Judges. It also says there why genki cannot use a judge.',
+    guideRun: 'Run the test set with "Send the run to Langfuse" ticked.',
+    guideLive:
+      'A judge for live traffic in the same project needs environment none of [genki-test-runs], or the test run will not start.',
+    guideCopy:
+      'The button beside each dataset below copies the two filter lines, with the dataset filled in.',
+    guideWhere: 'Where it shows up',
+    guideInLangfuse: 'In Langfuse',
+    guideInGenki: 'In genki',
+    guideDatasetLangfuse:
+      'One dataset per test set, genki/<service-id>/<test-set-id>, with no items',
+    guideDatasetGenki:
+      "The connection lists the datasets, and the test set shows its dataset's name",
+    guideJudgeLangfuse: 'The judge: an evaluation rule you write',
+    guideJudgeGenki:
+      'A building block under Building blocks › Catalogue › Judges, named after the rule, or refused with the reason',
+    guideExperimentLangfuse:
+      'Each sent run: an experiment on the dataset, named after the test set and its version, such as rapport-kjerne v3',
+    guideExperimentGenki:
+      'The run, with the box ticked, and "Waiting for scores" while the judges work',
+    guideTraceLangfuse:
+      "Each test case: a trace in the environment genki-test-runs, with the judges' scores on it",
+    guideTraceGenki:
+      "The Langfuse scores on the run, apart from genki's metrics, with cost, agreement with labels and a link to the experiment",
+    copyLines: 'Copy filter lines',
+    copyLinesFor: 'Copy the filter lines for {dataset}',
   },
 } satisfies Translation<typeof source>;
