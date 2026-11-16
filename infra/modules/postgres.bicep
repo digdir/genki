@@ -5,6 +5,10 @@ param version string
 param skuName string
 param skuTier string
 param storageSizeGB int
+
+@description('The disk\'s performance tier, at least the size\'s own (P10 at 128 GB). Empty sends no tier, so Azure keeps or sets it as before.')
+@allowed(['', 'P1', 'P2', 'P3', 'P4', 'P6', 'P10', 'P15', 'P20', 'P30', 'P40', 'P50', 'P60', 'P70', 'P80'])
+param performanceTier string = ''
 param backupRetentionDays int
 param geoRedundantBackup string
 param highAvailability string
@@ -32,7 +36,10 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   sku: { name: skuName, tier: skuTier }
   properties: {
     version: version
-    storage: { storageSizeGB: storageSizeGB, autoGrow: 'Enabled' }
+    storage: union(
+      { storageSizeGB: storageSizeGB, autoGrow: 'Enabled' },
+      empty(performanceTier) ? {} : { tier: performanceTier }
+    )
     backup: { backupRetentionDays: backupRetentionDays, geoRedundantBackup: geoRedundantBackup }
     highAvailability: { mode: highAvailability }
     network: {

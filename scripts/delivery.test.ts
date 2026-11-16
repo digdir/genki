@@ -1,21 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   areaOf,
   changesBetween,
   collectDeploy,
   collectWeek,
   escapeText,
-  parseDelivered,
+  foundryComplete,
+  isoWeek,
   parseSummary,
+  parseWeekly,
+  servicesOf,
   postToSlack,
   previousDeploy,
   prsInRelease,
   releaseBody,
   releaseName,
-  smokeAlertText,
-  smokeOutcomeOf,
   summaryPrompt,
   tagOf,
+  weeklyDecision,
   weeklyDue,
   weeklyPrompt,
   weeklyText,
@@ -24,7 +26,7 @@ import {
   type Post,
   type Week,
 } from './delivery.ts';
-import type { Api } from './smoke/changes.ts';
+import { github, type Api } from './smoke/changes.ts';
 
 const repo = 'digdir/genki';
 const head = 'b'.repeat(40);
@@ -403,6 +405,27 @@ describe('the weekly window', () => {
     expect(weeklyDue('0 11 * * 5', new Date('2026-11-13T12:40:00Z'))).toBe(false);
   });
 
+  it('skips a scheduled run that started seven hours late', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T19:17:00Z'))).toBe(false);
+  });
+
+  it('runs a scheduled run that started at 13:05 in Oslo', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T12:05:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T11:05:00Z'))).toBe(true);
+  });
+
+  it('allows two hours of slack and no more, in winter and in summer', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T14:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-13T14:01:00Z'))).toBe(false);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T13:00:00Z'))).toBe(true);
+    expect(weeklyDue('0 11 * * 5', new Date('2026-07-10T13:01:00Z'))).toBe(false);
+    expect(weeklyDue('0 12 * * 5', new Date('2026-07-10T12:05:00Z'))).toBe(false);
+  });
+
+  it('skips a scheduled run that crossed into the next day', () => {
+    expect(weeklyDue('0 12 * * 5', new Date('2026-11-14T00:30:00Z'))).toBe(false);
+  });
+
   it('always runs when started by hand', () => {
     expect(weeklyDue('', new Date('2026-11-11T08:00:00Z'))).toBe(true);
   });
@@ -414,7 +437,19 @@ describe('the weekly window', () => {
     body: `list\n\n<!-- delivery-prs: ${prs.join(',')} -->`,
   });
 
-  it('collects the pull requests of the deploys in the last seven days, grouped by area', async () => {
+  const week = (over: Partial<Week> = {}): Week => ({
+    repo,
+    from: '2026-11-06T12:00:00Z',
+    to: '2026-11-13T12:00:00Z',
+    releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
+    prs: changelog().prs,
+    more: 0,
+    sections: null,
+    services: [],
+    ...over,
+  });
+
+  it('collects the pull requests of the deploys in the last seven days', async () => {
     const api = fakeApi({
       [`/repos/${repo}/releases`]: [
         release('deploy-2026-11-12-0905', '2026-11-12T09:06:00Z', [12, 11]),
@@ -424,27 +459,38 @@ describe('the weekly window', () => {
       ],
       ...pulls,
     });
-    const week = await collectWeek({
+    const collected = await collectWeek({
       api,
       repo,
       now: () => new Date('2026-11-13T12:00:00Z'),
       complete: null,
     });
-    expect(week.releases.map((r) => r.tag)).toEqual([
+    expect(collected.releases.map((r) => r.tag)).toEqual([
       'deploy-2026-11-10-0800',
       'deploy-2026-11-12-0905',
     ]);
-    expect(week.prs.map((p) => p.number)).toEqual([10, 11, 12]);
-    const text = weeklyText(week) ?? '';
-    expect(text).toContain('*Levert i genki denne uka* (6. november til 13. november, 2 deployer');
-    expect(text.indexOf('*Sikkerhet og rettigheter*')).toBeLessThan(text.indexOf('*Portal*'));
-    expect(text).toContain('• <https://github.com/digdir/genki/pull/10|#10> Add the portal tab');
-    expect(text).not.toContain('#99');
+    expect(collected.prs.map((p) => p.number)).toEqual([10, 11, 12]);
+  });
+
+  it('heads the message with the week number and the dates in Oslo', () => {
+    expect(weeklyText(week())?.split('\n')[0]).toBe('*Nytt i genki, uke 46* (6. til 13. november)');
+    expect(
+      weeklyText(week({ from: '2026-12-25T12:00:00Z', to: '2027-01-01T12:00:00Z' }))?.split(
+        '\n',
+      )[0],
+    ).toBe('*Nytt i genki, uke 53* (25. desember til 1. januar)');
+  });
+
+  it('numbers the week by ISO 8601 in Oslo time', () => {
+    expect(isoWeek('2026-11-13T12:00:00Z')).toBe(46);
+    expect(isoWeek('2027-01-03T22:30:00Z')).toBe(53);
+    expect(isoWeek('2027-01-03T23:30:00Z')).toBe(1);
+    expect(isoWeek('2026-01-01T12:00:00Z')).toBe(1);
   });
 
   it('posts nothing when nothing was deployed that week', async () => {
     let asked = false;
-    const week = await collectWeek({
+    const collected = await collectWeek({
       api: fakeApi({ [`/repos/${repo}/releases`]: [] }),
       repo,
       now: () => new Date('2026-11-13T12:00:00Z'),
@@ -453,36 +499,256 @@ describe('the weekly window', () => {
         return '{}';
       },
     });
-    expect(weeklyText(week)).toBeNull();
+    expect(weeklyText(collected)).toBeNull();
     expect(asked).toBe(false);
   });
 
-  it('puts what the model says was delivered above the list', () => {
-    const week: Week = {
-      repo,
-      from: '2026-11-06T12:00:00Z',
-      to: '2026-11-13T12:00:00Z',
-      releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
-      prs: changelog().prs,
-      more: 0,
-      delivered: ['Portalen har en ny fane.', 'Rettighetssjekken er rettet.'],
-    };
-    const text = weeklyText(week) ?? '';
-    expect(text).toContain('én deploy');
-    expect(text).toContain('\n\n• Portalen har en ny fane.\n• Rettighetssjekken er rettet.\n\n*');
+  it('shows the model points under their headings, with no pull request links', () => {
+    const text = weeklyText(
+      week({
+        sections: [
+          { heading: 'For deg som bygger tjenester', points: ['Du kan nå velge modell selv.'] },
+          { heading: '', points: ['Innloggingen er raskere.'] },
+        ],
+      }),
+    );
+    expect(text).toBe(
+      [
+        '*Nytt i genki, uke 46* (6. til 13. november)',
+        '',
+        '*For deg som bygger tjenester*',
+        '• Du kan nå velge modell selv.',
+        '',
+        '• Innloggingen er raskere.',
+        '',
+        '<https://github.com/digdir/genki/releases|Alle endringer på GitHub>',
+      ].join('\n'),
+    );
   });
 
-  it('keeps three to six delivered points and refuses an answer without them', () => {
-    expect(parseDelivered('{"delivered": ["a","b","c","d","e","f","g"]}')).toEqual([
-      'a',
-      'b',
-      'c',
-      'd',
-      'e',
-      'f',
+  it('gives a short count instead of a list when there is no model text', () => {
+    const text = weeklyText(week({ more: 7 })) ?? '';
+    expect(text).toContain('genki-test fikk 9 endringer denne uka.');
+    expect(text).not.toContain('/pull/');
+    expect(text.split('\n')).toHaveLength(5);
+  });
+
+  it('says the week had only internal changes when every pull request is tooling', () => {
+    const prs = changelog().prs.map((p) => ({ ...p, area: 'ci' as const }));
+    expect(weeklyText(week({ prs }))).toContain('bare interne forbedringer');
+  });
+
+  it('does not ask the model when the week has only tooling', async () => {
+    let asked = false;
+    await collectWeek({
+      api: fakeApi({
+        [`/repos/${repo}/releases`]: [
+          release('deploy-2026-11-12-0905', '2026-11-12T09:06:00Z', [12]),
+        ],
+        ...pulls,
+      }),
+      repo,
+      now: () => new Date('2026-11-13T12:00:00Z'),
+      complete: async () => {
+        asked = true;
+        return '{}';
+      },
+    });
+    expect(asked).toBe(false);
+  });
+
+  it('leaves tooling pull requests out of what the model sees', () => {
+    const { user } = weeklyPrompt([
+      ...changelog().prs,
+      { number: 12, title: 'Run CI on merge', url: '', body: '', area: 'ci' },
     ]);
-    expect(parseDelivered('{"delivered": []}')).toBeNull();
-    expect(parseDelivered('nothing')).toBeNull();
+    expect(user).toContain('#10 Add the portal tab');
+    expect(user).not.toContain('Run CI on merge');
+  });
+
+  it('keeps every point the model writes, in every group, and refuses an answer without any', () => {
+    const points = Array.from({ length: 15 }, (_, i) => `Punkt ${i + 1}.`);
+    const answer = parseWeekly(
+      JSON.stringify({
+        sections: [
+          { heading: 'A.', points: points.slice(0, 5) },
+          { heading: 'B', points: [] },
+          { heading: 'C', points: points.slice(5, 10) },
+          { heading: 'D', points: points.slice(10) },
+          { heading: 'E', points: ['Siste.'] },
+        ],
+      }),
+    );
+    expect(answer?.sections.map((s) => s.heading)).toEqual(['A', 'C', 'D', 'E']);
+    expect(answer?.sections.flatMap((s) => s.points)).toEqual([...points, 'Siste.']);
+    expect(parseWeekly('{"sections": []}')).toBeNull();
+    expect(parseWeekly('nothing')).toBeNull();
+  });
+
+  it('asks for every change people notice instead of a number of points', () => {
+    const { system } = weeklyPrompt(changelog().prs);
+    expect(system).toContain(
+      'Ta med hver endring som brukere, virksomheter eller de som drifter genki vil merke',
+    );
+    expect(system).not.toMatch(/(tre|fire|seks|åtte|tolv) (til|punkter)/);
+  });
+
+  it('tells the model to say prepared, not live, when a change only makes something possible', () => {
+    expect(weeklyPrompt(changelog().prs).system).toContain('skriv da at det er klargjort');
+  });
+
+  it('takes the points of a service only under a name it was asked about', () => {
+    const answer = parseWeekly(
+      JSON.stringify({
+        sections: [],
+        services: [
+          { name: 'Kunnskapsassistenten', points: ['Søket er raskere.'] },
+          { name: 'Noe annet', points: ['Oppdiktet.'] },
+        ],
+      }),
+      ['Kunnskapsassistenten'],
+    );
+    expect(answer?.services).toEqual({ Kunnskapsassistenten: ['Søket er raskere.'] });
+  });
+
+  it('reads the services from the configuration and drops entries without a valid repository', () => {
+    expect(
+      servicesOf(
+        'Kunnskapsassistenten=digdir/kunnskapsassistenten, Feil=../x, =a/b,Kudos=digdir/kudos',
+      ),
+    ).toEqual([
+      { name: 'Kunnskapsassistenten', repo: 'digdir/kunnskapsassistenten' },
+      { name: 'Kudos', repo: 'digdir/kudos' },
+    ]);
+    expect(servicesOf('')).toEqual([]);
+  });
+
+  const ka = 'digdir/kunnskapsassistenten';
+  const merged = (number: number, mergedAt: string | null, bot = false) => ({
+    number,
+    title: `KA ${number}`,
+    body: null,
+    html_url: `https://github.com/${ka}/pull/${number}`,
+    merged_at: mergedAt,
+    updated_at: mergedAt ?? '2026-11-12T10:00:00Z',
+    user: { type: bot ? 'Bot' : 'User' },
+  });
+
+  it('collects what a service merged to its default branch that week, without bots, and asks the model once', async () => {
+    const prompts: string[] = [];
+    const collected = await collectWeek({
+      api: fakeApi({
+        [`/repos/${repo}/releases`]: [
+          release('deploy-2026-11-12-0905', '2026-11-12T09:06:00Z', [10]),
+        ],
+        [`/repos/${ka}/pulls?`]: [
+          merged(3, '2026-11-12T10:00:00Z'),
+          merged(4, null),
+          merged(5, '2026-11-11T10:00:00Z', true),
+          merged(2, '2026-11-08T10:00:00Z'),
+          merged(1, '2026-11-01T10:00:00Z'),
+        ],
+        [`/repos/${ka}`]: { default_branch: 'main' },
+        ...pulls,
+      }),
+      repo,
+      now: () => new Date('2026-11-13T12:00:00Z'),
+      services: [{ name: 'Kunnskapsassistenten', repo: ka }],
+      complete: async ({ user }) => {
+        prompts.push(user);
+        return JSON.stringify({
+          sections: [{ heading: 'Portalen', points: ['Portalen har en ny fane.'] }],
+          services: [{ name: 'Kunnskapsassistenten', points: ['Filteret er enklere.'] }],
+        });
+      },
+    });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('Pull requests slått sammen i Kunnskapsassistenten denne uka');
+    expect(collected.services).toEqual([
+      expect.objectContaining({
+        name: 'Kunnskapsassistenten',
+        points: ['Filteret er enklere.'],
+      }),
+    ]);
+    expect(collected.services[0]?.prs.map((p) => p.number)).toEqual([2, 3]);
+  });
+
+  it('shows each service under its own heading after genki', () => {
+    const text =
+      weeklyText(
+        week({
+          sections: [{ heading: '', points: ['genki-punkt.'] }],
+          services: [
+            { name: 'Kunnskapsassistenten', repo: ka, prs: changelog().prs, points: ['KA-punkt.'] },
+            { name: 'Kudos', repo: 'digdir/kudos', prs: changelog().prs, points: null },
+          ],
+        }),
+      ) ?? '';
+    expect(text).toContain(
+      '• genki-punkt.\n\n*Kunnskapsassistenten*\n• KA-punkt.\n\n*Kudos*\nKudos fikk 2 endringer denne uka.',
+    );
+  });
+
+  it('posts a service week even when genki had no deploy', () => {
+    const text = weeklyText(
+      week({
+        prs: [],
+        services: [
+          { name: 'Kunnskapsassistenten', repo: ka, prs: changelog().prs, points: ['KA-punkt.'] },
+        ],
+      }),
+    );
+    expect(text).toContain('genki-test fikk ingen nye endringer denne uka.');
+    expect(text).toContain('• KA-punkt.');
+  });
+
+  it('drops whole points from the end to stay within the Slack message limit', () => {
+    const point = (i: number) => `Punkt ${i} ${'x'.repeat(220)}.`;
+    const points = Array.from({ length: 200 }, (_, i) => point(i));
+    const text =
+      weeklyText(
+        week({
+          sections: [{ heading: 'Alt', points }],
+          services: [
+            { name: 'Kunnskapsassistenten', repo: ka, prs: changelog().prs, points: ['KA-punkt.'] },
+          ],
+        }),
+      ) ?? '';
+    expect(text.length).toBeLessThanOrEqual(40000);
+    expect(text).not.toContain('Kunnskapsassistenten');
+    expect(text).toContain(`• ${point(0)}`);
+    expect(
+      text
+        .split('\n')
+        .filter((l) => l.startsWith('• '))
+        .every((l) => l.endsWith('.')),
+    ).toBe(true);
+    expect(text.endsWith('|Alle endringer på GitHub>')).toBe(true);
+  });
+
+  describe('the model call', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('leaves room for the model to think before the answer', async () => {
+      let sent: { max_tokens?: number } = {};
+      vi.stubGlobal('fetch', async (_url: string, init: { body: string }) => {
+        sent = JSON.parse(init.body) as { max_tokens?: number };
+        return new Response(JSON.stringify({ content: [{ type: 'text', text: '{}' }] }));
+      });
+      await foundryComplete('res', 'model', () => 'token')({ system: '', user: '' });
+      expect(sent.max_tokens).toBeGreaterThanOrEqual(16000);
+    });
+  });
+
+  it('never cuts a point in the middle of a sentence', () => {
+    const first = `${'Første setning er lang nok'.padEnd(150, ' x')}.`;
+    const second = `Andre setning ${'y'.repeat(120)}.`;
+    const sections = parseWeekly(
+      JSON.stringify({
+        sections: [{ heading: '', points: [`${first} ${second}`, 'z'.repeat(400)] }],
+      }),
+    );
+    expect(sections?.sections).toEqual([{ heading: '', points: [first] }]);
   });
 });
 
@@ -512,7 +778,7 @@ describe('untrusted text', () => {
     expect(text).not.toMatch(/[<>]/);
   });
 
-  it('is escaped in the weekly message, from titles and from the model', () => {
+  it('is escaped in the weekly message from the model', () => {
     const text =
       weeklyText({
         repo,
@@ -529,7 +795,8 @@ describe('untrusted text', () => {
           },
         ],
         more: 0,
-        delivered: ['<!channel> <@U123>'],
+        sections: [{ heading: '<!here>', points: ['<!channel> <@U123> @types/node'] }],
+        services: [],
       }) ?? '';
     expect(text).not.toContain('<!');
     expect(text).not.toContain('<@');
@@ -558,47 +825,6 @@ describe('untrusted text', () => {
     expect(body).toContain('\\[se her\\](https://example.com)');
     expect(body).toContain('!\\[x\\](https://e.com/a.png)');
     expect(body).toContain('\\\\\\[x\\]');
-  });
-
-  it('prints no area heading without items after the 50 pull request cap', () => {
-    const pr = (number: number, area: Pr['area']): Pr => ({
-      number,
-      title: `PR ${number}`,
-      url: `https://github.com/digdir/genki/pull/${number}`,
-      body: '',
-      area,
-    });
-    const prs = [
-      ...Array.from({ length: 25 }, (_, i) => pr(i + 1, 'security')),
-      ...Array.from({ length: 25 }, (_, i) => pr(i + 100, 'portal')),
-      ...Array.from({ length: 5 }, (_, i) => pr(i + 200, 'ci')),
-    ];
-    const text =
-      weeklyText({
-        repo,
-        from: '2026-11-06T12:00:00Z',
-        to: '2026-11-13T12:00:00Z',
-        releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
-        prs,
-        more: 0,
-        delivered: null,
-      }) ?? '';
-    expect(text).not.toContain('*CI og verktøy*');
-    expect(text).toContain('… og 5 til.');
-  });
-
-  it('counts pull requests beyond the collection limit in the weekly message', () => {
-    const text =
-      weeklyText({
-        repo,
-        from: '2026-11-06T12:00:00Z',
-        to: '2026-11-13T12:00:00Z',
-        releases: [{ tag: 'deploy-2026-11-12-0905', url: '' }],
-        prs: changelog().prs,
-        more: 7,
-        delivered: null,
-      }) ?? '';
-    expect(text).toContain('… og 7 til.');
   });
 
   it('is escaped in linear time on a long adversarial title', () => {
@@ -665,47 +891,116 @@ describe('posting to Slack', () => {
   });
 });
 
-describe('the smoke alert', () => {
-  const bundle = (outcome: string) => ({
-    report: {
-      sha: head,
-      outcome,
-      checks: [
-        { id: 'model:a', outcome: 'pass' },
-        { id: 'screen:portal/home', outcome: outcome === 'fail' ? 'fail' : 'pass' },
-      ],
-    },
-  });
-  const run = 'https://github.com/digdir/genki/actions/runs/7';
+describe('the weekly summary once a week', () => {
+  const runs = (list: { id: number; created_at: string }[], posted: number[]) => {
+    const api = (async (path: string) => {
+      if (path.includes('/workflows/weekly-summary.yml/runs'))
+        return { status: 200, body: { workflow_runs: list }, text: '' };
+      const id = Number(/\/runs\/(\d+)\/artifacts/.exec(path)?.[1]);
+      const artifacts = posted.includes(id) ? [{ name: 'weekly-posted', expired: false }] : [];
+      return { status: 200, body: { artifacts }, text: '' };
+    }) as Api;
+    return api;
+  };
+  const at = () => new Date('2026-11-13T12:05:00Z');
+  const decide = (api: Api, schedule = '0 12 * * 5') =>
+    weeklyDecision({ schedule, now: at, api, repo, runId: 3 });
 
-  it('posts the failing checks and the run when the smoke test is red', () => {
-    const text = smokeAlertText(smokeOutcomeOf(bundle('fail'), head, run)) ?? '';
-    expect(text).toContain(`Røyktesten av \`${head.slice(0, 8)}\` på genki-test feilet`);
-    expect(text).toContain('• `screen:portal/home`');
-    expect(text).not.toContain('model:a');
-    expect(text).toContain(`<${run}|kjøring>`);
-  });
-
-  it('posts nothing when the smoke test is green or only partly run', () => {
-    expect(smokeAlertText(smokeOutcomeOf(bundle('pass'), head, run))).toBeNull();
-    expect(smokeAlertText(smokeOutcomeOf(bundle('partial'), head, run))).toBeNull();
+  it('skips a second post in the same week', async () => {
+    const api = runs([{ id: 2, created_at: '2026-11-13T10:00:00Z' }], [2]);
+    expect((await decide(api)).due).toBe(false);
+    expect((await decide(api, '')).due).toBe(false);
   });
 
-  it('posts a failure when the smoke job left no result', () => {
-    expect(smokeAlertText(smokeOutcomeOf(undefined, head, run))).toContain(
-      'Jobben stoppet før den skrev et resultat',
+  it('posts when the earlier run of the week did not post', async () => {
+    expect((await decide(runs([{ id: 2, created_at: '2026-11-13T10:00:00Z' }], []))).due).toBe(
+      true,
     );
   });
 
-  it('escapes a check name that carries a mention', () => {
-    const text =
-      smokeAlertText(
-        smokeOutcomeOf(
-          { report: { outcome: 'fail', checks: [{ id: 'x<!channel>`', outcome: 'fail' }] } },
-          head,
-          run,
-        ),
-      ) ?? '';
-    expect(text).toContain("• `x&lt;!channel&gt;'`");
+  it('ignores a post from another week and the run itself', async () => {
+    const api = runs(
+      [
+        { id: 1, created_at: '2026-11-06T12:00:00Z' },
+        { id: 3, created_at: '2026-11-13T12:00:00Z' },
+      ],
+      [1, 3],
+    );
+    expect((await decide(api)).due).toBe(true);
+  });
+
+  it('does not look at earlier runs when the run is late', async () => {
+    const api = vi.fn(async () => {
+      throw new Error('must not be called');
+    }) as unknown as Api;
+    const late = await weeklyDecision({
+      schedule: '0 12 * * 5',
+      now: () => new Date('2026-11-13T19:17:00Z'),
+      api,
+      repo,
+      runId: 3,
+    });
+    expect(late.due).toBe(false);
+    expect(api).not.toHaveBeenCalled();
+  });
+});
+
+describe('temporary GitHub errors', () => {
+  const answer = (status: number, body: unknown = {}) =>
+    new Response(JSON.stringify(body), { status });
+
+  it('retries a 502 and succeeds on the next answer', async () => {
+    const send = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(answer(502))
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce(answer(200, { ok: true }));
+    const waits: number[] = [];
+    const api = github('t', { send, wait: async (ms) => void waits.push(ms) });
+    expect((await api('/repos/x/y')).body).toEqual({ ok: true });
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([500, 1000]);
+  });
+
+  it('gives up after the last try', async () => {
+    const send = vi.fn<typeof fetch>().mockImplementation(async () => answer(503));
+    const api = github('t', { send, wait: async () => undefined, tries: 3 });
+    await expect(api('/repos/x/y')).rejects.toThrow('503');
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it('never retries a write or an ordinary error', async () => {
+    const send = vi.fn<typeof fetch>().mockImplementation(async () => answer(502));
+    const api = github('t', { send, wait: async () => undefined });
+    await expect(api('/repos/x/y', { method: 'POST', body: {} })).rejects.toThrow('502');
+    expect(send).toHaveBeenCalledTimes(1);
+    send.mockClear().mockImplementation(async () => answer(500));
+    await expect(api('/repos/x/y')).rejects.toThrow('500');
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves out a pull request whose files keep failing and keeps the rest of the week', async () => {
+    const base = fakeApi({
+      [`/repos/${repo}/releases`]: [
+        {
+          tag_name: 'deploy-2026-11-12-0905',
+          html_url: 'https://github.com/x',
+          created_at: '2026-11-12T09:06:00Z',
+          body: '<!-- delivery-prs: 10,11 -->',
+        },
+      ],
+      ...pulls,
+    });
+    const api = (async (path: string, init?: Parameters<Api>[1]) => {
+      if (path.startsWith(`/repos/${repo}/pulls/10/files`)) throw new Error('GitHub answered 502');
+      return base(path, init);
+    }) as Api;
+    const collected = await collectWeek({
+      api,
+      repo,
+      now: () => new Date('2026-11-13T12:00:00Z'),
+      complete: null,
+    });
+    expect(collected.prs.map((p) => p.number)).toEqual([11]);
   });
 });

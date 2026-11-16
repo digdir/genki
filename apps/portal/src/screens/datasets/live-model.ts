@@ -24,6 +24,7 @@ export const skipReasonText: Record<string, PlainKey> = {
   conversion_failed: 'datasets.skipConversion',
   outside_access: 'datasets.skipOutsideAccess',
   too_large: 'datasets.skipTooLarge',
+  unreachable: 'datasets.skipUnreachable',
 };
 
 export const reasonText = (t: T, reason: SkipReason) =>
@@ -184,6 +185,13 @@ export const sizeText = (t: T, f: Format, bytes: number) =>
   bytes >= 1024 * 1024
     ? t('datasets.sizeMb', { value: f.decimal(bytes / 1048576, 1) })
     : t('datasets.sizeKb', { value: f.number(Math.max(1, Math.round(bytes / 1024))) });
+
+/** A refusal's own words: its errors, else its detail, else its title. */
+export const refusalText = (t: T, error: unknown) => {
+  const problem = error instanceof ApiError ? error.problem : undefined;
+  const listed = problem?.errors?.map((e) => e.message).join(' ');
+  return listed || problem?.detail || problem?.title || t('datasets.somethingWrong');
+};
 
 export const failureText = (t: T, error: unknown) => {
   const listed =

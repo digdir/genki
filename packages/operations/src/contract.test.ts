@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { pricedUsage } from '@genai/contracts';
 import { createGate, GateError, type GateRecord } from '@genai/kernel';
 import {
   contractFailures,
@@ -273,5 +274,39 @@ describe('media output in descriptors', () => {
     expect(() => parseDescriptor(mediaYaml('[image/png, image/*]'))).toThrow(
       'names its media types',
     );
+  });
+});
+
+describe('image usage in the bundled image recipes', () => {
+  const editFixtures = fixturesFor(fixtureDir, 'openai/image-edits@1');
+  const usageOf = (name: string) => {
+    const fixture = editFixtures.find((f) => f.name === name);
+    if (!fixture?.usage) throw new Error(`the fixture ${name} is missing`);
+    return fixture.usage;
+  };
+  const prices = {
+    'input-token': 0.00005,
+    'output-token': 0.0001,
+    'image-input-token': 0.0001,
+    'image-output-token': 0.0004,
+  };
+
+  it('an image edit meters image tokens apart from text tokens', () => {
+    expect(usageOf('one-edit')).toEqual({
+      inputTokens: 10,
+      requests: 1,
+      units: { 'image-input-token': 40, 'image-output-token': 50 },
+    });
+  });
+
+  it('an image edit prices image tokens at their own unit prices', () => {
+    expect(pricedUsage(usageOf('output-token-details'), prices).costMicroNok).toBe(
+      Math.round((10 * 0.00005 + 6 * 0.0001 + 40 * 0.0001 + 64 * 0.0004) * 1_000_000),
+    );
+  });
+
+  it('an image edit stays unpriced while its image tokens have no price', () => {
+    const textOnly = { 'input-token': 0.00005, 'output-token': 0.0001 };
+    expect(pricedUsage(usageOf('one-edit'), textOnly).costMicroNok).toBeUndefined();
   });
 });

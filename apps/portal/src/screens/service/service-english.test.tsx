@@ -45,6 +45,16 @@ describe('service pages in English', () => {
     );
   });
 
+  it('describes an empty text the definition requires as required, as it does a missing one', () => {
+    const t = translator('en');
+    expect(
+      describeProblem(
+        { path: 'spec.purpose', message: 'Too small: expected string to have >=1 characters' },
+        t,
+      ).message,
+    ).toBe('This field is required.');
+  });
+
   it('lists frontends and the registration form in English', async () => {
     render(
       inEnglish(

@@ -13,7 +13,7 @@ description: An eval run invokes the service under test like any caller (ADR 000
   labels.
 responsibilities:
   - Versioned test sets with locked splits
-  - Deterministic and model-based evaluators
+  - Deterministic and model-based evaluators, answering at once or later (evaluator@2)
   - Publishing gates and feedback
 files:
   - packages/eval/src/runner.ts

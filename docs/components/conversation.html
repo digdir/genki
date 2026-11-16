@@ -145,6 +145,11 @@
                 fikk ikke noe svar» with «Generer på nytt», as Kunnskapsassistenten draws a failed
                 turn after a reload. <code>pending</code> holds that back while an answer to the
                 last question is on its way and the app has no turn for it yet.
+                <code>onFetchAgain</code> is for an answer to the last question that may still come
+                where the app cannot follow it, as after a reload while the service answers: in
+                place of the failure, «Svaret kan fortsatt være på vei. Hent det på nytt om litt.»
+                with «Hent på nytt», which calls it to read the thread again rather than ask again.
+                When the answer comes in that place, focus goes to it, as after «Generer på nytt».
               </li>
               <li>
                 <code>onOpenCitation</code>, <code>onOpenDocument</code>,
@@ -160,7 +165,9 @@
                 through one polite region: «Henter svar.», each block once it is finished, then
                 «Svaret er ferdig.», with the no-sources warning when there are none, «Fant ingen
                 utdrag om dette i dokumentene.» or «Genereringen ble avbrutt.», and «… trenger en
-                avklaring.» for a question back. A thread read back says nothing.
+                avklaring.» for a question back. A thread read back says nothing. The region goes
+                quiet when the answer fails, since its alert says why, and when the answer leaves
+                the conversation unended, as when the reader opens another thread.
               </li>
               <li>
                 <code>now</code>: the moment an answer's «i dag» and «i går» are counted from.
@@ -172,9 +179,9 @@
                 answer. Without <code>actions</code>, the row holds the time alone.
               </li>
               <li>
-                <code>search</code>, <code>sourcesUsed</code>, <code>closingQuestion</code>,
-                <code>assistantName</code>, <code>href</code>, <code>citationId</code> and
-                <code>headingLevel</code>.
+                <code>search</code>, <code>sourcesUsed</code>, <code>documentFootnotes</code>,
+                <code>closingQuestion</code>, <code>assistantName</code>, <code>href</code>,
+                <code>citationId</code> and <code>headingLevel</code>.
               </li>
               <li>
                 <code>questionColor</code>, <code>answerColor</code> and <code>color</code> set
@@ -188,6 +195,10 @@
                 small strong line over what the <code>header</code> puts there, and the answer with
                 no card (<code>Answer</code>'s <code>plain</code>). The line is for the eye; the
                 answer's own «… svarte:» tells a screen reader. <code>card</code>, the default.
+              </li>
+              <li>
+                <code>answerLabel</code>: <code>false</code> leaves out that line over a
+                <code>plain</code> answer, as the newer dev boards draw it. On by default.
               </li>
             </ul>
             <h2>Related</h2>

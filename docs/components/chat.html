@@ -115,7 +115,9 @@
                 <code>Composer</code>: <code>value</code>, <code>onChange</code> and
                 <code>onSubmit</code> with the question, which every way of sending goes through:
                 Enter, the send button and a follow-up. <code>working</code> holds sending, and with
-                <code>onCancel</code> the send button becomes «Avbryt».
+                <code>onCancel</code> the send button becomes «Avbryt». With nothing to send, or
+                while working, the send button is <code>aria-disabled</code> and stays in the tab
+                order.
               </li>
               <li>
                 <code>attachments</code>: the files as the host tracks them, in <code>items</code>,
@@ -179,6 +181,10 @@
             <h2>Related</h2>
             <ul>
               <li><a href="conversation.html">Conversation</a>: the turns, built as a block</li>
+              <li>
+                <a href="welcome.html">Welcome</a>: the greeting and the suggestions, on a page of
+                their own
+              </li>
               <li><a href="threads.html">Threads</a>: the selected thread is shown in the chat</li>
               <li><a href="approach.html">Approach</a>: the plan before and during an answer</li>
               <li>

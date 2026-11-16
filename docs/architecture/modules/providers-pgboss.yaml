@@ -20,7 +20,8 @@ description:
 responsibilities:
   - Install, migrate and grant schema pgboss
   - Send, work, schedule, cancel and redrive jobs
-  - Queue counts and dead letters behind platform access
+  - Queue counts and dead letters behind platform access; a job shared by several organisations shows each only its own part
+  - Jobs by key for the knowledge server - add an organisation, count, cancel and hand over under a conversion's lock
   - A run's jobs on one server, for the reconciler
 files:
   - packages/providers-pgboss/src/index.ts

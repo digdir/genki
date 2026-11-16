@@ -29,6 +29,7 @@ import {
   knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  managedIdentityTokenSource,
   PostgresDefinitionStore,
   PostgresJobRuns,
   postgresSourceFromEnv,
@@ -39,7 +40,7 @@ import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
-import { evalSlotLimitsFromEnv } from './eval-slots.js';
+import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
@@ -56,6 +57,7 @@ import {
   processorRecordCheckOf,
   ownedByPlatformTenant,
   platformTenantFrom,
+  keepRunningOnRejection,
 } from '@genai/composition';
 import { createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
@@ -82,8 +84,14 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
-import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
+import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import {
+  bootProblems,
+  devModeWarning,
+  isDevMode,
+  knowledgeServerProblems,
+  tracesContent,
+} from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
@@ -126,6 +134,7 @@ const configDir = process.env.CONFIG_DIR ?? join(import.meta.dirname, '..', 'con
 const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-genai-platform';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
+keepRunningOnRejection(log);
 
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
 const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
@@ -323,7 +332,7 @@ const traces = process.env.TRACES_ENDPOINT
               secretKey: 'secret://env/langfuse-secret-key',
             }
           : { kind: 'none' },
-        content: process.env.TRACES_CONTENT === 'true',
+        content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
       { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-api' },
@@ -332,7 +341,7 @@ const traces = process.env.TRACES_ENDPOINT
 const traceResidency = residencies.includes(process.env.TRACES_RESIDENCY as Residency)
   ? (process.env.TRACES_RESIDENCY as Residency)
   : 'global';
-log('traces', { enabled: Boolean(traces), content: process.env.TRACES_CONTENT === 'true' });
+log('traces', { enabled: Boolean(traces), content: tracesContent(process.env) });
 
 const catalogs = {
   models: loadCatalog(configDir, 'models.yaml', 'models'),
@@ -405,7 +414,7 @@ const seedList = (file: string) => {
   return raw.items ?? [];
 };
 
-const documentConverter = documentConverterFrom(process.env, secrets);
+const documentConverter = documentConverterFrom(process.env, secrets, log);
 const phraseArchive = phraseArchiveFrom(process.env, log);
 log('document converter', { converter: process.env.DOCUMENT_CONVERTER ?? 'local' });
 
@@ -441,6 +450,15 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const platform = await createPlatform({
   platformTenant,
+  federatedTokens: federatedAppTokens({
+    assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+  }),
+  appVersion: version,
+  tracing: {
+    ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
+    instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',
+    devMode: isDevMode(process.env),
+  },
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
   processorRecords,
@@ -450,6 +468,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
+  ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
   ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock
@@ -476,7 +495,7 @@ const platform = await createPlatform({
     traces && process.env.TRACES_ENDPOINT
       ? {
           endpoint: process.env.TRACES_ENDPOINT.split('?')[0] ?? '',
-          content: process.env.TRACES_CONTENT === 'true',
+          content: tracesContent(process.env),
           residency: traceResidency,
           stats: traces.stats(),
         }
@@ -550,6 +569,7 @@ const platform = await createPlatform({
         connections: db.connections,
         evalStores: db.eval,
         labels: db.labels,
+        sinkLabels: db.sinkLabels,
       }
     : {}),
   policy: allowWorker(
@@ -741,3 +761,20 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
+
+// A deploy stops this instance: start no new test-set case, let the ones running finish, then go.
+const shutdownGraceMs = shutdownGraceFromEnv(process.env);
+let stopping = false;
+const stop = (signal: string) => {
+  if (stopping) process.exit(1);
+  stopping = true;
+  log('api stopping', { signal, casesInFlight: platform.evalSlots.inFlight(), shutdownGraceMs });
+  const deadline = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs).unref());
+  void Promise.race([platform.evalSlots.drain(), deadline]).finally(() => {
+    log('api stopped', { casesInFlight: platform.evalSlots.inFlight() });
+    server.close();
+    process.exit(0);
+  });
+};
+process.on('SIGTERM', () => stop('SIGTERM'));
+process.on('SIGINT', () => stop('SIGINT'));

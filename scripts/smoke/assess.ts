@@ -131,6 +131,7 @@ export const tiersToRun = (
   wanted: WantedTiers,
   runsToday: number | undefined,
   maxRunsPerDay: number,
+  capped = true,
 ): { tiers: Tier[]; note?: string } => {
   const all: Tier[] =
     wanted === 'free'
@@ -138,6 +139,7 @@ export const tiersToRun = (
       : wanted === 'cheap'
         ? ['free', 'cheap']
         : ['free', 'cheap', 'core'];
+  if (!capped) return { tiers: all };
   if (runsToday === undefined)
     return wanted === 'free'
       ? { tiers: all }
@@ -397,6 +399,29 @@ export const detectionsOf = (timeline: Record<string, unknown>): string[] =>
       .flatMap((b) => list(b.items).map(String)),
   );
 
+const searchLabels = ['Search', 'Søk'];
+
+const searchedQueriesOf = (timeline: Record<string, unknown>): string[] =>
+  list(timeline.steps).flatMap((step) =>
+    list(record(step).blocks)
+      .map(record)
+      .filter((b) => searchLabels.includes(String(b.label)))
+      .flatMap((b) => (b.kind === 'quote' ? [String(b.text)] : list(b.items).map(String))),
+  );
+
+const detectedValuesOf = (tag: string) =>
+  tag.slice(tag.indexOf(': ') + 2, tag.lastIndexOf(', ')).split(', ');
+
+const onlyInModelQueries = (tag: string, question: string, queries: string[]) => {
+  const lower = (text: string) => text.toLocaleLowerCase('nb');
+  return detectedValuesOf(tag).every(
+    (value) =>
+      value !== '' &&
+      !lower(question).includes(lower(value)) &&
+      queries.some((q) => lower(q).includes(lower(value))),
+  );
+};
+
 const providerLabel = /^(The provider answered|Leverandøren svarte) \d{3}/;
 
 export const providerBlocksOf = (timeline: Record<string, unknown>): string[] =>
@@ -409,7 +434,7 @@ export const providerBlocksOf = (timeline: Record<string, unknown>): string[] =>
 
 export const assessTimeline = (
   result: HttpResult,
-  expect: { detected?: string[]; tokens: boolean; failed?: boolean },
+  expect: { detected?: string[]; question?: string; tokens: boolean; failed?: boolean },
 ): Verdict & { unavailable?: boolean } => {
   if ([401, 403].includes(result.status))
     return {
@@ -436,8 +461,18 @@ export const assessTimeline = (
   if (expect.tokens && list(record(timeline.stats).byModel).length === 0)
     return { ok: false, detail: 'no token stats per model on the timeline' };
   const found = detectionsOf(timeline);
-  if (expect.detected?.length === 0 && found.length)
-    return { ok: false, detail: `unexpected detection ${clip(found.join('; '))}`, retry: true };
+  const fromQuestion =
+    expect.question === undefined
+      ? found
+      : found.filter(
+          (tag) => !onlyInModelQueries(tag, expect.question ?? '', searchedQueriesOf(timeline)),
+        );
+  if (expect.detected?.length === 0 && fromQuestion.length)
+    return {
+      ok: false,
+      detail: `unexpected detection ${clip(fromQuestion.join('; '))}`,
+      retry: true,
+    };
   const missing = (expect.detected ?? []).filter((v) => !found.some((f) => f.includes(v)));
   if (missing.length)
     return { ok: false, detail: `not detected: ${missing.join(', ')}`, retry: true };
@@ -530,7 +565,7 @@ export interface ScreenObservation {
   app: 'portal' | 'console';
   path: string;
   status: number;
-  api: { path: string; status: number; problem?: string }[];
+  api: { path: string; status: number; problem?: string; why?: string }[];
   pageErrors: string[];
   alerts: string[];
   heading: boolean;
@@ -571,7 +606,11 @@ export const assessPlaygroundScreen = (
   plan: Pick<Plan, 'unsafePlaygroundText'>,
 ): Verdict => {
   const runs = o.api.filter((a) => a.path.includes('/playground/runs'));
-  if (runs.length === 0) return { ok: false, detail: 'no playground run was sent' };
+  if (runs.length === 0)
+    return {
+      ok: false,
+      detail: `no playground run was sent${o.pageErrors[0] ? `: ${clip(o.pageErrors[0], 120)}` : ''}`,
+    };
   const refused = runs.find((r) => r.status >= 400);
   const timeoutText = firstOf(o.text, plan.unsafePlaygroundText);
   if (refused && refused.status < 500 && timeoutText)
@@ -579,7 +618,17 @@ export const assessPlaygroundScreen = (
       ok: false,
       detail: `the API answered ${refused.status} and the page says "${clip(timeoutText, 60)}"`,
     };
-  if (refused) return { ok: false, detail: `the playground run answered ${refused.status}` };
+  if (refused)
+    return {
+      ok: false,
+      detail: [
+        `the playground run answered ${refused.status}`,
+        refused.problem,
+        refused.why && clip(refused.why, 120),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    };
   if (o.pageErrors.length)
     return { ok: false, detail: `page error ${clip(o.pageErrors[0] ?? '', 120)}` };
   if (o.alerts.length) return { ok: false, detail: `error shown: ${clip(o.alerts[0] ?? '', 120)}` };
@@ -634,6 +683,9 @@ export class Budget {
     this.spent += Math.max(estimate, measured ?? 0);
   }
 }
+
+export const modelChecksRan = (checks: CheckResult[]) =>
+  checks.some((c) => c.tier !== 'free' && c.outcome !== 'skip');
 
 export const overallOutcome = (checks: CheckResult[], tiers: Tier[]): SmokeReport['outcome'] => {
   if (checks.some((c) => c.outcome === 'fail')) return 'fail';

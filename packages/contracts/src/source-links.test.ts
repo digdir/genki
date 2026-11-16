@@ -54,4 +54,27 @@ describe('source headings', () => {
     ).toBe('9. Budsjettmessige forutsetninger › 8.2.1 Rapportering');
     expect(sourceBreadcrumb([])).toBeUndefined();
   });
+
+  it("reads Marker's markup in a heading in linear time on long input", () => {
+    const quickly = (run: () => unknown) => {
+      const started = performance.now();
+      run();
+      return performance.now() - started;
+    };
+    const long = [
+      '<span id="page-'.repeat(100_000),
+      `<span id="page-${'1'.repeat(100_000)}`,
+      '[x](#page-1'.repeat(100_000),
+      `${'['.repeat(100_000)}x](#page-1-0)`,
+      `[${'x'.repeat(100_000)}`,
+      '<sup>1'.repeat(100_000),
+      `<sup>${'1'.repeat(100_000)}`,
+      '<u'.repeat(100_000),
+      '[[1'.repeat(100_000),
+      `[\\[${'1'.repeat(100_000)}\\]](#page-`,
+    ];
+
+    for (const level of long) expect(quickly(() => sourceBreadcrumb([level]))).toBeLessThan(1000);
+    expect(sourceBreadcrumb([`${'['.repeat(3)}x](#page-1-0)`])).toBe('[[x');
+  });
 });

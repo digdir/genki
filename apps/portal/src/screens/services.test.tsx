@@ -126,6 +126,7 @@ describe('builder', () => {
     expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Oversikt', '#/services/rapportassistenten'],
       ['Oppsett', '#/services/rapportassistenten/setup'],
+      ['Grensesnitt', '#/services/rapportassistenten/interface'],
       ['Test', '#/services/rapportassistenten/test'],
       ['Kanaler og frontend', '#/services/rapportassistenten/channels'],
       ['Innstillinger', '#/services/rapportassistenten/settings'],

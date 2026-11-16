@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs, parseEnv } from 'node:util';
 
-const host = process.env.LANGFUSE_LOCAL_URL ?? 'http://localhost:34620';
+// 127.0.0.1, not localhost: the API's fetch tries ::1 for localhost, where Langfuse does not listen.
+const host = process.env.LANGFUSE_LOCAL_URL ?? 'http://127.0.0.1:34620';
 const user = { email: 'genki@example.com', password: 'genki-local-only' };
 const llmProvider = 'foundry-claude';
 

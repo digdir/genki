@@ -496,6 +496,33 @@ export interface QualityOverview {
 
 export type Verdict = 'Ja' | 'Delvis' | 'Nei';
 
+/** The pending labels of one trace connection and judge, brought back from Langfuse. */
+export interface SinkLabelBatch {
+  tenant: string;
+  connection: string;
+  judge: string;
+  name: string;
+  labels: {
+    id: string;
+    revision: string;
+    run: string;
+    case: string;
+    repeat: number;
+    humanLabel: string;
+    judgeLabel?: string;
+    labeller: string;
+  }[];
+  paired: number;
+  alike: number;
+  unpaired: number;
+  labellers: number;
+}
+
+export interface SinkLabels {
+  connections: { tenant: string; connection: string; labels: boolean }[];
+  batches: SinkLabelBatch[];
+}
+
 export interface LabelItem {
   item: string;
   judge: string;
@@ -730,6 +757,7 @@ export interface TenantDefinition {
   publishedBy: string | null;
   publishedByName?: string;
   state?: 'active' | 'paused' | 'archived';
+  internal?: boolean;
 }
 
 export interface VersionSummary {
@@ -894,6 +922,8 @@ export interface EngineSwitch {
     verdict: 'same' | 'better' | 'worse';
   };
   comparisonNote?: string;
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
+  admissionRunsOutAt?: string;
 }
 
 export interface MethodEstimate {
@@ -1074,7 +1104,9 @@ export interface DiscoveryRule {
 
 export interface ModelEndpointInput {
   baseURL: string;
-  auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
+  auth:
+    | { kind: 'api-key' | 'bearer'; secret: string; header?: string }
+    | { kind: 'federated-app'; clientId: string; tenant: string; scope: string };
   families: Record<string, string>;
   discovery?: DiscoveryRule[];
   settings?: Record<string, string>;

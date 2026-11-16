@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { admitPayload, JobQueueError } from './job-queue.js';
+import { describe, expect, it, vi } from 'vitest';
+import { admitPayload, InMemoryJobQueue, JobQueueError } from './job-queue.js';
 import {
   convertPriority,
+  knowledgeCheckQueue,
   knowledgeIngestQueue,
   knowledgeKeys,
   knowledgePlatformQueues,
@@ -108,7 +109,7 @@ describe('the knowledge queues', () => {
         policy: 'singleton',
         expireInSeconds: 7200,
         heartbeatSeconds: 60,
-        retryLimit: 2,
+        retryLimit: 0,
         retryBackoff: false,
         deadLetter: false,
       },
@@ -129,6 +130,15 @@ describe('the knowledge queues', () => {
         retryLimit: 2,
         retryBackoff: false,
         deadLetter: false,
+      },
+      {
+        name: 'knowledge.seed',
+        policy: 'exclusive',
+        expireInSeconds: 3600,
+        heartbeatSeconds: 60,
+        retryLimit: 2,
+        retryBackoff: true,
+        deadLetter: true,
       },
     ]);
     expect(knowledgeServerQueues(30 * sixHours)[0]?.expireInSeconds).toBe(86400);
@@ -201,6 +211,31 @@ describe('the night window', () => {
     expect(nightWindowEnd('01:00-06:00', new Date('2026-11-04T01:30:00Z'))?.toISOString()).toBe(
       '2026-11-04T05:00:00.000Z',
     );
+  });
+
+  it('an expired knowledge.check is not retried', async () => {
+    vi.useFakeTimers();
+    const queue = new InMemoryJobQueue({ pollMs: 1000 });
+    try {
+      let attempts = 0;
+      await queue.work(knowledgeCheckQueue, async (job) => {
+        attempts += 1;
+        await new Promise((resolve) => job.signal.addEventListener('abort', resolve));
+      });
+      await queue.send(knowledgeCheckQueue, {});
+      await vi.advanceTimersByTimeAsync(1100);
+      expect(attempts).toBe(1);
+      // Past the 2-hour expiry and any retry delay: the next night's check is the retry.
+      await vi.advanceTimersByTimeAsync(3 * 3_600_000);
+      expect(attempts).toBe(1);
+      expect((await queue.counts([knowledgeCheckQueue]))[0]).toMatchObject({
+        failed: 1,
+        queued: 0,
+      });
+    } finally {
+      await queue.stop();
+      vi.useRealTimers();
+    }
   });
 
   it('the nightly checks are scheduled at the window start in Europe/Oslo', () => {

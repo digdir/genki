@@ -7,16 +7,20 @@ import {
   InMemoryEvalRunStore,
   InMemoryFeedbackStore,
   InMemoryLabelStore,
+  InMemorySinkLabelStore,
   InMemoryTestSetStore,
   type CandidateStore,
   type EvalRun,
   type EvalRunStore,
   type FeedbackStore,
   type LabelStore,
+  type SinkLabel,
+  type SinkLabelStore,
   type TestCaseCandidate,
   type TestSet,
   type TestSetStore,
 } from '@genai/eval';
+import { InMemoryTraceDeliveries, type TraceDelivery, type TraceDeliveryStore } from '@genai/jobs';
 import { InMemoryClients, type ClientStore, type StoredClient } from '@genai/identity';
 import { InMemoryConnections, type ConnectionRegistry } from '@genai/providers-mcp-client';
 import { createPostgresStores, LocalKeyWrapper } from '@genai/providers-postgres';
@@ -38,8 +42,10 @@ interface Stores {
   feedback: FeedbackStore;
   candidates: CandidateStore;
   labels: LabelStore;
+  sinkLabels: SinkLabelStore;
   clients: ClientStore;
   configEntries: ConfigEntryStore;
+  traceDeliveries: TraceDeliveryStore;
 }
 
 interface Backend {
@@ -52,6 +58,23 @@ interface Backend {
 const ORG_A = '991825827';
 const ORG_B = '889640782';
 
+const sinkLabelOf = (id: string, over: Partial<SinkLabel> = {}): SinkLabel => ({
+  id,
+  revision: '2026-11-02T10:00:00.000Z',
+  connection: 'lokal',
+  judge: `langfuse:${ORG_A}/lokal/svar_oppfyller_kriteriene`,
+  identity: `langfuse:${ORG_A}/lokal/svar_oppfyller_kriteriene@v1+foundry-claude/claude-sonnet-5`,
+  run: 'kjoring-1',
+  case: 'o1',
+  repeat: 0,
+  humanLabel: 'good',
+  judgeLabel: 'good',
+  labeller: 'pseudonym:0123456789ab',
+  state: 'pending',
+  fetchedAt: '2026-11-02T10:00:00.000Z',
+  ...over,
+});
+
 const memory = (): Backend => {
   const stores: Stores = {
     settings: new InMemorySettingsStore(),
@@ -63,8 +86,10 @@ const memory = (): Backend => {
     feedback: new InMemoryFeedbackStore(),
     candidates: new InMemoryCandidateStore(),
     labels: new InMemoryLabelStore(),
+    sinkLabels: new InMemorySinkLabelStore(),
     clients: new InMemoryClients(),
     configEntries: new InMemoryConfigEntryStore(),
+    traceDeliveries: new InMemoryTraceDeliveries(),
   };
   return { name: 'memory', stores: () => stores, reopen: async () => stores };
 };
@@ -93,8 +118,10 @@ const openPostgres = async (): Promise<Stores> => {
     connections: db.connections,
     ...db.eval,
     labels: db.labels,
+    sinkLabels: db.sinkLabels,
     clients: db.clients,
     configEntries: db.configEntries,
+    traceDeliveries: db.traceDeliveries,
   };
 };
 
@@ -151,6 +178,7 @@ const run = (id: string, testSetId: string, endedAt: string): EvalRun => ({
   results: [],
   metrics: {},
   byTag: {},
+  incomplete: [],
 });
 
 const candidate = (id: string, tenant: string, proposedAt: string): TestCaseCandidate => ({
@@ -303,6 +331,81 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     expect(await reopened.list(ORG_B)).toEqual([]);
   });
 
+  it('reads a test set stored before expected.criteria with its criteria moved there', async () => {
+    const { testSets } = backend().stores();
+    const old = testSet(ORG_A, 'nynorsk', 1);
+    await testSets.put({
+      ...old,
+      spec: {
+        cases: [
+          {
+            ...(old.spec.cases[0] as TestSet['spec']['cases'][number]),
+            type: 'criteria',
+            expected: { sources: [], referenceAnswer: 'Svaret er skrive på nynorsk.' },
+          },
+        ],
+      },
+    });
+
+    const reopened = (await backend().reopen()).testSets;
+    const [read] = (await reopened.get(ORG_A, 'nynorsk'))?.spec.cases ?? [];
+    const [listed] = (await reopened.list(ORG_A))
+      .filter((s) => s.metadata.id === 'nynorsk')
+      .flatMap((s) => s.spec.cases);
+
+    expect(read?.expected).toEqual({
+      sources: [],
+      criteria: { criteria: 'Svaret er skrive på nynorsk.' },
+    });
+    expect(listed?.expected).toEqual(read?.expected);
+  });
+
+  it('keeps each trace sent to a sink until its delete is confirmed, and nothing after, per tenant', async () => {
+    const { traceDeliveries } = backend().stores();
+    const at = '2026-10-29T02:00:00.000Z';
+    await traceDeliveries.record(
+      [
+        { tenant: ORG_A, sink: 'etaten', task: 't1', trace: 'case-1' },
+        { tenant: ORG_A, sink: 'etaten', task: 't2', trace: 'case-2' },
+        { tenant: ORG_B, sink: 'etaten', task: 't3', trace: 'case-3' },
+      ],
+      at,
+    );
+    await traceDeliveries.record(
+      [{ tenant: ORG_A, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      at,
+    );
+
+    expect(await traceDeliveries.markPending(ORG_A, { tasks: ['t1', 't3'] }, at)).toBe(1);
+    const [pending] = await traceDeliveries.pending(10);
+    expect(pending).toMatchObject({
+      tenant: ORG_A,
+      trace: 'case-1',
+      state: 'pending',
+      attempts: 0,
+    });
+    await traceDeliveries.noteJudges(pending as TraceDelivery, ['judge-a', 'judge-b'], at);
+    await traceDeliveries.settle(pending as TraceDelivery, { error: 'HTTP 503' }, at);
+    expect(await traceDeliveries.pending(10)).toEqual([
+      expect.objectContaining({
+        trace: 'case-1',
+        attempts: 1,
+        lastError: 'HTTP 503',
+        judges: ['judge-a', 'judge-b'],
+      }),
+    ]);
+    await traceDeliveries.settle(pending as TraceDelivery, { deleted: true }, at);
+
+    const reopened = (await backend().reopen()).traceDeliveries;
+    expect(await reopened.pending(10)).toEqual([]);
+    expect(await reopened.outstanding(ORG_A, 'etaten')).toBe(1);
+    // A confirmed delete leaves no row: recorded again, the trace is a new delivery.
+    await reopened.record([{ tenant: ORG_A, sink: 'etaten', task: 't1', trace: 'case-1' }], at);
+    expect(await reopened.outstanding(ORG_A, 'etaten')).toBe(2);
+    expect(await reopened.markPending(ORG_B, { sink: 'etaten' }, at)).toBe(1);
+    expect(await reopened.outstanding(ORG_B, 'etaten')).toBe(1);
+  });
+
   it('stores eval runs and filters them newest first', async () => {
     const { runs } = backend().stores();
     await runs.save({
@@ -341,6 +444,36 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
       ['r3'],
     );
     expect(await reopened.list({ tenant: ORG_B })).toEqual([]);
+  });
+
+  it('replaces a run only while it is still as it was read, so a late recovery never overwrites a finished run', async () => {
+    const { runs } = backend().stores();
+    const running = {
+      ...run('r4', 'klarsprak', '2026-10-07T08:00:00.000Z'),
+      status: 'running' as const,
+      owner: 'instans-a',
+      heartbeatAt: '2026-10-07T08:00:00.000Z',
+    };
+    await runs.save({ run: running, tenant: ORG_A, task: 't4' });
+    const read = { status: running.status, heartbeatAt: running.heartbeatAt };
+    await runs.save({
+      run: { ...running, status: 'completed', heartbeatAt: '2026-10-07T08:05:00.000Z' },
+      tenant: ORG_A,
+      task: 't4',
+    });
+
+    const replaced = await runs.replace(
+      { run: { ...running, status: 'interrupted' }, tenant: ORG_A, task: 't4' },
+      read,
+    );
+    const current = await runs.replace(
+      { run: { ...running, status: 'interrupted' }, tenant: ORG_A, task: 't4' },
+      { status: 'completed', heartbeatAt: '2026-10-07T08:05:00.000Z' },
+    );
+
+    expect(replaced).toBe(false);
+    expect(current).toBe(true);
+    expect((await (await backend().reopen()).runs.get('r4'))?.run.status).toBe('interrupted');
   });
 
   it('appends feedback and filters it by task and rating', async () => {
@@ -438,6 +571,38 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
 
     expect(await reopened.list('klarsprak')).toEqual([label('klarsprak')]);
     expect(await reopened.list()).toHaveLength(2);
+  });
+
+  it('keeps each state a sink label goes through, lists the latest per tenant, and keeps one pseudonym key per tenant', async () => {
+    const { sinkLabels } = backend().stores();
+    const other = { connection: 'annen', judge: `langfuse:${ORG_A}/annen/svar_er_kort` };
+    // The same annotation seen through a second connection to the same project is its own label.
+    await sinkLabels.save(ORG_A, [
+      sinkLabelOf('m1'),
+      sinkLabelOf('m2', other),
+      sinkLabelOf('m1', { ...other, state: 'rejected' }),
+    ]);
+    await sinkLabels.save(ORG_A, [
+      sinkLabelOf('m1', { state: 'accepted' }),
+      sinkLabelOf('m1', { revision: '2026-11-02T11:00:00.000Z', humanLabel: 'bad' }),
+    ]);
+    const key = await sinkLabels.pseudonymKey(ORG_A);
+
+    const reopened = (await backend().reopen()).sinkLabels;
+
+    expect(await reopened.list(ORG_A, { connection: 'lokal' })).toEqual([
+      sinkLabelOf('m1', { state: 'accepted' }),
+      sinkLabelOf('m1', { revision: '2026-11-02T11:00:00.000Z', humanLabel: 'bad' }),
+    ]);
+    const byId = (labels: SinkLabel[]) => labels.sort((x, y) => x.id.localeCompare(y.id));
+    expect(byId(await reopened.list(ORG_A, { judge: other.judge }))).toEqual([
+      sinkLabelOf('m1', { ...other, state: 'rejected' }),
+      sinkLabelOf('m2', other),
+    ]);
+    expect(await reopened.list(ORG_B)).toEqual([]);
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(await reopened.pseudonymKey(ORG_A)).toBe(key);
+    expect(await reopened.pseudonymKey(ORG_B)).not.toBe(key);
   });
 });
 
@@ -611,11 +776,17 @@ describe('postgres admin stores at rest', () => {
 
   it('refuses to change or delete audit entries, feedback, labels and default versions', async () => {
     const raw = postgresBackend.raw as NonNullable<Backend['raw']>;
+    await postgresBackend.stores().sinkLabels.save(ORG_A, [sinkLabelOf('merknad-1')]);
+    await postgresBackend.stores().sinkLabels.pseudonymKey(ORG_A);
     for (const sql of [
       `update admin_audit set reason = 'endret'`,
       `delete from admin_audit`,
       `delete from eval_feedback`,
       `update judge_labels set judge = 'x'`,
+      `update sink_labels set judge = 'x'`,
+      `delete from sink_labels`,
+      `update sink_label_keys set key = 'x'`,
+      `delete from sink_label_keys`,
       `delete from setting_default_versions`,
       `delete from eval_test_sets`,
       `delete from config_entries`,

@@ -20,3 +20,4 @@ export {
 } from './partitions.js';
 export { knowledgeRecordsOf } from './knowledge-records.js';
 export * from './heavy-work.js';
+export * from './knowledge-conversions.js';

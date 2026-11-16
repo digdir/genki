@@ -1,0 +1,44 @@
+name: rollback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: move users to the previous API revision
+        run: |
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
+          previous=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query "[?label=='previous'].revisionName | [0]" -o tsv)
+          if [ -z "$previous" ]; then echo "No API revision is labelled previous, so there is nothing to roll back to."; exit 1; fi
+          az containerapp revision label swap -g "$rg" -n "$app" --source previous --target live
+          traffic=$(az containerapp ingress traffic show -g "$rg" -n "$app" -o table)
+          echo "$traffic"
+          {
+            echo "### API rolled back to \`$previous\`"
+            echo
+            echo '```'
+            echo "$traffic"
+            echo '```'
+            echo
+            echo "Running this workflow again moves users forward again."
+          } >> "$GITHUB_STEP_SUMMARY"

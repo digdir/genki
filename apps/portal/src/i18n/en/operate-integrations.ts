@@ -72,7 +72,6 @@ export const integrationsArea = {
     addTrigger: 'Connect a folder or queue',
     triggerSetupInfo:
       'Triggers are set up in the service. How folders and queues are connected here is not decided yet.',
-    tracingNotAvailable: 'Tracing to your own tool cannot be set up from here yet.',
     loadingTriggers: 'Loading triggers',
     noSystems: 'No systems are connected',
     noSystemsText:
@@ -668,5 +667,112 @@ export const integrationsArea = {
     outputValue: 'Answer with sources',
     authNow: 'API key for now. Maskinporten, scope',
     undecided: 'Not decided',
+  },
+  integLangfuse: {
+    loading: 'Loading Langfuse connections',
+    heading: 'Langfuse',
+    intro:
+      "Connect a service to your organisation's Langfuse. The service's test runs go there as experiments, and genki deletes what it sent when it deletes its own copy. Holdout test cases are never sent.",
+    none: 'No services are connected to Langfuse.',
+    services: 'Services: {services}',
+    residencyByDigdir: 'Residency: {residency}, set by Digdir',
+    residencyByYou: 'Residency: {residency}, declared by you',
+    inNorway: 'in Norway',
+    inEu: 'in the EU/EEA',
+    global: 'not settled (global)',
+    contentOn: 'Receives text',
+    contentOff: 'Receives metadata only',
+    labelsOn: 'Brings labels back',
+    datasets: 'Datasets in Langfuse',
+    datasetsHelp:
+      "One dataset per test set in the services the connection covers. Each test run sent to Langfuse is linked to its test set's dataset. To have a judge judge one test set, pick the dataset in the judge's filter in Langfuse, together with isExperimentItemRootSpan = true.",
+    check: 'Check the connection',
+    checkedOk:
+      'The secret key opens the project {project}. Langfuse does not check the public key, so make sure it belongs to the same project.',
+    edit: 'Edit',
+    add: 'Connect to Langfuse',
+    nameTaken: 'A connection with the id {id} exists. Choose another, or edit that one.',
+    addHeading: 'New Langfuse connection',
+    editHeading: 'Edit the Langfuse connection',
+    id: 'Connection id',
+    idHelp: 'Small letters, digits and hyphens. It cannot be changed later.',
+    idInvalid:
+      'Use only small letters, digits and hyphens, starting with a letter or digit, for example agency-langfuse.',
+    host: 'Address',
+    hostHelp: 'For example https://langfuse.agency.no. HTTPS only.',
+    hostInvalid: 'Write the whole address, for example https://langfuse.agency.no.',
+    publicKey: 'Public key',
+    secret: 'Secret key',
+    secretHelp: 'Stored as a secret that can only be sent to this Langfuse, and never shown again.',
+    secretKeepHelp: 'Leave it empty to keep the stored key. It is stored for this Langfuse only.',
+    secretAgain: 'Enter the secret key again when the address changes, so it is only sent there.',
+    which: 'Langfuse',
+    whichHelp: "Digdir's Langfuse is {host}.",
+    instanceOption: "Digdir's Langfuse",
+    ownOption: 'Your own Langfuse',
+    servicesLabel: 'Services',
+    servicesHelp:
+      'The services that send their test runs here. A service can have only one connection.',
+    coveredBy: 'Connected to {id}',
+    unknownService: '{id} (does not exist)',
+    noServices: 'The organisation has no services yet.',
+    servicesFailed: 'Could not read the services.',
+    residency: 'Residency',
+    residencyHelp: "Where Langfuse stores what it receives, and where its judges' models run.",
+    content: 'Send text',
+    contentHelp:
+      'Questions, answers and what the judges read. Needs a Langfuse that deletes what genki deletes and keeps raw files at most 7 days.',
+    labels: 'Bring labels back from Langfuse as calibration labels',
+    labelsHelp:
+      "What people label in the project comes back as pending labels for its judges. An operator fetches them in the operations console, and they count only once the operator accepts them. Make the score config with the name and type of the judge's evaluator.",
+    declaration:
+      'We confirm that our Langfuse deletes what genki deletes and keeps raw files at most 7 days.',
+    required: 'Fill in the field',
+    save: 'Save',
+    remove: 'Remove the connection',
+    cancel: 'Cancel',
+    saved: 'The connection {id} is saved.',
+    removing: 'Being removed: deleting what was sent',
+    removingFlash:
+      'The connection {id} is removed once everything it received is deleted in Langfuse.',
+    removed: 'The connection {id} is removed.',
+    failed: 'The connection was not saved.',
+    guide: 'How Langfuse judges score the test runs',
+    guideIntro:
+      "A judge in Langfuse can score a service's test runs. genki shows the scores on the run, beside its own metrics.",
+    guideSteps: 'Four steps',
+    guideConnect:
+      "Someone who manages the services connects them to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
+    guideJudge:
+      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Choose Experiments as the target and pick genki/<service-id>/<test-set-id> under Dataset. Langfuse adds isExperimentItemRootSpan = true itself. The judge names its own model, not the project's or the organisation's default model.",
+    guideMapping:
+      'The judge reads the whole question and answer, or a path into them with $, .key and [n]. A text question is at input $.parts[0].body.text, and the answer at output $[0].body.text.',
+    guideAdopt:
+      'Adopt the judge under Building blocks › Catalogue › Judges. It also says there why genki cannot use a judge.',
+    guideRun: 'Run the test set with "Send the run to Langfuse" ticked.',
+    guideLive:
+      'A judge for live traffic in the same project stops the test run if it also matches it. Leave the test runs out with environment none of [genki-test-runs].',
+    guideCopy:
+      'The button beside each dataset below copies its name, to paste into the search under Dataset.',
+    guideWhere: 'Where it shows up',
+    guideInLangfuse: 'In Langfuse',
+    guideInGenki: 'In genki',
+    guideDatasetLangfuse:
+      'One dataset per test set, genki/<service-id>/<test-set-id>, with no items',
+    guideDatasetGenki:
+      "The connection lists the datasets, and the test set shows its dataset's name",
+    guideJudgeLangfuse: 'The judge: an evaluation rule you write',
+    guideJudgeGenki:
+      'A building block under Building blocks › Catalogue › Judges, named after the rule, or refused with the reason',
+    guideExperimentLangfuse:
+      'Each sent run: an experiment on the dataset, named after the test set and its version, such as rapport-kjerne v3',
+    guideExperimentGenki:
+      'The run, with the box ticked, and "Waiting for scores" while the judges work',
+    guideTraceLangfuse:
+      "Each test case: a trace in the environment genki-test-runs, with the judges' scores on it",
+    guideTraceGenki:
+      "The Langfuse scores on the run, apart from genki's metrics, with cost, agreement with labels and a link to the experiment",
+    copyName: 'Copy the name',
+    copyNameOf: 'Copy the name {dataset}',
   },
 } satisfies Translation<typeof source>;

@@ -229,7 +229,7 @@
                   <tr>
                     <td><code>--genai-settings-note-color</code></td>
                     <td><code>--ds-color-neutral-text-subtle</code></td>
-                    <td>the note after the sections, pinned to neutral</td>
+                    <td>the note after the sections or a page's rows, pinned to neutral</td>
                   </tr>
                   <tr>
                     <td><code>--genai-settings-padding-block-end</code></td>
@@ -253,25 +253,32 @@
               a row only for what the app can honour, given as a value and its handler together. A
               choice the app cannot keep is left out, never drawn dead, and a page with nothing to
               choose says «Ingen valg her ennå.». The info box speaks of what the rows do, so it
-              comes with them, and so does the line under «Om deg».
+              comes with them, and so does the line under «Om deg». Each page takes
+              <code>settingsNote</code>, the app's quiet line under the rows, such as where the
+              choices are kept, as <code>Settings</code> ends with its <code>note</code>. It too
+              comes with the rows, so a page with nothing to choose leaves it out.
             </p>
             <ul>
               <li>
                 <code>SettingsMenu</code>: <code>pages</code> (an <code>id</code>, and for an app's
                 own page a <code>title</code> and <code>summary</code>; the block's four,
-                <code>settingsPageIds</code>, have their words), <code>value</code>,
-                <code>onChange</code>, a <code>badge</code> count per page, and «Tilbake til
-                trådene» with <code>backHref</code> and <code>onBack</code>. A named list, not a
-                <code>nav</code>, as <code>SettingsLinks</code>. Each entry is named by its title,
-                with its line as the description.
+                <code>settingsPageIds</code>, have their words; «Generelt» takes its
+                <code>rows</code>, from <code>generalRowsOf</code> on the props it is given, and its
+                line names only those, «Utseende» for the colour scheme alone, or none without
+                them), <code>value</code>, <code>onChange</code>, a <code>badge</code> count per
+                page, and «Tilbake til trådene» with <code>backHref</code> and <code>onBack</code>.
+                A named list, not a <code>nav</code>, as <code>SettingsLinks</code>. Each entry is
+                named by its title, with its line as the description.
               </li>
               <li>
                 <code>SettingsGeneral</code>: <code>colorScheme</code> («Utseende», through
                 <code>ColorSchemeToggle</code> with <code>look="full"</code>),
                 <code>answerLanguage</code>, <code>answerLength</code>, <code>openWith</code> and
                 <code>textSize</code>, each a <code>SettingsChoice</code>: <code>value</code> and
-                <code>onChange</code>. The info box «Gjelder hele tjenesten.» comes with a choice of
-                the answers' language or length.
+                <code>onChange</code>. Its lead says what the rows it draws offer, and no more:
+                «Hvordan tjenesten ser ut.» for the colour scheme alone, none without a row of its
+                own. The info box «Gjelder hele tjenesten.» comes with a choice of the answers'
+                language or length.
               </li>
               <li>
                 <code>SettingsAboutYou</code>: <code>name</code> and <code>organisation</code> from
@@ -296,7 +303,8 @@
               <li>
                 <code>SettingsPage</code> and <code>SettingsRow</code> for an app's own page: the
                 heading (an <code>h1</code> by default), its <code>lead</code>, its
-                <code>notice</code>, and rows under thin lines.
+                <code>notice</code>, rows under thin lines, and the app's <code>note</code> under
+                them.
               </li>
             </ul>
             <div class="table-wrap">

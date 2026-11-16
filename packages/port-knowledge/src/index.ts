@@ -9,3 +9,4 @@ export * from './probe.js';
 export * from './scope.js';
 export * from './schema-labels.js';
 export * from './tombstone.js';
+export * from './conversions.js';

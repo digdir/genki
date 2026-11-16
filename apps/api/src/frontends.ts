@@ -1,3 +1,4 @@
+import { isHiddenService } from './internal-services.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore } from '@genai/definitions';
@@ -311,7 +312,16 @@ export const registerFrontendRoutes = <E extends Env, S extends Schema, B extend
     const g = await guard(c);
     if (g instanceof Response) return g;
     const service = c.req.query('service');
-    const clients = (await deps.clients.list(g.tenant))
+    const listed = await deps.clients.list(g.tenant);
+    const hidden = await Promise.all(
+      listed.map((x) =>
+        typeof x.definition.spec.service === 'string'
+          ? isHiddenService(deps.definitions, g.tenant, x.definition.spec.service)
+          : false,
+      ),
+    );
+    const clients = listed
+      .filter((_, i) => !hidden[i])
       .filter((x) => !service || x.definition.spec.service === service)
       .sort((a, b) => a.definition.metadata.id.localeCompare(b.definition.metadata.id));
     return c.json({

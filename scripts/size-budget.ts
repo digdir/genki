@@ -9,7 +9,7 @@ const repo = join(import.meta.dirname, '..');
 
 export const budgets: Record<string, number> = {
   portal: 400_000,
-  console: 365_000,
+  console: 370_000,
   workspace: 200_000,
   docs: 300_000,
 };

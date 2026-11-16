@@ -43,6 +43,7 @@ export interface ConnectionSpec {
   discovery: DiscoveryRule[];
   authKind?: string;
   secret?: string;
+  app?: { clientId: string; tenant: string; scope: string };
   settings: Record<string, string>;
   keys: Record<string, string>;
 }
@@ -54,7 +55,7 @@ export const connectionSpec = (entry: ConfigEntry): ConnectionSpec => {
     baseURL?: string;
     families?: Record<string, string>;
     discovery?: DiscoveryRule[];
-    auth?: { kind?: string; secret?: string };
+    auth?: { kind?: string; secret?: string; clientId?: string; tenant?: string; scope?: string };
     settings?: Record<string, string>;
     keys?: Record<string, string>;
   };
@@ -64,6 +65,15 @@ export const connectionSpec = (entry: ConfigEntry): ConnectionSpec => {
     discovery: Array.isArray(spec.discovery) ? spec.discovery : [],
     ...(spec.auth?.kind ? { authKind: spec.auth.kind } : {}),
     ...(spec.auth?.secret ? { secret: spec.auth.secret.replace(secretPrefix, '') } : {}),
+    ...(spec.auth?.kind === 'federated-app'
+      ? {
+          app: {
+            clientId: String(spec.auth.clientId ?? ''),
+            tenant: String(spec.auth.tenant ?? ''),
+            scope: String(spec.auth.scope ?? ''),
+          },
+        }
+      : {}),
     settings: spec.settings && typeof spec.settings === 'object' ? spec.settings : {},
     keys: Object.fromEntries(
       Object.entries(spec.keys && typeof spec.keys === 'object' ? spec.keys : {}).map(

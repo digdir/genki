@@ -10,7 +10,15 @@ param tags object = {}
 param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appsImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param doclingImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appVersion string = 'bootstrap'
+@description('The worker\'s APP_VERSION; empty means appVersion.')
+param workerVersion string = ''
+
+@description('API revisions (deploy.yml): the new one\'s suffix, the one users get, and the one before it. Empty live: one revision.')
+param apiRevisionSuffix string = ''
+param apiLiveRevision string = ''
+param apiPreviousRevision string = ''
 
 @description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
 param appEnv object = {}
@@ -96,6 +104,9 @@ param knowledgePostgresSkuName string = 'Standard_D2ds_v5'
 param knowledgePostgresSkuTier string = 'GeneralPurpose'
 param knowledgePostgresStorageSizeGB int = 64
 
+@description('The knowledge disk\'s performance tier, such as P30; empty sends none. See infra/README.md, "Disk tier".')
+param knowledgePostgresPerformanceTier string = ''
+
 @description('The vCores of knowledgePostgresSkuName, for the worker (KNOWLEDGE_VCORES).')
 param knowledgePostgresVCores int = 2
 
@@ -136,8 +147,13 @@ param alertThresholds object = {
 
 param minReplicas int = 1
 param maxReplicas int = 3
+@description('The API\'s cores and memory a replica.')
 param cpu string = '0.5'
 param memory string = '1Gi'
+@description('The worker\'s cores and memory, apart from the API: a Kudos listing ran out of 1 GiB (issue 338).')
+param workerCpu string = '2'
+@description('In whole Gi: the worker\'s heap is three quarters of it.')
+param workerMemory string = '4Gi'
 
 var baseName = '${namePrefix}-${environmentName}'
 var suffix = uniqueString(resourceGroup().id)
@@ -279,6 +295,7 @@ module knowledgePostgres 'modules/postgres.bicep' = if (knowledgeOn) {
     skuName: knowledgePostgresSkuName
     skuTier: knowledgePostgresSkuTier
     storageSizeGB: knowledgePostgresStorageSizeGB
+    performanceTier: knowledgePostgresPerformanceTier
     backupRetentionDays: knowledgePostgresBackupRetentionDays
     geoRedundantBackup: knowledgePostgresGeoRedundantBackup
     highAvailability: knowledgePostgresHighAvailability
@@ -347,9 +364,14 @@ module apps 'modules/containerapps.bicep' = {
     keyVaultUri: vault.outputs.uri
     keyVaultSecretNames: keyVaultSecretNames
     apiImage: apiImage
+    apiRevisionSuffix: apiRevisionSuffix
+    apiLiveRevision: apiLiveRevision
+    apiPreviousRevision: apiPreviousRevision
     workerImage: workerImage
     appsImage: appsImage
+    doclingImage: doclingImage
     appVersion: appVersion
+    workerVersion: workerVersion
     appEnv: appEnv
     identityEnv: {
       ANSATTPORTEN_ISSUER: ansattportenIssuer
@@ -406,6 +428,8 @@ module apps 'modules/containerapps.bicep' = {
     maxReplicas: maxReplicas
     cpu: cpu
     memory: memory
+    workerCpu: workerCpu
+    workerMemory: workerMemory
   }
 }
 
@@ -444,11 +468,14 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName)) {
 }
 
 output apiUrl string = 'https://${apps.outputs.fqdn}'
+output apiCandidateUrl string = apps.outputs.apiCandidateUrl
+output apiCandidateRevision string = apps.outputs.apiCandidateRevision
 output appUrls object = apps.outputs.defaultFqdns
 output customDomainVerificationId string = apps.outputs.verificationId
 output dnsNameServers array = createDnsZone && !empty(dnsZoneName) ? dns!.outputs.nameServers : []
 output containerAppName string = apps.outputs.appName
 output workerAppName string = apps.outputs.workerName
+output doclingAppName string = apps.outputs.doclingName
 output registryName string = registry.outputs.name
 output registryLoginServer string = registry.outputs.loginServer
 output keyVaultName string = vault.outputs.name

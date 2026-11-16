@@ -32,6 +32,28 @@ const shippedRecipe = () =>
     spec: Record<string, unknown>;
   };
 
+const knowledge = {
+  endpoints: {
+    sok: {
+      engine: 'typesense',
+      baseURL: 'https://sok.example.no',
+      auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
+    },
+  },
+  datasets: [
+    {
+      id: 'veiledere',
+      name: 'Veiledere',
+      endpoint: 'sok',
+      residency: 'norway',
+      options: {
+        collections: { docs: 'docs', chunks: 'chunks' },
+        profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
+      },
+    },
+  ],
+};
+
 const serviceUsing = (
   settings: Record<string, unknown>,
   flow = 'answer-briefly-with-sources@1',
@@ -41,6 +63,7 @@ const serviceUsing = (
     ...base,
     spec: {
       ...base.spec,
+      knowledge: { datasets: [{ dataset: 'veiledere' }] },
       variants: [
         'default',
         {
@@ -54,7 +77,7 @@ const serviceUsing = (
 };
 
 const boot = async () => {
-  const booted = await bootPlatform({ people });
+  const booted = await bootPlatform({ people, knowledge });
   const registered = await booted.send('/operator/tenants', 'drift', {
     body: { orgNumber: other, name: 'Brønnøysundregistrene' },
     reason: 'Registrerer testetaten',

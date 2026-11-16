@@ -31,6 +31,198 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>16 November 2026:</strong> In a narrow window an open panel of the shell fills
+            the shell's own box, in place of the modal drawer and its dimmed backdrop. In a host's
+            preview, such as the builder's, the page around it is no longer dimmed or out of reach.
+            While the panel is open the main column and the other panel are out of reach; «Lukk …»
+            and Escape close it, and the focus goes back to what opened it.
+          </li>
+          <li>
+            <strong>16 November 2026:</strong> Dokumentvisning can show the whole document, in beta:
+            a PDF the host fetches, through the profile's <code>documentFile</code>, in the
+            browser's own viewer in place of the excerpts, or as «Åpne dokumentet (PDF)» on a phone
+            and where the browser has no viewer. Its option «Vis hele dokumentet (beta)» is on by
+            default; off, or without the host's function, the view shows the excerpts as before. The
+            template «Kunnskapsassistenten, ny utgave» holds Dokumentvisning after Kilder.
+          </li>
+          <li>
+            <strong>16 November 2026:</strong> The secondary panel's menu of three or more tools no
+            longer breaks the page when the panel turns into a drawer, or back, as the window is
+            made narrower or wider: the menu is drawn only once its place is in the page.
+          </li>
+          <li>
+            <strong>15 November 2026:</strong> The «Grensesnitt» tab's builder and its preview on
+            its own page use the whole column, without the service page's narrower, padded body. A
+            resize handle is easier to grab, 9 px past its line on each side. Dragging one selects
+            no text, keeps the pointer until it is let go wherever that happens, and stops when the
+            browser cancels the drag or the release is never seen.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> Smaller fixes in the «Grensesnitt» tab. A thread's
+            title shown over its row in the preview lands on the row, at the row's text size. After
+            «Fjern …» in «Oppsett», the focus goes to the next «Fjern», to the one before it after
+            the last, or to what the preview says when none is left. A block in two panels has a
+            «Fjern» in each, named by its panel, that takes it out of that panel only. Every
+            suggestion in «Tekster» stands over its remove button. A problem with no field errors
+            sets its title apart from its detail, with a colon when the title has no stop. A pasted
+            layout's broken limits name the field as «Tekster» does, for the texts «Tekster» edits,
+            instead of its path. The resize handles show the portal's focus ring.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view keeps its assistant,
+            with its answers on their way, its threads and the thread on screen, while the preview
+            is drawn again: «Vis større» and «Vis mindre», «Oppsett» and back, across the narrow
+            breakpoint, and on another tab of the service page and back, where the thread stays
+            scrolled as it was. Before, each of these stopped its answers and started it again on
+            «Ny tråd». A draft changed on another tab is read again on return, and a refusal of the
+            draft as it was goes; why the thread's answer failed stays above the preview. «Start
+            samtalen på nytt» still starts it again, as does renaming a new service, whose id
+            follows its name.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, a
+            thread opened after a reload while its answer came says the answer may still be on its
+            way, with «Hent på nytt», which reads the thread again rather than asking again. Before,
+            it said the question got no answer, though genki went on and stored it. After five
+            minutes, genki's default deadline for a run, it says so as before. The
+            <a href="conversation.html">Conversation</a> block takes <code>onFetchAgain</code> for
+            it.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>'s
+            next look, a page opened on a new thread, as after a reload, starts with no filter, as
+            «Ny tråd» does. Before, it took the filter last on screen, often another thread's.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In <a href="settings.html">Innstillinger</a>,
+            «Generelt» promises only what it offers: its line in the menu and its lead are worded
+            from the rows the page draws, «Utseende» and «Hvordan tjenesten ser ut.» where the
+            colour scheme is all the host keeps, and say nothing where it draws none. Before, the
+            line named the answers' language and length, and the lead their language and where the
+            reader starts, which the UI assembly does not offer.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, a
+            stored thread that names no collection, such as one asked in another client, has its
+            documents linked by the profile's collection when the profile describes exactly one.
+            With several, no collection is guessed and the documents stay without a link.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab fits a narrow screen: the
+            switcher of «Maler», «Byggeklosser» and «Tekster» goes on to a second line rather than
+            past the screen's edge, and a preview wider than its space scrolls from its left edge,
+            where before its left part was out of reach.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view keeps a question in
+            its thread once the playground takes the run, with its answer as it ended: stopped or
+            failed on its way too, with the text that had come. Before, such a question was gone
+            when the thread was opened again, and a new thread was left empty, as when the try view
+            was drawn again mid-answer («Vis større», «Oppsett»). A question asked again stands
+            once, as its latest attempt, as the <a href="ui-assembly.html">UI assembly</a> reads
+            genki's threads.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab's try view, with answers in
+            more than one thread, shows why an answer failed over that answer's thread only, until
+            the thread's next question goes. Why the playground refused the latest question is about
+            the draft, and shows over every thread until any question goes; a refusal of an older
+            question shows nowhere. A refused question is taken back, through the
+            <a href="ui-assembly.html">UI assembly</a>'s new <code>NotAsked</code>, instead of
+            starting the assistant again, so the answers in other threads go on.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> In the <a href="ui-assembly.html">UI assembly</a>, an
+            answer keeps coming while the reader is in another thread, and is there when they come
+            back: still on its way, finished or failed, though genki has not stored it yet. Leaving
+            a thread and «Ny tråd» no longer stop it, and the reader can ask in another thread
+            meanwhile; «Avbryt genereringen» stops the answer on screen, and «Logg ut» stops them
+            all.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The «Grensesnitt» tab has a fourth panel, «Tekster»,
+            that edits the layout's <code>profile</code>: the assistant's name, its suggestions and
+            settings note, and per collection of the draft its name, description, filter fields
+            (label, heading, years), document type and links. Each limit the
+            <a href="builder.html">builder</a> checks is said under the field it concerns. With the
+            template «Kunnskapsassistenten, ny utgave», «Fyll inn som Kunnskapsassistenten» fills in
+            KA's words for Kudos.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> The portal's service page has a «Grensesnitt» tab
+            with the <a href="builder.html">builder</a> on the service's draft: templates, blocks
+            and their options, and «Prøv assistenten». It starts from «Kunnskapsassistenten, ny
+            utgave» and keeps the layout, with the blocks the draft cannot back yet, only in the
+            browser for the session; «Kopier oppsettet» and «Lim inn oppsett» carry it as JSON.
+          </li>
+          <li>
+            <strong>14 November 2026:</strong> A host can build on a draft. The
+            <a href="builder.html">builder</a> reads a draft's facts from its definition and has its
+            own entry, <code>@genai/ui-blocks/builder</code>. The
+            <a href="ui-assembly.html">UI assembly</a> and the <a href="shell.html">Shell</a> take
+            <code>frameWidth</code> to draw in a host's preview without its own
+            <code>&lt;main&gt;</code> or <code>h1</code>. <a href="chat.html">Chat</a>'s send button
+            is <code>aria-disabled</code> rather than disabled.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a> always
+            draws years as periods and many chosen values as one chip: KA's trials «year-ranges» and
+            «compact-filter-chips» are now the standard. The <a href="filter.html">Filter</a>'s
+            panel row for a year field says «Alle år» with nothing chosen. A typed period stands for
+            the years in it that the field lists, not every calendar year, so «1800-2015» no longer
+            passes genki's 100 values per field; the list counts a period in years with documents
+            rather than a sum of documents that can pass the total.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a>
+            leaves a filter field with every value chosen out of the facets, the question and
+            «Avgrenset til», so «Velg alle» in a field of hundreds of values, with nothing else
+            chosen, no longer stops the other fields from loading. A field with more than 100 chosen
+            goes as the values left out when they are 100 or fewer; otherwise the
+            <a href="filter.html">Filter</a> says so and nothing is sent. «Avgrenset til» names
+            years in a row as one period.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="ui-assembly.html">UI assembly</a>'s next
+            look hides the <a href="welcome.html">Welcome</a> greeting and suggestions while the
+            question field holds text, and shows them again when it is emptied.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> <a href="answer-actions.html">Answer actions</a>
+            sends the rating on the click on «Ja» or «Nei». The reasons and comment are optional and
+            come after, sent with the rating again; the other thumb changes the rating.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> <a href="filter.html">Filter</a> shows one chip,
+            «Alle virksomheter», when the field lists two or more values and all are chosen, as
+            after «Velg alle», for every host. The panel variant's row says «Alle» then, instead of
+            every name.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The <a href="variant-picker.html">Variant picker</a>
+            shows the service, then its variants: its list is headed by the service's name, as the
+            frontend contract asks.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> Three blocks have pages of their own,
+            <a href="welcome.html">Welcome</a>, <a href="corpus.html">Corpus choice</a> and
+            <a href="documents.html">Documents</a>, which only the Chat and Filter pages described
+            until now. <a href="states.html">States</a> records its side-by-side check with
+            Kunnskapsassistenten, and the error heading's level is no longer an open question.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> The UI assembly offers the trial
+            <code>compact-filter</code>: the next look's filter 230 px wide with its ticks in one
+            column, and the threads taking the rest of the card. Shell's companion can keep its
+            width (<code>keepWidth</code>), and Filter takes its columns of ticks from
+            <code>--genai-filter-checkboxes-columns</code>.
+          </li>
+          <li>
+            <strong>13 November 2026:</strong> Threads cuts a one-line title in the next look where
+            the row ends, not after its last whole word, so «Hva sier…» no longer leaves the row
+            half empty.
+          </li>
+          <li>
             <strong>11 November 2026:</strong> A page for the UI assembly,
             <a href="ui-assembly.html">UI assembly</a>: how <code>@genai/ui-assembly</code> puts the
             blocks together from a layout, and the variables of its own sheet.
@@ -151,7 +343,9 @@
                 <rect class="s-panel" x="126" y="12" width="28" height="100" rx="8" />
               </svg>
               <span class="stamp-name">Shell</span>
-              <span class="stamp-desc">Three columns that fold, resize and become drawers.</span>
+              <span class="stamp-desc"
+                >Three columns that fold, resize and, open in a narrow window, fill the shell.</span
+              >
               <span class="badges"><span class="badge phase">Building</span></span>
             </a>
           </li>
@@ -175,6 +369,27 @@
               <span class="badges"
                 ><span class="badge phase">Building</span
                 ><span class="badge">Always included?</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="welcome.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+                <rect class="s-bar" x="28" y="22" width="44" height="7" rx="3.5" />
+                <rect class="s-bar" x="28" y="34" width="70" height="7" rx="3.5" />
+                <rect class="s-soft" x="28" y="48" width="104" height="14" rx="7" />
+                <rect class="s-accent" x="28" y="68" width="22" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="77" width="6" height="7" rx="1.5" />
+                <rect class="s-bar" x="40" y="78.5" width="78" height="4" rx="2" />
+                <rect class="s-bar" x="28" y="90" width="6" height="7" rx="1.5" />
+                <rect class="s-bar" x="40" y="91.5" width="64" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Welcome</span>
+              <span class="stamp-desc">A greeting, and questions to start from.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span
+                ><span class="badge">Inside Chat</span></span
               >
             </a>
           </li>
@@ -316,6 +531,64 @@
             </a>
           </li>
           <li>
+            <a class="stamp-card" href="corpus.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="20" y="22" width="52" height="5" rx="2.5" />
+                <rect class="s-soft" x="20" y="31" width="90" height="16" rx="5" />
+                <rect class="s-bar" x="26" y="36.5" width="40" height="5" rx="2.5" />
+                <path class="s-accent" d="M99 37l3 3 3-3z" />
+                <rect class="s-bar" x="20" y="58" width="58" height="5" rx="2.5" />
+                <rect class="s-accent" x="82" y="58" width="22" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="70" width="84" height="4" rx="2" />
+                <rect class="s-bar" x="20" y="80" width="62" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Corpus choice</span>
+              <span class="stamp-desc">Which collection is searched, and a switch.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
+            <a class="stamp-card" href="documents.html">
+              <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+                <rect
+                  class="s-panel"
+                  x="130"
+                  y="12"
+                  width="50"
+                  height="100"
+                  rx="10"
+                  opacity="0.55"
+                />
+                <rect class="s-panel" x="10" y="12" width="110" height="100" rx="10" />
+                <rect class="s-bar" x="20" y="21" width="40" height="6" rx="3" />
+                <rect class="s-accent" x="20" y="33" width="66" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="41" width="44" height="4" rx="2" />
+                <rect class="s-accent" x="20" y="51" width="58" height="5" rx="2.5" />
+                <rect class="s-bar" x="20" y="59" width="38" height="4" rx="2" />
+                <rect class="s-soft" x="18" y="72" width="94" height="30" rx="6" />
+                <path class="s-accent" d="M60 82l5-5 5 5h-3v5h-4v-5z" />
+                <rect class="s-bar" x="44" y="92" width="42" height="4" rx="2" />
+              </svg>
+              <span class="stamp-name">Documents</span>
+              <span class="stamp-desc">The answer's documents, and the reader's own.</span>
+              <span class="badges"
+                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+              >
+            </a>
+          </li>
+          <li>
             <a class="stamp-card" href="projects.html">
               <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
                 <rect
@@ -432,7 +705,8 @@
               <span class="stamp-name">Document view</span>
               <span class="stamp-desc">The whole document, with the excerpt marked.</span>
               <span class="badges"
-                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+                ><span class="badge phase">Building</span><span class="badge">Optional</span
+                ><span class="badge">Whole document: beta</span></span
               >
             </a>
           </li>

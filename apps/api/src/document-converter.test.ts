@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { envSecrets } from '@genai/kernel';
+import { pdfWithBrokenPages } from '@genai/providers-documents/testing';
 import { documentConverterFrom } from './document-converter.js';
 
 const secrets = envSecrets({});
@@ -23,5 +24,23 @@ describe('the document converter setting', () => {
         secrets,
       ),
     ).toBeDefined();
+  });
+
+  it('logs a PDF page the local converter leaves empty, by sha256 and page', async () => {
+    const logged: [string, Record<string, unknown>][] = [];
+    const converter = documentConverterFrom({}, envSecrets({}), (msg, fields) =>
+      logged.push([msg, fields]),
+    );
+    await converter?.convert({
+      name: 'opplasting.pdf',
+      bytes: pdfWithBrokenPages(['One', 'Two'], [2]),
+    });
+
+    expect(logged).toEqual([
+      [
+        'a PDF page could not be read',
+        expect.objectContaining({ page: 2, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+      ],
+    ]);
   });
 });

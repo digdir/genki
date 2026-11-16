@@ -12,9 +12,19 @@ param registryServer string
 param keyVaultUri string
 param keyVaultSecretNames array
 param apiImage string
+param apiRevisionSuffix string = ''
+param apiLiveRevision string = ''
+param apiPreviousRevision string = ''
 param workerImage string
 param appsImage string
+
+@description('The Docling server image by digest (docker/docling).')
+param doclingImage string
+
+@description('Most Docling replicas at once; each converts one PDF at a time.')
+param doclingMaxReplicas int = 8
 param appVersion string
+param workerVersion string = ''
 param appEnv object
 param identityEnv object
 param webSettings object
@@ -41,6 +51,11 @@ param minReplicas int
 param maxReplicas int
 param cpu string
 param memory string
+param workerCpu string
+param workerMemory string
+
+// Three quarters of the worker's memory for Node's heap; the rest for buffers, native code and the runtime.
+var workerHeapMb = int(replace(workerMemory, 'Gi', '')) * 768
 
 resource insights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: insightsName
@@ -135,7 +150,6 @@ var identityPlainEnv = filter(map(items(identityEnv), item => { name: item.key, 
 
 var serverEnv = concat(
   [
-    { name: 'APP_VERSION', value: appVersion }
     { name: 'GENAI_ENV', value: environmentName }
     { name: 'AZURE_CLIENT_ID', value: identityClientId }
     { name: 'PGHOST', value: postgresHost }
@@ -174,6 +188,28 @@ var knowledgeEnv = empty(knowledge)
     ))
 var knowledgeIdentity = toObject(['api', 'worker'], app => app, app => empty(knowledge) ? {} : { '${knowledge[app].id}': {} })
 
+// The Docling server's key (ADR 0042): only the worker and the server get it, so the API and the web apps, which
+// share the environment and could reach internal ingress, are refused. It is not in keyVaultSecretNames, which
+// every server app gets.
+var doclingKeySecret = {
+  name: 'docling-api-key'
+  keyVaultUrl: '${keyVaultUri}secrets/docling-api-key'
+  identity: identityId
+}
+
+var apiAppName = '${name}-api'
+var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
+var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
+var apiTraffic = empty(apiLiveRevision)
+  ? [{ latestRevision: true, weight: 100 }]
+  : concat(
+      [{ revisionName: apiLiveRevision, weight: 100, label: 'live' }],
+      apiCandidateLabelled ? [{ revisionName: apiCandidateRevision, weight: 0, label: 'candidate' }] : [],
+      empty(apiPreviousRevision) || apiPreviousRevision == apiLiveRevision
+        ? []
+        : [{ revisionName: apiPreviousRevision, weight: 0, label: 'previous' }]
+    )
+
 resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   name: '${name}-api'
   location: location
@@ -187,24 +223,26 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
     environmentId: environment.id
     workloadProfileName: 'Consumption'
     configuration: {
-      activeRevisionsMode: 'Single'
+      activeRevisionsMode: empty(apiLiveRevision) ? 'Single' : 'Multiple'
       ingress: {
         external: true
         targetPort: 8080
         transport: 'auto'
         allowInsecure: false
         customDomains: customDomains.api
+        traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
       secrets: secrets
     }
     template: {
+      revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
       containers: [
         {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }], serverEnv, knowledgeEnv.api)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }], serverEnv, knowledgeEnv.api)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }
@@ -214,6 +252,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
       ]
       volumes: dataVolume
       scale: { minReplicas: minReplicas, maxReplicas: maxReplicas }
+      terminationGracePeriodSeconds: 120
     }
   }
 }
@@ -232,7 +271,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     configuration: {
       activeRevisionsMode: 'Single'
       registries: [{ server: registryServer, identity: identityId }]
-      secrets: secrets
+      secrets: concat(secrets, [doclingKeySecret])
     }
     template: {
       containers: [
@@ -240,8 +279,10 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
           {
             name: 'worker'
             image: workerImage
-            resources: { cpu: json(cpu), memory: memory }
-            env: concat(serverEnv, knowledgeEnv.worker)
+            resources: { cpu: json(workerCpu), memory: workerMemory }
+            env: concat([{ name: 'APP_VERSION', value: empty(workerVersion) ? appVersion : workerVersion }], serverEnv, knowledgeEnv.worker, doclingEnv, [
+              { name: 'NODE_OPTIONS', value: '--max-old-space-size=${workerHeapMb}' }
+            ])
             volumeMounts: dataMount
           },
           // 503 until the worker has reached the knowledge server and found it bound to this platform server.
@@ -255,6 +296,84 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     }
   }
 }
+
+// The Docling server (ADR 0042, issue 476): PDF conversions for knowledge.convert. Internal TCP ingress, since
+// HTTP ingress ends a request after 240 s and a conversion takes minutes; the worker holds one request open
+// until Docling answers. One conversion per replica (one Docling worker on 4 vCPU), and replicas start on open
+// connections, from zero. It keeps nothing past a replica: no volume, results dropped once fetched, OCR page images
+// in /tmp deleted after each region, and WARNING logs, which still name the file and page when Tesseract fails on
+// one. The platform identity is there only to pull the image and read the key: code in the container, which
+// parses untrusted PDFs, cannot get a token for it.
+resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
+  name: '${name}-docling'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identityId}': {} }
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: false
+        transport: 'tcp'
+        targetPort: 5001
+        exposedPort: 5001
+      }
+      registries: [{ server: registryServer, identity: identityId }]
+      secrets: [doclingKeySecret]
+      identitySettings: [{ identity: identityId, lifecycle: 'None' }]
+    }
+    template: {
+      containers: [
+        {
+          name: 'docling'
+          image: doclingImage
+          resources: { cpu: json('4'), memory: '8Gi' }
+          env: [
+            { name: 'DOCLING_SERVE_API_KEY', secretRef: doclingKeySecret.name }
+            { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
+            { name: 'DOCLING_NUM_THREADS', value: '4' }
+            { name: 'OMP_NUM_THREADS', value: '4' }
+            { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '3600' }
+            { name: 'DOCLING_SERVE_SINGLE_USE_RESULTS', value: 'true' }
+            { name: 'DOCLING_SERVE_RESULT_REMOVAL_DELAY', value: '1' }
+            { name: 'DOCLING_SERVE_SCRATCH_PATH', value: '/tmp/docling' }
+            { name: 'DOCLING_SERVE_LOG_LEVEL', value: 'WARNING' }
+            { name: 'DOCLING_SERVE_ENABLE_UI', value: 'false' }
+            { name: 'DOCLING_SERVE_ENABLE_API_DOCS', value: 'false' }
+            { name: 'DOCLING_SERVE_SHOW_VERSION_INFO', value: 'false' }
+            { name: 'DOCLING_SERVE_ENABLE_CAPABILITIES_ENDPOINT', value: 'false' }
+            { name: 'DOCLING_SERVE_OTEL_ENABLE_METRICS', value: 'false' }
+            { name: 'DOCLING_SERVE_OTEL_ENABLE_PROMETHEUS', value: 'false' }
+          ]
+          probes: [
+            // 503 until the models are loaded
+            { type: 'Startup', httpGet: { path: '/ready', port: 5001 }, periodSeconds: 10, failureThreshold: 30 }
+            { type: 'Readiness', httpGet: { path: '/ready', port: 5001 }, periodSeconds: 10 }
+            { type: 'Liveness', httpGet: { path: '/livez', port: 5001 }, periodSeconds: 30 }
+          ]
+        }
+      ]
+      // A replica stopped while it converts (scale-in, a new revision) gets 10 minutes to finish; not checked in Azure
+      terminationGracePeriodSeconds: 600
+      scale: {
+        minReplicas: 0
+        maxReplicas: doclingMaxReplicas
+        rules: [{ name: 'connections', tcp: { metadata: { concurrentConnections: '1' } } }]
+      }
+    }
+  }
+}
+
+var doclingUrl = 'http://${docling.properties.configuration.ingress.fqdn}:5001'
+var doclingEnv = [
+  { name: 'DOCLING_URL', value: doclingUrl }
+  { name: 'DOCLING_API_KEY', secretRef: doclingKeySecret.name }
+]
 
 // The principals job (ADR 0042): run by hand, inside the environment's network, the only place the
 // knowledge server can be reached from. The platform side logs in as the app identity, the only one
@@ -400,8 +519,13 @@ output verificationId string = environment.properties.customDomainConfiguration.
 output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
+output doclingName string = docling.name
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn
+output apiCandidateRevision string = apiCandidateRevision
+output apiCandidateUrl string = !empty(apiLiveRevision) && apiCandidateLabelled
+  ? 'https://${apiAppName}---candidate.${environment.properties.defaultDomain}'
+  : 'https://${api.properties.configuration.ingress.fqdn}'
 output defaultFqdns object = {
   api: api.properties.configuration.ingress.fqdn
   portal: web[0].properties.configuration.ingress.fqdn

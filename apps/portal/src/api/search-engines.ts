@@ -104,6 +104,7 @@ export interface EngineSwitchView {
   previousKeptUntil?: string;
   canRollback: boolean;
   decision?: SwitchDecision;
+  admissionRunsOutAt?: string;
 }
 
 export interface DatasetEngineView {
@@ -186,6 +187,8 @@ export interface EngineSwitch {
   minimumReasonLength: number;
   previousKeptUntil?: string;
   decision?: SwitchDecision;
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
+  admissionRunsOutAt?: string;
 }
 
 export interface DatasetEngine {
@@ -262,6 +265,7 @@ export const toSwitch = (view: EngineSwitchView): EngineSwitch => ({
   minimumReasonLength: view.minimumReasonLength,
   ...(view.previousKeptUntil ? { previousKeptUntil: view.previousKeptUntil } : {}),
   ...(view.decision ? { decision: view.decision } : {}),
+  ...(view.admissionRunsOutAt ? { admissionRunsOutAt: view.admissionRunsOutAt } : {}),
 });
 
 export const toDatasetEngine = (view: DatasetEngineView): DatasetEngine => {
@@ -380,6 +384,15 @@ export const searchEnginesApi = (ctx: ApiContext) => {
         await ctx.request<EngineSwitchView>(
           'POST',
           `${switchPath(tenant, id, switchId)}/retry`,
+          {},
+          { 'change-reason': reason },
+        ),
+      ),
+    readmitSwitch: async (tenant: string, id: string, switchId: string, reason: string) =>
+      toSwitch(
+        await ctx.request<EngineSwitchView>(
+          'POST',
+          `${switchPath(tenant, id, switchId)}/readmit`,
           {},
           { 'change-reason': reason },
         ),

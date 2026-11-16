@@ -74,6 +74,41 @@ const recordMigrations: string[] = [
   `alter table kn_generations add column if not exists recall_baseline double precision`,
   `alter table src_documents add column if not exists gone_run text`,
   `alter table kn_applied add column if not exists applied_at timestamptz not null default now()`,
+  // Stored conversions (ADR 0042, "What is stored"): per-page markdown, shared by every dataset.
+  `create table if not exists src_conversions (
+     sha256 text not null,
+     converter text not null,
+     version text not null,
+     settings_hash text not null,
+     settings jsonb not null default '{}',
+     derivation text not null,
+     derivation_version integer not null,
+     pages text[] not null,
+     output_path text,
+     created_at timestamptz not null default now(),
+     primary key (sha256, converter, version, settings_hash, derivation, derivation_version)
+   )`,
+  // A record waiting on a file's conversion: open work of its run until the conversion is stored.
+  `create table if not exists src_conversion_waits (
+     key text not null,
+     dataset text not null,
+     record bigint not null,
+     generation text not null,
+     run text not null,
+     tenant text not null,
+     primary key (key, dataset, record)
+   )`,
+  `create index if not exists src_conversion_waits_run on src_conversion_waits (run)`,
+  `alter table src_conversion_waits add column if not exists created_at timestamptz not null default now()`,
+  // One row per convert key, locked by the waits and the conversion that ends them.
+  `create table if not exists src_conversion_keys (key text primary key)`,
+  `create index if not exists src_conversion_waits_record on src_conversion_waits (dataset, record)`,
+  // Every chunk names its file by name and sha256 (ADR 0042, "Identity and chunks").
+  `alter table kn_chunks add column if not exists file_sha256 text`,
+  // A converter's refusal, stored with no pages so the file is skipped and not converted again.
+  `alter table src_conversions add column if not exists failure text`,
+  // Files a converter reads get stored conversions; HTML and plain text are read by the index job.
+  `alter table src_files add column if not exists converts boolean not null default false`,
 ];
 
 const migrations: string[] = [
@@ -147,7 +182,7 @@ const migrations: string[] = [
   `grant select, insert, update, delete on kn_docs, kn_chunks, kn_phrases to ${knowledgeRoles.writer}`,
   `grant select on kn_generations to ${knowledgeRoles.writer}`,
   `grant update (recipe, data_version) on kn_generations to ${knowledgeRoles.writer}`,
-  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied to ${knowledgeRoles.writer}`,
+  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied, src_conversions, src_conversion_waits, src_conversion_keys to ${knowledgeRoles.writer}`,
   `grant usage, select on sequence src_documents_number_seq to ${knowledgeRoles.writer}`,
   // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
   `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
