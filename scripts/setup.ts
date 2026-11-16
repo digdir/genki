@@ -116,6 +116,10 @@ export const npmCommand = (
     ? { command: process.execPath, args: [execPath, ...args] }
     : { command: 'npm', args };
 
+/** The knowledge server setup, run through the same node as `npm install` (see npmCommand). */
+export const knowledgeSetupCommand = (execPath = process.env.npm_execpath) =>
+  npmCommand(['run', 'knowledge:setup', '--', '--local'], execPath);
+
 const run = (command: string, args: string[], cwd: string, quiet = false) => {
   const result = spawnSync(command, args, { cwd, stdio: quiet ? 'ignore' : 'inherit' });
   if (result.error) console.error(result.error.message);
@@ -196,7 +200,10 @@ const main = async () => {
       console.log(
         'KNOWLEDGE_DATABASE_URL is empty in .env.local, so the knowledge server is left out',
       );
-    else if (!run('npm', ['run', 'knowledge:setup', '--', '--local'], root)) process.exit(1);
+    else {
+      const knowledge = knowledgeSetupCommand();
+      if (!run(knowledge.command, knowledge.args, root)) process.exit(1);
+    }
   }
 
   console.log(`
