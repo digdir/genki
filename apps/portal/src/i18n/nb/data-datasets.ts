@@ -68,6 +68,7 @@ export const datasets = defineNamespace({
   skipConversion: 'Kunne ikke lese dokumentet.',
   skipOutsideAccess: 'Dokumentet ligger utenfor det plattformen har tilgang til.',
   skipTooLarge: 'Filen er større enn 50 MB.',
+  skipUnreachable: 'Filen kunne ikke hentes fra kilden.',
   skipDefault: 'Ble hoppet over.',
   scheduleNone: 'Ikke planlagt',
   scheduleDaily: 'Daglig',

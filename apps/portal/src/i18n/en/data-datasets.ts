@@ -68,6 +68,7 @@ const datasets = {
   skipConversion: 'Could not read the document.',
   skipOutsideAccess: 'The document is outside what the platform has access to.',
   skipTooLarge: 'The file is larger than 50 MB.',
+  skipUnreachable: 'The file could not be fetched from its source.',
   skipDefault: 'Was skipped.',
   scheduleNone: 'Not scheduled',
   scheduleDaily: 'Daily',

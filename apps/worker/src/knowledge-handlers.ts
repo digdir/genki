@@ -2,9 +2,11 @@ import type { Principal } from '@genai/contracts';
 import {
   chunkingOf,
   copyOwner,
+  FileUnreachable,
   indexRecord,
   ingestListing,
   pipelineSpec,
+  ResponseTooLarge,
   storedConverter,
   textLayer,
   type DocumentConverter,
@@ -280,7 +282,19 @@ const refusalOf = (error: unknown) =>
     ? fileRefusals[error.name]
     : undefined;
 
-/** A file a convert job could not fetch: tried again, never stored as the converter's refusal. */
+/**
+ * Why a convert job's fetch says the file cannot be had: KUDOS answered 404 or 410, listed no URL or
+ * led to a landing page with no PDF, or the download passed the size limit (issue 597). Every other
+ * fetch error, such as a network error, is tried again.
+ */
+const fetchRefusalOf = (error: unknown) =>
+  error instanceof FileUnreachable
+    ? 'unreachable'
+    : error instanceof ResponseTooLarge
+      ? 'too_large'
+      : undefined;
+
+/** A file a convert job could not fetch: tried again unless `fetchRefusalOf` names why. */
 class FetchFailed extends Error {
   override readonly name = 'FetchFailed';
   constructor(override readonly cause: unknown) {
@@ -600,11 +614,13 @@ export const knowledgeWork = (
     // Stored under the key its job and waits name, so the conversion always ends those waits.
     const key = conversionTarget(job.data.file);
     let stored: { pages: string[]; output?: Uint8Array; failure?: string };
-    // A conversion stored by an earlier try is not made again: only its waits are ended.
+    // A conversion stored by an earlier try is not made again: only its waits are ended. A file
+    // stored as unreachable is fetched again.
     const kept = await conversions.find(job.data.file, [
       { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
     ]);
-    if (kept) stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
+    if (kept && kept.failure !== 'unreachable')
+      stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
     else
       try {
         const file = await fetchFile(job, run, sender);
@@ -619,9 +635,10 @@ export const knowledgeWork = (
           ...(conversion.output ? { output: conversion.output } : {}),
         };
       } catch (error) {
-        const failure = error instanceof FetchFailed ? undefined : refusalOf(error);
+        const failure =
+          error instanceof FetchFailed ? fetchRefusalOf(error.cause) : refusalOf(error);
         if (!failure) throw error instanceof FetchFailed ? error.cause : error;
-        // A refusal is stored with no pages: documents skip the file, and it is not converted again.
+        // A refusal is stored with no pages, which ends the waits: documents skip the file.
         stored = { pages: [], failure };
       }
     // The native output goes to Blob first, so a stored conversion never names a missing path.
