@@ -12,7 +12,7 @@ import type { Residency } from '@genai/port-model';
 import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
-import { connectorSecretOf } from './connectors.js';
+import { connectorConnectionOf } from './connectors.js';
 import type { DatasetReader } from './dataset-readers.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
@@ -134,7 +134,7 @@ export const createConfigurables = (
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
-      connectorSecret: connectorSecretOf(store),
+      connectorConnection: connectorConnectionOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
     };
 
