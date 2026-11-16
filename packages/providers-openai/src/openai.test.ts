@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { envSecrets } from '@genai/kernel';
 import { ModelRouter, type ModelPort } from '@genai/port-model';
 import { fakeHttp, testContext, type FakeReply, type FakeServer } from '@genai/port-model/testing';
-import { azureDeployments, openAiChat } from './index.js';
+import { azureDeployments, openAiChat, openAiModels } from './index.js';
 
 const servers: FakeServer[] = [];
 const fake = async (reply: (body: Record<string, unknown>, attempt: number) => FakeReply) => {
@@ -598,5 +598,151 @@ describe('azure deployment discovery', () => {
         timeoutMs: 5000,
       }),
     ).rejects.toThrow(/HTTP 401/);
+  });
+});
+
+describe('OpenAI model list discovery', () => {
+  const gatewayModels = {
+    object: 'list',
+    data: [
+      { id: 'aivar:borealis', object: 'model', owned_by: 'aivar' },
+      { id: 'sigma2:Borealis2-preview', object: 'model', owned_by: 'sigma2' },
+      { id: 'sigma2:Qwen3.8-27B', object: 'model', owned_by: 'sigma2' },
+      { id: 'azure:gpt-6.1-sol', object: 'model', owned_by: 'azure' },
+    ],
+  };
+
+  const gateway = (
+    url: string,
+    rule: Record<string, unknown> = {},
+    models: Record<string, unknown>[] = [],
+    auth: Record<string, unknown> = { kind: 'bearer', secret: 'secret://env/test-key' },
+  ) =>
+    new ModelRouter({
+      catalog: {
+        endpoints: {
+          'ai-gateway': {
+            baseURL: `${url}/v1`,
+            auth,
+            families: { openai: '' },
+            discovery: [{ source: 'openai-models', ...rule }],
+          },
+        },
+        models,
+      },
+      adapters: [openAiChat],
+      sources: [azureDeployments, openAiModels],
+      secrets: envSecrets({ TEST_KEY: 'test-key' }),
+    });
+
+  it('an OpenAI-compatible connection lists its models from /models under its openai family base', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    const r = gateway(url);
+
+    expect(await r.refresh()).toEqual({ discovered: 4, failed: [] });
+    expect(seen.map((s) => s.path)).toEqual(['/v1/models']);
+    expect(r.describe().map((m) => [m.id, m.deployment, m.origin, m.classified])).toEqual([
+      ['ai-gateway/aivar-borealis', 'aivar:borealis', 'discovered', false],
+      ['ai-gateway/azure-gpt-6.1-sol', 'azure:gpt-6.1-sol', 'discovered', false],
+      ['ai-gateway/sigma2-borealis2-preview', 'sigma2:Borealis2-preview', 'discovered', false],
+      ['ai-gateway/sigma2-qwen3.8-27b', 'sigma2:Qwen3.8-27B', 'discovered', false],
+    ]);
+  });
+
+  it('include and exclude patterns apply to the listed model ids', async () => {
+    const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    const r = gateway(url, { include: ['aivar:*', 'sigma2:*'], exclude: ['*-preview'] });
+    await r.refresh();
+
+    expect(r.describe().map((m) => m.deployment)).toEqual(['aivar:borealis', 'sigma2:Qwen3.8-27B']);
+  });
+
+  it('a listed id with a slash gets the same model id the console gives it when added by hand', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: { object: 'list', data: [{ id: '/Meta-Llama/Llama-3.1-8B/', object: 'model' }] },
+    }));
+
+    const r = gateway(url);
+    await r.refresh();
+
+    expect(r.describe().map((m) => [m.id, m.deployment])).toEqual([
+      ['ai-gateway/meta-llama-llama-3.1-8b', '/Meta-Llama/Llama-3.1-8B/'],
+    ]);
+  });
+
+  it('a model added by hand is not listed again as a candidate', async () => {
+    const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    const r = gateway(url, { include: ['aivar:*'] }, [
+      {
+        id: 'ai-gateway/aivar-borealis',
+        endpoint: 'ai-gateway',
+        deployment: 'aivar:borealis',
+        residency: 'norway',
+      },
+    ]);
+
+    expect(await r.refresh()).toEqual({ discovered: 0, failed: [] });
+    expect(r.describe().map((m) => [m.id, m.origin])).toEqual([
+      ['ai-gateway/aivar-borealis', 'catalog'],
+    ]);
+  });
+
+  it('a refused model listing is reported for its connection', async () => {
+    const { url } = await fake(() => ({ status: 400, json: { error: { message: 'bad' } } }));
+
+    const r = gateway(url);
+
+    expect(await r.refresh()).toEqual({
+      discovered: 0,
+      failed: [{ endpoint: 'ai-gateway', error: 'listing models failed with HTTP 400' }],
+    });
+  });
+
+  it('bearer auth is sent as Authorization when listing models', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    await gateway(url).refresh();
+
+    expect(seen[0]?.headers.authorization).toBe('Bearer test-key');
+    expect(seen[0]?.headers['api-key']).toBeUndefined();
+  });
+
+  it('an api-key with its own header is sent in that header when listing models', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: gatewayModels }));
+
+    await gateway(url, {}, [], {
+      kind: 'api-key',
+      header: 'api-key',
+      secret: 'secret://env/test-key',
+    }).refresh();
+
+    expect(seen[0]?.headers['api-key']).toBe('test-key');
+    expect(seen[0]?.headers.authorization).toBeUndefined();
+  });
+
+  it('a connection without the openai family reports that it cannot list models', async () => {
+    const r = new ModelRouter({
+      catalog: {
+        endpoints: {
+          claude: {
+            baseURL: 'http://127.0.0.1:9',
+            auth: { kind: 'bearer', secret: 'secret://env/test-key' },
+            families: { anthropic: '/anthropic' },
+            discovery: [{ source: 'openai-models', apis: {} }],
+          },
+        },
+      },
+      adapters: [openAiChat],
+      sources: [openAiModels],
+      secrets: envSecrets({ TEST_KEY: 'test-key' }),
+    });
+
+    expect((await r.refresh()).failed).toEqual([
+      { endpoint: 'claude', error: 'claude does not offer the openai family to list through' },
+    ]);
   });
 });
