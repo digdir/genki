@@ -1,6 +1,6 @@
 # 0058 The state's organisation as a synced register
 
-Status: proposed, 2026-11-16
+Status: proposed, 2026-11-16 (register built; org numbers on KUDOS documents, 2026-11-16)
 
 Left: ownership of state companies and health trusts (issue 622), and "tilknyttet", which no authority defines.
 
@@ -61,6 +61,5 @@ The platform keeps a copy of the state's organisation, read from the authorities
 - New egress hosts for the worker: `data.brreg.no`, `statsregnskapet.dfo.no`, and `kudos.dfo.no`, which ingestion already uses.
 - An answer about a reorganisation can be up to a day behind the register, and the register itself has lagged by weeks: Digdir's move to DFD on 1 January 2024 was registered on 23 January.
 - History before the first sync has the year resolution of the state accounts, and none for the bodies of Stortinget, SMK, the courts and Sametinget.
-- Not built yet:
-  - The tool and its use by a service (issue 621).
-  - Owner and recipient org numbers on KUDOS documents, so a search can filter by them (issue 620).
+- Built since (issue 620): KUDOS documents keep `owner_orgnr` and `recipient_orgnr`, and an operator fills them on stored documents with `knowledge.fields` (ADR 0042). A dataset declares both as filters to search by them.
+- Not built yet: the tool and its use by a service (issue 621).

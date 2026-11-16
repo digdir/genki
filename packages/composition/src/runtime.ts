@@ -100,7 +100,12 @@ import {
   type ConnectionRegistry,
   type EgressOptions,
 } from '@genai/providers-mcp-client';
-import { azureDeployments, openAiChat, openAiEmbeddings } from '@genai/providers-openai';
+import {
+  azureDeployments,
+  openAiChat,
+  openAiEmbeddings,
+  openAiModels,
+} from '@genai/providers-openai';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import {
   pgvectorEngine,
@@ -416,6 +421,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const discoverySources = [azureDeployments, openAiModels];
   const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
   const rerankAdapters = [colbert];
   const portApis: BuiltInApi[] = [
@@ -566,7 +572,7 @@ export const createRuntime = async (input: RuntimeInput) => {
         kind,
         processorRecords: typedCalls,
       }),
-    sources: [azureDeployments],
+    sources: discoverySources,
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
@@ -897,7 +903,13 @@ export const createRuntime = async (input: RuntimeInput) => {
     store: configEntries,
     checks: {
       models: (c) => [
-        ...problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind])),
+        ...problemsOf(
+          parseCatalog(
+            c,
+            models.apis(),
+            discoverySources.map((s) => s.kind),
+          ),
+        ),
         ...embedders.problems(c),
         ...rerank.problems(c),
       ],
