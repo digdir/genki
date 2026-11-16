@@ -367,6 +367,7 @@ export class IngestionService {
   readonly #finished = new Set<(execution: Execution) => void>();
   readonly #running = new Map<string, RunningExecution>();
   #held: (dataset: string) => Promise<string | undefined> = async () => undefined;
+  #sendBackRefused: (run: Execution) => Promise<string | undefined> = async () => undefined;
 
   constructor(
     private readonly options: {
@@ -381,6 +382,11 @@ export class IngestionService {
       onError?: (message: string) => void;
     },
   ) {}
+
+  /** An engine switch refuses sending back a run that wrote to a generation it discarded (issue 598). */
+  refuseSendBackWith(refused: (run: Execution) => Promise<string | undefined>) {
+    this.#sendBackRefused = refused;
+  }
 
   /** An open engine switch holds every pipeline of its dataset while its own runs are open (ADR 0042). */
   holdWith(held: (dataset: string) => Promise<string | undefined>) {
@@ -875,12 +881,17 @@ export class IngestionService {
       );
       return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
     }
+    // The store checks the run ran as jobs: a switch's fill does before its dataset moves (issue 598).
     const jobs = this.options.jobs;
-    if (!jobs?.runsAsJobs(input.dataset))
+    if (!jobs)
       return {
         ok: false,
         errors: [{ path: 'execution', message: 'only a run that runs as jobs can be sent back' }],
       };
+    const run = await this.options.executions.get(input.execution);
+    const refused = run?.dataset === input.dataset ? await this.#sendBackRefused(run) : undefined;
+    if (refused)
+      return { ok: false, conflict: true, errors: [{ path: 'execution', message: refused }] };
     const sent = await jobs.runs.redrive({
       dataset: input.dataset,
       pipeline: input.pipeline,
