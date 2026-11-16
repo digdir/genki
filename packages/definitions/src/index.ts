@@ -8,6 +8,7 @@ export * from './config.js';
 export * from './transfer.js';
 export * from './settings-catalogue.js';
 export * from './platform-settings.js';
+export * from './dataset-needs.js';
 export * from './flow-inputs.js';
 export * from './flow-settings.js';
 export * from './json-schema.js';
