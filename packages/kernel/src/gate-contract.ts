@@ -13,6 +13,7 @@ export interface GateLaneSetup {
   routerResidency?: Residency;
   requestResidency?: Residency;
   serviceResidency?: Residency;
+  quotaExhausted?: boolean;
   guards?: PayloadGuard[];
   failUpstream?: boolean;
   unknownAnswerField?: boolean;
@@ -152,7 +153,15 @@ export const gateContract: GateContractSuite = {
         }),
     },
     {
-      name: 'checks admission, enabled, sharing and residency in that order',
+      name: "refuses a call once the tenant's monthly token quota is used up, before it reaches the provider",
+      run: (s) =>
+        everyLane(s, async (lane) => {
+          await expectRefused(lane, { quotaExhausted: true }, 'quota');
+          await expectAllowed(lane, { quotaExhausted: false });
+        }),
+    },
+    {
+      name: 'checks admission, enabled, sharing, residency and the monthly quota in that order',
       run: (s) =>
         everyLane(s, async (lane) => {
           const all: GateLaneSetup = {
@@ -161,12 +170,14 @@ export const gateContract: GateContractSuite = {
             sharedWith: ['111222333'],
             residency: 'global',
             serviceResidency: 'norway',
+            quotaExhausted: true,
           };
           const order: [GateRefusal, keyof GateLaneSetup, unknown][] = [
             ['admission', 'admitted', true],
             ['disabled', 'enabled', true],
             ['not-shared', 'sharedWith', [lane.tenant]],
             ['residency', 'residency', 'norway'],
+            ['quota', 'quotaExhausted', false],
           ];
           let setup = { ...all };
           for (const [refusal, key, fixed] of order) {

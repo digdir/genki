@@ -70,6 +70,7 @@ import {
   type WaitOptions,
 } from '@genai/eval';
 import {
+  gateQuota,
   InMemoryTraceDeliveries,
   klarsprakChecklist,
   nynorskReference,
@@ -1220,7 +1221,41 @@ export const createPlatform = async (input: PlatformInput) => {
   const pluginHosts = new Map<string, AllowedHost[]>();
   const pluginEgress = new EgressGuard(input.egress ?? {});
 
+  const usageCache = new Map<string, { at: number; month: string; tokens: number }>();
+  const monthlyTokensUsed = async (tenant: string, fresh = false, at = new Date()) => {
+    const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
+    const cached = usageCache.get(tenant);
+    if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
+      return cached.tokens;
+    let tokens = 0;
+    if (taskIndex.tokensUsed) tokens = await taskIndex.tokensUsed(tenant, month);
+    else
+      for (const tracked of await taskIndex.all(tenant)) {
+        const task = (await taskStore.get(tracked.task))?.task;
+        if (!task || task.tenant !== tenant || task.createdAt < month) continue;
+        if (originOf(task.service.capability.id) === 'assistant') continue;
+        tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
+      }
+    usageCache.set(tenant, { at: at.getTime(), month, tokens });
+    return tokens;
+  };
+  const numberSetting = (tenant: string, key: string, fallback: number) => {
+    const value = settings.effective(tenant)[key]?.value;
+    return typeof value === 'number' && value > 0 ? value : fallback;
+  };
+  const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
+    const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
+    const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
+    return {
+      usedTokens,
+      monthlyTokens,
+      usedPercent: Math.round((usedTokens / monthlyTokens) * 1000) / 10,
+      exhausted: usedTokens >= monthlyTokens,
+    };
+  };
+
   const runtime = await createRuntime({
+    modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
     catalogs: input.catalogs,
     secrets: input.secrets,
@@ -1753,40 +1788,8 @@ export const createPlatform = async (input: PlatformInput) => {
   const registered = async (tenant: string) =>
     tenant === platformTenant || (await directory.list()).some((e) => e.orgNumber === tenant);
 
-  const usageCache = new Map<string, { at: number; month: string; tokens: number }>();
-  const monthlyTokensUsed = async (tenant: string, fresh = false, at = new Date()) => {
-    const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
-    const cached = usageCache.get(tenant);
-    if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
-      return cached.tokens;
-    let tokens = 0;
-    if (taskIndex.tokensUsed) tokens = await taskIndex.tokensUsed(tenant, month);
-    else
-      for (const tracked of await taskIndex.all(tenant)) {
-        const task = (await taskStore.get(tracked.task))?.task;
-        if (!task || task.tenant !== tenant || task.createdAt < month) continue;
-        if (originOf(task.service.capability.id) === 'assistant') continue;
-        tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
-      }
-    usageCache.set(tenant, { at: at.getTime(), month, tokens });
-    return tokens;
-  };
-  const numberSetting = (tenant: string, key: string, fallback: number) => {
-    const value = settings.effective(tenant)[key]?.value;
-    return typeof value === 'number' && value > 0 ? value : fallback;
-  };
   // Case slots shared by every test-set run on this instance.
   const caseSlots = evalSlots(input.evalSlots);
-  const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
-    const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
-    const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
-    return {
-      usedTokens,
-      monthlyTokens,
-      usedPercent: Math.round((usedTokens / monthlyTokens) * 1000) / 10,
-      exhausted: usedTokens >= monthlyTokens,
-    };
-  };
 
   const limiter = input.rateLimits?.limiter ?? new SlidingWindowLimiter();
   const invokes = (c: {

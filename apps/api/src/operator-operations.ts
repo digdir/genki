@@ -35,6 +35,7 @@ const gateStatus: Record<GateRefusal, 400 | 403> = {
   processor: 403,
   media: 400,
   shape: 400,
+  quota: 403,
 };
 
 const titles = { 400: 'Invalid request', 403: 'Forbidden' } as const;

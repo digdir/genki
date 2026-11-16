@@ -44,6 +44,7 @@ const refusalOf = (error: unknown): GateRefusal | undefined => {
   if (message?.includes('is not shared')) return 'not-shared';
   if (message?.includes('image, audio or file')) return 'media';
   if (message?.includes('outside its shape')) return 'shape';
+  if (message?.includes('monthly token quota')) return 'quota';
   return undefined;
 };
 
@@ -131,7 +132,11 @@ const fakeChatAdapter: ModelAdapter = {
 
 type GateMaker = (setup: GateLaneSetup) => Gate;
 
-const realGate: GateMaker = (setup) => createGate({ admits: () => setup.admitted ?? true });
+const quotaOf = (setup: GateLaneSetup) => async () =>
+  setup.quotaExhausted ? 'the monthly token quota is used up' : undefined;
+
+const realGate: GateMaker = (setup) =>
+  createGate({ admits: () => setup.admitted ?? true, quota: quotaOf(setup) });
 
 const answering = <T extends object>(setup: GateLaneSetup, answer: T): T =>
   setup.unknownAnswerField ? { ...answer, surprise: 1 } : answer;
@@ -584,6 +589,7 @@ const dropped = <T extends object>(value: T, ...keys: string[]): T => {
 
 interface Mutation {
   admits?: false;
+  quota?: false;
   target?: (target: GateTarget) => GateTarget;
   ctx?: (ctx: PortContext) => PortContext;
   shape?: true;
@@ -592,9 +598,10 @@ interface Mutation {
 const mutant =
   (mutation: Mutation): GateMaker =>
   (setup) => {
-    const real = createGate(
-      mutation.admits === false ? {} : { admits: () => setup.admitted ?? true },
-    );
+    const real = createGate({
+      ...(mutation.admits === false ? {} : { admits: () => setup.admitted ?? true }),
+      ...(mutation.quota === false ? {} : { quota: quotaOf(setup) }),
+    });
     const ctxOf = (ctx: PortContext) => mutation.ctx?.(ctx) ?? ctx;
     const targetOf = (target: GateTarget) => mutation.target?.(target) ?? target;
     const payloadOf = <Res>(payload: GatePayload<Res>): GatePayload<Res> =>
@@ -611,6 +618,7 @@ const mutant =
 
 const mutants: [string, Mutation][] = [
   ['admission', { admits: false }],
+  ['the monthly token quota', { quota: false }],
   ['the enabled check', { target: (t) => dropped(t, 'enabled') }],
   ['tenant sharing', { target: (t) => dropped(t, 'tenants') }],
   [

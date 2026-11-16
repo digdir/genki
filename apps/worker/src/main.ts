@@ -41,6 +41,7 @@ import {
   costOf,
   deleteSinkTraces,
   InMemoryTriggerRuns,
+  monthlyModelQuota,
   monthlyQuotaGate,
   recordTriggerRuns,
   scheduleProviderObjectSweep,
@@ -618,6 +619,14 @@ if (lockdown) log('lockdown: the worker runs no triggers and refuses every model
 const blob = new FileSystemBlobStore(blobDir);
 const vault = new TenantSecretVault(db?.tenantSecrets);
 const eventLog = db?.log ?? new InMemoryEventLog();
+const monthlyTokens = (tenant: string) => {
+  const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
+  return typeof value === 'number' && value > 0 ? value : 50_000_000;
+};
+const usedTokens = async (tenant: string, since: string) =>
+  db
+    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
+    : 0;
 const runtime = await createRuntime({
   platformTenant,
   catalogs: {
@@ -645,6 +654,7 @@ const runtime = await createRuntime({
         ),
   policy: ownTenantOnly(),
   ...(lockdown ? { admitsModelUse: mayUseModels } : {}),
+  modelQuota: monthlyModelQuota({ monthlyTokens, usedTokens }),
   log: eventLog,
   tasks,
   prices,
@@ -740,14 +750,6 @@ const paused = async (binding: TriggerBinding) => {
   return Boolean(latest && !latest.deleted);
 };
 
-const monthlyTokens = (tenant: string) => {
-  const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
-  return typeof value === 'number' && value > 0 ? value : 50_000_000;
-};
-const usedTokens = async (tenant: string, since: string) =>
-  db
-    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
-    : 0;
 const pricedModels = runtime.prices as Record<string, TokenPrice | undefined>;
 
 const lease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-triggers') : undefined;
