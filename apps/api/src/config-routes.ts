@@ -1,6 +1,7 @@
 import { sourceLinkRules, type Principal } from '@genai/contracts';
 import { testCase, testSet, type TestSet, type TestSetStore } from '@genai/eval';
 import { guardrailSchemas, ruleKinds } from '@genai/guardrails';
+import type { DatabaseConnection } from '@genai/ingest';
 import { fieldFills } from '@genai/jobs';
 import {
   filterValueTypes,
@@ -59,11 +60,11 @@ export interface ConfigDeps {
     tenant: string;
     principal: Principal;
   }) => Promise<number | undefined>;
-  connectorSecret?: (
+  connectorConnection?: (
     tenant: string,
     dataset: string,
     pipeline: string,
-  ) => Promise<string | undefined>;
+  ) => Promise<DatabaseConnection | undefined>;
   gateProblem?: (gate: string, metric: string) => string | undefined;
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
 }
@@ -1061,12 +1062,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         ]);
       if (id && !(await deps.ingestion.get(guard.scope, dataset, pipelineId)))
         return problem(c, 404, 'Not found');
-      const connectorSecret = await deps.connectorSecret?.(guard.scope, dataset, pipelineId);
+      const connector = await deps.connectorConnection?.(guard.scope, dataset, pipelineId);
       const response = await perform(c, guard.principal, 'platform.pipeline.save', guard.scope, {
         dataset,
         id: pipelineId,
         spec,
-        ...(connectorSecret ? { connectorSecret } : {}),
+        ...(connector ? { connector } : {}),
       });
       return !id && response.status === 200 ? c.json(await response.json(), 201) : response;
     };
