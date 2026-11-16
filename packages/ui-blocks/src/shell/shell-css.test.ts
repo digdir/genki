@@ -140,6 +140,17 @@ describe('the Shell styles', () => {
     // The main column's own layers, such as its pinned head, stay under the panel.
     expect(css).toContain('.uib-shell[data-drawer] > .uib-shell-main { isolation: isolate; }');
     expect(css).not.toMatch(/::backdrop|dialog|uib-shell-drawer\b|drawer-width/);
+    expect(css).toContain('.uib-shell-close { flex: 0 0 auto; margin-inline-start: auto; }');
+  });
+
+  it('never hide the main column, so it comes back as it was when the panel over it closes', () => {
+    const rules = css.match(/[^{}]*\{[^{}]*\}/g) ?? [];
+    const hiding = rules.filter(
+      (rule) =>
+        /\.uib-shell-main(?![\w-])[^{]*\{/.test(rule) &&
+        /(?:display: none|visibility: hidden|content-visibility)/.test(rule),
+    );
+    expect(hiding).toEqual([]);
   });
 
   it('put the rails in one row at the top in the bar, and the main column under it in full', () => {

@@ -1,4 +1,4 @@
-// The shell's model, pure: two panels beside a main column that fold, resize and fill a narrow shell.
+// The shell's model, pure: beside a main column, two panels that fold, resize and fill the shell.
 
 /** A side panel. `primary` stands before the main column, `secondary` after it. */
 export type ShellSide = 'primary' | 'secondary';

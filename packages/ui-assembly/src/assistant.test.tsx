@@ -2371,7 +2371,7 @@ describe('Dokumentvisning in the assistant', () => {
     );
   });
 
-  it('prevents Escape’s default in the document, which would also close a drawer around it, but not in its question field', async () => {
+  it('prevents Escape’s default in the document, which would also close a panel that fills the shell around it, but not in its question field', async () => {
     const footnote = await stored(withView().layout);
     fireEvent.click(footnote);
     fireEvent.click(await screen.findByRole('button', { name: /Vis i dokumentet/ }));

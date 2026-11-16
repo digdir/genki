@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { nb as sharedNb } from '../i18n.js';
 import { en, nb } from './i18n.js';
 import type { ShellLayout } from './layout.js';
@@ -461,7 +461,7 @@ describe('a panel that fills the shell, below 1139', () => {
     expect([inert(main), inert(secondary()), inert(rail)]).toEqual([false, false, false]);
   });
 
-  it('keeps the main column in the page under it, so the chat comes back where it was', () => {
+  it('keeps the main column mounted and shown under it', () => {
     draw({}, 1000);
     const main = screen.getByRole('main');
     fireEvent.click(button('Vis tråder og filter'));
@@ -498,6 +498,60 @@ describe('a panel that fills the shell, below 1139', () => {
     expect(fills(secondary())).toBe(false);
     expect(document.activeElement).toBe(button('Vis kilder'));
     expect(button('Vis kilder').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('keeps the focus in it on a click on its text, so Escape still reaches it', () => {
+    draw({}, 1000);
+    fireEvent.click(button('Vis kilder'));
+    const fill = fillOf(secondary()) as HTMLElement;
+    expect(fill.tabIndex).toBe(-1);
+    expect(escape(fill)).toBe(false);
+    expect(fills(secondary())).toBe(false);
+  });
+
+  it('leaves Escape to a dialog open in it, which closes first as it would in a dialog', () => {
+    draw(
+      {
+        primary: {
+          label: 'Tråder og filter',
+          children: (
+            <dialog open>
+              <button type="button">Avbryt</button>
+            </dialog>
+          ),
+        },
+      },
+      1000,
+    );
+    fireEvent.click(button('Vis tråder og filter'));
+    expect(escape(button('Avbryt'))).toBe(true);
+    expect(fills(primary())).toBe(true);
+  });
+
+  it('leaves Escape to a search field with text in it, which clears it first', () => {
+    draw(
+      {
+        primary: {
+          label: 'Tråder og filter',
+          children: <input aria-label="Søk i tråder" defaultValue="årsrapport" type="search" />,
+        },
+      },
+      1000,
+    );
+    fireEvent.click(button('Vis tråder og filter'));
+    const search = screen.getByRole('searchbox', { name: 'Søk i tråder' });
+    expect(escape(search)).toBe(true);
+    expect(fills(primary())).toBe(true);
+    fireEvent.change(search, { target: { value: '' } });
+    expect(escape(search)).toBe(false);
+    expect(fills(primary())).toBe(false);
+  });
+
+  it('stays open on an Escape typed while a word is being composed', () => {
+    draw({}, 1000);
+    fireEvent.click(button('Vis tråder og filter'));
+    fireEvent.keyDown(button('Lukk tråder og filter'), { key: 'Escape', isComposing: true });
+    expect(fills(primary())).toBe(true);
   });
 
   it('stays open on an Escape the page takes first, as a field or a menu at the document does', () => {
@@ -559,15 +613,55 @@ describe('a panel that fills the shell, below 1139', () => {
     }
   });
 
-  it('takes the focus from the main column when the host opens it, as a footnote does', () => {
+  it('takes the focus from the main column when the host opens it, as a footnote does, and gives it back', () => {
     const { redraw } = draw({}, 1000);
     const main = screen.getByRole('main');
-    const inMain = document.createElement('button');
-    main.append(inMain);
-    act(() => inMain.focus());
+    const footnote = document.createElement('button');
+    main.append(footnote);
+    try {
+      act(() => footnote.focus());
+      redraw({ request: { action: 'open', side: 'secondary' } });
+      expect(document.activeElement).toBe(button('Lukk kilder'));
+      fireEvent.click(button('Lukk kilder'));
+      expect(document.activeElement).toBe(footnote);
+      act(() => footnote.focus());
+      redraw({ request: { action: 'open', side: 'secondary' } });
+      escape(button('Lukk kilder'));
+      expect(document.activeElement).toBe(footnote);
+    } finally {
+      footnote.remove();
+    }
+  });
+
+  it('gives the focus to the panel’s button when what opened it is gone', () => {
+    const { redraw } = draw({}, 1000);
+    const footnote = document.createElement('button');
+    screen.getByRole('main').append(footnote);
+    act(() => footnote.focus());
     redraw({ request: { action: 'open', side: 'secondary' } });
-    expect(document.activeElement).toBe(button('Lukk kilder'));
-    inMain.remove();
+    footnote.remove();
+    fireEvent.click(button('Lukk kilder'));
+    expect(document.activeElement).toBe(button('Vis kilder'));
+  });
+
+  it('leaves the focus on the host’s page in a preview, even where nothing on it has the focus', () => {
+    const { redraw } = draw({ frameWidth: 1000 }, 1920);
+    expect(document.activeElement).toBe(document.body);
+    redraw({ request: { action: 'open', side: 'secondary' } });
+    expect(fills(secondary())).toBe(true);
+    expect(document.activeElement).toBe(document.body);
+    redraw({ request: { action: 'close-drawers' } });
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('takes the skip links away while it is open, since the main column is out of reach', () => {
+    draw({ skipLinks: <a href="#composer-field">Hopp til skrivefeltet</a> }, 1000);
+    fireEvent.click(button('Vis tråder og filter'));
+    expect(screen.queryByRole('link', { name: 'Hopp til hovedinnhold' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Hopp til skrivefeltet' })).toBeNull();
+    fireEvent.click(button('Lukk tråder og filter'));
+    expect(screen.getByRole('link', { name: 'Hopp til hovedinnhold' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Hopp til skrivefeltet' })).toBeTruthy();
   });
 
   it('opens again, out of drawer mode, the panels that entering it folded, as far as there is room', () => {
@@ -774,6 +868,7 @@ describe('what the host asks for', () => {
     expect(button('Vis tråder og filter').getAttribute('aria-expanded')).toBe('false');
     expect(fills(primary())).toBe(false);
     expect(inert(screen.getByRole('main'))).toBe(false);
+    expect(document.activeElement).toBe(button('Vis tråder og filter'));
     resizeTo(1600);
     fireEvent.click(button('Vis tråder og filter'));
     redraw({ request: ask({ action: 'close-drawers' }) });
@@ -942,6 +1037,7 @@ describe('the focus', () => {
     const inside = document.createElement('button');
     dialog.append(inside);
     document.body.append(dialog);
+    onTestFinished(() => dialog.remove());
     dialog.showModal();
     const link = within(primary()).getByRole('link', { name: 'En tråd' });
     act(() => link.focus());
@@ -954,7 +1050,6 @@ describe('the focus', () => {
       dialog.dispatchEvent(new Event('close'));
     });
     expect(document.activeElement).toBe(button('Vis tråder og filter'));
-    dialog.remove();
   });
 });
 
@@ -1064,7 +1159,7 @@ describe('in a host’s preview of a fixed width', () => {
     fireEvent.click(button('Vis tråder og filter'));
     expect(fills(primary())).toBe(true);
     expect(shell?.contains(fillOf(primary()) ?? null)).toBe(true);
-    expect(document.querySelector('dialog')).toBeNull();
+    expect(container.querySelector('dialog')).toBeNull();
     expect(inert(container.querySelector('.uib-shell-main'))).toBe(true);
     escape(button('Lukk tråder og filter'));
     expect(fills(primary())).toBe(false);
@@ -1073,11 +1168,11 @@ describe('in a host’s preview of a fixed width', () => {
 
 describe('a wide window', () => {
   it('draws no panel over the shell and puts nothing out of reach, whichever panels are open', () => {
-    draw({}, 1920);
+    const { container } = draw({}, 1920);
     fireEvent.click(button('Vis kilder'));
     expect([folded(primary()), folded(secondary())]).toEqual([false, false]);
-    expect(document.querySelector('.uib-shell-fill, [inert], dialog')).toBeNull();
-    expect(document.querySelector('.uib-shell')?.hasAttribute('data-drawer')).toBe(false);
+    expect(container.querySelector('.uib-shell-fill, [inert], dialog')).toBeNull();
+    expect(container.querySelector('.uib-shell')?.hasAttribute('data-drawer')).toBe(false);
     escape(within(secondary()).getByRole('link', { name: 'Kilde 1' }));
     expect(folded(secondary())).toBe(false);
   });

@@ -73,10 +73,7 @@ export interface ShellPanel {
   footPinned?: boolean | undefined;
   /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
   railFoot?: ReactNode;
-  /**
-   * What the folded panel shows under its button, such as «Ny tråd» (dev-navbar), also on the
-   * rail of a narrow window, where an open panel fills the shell. Not in the top row.
-   */
+  /** Shown under a rail's button, such as «Ny tråd» (dev-navbar); not in the top row. */
   rail?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
   size?: Partial<ShellPanelSize> | undefined;
@@ -111,10 +108,7 @@ export interface ShellCompanion {
   keepWidth?: boolean | undefined;
 }
 
-/**
- * Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`, which
- * closes a panel that fills the shell in a narrow window. That name is kept for compatibility.
- */
+/** Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`. */
 export type ShellRequest =
   { action: 'open' | 'offer'; side: ShellSide } | { action: 'close-drawers' };
 
@@ -280,8 +274,7 @@ export const Shell = ({
     });
   }
 
-  // Entering drawer mode folds both, so nothing fills the shell by itself; leaving it opens again
-  // what it folded, as far as the window has room: where only one fits, the one that does not yield.
+  // Entering drawer mode folds both, so nothing fills the shell by itself; leaving it reopens them.
   const [appliedDrawer, setAppliedDrawer] = useState(false);
   if (drawer !== appliedDrawer) {
     setAppliedDrawer(drawer);
@@ -371,6 +364,7 @@ export const Shell = ({
     viewport,
     drawer,
     filled,
+    framed: frameWidth !== undefined,
     cards,
     onToggle: (side: ShellSide) => byReader(side, (current) => !current.collapsed[side]),
     onCollapse: (side: ShellSide, collapsed: boolean) => byReader(side, () => collapsed),
@@ -399,7 +393,8 @@ export const Shell = ({
   const Main = frameWidth === undefined ? 'main' : 'div';
   return (
     <>
-      {frameWidth === undefined ? (
+      {/* Not while a panel fills the shell: the main column they lead to is out of reach. */}
+      {frameWidth === undefined && filled === undefined ? (
         <>
           <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
           {skipLinks}
@@ -452,6 +447,8 @@ interface SideProps {
   drawer: boolean;
   /** The panel that fills the shell, if one does. */
   filled: ShellSide | undefined;
+  /** Drawn in a host's preview (`frameWidth`), whose page is the host's. */
+  framed: boolean;
   /** The cards frame: the panel is a card, its button an icon. */
   cards: boolean;
   onToggle: (side: ShellSide) => void;
@@ -468,6 +465,7 @@ const Side = ({
   viewport,
   drawer,
   filled: filledSide,
+  framed,
   cards,
   onToggle,
   onCollapse,
@@ -517,6 +515,28 @@ const Side = ({
   const [resizing, setResizing] = useState(false);
   if (resizing && drawer) setResizing(false);
 
+  // Ahead of the repair below: focus in as it fills the shell, and back to what opened it after.
+  const wasFilled = useRef(false);
+  const opener = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (filled === wasFilled.current) return;
+    wasFilled.current = filled;
+    const active = document.activeElement;
+    // In a host's preview the page is the host's, `<body>` too.
+    const nowhere = !framed && (active === null || active === document.body);
+    if (filled) {
+      const inShell = element.current?.parentElement?.contains(active) ?? false;
+      opener.current = inShell && active instanceof HTMLElement ? active : null;
+      if (nowhere || inShell) close.current?.focus();
+      return;
+    }
+    const back = opener.current;
+    opener.current = null;
+    if (!nowhere && !(fill.current?.contains(active) ?? false)) return;
+    const reachable = back?.isConnected && back.closest('[inert], [hidden]') === null;
+    (reachable ? back : toggle.current)?.focus();
+  }, [filled, framed]);
+
   // Focus that the folding panel held goes to its button, not `<body>` (WCAG 2.4.3).
   useLayoutEffect(() => {
     if (!hasFocus) return;
@@ -530,19 +550,6 @@ const Side = ({
     if (lost) toggle.current?.focus();
   }, [hasFocus, collapsed, resizing, content]);
 
-  // Focus in as it fills the shell, unless the host's page outside has it; back to the button after.
-  const wasFilled = useRef(false);
-  useLayoutEffect(() => {
-    if (filled === wasFilled.current) return;
-    wasFilled.current = filled;
-    const active = document.activeElement;
-    const nowhere = active === null || active === document.body;
-    if (filled) {
-      const inShell = element.current?.parentElement?.contains(active) ?? false;
-      if (nowhere || inShell) close.current?.focus();
-    } else if (nowhere || (fill.current?.contains(active) ?? false)) toggle.current?.focus();
-  }, [filled]);
-
   // Escape closes it last, as a dialog's would: a menu or field that takes Escape prevents it.
   const collapse = useRef(onCollapse);
   useEffect(() => {
@@ -552,7 +559,13 @@ const Side = ({
     if (!filled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return;
-      if (!(event.target instanceof Node) || !fill.current?.contains(event.target)) return;
+      const { target } = event;
+      const panel = fill.current;
+      if (!(target instanceof Element) || !panel?.contains(target)) return;
+      // A dialog in the panel closes first, and a search field clears first, as in a dialog.
+      const dialog = target.closest('dialog[open]');
+      if (dialog && panel.contains(dialog)) return;
+      if (target instanceof HTMLInputElement && target.type === 'search' && target.value) return;
       event.preventDefault();
       collapse.current(side, true);
     };
@@ -747,7 +760,7 @@ const Side = ({
         <div
           className="uib-shell-fill"
           data-side={side}
-          hidden={collapsed}
+          hidden={!filled}
           ref={fill}
           // A click on its text keeps the focus, and so Escape, in the panel.
           tabIndex={-1}

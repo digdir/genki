@@ -139,7 +139,7 @@ describe('what a folded panel shows under its button, `rail` (dev-verktoy-4)', (
     expect(document.querySelector('.uib-shell-rail')).toBeNull();
   });
 
-  it('draws them on the rail a narrow window leaves, where the panel opens as a drawer', () => {
+  it('draws them on the rail a narrow window leaves, where the open panel fills the shell', () => {
     // Below 1139 every `(width < …)` query the shell asks is true but the top row's, at 774.
     window.matchMedia = ((media: string) => ({
       media,

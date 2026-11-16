@@ -956,9 +956,7 @@ export const AssistantView = ({
     ) : (
       sourcesBlock(titled)
     );
-  // Escape in the document is its way back. Where the panel fills the shell, Escape would also
-  // close the panel and put the focus on the panel's button, wherever the way back sends it.
-  // Not from the question field, where Escape is the field's.
+  // Escape in the document is its way back, not also the close of a panel that fills the shell.
   const escapeStaysInDrawer = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape' || !a.openDoc) return;
     if (event.target instanceof Element && event.target.closest('form')) return;
