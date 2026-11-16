@@ -41,7 +41,10 @@ const invented = (over: Partial<Finding> = {}): Finding => ({
 });
 
 const markdown = (findings: Finding[]) =>
-  report(findings, { sha: 'a'.repeat(40), runUrl: 'https://example.test/run', unfinished: [] });
+  report(
+    { confirmed: findings },
+    { sha: 'a'.repeat(40), runUrl: 'https://example.test/run', unfinished: [] },
+  );
 
 const one = () => {
   const [found] = parseReport(markdown([invented()]));
@@ -107,6 +110,22 @@ describe('reading the report', () => {
       ],
     );
     expect(found[0]?.text).toContain('Invented fix.');
+  });
+
+  it('reads an unconfirmed candidate from a report sealed after the coordinator did not finish', () => {
+    const { title, rule, path, line, problem, evidence } = invented();
+    const candidate = { title, rule, path, line, problem, evidence };
+    const [found] = parseReport(
+      report(
+        { unconfirmed: [{ ...candidate, passes: ['tenancy'] }] },
+        { sha: 'a'.repeat(40), runUrl: 'https://example.test/run', unfinished: ['coordinator'] },
+      ),
+    );
+    expect(found).toMatchObject({
+      severity: 'Unconfirmed',
+      title: candidate.title,
+      rule: candidate.rule,
+    });
   });
 
   it('reads no findings from a report without any', () => {
