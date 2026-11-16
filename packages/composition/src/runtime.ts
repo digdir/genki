@@ -863,19 +863,12 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   late.kernel = kernel;
 
-  const sharedSkill: SkillFinder = async (tenant, id, version) => {
-    const owners = (await configEntries.latest({ kind: 'skill-share' }))
-      .filter((e) => {
-        const spec = e.spec as { skill?: string; state?: string };
-        return spec.skill === id && spec.state === 'shared' && e.scope !== tenant;
-      })
-      .map((e) => e.scope);
-    for (const owner of owners) {
-      const found = await store.get('Skill', owner, id, version);
-      if (found?.definition.kind === 'Skill') return found.definition;
-    }
-    return undefined;
-  };
+  const skillLookup = skillResolver({
+    definitions: { get: (...args) => store.get(...args) },
+    configEntries,
+  });
+  const sharedSkill: SkillFinder = async (tenant, id, version) =>
+    (await skillLookup.resolveShared(tenant, id, version))?.definition;
   const sharedRecipe = sharedRecipeFinder(
     configEntries,
     () => late.store,
@@ -996,8 +989,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     deadlineMs: capability.deadlineMs ?? serviceLimits.deadlineMs,
     budget: capability.budget ?? serviceLimits.budget,
   });
-  const baseDecorate: CapabilityDecorator =
-    input.decorate ?? skillDecorator(skillResolver({ definitions: store, configEntries }));
+  const baseDecorate: CapabilityDecorator = input.decorate ?? skillDecorator(skillLookup);
   const afterDecorate = input.decorateAfter?.(store);
   const decorate: CapabilityDecorator = afterDecorate
     ? async (capability, context) => afterDecorate(await baseDecorate(capability, context), context)
