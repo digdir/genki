@@ -630,6 +630,37 @@ describe('eval runner', () => {
     ]);
   });
 
+  it('hands each evaluator the parts the case answered', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const answer = kernelTarget(kernel, kari, 'answer');
+    const parts = [
+      { mime: 'text/plain', body: { kind: 'text' as const, text: 'Klagefristen er tre uker.' } },
+      {
+        mime: 'application/json',
+        body: { kind: 'json' as const, json: { sources: [{ document: 'forvaltningsloven' }] } },
+      },
+    ];
+    const seen: unknown[] = [];
+    const sees: Evaluator = {
+      id: 'ser-delene',
+      version: '1',
+      kind: 'deterministic',
+      evaluate: async (_c, o) => {
+        seen.push(o.parts);
+        return [];
+      },
+    };
+
+    await runEval({
+      testSet: setOf(),
+      evaluators: [sees],
+      provenance: { commit: 'abc', data: 'd' },
+      target: { ...answer, invoke: async (input) => ({ ...(await answer.invoke(input)), parts }) },
+    });
+
+    expect(seen).toEqual([parts, parts]);
+  });
+
   it("checks the judge's family only against language models the run used", async () => {
     const others = [
       { kind: 'embedder', id: 'foundry/text-embedding-3-small', tenant: '991825827' },
