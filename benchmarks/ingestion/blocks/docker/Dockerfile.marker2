@@ -2,7 +2,7 @@
 # (datalab-to/surya-ocr-2.5) runs in vLLM, which Surya starts itself as a sibling container
 # (vllm/vllm-openai, Surya's VLLM_DOCKER_IMAGE) through the host's Docker socket, so the image carries the
 # Docker CLI. run.sh mounts the socket and shares the host network so Surya reaches the server it started.
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 # build-essential: Triton compiles its launcher with the C compiler at run time (Surya's models).
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0 build-essential curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
