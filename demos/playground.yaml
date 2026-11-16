@@ -1,0 +1,36 @@
+title: Prøv en tjeneste i prøveområdet
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/playground
+signedIn: true
+ready: Endre oppsett
+steps:
+  - say: Prøveområdet lar dere stille spørsmål til en tjeneste før den tas i bruk, uten å skrive en linje kode.
+    hold: 1
+  - say: Først velger vi hva vi vil prøve. Det kan være et utkast, en publisert versjon eller et eget oppsett med en annen modell.
+    do:
+      - [find, role, button, click, --name, Endre oppsett]
+      - [wait, --text, Hva vil du prøve?, --timeout, '30000']
+  - say: Vi velger tjenesten vår og tar oppsettet i bruk.
+    do:
+      - [select, 'select[id$="-svc"]', smoke]
+      - [find, role, button, click, --name, Bruk oppsettet]
+  - say: Så stiller vi et spørsmål, slik en saksbehandler ville gjort det.
+    do:
+      - [find, label, Spørsmål, fill, Hva sier evalueringene om digital veiledning?]
+      - [find, role, button, click, --name, Send, --exact]
+  - say: Svaret bygger på dokumentene tjenesten har tilgang til, og viser kildene, så dere kan sjekke hva det bygger på.
+    do:
+      - [wait, --text, Svar laget med KI, --timeout, '120000']
+    hold: 2
+  - say: Under svaret kan dere åpne kjøringen og se hvert steg, hvilken modell som svarte, og hvor mange tokens det brukte.
+    do:
+      - [find, role, link, hover, --name, Se kjøringen]
+  - say: Et godt spørsmål kan lagres som testtilfelle med ett klikk. Da blir det med i testsettet, og sjekkes hver gang tjenesten endres.
+    do:
+      - [find, role, button, hover, --name, Lagre som testtilfelle]
+  - say: Med Sammenlign kan dere prøve to oppsett side om side, for eksempel to modeller eller to versjoner av tjenesten.
+    do:
+      - [find, role, button, hover, --name, Sammenlign]
+    hold: 1.5
