@@ -32,6 +32,10 @@ connect="'self'"
 for url in "${ANSATTPORTEN_ISSUER:-}" "${OIDC_ISSUER:-}" "${OIDC_TOKEN_ENDPOINT:-}"; do
   case "$url" in https://*) connect="$connect $(origin "$url")" ;; esac
 done
+frame="'self'"
+for url in "${ANSATTPORTEN_ISSUER:-}" "${OIDC_ISSUER:-}"; do
+  case "$url" in https://*) frame="$frame $(origin "$url")" ;; esac
+done
 upstream=${API_UPSTREAM%/}
 api_scheme=${upstream%%://*}
 api_rest=${upstream#*://}
@@ -43,7 +47,7 @@ case "$api_host" in
   *) api_server="$api_host:$([ "$api_scheme" = https ] && echo 443 || echo 80)" ;;
 esac
 
-sed -e "s#__CONNECT_SRC__#$connect#g" /etc/nginx/genki-headers.conf >/tmp/genki/headers.conf
+sed -e "s#__CONNECT_SRC__#$connect#g" -e "s#__FRAME_SRC__#$frame#g" /etc/nginx/genki-headers.conf >/tmp/genki/headers.conf
 sed -e 's#X-Frame-Options "DENY"#X-Frame-Options "SAMEORIGIN"#' -e "s#frame-ancestors 'none'#frame-ancestors 'self'#" \
   /tmp/genki/headers.conf >/tmp/genki/headers-same-origin.conf
 sed -e "s#__APP__#$APP#g" -e "s#__API_SCHEME__#$api_scheme#g" -e "s#__API_SERVER__#$api_server#g" \
