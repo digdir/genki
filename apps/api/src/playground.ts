@@ -28,6 +28,7 @@ import {
   type DraftRunOutcome,
   type DraftRunSuccess,
 } from './draft-runner.js';
+import type { QuotaProblem } from './rate-limit.js';
 import {
   mapRun,
   RunMapper,
@@ -158,9 +159,10 @@ export interface PlaygroundUnavailable {
 }
 
 export interface PlaygroundQuotaExhausted {
-  type: 'about:blank';
+  type: QuotaProblem['type'];
   title: string;
   status: 429;
+  detail: string;
   quota: PlaygroundQuota;
 }
 
@@ -1056,16 +1058,27 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       g: Guarded,
       outcome: DraftRunFailure,
       name: PlaygroundSetupName,
-    ): Promise<{ status: DraftRunFailure['status']; body: unknown }> => {
-      if (outcome.status === 400) return { status: 400, body: invalidInputProblem(outcome.errors) };
-      if (outcome.status === 429) {
+    ): Promise<{
+      status: DraftRunFailure['status'];
+      body: unknown;
+      headers: Record<string, string>;
+    }> => {
+      const headers: Record<string, string> = { 'content-type': 'application/problem+json' };
+      if (outcome.status === 400)
+        return { status: 400, body: invalidInputProblem(outcome.errors), headers };
+      if (outcome.quota) {
         const exhausted: PlaygroundQuotaExhausted = {
-          type: 'about:blank',
+          type: outcome.quota.type,
           title: quotaTitle,
           status: 429,
+          detail: outcome.quota.detail,
           quota: quotaView(await quotaOf(g.tenant, true)),
         };
-        return { status: 429, body: exhausted };
+        return {
+          status: 429,
+          body: exhausted,
+          headers: { ...headers, 'retry-after': String(outcome.quota.retryAfterSeconds) },
+        };
       }
       if (outcome.status === 502) {
         const code = outcome.code ?? 'model_error';
@@ -1083,7 +1096,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           ...(detailed && outcome.errors[0]?.message ? { detail: outcome.errors[0].message } : {}),
           ...(outcome.task ? { runId: outcome.task } : {}),
         };
-        return { status: 502, body: unavailable };
+        return { status: 502, body: unavailable, headers };
       }
       return {
         status: outcome.status,
@@ -1093,6 +1106,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           status: outcome.status,
           errors: outcome.errors.map((e) => ({ ...e, path: `${name}.${e.path}` })),
         },
+        headers,
       };
     };
 
@@ -1112,9 +1126,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       for (const [i, outcome] of outcomes.entries()) {
         if (outcome.ok) continue;
         const failed = await failureOf(g, outcome, definitions[i]?.name ?? 'setup');
-        return c.json(failed.body, failed.status, {
-          'content-type': 'application/problem+json',
-        });
+        return c.json(failed.body, failed.status, failed.headers);
       }
       const results = await Promise.all(
         outcomes.map((o, i) =>
@@ -1141,7 +1153,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       let begun = false;
       let started: () => void = () => undefined;
       const startedOrSettled = new Promise<void>((resolve) => (started = resolve));
-      let refusal: unknown;
+      let refusal: Awaited<ReturnType<typeof failureOf>> | undefined;
       const body = new ReadableStream<Uint8Array>({
         start: (controller) => {
           const send = (event: string, data: unknown) => {
@@ -1187,7 +1199,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                   });
                 else {
                   const failed = await failureOf(g, outcome, d.name);
-                  if (failed.status === 429) refusal ??= failed.body;
+                  if (failed.status === 429) refusal ??= failed;
                   send('failed', { setup: d.name, problem: failed.body });
                 }
                 return outcome;
@@ -1226,7 +1238,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       await startedOrSettled;
       if (refusal && !begun) {
         open = false;
-        return c.json(refusal, 429, { 'content-type': 'application/problem+json' });
+        return c.json(refusal.body, 429, refusal.headers);
       }
       return new Response(body, {
         status: 200,

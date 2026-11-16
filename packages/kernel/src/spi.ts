@@ -185,7 +185,7 @@ const secondsToNextMonth = (now: Date) =>
 export const quotaExhaustedProblem = (error: unknown, now = new Date()) =>
   error instanceof KernelError && error.code === 'quota_exhausted'
     ? {
-        type: 'urn:genai:problem:quota-exhausted',
+        type: 'urn:genai:problem:quota-exhausted' as const,
         title: 'The monthly token quota is used up',
         status: 429 as const,
         detail: 'The organisation has used its monthly token quota for this month.',

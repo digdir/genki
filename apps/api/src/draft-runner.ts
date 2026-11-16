@@ -34,6 +34,7 @@ import { residencies, type Residency } from '@genai/port-model';
 import { parse as parseYaml } from 'yaml';
 import { completeService } from './definition-completion.js';
 import { failureFromError } from './failures.js';
+import type { QuotaProblem } from './rate-limit.js';
 import { strategyCatalogue } from './strategy-catalogue.js';
 import { withFieldOptions, type FacetCount, type FacetSource } from './input-options.js';
 
@@ -164,6 +165,7 @@ export interface DraftRunFailure {
   task?: string;
   code?: string;
   step?: string;
+  quota?: QuotaProblem;
 }
 
 export type DraftRunOutcome = DraftRunSuccess | DraftRunFailure;
@@ -408,7 +410,8 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
       if (task) deps.wake?.(task);
       await tail;
       const spent = quotaExhaustedProblem(error);
-      if (spent) return { ...failure(429, 'quota', spent.detail), code: 'quota_exhausted' };
+      if (spent)
+        return { ...failure(429, 'quota', spent.detail), code: 'quota_exhausted', quota: spent };
       const failed = failureFromError(error);
       return {
         ...failure(502, '', failed.message),

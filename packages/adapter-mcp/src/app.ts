@@ -393,10 +393,15 @@ export const createMcpApp = (options: McpAppOptions) => {
           return outcomeOf(result(id, toolError(error.message, error.code)));
         throw error;
       }
-      await options.conversations?.append(hooks.request, conversationId, {
-        role: 'user',
-        text: query ?? '',
-      });
+      try {
+        await options.conversations?.append(hooks.request, conversationId, {
+          role: 'user',
+          text: query ?? '',
+        });
+      } catch (error) {
+        await kernel.cancel(principal, run.task).catch(() => undefined);
+        throw error;
+      }
       hooks.onRun?.(run);
       const abort = () => void kernel.cancel(principal, run.task).catch(() => undefined);
       if (hooks.signal.aborted) abort();

@@ -646,6 +646,45 @@ describe('the playground', () => {
     expect(options.quota.usedPercent).toBeGreaterThanOrEqual(100);
   });
 
+  it('a playground run refused at the quota answers the quota-exhausted problem with Retry-After', async () => {
+    const { settings, app, run } = await boot();
+    expect((await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(200);
+    settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator');
+
+    const res = await app.request(`/tenants/${tenant}/playground/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer kari' },
+      body: JSON.stringify({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ type: 'urn:genai:problem:quota-exhausted' });
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
+  it('a builder test run refused at the quota answers the quota-exhausted problem with Retry-After', async () => {
+    const { settings, app, run } = await boot();
+    expect((await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(200);
+    settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator');
+
+    const res = await app.request(`/tenants/${tenant}/definitions/test-run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer kari' },
+      body: JSON.stringify({
+        definition: service('utkast-kvote', 'Svar på bokmål.'),
+        query: 'Hei',
+      }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({
+      type: 'urn:genai:problem:quota-exhausted',
+      title: 'The monthly token quota is used up',
+      status: 429,
+    });
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
   it('options and runs read the monthly quota from one usage query, never task by task', async () => {
     const sums: string[] = [];
     const { call, run } = await boot({
@@ -826,6 +865,24 @@ describe('the playground run stream', () => {
     expect(res.type).toContain('application/problem+json');
     expect(res.json).toMatchObject({ status: 429, quota: { monthlyTokens: 10 } });
     expect(app.model.seen.length).toBe(before);
+  });
+
+  it('a streamed run refused at the quota answers the quota-exhausted problem with Retry-After', async () => {
+    const app = await boot();
+    expect((await app.run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(
+      200,
+    );
+    app.settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator');
+
+    const res = await app.app.request(`/tenants/${tenant}/playground/runs/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer kari' },
+      body: JSON.stringify({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ type: 'urn:genai:problem:quota-exhausted' });
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
   });
 
   it('reports a failed model call in the stream and still closes with the quota', async () => {

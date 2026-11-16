@@ -60,11 +60,14 @@ export const tooManyRequests = (
     'retry-after': String(retryAfterSeconds),
   });
 
+export type QuotaProblem = NonNullable<ReturnType<typeof quotaExhaustedProblem>>;
+
+export const quotaExhausted = (c: Context, spent: QuotaProblem) =>
+  tooManyRequests(c, spent.retryAfterSeconds, spent.type, spent.title, spent.detail);
+
 export const quotaRefused = (c: Context, error: unknown) => {
   const spent = quotaExhaustedProblem(error);
-  return spent
-    ? tooManyRequests(c, spent.retryAfterSeconds, spent.type, spent.title, spent.detail)
-    : undefined;
+  return spent ? quotaExhausted(c, spent) : undefined;
 };
 
 export const rateLimitedBody = (limit: number) => ({

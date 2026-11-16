@@ -1292,6 +1292,28 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
     expect(turns).toEqual([]);
   });
 
+  it('cancels the started run when storing the user turn fails', async () => {
+    const base = setup().kernel;
+    const { app } = setup({
+      kernel: base,
+      conversations: {
+        open: async () => ({ ok: true, id: 'c', history: [] }),
+        append: async () => {
+          throw new Error('db down');
+        },
+      },
+    });
+    tasks.length = 0;
+
+    const res = await call(app, 'kunnskapsassistenten__slow', { query: 'x' });
+
+    expect((await res.json()).error).toMatchObject({ code: -32603 });
+    await until(
+      async () =>
+        tasks.length === 1 && (await base.task(kari, tasks[0] as string)).status === 'cancelled',
+    );
+  });
+
   it('answers the conversation store refusal as a tool error without running the service', async () => {
     const { app } = setup({
       conversations: {
