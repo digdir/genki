@@ -33,7 +33,7 @@ import {
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
-import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
+import { knowledgeDropQueue, knowledgeFieldsQueue, knowledgeKeys } from '@genai/jobs';
 import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
@@ -119,6 +119,13 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
       await (
         await started()
       ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
+    },
+    // New fields on a dataset's stored documents, written by the worker (ADR 0058).
+    refreshFields: async (input: { tenant: string; dataset: string; fill: string }) => {
+      const data = knowledgeFieldsQueue.payload.parse(input);
+      await (
+        await started()
+      ).send(knowledgeFieldsQueue, data, { key: knowledgeKeys.fields(input.dataset) });
     },
   };
 };

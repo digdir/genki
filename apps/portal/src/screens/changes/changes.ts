@@ -77,6 +77,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.pipeline.cancel': 'changes.pipelineCancel',
   'platform.jobs.redrive': 'changes.jobsRedrive',
   'platform.jobs.readmit': 'changes.jobsReadmit',
+  'platform.knowledge.fields': 'changes.knowledgeFields',
   'platform.pipeline.delete': 'changes.pipelineDelete',
   'platform.pipeline.execute': 'changes.pipelineExecute',
   'platform.pipeline.save': 'changes.pipelineSave',

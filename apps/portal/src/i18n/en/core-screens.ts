@@ -169,6 +169,7 @@ export const changes = {
   onboardingRequest: 'sent an onboarding request',
   pipelineCancel: 'cancelled the ingestion',
   jobsRedrive: "sent the ingestion run's failed jobs back",
+  knowledgeFields: "filled new fields on the dataset's documents",
   jobsReadmit: 'admitted the ingestion run again',
   pipelineDelete: 'deleted the ingestion',
   pipelineExecute: 'started the ingestion',

@@ -110,6 +110,7 @@ import {
 } from './knowledge-binding.js';
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
+import { fieldsWork } from './knowledge-fields.js';
 import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
 import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
@@ -514,6 +515,15 @@ const workerJobs = db
               dropWork({
                 datasets: knowledgeServerDatasets,
                 server: knowledgeHeavyWork(knowledgeServer.pools.owner),
+                bound: () => knowledgeBinding.knowledgeBound(),
+                log,
+              }),
+            ]
+          : []),
+        ...(knowledgeWriter
+          ? [
+              fieldsWork({
+                records: knowledgeRecordsOf(knowledgeWriter),
                 bound: () => knowledgeBinding.knowledgeBound(),
                 log,
               }),

@@ -245,12 +245,28 @@ export const displayNames = (orgs: KudosOrganisation[]) =>
     .filter((n) => n.type === 'display')
     .map((n) => n.name);
 
+/**
+ * The org numbers of the organisations in one role, each once, as text. An organisation KUDOS
+ * gives without an org number is left out (ADR 0058: a search filters by org number).
+ */
+export const orgNumbers = (orgs: KudosOrganisation[]) => [
+  ...new Set(
+    orgs.flatMap((o) => {
+      const n = o.org_number;
+      const text = typeof n === 'number' || typeof n === 'string' ? String(n).trim() : '';
+      return /^\d{9}$/.test(text) ? [text] : [];
+    }),
+  ),
+];
+
 const kudosStoredFields = [
   'id',
   'doc_num',
   'title',
   'authors',
   'orgs_long',
+  'owner_orgnr',
+  'recipient_orgnr',
   'concerned_year',
   'concerned_year_from',
   'concerned_year_to',
@@ -268,6 +284,33 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
+/**
+ * A stored KUDOS document's fields with its owners' and recipients' org numbers from the KUDOS
+ * record, in the order a fresh ingest stores them, so a fields-only refresh writes what a fresh
+ * ingest would (ADR 0058). Fields the store gave back in another order are put back in order.
+ */
+export const kudosOrgNumberFields = (doc: {
+  id: string;
+  record: Record<string, unknown>;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const owners = orgNumbers((doc.record.owners ?? []) as KudosOrganisation[]);
+  const recipients = orgNumbers((doc.record.recipients ?? []) as KudosOrganisation[]);
+  const rest = Object.fromEntries(
+    Object.entries(doc.fields).filter(([k]) => k !== 'owner_orgnr' && k !== 'recipient_orgnr'),
+  );
+  const fields: Record<string, unknown> = {
+    ...rest,
+    ...(owners.length ? { owner_orgnr: owners } : {}),
+    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+  };
+  const known = kudosStoredFields.filter((k) => k in fields);
+  return Object.fromEntries([
+    ...known.map((k) => [k, fields[k]]),
+    ...Object.entries(fields).filter(([k]) => !kudosStoredFields.includes(k)),
+  ]);
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
@@ -280,9 +323,13 @@ export const prepareKudosDoc = (
         'path'
       >,
   );
+  const owners = orgNumbers(doc.owners ?? []);
+  const recipients = orgNumbers(doc.recipients ?? []);
   const enriched: Record<string, unknown> = {
     ...doc,
     orgs_long: [...new Set(displayNames(orgs))],
+    ...(owners.length ? { owner_orgnr: owners } : {}),
+    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,

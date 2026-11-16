@@ -222,6 +222,7 @@ describe('the worker and the knowledge queues', () => {
     expect(await names(api.pool)).toEqual([
       'knowledge.activate',
       'knowledge.drop',
+      'knowledge.fields',
       'knowledge.ingest',
       'knowledge.push',
     ]);

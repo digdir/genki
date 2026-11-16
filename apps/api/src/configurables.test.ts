@@ -997,6 +997,52 @@ describe('ingestion pipelines', () => {
   });
 });
 
+describe("refreshing a dataset's fields", () => {
+  it('lets only an operator start a backfill and audits who started it', async () => {
+    const sent: { tenant: string; dataset: string; fill: string }[] = [];
+    const { call, admin } = await boot({
+      jobRuns: {
+        runsAsJobs: () => false,
+        runs: {} as unknown as JobRunStore,
+        refreshFields: async (input) => {
+          sent.push(input);
+        },
+      },
+    });
+    const fields = `/operator/datasets/${encodeURIComponent('digdir/kudos')}/fields`;
+    const body = { fill: 'kudos-org-numbers' };
+
+    const byEmployee = await call(fields, 'erik', { body, reason: 'Fyll organisasjonsnumre' });
+    const withoutReason = await call(fields, 'drift', { body, reason: null });
+    const unknownFill = await call(fields, 'drift', {
+      body: { fill: 'alt' },
+      reason: 'Fyll organisasjonsnumre',
+    });
+    const started = await call(fields, 'drift', { body, reason: 'Fyll organisasjonsnumre' });
+
+    expect(byEmployee.status).toBe(403);
+    expect(withoutReason.status).toBe(400);
+    expect(unknownFill.status).toBe(400);
+    expect(started.status).toBe(202);
+    expect(sent).toEqual([
+      { tenant: 'platform', dataset: 'digdir/kudos', fill: 'kudos-org-numbers' },
+    ]);
+    expect((await admin.audit()).filter((e) => e.action === 'platform.knowledge.fields')).toEqual([
+      expect.objectContaining({
+        outcome: 'rejected',
+        target: 'dataset:digdir/kudos',
+        actor: expect.stringContaining('drift'),
+      }),
+      expect.objectContaining({
+        outcome: 'applied',
+        target: 'dataset:digdir/kudos',
+        reason: 'Fyll organisasjonsnumre',
+        actor: expect.stringContaining('drift'),
+      }),
+    ]);
+  });
+});
+
 describe('test set write API', () => {
   const firstCase = {
     split: 'validation',

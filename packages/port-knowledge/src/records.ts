@@ -105,6 +105,23 @@ export class GenerationBusy extends Error {
   }
 }
 
+/** A stored document as a fields-only refresh reads it: its source record and its fields now. */
+export interface StoredDocument {
+  id: string;
+  record: Record<string, unknown>;
+  fields: Record<string, unknown>;
+}
+
+/** What a fields-only refresh did, over every generation that holds the dataset. */
+export interface FieldRefresh {
+  generations: number;
+  /** Documents whose fields changed in at least one generation. */
+  updated: number;
+  unchanged: number;
+  /** Records copied from another engine, left to the next pipeline run, which takes them over. */
+  copied: number;
+}
+
 /** The document records of the knowledge server, as the worker's writer reaches them. */
 export interface DocumentRecords {
   /** The records a pipeline owns in a dataset, with the change each holds in the generation. */
@@ -152,4 +169,17 @@ export interface DocumentRecords {
    * run, send-back or catch-up writes it.
    */
   fail(record: IndexRecord, reason: string): Promise<void>;
+  /**
+   * Writes new fields for a dataset's documents, without re-chunking or embedding (ADR 0058).
+   * `fill` gives a document's fields in the order a fresh write builds them; a document whose
+   * fields it leaves as they are is unchanged. A changed document takes the next change number,
+   * which every generation holding it applies with its new fields, in one transaction per batch, so
+   * the next run sees it as unchanged. Throws GenerationBusy, writing nothing, when VACUUM holds a
+   * generation.
+   */
+  refreshFields(
+    dataset: string,
+    fill: (document: StoredDocument) => Record<string, unknown>,
+    options?: { batch?: number },
+  ): Promise<FieldRefresh>;
 }
