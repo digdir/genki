@@ -62,6 +62,48 @@ const api = () => createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' });
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("a streamed answer's pages", () => {
+  it('keeps the page of each excerpt and its link to that page, as a reloaded thread does', async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const paged = {
+      ...wireSource,
+      excerpts: [
+        { chunk_id: 'c1', text: 'Sammendrag.', page: 6, page_end: 7, url: `${pdf}#page=6` },
+        { chunk_id: 'c2', text: 'Risiko.', page: 9 },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/api/conversations')
+          ? json({ conversation: { id: 't1' } })
+          : stream(
+              { id: 'a1', choices: [{ delta: { content: 'Ned [1], kort [2].' } }] },
+              { id: 'a1', sources: [paged], citations: [], markers: wireMarkers },
+              '[DONE]',
+            ),
+      ),
+    );
+    const events: StreamEvent[] = [];
+    for await (const event of api().ask({
+      question: 'Sykepenger?',
+      model: 'ka__default',
+      dataset: { tenant: 'digdir', key: 'kudos' },
+      steps: false,
+      signal: new AbortController().signal,
+    }))
+      events.push(event);
+    const done = events.find((e) => e.type === 'done');
+    const sources = done?.type === 'done' ? done.answer.sources : [];
+    expect(
+      sources.map((s, at) => sourceFromWire(s, undefined, at)).flatMap((s) => s.excerpts),
+    ).toEqual([
+      expect.objectContaining({ chunkId: 'c1', page: 6, pageEnd: 7, url: `${pdf}#page=6` }),
+      expect.objectContaining({ chunkId: 'c2', page: 9 }),
+    ]);
+  });
+});
+
 describe('the excerpt markers a service names', () => {
   it('passes on the markers @genai/client reads off the stream, on `sources` and on the answer', async () => {
     vi.stubGlobal(

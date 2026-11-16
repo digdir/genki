@@ -421,7 +421,7 @@ When the service cites excerpts, the answer and the `sources` event carry `marke
 
 `platform.conversations.get(id)` reads each stored message's `sources` into the same shape as an answer's, and its `markers` when the stored turn carries them.
 
-An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` sends it when the index gives the chunk a heading (see Citations and sources).
+An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` sends it when the index gives the chunk a heading (see Citations and sources). It carries `page`, `pageEnd` and `url` (its PDF at `#page=N`, http or https only) when the response gives them.
 
 ## Without the client (curl)
 
