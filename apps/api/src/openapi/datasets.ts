@@ -1,4 +1,5 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
+import { fieldFills } from '@genai/jobs';
 import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
 import {
@@ -1260,6 +1261,34 @@ const knowledgeEngineRoutes: RouteConfig[] = [
 
 const operatorOnly = { 401: problem('Not signed in'), 403: problem('Not an operator') };
 
+const fieldRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'post',
+    path: '/operator/datasets/{dataset}/fields',
+    summary:
+      "Sends a job that writes new fields on a platform dataset's stored documents, without re-chunking or embedding (operators, with a change reason)",
+    request: {
+      params: z.object({ dataset: z.string() }),
+      headers: reasonHeader,
+      body: {
+        content: {
+          'application/json': { schema: z.object({ fill: z.enum(fieldFills) }) },
+        },
+      },
+    },
+    responses: {
+      202: json(
+        z.object({ dataset: z.string(), fill: z.enum(fieldFills), status: z.literal('sent') }),
+        'The job is sent',
+      ),
+      400: problem('No change reason, or an unknown fill'),
+      ...operatorOnly,
+      404: problem('No such platform dataset'),
+      409: problem('A run of the dataset is open'),
+    },
+  }),
+];
+
 const ComparisonKind = z.enum(['mismatch', 'budget-booking', 'not-in-register']);
 
 const stateRegisterRoutes: RouteConfig[] = [
@@ -1744,6 +1773,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
     ...datasetRoutes(operatorBase),
     ...datasetRoutes(tenantBase),
     ...pipelineRoutes(operatorBase),
+    ...fieldRoutes,
     ...pipelineRoutes(tenantBase),
   ],
   'knowledge-endpoints': knowledgeEndpointRoutes,
