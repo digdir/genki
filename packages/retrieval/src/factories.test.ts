@@ -298,7 +298,7 @@ describe('agent retrieval factory', () => {
     });
   });
 
-  it('inspect_filters counts within the caller filter on top of the fixed one', async () => {
+  it('inspect_filters counts within every field of the service filter', async () => {
     const agent = createAgentRetrieval({
       knowledge: counted(),
       filters: { orgs_short: ['NAV'], concerned_years: ['2024'] },
