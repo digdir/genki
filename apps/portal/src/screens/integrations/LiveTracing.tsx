@@ -210,10 +210,10 @@ const Guide = ({ open, onToggle }: { open: boolean; onToggle: (open: boolean) =>
               </TableRow>
             </TableHead>
             <TableBody>
-              {whereRows.map(([langfuse, genki]) => (
-                <TableRow key={langfuse}>
-                  <TableCell>{t(langfuse)}</TableCell>
-                  <TableCell>{t(genki)}</TableCell>
+              {whereRows.map(([there, here]) => (
+                <TableRow key={there}>
+                  <TableCell>{t(there)}</TableCell>
+                  <TableCell>{t(here)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -447,7 +447,7 @@ export const LiveTracing = ({
                   <Paragraph data-size="sm">{t('integLangfuse.datasetsHelp')}</Paragraph>
                   <ul className="plain-list" aria-labelledby={`datasets-${c.id}`}>
                     {c.datasets.map((d) => (
-                      <li key={d.id} className="row-gap">
+                      <li key={d.id} className="row-wrap">
                         <code>{d.name}</code>
                         <CopyButton
                           text={filterLines(d.name)}
