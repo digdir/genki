@@ -64,6 +64,7 @@ export const audit = {
   actionOnboardingRequest: 'Requested onboarding',
   actionPipelineCancel: 'Cancelled ingestion run',
   actionJobsRedrive: 'Sent failed jobs back',
+  actionKnowledgeFields: "Filled new fields on a dataset's documents",
   actionJobsReadmit: 'Admitted the ingestion run again',
   actionEngineSwitchReadmit: "Admitted the switch's ingestion again",
   actionPlatformSecretSet: 'Saved platform secret',

@@ -18,6 +18,7 @@ const notAdminChanges = reasonFreeWrites;
 const throughAdminTasks = [
   'DELETE /operator/catalog/:kind/:id',
   'DELETE /operator/datasets/:dataset/pipelines/:id',
+  'POST /operator/datasets/:dataset/fields',
   'DELETE /operator/datasets/:id',
   'DELETE /operator/gates/:id',
   'DELETE /operator/guardrail-rules/:id',

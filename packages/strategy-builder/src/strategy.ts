@@ -98,6 +98,15 @@ export const builderTurnInput = z.object({
         }),
       )
       .optional(),
+    interfaceBlocks: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.object({ nb: z.string(), en: z.string() }),
+          covers: z.array(z.object({ nb: z.string(), en: z.string() })),
+        }),
+      )
+      .optional(),
   }),
 });
 

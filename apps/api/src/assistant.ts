@@ -95,6 +95,18 @@ export const shownApproval = (proposal: AssistantProposal): AssistantProposal =>
   } as AssistantProposal;
 };
 
+const worded = z.strictObject({ nb: z.string().max(200), en: z.string().max(200) });
+
+const interfaceBlocksBody = z
+  .array(
+    z.strictObject({
+      id: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/),
+      name: worded,
+      covers: z.array(worded).max(10),
+    }),
+  )
+  .max(30);
+
 export const turnBody = z.object({
   message: z.string(),
   draft: z.object({ definition: z.union([z.record(z.string(), z.unknown()), z.string()]) }),
@@ -102,6 +114,7 @@ export const turnBody = z.object({
   previousTurn: z.string().min(1).optional(),
   intent: z.enum([...serviceIntents, ...skillIntents]).optional(),
   stream: z.boolean().optional(),
+  interfaceBlocks: interfaceBlocksBody.optional(),
 });
 
 const intentsFor: Record<BuilderTarget, readonly BuilderIntent[]> = {
@@ -676,7 +689,10 @@ export const createAssistantModule =
             intent,
             draft,
             stream,
-            context,
+            context:
+              target === 'service' && body.interfaceBlocks?.length
+                ? { ...context, interfaceBlocks: body.interfaceBlocks }
+                : context,
           };
           const left = daily - used;
           return respond(
