@@ -742,16 +742,16 @@ export const integrationsArea = {
       "A judge in Langfuse can score a service's test runs. genki shows the scores on the run, beside its own metrics.",
     guideSteps: 'Four steps',
     guideConnect:
-      "Connect the services to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
+      "Someone who manages the services connects them to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
     guideJudge:
-      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Its filter has datasetId any of [genki/<service-id>/<test-set-id>] and isExperimentItemRootSpan = true. The judge names its own model, not the project's default model.",
+      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Its filter has datasetId any of [genki/<service-id>/<test-set-id>] and isExperimentItemRootSpan = true. The judge names its own model, not the project's or the organisation's default model.",
     guideMapping:
       'The judge reads the whole question and answer, or a path into them with $, .key and [n]. A text question is at input $.parts[0].body.text, and the answer at output $[0].body.text.',
     guideAdopt:
       'Adopt the judge under Building blocks › Catalogue › Judges. It also says there why genki cannot use a judge.',
     guideRun: 'Run the test set with "Send the run to Langfuse" ticked.',
     guideLive:
-      'A judge for live traffic in the same project needs environment none of [genki-test-runs], or the test run will not start.',
+      'A judge for live traffic in the same project stops the test run if it also matches it. Leave the test runs out with environment none of [genki-test-runs].',
     guideCopy:
       'The button beside each dataset below copies the two filter lines, with the dataset filled in.',
     guideWhere: 'Where it shows up',

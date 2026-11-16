@@ -739,16 +739,16 @@ export const integrationsArea = {
       'En dommer i Langfuse kan vurdere testkjøringene til en tjeneste. genki viser vurderingene på kjøringen, ved siden av sine egne mål.',
     guideSteps: 'Fire steg',
     guideConnect:
-      'Koble tjenestene til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
+      'Den som forvalter tjenestene, kobler dem til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
     guideJudge:
-      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. Filteret har datasetId any of [genki/<tjeneste-id>/<testsett-id>] og isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet.',
+      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. Filteret har datasetId any of [genki/<tjeneste-id>/<testsett-id>] og isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet eller organisasjonen.',
     guideMapping:
       'Dommeren leser hele spørsmålet og svaret, eller en sti i dem med $, .nøkkel og [n]. Et spørsmål i tekst ligger på input $.parts[0].body.text, og svaret på output $[0].body.text.',
     guideAdopt:
       'Ta dommeren i bruk under Byggeklosser › Katalog › Dommere. Der står det også hvorfor genki ikke kan bruke en dommer.',
     guideRun: 'Kjør testsettet med «Send kjøringen til Langfuse» krysset av.',
     guideLive:
-      'Har prosjektet en dommer for live-trafikk, trenger den environment none of [genki-test-runs]. Ellers starter ikke testkjøringen.',
+      'En dommer for trafikken i drift i samme prosjekt stopper testkjøringen hvis den også treffer den. Hold testkjøringene utenfor med environment none of [genki-test-runs].',
     guideCopy:
       'Knappen ved hvert datasett under kopierer de to filterlinjene, med datasettet fylt inn.',
     guideWhere: 'Hvor det vises',
@@ -766,7 +766,7 @@ export const integrationsArea = {
     guideExperimentGenki:
       'Kjøringen, med boksen krysset av, og «Venter på vurderinger» mens dommerne jobber',
     guideTraceLangfuse:
-      'Hvert testtilfelle: en trace i miljøet genki-test-runs, med vurderingene til dommerne',
+      'Hvert testtilfelle: et spor i miljøet genki-test-runs, med vurderingene til dommerne',
     guideTraceGenki:
       'Langfuse-vurderingene på kjøringen, adskilt fra målene til genki, med kostnad, samsvar med etiketter og en lenke til eksperimentet',
     copyLines: 'Kopier filterlinjer',
