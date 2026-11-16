@@ -10,6 +10,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ApiClient } from '../../api';
+import { productionEnvironment } from '../../api/environments';
 import { useFormat } from '@genai/i18n/react';
 import {
   runExtras,
@@ -38,6 +39,7 @@ const statusFilters: [PlainKey, TaskStatus | ''][] = [
 interface Filters {
   q: string;
   service: string;
+  environment: string;
   status: TaskStatus | '';
   trigger: string;
   date: string;
@@ -46,7 +48,7 @@ interface Filters {
 const triggerLabel = (kind: string, t: T) =>
   kind in triggerKindKeys ? t(triggerKindKeys[kind as keyof typeof triggerKindKeys]) : kind;
 
-const empty: Filters = { q: '', service: '', status: '', trigger: '', date: '' };
+const empty: Filters = { q: '', service: '', environment: '', status: '', trigger: '', date: '' };
 
 export const RunsTab = ({
   api,
@@ -83,6 +85,16 @@ export const RunsTab = ({
   const names: Record<string, string> = services.status === 'ready' ? services.data : {};
   const serviceLabel = (id: string) => names[id] ?? serviceLabelOf(id);
   const titleOf = (row: TaskRow) => row.serviceName ?? serviceLabel(row.service);
+  const [environments] = useAsync(
+    async (signal) =>
+      live && form.service
+        ? ((
+            await api.environments.list(tenant, form.service, signal).catch(() => undefined)
+          )?.environments.map((e) => e.name) ?? [])
+        : [],
+    [api, tenant, live, form.service],
+  );
+  const environmentNames = environments.status === 'ready' ? environments.data : [];
   const [state, retry, pending] = useAsync(
     async (signal) => ({
       n: applied.n,
@@ -91,11 +103,12 @@ export const RunsTab = ({
         {
           ...(applied.status ? { status: applied.status } : {}),
           ...(applied.service ? { service: applied.service } : {}),
+          ...(applied.service && applied.environment ? { environment: applied.environment } : {}),
         },
         signal,
       )),
     }),
-    [api, tenant, applied.status, applied.service, applied.n],
+    [api, tenant, applied.status, applied.service, applied.environment, applied.n],
     { keepPreviousFor: tenant },
   );
 
@@ -158,7 +171,7 @@ export const RunsTab = ({
           <Select
             id="lg-svc"
             value={form.service}
-            onChange={(e) => set({ service: e.target.value })}
+            onChange={(e) => set({ service: e.target.value, environment: '' })}
           >
             <Select.Option value="">{t('logRuns.allServices')}</Select.Option>
             {Object.entries(names).map(([id, name]) => (
@@ -168,6 +181,23 @@ export const RunsTab = ({
             ))}
           </Select>
         </Field>
+        {environmentNames.length > 1 ? (
+          <Field className="log-search-select" data-size="sm">
+            <Label htmlFor="lg-env">{t('logRuns.environment')}</Label>
+            <Select
+              id="lg-env"
+              value={form.environment}
+              onChange={(e) => set({ environment: e.target.value })}
+            >
+              <Select.Option value="">{t('logRuns.allEnvironments')}</Select.Option>
+              {environmentNames.map((name) => (
+                <Select.Option key={name} value={name}>
+                  {name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
         <Field className="log-search-select" data-size="sm">
           <Label htmlFor="lg-st">{t('logRuns.status')}</Label>
           <Select
@@ -240,6 +270,11 @@ export const RunsTab = ({
                     >
                       <span className="log-run-top">
                         <span className="log-run-service">{titleOf(row)}</span>
+                        {row.environment && row.environment !== productionEnvironment ? (
+                          <Tag data-size="sm" data-color="info">
+                            {row.environment}
+                          </Tag>
+                        ) : null}
                         <Tag data-size="sm" data-color={status.color}>
                           {status.text}
                         </Tag>

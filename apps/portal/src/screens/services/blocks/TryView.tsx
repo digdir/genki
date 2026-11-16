@@ -18,11 +18,14 @@ export interface TryRun {
   source?: DraftSource | undefined;
 }
 
+/** Why the thread's answer failed, or without a thread why the draft was refused; or nothing. */
+export type ReportProblem = (problem: RunProblem | undefined, thread?: string) => void;
+
 interface Kept {
   api: AssistantApi;
   source: DraftSource | undefined;
   profile: AssistantProfile | undefined;
-  report: (problem: RunProblem | undefined) => void;
+  report: ReportProblem;
 }
 
 const kept = new WeakMap<ApiClient, Map<string, Kept>>();
@@ -44,7 +47,7 @@ const draftApiFor = (run: TryRun, service: string, name: string): Kept => {
     tenant: run.tenant,
     source: () => holder.source,
     name,
-    onProblem: (problem) => holder.report(problem),
+    onProblem: (problem, thread) => holder.report(problem, thread),
     profile: () => holder.profile,
   });
   const entry: Kept = Object.assign(holder, { api });
@@ -57,10 +60,13 @@ export const TryView = ({
   layout,
   run,
   onProblem,
+  onThreadChange,
 }: {
   layout: AssistantLayout;
   run: TryRun;
-  onProblem?: ((problem: RunProblem | undefined) => void) | undefined;
+  onProblem?: ReportProblem | undefined;
+  /** The thread on screen: its id, or `undefined` for a new one. */
+  onThreadChange?: ((thread: string | undefined) => void) | undefined;
 }) => {
   const t = useT();
   const service = draftServiceOf(run.source);
@@ -81,8 +87,9 @@ export const TryView = ({
     const timer = setTimeout(() => setSettled(corpora), 400);
     return () => clearTimeout(timer);
   }, [corpora]);
-  // `settled` makes it another api for the assistant.
-  const api = useMemo(() => ({ ...entry.api }), [entry, settled]);
+  // `settled`, or a draft changed while the try view was out of sight, makes it another api.
+  const draft = run.source;
+  const api = useMemo(() => ({ ...entry.api }), [entry, settled, draft?.definition, draft?.files]);
   useEffect(() => {
     entry.report = onProblem ?? (() => undefined);
     return () => {
@@ -97,6 +104,7 @@ export const TryView = ({
       tenant={run.tenant}
       channels={draftChannels}
       frameWidth={previewWidth}
+      onThreadChange={onThreadChange}
     />
   );
 };

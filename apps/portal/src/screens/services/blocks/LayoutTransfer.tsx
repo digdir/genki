@@ -7,11 +7,12 @@ import {
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import type { AssistantLayout, LayoutProblem } from '@genai/ui-blocks/builder';
+import type { AssistantLayout, LayoutProblem, ProfileData } from '@genai/ui-blocks/builder';
 import { useId, useState } from 'react';
 import { useT, type PlainKey, type T } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
 import { layoutJson, readLayout } from './layoutStore';
+import { pluralRows } from './profileEdit';
 
 const panelName: Record<'primary' | 'main' | 'secondary', PlainKey> = {
   primary: 'builderBlocks.panelLeft',
@@ -19,21 +20,72 @@ const panelName: Record<'primary' | 'main' | 'secondary', PlainKey> = {
   secondary: 'builderBlocks.panelRight',
 };
 
-/** One broken rule of a pasted layout, in the portal's words. */
-const problemText = (problem: LayoutProblem, t: T) => {
+const linkLabels = new Map<string, PlainKey>([
+  ['digits', 'builderTexts.linkDigits'],
+  ['uuid', 'builderTexts.linkUuid'],
+  ['any', 'builderTexts.linkAny'],
+]);
+
+/** Each text of a profile by its path, named as «Tekster» names its field and where it stands. */
+const textLabels = (profile: ProfileData | undefined, t: T) => {
+  const labels = new Map<string, string>();
+  const name = (path: string, label: string, ...where: string[]) =>
+    labels.set(path, t('builderBlocks.pasteFieldIn', { label, where: where.join(', ') }));
+  const assistant = t('builderTexts.assistantTitle');
+  name('profile.assistantName', t('builderTexts.name'), assistant);
+  name('profile.suggestions', t('builderTexts.suggestions'), assistant);
+  profile?.suggestions?.forEach((_, n) =>
+    name(`profile.suggestions[${n}]`, t('builderTexts.suggestion', { n: n + 1 }), assistant),
+  );
+  name('profile.settingsNote', t('builderTexts.settingsNote'), assistant);
+  labels.set('profile.corpora', t('builderTexts.collectionsTitle'));
+  for (const [key, corpus] of Object.entries(profile?.corpora ?? {})) {
+    // A key with a dot or bracket could make another text's path, so its texts keep theirs.
+    if (key.includes('.') || key.includes('[')) continue;
+    const at = `profile.corpora.${key}`;
+    const collection = t('builderTexts.collection', { key });
+    labels.set(at, collection);
+    name(`${at}.label`, t('builderTexts.label'), collection);
+    name(`${at}.description`, t('builderTexts.description'), collection);
+    name(`${at}.typeField`, t('builderTexts.typeField'), collection);
+    name(`${at}.fields`, t('builderTexts.fieldsTitle'), collection);
+    corpus.fields?.forEach((field, n) => {
+      const fieldAt = `${at}.fields[${n}]`;
+      const named = t('builderTexts.field', { id: field.id });
+      name(`${fieldAt}.id`, named, collection);
+      name(`${fieldAt}.kind`, named, collection);
+      name(`${fieldAt}.label`, t('builderTexts.fieldLabel'), collection, named);
+      name(`${fieldAt}.heading`, t('builderTexts.fieldHeading'), collection, named);
+    });
+    name(`${at}.typePlurals`, t('builderTexts.plurals'), collection);
+    pluralRows(corpus).forEach(([type], n) =>
+      name(`${at}.typePlurals.${type}`, t('builderTexts.pluralWord', { n: n + 1 }), collection),
+    );
+    for (const pattern of Object.keys(corpus.documentLinks ?? {})) {
+      const label = linkLabels.get(pattern);
+      if (label)
+        name(`${at}.documentLinks.${pattern}`, t(label), collection, t('builderTexts.linksTitle'));
+    }
+  }
+  return labels;
+};
+
+/** One broken rule of a pasted layout, in the portal's words; a text by its field in «Tekster». */
+const problemText = (problem: LayoutProblem, t: T, labels: ReadonlyMap<string, string>) => {
+  const named = (path: string) => labels.get(path) ?? path;
   switch (problem.rule) {
     case 'unknown-block':
       return t('builderBlocks.pasteUnknownBlock', { block: problem.block });
     case 'profile-too-large':
       return t('builderBlocks.pasteProfileTooLarge', { max: problem.max });
     case 'text-too-long':
-      return t('builderBlocks.pasteTextTooLong', { path: problem.path, max: problem.max });
+      return t('builderBlocks.pasteTextTooLong', { path: named(problem.path), max: problem.max });
     case 'too-many':
-      return t('builderBlocks.pasteTooMany', { path: problem.path, max: problem.max });
+      return t('builderBlocks.pasteTooMany', { path: named(problem.path), max: problem.max });
     case 'link-not-https':
-      return t('builderBlocks.pasteLinkNotHttps', { path: problem.path });
+      return t('builderBlocks.pasteLinkNotHttps', { path: named(problem.path) });
     case 'unknown-kind':
-      return t('builderBlocks.pasteUnknownKind', { path: problem.path, kind: problem.kind });
+      return t('builderBlocks.pasteUnknownKind', { path: named(problem.path), kind: problem.kind });
   }
   const block = t(blockLabel(problem.block));
   switch (problem.rule) {
@@ -97,21 +149,20 @@ export const LayoutTransfer = ({
       setPasted(true);
       return;
     }
-    setError(
-      read.problem === 'breaks-rules'
-        ? {
-            message: t('builderBlocks.pasteBreaksRules'),
-            problems: read.problems.map((p) => problemText(p, t)),
-          }
-        : {
-            message: t(
-              read.problem === 'not-json'
-                ? 'builderBlocks.pasteNotJson'
-                : 'builderBlocks.pasteNotLayout',
-            ),
-            problems: [],
-          },
-    );
+    if (read.problem === 'breaks-rules') {
+      const labels = textLabels(read.pasted.profile, t);
+      setError({
+        message: t('builderBlocks.pasteBreaksRules'),
+        problems: read.problems.map((p) => problemText(p, t, labels)),
+      });
+      return;
+    }
+    setError({
+      message: t(
+        read.problem === 'not-json' ? 'builderBlocks.pasteNotJson' : 'builderBlocks.pasteNotLayout',
+      ),
+      problems: [],
+    });
   };
 
   return (

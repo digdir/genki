@@ -1,3 +1,4 @@
+import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { textPart, type Principal } from '@genai/contracts';
@@ -35,6 +36,14 @@ const principals: Record<string, Principal> = {
     subject: 'siri',
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+  },
+  // An ingest key granted another dataset only.
+  nokkel: {
+    kind: 'agency-system',
+    issuer: LEGACY_KEY_ISSUER,
+    subject: 'key-annet',
+    tenant: digdir,
+    scopes: ['legacy:ingest', 'grant:dataset:annet'],
   },
 };
 
@@ -758,6 +767,7 @@ describe('ingestion pipelines', () => {
         runs.set(run.id, reopened);
         return { ok: true, value: reopened };
       },
+      readmit: async () => ({ ok: false, message: 'not here' }),
     };
     const { call, admin } = await boot({
       ingestion: new InMemoryIngestionBackend(),
@@ -805,6 +815,99 @@ describe('ingestion pipelines', () => {
     ).toEqual([expect.objectContaining({ reason: 'Kudos svarer igjen' })]);
 
     expect((await call(redrive, 'erik', { body: {}, reason: 'Igjen' })).status).toBe(400);
+  });
+
+  /** A dataset whose run runs as jobs, started by a dataset manager, and its readmit route. */
+  const readmitSetup = async () => {
+    const runs = new Map<string, Execution>();
+    const admitted: { execution: string; at: string }[] = [];
+    const store: JobRunStore = {
+      start: async (input) => {
+        const run: Execution = { ...input, status: 'running', runsAsJobs: true };
+        runs.set(run.id, run);
+        return { ok: true, value: run };
+      },
+      cancel: async () => undefined,
+      redrive: async () => ({ ok: false, message: 'not here' }),
+      readmit: async (input) => {
+        const run = runs.get(input.execution);
+        if (!run) return { ok: false, message: 'no such run' };
+        admitted.push({ execution: input.execution, at: input.at });
+        const again: Execution = { ...run, admittedAt: input.at };
+        runs.set(run.id, again);
+        return { ok: true, value: again };
+      },
+    };
+    const { call, admin } = await boot({
+      ingestion: new InMemoryIngestionBackend(),
+      jobRuns: { runsAsJobs: (dataset) => dataset === `${digdir}/sider`, runs: store },
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    const started = await json<{ id: string }>(
+      await call(`${base}/nettsider/execute`, 'erik', { body: {} }),
+    );
+    const readmit = `${base}/nettsider/executions/${started.id}/readmit`;
+    return { call, admin, admitted, started, readmit };
+  };
+
+  it('admitting a run again is audited with who and why', async () => {
+    const { call, admin, admitted, started, readmit } = await readmitSetup();
+
+    expect(
+      (await call(readmit, 'siri', { body: {}, reason: 'Fyllingen tar lenger tid' })).status,
+    ).toBe(403);
+    expect((await call(readmit, 'erik', { body: {}, reason: null })).status).toBe(400);
+    expect(admitted).toEqual([]);
+
+    const again = await call(readmit, 'erik', { body: {}, reason: 'Fyllingen tar lenger tid' });
+    expect(again.status).toBe(200);
+    expect(await json(again)).toMatchObject({ id: started.id, status: 'running' });
+    expect(admitted).toEqual([{ execution: started.id, at: expect.any(String) }]);
+    expect(
+      (await admin.audit(digdir)).filter((entry) => entry.action === 'platform.jobs.readmit'),
+    ).toEqual([
+      expect.objectContaining({
+        reason: 'Fyllingen tar lenger tid',
+        actor: expect.stringContaining('erik'),
+      }),
+    ]);
+  });
+
+  it('a key not granted the dataset cannot cancel its run or send it back', async () => {
+    const { call, started } = await readmitSetup();
+    const run = `/tenants/${digdir}/datasets/sider/pipelines/nettsider/executions/${started.id}`;
+
+    for (const action of ['cancel', 'redrive'])
+      expect(
+        (await call(`${run}/${action}`, 'nokkel', { body: {}, reason: 'Fyllingen tar lenger tid' }))
+          .status,
+        action,
+      ).toBe(403);
+  });
+
+  it('a key not granted the dataset cannot admit its run again', async () => {
+    const { call, admitted, readmit } = await readmitSetup();
+
+    expect(
+      (await call(readmit, 'nokkel', { body: {}, reason: 'Fyllingen tar lenger tid' })).status,
+    ).toBe(403);
+    expect(admitted).toEqual([]);
   });
 
   it('runs a pipeline on the pluggable backend and records the execution', async () => {

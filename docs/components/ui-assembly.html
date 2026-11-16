@@ -110,8 +110,8 @@
                 in the main column while a document is open.
               </li>
               <li>
-                Chat in the secondary panel opens it from the start, as a drawer on a phone. Every
-                way back to the answer shows Chat's tool again.
+                Chat in the secondary panel opens it from the start, over the whole shell on a
+                phone. Every way back to the answer shows Chat's tool again.
               </li>
               <li>
                 <strong>The next look,</strong> a layout whose <code>look</code> is
@@ -159,20 +159,23 @@
                 its profile <code>heading</code>. The filter belongs to the thread: the filter of
                 each thread's last question asked here is kept in the storage
                 (<code>threadFilters</code>), and opening the thread brings it back; genki keeps no
-                filter with a turn, so a thread asked elsewhere leaves the filter as it is. An
-                answer asked here says its filter inside «Fremgangsmåte», with «· filteret er
-                endret» when it differs from the answer before. No line under the field says what
-                the next question reads from: the filter's panel does. The counts are exact, from
-                the facets and the profile's <code>typeField</code>.
+                filter with a turn, so a thread asked elsewhere leaves the filter as it is, and
+                stores it, so a reload shows it too. «Ny tråd» starts a thread with no filter,
+                «Alle», and so does a page opened on a new thread, as after a reload; the filter
+                stored from before is left as it is until a thread is opened. An answer asked here
+                says its filter inside «Fremgangsmåte», with «· filteret er endret» when it differs
+                from the answer before. No line under the field says what the next question reads
+                from: the filter's panel does. The counts are exact, from the facets and the
+                profile's <code>typeField</code>.
               </li>
               <li>
                 <strong>A narrower filter</strong>, the trial <code>compact-filter</code>, when the
                 profile offers it and the reader turns it on: the next look's filter panel beside
                 the threads is 230 px wide, its ticks in one column, and the threads take the rest
                 of the card. Resizing the card changes the threads' width only; the card goes no
-                narrower than the threads' 220 beside the filter. In a drawer the filter stands
-                under the threads at the drawer's width, its ticks in one column. Off, the filter is
-                as before: 440 of the card's 660, which goes no narrower.
+                narrower than the threads' 220 beside the filter. Where the panel fills the shell,
+                the filter stands under the threads at the shell's width, its ticks in one column.
+                Off, the filter is as before: 440 of the card's 660, which goes no narrower.
               </li>
               <li>
                 <strong>Under the next look's answer</strong>: no follow-up questions over the
@@ -197,7 +200,12 @@
                 <code>Accept</code> and <code>Content-Type</code> stay the assembly's own. A
                 <code>401</code> fails the call with that status, as <code>HttpError</code> or
                 <code>@genai/client</code>'s <code>ApiError</code>, which the assembly shows as
-                access; a question stops at its new thread.
+                access; a question stops at its new thread. A host's <code>ask</code> that throws
+                <code>NotAsked</code> before it yields anything was refused before it was asked: the
+                assembly takes the question out of its thread, with no failed answer, and puts a
+                question typed in the field back there while its thread is on screen and the field
+                is empty; the host says why. Thrown after it has yielded something, it is a failed
+                answer like any other error.
               </li>
               <li>
                 <code>layout</code>: the builder's layout, zones and options, and its
@@ -214,7 +222,24 @@
                 kind of number, <code>digits</code>, <code>uuid</code> or <code>any</code>, with
                 <code>{id}</code> where the number goes, encoded. A number takes the first that
                 fits, in that order, after the function. Only an http or https address becomes a
-                link, and a layout's only an https one whose host comes before the number.
+                link, and a layout's only an https one whose host comes before the number. A stored
+                thread is linked by the collection its <code>corpus:</code> tag names. One that
+                names none, such as a thread asked in another client, is taken to be in the
+                profile's collection when the profile describes exactly one, and linked by it; with
+                several, none is guessed. A host whose readers also ask in collections it does not
+                describe describes them too, so that no such thread is linked by the wrong one.
+              </li>
+              <li>
+                A document's whole file, in beta: the profile's <code>documentFile</code>, a host's
+                function from a document's number and an abort signal to
+                <code>{ url, mediaType }</code>, or <code>undefined</code> for none. The assembly
+                calls it when a document opens in Dokumentvisning and the block's
+                <code>file</code> option is on, once per document, aborts it when another opens or
+                the view closes, drops a result that comes after, and hands the view the status:
+                being found, found, none or failed. Without it, as in the portal's preview, or with
+                the option off, the view shows the excerpts and asks nothing. It is provisional
+                until genki offers a route for a document's file, and may change then; where the
+                file comes from stays the host's.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
@@ -226,9 +251,10 @@
                 <code>href</code> or an <code>onSelect</code>, and <code>extra</code>, the host's
                 own entries in its own words, such as a way back to an older client, before «Logg
                 ut». A page not given is not drawn. <code>signOut</code> is the host's sign-out, an
-                <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first forgets
-                the reader's choices kept in this browser, the threads' filters included, then calls
-                it and goes there. Without it, no «Logg ut» is drawn, in either look.
+                <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first stops
+                every answer still coming and forgets the reader's choices kept in this browser, the
+                threads' filters included, then calls it and goes there. Without it, no «Logg ut» is
+                drawn, in either look.
               </li>
               <li>
                 The profile drawn is <code>profileOf(layout, profile)</code>: what the host's
@@ -509,7 +535,41 @@
                 The page has one <code>h1</code>, the assistant's name, before the rest of the main
                 column, wherever Chat stands.
               </li>
-              <li>An assistant that goes stops its answer, and reports nothing after.</li>
+              <li>
+                An answer keeps coming while the reader opens another thread or a new one, and asks
+                there. Its thread keeps its turns: opened again, it shows the answer as far as it
+                has come and lets it finish, or as it ended, a failure too, though genki has not
+                stored it yet. The thread genki has stored never takes the place of an answer on its
+                way. A question sent while the thread is read waits until it is read, and one sent
+                while its answer comes waits for it. «Avbryt genereringen» stops the answer on
+                screen. The live region speaks only of the thread on screen. A question still
+                waiting to go when the reader opens another thread, or signs out, is not sent; one
+                typed in the field stays there.
+              </li>
+              <li>
+                A page reloaded while an answer comes no longer follows it, but genki goes on and
+                stores the answer when it is done. A thread whose last question genki has stored no
+                answer for, asked less than five minutes ago (genki's default deadline for a run),
+                says the answer may still be on its way, with «Hent på nytt», the Conversation
+                block's <code>onFetchAgain</code>: it reads the thread again in place and asks
+                nothing. A read that fails leaves the thread as it was, unless the thread is gone.
+                Older, read again after that, or a question whose answer failed on this page, it
+                says the question got no answer, with «Generer på nytt». genki says nothing of
+                whether a run is still going on any route the assembly uses, so the time asked is
+                all it has to go by, and the thread is read again only when the reader asks.
+              </li>
+              <li>
+                An assistant that goes stops every answer still coming, in the threads left too, and
+                reports nothing after. «Logg ut» stops them all too, and deleting a thread stops its
+                answer.
+              </li>
+              <li>
+                A question the host's service would not take (<code>NotAsked</code>) is taken back:
+                its thread shows the turns it had, a new one its start, and a question typed in the
+                field is there again if the field is still empty. Refused in a thread the reader has
+                left, it is gone from that thread on return, and not put in the field. The answers
+                in other threads go on.
+              </li>
               <li>
                 In the next look, the front page gives way to the question: while the field holds
                 text, the greeting and the suggestions are hidden (<code>data-typing</code> on the

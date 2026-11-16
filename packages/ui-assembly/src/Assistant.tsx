@@ -46,6 +46,7 @@ import {
   answerCopy,
   experimentsOn,
   fieldValueLabels,
+  generalRowsOf,
   isEmptySelection,
   isSettingsPageId,
   narrowing,
@@ -433,6 +434,7 @@ export const AssistantView = ({
         <Conversation
           turns={a.conversation}
           loading={a.view === 'loading'}
+          onFetchAgain={a.fetchAgain}
           assistantName={name}
           answerColor="neutral"
           // The next look's answer has no card and no name over it (dev-kilder-hoyre).
@@ -853,6 +855,10 @@ export const AssistantView = ({
     ...experiment,
     on: a.flags.has(experiment.id),
   }));
+  // «Generelt» offers the colour scheme the host keeps, and its menu line says no more.
+  const general = a.onColorSchemeChange
+    ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
+    : {};
   if (nextSettings)
     primary = {
       label: t('builder.settings'),
@@ -861,13 +867,14 @@ export const AssistantView = ({
         <SettingsMenu
           pages={settingsPageIds.map((id) => ({
             id,
+            ...(id === 'general' ? { rows: generalRowsOf(general) } : {}),
             ...(id === 'beta' ? { badge: experimentsOn(experimentRows) } : {}),
           }))}
           value={settingsView}
           onChange={(id) => {
             if (!isSettingsPageId(id)) return;
             setSettingsView(id);
-            // On a phone the menu is a drawer over the page: it closes on the reader's choice.
+            // On a phone the menu fills the shell: it closes on the reader's choice.
             a.showSettings();
           }}
           backHref={a.hrefOf(a.urlThreads ? a.currentId : undefined)}
@@ -949,9 +956,7 @@ export const AssistantView = ({
     ) : (
       sourcesBlock(titled)
     );
-  // Escape in the document is its way back. In a drawer, a modal dialog, the browser would also
-  // close the drawer and put the focus on the drawer's button, wherever the way back sends it.
-  // Not from the question field, where Escape is the field's.
+  // Escape in the document is its way back, not also the close of a panel that fills the shell.
   const escapeStaysInDrawer = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape' || !a.openDoc) return;
     if (event.target instanceof Element && event.target.closest('form')) return;
@@ -963,6 +968,7 @@ export const AssistantView = ({
       {...(titled ? {} : { title: false })}
       sources={a.documentAnswer?.sources}
       target={a.openDoc?.target}
+      file={a.documentFile}
       citations={a.documentCitations}
       answerIndex={a.documentIndex}
       answerCount={a.answered.length}
@@ -1122,12 +1128,7 @@ export const AssistantView = ({
       ) : settingsView === 'privacy' ? (
         <SettingsPrivacy settingsNote={settingsNote} />
       ) : (
-        <SettingsGeneral
-          {...(a.onColorSchemeChange
-            ? { colorScheme: { value: a.colorScheme, onChange: a.onColorSchemeChange } }
-            : {})}
-          settingsNote={settingsNote}
-        />
+        <SettingsGeneral {...general} settingsNote={settingsNote} />
       );
   } else if (a.page === 'settings' && settingsOn) {
     main = (

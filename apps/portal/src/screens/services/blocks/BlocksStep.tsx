@@ -5,9 +5,10 @@ import {
   fitService,
   fromTemplate,
   offerOf,
-  turnOff,
+  turnOn,
   withProfile,
   type AssistantLayout,
+  type BlockId,
   type BuilderState,
   type ProfileData,
   type ServiceFacts,
@@ -24,7 +25,7 @@ import {
 } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
-import { BlocksPanel } from './BlocksPanel';
+import { BlocksPanel, takeOut } from './BlocksPanel';
 import { LayoutTransfer } from './LayoutTransfer';
 import { startTemplate, type BlocksStart } from './layoutStore';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
@@ -71,7 +72,6 @@ export const useBlocksState = (
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
-  const [conversation, setConversation] = useState(0);
   const offered = (id: (typeof blockIds)[number]) => offerOf(id, facts).offered;
   // A block the draft can no longer back is held, and comes back where it stood once it can.
   const offeredKey = facts ? blockIds.filter(offered).join(',') : undefined;
@@ -89,7 +89,6 @@ export const useBlocksState = (
     tab,
     width,
     height,
-    conversation,
     setMode,
     setTab,
     setWidth,
@@ -109,9 +108,12 @@ export const useBlocksState = (
       setState(fitService({ layout, chosen: {} }, offered).state);
       setTemplate(undefined);
     },
+    add: (ids: readonly BlockId[]) => {
+      setState((s) => fitService(ids.reduce(turnOn, s), offered).state);
+      setTemplate(undefined);
+    },
     // The words are the service's, not a template's: the template stays chosen.
     setProfile: (profile: ProfileData | undefined) => setState((s) => withProfile(s, profile)),
-    restart: () => setConversation((n) => n + 1),
   };
 };
 
@@ -133,17 +135,25 @@ const ResizeHandle = ({
   onChange: (v: number) => void;
 }) => {
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  /** Where the drag began, and the size then; undefined when nothing is being dragged. */
+  const [drag, setDrag] = useState<{ from: number; size: number }>();
+  const at = (e: PointerEvent<HTMLDivElement>) => (axis === 'x' ? e.clientX : e.clientY);
   const start = (e: PointerEvent<HTMLDivElement>) => {
-    const from = axis === 'x' ? e.clientX : e.clientY;
-    const size = value;
-    const move = (ev: globalThis.PointerEvent) =>
-      onChange(clamp(axis === 'x' ? size + (ev.clientX - from) : size + (ev.clientY - from)));
-    const stop = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
+    // The main button, a touch or a pen; a right click is a menu, not a drag.
+    if (e.button !== 0) return;
+    // No text selection, so focus is moved here by hand for the arrow keys.
+    e.preventDefault();
+    e.currentTarget.focus();
+    // Every move and the release come here until the pointer is let go, wherever it is then.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ from: at(e), size: value });
+  };
+  const stop = () => setDrag(undefined);
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    if (!drag) return;
+    // No button is down: the release happened where the page could not see it.
+    if (e.buttons === 0) return stop();
+    onChange(clamp(drag.size + at(e) - drag.from));
   };
   const grow = axis === 'x' ? 'ArrowRight' : 'ArrowDown';
   const shrink = axis === 'x' ? 'ArrowLeft' : 'ArrowUp';
@@ -164,7 +174,12 @@ const ResizeHandle = ({
       aria-valuemax={max}
       aria-valuenow={value}
       tabIndex={0}
+      data-dragging={drag ? '' : undefined}
       onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onLostPointerCapture={stop}
       onKeyDown={key}
     />
   );
@@ -193,13 +208,15 @@ export const BlocksStep = ({
   const [pane, setPane] = useState<'blocks' | 'preview'>('blocks');
   const switcher = useRef<HTMLFieldSetElement>(null);
   const [fit, setFit] = useState(leftMin);
+  // Measured beside the preview only: on a narrow screen the switcher wraps.
   useLayoutEffect(() => {
+    if (narrow) return;
     const w = switcher.current?.offsetWidth;
     if (w) setFit(Math.max(leftMin, Math.ceil(w)));
-  }, [t]);
+  }, [t, narrow]);
   const width = Math.max(state.width, fit);
   const left = (
-    <div className="blocks-left">
+    <div className="blocks-left" data-narrow={narrow || undefined}>
       <ToggleGroup
         ref={switcher}
         data-size="sm"
@@ -237,10 +254,8 @@ export const BlocksStep = ({
       mode={state.mode}
       address={address}
       run={run}
-      conversation={state.conversation}
       onMode={state.setMode}
-      onRemove={(id) => state.change(turnOff(state.state, id))}
-      onReload={state.restart}
+      onRemove={(id, zone) => state.change(takeOut(state.state, id, zone))}
       onFullscreen={onFullscreen}
     />
   );
@@ -296,10 +311,8 @@ export const BlocksFullscreen = ({
         mode={state.mode}
         address={address}
         run={run}
-        conversation={state.conversation}
         onMode={state.setMode}
-        onRemove={(id) => state.change(turnOff(state.state, id))}
-        onReload={state.restart}
+        onRemove={(id, zone) => state.change(takeOut(state.state, id, zone))}
         onExitFullscreen={onExit}
         height={state.height}
       />

@@ -10,13 +10,17 @@ param minReplicas = 1
 param maxReplicas = 2
 
 // Test's own knowledge server (ADR 0042). Small to start (8 GiB, 64 GB): compute moves up or down with a short
-// restart, the disk only grows. Geo-redundant backup is set only when the server is created.
+// restart, the disk only grows. Autogrow took the disk to 128 GB in November 2026, and the template follows it,
+// since Azure refuses a smaller size. Geo-redundant backup is set only when the server is created.
 // The workflows pass an unset variable as an empty value, which the default does not cover.
 var knowledgeStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', '')
 param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
 param knowledgePostgresSkuName = 'Standard_D2ds_v5'
 param knowledgePostgresSkuTier = 'GeneralPurpose'
-param knowledgePostgresStorageSizeGB = 64
+param knowledgePostgresStorageSizeGB = 128
+// Raised to P30 by hand when the Kudos fill ran out of disk burst on 2026-11-14 (issue 599), and set here so infra
+// leaves it there. The tier test steps down to waits for a week of Kudos searches; see infra/README.md, "Disk tier".
+param knowledgePostgresPerformanceTier = 'P30'
 param knowledgePostgresVCores = 2
 param knowledgePostgresBackupRetentionDays = 7
 param knowledgePostgresGeoRedundantBackup = 'Disabled'
@@ -44,8 +48,7 @@ param appEnv = {
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
   LANGFUSE_BASE_URL: 'https://langfuse.digdir.cloud'
-  // Operators confirmed Digdir's Langfuse deletes what genki deletes and keeps raw files at most 7 days
-  // (ADR 0011): true unless the variable says otherwise.
+  // True unless the variable is set: operators confirmed ADR 0011's conditions.
   LANGFUSE_INSTANCE_RECEIVES_CONTENT: empty(langfuseContent) ? 'true' : langfuseContent
   TRACES_ENDPOINT: readEnvironmentVariable('TRACES_ENDPOINT', '')
   TRACES_ENVIRONMENT: 'test'

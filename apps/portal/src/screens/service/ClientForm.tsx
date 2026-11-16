@@ -21,6 +21,7 @@ export interface ClientDraft {
   kind: ClientSpec['kind'];
   url: string;
   channels: ClientChannel[];
+  environments: string[];
   origins: string;
   clientId: string;
   redirectUris: string;
@@ -38,6 +39,7 @@ export const draftOf = (client?: ClientView, service = ''): ClientDraft => {
     kind: spec?.kind ?? 'server',
     url: spec?.url ?? '',
     channels: spec?.channels ?? ['mcp'],
+    environments: spec?.environments ?? [],
     origins: (spec?.allowedOrigins ?? []).join('\n'),
     clientId: spec?.oidc?.clientId ?? '',
     redirectUris: (spec?.oidc?.redirectUris ?? []).join('\n'),
@@ -89,6 +91,7 @@ export const specOf = (draft: ClientDraft, service: string): ClientSpec => ({
   kind: draft.kind,
   ...(draft.url.trim() ? { url: draft.url.trim() } : {}),
   channels: draft.channels,
+  ...(draft.environments.length ? { environments: draft.environments } : {}),
   allowedOrigins: lines(draft.origins),
   ...(draft.clientId.trim()
     ? { oidc: { clientId: draft.clientId.trim(), redirectUris: lines(draft.redirectUris) } }
@@ -139,12 +142,14 @@ const toggle = <T,>(list: T[], value: T) =>
 export const ClientForm = ({
   initial,
   isNew,
+  environments = [],
   saveError,
   onSave,
   onCancel,
 }: {
   initial: ClientDraft;
   isNew: boolean;
+  environments?: string[];
   saveError: string;
   onSave: (draft: ClientDraft) => void;
   onCancel: () => void;
@@ -156,6 +161,7 @@ export const ClientForm = ({
   const errors = draftErrors(t, d, isNew);
   const shown = tried ? errors : {};
   const set = (patch: Partial<ClientDraft>) => setD((x) => ({ ...x, ...patch }));
+  const choices = [...new Set([...environments, ...initial.environments])];
 
   return (
     <section aria-labelledby="cf-h" className="fe-form stack-sm">
@@ -230,6 +236,20 @@ export const ClientForm = ({
           <ValidationMessage>{shown['cf-channels']}</ValidationMessage>
         ) : null}
       </Fieldset>
+      {choices.length > 1 ? (
+        <Fieldset data-size="sm">
+          <Fieldset.Legend>{t('serviceClient.environments')}</Fieldset.Legend>
+          <Fieldset.Description>{t('serviceClient.environmentsDescription')}</Fieldset.Description>
+          {choices.map((name) => (
+            <Checkbox
+              key={name}
+              label={name}
+              checked={d.environments.includes(name)}
+              onChange={() => set({ environments: toggle(d.environments, name) })}
+            />
+          ))}
+        </Fieldset>
+      ) : null}
       <Textfield
         multiline
         id="cf-origins"

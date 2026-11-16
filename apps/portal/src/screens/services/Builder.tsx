@@ -101,6 +101,7 @@ import { describeProblem, publishDraft, type PublishProblem } from '../service/p
 import { VersionsSection } from '../service/VersionsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { InterfaceTab } from './blocks/InterfaceTab';
+import { TryViewKeeper } from './blocks/TryViewKeeper';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -301,6 +302,8 @@ export const Builder = ({
   const [undone, setUndone] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState<Record<string, SpecPatch>>({});
   const [assisted, setAssisted] = useState<Record<string, AssistedChange>>({});
+  const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
+  const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
   const readOnly = !rights.has('manage-services');
   const readOnlyRef = useRef(readOnly);
@@ -722,6 +725,11 @@ export const Builder = ({
   }, [remoteDraft]);
 
   const applyProposal = (entry: TurnEntry, proposal: AssistantProposal) => {
+    if (proposal.kind === 'interface' && proposal.blocks?.length) {
+      setAdding({ key: proposalKey(entry.id, proposal.id), blocks: proposal.blocks });
+      goTab('interface');
+      return;
+    }
     if (!proposal.after) return;
     const after = specChanges(
       asServiceDefinition(entry.draft).spec,
@@ -1107,6 +1115,29 @@ export const Builder = ({
     />
   );
 
+  const assistantPanel = (
+    <AssistantPanel
+      messages={messages}
+      cardFor={cardFor}
+      undone={undone}
+      done={done}
+      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
+      typing={typing}
+      composer={composer}
+      suggestions={suggestions}
+      userName={userName}
+      tenantName={tenantName}
+      assistant={assistant}
+      canApprove={canApprove}
+      onDecide={decide}
+      onComposer={setComposer}
+      onSend={send}
+      onShow={showCard}
+      onUndo={toggleUndo}
+      onAction={action}
+    />
+  );
+
   const body = (() => {
     if (section === 'overview')
       return (
@@ -1184,6 +1215,9 @@ export const Builder = ({
           narrow={narrow}
           fullscreen={detail === 'preview'}
           backHref={`#${servicePath(routeId, 'interface')}`}
+          adding={adding}
+          onAdded={clearAdding}
+          {...(readOnly ? {} : { assistant: assistantPanel })}
           onFullscreen={() => go('interface', '/preview')}
           onExitFullscreen={() => go('interface')}
         />
@@ -1244,32 +1278,9 @@ export const Builder = ({
     return <div className="stack-sm">{setup(setupSections)}</div>;
   })();
 
-  const assistantPanel = (
-    <AssistantPanel
-      messages={messages}
-      cardFor={cardFor}
-      undone={undone}
-      done={done}
-      applied={Object.fromEntries(Object.keys(assisted).map((k) => [k, true]))}
-      typing={typing}
-      composer={composer}
-      suggestions={suggestions}
-      userName={userName}
-      tenantName={tenantName}
-      assistant={assistant}
-      canApprove={canApprove}
-      onDecide={decide}
-      onComposer={setComposer}
-      onSend={send}
-      onShow={showCard}
-      onUndo={toggleUndo}
-      onAction={action}
-    />
-  );
-
   const content = <div className={`service-body service-${section}`}>{body}</div>;
 
-  return (
+  const page = (
     <ServicePageContext.Provider value>
       <div className="service-page">
         <ServiceHeader
@@ -1554,4 +1565,6 @@ export const Builder = ({
       </div>
     </ServicePageContext.Provider>
   );
+  // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
+  return <TryViewKeeper>{page}</TryViewKeeper>;
 };

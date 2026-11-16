@@ -8,6 +8,7 @@ export const assistantUi = {
     typing: 'Assistenten skriver',
     changeTag: 'Endring',
     newFlows: 'Lager også stegflyten {ids} og publiserer den i biblioteket.',
+    interfaceBlocks: 'Slår på i grensesnittet: {names}.',
     flowReason: 'Byggeassistenten: {title}',
     flowPublishFailed: 'Klarte ikke å publisere stegflyten, så endringen er ikke brukt.',
     undoneTag: 'Angret',

@@ -27,9 +27,10 @@ export interface KudosOrganisation {
 export interface KudosFile {
   /** KUDOS's id for the file; a document's files are keyed by it. */
   uuid?: string;
-  url: string;
-  sha256?: string;
-  size?: number;
+  /** Missing on a file KUDOS lists only by its `source_file_url` on another site (issue 581). */
+  url?: string | null;
+  sha256?: string | null;
+  size?: number | null;
   mimetype?: string;
   pages?: number;
   path?: string;
@@ -56,6 +57,18 @@ export interface KudosDocument {
 
 export interface KudosPage {
   data: KudosDocument[];
+  meta: { current_page: number; last_page: number; total?: number };
+}
+
+/** One page of `/api/v0/actors`: every organisation KUDOS knows, with its org number and names. */
+export interface KudosActorPage {
+  data: {
+    uuid?: string;
+    org_number?: number | string | null;
+    name?: string;
+    actor_type?: string;
+    alternative_names?: { name: string; type: string }[];
+  }[];
   meta: { current_page: number; last_page: number; total?: number };
 }
 
@@ -205,6 +218,15 @@ export const kudosClient = (options: KudosClientOptions) => {
       return { documents: documents(), total: () => total };
     },
 
+    /** One page of KUDOS's actors, fifty to a page as `/documents`. */
+    actors: (n: number) =>
+      getJson<KudosActorPage>(
+        `${options.profile.baseUrl}/api/v0/actors?${new URLSearchParams({
+          page: String(n),
+          per_page: String(kudosPageSize),
+        }).toString()}`,
+      ),
+
     document: (id: number | string) =>
       getJson<KudosDocument>(`${options.profile.baseUrl}${options.profile.documentPath}/${id}`),
   };
@@ -352,7 +374,10 @@ export const fetchKudosFile = async (
       throw error;
     }
   };
-  const body = await get(file.url);
+  // A file KUDOS lists only by its `source_file_url` has nothing here to fetch (issue 581).
+  if (!file.url) throw new FileUnreachable('Kudos lists the file with no url');
+  const url = file.url;
+  const body = await get(url);
   if (isPdf(body)) return verifyKudosFile(file, body, 'direct');
   const html = new TextDecoder().decode(body);
   const hop = citationPdfUrl(html);
@@ -365,7 +390,7 @@ export const fetchKudosFile = async (
       `The indexed url ${file.url} served a landing page with no citation_pdf_url`,
     );
   }
-  const hopped = await get(new URL(hop, file.url).toString());
+  const hopped = await get(new URL(hop, url).toString());
   if (!isPdf(hopped)) throw new Error(`citation_pdf_url ${hop} did not yield a PDF`);
   return verifyKudosFile(file, hopped, 'citation_pdf_url');
 };

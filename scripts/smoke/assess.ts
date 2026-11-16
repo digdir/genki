@@ -131,6 +131,7 @@ export const tiersToRun = (
   wanted: WantedTiers,
   runsToday: number | undefined,
   maxRunsPerDay: number,
+  capped = true,
 ): { tiers: Tier[]; note?: string } => {
   const all: Tier[] =
     wanted === 'free'
@@ -138,6 +139,7 @@ export const tiersToRun = (
       : wanted === 'cheap'
         ? ['free', 'cheap']
         : ['free', 'cheap', 'core'];
+  if (!capped) return { tiers: all };
   if (runsToday === undefined)
     return wanted === 'free'
       ? { tiers: all }
@@ -681,6 +683,9 @@ export class Budget {
     this.spent += Math.max(estimate, measured ?? 0);
   }
 }
+
+export const modelChecksRan = (checks: CheckResult[]) =>
+  checks.some((c) => c.tier !== 'free' && c.outcome !== 'skip');
 
 export const overallOutcome = (checks: CheckResult[], tiers: Tier[]): SmokeReport['outcome'] => {
   if (checks.some((c) => c.outcome === 'fail')) return 'fail';

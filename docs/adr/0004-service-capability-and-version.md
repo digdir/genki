@@ -1,6 +1,6 @@
 # 0004 Service, capability and version
 
-Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11; service environments partly built, 2026-11-11; internal services built, 2026-11-12). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; the data version for datasets on the knowledge database, 2026-11-03; sharing changed only by operators, 2026-11-11; service environments partly built, 2026-11-11; internal services built, 2026-11-12; environments in the portal, 2026-11-13). Proposed 2026-10-06
 
 ## Decision
 
@@ -46,7 +46,7 @@ The plan had services, agents, modes and capabilities with no defined mapping, a
 - The parity harness calls each side by its own names: headless-rag by its agent names, the platform by `<service>__<variant>`. Since the headless-rag aliases were removed on 2026-10-09, the harness's MCP and REST scenarios use that per-side mapping (ADR 0017, parity harness names).
 - Rolling back a service without environments means publishing an earlier version as a new one, so history stays linear. With environments, rolling back moves a pointer and publishes nothing.
 - Environments are pointers on a service rather than a configuration layer of their own, or a copy of the service under another name, because keys, frontends, test sets and history stay with one service and the difference between test and prod is always one version number.
-- Not built yet: the portal screens to add, promote and roll back environments and to filter the run log and usage by environment, and the environments on service keys and clients in the portal. Triggers (schedule, documents arriving, queue messages) and the batch companion capability in the worker still run the latest published version, not `prod`'s. `GET /v1/models` and agent cards describe the latest version.
+- The portal adds, removes, promotes and rolls back environments under the service's versions, filters the run log and usage by environment, and binds new service keys and clients to environments. Triggers (schedule, documents arriving, queue messages) and the batch companion capability in the worker still run the latest published version, not `prod`'s. `GET /v1/models` and agent cards describe the latest version.
 
 ## Internal services
 

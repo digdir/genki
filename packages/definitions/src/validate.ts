@@ -52,6 +52,7 @@ export interface PluginSchemas {
   traceSink?: () => TraceSink | undefined;
   strategyResidency?: (strategy: string, config: unknown) => Residency | undefined;
   modelNeeds?: Map<string, string[]>;
+  datasetNeeds?: Set<string>;
   allowHighRisk?: boolean;
   allowPublicAudience?: boolean;
 }
