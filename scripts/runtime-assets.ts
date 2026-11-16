@@ -1,7 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, posix, relative, sep } from 'node:path';
 
 const repo = join(import.meta.dirname, '..');
+
+/** A repo-relative path with forward slashes, as docker/runtime-assets and the tests write them. */
+const relativePosix = (from: string, to: string) => relative(from, to).split(sep).join('/');
 
 const segments = (args: string) => [...args.matchAll(/'([^']*)'/g)].map((m) => m[1] as string);
 
@@ -10,19 +13,19 @@ export const codeRelativePaths = (source: string, sourceDir: string): string[] =
   for (const m of source.matchAll(
     /const (\w+) = join\(\s*import\.meta\.dirname((?:\s*,\s*'[^']*')+)\s*,?\s*\)/g,
   ))
-    bases.set(m[1] as string, join(sourceDir, ...segments(m[2] as string)));
+    bases.set(m[1] as string, posix.join(sourceDir, ...segments(m[2] as string)));
   const found: string[] = [];
   for (const [name, base] of bases)
     for (const m of source.matchAll(
       new RegExp(`join\\(\\s*${name.replaceAll('.', '\\.')}((?:\\s*,\\s*'[^']*')+)`, 'g'),
     ))
-      found.push(join(base, ...segments(m[1] as string)));
+      found.push(posix.join(base, ...segments(m[1] as string)));
   return found;
 };
 
 const workspaceOf = (name: string) =>
   ['packages', 'apps']
-    .map((d) => join(d, name.replace('@genai/', '')))
+    .map((d) => `${d}/${name.replace('@genai/', '')}`)
     .find((d) => existsSync(join(repo, d)));
 
 export const runtimeWorkspaces = (roots = ['apps/api', 'apps/worker']): string[] => {
@@ -58,14 +61,14 @@ const sourceFiles = (dir: string): string[] =>
 export const runtimeAssetReads = (): { file: string; path: string }[] =>
   runtimeWorkspaces().flatMap((workspace) =>
     sourceFiles(join(repo, workspace, 'src'))
-      .filter((file) => !notShipped.test(file))
+      .filter((file) => !notShipped.test(relativePosix(repo, file)))
       .flatMap((file) =>
-        codeRelativePaths(readFileSync(file, 'utf8'), dirname(file))
-          .map((path) => relative(repo, path))
+        codeRelativePaths(readFileSync(file, 'utf8'), dirname(file).split(sep).join('/'))
+          .map((path) => relativePosix(repo, path))
           .filter((path) => !path.split('/').some((part) => part.startsWith('.')))
-          .filter((path) => !relative(repo, file).startsWith(`${path}/`) && path !== '')
+          .filter((path) => !relativePosix(repo, file).startsWith(`${path}/`) && path !== '')
           .filter((path) => existsSync(join(repo, path)))
-          .map((path) => ({ file: relative(repo, file), path })),
+          .map((path) => ({ file: relativePosix(repo, file), path })),
       ),
   );
 

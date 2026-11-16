@@ -1,4 +1,5 @@
 import {
+  byPath,
   checkKey,
   checkPath,
   checkTenant,
@@ -44,7 +45,7 @@ export class InMemoryBlobStore implements BlobStore {
     return [...this.#blobs.values()]
       .map((b) => ({ ...b.info }))
       .filter((i) => i.tenant === tenant && i.path.startsWith(prefix))
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .sort(byPath);
   }
 
   async delete(key: BlobKey): Promise<boolean> {
