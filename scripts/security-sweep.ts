@@ -163,29 +163,66 @@ export function verdict(outcomes: string): { ok: boolean; summary: string } {
   return { ok: setup.length === 0 && missed.length === 0 && sealed, summary };
 }
 
+export type Sealable = { confirmed: Finding[] } | { unconfirmed: MergedCandidate[] };
+
+export function sealable(input: {
+  coordinator: { findings?: Finding[] } | null;
+  merged: MergedCandidate[] | null;
+  passes: Partial<Record<Pass, { candidates?: unknown } | null>>;
+}): Sealable {
+  if (input.coordinator) return { confirmed: confirmedFindings(input.coordinator) };
+  if (Array.isArray(input.merged)) return { unconfirmed: input.merged };
+  return {
+    unconfirmed: PASSES.flatMap((pass) => {
+      const raw = input.passes[pass]?.candidates;
+      return (Array.isArray(raw) ? raw : [])
+        .filter((c): c is Candidate => typeof c === 'object' && c !== null)
+        .map((c) => ({ ...c, passes: [pass] }));
+    }),
+  };
+}
+
+const text = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '');
+
+const where = (c: Candidate) => {
+  const start = Number(c.start_line);
+  return `\`${text(c.path)}:${start && start < Number(c.line) ? `${start}-` : ''}${text(c.line)}\``;
+};
+
+const renderFinding = (f: Finding, i: number) =>
+  `## ${i + 1}. ${f.severity}: ${f.title}\n\n` +
+  `- **Where:** ${where(f)}\n` +
+  `- **Rule:** ${f.rule}\n` +
+  (f.invariant ? `- **Invariant:** ${f.invariant}\n` : '') +
+  `- **Who could abuse it:** ${f.abuser}\n` +
+  `- **How far it reaches:** ${f.reach}\n\n` +
+  `${f.problem}\n\n**Evidence:** ${f.evidence}\n\n**Fix:** ${f.fix}\n`;
+
+const renderCandidate = (c: MergedCandidate, i: number) =>
+  `## ${i + 1}. Unconfirmed: ${text(c.title)}\n\n` +
+  `- **Where:** ${where(c)}\n` +
+  `- **Rule:** ${text(c.rule)}\n` +
+  (c.invariant ? `- **Invariant:** ${text(c.invariant)}\n` : '') +
+  `- **Found by:** ${c.passes.join(', ')}\n\n` +
+  `${text(c.problem)}\n\n**Evidence:** ${text(c.evidence)}\n`;
+
 export function report(
-  findings: Finding[],
+  found: Sealable,
   meta: { sha: string; runUrl: string; unfinished: string[] },
 ): string {
   const warning = meta.unfinished.length
     ? `**Incomplete:** ${meta.unfinished.join(', ')} did not finish, so this report may miss findings.\n\n`
     : '';
   const head = `# Security sweep at ${meta.sha.slice(0, 12)}\n\n${meta.runUrl}\n\n${warning}`;
-  if (findings.length === 0) return `${head}No confirmed findings.\n`;
+  if ('confirmed' in found) {
+    if (found.confirmed.length === 0) return `${head}No confirmed findings.\n`;
+    return head + found.confirmed.map(renderFinding).join('\n');
+  }
+  if (found.unconfirmed.length === 0) return `${head}No candidates from the passes.\n`;
   return (
     head +
-    findings
-      .map(
-        (f, i) =>
-          `## ${i + 1}. ${f.severity}: ${f.title}\n\n` +
-          `- **Where:** \`${f.path}:${f.start_line && f.start_line < f.line ? `${f.start_line}-` : ''}${f.line}\`\n` +
-          `- **Rule:** ${f.rule}\n` +
-          (f.invariant ? `- **Invariant:** ${f.invariant}\n` : '') +
-          `- **Who could abuse it:** ${f.abuser}\n` +
-          `- **How far it reaches:** ${f.reach}\n\n` +
-          `${f.problem}\n\n**Evidence:** ${f.evidence}\n\n**Fix:** ${f.fix}\n`,
-      )
-      .join('\n')
+    '**Unconfirmed:** the coordinator did not finish, so these are the pass candidates it never checked. Verify each one before acting on it.\n\n' +
+    found.unconfirmed.map(renderCandidate).join('\n')
   );
 }
 
@@ -323,6 +360,15 @@ const passExecutions = () => {
   const [first, retry] = [firstAttempts(), retries()];
   return PASSES.map((_, i) => retry[i] ?? first[i] ?? null);
 };
+const passOutputs = () => {
+  const executions = passExecutions();
+  return Object.fromEntries(
+    PASSES.map((pass, i) => [
+      pass,
+      structuredOutput<{ candidates?: Candidate[] }>(executions[i] ?? null),
+    ]),
+  );
+};
 
 function main(command: string | undefined, args: string[]) {
   if (command === 'keys') {
@@ -330,10 +376,7 @@ function main(command: string | undefined, args: string[]) {
     return;
   }
   if (command === 'merge') {
-    const executions = passExecutions();
-    const merged = mergeCandidates(
-      Object.fromEntries(PASSES.map((pass, i) => [pass, structuredOutput(executions[i] ?? null)])),
-    );
+    const merged = mergeCandidates(passOutputs());
     mkdirSync('.sweep', { recursive: true });
     writeFileSync('.sweep/candidates.json', JSON.stringify(merged, null, 2));
     console.log(`count=${merged.length}`);
@@ -341,10 +384,14 @@ function main(command: string | undefined, args: string[]) {
   }
   if (command === 'seal') {
     const coordinator = readJson<ExecutionMessage[]>(env('COORDINATE_EXECUTION'));
-    const findings = confirmedFindings(structuredOutput(coordinator));
+    const found = sealable({
+      coordinator: structuredOutput(coordinator),
+      merged: readJson<MergedCandidate[]>('.sweep/candidates.json'),
+      passes: passOutputs(),
+    });
     const runUrl = `${env('GITHUB_SERVER_URL')}/${env('REPO')}/actions/runs/${env('GITHUB_RUN_ID')}`;
     const sealed = seal(
-      report(findings, { sha: env('SHA'), runUrl, unfinished: unfinishedSteps(env('OUTCOMES')) }),
+      report(found, { sha: env('SHA'), runUrl, unfinished: unfinishedSteps(env('OUTCOMES')) }),
       publicKeys(env('SWEEP_PUBLIC_KEYS')),
     );
     writeFileSync('security-sweep.sealed.json', JSON.stringify(sealed));

@@ -13,6 +13,7 @@ import {
   report,
   runRecord,
   seal,
+  sealable,
   stepOutcomes,
   structuredOutput,
   unfinishedSteps,
@@ -119,7 +120,10 @@ describe('confirmed findings', () => {
         'tenancy=failure tenancy_retry=success rights=failure rights_retry=failure secrets=success secrets_retry=skipped merge=success coordinate=success',
       ),
     ).toEqual(['rights']);
-    const text = report([], { sha: 'a'.repeat(40), runUrl: 'u', unfinished: ['rights'] });
+    const text = report(
+      { confirmed: [] },
+      { sha: 'a'.repeat(40), runUrl: 'u', unfinished: ['rights'] },
+    );
     expect(text).toContain('rights did not finish');
     expect(text).toContain('No confirmed findings.');
   });
@@ -133,10 +137,56 @@ describe('confirmed findings', () => {
   });
 
   it('writes who could abuse each finding and how far it reaches into the report', () => {
-    const text = report([finding()], { sha: 'abc', runUrl: 'u', unfinished: [] });
+    const text = report({ confirmed: [finding()] }, { sha: 'abc', runUrl: 'u', unfinished: [] });
     expect(text).toContain('**Who could abuse it:** a person in one organisation');
     expect(text).toContain("**How far it reaches:** another organisation's runs");
     expect(text).toContain('`apps/api/src/a.ts:40`');
+  });
+});
+
+describe('what is sealed when the coordinator did not finish', () => {
+  const meta = { sha: 'abc', runUrl: 'u', unfinished: ['coordinate'] };
+
+  it("seals the coordinator's confirmed findings when it finished", () => {
+    const found = sealable({
+      coordinator: { findings: [finding({ title: 'confirmed one' })] },
+      merged: [{ ...candidate({ title: 'raw one' }), passes: ['tenancy'] }],
+      passes: {},
+    });
+    expect(found).toEqual({ confirmed: [finding({ title: 'confirmed one' })] });
+  });
+
+  it('seals the pass candidates as unconfirmed when the coordinator did not finish', () => {
+    const found = sealable({
+      coordinator: null,
+      merged: [{ ...candidate(), passes: ['tenancy', 'secrets'] }],
+      passes: {},
+    });
+    const text = report(found, meta);
+    expect(text).toContain('**Incomplete:** coordinate did not finish');
+    expect(text).toContain('**Unconfirmed:** the coordinator did not finish');
+    expect(text).toContain('## 1. Unconfirmed: Route skips the tenant check');
+    expect(text).toContain('- **Found by:** tenancy, secrets');
+    expect(text).toContain('**Evidence:** apps/api/src/a.ts:40 reads without the tenant');
+    expect(text).not.toContain('No confirmed findings');
+  });
+
+  it("seals each pass's raw candidates that parsed when the merge failed", () => {
+    const found = sealable({
+      coordinator: null,
+      merged: null,
+      passes: {
+        tenancy: { candidates: [candidate({ evidence: 'no file and line' }), 'not a candidate'] },
+        rights: null,
+        secrets: { candidates: [{ title: 'Half a candidate' } as Candidate] },
+      },
+    });
+    const text = report(found, { ...meta, unfinished: ['coordinate', 'merge'] });
+    expect(text).toContain('## 1. Unconfirmed: Route skips the tenant check');
+    expect(text).toContain('**Evidence:** no file and line');
+    expect(text).toContain('- **Found by:** tenancy');
+    expect(text).toContain('## 2. Unconfirmed: Half a candidate');
+    expect(text).toContain('- **Found by:** secrets');
   });
 });
 
@@ -310,6 +360,34 @@ describe('the sweep commands in the workflow', () => {
     expect(file).not.toContain(secret);
     expect(open(JSON.parse(file), key.privateKey)).toContain(secret);
     expect(readFileSync(join(dir, 'security-sweep-run.json'), 'utf8')).not.toContain(secret);
+  });
+
+  it('seal seals the merged candidates when the coordinator failed, and prints none of them', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-'));
+    writeFileSync(
+      join(dir, 'sweep-tenancy.json'),
+      JSON.stringify(
+        execution({ candidates: [candidate({ evidence: `apps/api/src/a.ts:40 logs ${secret}` })] }),
+      ),
+    );
+    expect(run('merge', dir, {}).stdout).toBe('count=1\n');
+    const coordinator = join(dir, 'claude-execution-output.json');
+    writeFileSync(coordinator, JSON.stringify(execution({}, { subtype: 'error_max_turns' })));
+    const key = rsa();
+    const sealed = run('seal', dir, {
+      COORDINATE_EXECUTION: coordinator,
+      SWEEP_PUBLIC_KEYS: key.publicKey,
+      SHA: 'a'.repeat(40),
+      OUTCOMES: 'tenancy=success rights=success secrets=success merge=success coordinate=failure',
+    });
+    expect(sealed.status, sealed.stderr).toBe(0);
+    expect(`${sealed.stdout}${sealed.stderr}`).not.toContain(secret);
+    const text = open(
+      JSON.parse(readFileSync(join(dir, 'security-sweep.sealed.json'), 'utf8')),
+      key.privateKey,
+    );
+    expect(text).toContain('**Unconfirmed:**');
+    expect(text).toContain(secret);
   });
 
   it('seal writes the outcome of every model step into the run record', () => {
