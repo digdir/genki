@@ -41,6 +41,11 @@ export interface RetrievedSummary {
   title?: string;
   url?: string;
   headers?: string[];
+  /** The page the chunk starts on, and the page it ends on when that is another. */
+  page?: number;
+  pageEnd?: number;
+  /** The chunk's PDF as its document's record names it, for a link to `#page=N`. */
+  fileUrl?: string;
   score?: number;
   rerankScore?: number;
   rank?: number;
@@ -133,6 +138,15 @@ const versionOf = (fields: Record<string, unknown>) => {
       : undefined;
 };
 
+const pageOf = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+/** The heading path the knowledge database gives a chunk, outermost first. */
+const headingPathOf = (value: unknown) =>
+  Array.isArray(value) && value.length > 0 && value.every((h) => typeof h === 'string')
+    ? (value as string[])
+    : undefined;
+
 const describe = (
   id: string,
   base: {
@@ -143,7 +157,9 @@ const describe = (
     fields: Record<string, unknown>;
   },
 ): RetrievedSummary => {
-  const headers = metadataHeaders(base.fields.metadata);
+  const headers = headingPathOf(base.fields.headingPath) ?? metadataHeaders(base.fields.metadata);
+  const page = pageOf(base.fields.page);
+  const pageEnd = page === undefined ? undefined : pageOf(base.fields.pageEnd);
   return {
     chunkId: id,
     ...optional('document', base.document),
@@ -153,6 +169,15 @@ const describe = (
     ...optional('title', base.title),
     ...optional('url', base.url),
     ...(headers.length > 0 ? { headers } : {}),
+    ...optional('page', page),
+    ...optional(
+      'pageEnd',
+      pageEnd !== undefined && page !== undefined && pageEnd > page ? pageEnd : undefined,
+    ),
+    ...optional(
+      'fileUrl',
+      typeof base.fields.fileUrl === 'string' ? base.fields.fileUrl : undefined,
+    ),
     ...optional('version', versionOf(base.fields)),
     ...optional('publishedAt', publishedAtOf(base.fields)),
   };

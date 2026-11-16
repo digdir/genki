@@ -993,6 +993,31 @@ describe('agent-loop strategy', () => {
 });
 
 describe('agent-loop sources, as headless-rag publishes them', () => {
+  it("a source carries its chunk's page, page range, PDF address and heading path", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const store = new Map([
+      ['c1', chunk(1, { page: 12, pageEnd: 13, fileUrl: pdf, headers: ['3 Funn'] })],
+      ['c2', chunk(2)],
+    ]);
+    const out = await run({
+      retrieval: retrieval({}, store).impl,
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['tildelingsbrev'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2'] })]),
+          ],
+          synth: [() => 'Digdir skal digitalisere offentlig sektor.'],
+        },
+      },
+    });
+
+    expect(out.sources.map((s) => [s.chunkId, s.page, s.pageEnd, s.fileUrl, s.headers])).toEqual([
+      ['c1', 12, 13, pdf, ['3 Funn']],
+      ['c2', undefined, undefined, undefined, undefined],
+    ]);
+  });
+
   it('returns every chunk it read as a source even when the answer cites none', async () => {
     const out = await run({
       scripts: {

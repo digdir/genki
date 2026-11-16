@@ -573,6 +573,154 @@ describe('read functions on the knowledge server', () => {
     }
   });
 
+  describe("a hit's page and file", () => {
+    const paged = dataset('digdir/sider', 0);
+    const generation = 'g-20261116-sider';
+    const sha = (c: string) => c.repeat(64);
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const pagedDoc = (
+      id: string,
+      files: Record<string, unknown>[],
+      chunk: Partial<IndexDocument['chunks'][number]>,
+    ): IndexDocument => ({
+      id,
+      title: `Rapport ${id}`,
+      fields: { files },
+      chunks: [0, 1, 2].map((position) => ({
+        id: `${id}#${position}`,
+        position,
+        text: `Kommunene rapporterer om tilskudd, del ${position}`,
+        metadata: {},
+        ...chunk,
+        ...(chunk.pageFrom === undefined
+          ? {}
+          : { pageFrom: chunk.pageFrom + position, pageTo: (chunk.pageTo ?? 0) + position }),
+      })),
+      phrases: [],
+    });
+    const config = routed(paged, generation);
+
+    beforeAll(async () => {
+      await fill(paged, generation, [
+        pagedDoc(
+          'pdf',
+          [
+            { url: 'https://kudos.dfo.no/dokument/d1/filer/f0.pdf', sha256: sha('0') },
+            { url: pdf, sha256: sha('a'), mimetype: 'application/pdf' },
+          ],
+          {
+            pageFrom: 12,
+            pageTo: 13,
+            file: 'rapport.pdf',
+            fileSha256: sha('a'),
+            headingPath: ['3 Funn'],
+          },
+        ),
+        pagedDoc('en-side', [{ url: 'https://example.org/en.pdf#x', sha256: sha('b') }], {
+          pageFrom: 4,
+          pageTo: 4,
+          file: 'en.pdf',
+          fileSha256: sha('b'),
+        }),
+        pagedDoc(
+          'word',
+          [
+            {
+              url: 'https://example.org/notat.docx',
+              sha256: sha('c'),
+              mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            },
+          ],
+          { pageFrom: 2, pageTo: 2, file: 'notat.docx', fileSha256: sha('c') },
+        ),
+        pagedDoc(
+          'uten-adresse',
+          [
+            { url: null, sha256: sha('d') },
+            { url: 'ftp://example.org/y.pdf', sha256: sha('e') },
+          ],
+          { pageFrom: 7, pageTo: 7, file: 'y.pdf', fileSha256: sha('e') },
+        ),
+        pagedDoc('kopi', [], { metadata: { page: 30, pageEnd: 31 } }),
+      ]);
+      // As a chunk written before the columns were: its page is in its metadata only.
+      await primary.admin.query(
+        `update kn_chunks set page_from = null, page_to = null where generation = $1 and doc_id = 'kopi'`,
+        [generation],
+      );
+    });
+
+    it("a search hit carries its chunk's page, page range, file and heading path", async () => {
+      const [result] = await connectionOf().search(
+        config,
+        [{ query: 'tilskudd', profile: 'content' }],
+        signal,
+      );
+      const hit = result?.hits.find((h) => h.id === 'pdf#0');
+      expect(hit?.fields).toMatchObject({
+        page: 12,
+        pageEnd: 13,
+        file: 'rapport.pdf',
+        headingPath: ['3 Funn'],
+      });
+      const one = result?.hits.find((h) => h.id === 'en-side#0');
+      expect(one?.fields).toMatchObject({ page: 4, file: 'en.pdf' });
+      expect(one?.fields).not.toHaveProperty('pageEnd');
+      expect(one?.fields).not.toHaveProperty('headingPath');
+    });
+
+    it('the chunks read around a hit carry their pages', async () => {
+      const connection = connectionOf();
+      const around = await connection.range?.(config, 'pdf', 0, 2, signal);
+      expect(around?.map((h) => [h.id, h.fields.page, h.fields.pageEnd])).toEqual([
+        ['pdf#0', 12, 13],
+        ['pdf#1', 13, 14],
+        ['pdf#2', 14, 15],
+      ]);
+      const [fetched] = await connection.fetch(config, ['pdf#1'], signal);
+      expect(fetched?.fields).toMatchObject({ page: 13, pageEnd: 14, file: 'rapport.pdf' });
+    });
+
+    it('a chunk with its page only in metadata still carries it', async () => {
+      const [hit] = await connectionOf().fetch(config, ['kopi#0'], signal);
+      expect(hit?.fields).toMatchObject({ page: 30, pageEnd: 31 });
+      expect(hit?.fields).not.toHaveProperty('file');
+      expect(hit?.fields).not.toHaveProperty('fileUrl');
+    });
+
+    it("a hit's file address is the one its document's record names for the chunk's file", async () => {
+      const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
+      expect(hit?.fields.fileUrl).toBe(pdf);
+      // An address with a fragment of its own loses it, so `#page=N` can follow.
+      const [one] = await connectionOf().fetch(config, ['en-side#0'], signal);
+      expect(one?.fields.fileUrl).toBe('https://example.org/en.pdf');
+      // No http(s) address for the chunk's file in the record: no link, whatever else it lists.
+      const [none] = await connectionOf().fetch(config, ['uten-adresse#0'], signal);
+      expect(none?.fields).toMatchObject({ page: 7, file: 'y.pdf' });
+      expect(none?.fields).not.toHaveProperty('fileUrl');
+    });
+
+    it("a hit's page link is only for a PDF file, by its mimetype or a .pdf address", async () => {
+      const [word] = await connectionOf().fetch(config, ['word#0'], signal);
+      expect(word?.fields).toMatchObject({ page: 2, file: 'notat.docx' });
+      expect(word?.fields).not.toHaveProperty('fileUrl');
+    });
+
+    it('a server whose read functions return no pages gets ones that do when it migrates', async () => {
+      await owner.query(`drop function kn_fetch(text, text, text[])`);
+      await owner.query(
+        `create function kn_fetch(p_dataset text, p_generation text, p_ids text[])
+           returns table (id text, text text, doc_id text, "position" integer, metadata jsonb, title text,
+             url text, fields jsonb, score double precision, total integer, data_version bigint)
+           language sql as $$ select null::text, null, null, null::int, null::jsonb, null, null,
+             null::jsonb, null::float8, null::int, null::bigint where false $$`,
+      );
+      await migrateKnowledgeServer(owner);
+      const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
+      expect(hit?.fields).toMatchObject({ page: 12, pageEnd: 13, fileUrl: pdf });
+    });
+  });
+
   it('a document listing past its last page still counts every document', async () => {
     const page = await connectionOf().documents?.(
       routed(kudos, kudosGeneration),

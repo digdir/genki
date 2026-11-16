@@ -14,6 +14,9 @@ export interface SourceRecord {
   url?: string;
   text?: string;
   headers?: string[];
+  page?: number;
+  pageEnd?: number;
+  fileUrl?: string;
   document?: string;
   position?: number;
   version?: string | number;
@@ -40,6 +43,9 @@ export interface SourceExcerpt {
   text: string;
   position?: number;
   heading?: string;
+  page?: number;
+  page_end?: number;
+  url?: string;
   markers?: string[];
 }
 
@@ -233,6 +239,22 @@ const markersFor = (marked: Map<string, string[]> | undefined, chunkId: string) 
   return found ? { markers: found } : {};
 };
 
+const wholePage = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+/** The page an excerpt starts on, where it ends when that is another, and its PDF at that page. */
+const pageOf = (r: SourceRecord) => {
+  const page = wholePage(r.page);
+  if (page === undefined) return {};
+  const end = wholePage(r.pageEnd);
+  const file = openable(r.fileUrl)?.split('#', 1)[0];
+  return {
+    page,
+    ...(end !== undefined && end > page ? { page_end: end } : {}),
+    ...(file ? { url: `${file}#page=${page}` } : {}),
+  };
+};
+
 const excerptsOf = (
   record: SourceRecord,
   pool: SourceRecord[],
@@ -253,6 +275,7 @@ const excerptsOf = (
         text: r.text,
         ...(r.position === undefined ? {} : { position: r.position }),
         ...(heading === undefined ? {} : { heading }),
+        ...pageOf(r),
         ...markersFor(marked, r.chunkId),
       },
     ];
