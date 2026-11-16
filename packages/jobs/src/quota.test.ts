@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Event } from '@genai/contracts';
-import { costOf, gateQuota, monthlyQuotaGate, quotaExhaustedMessage } from './quota.js';
+import {
+  costOf,
+  gateQuota,
+  monthlyModelQuota,
+  monthlyQuotaGate,
+  quotaExhaustedMessage,
+} from './quota.js';
 
 const usage = (model: string, inputTokens: number, outputTokens: number) =>
   ({
@@ -68,5 +74,32 @@ describe('the monthly token quota in the model gate', () => {
 
   it('lets a call outside a run through, since the monthly quota counts only runs', async () => {
     expect(await usedUp({ tenant })).toBeUndefined();
+  });
+});
+
+describe('the monthly token quota for a runtime', () => {
+  const tenant = '991825827';
+  const capability = `${tenant}/klarsprak/default`;
+
+  it('reads usage at most every 15 seconds and refuses once the month is used', async () => {
+    let at = new Date('2026-11-16T10:00:00Z');
+    let used = 50;
+    const reads: string[] = [];
+    const check = monthlyModelQuota({
+      monthlyTokens: () => 100,
+      usedTokens: async (_tenant, since) => {
+        reads.push(since);
+        return used;
+      },
+      now: () => at,
+    });
+
+    expect(await check({ tenant, capability })).toBeUndefined();
+    used = 100;
+    at = new Date('2026-11-16T10:00:10Z');
+    expect(await check({ tenant, capability })).toBeUndefined();
+    at = new Date('2026-11-16T10:00:15Z');
+    expect(await check({ tenant, capability })).toBe(quotaExhaustedMessage);
+    expect(reads).toEqual(['2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z']);
   });
 });

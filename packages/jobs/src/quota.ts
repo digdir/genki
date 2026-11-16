@@ -43,6 +43,20 @@ export const gateQuota =
     return (await exhausted(call.tenant)) ? quotaExhaustedMessage : undefined;
   };
 
+export const monthlyModelQuota = (quota: MonthlyTokenQuota, maxAgeMs = 15_000) => {
+  const used = new Map<string, { at: number; since: string; tokens: number }>();
+  return gateQuota(async (tenant) => {
+    const at = quota.now?.() ?? new Date();
+    const since = monthStart(at);
+    let cached = used.get(tenant);
+    if (!cached || cached.since !== since || at.getTime() - cached.at >= maxAgeMs) {
+      cached = { at: at.getTime(), since, tokens: await quota.usedTokens(tenant, since) };
+      used.set(tenant, cached);
+    }
+    return cached.tokens >= quota.monthlyTokens(tenant);
+  });
+};
+
 const record = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
