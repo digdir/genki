@@ -5,9 +5,11 @@ import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import {
   doclingPages,
+  FileUnreachable,
   knowledgeListingOf,
   onePage,
   pipelineSpec,
+  ResponseTooLarge,
   type DocumentConverter,
   type PipelineSpec,
 } from '@genai/ingest';
@@ -190,6 +192,8 @@ interface ScenarioOptions {
   lockdown?: boolean;
   log?: (msg: string, fields: Record<string, unknown>) => void;
   bound?: () => void;
+  /** An error a convert job's fetch of the file throws, read at each fetch, as a source's would. */
+  fetchError?: () => Error | undefined;
 }
 
 /** A folder dataset on the knowledge database whose worker stores conversions. */
@@ -242,8 +246,24 @@ const scenario = async (options: ScenarioOptions = {}) => {
     runs: runRecords,
     pipeline: async () => spec,
     dataset: (id) => (id === dataset.id ? dataset : undefined),
-    listingOf: (pipeline: PipelineSpec, scope, s, c) =>
-      knowledgeListingOf(pipeline, { folderRoot, converter: c ?? converter }, scope, s),
+    listingOf: async (pipeline: PipelineSpec, scope, s, c) => {
+      const listing = await knowledgeListingOf(
+        pipeline,
+        { folderRoot, converter: c ?? converter },
+        scope,
+        s,
+      );
+      const fetchError = options.fetchError;
+      const file = listing.file?.bind(listing);
+      if (!fetchError || !file) return listing;
+      return Object.assign(listing, {
+        file: async (record: unknown, sha256: string) => {
+          const error = fetchError();
+          if (error) throw error;
+          return file(record as never, sha256);
+        },
+      });
+    },
     embedder: () =>
       ({
         info: () => ({ id: 'fake/embed', dimensions: 3 }),
@@ -840,6 +860,93 @@ describe('stored conversions', () => {
     }
   }, 60_000);
 
+  it('a convert job whose file is unreachable stores it as failed and ends the waits, without failing', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ fetchError: () => new FileUnreachable('KUDOS answered 404') });
+    const pdf = reportOf('borte');
+    await s.file('borte.pdf', pdf);
+    const { sent } = await ingest(s);
+    const convertJob = handler(s.work.knowledge, 'knowledge.convert');
+
+    await convertJob(job('knowledge.convert', sent[0]?.data ?? {}));
+    const { rows: kept } = await admin.query(
+      `select failure, pages from src_conversions where sha256 = $1`,
+      [await sha(pdf)],
+    );
+    expect(kept).toEqual([{ failure: 'unreachable', pages: [] }]);
+    // The stored failure ends the wait: the record's index job is sent, and it skips the document.
+    expect(s.sent.map((j) => j.queue)).toEqual(['knowledge.convert', 'knowledge.index']);
+    await drain(s);
+    const { rows } = await admin.query(
+      `select state, reason from src_documents where dataset = $1`,
+      [s.dataset.id],
+    );
+    expect(rows).toEqual([{ state: 'skipped', reason: 'unreachable' }]);
+  }, 60_000);
+
+  it('a convert job whose download passes the size limit stores the file as unreachable', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ fetchError: () => new ResponseTooLarge('over the limit') });
+    const pdf = reportOf('for-stor');
+    await s.file('for-stor.pdf', pdf);
+    await ingest(s);
+    await drain(s);
+
+    const { rows: kept } = await admin.query(
+      `select failure from src_conversions where sha256 = $1`,
+      [await sha(pdf)],
+    );
+    expect(kept).toEqual([{ failure: 'unreachable' }]);
+    const { rows } = await admin.query(
+      `select state, reason from src_documents where dataset = $1`,
+      [s.dataset.id],
+    );
+    expect(rows).toEqual([{ state: 'skipped', reason: 'unreachable' }]);
+  }, 60_000);
+
+  it('a convert job whose fetch fails on the network is tried again', async () => {
+    await clearConvertJobs();
+    const s = await scenario({
+      fetchError: () =>
+        Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }),
+    });
+    const pdf = reportOf('nettverk');
+    await s.file('nettverk.pdf', pdf);
+    const { sent } = await ingest(s);
+
+    await expect(
+      handler(s.work.knowledge, 'knowledge.convert')(job('knowledge.convert', sent[0]?.data ?? {})),
+    ).rejects.toThrow(/failed: TypeError$/);
+    expect(await stored(await sha(pdf))).toEqual([]);
+  }, 60_000);
+
+  it('a file stored as unreachable is fetched again when its record is written again', async () => {
+    await clearConvertJobs();
+    let error: Error | undefined = new FileUnreachable('KUDOS answered 404');
+    const pdf = reportOf('tilbake');
+    // The same file, listed by a record of another dataset that is written while the URL is back.
+    const a = await scenario({ fetchError: () => error });
+    const b = await scenario({ fetchError: () => error });
+    await a.file('tilbake.pdf', pdf);
+    await b.file('tilbake.pdf', pdf);
+    await ingest(a);
+    await drain(a);
+    // The drain works a's convert job by hand; on the queue it has completed.
+    await clearConvertJobs();
+    error = undefined;
+    const second = await ingest(b);
+    await drain(b);
+
+    // The record waits on the file again instead of reading the stored failure.
+    expect(second.sent.map((j) => j.queue)).toEqual(['knowledge.convert']);
+    const { rows: kept } = await admin.query(
+      `select failure from src_conversions where sha256 = $1`,
+      [await sha(pdf)],
+    );
+    expect(kept).toEqual([{ failure: null }]);
+    expect((await chunks(b.generation)).map((c) => c.text).join(' ')).toContain('(tilbake)');
+  }, 60_000);
+
   it('a convert job whose file changed since it was listed says so in its error', async () => {
     await clearConvertJobs();
     const s = await scenario();
@@ -1182,6 +1289,42 @@ describe('stored conversions', () => {
 
     expect(s.converted).toEqual(['opptatt.pdf']);
     expect(s.sent.filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
+  }, 60_000);
+
+  it('a convert job fetches a file stored as unreachable again, also on a retry', async () => {
+    await clearConvertJobs();
+    const s = await scenario();
+    const pdf = reportOf('igjen');
+    await s.file('igjen.pdf', pdf);
+    const { sent } = await ingest(s);
+    // Stored as unreachable by an earlier job, after this record started waiting.
+    await conversions.store(
+      {
+        sha256: await sha(pdf),
+        converter: 'text-layer',
+        version: '1',
+        settings: {},
+        derivation: { name: 'text-layer', version: 1 },
+        pages: [],
+        failure: 'unreachable',
+      },
+      async () => null,
+    );
+
+    // A retry too, as after a network error on the first try.
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )({
+      ...job('knowledge.convert', sent[0]?.data ?? {}),
+      retryCount: 1,
+    });
+
+    expect(s.converted).toEqual(['igjen.pdf']);
+    const { rows } = await admin.query(`select failure from src_conversions where sha256 = $1`, [
+      await sha(pdf),
+    ]);
+    expect(rows).toEqual([{ failure: null }]);
   }, 60_000);
 
   it('a first run makes 20,000 records wait in one transaction', async () => {
