@@ -167,6 +167,7 @@ export const playgroundUi = {
     versionHelp:
       'Bruker modellen, datasettene, ferdighetene og byggeklossene i {version}. Du kan bytte modell her uten å endre tjenesten.',
     model: 'Modell',
+    candidateModel: 'Ikke sluppet',
     ruleOwnedBy: 'Regelen eies av {owner}.',
     datasets: 'Datasett',
     skills: 'Ferdigheter',

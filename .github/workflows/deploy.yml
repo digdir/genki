@@ -122,8 +122,236 @@ jobs:
             row docling "$DOCLING_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  deploy-test:
+  candidate:
     needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      app: ${{ steps.plan.outputs.app }}
+      image: ${{ steps.plan.outputs.image }}
+      version: ${{ steps.plan.outputs.version }}
+      suffix: ${{ steps.plan.outputs.suffix }}
+      live: ${{ steps.plan.outputs.live }}
+      previous: ${{ steps.plan.outputs.previous }}
+      revision: ${{ steps.deploy.outputs.revision }}
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
+      PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
+      DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
+      ANSATTPORTEN_ISSUER: ${{ vars.ANSATTPORTEN_ISSUER }}
+      ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+      ALTINN_PDP_MASKINPORTEN_CLIENT_ID: ${{ vars.ALTINN_PDP_MASKINPORTEN_CLIENT_ID }}
+      MASKINPORTEN_ISSUER: ${{ vars.MASKINPORTEN_ISSUER }}
+      MASKINPORTEN_TOKEN_URL: ${{ vars.MASKINPORTEN_TOKEN_URL }}
+      OPERATOR_SUBJECTS: ${{ vars.OPERATOR_SUBJECTS }}
+      PORTAL_CLIENT_ID: ${{ vars.PORTAL_CLIENT_ID }}
+      WORKSPACE_CLIENT_ID: ${{ vars.WORKSPACE_CLIENT_ID }}
+      CONSOLE_CLIENT_ID: ${{ vars.CONSOLE_CLIENT_ID }}
+      CONSOLE_TOKEN_ENDPOINT: ${{ vars.CONSOLE_TOKEN_ENDPOINT }}
+      CUSTOM_DOMAINS_STAGE: ${{ vars.CUSTOM_DOMAINS_STAGE }}
+      FOUNDRY_OPENAI_BASE_URL: ${{ vars.FOUNDRY_OPENAI_BASE_URL }}
+      FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
+      TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
+      COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+      LANGFUSE_INSTANCE_RECEIVES_CONTENT: ${{ vars.LANGFUSE_INSTANCE_RECEIVES_CONTENT }}
+      TRACES_ENDPOINT: ${{ vars.TRACES_ENDPOINT }}
+      TRACES_RESIDENCY: ${{ vars.TRACES_RESIDENCY }}
+      PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
+      ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
+      LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
+      LOCKDOWN_USER_GROUPS: ${{ vars.LOCKDOWN_USER_GROUPS }}
+      LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
+      OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
+      KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
+      ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: plan
+        run: |
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          placeholder=mcr.microsoft.com/k8se/quickstart:latest
+          app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
+          image=$placeholder version=bootstrap suffix="" live="" previous=""
+          if [ -n "$app" ]; then
+            image=$(az containerapp show -g "$rg" -n "$app" --query 'properties.template.containers[0].image' -o tsv)
+            version=$(az containerapp show -g "$rg" -n "$app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
+            suffix=$(az containerapp show -g "$rg" -n "$app" --query 'properties.template.revisionSuffix' -o tsv)
+            live=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
+            [ -n "$live" ] || live=$(az containerapp show -g "$rg" -n "$app" --query properties.latestReadyRevisionName -o tsv)
+            previous=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query "[?label=='previous'].revisionName | [0]" -o tsv)
+          fi
+          if [ -n "$ALTINN_PDP_URL" ]; then
+            image="${{ needs.build.outputs.api }}"
+            version="${{ github.sha }}"
+            suffix="r${{ github.run_id }}-${{ github.run_attempt }}"
+          fi
+          image_of() {
+            name=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-$1')].name | [0]" -o tsv)
+            if [ -n "$name" ]; then
+              az containerapp show -g "$rg" -n "$name" --query 'properties.template.containers[0].image' -o tsv
+            else
+              echo "$placeholder"
+            fi
+          }
+          worker_app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-worker')].name | [0]" -o tsv)
+          worker_version=""
+          if [ -n "$worker_app" ]; then
+            worker_version=$(az containerapp show -g "$rg" -n "$worker_app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
+          fi
+          {
+            echo "app=$app"
+            echo "worker_version=${worker_version:-bootstrap}"
+            echo "image=$image"
+            echo "version=${version:-bootstrap}"
+            echo "suffix=$suffix"
+            echo "live=$live"
+            echo "previous=$previous"
+            echo "worker=$(image_of worker)"
+            echo "apps=$(image_of portal)"
+            echo "docling=$(image_of docling)"
+          } >> "$GITHUB_OUTPUT"
+      - id: deploy
+        if: env.ALTINN_PDP_URL != ''
+        run: |
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "genki-${{ github.run_id }}-candidate" \
+            --parameters infra/env/test.bicepparam \
+            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="${{ steps.plan.outputs.previous }}" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
+            --query properties.outputs > outputs.json
+          {
+            echo "revision=$(jq -r .apiCandidateRevision.value outputs.json)"
+            echo "url=$(jq -r .apiCandidateUrl.value outputs.json)"
+          } >> "$GITHUB_OUTPUT"
+      - name: candidate health
+        if: steps.deploy.outcome == 'success'
+        run: |
+          for _ in $(seq 1 20); do
+            body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
+            if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
+            sleep 15
+          done
+          echo "the candidate revision did not report ${{ github.sha }}; users keep ${{ steps.plan.outputs.live }}"; exit 1
+      - name: stop unused API revisions
+        if: steps.deploy.outcome == 'success' && steps.plan.outputs.live != ''
+        run: |
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          app="${{ steps.plan.outputs.app }}"
+          keep=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query '[].revisionName' -o tsv)
+          echo "$keep" | grep -qx "${{ steps.plan.outputs.live }}" || exit 0
+          for revision in $(az containerapp revision list -g "$rg" -n "$app" --query '[?properties.active].name' -o tsv); do
+            echo "$keep" | grep -qx "$revision" || az containerapp revision deactivate -g "$rg" -n "$app" --revision "$revision"
+          done
+      - name: api skipped
+        if: env.ALTINN_PDP_URL == ''
+        run: |
+          {
+            echo "### API not deployed"
+            echo
+            echo "ALTINN_PDP_URL is not set in the test environment, and the API refuses to start without the real Altinn decision point. The worker and the apps are deployed; the API keeps its current image."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  gate:
+    needs: candidate
+    if: needs.candidate.outputs.url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: genki-test
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - id: run
+        env:
+          SMOKE_API_KEY: ${{ secrets.SMOKE_API_KEY }}
+          SMOKE_API_URL: ${{ needs.candidate.outputs.url }}
+          SMOKE_EXPECT_SHA: ${{ github.sha }}
+          SMOKE_REVIEW: 'false'
+          SMOKE_CAPPED: 'false'
+          SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
+          SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/smoke/run.ts
+      - name: no failed check
+        env:
+          OUTCOME: ${{ steps.run.outputs.outcome }}
+          MODELS: ${{ steps.run.outputs.models }}
+          LIVE: ${{ needs.candidate.outputs.live }}
+        run: |
+          if [ "$OUTCOME" = fail ] || [ -z "$OUTCOME" ]; then
+            echo "The smoke test failed on the candidate revision, so users keep $LIVE."
+            exit 1
+          fi
+          if [ "$MODELS" != true ]; then
+            echo "No model check ran on the candidate revision, so users keep $LIVE."
+            exit 1
+          fi
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-gate
+          path: smoke-out
+          retention-days: 30
+          if-no-files-found: ignore
+
+  discard:
+    needs: [candidate, gate]
+    if: >-
+      always() && needs.candidate.outputs.revision != '' && needs.candidate.outputs.live != '' &&
+      (needs.candidate.result == 'failure' || needs.gate.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: stop the candidate that failed
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ needs.candidate.outputs.app }}
+          CANDIDATE: ${{ needs.candidate.outputs.revision }}
+          LIVE: ${{ needs.candidate.outputs.live }}
+        run: |
+          [ "$CANDIDATE" != "$LIVE" ] || exit 0
+          az containerapp revision deactivate -g "$RG" -n "$APP" --revision "$CANDIDATE"
+          {
+            echo "### Candidate stopped"
+            echo
+            echo "\`$CANDIDATE\` failed its checks and is stopped, so it runs no schedules. Users keep \`$LIVE\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-test:
+    needs: [build, candidate, gate]
+    if: >-
+      !cancelled() && needs.build.result == 'success' && needs.candidate.result == 'success' &&
+      (needs.gate.result == 'success' || needs.gate.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: test
@@ -139,29 +367,17 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - id: api
         env:
-          ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+          LIVE: ${{ needs.candidate.outputs.live }}
+          PREVIOUS: ${{ needs.candidate.outputs.previous }}
+          CANDIDATE: ${{ needs.candidate.outputs.revision }}
         run: |
-          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
-          if [ -n "$ALTINN_PDP_URL" ]; then
-            {
-              echo "deploy=true"
-              echo "image=${{ needs.build.outputs.api }}"
-              echo "version=${{ github.sha }}"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ -n "$CANDIDATE" ] && [ -n "$LIVE" ]; then
+            echo "live=$CANDIDATE" >> "$GITHUB_OUTPUT"
+            echo "previous=$LIVE" >> "$GITHUB_OUTPUT"
+          else
+            echo "live=$LIVE" >> "$GITHUB_OUTPUT"
+            echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
           fi
-          app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
-          image=mcr.microsoft.com/k8se/quickstart:latest
-          version=bootstrap
-          if [ -n "$app" ]; then
-            image=$(az containerapp show -g "$rg" -n "$app" --query 'properties.template.containers[0].image' -o tsv)
-            version=$(az containerapp show -g "$rg" -n "$app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
-          fi
-          {
-            echo "deploy=false"
-            echo "image=$image"
-            echo "version=${version:-bootstrap}"
-          } >> "$GITHUB_OUTPUT"
       - id: deploy
         env:
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
@@ -198,26 +414,26 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
             --parameters infra/env/test.bicepparam \
-            --parameters apiImage="${{ steps.api.outputs.image }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" appVersion="${{ steps.api.outputs.version }}" \
+            --parameters apiImage="${{ needs.candidate.outputs.image }}" apiRevisionSuffix="${{ needs.candidate.outputs.suffix }}" apiLiveRevision="${{ steps.api.outputs.live }}" apiPreviousRevision="${{ steps.api.outputs.previous }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" appVersion="${{ needs.candidate.outputs.version }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
-      - name: api skipped
-        if: steps.api.outputs.deploy != 'true'
-        run: |
-          {
-            echo "### API not deployed"
-            echo
-            echo "ALTINN_PDP_URL is not set in the test environment, and the API refuses to start without the real Altinn decision point. The worker and the apps were deployed; the API keeps its current image."
-          } >> "$GITHUB_STEP_SUMMARY"
       - name: smoke
-        if: steps.api.outputs.deploy == 'true'
+        if: needs.candidate.outputs.revision != ''
         run: |
           for _ in $(seq 1 20); do
             body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
             sleep 15
           done
-          echo "health check did not report ${{ github.sha }}"; exit 1
+          echo "health check did not report ${{ github.sha }}; roll back with the rollback workflow"; exit 1
+      - name: rollback note
+        if: steps.api.outputs.previous != ''
+        run: |
+          {
+            echo "### Rollback"
+            echo
+            echo "Users now get API revision \`${{ steps.api.outputs.live }}\`. \`${{ steps.api.outputs.previous }}\` keeps running with no traffic: \`gh workflow run rollback.yml\` moves users back to it."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   changelog:
     needs: deploy-test

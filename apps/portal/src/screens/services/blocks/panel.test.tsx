@@ -120,6 +120,22 @@ describe('the options on a block', () => {
     ).toBe(false);
   });
 
+  it('offers Dokumentvisning with its own switch, and «Vis hele dokumentet (beta)» under its options, on until turned off', () => {
+    render(<Harness />);
+    const view = switchIn('Høyre panel', 'Dokumentvisning');
+    expect(view.checked).toBe(true);
+    fireEvent.click(screen.getByText('Valg for Dokumentvisning'));
+    const whole = screen.getByRole('switch', { name: /Vis hele dokumentet \(beta\)/ });
+    expect((whole as HTMLInputElement).checked).toBe(true);
+    expect(descriptionOf(whole)).toContain('Av: dokumentvisningen viser bare utdragene');
+    fireEvent.click(whole);
+    expect(
+      (screen.getByRole('switch', { name: /Vis hele dokumentet/ }) as HTMLInputElement).checked,
+    ).toBe(false);
+    fireEvent.click(view);
+    expect(drawn()).not.toContain('document-view');
+  });
+
   it('lists an option the draft cannot back, or that is not built, with why and no switch', () => {
     render(<Harness facts={plainChat} />);
     fireEvent.click(screen.getByText('Valg for Chat'));

@@ -1,4 +1,5 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
+import { fieldFills } from '@genai/jobs';
 import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
 import {
@@ -278,6 +279,12 @@ const Execution = z
       .optional()
       .describe('Runs as knowledge jobs in the worker and ends when its jobs have ended'),
     admittedAt: z.string().optional().describe('When the API last admitted the run'),
+    admissionRunsOutAt: z
+      .string()
+      .optional()
+      .describe(
+        'In lockdown, on a queued or running run that is not being cancelled: when its admission runs out and its jobs stop, 24 hours after it was admitted',
+      ),
     cancelRequestedAt: z.string().optional(),
     generation: z
       .string()
@@ -446,6 +453,12 @@ const EngineSwitch = z
       })
       .optional(),
     comparisonNote: z.string().optional(),
+    admissionRunsOutAt: z
+      .string()
+      .optional()
+      .describe(
+        'In lockdown, while the switch has open runs: the earliest time one of their admissions runs out',
+      ),
     generation: z
       .string()
       .describe('The generation the switch fills; on the knowledge database, g-<yyyymmdd>-<6 hex>'),
@@ -902,7 +915,25 @@ const pipelineRoutes = (base: Base): RouteConfig[] => {
         400: either('Missing reason, or the run does not run as jobs or has not ended'),
         ...guarded(base, 'manage-datasets'),
         404: either('No such dataset'),
-        409: either('The pipeline has another open run'),
+        409: either(
+          'The pipeline has another open run, or the run wrote to a generation its switch discarded',
+        ),
+      },
+    }),
+    createRoute({
+      method: 'post',
+      path: `${root}/{id}/executions/{execution}/readmit`,
+      summary: `Admit a queued or running run that runs as knowledge jobs again from now; its jobs stay as they are and go on for another 24 hours in lockdown (${who(base, 'manage-datasets')}, audited, locked in lockdown for others than trusted logins)`,
+      request: {
+        params: params({ id, execution: param('a1b2c3') }),
+        headers: reasonHeader,
+      },
+      responses: {
+        200: audited(Execution, 'The run, admitted again'),
+        400: either('Missing reason'),
+        ...guarded(base, 'manage-datasets'),
+        404: either('No such dataset'),
+        409: either('The run is not queued or running, or does not run as jobs'),
       },
     }),
     createRoute({
@@ -1002,6 +1033,18 @@ const engineRoutes = (base: Base): RouteConfig[] => {
     }),
     createRoute({
       method: 'post',
+      path: `${root}/engine-switches/{sid}/readmit`,
+      summary: `Admit the switch's open runs again from now, so their jobs go on for another 24 hours in lockdown (${who(base, 'manage-datasets')}, audited, locked in lockdown for others than trusted logins)`,
+      request: { params: switchParams, headers: reasonHeader },
+      responses: {
+        200: audited(EngineSwitch, 'Admitted again'),
+        400: problem('A missing reason'),
+        ...failures,
+        409: problem('The switch has no open runs'),
+      },
+    }),
+    createRoute({
+      method: 'post',
       path: `${root}/engine-switches/{sid}/cancel`,
       summary: `Stop an open switch and drop what it wrote (${who(base, 'manage-datasets')}, audited)`,
       request: { params: switchParams, headers: reasonHeader },
@@ -1025,7 +1068,9 @@ const engineRoutes = (base: Base): RouteConfig[] => {
         ),
         400: problem('Reason too short, or the change was refused'),
         ...failures,
-        409: problem('Not ready, the dataset changed, or the engine cannot be opened'),
+        409: problem(
+          'Not ready, the dataset changed, the engine cannot be opened, or a run of the switch is still open',
+        ),
       },
     }),
     createRoute({
@@ -1215,6 +1260,70 @@ const knowledgeEngineRoutes: RouteConfig[] = [
 ];
 
 const operatorOnly = { 401: problem('Not signed in'), 403: problem('Not an operator') };
+
+const fieldRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'post',
+    path: '/operator/datasets/{dataset}/fields',
+    summary:
+      "Sends a job that writes new fields on a platform dataset's stored documents, without re-chunking or embedding (operators, with a change reason)",
+    request: {
+      params: z.object({ dataset: z.string() }),
+      headers: reasonHeader,
+      body: {
+        content: {
+          'application/json': { schema: z.object({ fill: z.enum(fieldFills) }) },
+        },
+      },
+    },
+    responses: {
+      202: json(
+        z.object({ dataset: z.string(), fill: z.enum(fieldFills), status: z.literal('sent') }),
+        'The job is sent',
+      ),
+      400: problem('No change reason, or an unknown fill'),
+      ...operatorOnly,
+      404: problem('No such platform dataset'),
+      409: problem('A run of the dataset is open'),
+    },
+  }),
+];
+
+const ComparisonKind = z.enum(['mismatch', 'budget-booking', 'not-in-register']);
+
+const stateRegisterRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'get',
+    path: '/operator/state-register',
+    summary:
+      "The state's organisation from Enhetsregisteret: when it was last read, and each agency the state accounts book to another ministry (operators)",
+    responses: {
+      200: json(
+        z.object({
+          syncedAt: z.string().nullable(),
+          lastGood: z.string().nullable(),
+          failedNights: z.number().int(),
+          units: z.number().int(),
+          accountsPeriod: z.string().nullable(),
+          same: z.number().int(),
+          differences: z.array(
+            z.object({
+              orgnr: z.string(),
+              name: z.string(),
+              kind: ComparisonKind,
+              registerMinistry: z.string().optional(),
+              registerMinistryName: z.string().optional(),
+              accountsMinistry: z.string().optional(),
+              accountsMinistryName: z.string().optional(),
+            }),
+          ),
+        }),
+        'The register and its differences with the state accounts',
+      ),
+      ...operatorOnly,
+    },
+  }),
+];
 
 const knowledgeEndpointRoutes: RouteConfig[] = [
   createRoute({
@@ -1664,9 +1773,11 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
     ...datasetRoutes(operatorBase),
     ...datasetRoutes(tenantBase),
     ...pipelineRoutes(operatorBase),
+    ...fieldRoutes,
     ...pipelineRoutes(tenantBase),
   ],
   'knowledge-endpoints': knowledgeEndpointRoutes,
+  'state-register': stateRegisterRoutes,
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
   'dataset-delete': deleteRoutes,

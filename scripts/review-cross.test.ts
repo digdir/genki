@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   commentBody,
   costUsd,
@@ -16,9 +16,11 @@ import {
   mustFinish,
   orderDiff,
   parseDiff,
+  RETRY,
   readFileTool,
   reasoningEffort,
   responsesClient,
+  retryWaitMs,
   reviewPayload,
   runRecord,
   runReview,
@@ -579,6 +581,117 @@ describe('the Foundry Responses client', () => {
     } finally {
       fake.close();
     }
+  });
+
+  describe('retrying Foundry', () => {
+    const ok = () => Response.json({ output: [], usage: {} });
+    const limited = (headers: Record<string, string> = {}) =>
+      Response.json(
+        { error: { type: 'too_many_requests', code: 'rate_limit_exceeded', message: 'slow down' } },
+        { status: 429, headers },
+      );
+    const setup = (answers: (() => Response)[], attemptMs = 0) => {
+      let clock = 0;
+      const waits: number[] = [];
+      const lines: string[] = [];
+      let calls = 0;
+      const client = responsesClient('https://x/v1', 'tok', {
+        fetch: (async () => {
+          const answer = answers[Math.min(calls, answers.length - 1)] ?? ok;
+          calls++;
+          clock += attemptMs;
+          return answer();
+        }) as typeof fetch,
+        sleep: async (ms) => {
+          waits.push(ms);
+          clock += ms;
+        },
+        now: () => clock,
+        log: (line) => lines.push(line),
+      });
+      return { client, waits, lines, calls: () => calls };
+    };
+
+    it('waits for retry-after-ms on a 429 and then succeeds', async () => {
+      const t = setup([() => limited({ 'retry-after-ms': '7500' }), ok]);
+      await expect(t.client({})).resolves.toMatchObject({ output: [] });
+      expect(t.waits).toEqual([7500]);
+      expect(t.lines).toEqual(['Foundry 429, retrying in 8s (attempt 1 of 6)']);
+      expect(t.lines.join()).not.toContain('tok');
+    });
+
+    it('reads retry-after in seconds and caps the wait', () => {
+      expect(retryWaitMs(new Headers({ 'retry-after': '12' }), 0)).toBe(12_000);
+      expect(retryWaitMs(new Headers({ 'x-ratelimit-reset-tokens': '20' }), 0)).toBe(20_000);
+      expect(retryWaitMs(new Headers({ 'retry-after': '900' }), 0)).toBe(RETRY.capMs);
+    });
+
+    it('reads retry-after as an HTTP date', () => {
+      const now = Date.parse('2026-11-16T10:00:00Z');
+      const headers = new Headers({ 'retry-after': new Date(now + 10_000).toUTCString() });
+      expect(retryWaitMs(headers, 0, now)).toBe(10_000);
+    });
+
+    it('stops retrying once the total time would pass the budget', async () => {
+      const t = setup([() => limited({ 'retry-after': '60' })], 100_000);
+      await expect(t.client({})).rejects.toThrow('Foundry answered 429');
+      expect(t.calls()).toBeLessThan(RETRY.attempts);
+    });
+
+    it('counts attempt time toward the budget, not only the waits', async () => {
+      const t = setup([() => limited({ 'retry-after': '1' })], 200_000);
+      await expect(t.client({})).rejects.toThrow('Foundry answered 429');
+      expect(t.calls()).toBe(3);
+      expect(t.waits).toEqual([1000, 1000]);
+    });
+
+    it('gives each attempt at most the time left in the budget', async () => {
+      const spy = vi.spyOn(AbortSignal, 'timeout');
+      try {
+        const t = setup([() => limited({ 'retry-after': '1' })], 200_000);
+        await t.client({}).catch(() => undefined);
+        expect(spy.mock.calls.map(([ms]) => ms)).toEqual([300_000, 279_000, 78_000]);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('backs off exponentially on a 429 without a header', async () => {
+      const t = setup([() => limited(), () => limited(), ok]);
+      await t.client({});
+      expect(t.waits).toEqual([RETRY.baseMs, RETRY.baseMs * 2]);
+    });
+
+    it('throws the original error after the last attempt', async () => {
+      const t = setup([() => limited()]);
+      await expect(t.client({})).rejects.toThrow(
+        'Foundry answered 429 too_many_requests code=rate_limit_exceeded: slow down',
+      );
+      expect(t.calls()).toBe(RETRY.attempts);
+      expect(t.waits).toHaveLength(RETRY.attempts - 1);
+      expect(Math.max(...t.waits)).toBeLessThanOrEqual(RETRY.capMs);
+    });
+
+    it('retries a network error and a 503', async () => {
+      const t = setup([
+        () => {
+          throw new TypeError('fetch failed');
+        },
+        () => Response.json({}, { status: 503 }),
+        ok,
+      ]);
+      await expect(t.client({})).resolves.toBeDefined();
+      expect(t.calls()).toBe(3);
+    });
+
+    it('does not retry a 400', async () => {
+      const t = setup([
+        () => Response.json({ error: { type: 'invalid_request_error' } }, { status: 400 }),
+      ]);
+      await expect(t.client({})).rejects.toThrow('Foundry answered 400 invalid_request_error');
+      expect(t.calls()).toBe(1);
+      expect(t.waits).toEqual([]);
+    });
   });
 
   it('keeps the error to one short line without the token or anything like a key', () => {

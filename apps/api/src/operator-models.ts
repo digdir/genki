@@ -1,4 +1,5 @@
 import { perThousandView, type Principal } from '@genai/contracts';
+import { federatedScopePattern, guidPattern } from '@genai/kernel';
 import {
   allowedHostPattern,
   connectionKeys,
@@ -102,8 +103,16 @@ export const endpointProblems = (
         errors.push({ path: `keys.${name}`, message: 'a name is a setting or a key, not both' });
   }
   const auth = record(body.auth);
+  if (auth.kind === 'federated-app') {
+    for (const field of ['clientId', 'tenant'] as const)
+      if (!guidPattern.test(String(auth[field] ?? '')))
+        errors.push({ path: `auth.${field}`, message: 'a GUID' });
+    if (!federatedScopePattern.test(String(auth.scope ?? '')))
+      errors.push({ path: 'auth.scope', message: 'a scope ending in /.default' });
+    return errors;
+  }
   if (auth.kind !== 'api-key' && auth.kind !== 'bearer')
-    errors.push({ path: 'auth.kind', message: 'api-key or bearer' });
+    errors.push({ path: 'auth.kind', message: 'api-key, bearer or federated-app' });
   if (!platformSecretPattern.test(String(auth.secret ?? '')))
     errors.push({
       path: 'auth.secret',
@@ -166,11 +175,14 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
       const auth = record(input.auth);
       return {
         baseURL: input.baseURL,
-        auth: {
-          kind: auth.kind,
-          secret: auth.secret,
-          ...(typeof auth.header === 'string' && auth.header ? { header: auth.header } : {}),
-        },
+        auth:
+          auth.kind === 'federated-app'
+            ? { kind: auth.kind, clientId: auth.clientId, tenant: auth.tenant, scope: auth.scope }
+            : {
+                kind: auth.kind,
+                secret: auth.secret,
+                ...(typeof auth.header === 'string' && auth.header ? { header: auth.header } : {}),
+              },
         families: input.families,
         ...(Array.isArray(input.discovery) ? { discovery: input.discovery } : {}),
         ...(Array.isArray(input.allowedHosts) ? { allowedHosts: input.allowedHosts } : {}),

@@ -29,18 +29,18 @@ import {
   knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  managedIdentityTokenSource,
   PostgresDefinitionStore,
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
-import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
+import { knowledgeDropQueue, knowledgeFieldsQueue, knowledgeKeys } from '@genai/jobs';
 import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
-import { guardPdfParseLeaks } from '@genai/providers-documents';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
-import { evalSlotLimitsFromEnv } from './eval-slots.js';
+import { evalSlotLimitsFromEnv, shutdownGraceFromEnv } from './eval-slots.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
 import type { PriceSpec } from '@genai/contracts';
@@ -57,6 +57,7 @@ import {
   processorRecordCheckOf,
   ownedByPlatformTenant,
   platformTenantFrom,
+  keepRunningOnRejection,
 } from '@genai/composition';
 import { createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
@@ -83,7 +84,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import {
   bootProblems,
   devModeWarning,
@@ -120,6 +121,13 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
         await started()
       ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
     },
+    // New fields on a dataset's stored documents, written by the worker (ADR 0042).
+    refreshFields: async (input: { tenant: string; dataset: string; fill: string }) => {
+      const data = knowledgeFieldsQueue.payload.parse(input);
+      await (
+        await started()
+      ).send(knowledgeFieldsQueue, data, { key: knowledgeKeys.fields(input.dataset) });
+    },
   };
 };
 
@@ -133,8 +141,7 @@ const configDir = process.env.CONFIG_DIR ?? join(import.meta.dirname, '..', 'con
 const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-genai-platform';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
-// pdf.js can leave a page's parse error unhandled; that page is already left empty (ADR 0042).
-guardPdfParseLeaks(log);
+keepRunningOnRejection(log);
 
 const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
 const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
@@ -450,6 +457,9 @@ const processorRecords = processorRecordCheckOf(process.env);
 
 const platform = await createPlatform({
   platformTenant,
+  federatedTokens: federatedAppTokens({
+    assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
+  }),
   appVersion: version,
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
@@ -758,3 +768,20 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });
 attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);
+
+// A deploy stops this instance: start no new test-set case, let the ones running finish, then go.
+const shutdownGraceMs = shutdownGraceFromEnv(process.env);
+let stopping = false;
+const stop = (signal: string) => {
+  if (stopping) process.exit(1);
+  stopping = true;
+  log('api stopping', { signal, casesInFlight: platform.evalSlots.inFlight(), shutdownGraceMs });
+  const deadline = new Promise<void>((resolve) => setTimeout(resolve, shutdownGraceMs).unref());
+  void Promise.race([platform.evalSlots.drain(), deadline]).finally(() => {
+    log('api stopped', { casesInFlight: platform.evalSlots.inFlight() });
+    server.close();
+    process.exit(0);
+  });
+};
+process.on('SIGTERM', () => stop('SIGTERM'));
+process.on('SIGINT', () => stop('SIGINT'));

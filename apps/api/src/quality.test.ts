@@ -29,7 +29,7 @@ import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { saveUsdNok } from '@genai/composition';
 import { translateMessage } from './i18n/index.js';
-import type { LeaseOptions } from './background-lease.js';
+import { restartMessage, type LeaseOptions } from './background-lease.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
@@ -38,8 +38,10 @@ import { langfuseTraceSink, traceIdFor } from '@genai/providers-langfuse';
 import type { EvalSlotLimits } from './eval-slots.js';
 import {
   answerOfParts,
+  maxResumes,
   progressed,
   quotaStopMessage,
+  serviceEvalResumeKind,
   runSummary,
   waitingForScores,
   type runDetail,
@@ -553,6 +555,7 @@ describe('eval runs for a service', () => {
       output: 'Vi svarer snart.',
       pass: false,
       reason: 'Vurdert.',
+      task: expect.any(String),
     });
     expect(run.tokens.input).toBeGreaterThan(0);
   });
@@ -573,6 +576,40 @@ describe('eval runs for a service', () => {
       status: 'completed',
       provenance: { judges: [`judge:criteria@2+${judgeId}`], servedModels: [modelId] },
     });
+  });
+
+  it('marks a run judged by an older version of the criteria judge as stale, in the list, the run and a comparison', async () => {
+    const env = await boot();
+    const current = await runPublished(env);
+    const stored = await env.platform.evalStores.runs.get(current);
+    if (!stored) throw new Error('no run');
+    const older = `judge:criteria@1+${judgeId}`;
+    for (const id of ['eldre-1', 'eldre-2'])
+      await env.platform.evalStores.runs.save({
+        ...stored,
+        run: { ...stored.run, id, provenance: { ...stored.run.provenance, judges: [older] } },
+      });
+
+    const listed = (await env.send('GET', `${services}/eval-runs`)).body.data as {
+      id: string;
+      staleJudges?: string[];
+    }[];
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/eldre-1`)).body;
+    const compared = await env.send(
+      'GET',
+      '/eval-runs/compare?baseline=eldre-1&candidate=eldre-2&metric=refusal',
+    );
+    const againstCurrent = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=eldre-1&candidate=${current}&metric=refusal`,
+    );
+
+    expect(listed.find((r) => r.id === 'eldre-1')?.staleJudges).toEqual([older]);
+    expect(listed.find((r) => r.id === current)).not.toHaveProperty('staleJudges');
+    expect(run.staleJudges).toEqual([older]);
+    expect(compared.status).toBe(200);
+    expect(compared.body.staleJudges).toEqual([older]);
+    expect(againstCurrent.status).toBe(400);
   });
 
   it('never judges with a model the service may answer with, its fallback too', async () => {
@@ -1028,36 +1065,36 @@ const otlpCollector = async () => {
   return { url: sink.url, spans, attr, datasets };
 };
 
-describe('eval runs sent to a trace connection', () => {
-  const connect = async (
-    env: Awaited<ReturnType<typeof boot>>,
-    host: string,
-    residency = 'global',
-  ) => {
-    const why = { 'change-reason': 'Kobler tjenesten til sporing' };
-    await env.send(
-      'PUT',
-      `/tenants/${tenant}/secrets/sporing`,
-      'kari',
-      { value: 'sk-lf-lokal', allowedHosts: [host] },
-      why,
-    );
-    const saved = await env.send(
-      'PUT',
-      `/tenants/${tenant}/tracing/connections/lokal`,
-      'kari',
-      {
-        host,
-        publicKey: 'pk-lf-lokal',
-        secretKey: `secret://tenant/${tenant}/sporing`,
-        services: ['svar'],
-        residency,
-      },
-      why,
-    );
-    expect(saved.status).toBe(200);
-  };
+const connect = async (
+  env: Awaited<ReturnType<typeof boot>>,
+  host: string,
+  residency = 'global',
+) => {
+  const why = { 'change-reason': 'Kobler tjenesten til sporing' };
+  await env.send(
+    'PUT',
+    `/tenants/${tenant}/secrets/sporing`,
+    'kari',
+    { value: 'sk-lf-lokal', allowedHosts: [host] },
+    why,
+  );
+  const saved = await env.send(
+    'PUT',
+    `/tenants/${tenant}/tracing/connections/lokal`,
+    'kari',
+    {
+      host,
+      publicKey: 'pk-lf-lokal',
+      secretKey: `secret://tenant/${tenant}/sporing`,
+      services: ['svar'],
+      residency,
+    },
+    why,
+  );
+  expect(saved.status).toBe(200);
+};
 
+describe('eval runs sent to a trace connection', () => {
   it('sends a traced run as one experiment to the connection covering the service, never its holdout cases', async () => {
     const collector = await otlpCollector();
     const deliveries = new InMemoryTraceDeliveries();
@@ -3074,6 +3111,12 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.72.0', () =>
   }, 420_000);
 });
 
+/** A run taken up again as often as it may be is interrupted by the next restart. */
+const usedUp = async (runs: InMemoryEvalRunStore, id: string) => {
+  const stored = await runs.get(id);
+  if (stored) await runs.save({ ...stored, run: { ...stored.run, resumes: maxResumes } });
+};
+
 describe('an eval run the platform restarts', () => {
   const prices = {
     [modelId]: { inputPerThousand: 1, outputPerThousand: 2 },
@@ -3109,6 +3152,7 @@ describe('an eval run the platform restarts', () => {
       timeout: 5000,
     });
     const running = await read(before);
+    await usedUp(evalStores.runs, id);
     const after = await boot(prices, {
       store,
       evalStores,
@@ -3164,6 +3208,7 @@ describe('an eval run the platform restarts', () => {
     await vi.waitFor(async () =>
       expect(await readWaiting(before)).toMatchObject({ status: 'running', queuePlace: 1 }),
     );
+    await usedUp(evalStores.runs, waiting);
     const after = await boot(prices, {
       store,
       evalStores,
@@ -3405,6 +3450,337 @@ describe('test-set runs on a shared instance', () => {
     expect(cases.started.map((c) => c.input)).toEqual([o1, o2]);
     expect(run).toMatchObject({ status: 'failed', error: quotaStopMessage, finished: 2, total: 3 });
     expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2']);
+  });
+});
+
+describe('a test-set run across a deploy', () => {
+  const prices = {
+    [modelId]: { inputPerThousand: 1, outputPerThousand: 2 },
+    [judgeId]: { inputPerThousand: 1, outputPerThousand: 2 },
+  };
+  const t0 = new Date('2026-11-13T10:00:00Z');
+  const o1 = 'Når er fristen for søknad?';
+  const o2 = 'Hva er personnummeret til Ola?';
+  const questions = [o1, o2, locked];
+  const shared = () => ({
+    store: new InMemoryConfigEntryStore(),
+    evalStores: {
+      testSets: new InMemoryTestSetStore(),
+      runs: new InMemoryEvalRunStore(),
+      feedback: new InMemoryFeedbackStore(),
+      candidates: new InMemoryCandidateStore(),
+    },
+  });
+  const asked = () => {
+    const seen: string[] = [];
+    const hold = async ({ input }: { input: string }) => {
+      const question = questions.find((q) => input.includes(q));
+      if (question) seen.push(question);
+    };
+    return { seen, hold };
+  };
+  const start = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    body: Record<string, unknown> = {},
+  ) => {
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      ...body,
+    });
+    expect(started.status).toBe(202);
+    return String(started.body.id);
+  };
+  const read = async (env: Awaited<ReturnType<typeof boot>>, id: string) =>
+    (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body as unknown as ReturnType<
+      typeof runDetail
+    > & { current?: { case: string; startedAt: string }[] };
+
+  it('takes a run up again after a restart and runs only the cases it had not finished', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const running = await read(before, id);
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const taken = await read(after, id);
+    await after.settled();
+    const run = await read(after, id);
+
+    expect(taken).toMatchObject({ status: 'running', resumed: 1 });
+    expect(later.seen).toEqual([locked]);
+    expect(run).toMatchObject({
+      status: 'completed',
+      total: 3,
+      resumed: 1,
+      startedAt: t0.toISOString(),
+    });
+    expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2', 'l1']);
+    expect(run.cost).toBeGreaterThan(running.cost ?? 0);
+  });
+
+  it('hands a run over when the instance stops: lets the case in flight finish, starts no new one, and the next instance takes it up', async () => {
+    const stores = shared();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const first = asked();
+    const before = await boot(prices, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      hold: async (question) => {
+        await first.hold(question);
+        if (question.input.includes(o1)) await gate;
+      },
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () =>
+      expect((await read(before, id)).current?.map((c) => c.case)).toEqual(['o1']),
+    );
+
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    const handed = await read(before, id);
+    const stored = await stores.evalStores.runs.get(id);
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      hold: later.hold,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await vi.waitFor(async () => expect((await read(after, id)).resumed).toBe(1));
+    await after.settled();
+    const run = await read(after, id);
+
+    expect(first.seen).toEqual([o1]);
+    expect(handed).toMatchObject({ status: 'running', finished: 1 });
+    expect(handed).not.toHaveProperty('current');
+    expect(stored?.run.released).toBe(true);
+    expect([...later.seen].sort()).toEqual([o2, locked].sort());
+    expect(run).toMatchObject({ status: 'completed', total: 3 });
+    expect(run.cases.map((c) => c.caseId)).toEqual(['o1', 'o2', 'l1']);
+  });
+
+  it('shows the cases running now, the time per case and when the run should be done', async () => {
+    let at = t0;
+    let opened = false;
+    const waiting = new Map<string, () => void>();
+    const env = await boot(prices, {
+      evalSlots: { perInstance: 2, perTenant: 2, perRun: 2 },
+      hold: ({ input }) => {
+        const question = questions.find((q) => input.includes(q));
+        return question && !opened
+          ? new Promise<void>((resolve) => waiting.set(question, resolve))
+          : undefined;
+      },
+      leases: { now: () => at },
+    });
+    const id = await start(env);
+    await vi.waitFor(async () =>
+      expect((await read(env, id)).current?.map((c) => c.case).sort()).toEqual(['o1', 'o2']),
+    );
+
+    at = new Date(t0.getTime() + 30_000);
+    waiting.get(o1)?.();
+    await vi.waitFor(async () => expect((await read(env, id)).finished).toBe(1));
+    const running = await read(env, id);
+    opened = true;
+    for (const go of waiting.values()) go();
+    await env.settled();
+    const run = await read(env, id);
+
+    expect(running).toMatchObject({
+      status: 'running',
+      secondsPerCase: 30,
+      endsAt: new Date(t0.getTime() + 90_000).toISOString(),
+    });
+    expect(running.current?.map((c) => c.case)).toContain('o2');
+    expect(running.current?.map((c) => c.case)).not.toContain('o1');
+    expect(run.status).toBe('completed');
+    expect(run).not.toHaveProperty('current');
+    expect(run).not.toHaveProperty('endsAt');
+  });
+
+  it('logs one line per case with the run, the case number, the time, the tokens and the outcome, never the question or the answer', async () => {
+    const lines: { msg: string; fields: Record<string, unknown> }[] = [];
+    const env = await boot(prices, {
+      logger: (msg, fields) => lines.push({ msg, fields }),
+      leases: { now: () => t0 },
+    });
+    const id = await start(env);
+    await env.settled();
+
+    const cases = lines.filter((l) => l.msg === 'eval case').map((l) => l.fields);
+    expect(cases.map((c) => c.case).sort()).toEqual([1, 2, 3]);
+    for (const c of cases) {
+      expect(c).toMatchObject({ run: id, tenant, of: 3, ms: 0 });
+      expect(c.tokens).toBeGreaterThan(0);
+      expect(['passed', 'failed']).toContain(c.outcome);
+    }
+    const written = JSON.stringify(cases);
+    for (const text of [...questions, 'Vi svarer snart', 'Jeg kan ikke svare']) {
+      expect(written).not.toContain(text);
+    }
+  });
+
+  it('forgets what a run needs to be taken up again once it ends', async () => {
+    const stores = shared();
+    const env = await boot(prices, stores);
+    const id = await start(env);
+    await env.settled();
+
+    const kept = await stores.store.history(serviceEvalResumeKind, tenant, id);
+    expect(kept.map((e) => e.deleted)).toEqual([false, true]);
+    expect(kept[0]?.spec).toMatchObject({
+      service: 'svar',
+      principal: { subject: 'kari', tenant },
+    });
+    const { principal } = kept[0]?.spec as { principal: Principal };
+    expect(principal).not.toHaveProperty('name');
+    expect(principal).not.toHaveProperty('orgNames');
+  });
+
+  it('takes a run up once when two requests on one instance find it left at the same time', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const later = asked();
+    let at = t0;
+    const after = await boot(prices, {
+      ...stores,
+      hold: async (question) => {
+        await later.hold(question);
+        if (question.input.includes(locked)) await gate;
+      },
+      leases: { instance: 'after', now: () => at },
+    });
+    await after.settled();
+
+    at = new Date(t0.getTime() + 10 * 60_000);
+    await Promise.all([read(after, id), read(after, id)]);
+    await vi.waitFor(() => expect(later.seen).toEqual([locked]));
+    const again = await read(after, id);
+    open();
+    await after.settled();
+
+    expect(again.resumed).toBe(1);
+    expect(later.seen).toEqual([locked]);
+  });
+
+  it('interrupts a run taken up three times instead of taking it up again', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const stored = await stores.evalStores.runs.get(id);
+    if (stored)
+      await stores.evalStores.runs.save({ ...stored, run: { ...stored.run, resumes: 3 } });
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+    const kept = await stores.store.history(serviceEvalResumeKind, tenant, id);
+
+    expect(maxResumes).toBe(3);
+    expect(run).toMatchObject({
+      status: 'interrupted',
+      resumed: 3,
+      finished: 2,
+      error: restartMessage,
+    });
+    expect(later.seen).toEqual([]);
+    expect(kept.at(-1)?.deleted).toBe(true);
+  });
+
+  it('does not take up a run sent to a trace connection', async () => {
+    const stores = shared();
+    const collector = await otlpCollector();
+    const before = await boot(prices, {
+      ...stores,
+      tracing: { devMode: true },
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    await connect(before, collector.url);
+    const id = await start(before, { trace: true });
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      tracing: { devMode: true },
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+
+    expect(run).toMatchObject({ status: 'interrupted', finished: 2, error: restartMessage });
+    expect(run).not.toHaveProperty('resumed');
+    expect(later.seen).toEqual([]);
+    expect(await stores.store.history(serviceEvalResumeKind, tenant, id)).toEqual([]);
+  });
+
+  it('marks a traced run stopped by a deploy interrupted', async () => {
+    const stores = shared();
+    const collector = await otlpCollector();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const before = await boot(prices, {
+      ...stores,
+      tracing: { devMode: true },
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      hold: async (question) => {
+        if (question.input.includes(o1)) await gate;
+      },
+      leases: { instance: 'before', now: () => t0 },
+    });
+    await connect(before, collector.url);
+    const id = await start(before, { trace: true });
+    await vi.waitFor(async () =>
+      expect((await read(before, id)).current?.map((c) => c.case)).toEqual(['o1']),
+    );
+
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    const run = await read(before, id);
+
+    expect(run).toMatchObject({ status: 'interrupted', finished: 1, error: restartMessage });
   });
 });
 

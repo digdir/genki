@@ -50,6 +50,11 @@ export const engineSwitch = defineNamespace({
   comparison: 'Treff blant de fem første: {from} {before} %, {to} {after} % ({cases} spørsmål)',
   worse: 'Den nye søkemotoren treffer dårligere. Begrunnelsen må ha minst {min} tegn.',
   errorLead: 'Innlesingen stoppet. Feilmeldingen fra plattformen:',
+  admission:
+    'Innlesingen er sluppet inn til {time}. Da stopper jobbene i det låste miljøet, om den ikke slippes inn igjen.',
+  admissionSoon:
+    'Innlesingen er sluppet inn bare til {time}. Slipp den inn igjen før det, ellers stopper den og må startes på nytt.',
+  readmit: 'Slipp inn igjen',
   activate: 'Ta i bruk',
   retry: 'Prøv igjen',
   cancel: 'Avbryt flyttingen',

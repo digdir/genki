@@ -57,6 +57,28 @@ describe('the Grensesnitt tab’s stylesheet', () => {
     );
   });
 
+  it('gives the builder and its preview the whole column, not the service page’s narrower padded body', () => {
+    expect(rule('.service-body.service-interface:has(.blocks-split, .blocks-fullscreen)')).toBe(
+      'max-width: none; padding-inline: 0;',
+    );
+  });
+
+  it('makes the place to grab an edge wider than its line, for a mouse and a finger', () => {
+    expect(rule('.blocks-resize')).toContain('position: relative;');
+    expect(rule('.blocks-resize')).toContain('touch-action: none;');
+    expect(rule('.blocks-resize::before')).toBe("content: ''; position: absolute; inset: 0 -6px;");
+    expect(rule(".blocks-resize[data-axis='y']::before")).toBe('inset: -4px 0;');
+  });
+
+  it('selects no text beside an edge while it is dragged', () => {
+    expect(rule('.blocks-split:has(> .blocks-resize[data-dragging])')).toContain(
+      'user-select: none;',
+    );
+    expect(rule('.blocks-fullscreen:has(> .blocks-resize[data-dragging])')).toContain(
+      'user-select: none;',
+    );
+  });
+
   it('leaves the resize handles the portal’s focus ring, not only a line that changes colour', () => {
     const focused = rule('.blocks-resize:hover,\n.blocks-resize:focus-visible');
     expect(focused).toContain('background-color: var(--ds-color-accent-border-default);');

@@ -31,6 +31,33 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>16 November 2026:</strong> In a narrow window an open panel of the shell fills
+            the shell's own box, in place of the modal drawer and its dimmed backdrop. In a host's
+            preview, such as the builder's, the page around it is no longer dimmed or out of reach.
+            While the panel is open the main column and the other panel are out of reach; «Lukk …»
+            and Escape close it, and the focus goes back to what opened it.
+          </li>
+          <li>
+            <strong>16 November 2026:</strong> Dokumentvisning can show the whole document, in beta:
+            a PDF the host fetches, through the profile's <code>documentFile</code>, in the
+            browser's own viewer in place of the excerpts, or as «Åpne dokumentet (PDF)» on a phone
+            and where the browser has no viewer. Its option «Vis hele dokumentet (beta)» is on by
+            default; off, or without the host's function, the view shows the excerpts as before. The
+            template «Kunnskapsassistenten, ny utgave» holds Dokumentvisning after Kilder.
+          </li>
+          <li>
+            <strong>16 November 2026:</strong> The secondary panel's menu of three or more tools no
+            longer breaks the page when the panel turns into a drawer, or back, as the window is
+            made narrower or wider: the menu is drawn only once its place is in the page.
+          </li>
+          <li>
+            <strong>15 November 2026:</strong> The «Grensesnitt» tab's builder and its preview on
+            its own page use the whole column, without the service page's narrower, padded body. A
+            resize handle is easier to grab, 9 px past its line on each side. Dragging one selects
+            no text, keeps the pointer until it is let go wherever that happens, and stops when the
+            browser cancels the drag or the release is never seen.
+          </li>
+          <li>
             <strong>14 November 2026:</strong> Smaller fixes in the «Grensesnitt» tab. A thread's
             title shown over its row in the preview lands on the row, at the row's text size. After
             «Fjern …» in «Oppsett», the focus goes to the next «Fjern», to the one before it after
@@ -316,7 +343,9 @@
                 <rect class="s-panel" x="126" y="12" width="28" height="100" rx="8" />
               </svg>
               <span class="stamp-name">Shell</span>
-              <span class="stamp-desc">Three columns that fold, resize and become drawers.</span>
+              <span class="stamp-desc"
+                >Three columns that fold, resize and, open in a narrow window, fill the shell.</span
+              >
               <span class="badges"><span class="badge phase">Building</span></span>
             </a>
           </li>
@@ -676,7 +705,8 @@
               <span class="stamp-name">Document view</span>
               <span class="stamp-desc">The whole document, with the excerpt marked.</span>
               <span class="badges"
-                ><span class="badge phase">Building</span><span class="badge">Optional</span></span
+                ><span class="badge phase">Building</span><span class="badge">Optional</span
+                ><span class="badge">Whole document: beta</span></span
               >
             </a>
           </li>

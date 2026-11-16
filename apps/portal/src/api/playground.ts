@@ -59,6 +59,7 @@ export interface PlaygroundModelOption {
   dataLocation: Residency;
   status: PlaygroundModelStatus;
   policy?: PlaygroundPolicy;
+  candidate?: true;
 }
 
 export interface PlaygroundNamed {

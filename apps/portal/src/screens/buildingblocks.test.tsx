@@ -1220,6 +1220,27 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     expectAccessible();
   });
 
+  it("names the paths genki reads when a judge's path is refused", async () => {
+    const message = `${rule} reads output at $..text, a JSON path genki cannot read; genki reads $, .key and [n]`;
+    const pathed = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'unread-path', field: 'output $..text', message },
+      },
+    });
+
+    await open(detailOf(pathed), { items: [pathed] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+    expect(
+      screen.getByText(
+        'Dommeren leser output $..text, en JSON-sti genki ikke kan lese. genki leser $, .nøkkel og [n], for eksempel $[0].body.text.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+
   it('says in Byggeklosser which filter genki cannot read', async () => {
     const message = `${rule} has a filter on level that genki cannot read`;
     const filtered = judgeBlock({

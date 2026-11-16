@@ -111,6 +111,11 @@ const ClientCard = ({
                 : t('serviceChannels.kindServer')}
             </Tag>
           </span>
+          {spec.environments?.length ? (
+            <span className="meta">
+              {t('serviceChannels.environmentsLine', { list: spec.environments.join(', ') })}
+            </span>
+          ) : null}
           {spec.url ? (
             <Link href={spec.url} target="_blank" rel="noopener">
               {spec.url}
@@ -266,6 +271,14 @@ export const ServiceChannels = ({
     (signal) => api.listClients(tenant, service, signal),
     [api, tenant, service],
   );
+  const [environments] = useAsync(
+    async (signal) =>
+      (
+        await api.environments.list(tenant, service, signal).catch(() => undefined)
+      )?.environments.map((e) => e.name) ?? [],
+    [api, tenant, service],
+  );
+  const environmentNames = environments.status === 'ready' ? environments.data : [];
   useEffect(() => {
     if (state.status === 'ready')
       onFrontends?.(
@@ -432,6 +445,7 @@ export const ServiceChannels = ({
             key={editing.client?.definition.metadata.id ?? 'ny'}
             initial={draftOf(editing.client, service)}
             isNew={!editing.client}
+            environments={environmentNames}
             saveError={saveError}
             onSave={(d) => void save(d)}
             onCancel={() => setEditing(undefined)}
@@ -507,6 +521,7 @@ export const ServiceChannels = ({
         tenant={tenant}
         service={service}
         clients={view.clients}
+        environments={environmentNames}
         onFlash={notify}
       />
     </div>

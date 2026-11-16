@@ -181,6 +181,8 @@ export interface EngineSwitchView {
   previousKeptUntil?: string;
   canRollback: boolean;
   decision?: SwitchDecision;
+  /** In lockdown, when the first of its open runs' admission runs out (ADR 0033). */
+  admissionRunsOutAt?: string;
 }
 
 export interface CopyCounts {
@@ -188,6 +190,16 @@ export interface CopyCounts {
   skipped: Record<string, number>;
   failed: number;
 }
+
+/** Equal counts in any key order, since a spec read back from jsonb has its keys reordered. */
+const sameCopyCounts = (a?: CopyCounts, b?: CopyCounts) =>
+  a === b ||
+  (a !== undefined &&
+    b !== undefined &&
+    a.copied === b.copied &&
+    a.failed === b.failed &&
+    Object.keys(a.skipped).length === Object.keys(b.skipped).length &&
+    Object.entries(a.skipped).every(([reason, n]) => b.skipped[reason] === n));
 
 export interface ServiceUse {
   tenant: string;
@@ -236,11 +248,12 @@ export const engineSwitchActions = [
   'platform.engine-switch.retry',
   'platform.engine-switch.cancel',
   'platform.engine-switch.activate',
+  'platform.engine-switch.readmit',
 ] as const;
 
 class Refusal extends Error {
   constructor(
-    readonly status: 400 | 404 | 409,
+    readonly status: 400 | 403 | 404 | 409,
     message: string,
     readonly path = 'to',
     readonly detail?: string,
@@ -669,6 +682,23 @@ export const createEngineSwitchesModule =
           new Date(keptUntil).getTime() > now().getTime(),
         ...(decision ? { decision } : {}),
       };
+    };
+
+    /** The switch's open runs, as the API shows them: in lockdown with when admission runs out. */
+    const openRunsOf = async (spec: EngineSwitchSpec) =>
+      (await Promise.all((spec.runs ?? []).map((id) => deps.ingestion.execution(id))))
+        .filter(
+          (r): r is Execution =>
+            (r?.status === 'queued' || r?.status === 'running') && !r.cancelRequestedAt,
+        )
+        .map((r) => deps.ingestion.admission(r));
+
+    const withAdmission = async (entry: ConfigEntry<unknown>): Promise<EngineSwitchView> => {
+      const view = viewOf(entry);
+      const [first] = (await openRunsOf(entry.spec as EngineSwitchSpec))
+        .flatMap((r) => (r.admissionRunsOutAt ? [r.admissionRunsOutAt] : []))
+        .sort();
+      return first ? { ...view, admissionRunsOutAt: first } : view;
     };
 
     const switchesOf = async (tenant: string, dataset: string) =>
@@ -1195,9 +1225,16 @@ export const createEngineSwitchesModule =
       for (const entry of await store.latest({ kind })) {
         if (entry.deleted) continue;
         const spec = entry.spec as EngineSwitchSpec;
-        if (!holdingStates.includes(spec.state) || !intoKnowledge(spec)) continue;
+        // A ready switch whose runs are still its fill's is followed to count a sent-back run.
+        const filledReady =
+          spec.state === 'ready' && !spec.decisions.some((d) => d.action === 'activate');
+        if (!(holdingStates.includes(spec.state) || filledReady) || !intoKnowledge(spec)) continue;
         const scope = entry.scope;
         const ids = spec.runs ?? [];
+        if (spec.state === 'ready') {
+          await recount(entry, spec).catch(() => undefined);
+          continue;
+        }
         if (ids.length === 0) {
           // Runs that never started: the instance stopped between saving the switch and starting them.
           if (now().getTime() - new Date(spec.updatedAt).getTime() > staleAfterMs)
@@ -1296,6 +1333,49 @@ export const createEngineSwitchesModule =
           `${percent} prosent overført`,
         ).catch(() => undefined);
       }
+    };
+
+    /** A ready switch's counts once its fill runs have all succeeded again after a send-back. */
+    const recount = async (entry: { scope: string; id: string }, spec: EngineSwitchSpec) => {
+      const ids = spec.runs ?? [];
+      const runs = (await Promise.all(ids.map((id) => deps.ingestion.execution(id)))).filter(
+        (r) => r !== undefined,
+      );
+      if (ids.length === 0 || runs.length < ids.length) return;
+      if (!runs.every((r) => r.status === 'succeeded')) return;
+      const failedDocuments = countOfReports(runs, ['failedDocuments']);
+      const documents = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
+      const copied =
+        spec.method === 'copy'
+          ? copyCountsOf(
+              runs,
+              (
+                await Promise.all(
+                  (spec.earlierRuns ?? []).map((id) => deps.ingestion.execution(id)),
+                )
+              ).filter((r) => r !== undefined),
+            )
+          : undefined;
+      if (
+        documents === spec.progress.documents &&
+        failedDocuments === (spec.failedDocuments ?? 0) &&
+        sameCopyCounts(copied, spec.copied)
+      )
+        return;
+      await update(
+        entry.scope,
+        entry.id,
+        (s) => {
+          if (s.state !== 'ready' || !sameRun(s, spec) || s.runs?.join() !== ids.join())
+            return undefined;
+          const counted = { ...s, progress: { ...s.progress, documents } };
+          delete counted.failedDocuments;
+          if (copied) counted.copied = copied;
+          return failedDocuments > 0 ? { ...counted, failedDocuments } : counted;
+        },
+        systemActor,
+        'Overføringen er telt på nytt',
+      );
     };
 
     /** The minute timer: switches that stopped answering, then the runs of switches into the knowledge database. */
@@ -1561,7 +1641,7 @@ export const createEngineSwitchesModule =
         usedBy: await usedBy(item),
         canSwitch: item.scope === tenant,
         retentionDays: retentionDays(tenant),
-        ...(open ? { activeSwitch: viewOf(open) } : {}),
+        ...(open ? { activeSwitch: await withAdmission(open) } : {}),
         ...(last && lastSpec && keptUntil && new Date(keptUntil).getTime() > now().getTime()
           ? {
               previous: {
@@ -1594,6 +1674,17 @@ export const createEngineSwitchesModule =
         ? { model: value.model, dimensions: value.dimensions as number }
         : undefined;
     };
+
+    deps.ingestion.refuseSendBackWith(async (run) => {
+      if (!run.engineSwitch || !run.generation) return undefined;
+      for (const entry of await store.latest({ kind })) {
+        const spec = entry.spec as EngineSwitchSpec;
+        if (entry.id !== run.engineSwitch || spec.dataset !== run.dataset) continue;
+        if (spec.cleanup.some((c) => c.generation === run.generation))
+          return 'Kjøringen skrev til en generasjon byttet har forkastet.';
+      }
+      return undefined;
+    });
 
     deps.ingestion.holdWith(async (dataset) => {
       for (const entry of await store.latest({ kind })) {
@@ -1645,7 +1736,8 @@ export const createEngineSwitchesModule =
             if ('response' in g) return g.response;
             const item = ownDataset(g.tenant, c.req.param('id') ?? '');
             if (!item) return problem(c, 404, 'Not found');
-            return c.json({ data: (await switchesOf(g.tenant, item.id)).map(viewOf).reverse() });
+            const switches = await switchesOf(g.tenant, item.id);
+            return c.json({ data: (await Promise.all(switches.map(withAdmission))).reverse() });
           });
 
           app.get(`${base}/engine-switches/estimate`, async (c) => {
@@ -1841,7 +1933,51 @@ export const createEngineSwitchesModule =
           app.get(`${base}/engine-switches/:sid`, async (c) => {
             const g = await withSwitch(c);
             if ('response' in g) return g.response;
-            return c.json(viewOf(g.entry));
+            return c.json(await withAdmission(g.entry));
+          });
+
+          // Admits the switch's open runs again from now, so a fill longer than a day goes on (ADR 0033).
+          app.post(`${base}/engine-switches/:sid/readmit`, async (c) => {
+            const g = await withSwitch(c, 'manage-datasets');
+            if ('response' in g) return g.response;
+            const reason = reasonFrom(c);
+            if (!isReasonLongEnough(reason))
+              return problem(c, 400, 'Begrunnelsen er for kort', [
+                { path: 'change-reason', message: reasonTooShort },
+              ]);
+            const by = actor(g.principal.actor ?? g.principal);
+            const state = (g.entry.spec as EngineSwitchSpec).state;
+            const done = await inTask(
+              c,
+              g.principal,
+              g.tenant,
+              'platform.engine-switch.readmit',
+              `engine-switch:${g.entry.id}`,
+              reason,
+              async () => {
+                const open = await openRunsOf(g.entry.spec as EngineSwitchSpec);
+                if (open.length === 0)
+                  throw new Refusal(409, 'Byttet har ingen åpne kjøringer.', 'state', state);
+                for (const run of open) {
+                  const admitted = await deps.ingestion.readmit({
+                    dataset: g.item.id,
+                    execution: run.id,
+                    by,
+                    principal: g.principal,
+                  });
+                  if (!admitted.ok)
+                    throw new Refusal(
+                      admitted.errors.some((e) => e.path === 'principal') ? 403 : 409,
+                      admitted.errors[0]?.message ?? 'Kjøringen kunne ikke slippes inn igjen.',
+                      'state',
+                      state,
+                    );
+                }
+                return g.entry;
+              },
+            ).catch((error: unknown) => refusalResponse(c, error));
+            if (done instanceof Response) return done;
+            return c.json(await withAdmission(done));
           });
 
           app.post(`${base}/engine-switches/:sid/retry`, async (c) => {
@@ -1978,6 +2114,14 @@ export const createEngineSwitchesModule =
             if (reason.length < minimum)
               return problem(c, 400, 'Begrunnelsen er for kort', [
                 { path: 'change-reason', message: `Begrunnelsen må ha minst ${minimum} tegn.` },
+              ]);
+            // A sent-back fill run still open would be forgotten by activating (issue 598).
+            const runs = await Promise.all(
+              (spec.runs ?? []).map((id) => deps.ingestion.execution(id)),
+            );
+            if (runs.some((r) => r?.status === 'queued' || r?.status === 'running'))
+              return problem(c, 409, 'En kjøring i byttet går fortsatt.', [
+                { path: 'runs', message: 'En kjøring i byttet går fortsatt.' },
               ]);
             if (g.item.version !== spec.datasetVersion)
               return problem(c, 409, 'Datasettet er endret siden byttet startet.', [

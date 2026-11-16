@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { defaultEvalSlotLimits, evalSlotLimitsFromEnv, evalSlots } from './eval-slots.js';
+import {
+  defaultEvalSlotLimits,
+  evalSlotLimitsFromEnv,
+  evalSlots,
+  SlotsDraining,
+} from './eval-slots.js';
 
 describe('case slots for test-set runs', () => {
   it('reads the limits from the environment and leaves out missing or invalid values', () => {
@@ -44,5 +49,26 @@ describe('case slots for test-set runs', () => {
 
     expect(served).toEqual(['a', 'b', 'c', 'a']);
     expect(slots.inFlight()).toBe(0);
+  });
+
+  it('starts no new case once the instance drains, and waits for the work it tracks', async () => {
+    const slots = evalSlots({ perInstance: 1, perTenant: 1, perRun: 1 });
+    const run = slots.session('a', 'x');
+    const release = await run.acquire();
+    const waiting = run.acquire();
+    let finish: () => void = () => undefined;
+    slots.track(new Promise<void>((resolve) => (finish = resolve)));
+    let drained = false;
+
+    const draining = slots.drain().then(() => (drained = true));
+    await expect(waiting).rejects.toBeInstanceOf(SlotsDraining);
+    await expect(run.acquire()).rejects.toBeInstanceOf(SlotsDraining);
+    expect(drained).toBe(false);
+    release();
+    finish();
+    await draining;
+
+    expect(drained).toBe(true);
+    expect(slots.draining()).toBe(true);
   });
 });

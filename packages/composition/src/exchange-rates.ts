@@ -21,8 +21,13 @@ export interface GuardedRequest {
   request(
     allow: { host: string; port?: number }[],
     url: string,
-    init: { method: 'GET'; headers?: Record<string, string> },
-  ): Promise<{ status: number; body: string }>;
+    init: {
+      method: 'GET';
+      headers?: Record<string, string>;
+      maxResponseBytes?: number;
+      timeoutMs?: number;
+    },
+  ): Promise<{ status: number; body: string; bytes?: Uint8Array }>;
 }
 
 interface SdmxAnswer {

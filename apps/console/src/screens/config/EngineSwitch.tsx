@@ -69,7 +69,10 @@ const messageOf = (error: unknown) => {
   return unique.join(' ') || undefined;
 };
 
-type Action = 'retry' | 'cancel' | 'activate' | 'rollback';
+/** In lockdown a switch's runs stop 24 hours after they were admitted; warn in the last 4. */
+const admissionWarningMs = 4 * 3_600_000;
+
+type Action = 'retry' | 'cancel' | 'activate' | 'rollback' | 'readmit';
 
 const Loaded = ({
   api,
@@ -78,6 +81,7 @@ const Loaded = ({
   targets,
   pollMs,
   reload,
+  now,
 }: {
   api: ApiClient;
   base: string;
@@ -85,6 +89,7 @@ const Loaded = ({
   targets: string[];
   pollMs: number;
   reload: () => void;
+  now: () => Date;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -230,6 +235,25 @@ const Loaded = ({
     });
   };
 
+  /** In lockdown: until when the switch's runs are admitted, as a warning in the last hours. */
+  const admission = (at: string) => {
+    const time = new Intl.DateTimeFormat(intlLocale(f.locale), {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Oslo',
+    }).format(new Date(at));
+    return Date.parse(at) - now().getTime() < admissionWarningMs ? (
+      <Alert data-color="warning" data-size="sm">
+        {t('engineSwitch.admissionSoon', { time })}
+      </Alert>
+    ) : (
+      <Paragraph data-size="sm">{t('engineSwitch.admission', { time })}</Paragraph>
+    );
+  };
+
   /** Activate when ready, retry when failed; a running or comparing move offers only cancel. */
   const primary =
     current?.state === 'ready' ? (
@@ -295,6 +319,7 @@ const Loaded = ({
       ) : current.state === 'ready' && current.comparisonNote ? (
         <Paragraph data-size="sm">{current.comparisonNote}</Paragraph>
       ) : null}
+      {current.admissionRunsOutAt ? admission(current.admissionRunsOutAt) : null}
       {current.error ? (
         <Alert data-color="warning" data-size="sm">
           <Paragraph data-size="sm">{t('engineSwitch.errorLead')}</Paragraph>
@@ -306,6 +331,16 @@ const Loaded = ({
           {reasonField}
           <div className="actions-row">
             {primary}
+            {current.admissionRunsOutAt ? (
+              <Button
+                variant="secondary"
+                data-size="sm"
+                disabled={busy}
+                onClick={() => action(current.sid, 'readmit')}
+              >
+                {t('engineSwitch.readmit')}
+              </Button>
+            ) : null}
             <Button
               variant="secondary"
               data-size="sm"
@@ -444,11 +479,13 @@ export const EngineSwitchSection = ({
   api,
   base,
   pollMs = 2000,
+  now = () => new Date(),
 }: {
   api: ApiClient;
   /** The dataset's path: `/operator/datasets/{id}`, or `/tenants/{org}/datasets/{id}` under a support session. */
   base: string;
   pollMs?: number;
+  now?: () => Date;
 }) => {
   const t = useT();
   const [state, retry] = useAsync(
@@ -483,6 +520,7 @@ export const EngineSwitchSection = ({
           targets={state.data.targets}
           pollMs={pollMs}
           reload={retry}
+          now={now}
         />
       )}
     </section>

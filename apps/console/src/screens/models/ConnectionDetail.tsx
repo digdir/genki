@@ -114,13 +114,32 @@ export const ConnectionDetail = ({ api, data, done, id }: AreaProps & { id: stri
           <dt>{t('connections.address')}</dt>
           <dd>{spec.baseURL ?? '–'}</dd>
           <dt>{t('endpoints.login')}</dt>
-          <dd>{spec.authKind === 'bearer' ? t('endpoints.bearer') : t('endpoints.apiKey')}</dd>
-          <dt>{t('connections.key')}</dt>
           <dd>
-            {spec.secret ?? t('endpoints.noSecret')}
-            <br />
-            <span className="meta">{t('connections.keyStored')}</span>
+            {spec.authKind === 'federated-app'
+              ? t('endpoints.federatedApp')
+              : spec.authKind === 'bearer'
+                ? t('endpoints.bearer')
+                : t('endpoints.apiKey')}
           </dd>
+          {spec.app ? (
+            <>
+              <dt>{t('endpoints.appClientId')}</dt>
+              <dd>{spec.app.clientId}</dd>
+              <dt>{t('endpoints.resourceTenant')}</dt>
+              <dd>{spec.app.tenant}</dd>
+              <dt>{t('endpoints.scope')}</dt>
+              <dd>{spec.app.scope}</dd>
+            </>
+          ) : (
+            <>
+              <dt>{t('connections.key')}</dt>
+              <dd>
+                {spec.secret ?? t('endpoints.noSecret')}
+                <br />
+                <span className="meta">{t('connections.keyStored')}</span>
+              </dd>
+            </>
+          )}
           <dt>{t('endpoints.settings')}</dt>
           <dd>
             {Object.keys(spec.settings).length === 0

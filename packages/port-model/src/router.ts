@@ -11,6 +11,7 @@ import {
   createGate,
   credentialFor,
   type Credential,
+  type FederatedTokens,
   type Gate,
   type GateTarget,
   type ObjectLedger,
@@ -98,6 +99,7 @@ export interface ModelRouterOptions {
   typedCalls?: ProcessorRecordCheck;
   onUnrecordedProcessor?: (endpoint: string, kind: string) => void;
   tokenProviders?: Record<string, () => Promise<string>>;
+  federatedTokens?: FederatedTokens;
   maxResidency?: Residency;
   maxRetries?: number;
   timeoutMs?: number;
@@ -227,6 +229,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
         options.secrets,
         options.tokenProviders,
         endpoint.baseURL,
+        options.federatedTokens,
       );
       credentials.set(name, credential);
       connections.set(name, this.#connect(name, endpoint, credential));
