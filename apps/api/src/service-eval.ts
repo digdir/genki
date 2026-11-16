@@ -1126,9 +1126,21 @@ export const serviceEval = (
           };
         }, 'completed');
       } catch (error) {
-        if (go.resumable && slots.draining()) {
-          handed = true;
-          await lease.update(handedOver, 'handed over').catch(() => undefined);
+        if (slots.draining()) {
+          handed = go.resumable;
+          await lease
+            .update(
+              go.resumable
+                ? handedOver
+                : (run) => ({
+                    ...ended(run),
+                    status: 'interrupted',
+                    endedAt: leases.now().toISOString(),
+                    error: restartMessage,
+                  }),
+              go.resumable ? 'handed over' : 'interrupted',
+            )
+            .catch(() => undefined);
           return;
         }
         await lease

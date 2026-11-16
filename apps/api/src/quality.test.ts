@@ -29,7 +29,7 @@ import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { saveUsdNok } from '@genai/composition';
 import { translateMessage } from './i18n/index.js';
-import type { LeaseOptions } from './background-lease.js';
+import { restartMessage, type LeaseOptions } from './background-lease.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
@@ -1031,36 +1031,36 @@ const otlpCollector = async () => {
   return { url: sink.url, spans, attr, datasets };
 };
 
-describe('eval runs sent to a trace connection', () => {
-  const connect = async (
-    env: Awaited<ReturnType<typeof boot>>,
-    host: string,
-    residency = 'global',
-  ) => {
-    const why = { 'change-reason': 'Kobler tjenesten til sporing' };
-    await env.send(
-      'PUT',
-      `/tenants/${tenant}/secrets/sporing`,
-      'kari',
-      { value: 'sk-lf-lokal', allowedHosts: [host] },
-      why,
-    );
-    const saved = await env.send(
-      'PUT',
-      `/tenants/${tenant}/tracing/connections/lokal`,
-      'kari',
-      {
-        host,
-        publicKey: 'pk-lf-lokal',
-        secretKey: `secret://tenant/${tenant}/sporing`,
-        services: ['svar'],
-        residency,
-      },
-      why,
-    );
-    expect(saved.status).toBe(200);
-  };
+const connect = async (
+  env: Awaited<ReturnType<typeof boot>>,
+  host: string,
+  residency = 'global',
+) => {
+  const why = { 'change-reason': 'Kobler tjenesten til sporing' };
+  await env.send(
+    'PUT',
+    `/tenants/${tenant}/secrets/sporing`,
+    'kari',
+    { value: 'sk-lf-lokal', allowedHosts: [host] },
+    why,
+  );
+  const saved = await env.send(
+    'PUT',
+    `/tenants/${tenant}/tracing/connections/lokal`,
+    'kari',
+    {
+      host,
+      publicKey: 'pk-lf-lokal',
+      secretKey: `secret://tenant/${tenant}/sporing`,
+      services: ['svar'],
+      residency,
+    },
+    why,
+  );
+  expect(saved.status).toBe(200);
+};
 
+describe('eval runs sent to a trace connection', () => {
   it('sends a traced run as one experiment to the connection covering the service, never its holdout cases', async () => {
     const collector = await otlpCollector();
     const deliveries = new InMemoryTraceDeliveries();
@@ -3445,9 +3445,13 @@ describe('a test-set run across a deploy', () => {
     };
     return { seen, hold };
   };
-  const start = async (env: Awaited<ReturnType<typeof boot>>) => {
+  const start = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    body: Record<string, unknown> = {},
+  ) => {
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      ...body,
     });
     expect(started.status).toBe(202);
     return String(started.body.id);
@@ -3609,6 +3613,140 @@ describe('a test-set run across a deploy', () => {
       service: 'svar',
       principal: { subject: 'kari', tenant },
     });
+    const { principal } = kept[0]?.spec as { principal: Principal };
+    expect(principal).not.toHaveProperty('name');
+    expect(principal).not.toHaveProperty('orgNames');
+  });
+
+  it('takes a run up once when two requests on one instance find it left at the same time', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const later = asked();
+    let at = t0;
+    const after = await boot(prices, {
+      ...stores,
+      hold: async (question) => {
+        await later.hold(question);
+        if (question.input.includes(locked)) await gate;
+      },
+      leases: { instance: 'after', now: () => at },
+    });
+    await after.settled();
+
+    at = new Date(t0.getTime() + 10 * 60_000);
+    await Promise.all([read(after, id), read(after, id)]);
+    await vi.waitFor(() => expect(later.seen).toEqual([locked]));
+    const again = await read(after, id);
+    open();
+    await after.settled();
+
+    expect(again.resumed).toBe(1);
+    expect(later.seen).toEqual([locked]);
+  });
+
+  it('interrupts a run taken up three times instead of taking it up again', async () => {
+    const stores = shared();
+    const before = await boot(prices, {
+      ...stores,
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    const id = await start(before);
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const stored = await stores.evalStores.runs.get(id);
+    if (stored)
+      await stores.evalStores.runs.save({ ...stored, run: { ...stored.run, resumes: 3 } });
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+    const kept = await stores.store.history(serviceEvalResumeKind, tenant, id);
+
+    expect(maxResumes).toBe(3);
+    expect(run).toMatchObject({
+      status: 'interrupted',
+      resumed: 3,
+      finished: 2,
+      error: restartMessage,
+    });
+    expect(later.seen).toEqual([]);
+    expect(kept.at(-1)?.deleted).toBe(true);
+  });
+
+  it('does not take up a run sent to a trace connection', async () => {
+    const stores = shared();
+    const collector = await otlpCollector();
+    const before = await boot(prices, {
+      ...stores,
+      tracing: { devMode: true },
+      holdLocked: true,
+      leases: { instance: 'before', now: () => t0 },
+    });
+    await connect(before, collector.url);
+    const id = await start(before, { trace: true });
+    await vi.waitFor(async () => expect((await read(before, id)).finished).toBe(2), {
+      timeout: 5000,
+    });
+    const later = asked();
+    const after = await boot(prices, {
+      ...stores,
+      tracing: { devMode: true },
+      hold: later.hold,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+
+    const run = await read(after, id);
+    await after.settled();
+
+    expect(run).toMatchObject({ status: 'interrupted', finished: 2, error: restartMessage });
+    expect(run).not.toHaveProperty('resumed');
+    expect(later.seen).toEqual([]);
+    expect(await stores.store.history(serviceEvalResumeKind, tenant, id)).toEqual([]);
+  });
+
+  it('marks a traced run stopped by a deploy interrupted', async () => {
+    const stores = shared();
+    const collector = await otlpCollector();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const before = await boot(prices, {
+      ...stores,
+      tracing: { devMode: true },
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      hold: async (question) => {
+        if (question.input.includes(o1)) await gate;
+      },
+      leases: { instance: 'before', now: () => t0 },
+    });
+    await connect(before, collector.url);
+    const id = await start(before, { trace: true });
+    await vi.waitFor(async () =>
+      expect((await read(before, id)).current?.map((c) => c.case)).toEqual(['o1']),
+    );
+
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    const run = await read(before, id);
+
+    expect(run).toMatchObject({ status: 'interrupted', finished: 1, error: restartMessage });
   });
 });
 

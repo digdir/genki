@@ -21,7 +21,7 @@ export const backgroundLeases = (options: LeaseOptions = {}) => {
   const heartbeatMs = options.heartbeatMs ?? 30_000;
   const staleAfterMs = options.staleAfterMs ?? 2 * 60_000;
   const now = options.now ?? (() => new Date());
-  const live = new Set<string>();
+  const live = new Map<string, number>();
 
   const stamp = (): { owner: string; heartbeatAt: string } => ({
     owner: instance,
@@ -40,7 +40,7 @@ export const backgroundLeases = (options: LeaseOptions = {}) => {
     first: T,
     save: (spec: T, reason: string) => Promise<unknown>,
   ) => {
-    live.add(key);
+    live.set(key, (live.get(key) ?? 0) + 1);
     const write = serialized();
     let current = first;
     const update = (next: (spec: T) => T, reason: string) =>
@@ -53,9 +53,14 @@ export const backgroundLeases = (options: LeaseOptions = {}) => {
       void update((spec) => spec, 'Kjører fortsatt').catch(() => undefined);
     }, heartbeatMs);
     beat.unref?.();
+    let released = false;
     const release = () => {
+      if (released) return;
+      released = true;
       clearInterval(beat);
-      live.delete(key);
+      const holds = (live.get(key) ?? 1) - 1;
+      if (holds > 0) live.set(key, holds);
+      else live.delete(key);
     };
     return { update, release };
   };
