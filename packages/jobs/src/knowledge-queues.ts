@@ -158,7 +158,7 @@ export const knowledgeCheckQueue = defineQueue({
   payload: nightlyPayload,
   expireInSeconds: 2 * hour,
   heartbeatSeconds: minute,
-  // The next night's check is the retry: a retry would read every partition again (issue 615).
+  // The next night's check is the retry (issue 615).
   retryLimit: 0,
   deadLetter: false,
 });

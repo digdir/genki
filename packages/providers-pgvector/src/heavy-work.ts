@@ -246,8 +246,7 @@ export interface RecallSample {
 /**
  * recall@k of the generation's chunk index against exact search, for a random sample of its own
  * vectors as queries, at the `hnsw.ef_search` search uses. Nothing when it holds no vectors.
- * `stop` is asked before each exact search, which reads the whole partition: the result counts
- * only the searches that ran (issue 615). `signal` cancels the query that is running.
+ * `stop` is asked before each exact search, and `signal` cancels the running query (issue 615).
  */
 export const sampleRecall = async (
   owner: Pool,
@@ -277,8 +276,7 @@ export const sampleRecall = async (
       if (pid !== undefined) void cancelBackend(owner, pid).catch(() => undefined);
     };
     signal?.addEventListener('abort', cancel, { once: true });
-    // PostgreSQL ignores a cancel that reaches an idle backend, so the signal is also asked
-    // before every query: an abort between two searches, or before the listener, still stops it.
+    // A cancel that reaches an idle backend is ignored, so every query asks the signal first.
     const go = () => signal?.throwIfAborted();
     await client.query('begin');
     try {

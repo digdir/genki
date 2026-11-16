@@ -47,10 +47,7 @@ export interface HeavyServer {
   toFreeze(): Promise<string[]>;
   progress(pid: number): Promise<unknown>;
   cancel(pid: number): Promise<unknown>;
-  /**
-   * recall@10 on a sample of the generation's own vectors. `stop` is asked before each exact
-   * search, and `signal` cancels the running query.
-   */
+  /** recall@10 on a sample: `stop` is asked before each exact search, `signal` cancels it. */
   recall(
     generation: string,
     options: { sample: number; stop: () => boolean; signal: AbortSignal },
@@ -115,14 +112,9 @@ export const recallQueries = (chunks: number) => {
   return { sample, margin: recallMarginFor(sample) };
 };
 
-/**
- * The check starts no exact search this long after its job starts, 30 minutes before the job's
- * 2-hour expiry (issue 615): on Kudos's 25 GB or more, one search takes about 2 minutes, so the
- * planned 50 do not fit. The searches that ran are judged, with the margin widened to their
- * number. When the deadline cut the searches below `fewestRecallVerdict` (a margin of 0.032), the
- * night gives no verdict; a generation with fewer vectors than that is judged on all of them.
- */
+/** No exact search starts this long after the check starts (ADR 0042, "Heavy work"). */
 export const recallDeadlineMs = 90 * 60_000;
+/** Fewer searches cut by the deadline give no verdict (ADR 0042, "Heavy work"). */
 export const fewestRecallVerdict = 20;
 
 /** A build still running this long after the window's end is cancelled (ADR 0042, "Heavy work"). */
@@ -250,8 +242,7 @@ export const buildWork = (deps: HeavyDeps) =>
 
 /**
  * `knowledge.check`, nightly at the window start: sends `VACUUM (FREEZE)` for partitions past half
- * the freeze age, and a REINDEX for an active generation whose sampled recall dropped. It is not
- * retried: the next night's check is the retry.
+ * the freeze age, and a REINDEX for an active generation whose sampled recall dropped.
  */
 export const checkWork = (deps: HeavyDeps) =>
   queueWork(knowledgeCheckQueue, async (job) => {
@@ -262,7 +253,7 @@ export const checkWork = (deps: HeavyDeps) =>
       if (!dataset) continue;
       await sendHeavy(deps, { tenant: tenantOf(dataset), generation, kind: 'freeze' });
     }
-    // Smallest first under the one deadline, so a large generation takes only the time left.
+    // Smallest first, so a large generation takes only the time left.
     const active: { dataset: DatasetConfig; generation: string; chunks: number }[] = [];
     for (const dataset of deps.datasets())
       if (dataset.generation)
@@ -274,7 +265,7 @@ export const checkWork = (deps: HeavyDeps) =>
     active.sort((a, b) => a.chunks - b.chunks);
     for (const { dataset, generation, chunks } of active) {
       const { sample: planned } = recallQueries(chunks);
-      // Drawing the sample alone reads the whole partition, so past the deadline it is not drawn.
+      // Past the deadline no sample is drawn: the draw alone reads the partition.
       if (stop()) {
         deps.log?.('knowledge recall check cut short', { generation, planned, queries: 0 });
         continue;
@@ -289,7 +280,7 @@ export const checkWork = (deps: HeavyDeps) =>
         deps.log?.('knowledge recall check skipped', { generation, reason: 'no vectors' });
         continue;
       }
-      // A generation smaller than the sample is judged on all its vectors; only the deadline cuts.
+      // Only a sample the deadline cut goes without a verdict.
       if (sample.cut && sample.queries < fewestRecallVerdict) {
         deps.log?.('knowledge recall check cut short', {
           generation,
