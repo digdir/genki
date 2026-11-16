@@ -12,6 +12,13 @@ param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appsImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param doclingImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appVersion string = 'bootstrap'
+@description('The worker\'s APP_VERSION; empty means appVersion.')
+param workerVersion string = ''
+
+@description('API revisions (deploy.yml): the new one\'s suffix, the one users get, and the one before it. Empty live: one revision.')
+param apiRevisionSuffix string = ''
+param apiLiveRevision string = ''
+param apiPreviousRevision string = ''
 
 @description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
 param appEnv object = {}
@@ -357,10 +364,14 @@ module apps 'modules/containerapps.bicep' = {
     keyVaultUri: vault.outputs.uri
     keyVaultSecretNames: keyVaultSecretNames
     apiImage: apiImage
+    apiRevisionSuffix: apiRevisionSuffix
+    apiLiveRevision: apiLiveRevision
+    apiPreviousRevision: apiPreviousRevision
     workerImage: workerImage
     appsImage: appsImage
     doclingImage: doclingImage
     appVersion: appVersion
+    workerVersion: workerVersion
     appEnv: appEnv
     identityEnv: {
       ANSATTPORTEN_ISSUER: ansattportenIssuer
@@ -457,6 +468,8 @@ module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName)) {
 }
 
 output apiUrl string = 'https://${apps.outputs.fqdn}'
+output apiCandidateUrl string = apps.outputs.apiCandidateUrl
+output apiCandidateRevision string = apps.outputs.apiCandidateRevision
 output appUrls object = apps.outputs.defaultFqdns
 output customDomainVerificationId string = apps.outputs.verificationId
 output dnsNameServers array = createDnsZone && !empty(dnsZoneName) ? dns!.outputs.nameServers : []
