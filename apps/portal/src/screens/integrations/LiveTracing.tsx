@@ -159,10 +159,6 @@ const problemText = (t: T, error: unknown) =>
     ? error.problem.errors.map((e) => e.message).join('. ')
     : t('integLangfuse.failed');
 
-/** The two lines of a judge's filter in Langfuse that point it at one test set's dataset. */
-const filterLines = (dataset: string) =>
-  `datasetId any of [${dataset}]\nisExperimentItemRootSpan = true`;
-
 /** The rows of the guide's table: what one thing is in Langfuse, and where genki shows it. */
 const whereRows = [
   ['integLangfuse.guideDatasetLangfuse', 'integLangfuse.guideDatasetGenki'],
@@ -449,10 +445,11 @@ export const LiveTracing = ({
                     {c.datasets.map((d) => (
                       <li key={d.id} className="row-wrap">
                         <code>{d.name}</code>
+                        {/* Langfuse's Dataset picker searches by name and stores the id. */}
                         <CopyButton
-                          text={filterLines(d.name)}
-                          label={t('integLangfuse.copyLines')}
-                          ariaLabel={t('integLangfuse.copyLinesFor', { dataset: d.name })}
+                          text={d.name}
+                          label={t('integLangfuse.copyName')}
+                          ariaLabel={t('integLangfuse.copyNameOf', { dataset: d.name })}
                         />
                       </li>
                     ))}

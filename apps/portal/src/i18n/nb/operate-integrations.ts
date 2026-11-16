@@ -741,7 +741,7 @@ export const integrationsArea = {
     guideConnect:
       'Den som forvalter tjenestene, kobler dem til et Langfuse-prosjekt med de to nøklene til prosjektet, med Koble til Langfuse under.',
     guideJudge:
-      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. Filteret har datasetId any of [genki/<tjeneste-id>/<testsett-id>] og isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet eller organisasjonen.',
+      'Skriv en dommer i Langfuse, under Evaluation › Evaluators, for testsettet. I filteret velger du genki/<tjeneste-id>/<testsett-id> under Dataset og legger til isExperimentItemRootSpan = true. Dommeren velger sin egen modell, ikke standardmodellen til prosjektet eller organisasjonen.',
     guideMapping:
       'Dommeren leser hele spørsmålet og svaret, eller en sti i dem med $, .nøkkel og [n]. Et spørsmål i tekst ligger på input $.parts[0].body.text, og svaret på output $[0].body.text.',
     guideAdopt:
@@ -750,7 +750,7 @@ export const integrationsArea = {
     guideLive:
       'En dommer for trafikken i drift i samme prosjekt stopper testkjøringen hvis den også treffer den. Hold testkjøringene utenfor med environment none of [genki-test-runs].',
     guideCopy:
-      'Knappen ved hvert datasett under kopierer de to filterlinjene, med datasettet fylt inn.',
+      'Knappen ved hvert datasett under kopierer navnet, så du kan lime det inn i søket under Dataset.',
     guideWhere: 'Hvor det vises',
     guideInLangfuse: 'I Langfuse',
     guideInGenki: 'I genki',
@@ -769,7 +769,7 @@ export const integrationsArea = {
       'Hvert testtilfelle: et spor i miljøet genki-test-runs, med vurderingene til dommerne',
     guideTraceGenki:
       'Langfuse-vurderingene på kjøringen, adskilt fra målene til genki, med kostnad, samsvar med etiketter og en lenke til eksperimentet',
-    copyLines: 'Kopier filterlinjer',
-    copyLinesFor: 'Kopier filterlinjene for {dataset}',
+    copyName: 'Kopier navnet',
+    copyNameOf: 'Kopier navnet {dataset}',
   }),
 } as const;

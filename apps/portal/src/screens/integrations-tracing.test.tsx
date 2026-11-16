@@ -455,7 +455,7 @@ describe('Integrasjoner: Langfuse, the guide', () => {
     expect((await guideNow()).open).toBe(false);
   });
 
-  it("copies a dataset's two filter lines from the button beside it", async () => {
+  it("copies a dataset's name from the button beside it, for Langfuse's Dataset picker", async () => {
     const copied: string[] = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -466,13 +466,11 @@ describe('Integrasjoner: Langfuse, the guide', () => {
 
     fireEvent.click(
       within(list).getByRole('button', {
-        name: 'Kopier filterlinjene for genki/rapportassistenten/rapport-kjerne',
+        name: 'Kopier navnet genki/rapportassistenten/rapport-kjerne',
       }),
     );
 
-    expect(copied).toEqual([
-      'datasetId any of [genki/rapportassistenten/rapport-kjerne]\nisExperimentItemRootSpan = true',
-    ]);
+    expect(copied).toEqual(['genki/rapportassistenten/rapport-kjerne']);
   });
 });
 

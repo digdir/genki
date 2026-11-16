@@ -744,7 +744,7 @@ export const integrationsArea = {
     guideConnect:
       "Someone who manages the services connects them to a Langfuse project with the project's two keys, with Connect to Langfuse below.",
     guideJudge:
-      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. Its filter has datasetId any of [genki/<service-id>/<test-set-id>] and isExperimentItemRootSpan = true. The judge names its own model, not the project's or the organisation's default model.",
+      "Write a judge in Langfuse, under Evaluation › Evaluators, for the test set. In its filter, pick genki/<service-id>/<test-set-id> under Dataset and add isExperimentItemRootSpan = true. The judge names its own model, not the project's or the organisation's default model.",
     guideMapping:
       'The judge reads the whole question and answer, or a path into them with $, .key and [n]. A text question is at input $.parts[0].body.text, and the answer at output $[0].body.text.',
     guideAdopt:
@@ -753,7 +753,7 @@ export const integrationsArea = {
     guideLive:
       'A judge for live traffic in the same project stops the test run if it also matches it. Leave the test runs out with environment none of [genki-test-runs].',
     guideCopy:
-      'The button beside each dataset below copies the two filter lines, with the dataset filled in.',
+      'The button beside each dataset below copies its name, to paste into the search under Dataset.',
     guideWhere: 'Where it shows up',
     guideInLangfuse: 'In Langfuse',
     guideInGenki: 'In genki',
@@ -772,7 +772,7 @@ export const integrationsArea = {
       "Each test case: a trace in the environment genki-test-runs, with the judges' scores on it",
     guideTraceGenki:
       "The Langfuse scores on the run, apart from genki's metrics, with cost, agreement with labels and a link to the experiment",
-    copyLines: 'Copy filter lines',
-    copyLinesFor: 'Copy the filter lines for {dataset}',
+    copyName: 'Copy the name',
+    copyNameOf: 'Copy the name {dataset}',
   },
 } satisfies Translation<typeof source>;
