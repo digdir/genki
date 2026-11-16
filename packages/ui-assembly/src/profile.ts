@@ -83,13 +83,7 @@ export interface AssistantProfile {
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
    */
   family?: ((service: string) => boolean) | undefined;
-  /**
-   * The whole file of a document opened in Dokumentvisning, by the document's number, while the
-   * block's `file` option is on: a PDF the view shows in the browser's own viewer. `undefined`
-   * says there is none, and the view shows the excerpts; the call is aborted when the reader opens
-   * another document. Provisional until genki offers a route for a document's file, when it may
-   * change.
-   */
+  /** A document's whole file for Dokumentvisning, by its number; provisional until genki has a route. */
   documentFile?:
     ((documentId: string, signal: AbortSignal) => Promise<DocumentFile | undefined>) | undefined;
   /**

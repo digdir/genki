@@ -97,11 +97,7 @@ export interface DocumentViewProps {
   sources?: readonly SourceDocument[] | undefined;
   /** Which document and excerpt to land on; each new target, by identity, is followed once. */
   target?: SourceTarget | undefined;
-  /**
-   * The targeted document's whole file, from the host: being found, found, none, or failed. A
-   * PDF is shown in its place of the excerpts, in the browser's own viewer, or as a link where
-   * the browser cannot show one inline. Without it, the excerpts as before.
-   */
+  /** The targeted document's whole file from the host; a PDF replaces the excerpts. */
   file?: DocumentFileStatus | undefined;
   /** The answer's footnotes in order, as Sources takes them, to number and jump to excerpts. */
   citations?: readonly SourceCitation[] | undefined;
