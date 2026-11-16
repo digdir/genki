@@ -16,7 +16,6 @@ import { PlatformDefaults } from './screens/PlatformDefaults';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
 import { Quality } from './screens/Quality';
-import { QualityMatrix } from './screens/QualityMatrix';
 import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
 import { SupportAccess } from './screens/SupportAccess';
@@ -40,6 +39,9 @@ import {
 const apisTab = { tab: 'apis' };
 
 const Atlas = lazy(() => import('./screens/Atlas').then((m) => ({ default: m.Atlas })));
+const QualityMatrix = lazy(() =>
+  import('./screens/QualityMatrix').then((m) => ({ default: m.QualityMatrix })),
+);
 import type { OperatorSession } from './types';
 
 const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
@@ -286,7 +288,9 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/search-engines': () => <SearchEngines api={api} />,
     '/state-register': () => <StateRegister api={api} />,
     '/quality-matrix': () => (
-      <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
+      <Suspense fallback={null}>
+        <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
+      </Suspense>
     ),
     '/tracing': () => <Tracing api={api} live={live} />,
     '/operations': () => <Operations api={api} />,
