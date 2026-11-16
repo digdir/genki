@@ -31,7 +31,7 @@
             <h1 id="document-view-title">Document view</h1>
             <div class="badges">
               <span class="badge phase">Building</span><span class="badge">Optional</span
-              ><span class="badge">Tools</span>
+              ><span class="badge">Tools</span><span class="badge">Whole document: beta</span>
             </div>
             <p class="summary">
               Shows one source document in its own order, with the excerpt the reader came for
@@ -91,6 +91,22 @@
                 dokumentet på Kudos». Without positions, the service's order, and no gap is claimed.
               </li>
               <li>
+                <strong>The whole document, beta</strong>: a PDF the host fetches, in the browser's
+                own viewer in place of the excerpts, as tall as the view has room for, under the
+                same head, «Les dokumentet på Kudos» and «Spør om dette dokumentet». No excerpt is
+                marked in it, so there is no «Utdrag i svaret» row and no quote note. It is beta
+                because the file comes from the host until genki offers a route for a document's
+                file, and the excerpts cannot be marked in it before genki gives their place. Where
+                the browser has no viewer of its own (<code>navigator.pdfViewerEnabled</code> is
+                false, as on Android) or the screen is a phone's, narrower than 40rem or lower than
+                30rem, a framed PDF shows one page that cannot be scrolled, or nothing: the view
+                links to it instead, «Åpne dokumentet (PDF)», in a new tab. While the host is
+                finding the file the view says «Henter dokumentet …». When it has none, or the file
+                is not a PDF at a web address, the excerpts are shown with «Hele dokumentet kan ikke
+                vises her.», and when it fails, with «Fikk ikke vist hele dokumentet.» A document
+                jumped to from «Utdrag i svaret» shows its excerpts: the file is the target's.
+              </li>
+              <li>
                 <strong>Footnotes that name excerpts</strong>: the cited excerpts are «Utdrag N»
                 with their links back beside the title, numbered by the whole answer as in Sources.
                 <strong>Footnotes that name only documents</strong>: nothing is numbered.
@@ -127,6 +143,16 @@
                 the excerpt the reader chose in Sources. Each new target, by identity, is followed
                 once, and wins over an excerpt the reader has jumped to since.
                 <code>onTargetMissing</code> reports one the sources do not hold.
+              </li>
+              <li>
+                <code>file</code>, beta: the targeted document's whole file as the host finds it,
+                <code>{ status: 'loading' }</code>, <code>'ready'</code> with
+                <code>{ url, mediaType }</code>, <code>'none'</code> or <code>'failed'</code>. Only
+                an <code>application/pdf</code> at an http or https address, or a path on the host's
+                site, is shown. Without it the view is the excerpts as before, with no line about a
+                file. In an assistant, <code>@genai/ui-assembly</code> fills it from the host's
+                <code>documentFile</code> while the block's option «Vis hele dokumentet (beta)»
+                (<code>file</code>, on by default) is on.
               </li>
               <li>
                 <code>opensFrom</code>: where the reader opens a document in this host, so the hint
@@ -267,6 +293,41 @@
                   <td><code>--genai-document-view-empty-gap</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>gap in the empty state</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-background</code></td>
+                  <td><code>--ds-color-surface-default</code></td>
+                  <td>behind the PDF while the browser draws it (beta)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-block-size</code></td>
+                  <td>75dvh</td>
+                  <td>the PDF's height (beta)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-border-color</code></td>
+                  <td><code>--ds-color-border-subtle</code></td>
+                  <td>the PDF's border (beta)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-border-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>the PDF's corners (beta)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the PDF's border (beta)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-min-block-size</code></td>
+                  <td>20rem</td>
+                  <td>the PDF's least height (beta)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-file-note-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>«Henter dokumentet …», and why the whole document is not shown (beta)</td>
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-font-family</code></td>
@@ -538,7 +599,13 @@
               <li>
                 genki has no route for a document's whole text, or all of its chunks: the frontend
                 contract gives only the excerpts an answer retrieved. The view says so, and links to
-                the original.
+                the original. A host that can fetch the original PDF, as Kunnskapsassistenten's
+                server can from Kudos, shows it whole in the meantime (beta).
+              </li>
+              <li>
+                A PDF in a frame is the browser's own viewer: it needs no script of ours and reads
+                as the reader's other PDFs, but a phone's browser shows one page of it, or nothing,
+                so a phone gets a link.
               </li>
               <li>
                 A target that names only the document cites no excerpt, so none is marked: marking
@@ -558,6 +625,10 @@
                 field.
               </li>
               <li>The PDF page itself, with the passage marked on it, needs pages from genki.</li>
+              <li>
+                Where a document's file comes from once genki offers a route for it: then the host's
+                <code>documentFile</code> may change, and the block's <code>file</code> stays.
+              </li>
             </ul>
           </div>
         </div>

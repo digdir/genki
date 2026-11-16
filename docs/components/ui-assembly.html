@@ -230,6 +230,18 @@
                 describe describes them too, so that no such thread is linked by the wrong one.
               </li>
               <li>
+                A document's whole file, in beta: the profile's <code>documentFile</code>, a host's
+                function from a document's number and an abort signal to
+                <code>{ url, mediaType }</code>, or <code>undefined</code> for none. The assembly
+                calls it when a document opens in Dokumentvisning and the block's
+                <code>file</code> option is on, once per document, aborts it when another opens or
+                the view closes, drops a result that comes after, and hands the view the status:
+                being found, found, none or failed. Without it, as in the portal's preview, or with
+                the option off, the view shows the excerpts and asks nothing. It is provisional
+                until genki offers a route for a document's file, and may change then; where the
+                file comes from stays the host's.
+              </li>
+              <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
                 follow-ups, the collections' words and fields, the family of services, the trials
                 and who is signed in. For the next look, also the reader's
