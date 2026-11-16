@@ -119,7 +119,8 @@ export const recallQueries = (chunks: number) => {
  * The check starts no exact search this long after its job starts, 30 minutes before the job's
  * 2-hour expiry (issue 615): on Kudos's 25 GB or more, one search takes about 2 minutes, so the
  * planned 50 do not fit. The searches that ran are judged, with the margin widened to their
- * number; below `fewestRecallVerdict` (a margin of 0.032) the night gives no verdict.
+ * number. When the deadline cut the searches below `fewestRecallVerdict` (a margin of 0.032), the
+ * night gives no verdict; a generation with fewer vectors than that is judged on all of them.
  */
 export const recallDeadlineMs = 90 * 60_000;
 export const fewestRecallVerdict = 20;

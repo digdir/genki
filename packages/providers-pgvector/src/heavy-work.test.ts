@@ -414,6 +414,37 @@ describe('the recall check', () => {
     }
   });
 
+  it('an abort that lands before the listener stops the check before its draw', async () => {
+    const { generation } = await loaded(10);
+    const chunks = partitionOf('kn_chunks', generation);
+    // The draw would wait on this lock, and a cancel sent before the listener existed is lost.
+    const holder = await admin.connect();
+    try {
+      await holder.query('begin');
+      await holder.query(`lock table ${chunks} in access exclusive mode`);
+      const expired = new AbortController();
+      const { signal } = expired;
+      const listen = signal.addEventListener.bind(signal);
+      signal.addEventListener = ((...args: Parameters<AbortSignal['addEventListener']>) => {
+        expired.abort();
+        listen(...args);
+      }) as AbortSignal['addEventListener'];
+      const check = sampleRecall(owner, generation, { sample: 5, signal });
+      check.catch(() => undefined);
+      const outcome = await Promise.race([
+        check.then(
+          () => 'finished',
+          () => 'stopped',
+        ),
+        new Promise((resolve) => setTimeout(() => resolve('still running'), 5_000)),
+      ]);
+      expect(outcome).toBe('stopped');
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+  });
+
   it('an abort between two searches stops the check', async () => {
     const { generation } = await loaded(30);
     const expired = new AbortController();
