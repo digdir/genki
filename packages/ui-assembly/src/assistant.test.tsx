@@ -205,6 +205,16 @@ const footnotes = () =>
 const state = (template: Parameters<typeof fromTemplate>[0]): BuilderState =>
   fromTemplate(template);
 
+/** A tool of the secondary panel chosen by its name: a tab for two tools, the menu's for more. */
+const chooseTool = (name: string) => {
+  const tab = screen.queryByRole('tab', { name, hidden: true });
+  const entry = [...document.querySelectorAll<HTMLElement>('.uib-shell-tools-menu button')].find(
+    (button) => button.textContent === name,
+  );
+  const control = tab ?? entry;
+  if (control) fireEvent.click(control);
+};
+
 describe('the assistant a layout describes', () => {
   it('draws no panel for a zone the layout leaves empty', async () => {
     draw(state('chat-only').layout, fakeApi().api);
@@ -982,6 +992,14 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
 // The «_Ready for dev» boards' frame (dev-navbar, dev-innstillinger-0-start), behind its template.
 describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () => {
   const nextLayout = fromTemplate('knowledge-assistant-next').layout;
+  // Fremgangsmåte and Kilder alone in the secondary panel: two tools, two joined buttons.
+  const twoTools: AssistantLayout = {
+    ...nextLayout,
+    zones: {
+      ...nextLayout.zones,
+      secondary: nextLayout.zones.secondary.filter((placed) => placed.block !== 'document-view'),
+    },
+  };
   const reader: AssistantProfile = {
     assistantName: 'KA',
     signedInAs: 'Kari Marie Nordmann',
@@ -1015,7 +1033,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   });
 
   it('titles the tool panel «Verktøy» over Fremgangsmåte and Kilder as two joined buttons (dev-verktoy-2)', async () => {
-    drawNext();
+    drawNext(reader, twoTools);
     await opened();
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
@@ -1052,14 +1070,8 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(within(tools).queryByRole('button', { name: /velg verktøy/ })).toBeNull();
   });
 
-  it('offers three tools in a tinted button that opens a menu of them (dev-verktoy-3)', async () => {
-    drawNext(reader, {
-      ...nextLayout,
-      zones: {
-        ...nextLayout.zones,
-        secondary: [...nextLayout.zones.secondary, { block: 'document-view' }],
-      },
-    });
+  it('offers the template’s three tools in a tinted button that opens a menu of them (dev-verktoy-3)', async () => {
+    drawNext();
     await opened();
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
@@ -1150,7 +1162,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   });
 
   it('gives Kilder Aksel’s FileSearch icon in the switcher (dev-verktoy-2)', async () => {
-    drawNext();
+    drawNext(reader, twoTools);
     await opened();
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     const tab = within(screen.getByRole('tablist', { name: 'Verktøy' })).getByRole('tab', {
@@ -1178,7 +1190,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
   });
 
   it('lists the steps of a question asked here in «Fremgangsmåte», each with its mark', async () => {
-    drawNext();
+    drawNext(reader, twoTools);
     await ask();
     // The sources may have opened it already.
     const show = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
@@ -2572,6 +2584,142 @@ const pressSend = () =>
     fireEvent.click(screen.getByRole('button', { name: 'Send spørsmålet' }));
   });
 
+describe('the whole document in Dokumentvisning, from the host', () => {
+  const pdf = (id: string) => ({ url: `/files/${id}`, mediaType: 'application/pdf' });
+  const second = {
+    index: 2,
+    title: 'Årsrapport 2021',
+    documentId: '43',
+    excerpts: [{ chunkId: 'c2', text: 'Årsrapporten sier det samme.' }],
+  };
+  // A stored thread whose answer cites one excerpt in each of two documents.
+  const twoDocuments = () => {
+    const { api } = fakeApi();
+    api.loadThread = vi.fn(async () => ({
+      title: 'En gammel tråd',
+      turns: [
+        {
+          id: 'm1',
+          question: 'Hva er fast?',
+          askedAt: 1,
+          answer: {
+            text: 'Rapporteringen er fast [1], hvert år [2].',
+            status: 'complete' as const,
+            sources: [source, second],
+            markers: [
+              { marker: '1', chunkId: 'c1', documentId: '42' },
+              { marker: '2', chunkId: 'c2', documentId: '43' },
+            ],
+            created: 2,
+          },
+        },
+      ],
+    }));
+    return api;
+  };
+  // Dokumentvisning without Kilder: a footnote opens its document there.
+  const withView = (file = true) =>
+    withSetting(
+      turnOff(turnOn(state('sources-only'), 'document-view'), 'sources'),
+      'document-view',
+      'file',
+      file,
+    ).layout;
+  const open = async (
+    documentFile: AssistantProfile['documentFile'],
+    layout = withView(),
+    api = fakeApi().api,
+  ) => {
+    history.replaceState(null, '', '/?t=t-old');
+    render(
+      <Assistant
+        api={api}
+        layout={layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA', documentFile }}
+        threadInUrl
+      />,
+    );
+    await waitFor(() => expect(footnotes().length).toBeGreaterThan(0));
+    fireEvent.click(footnotes()[0] as HTMLElement);
+    await screen.findByRole('heading', { name: 'Tildelingsbrev 2022' });
+  };
+  const frame = () => document.querySelector('iframe');
+  const excerptsShown = () => document.querySelectorAll('.uib-document-view-passage').length;
+
+  it('asks the host for the opened document’s file and shows the PDF, the option on by default', async () => {
+    const documentFile = vi.fn(async (id: string) => pdf(id));
+    await open(documentFile, withView());
+    await waitFor(() => expect(frame()?.getAttribute('src')).toBe('/files/42'));
+    expect(documentFile).toHaveBeenCalledTimes(1);
+    expect(documentFile.mock.calls[0]?.[0]).toBe('42');
+    expect(frame()?.getAttribute('title')).toBe('Dokumentet Tildelingsbrev 2022 som PDF');
+    expect(excerptsShown()).toBe(0);
+  });
+
+  it('asks nothing and shows the excerpts as before with the option off', async () => {
+    const documentFile = vi.fn(async (id: string) => pdf(id));
+    await open(documentFile, withView(false));
+    await waitFor(() => expect(excerptsShown()).toBe(1));
+    expect(documentFile).not.toHaveBeenCalled();
+    expect(frame()).toBeNull();
+    expect(screen.queryByText(/Hele dokumentet|hele dokumentet/)).toBeNull();
+  });
+
+  it('shows the excerpts as before without a host function, as the portal’s preview has none', async () => {
+    await open(undefined);
+    await waitFor(() => expect(excerptsShown()).toBe(1));
+    expect(frame()).toBeNull();
+    expect(screen.queryByText(/hele dokumentet/i)).toBeNull();
+  });
+
+  it('shows the excerpts, and says so, when the host has no file for the document', async () => {
+    await open(async () => undefined);
+    expect(await screen.findByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+    expect(excerptsShown()).toBe(1);
+  });
+
+  it('shows the excerpts, and says so, when the host’s call fails', async () => {
+    await open(async () => {
+      throw new Error('no file');
+    });
+    expect(await screen.findByText('Fikk ikke vist hele dokumentet.')).toBeTruthy();
+    expect(excerptsShown()).toBe(1);
+  });
+
+  it('aborts the call for a document no longer open, and shows only the open one’s file', async () => {
+    const calls: { id: string; signal: AbortSignal; done: (file: unknown) => void }[] = [];
+    const documentFile = (id: string, signal: AbortSignal) =>
+      new Promise<ReturnType<typeof pdf> | undefined>((done) => {
+        calls.push({ id, signal, done: done as (file: unknown) => void });
+      });
+    await open(documentFile, withView(), twoDocuments());
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(screen.getByText('Henter dokumentet …')).toBeTruthy();
+    // The second footnote opens the other document while the first file is still on its way.
+    fireEvent.click(footnotes()[1] as HTMLElement);
+    await screen.findByRole('heading', { name: 'Årsrapport 2021' });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls.map(({ id }) => id)).toEqual(['42', '43']);
+    expect(calls[0]?.signal.aborted).toBe(true);
+    expect(calls[1]?.signal.aborted).toBe(false);
+    await act(async () => calls[0]?.done(pdf('42')));
+    expect(frame()).toBeNull();
+    await act(async () => calls[1]?.done(pdf('43')));
+    await waitFor(() => expect(frame()?.getAttribute('src')).toBe('/files/43'));
+  });
+
+  it('asks nothing again for another excerpt of the document already open', async () => {
+    const documentFile = vi.fn(async (id: string) => pdf(id));
+    await open(documentFile);
+    await waitFor(() => expect(frame()).toBeTruthy());
+    fireEvent.click(footnotes()[0] as HTMLElement);
+    await waitFor(() => expect(frame()).toBeTruthy());
+    expect(documentFile).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('asking, whatever genki has said of the service', () => {
   it('sends a question asked before genki has said what the service backs, once it has', async () => {
     const { api, asked } = fakeApi();
@@ -3660,10 +3808,9 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     await ask();
     await waitFor(() => expect(documentMarks()).toEqual(['Kilde 1: Tildelingsbrev 2022']));
     fireEvent.click(screen.getByRole('link', { name: 'Kilde 1: Tildelingsbrev 2022' }));
+    // The template's three tools are a menu, whose button names the tool shown.
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe(
-        'true',
-      ),
+      expect(screen.getByRole('button', { name: 'Kilder, velg verktøy' })).toBeTruthy(),
     );
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Tildelingsbrev 2022'));
     expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
@@ -3773,8 +3920,7 @@ describe('Kilder in the next look', () => {
     await waitFor(() => expect(footnotes()).toHaveLength(1));
     const shown = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
     if (shown) fireEvent.click(shown);
-    const tab = screen.queryByRole('tab', { name: 'Kilder' });
-    if (tab) fireEvent.click(tab);
+    chooseTool('Kilder');
   };
   const fold = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
 

@@ -61,13 +61,18 @@ describe('the templates', () => {
     expect(blocksIn(layout, 'secondary')).toEqual(['sources']);
   });
 
-  it('give Kunnskapsassistenten’s next look the same blocks, with Approach also as the tool', () => {
+  it('give Kunnskapsassistenten’s next look the same blocks, with Approach also as the tool and Dokumentvisning after Kilder', () => {
     const next = templates['knowledge-assistant-next'];
     const today = templates['knowledge-assistant'];
     expect(next.primary).toEqual(today.primary);
     expect(next.main).toEqual(today.main);
-    expect(next.secondary).toEqual(['approach', ...today.secondary]);
+    expect(next.secondary).toEqual(['approach', 'sources', 'document-view', 'notes']);
     expect(placedAt(fromTemplate('knowledge-assistant-next').layout, 'approach')).toBe('both');
+    expect(blocksIn(fromTemplate('knowledge-assistant-next').layout, 'secondary')).toEqual([
+      'approach',
+      'sources',
+      'document-view',
+    ]);
   });
 
   it('draw the dev boards’ look only for knowledge-assistant-next, and today’s for the rest', () => {
