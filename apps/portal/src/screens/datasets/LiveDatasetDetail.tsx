@@ -45,8 +45,10 @@ import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
+import { admissionRunsOutSoon } from './admission';
 import type { DetailTab } from './DatasetDetail';
 import {
+  refusalText,
   countText,
   datasetStatus,
   executionStatus,
@@ -722,6 +724,39 @@ const Loaded = ({
     }
   };
 
+  // The open run whose admission runs out first; the list starts with the newest, often a queued one.
+  const admitted = runs?.data
+    .filter(
+      (r) =>
+        (r.status === 'queued' || r.status === 'running') &&
+        r.admissionRunsOutAt &&
+        !r.cancelRequestedAt,
+    )
+    .sort((a, b) => (a.admissionRunsOutAt ?? '').localeCompare(b.admissionRunsOutAt ?? ''))[0];
+  const runsOut = admitted?.admissionRunsOutAt;
+  const [readmitting, setReadmitting] = useState(false);
+  const [readmitFailure, setReadmitFailure] = useState('');
+
+  const readmit = async () => {
+    if (!pipeline || !admitted || readmitting) return;
+    setReadmitFailure('');
+    setReadmitting(true);
+    try {
+      await api.datasets.readmitExecution(
+        tenant,
+        view.id,
+        pipeline.id,
+        admitted.id,
+        tRef.current('datasets.readmitReason'),
+      );
+      await refresh();
+    } catch (error) {
+      setReadmitFailure(refusalText(tRef.current, error));
+    } finally {
+      setReadmitting(false);
+    }
+  };
+
   const latest = runs?.data[0];
   const lastOk = runs?.data.find((r) => r.status === 'succeeded');
   const status: DatasetStatus =
@@ -800,6 +835,33 @@ const Loaded = ({
               {t('datasets.runningLeave')}
             </span>
           </Alert>
+        ) : null}
+        {runsOut ? (
+          <div className="stack-xs">
+            {admissionRunsOutSoon(runsOut) ? (
+              <Alert data-color="warning" data-size="sm">
+                {t('datasets.admissionSoon', { time: f.dateTime(runsOut) })}
+              </Alert>
+            ) : (
+              <p className="meta">{t('datasets.admission', { time: f.dateTime(runsOut) })}</p>
+            )}
+            {canEdit ? (
+              <Button
+                variant="secondary"
+                data-size="sm"
+                className="align-start"
+                loading={readmitting}
+                onClick={() => void readmit()}
+              >
+                {t('datasets.readmit')}
+              </Button>
+            ) : null}
+            {readmitFailure ? (
+              <Alert data-color="danger" data-size="sm" role="alert">
+                {t('datasets.readmitFailed', { problem: readmitFailure })}
+              </Alert>
+            ) : null}
+          </div>
         ) : null}
         {finished?.status === 'succeeded' ? (
           <Alert data-color={skippedNow.length ? 'warning' : 'success'}>

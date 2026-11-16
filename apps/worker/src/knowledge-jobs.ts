@@ -1,6 +1,7 @@
 import type { Principal } from '@genai/contracts';
 import { withModelAdmission } from '@genai/composition';
 import {
+  admissionHours,
   knowledgePlatformQueues,
   knowledgeServerQueues,
   queueWork,
@@ -159,7 +160,7 @@ export const openWorkerJobs = async <Pool>(
   return { platform, knowledge, runJobs };
 };
 
-export const admissionHours = 24;
+export { admissionHours };
 
 export const notAdmittedMessage =
   'the run was not admitted, so its jobs fetch, convert and embed nothing';

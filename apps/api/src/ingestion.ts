@@ -8,7 +8,7 @@ import {
   type SkippedDocument,
   type SourceEstimate,
 } from '@genai/ingest';
-import { nextRun, parseCron } from '@genai/jobs';
+import { admissionRunsOutAt, nextRun, parseCron } from '@genai/jobs';
 import { z } from 'zod';
 import {
   appendVersion,
@@ -184,6 +184,8 @@ export interface Execution {
   runsAsJobs?: boolean;
   /** When the API admitted the run; only the API sets it (ADR 0042, "Jobs"). */
   admittedAt?: string;
+  /** In lockdown, when an open run's admission runs out and its jobs stop (ADR 0033). */
+  admissionRunsOutAt?: string;
   cancelRequestedAt?: string;
   /** The generation a run of an engine switch writes into, and that switch (ADR 0025). */
   generation?: string;
@@ -222,6 +224,13 @@ export interface JobRunStore {
     execution: string;
     by: string;
     reason: string;
+    at: string;
+  }): Promise<JobRunResult>;
+  /** Admits a queued or running run again from `at`; its jobs stay as they are (ADR 0033). */
+  readmit(input: {
+    dataset: string;
+    pipeline?: string;
+    execution: string;
     at: string;
   }): Promise<JobRunResult>;
 }
@@ -887,6 +896,52 @@ export class IngestionService {
           ...(sent.conflict ? { conflict: true } : {}),
           errors: [{ path: 'execution', message: sent.message }],
         };
+  }
+
+  /** Admits a queued or running run that runs as jobs again from now (ADR 0033). */
+  async readmit(input: {
+    dataset: string;
+    pipeline?: string;
+    execution: string;
+    by: string;
+    principal?: Principal;
+  }): Promise<
+    | { ok: true; value: Execution }
+    | { ok: false; errors: { path: string; message: string }[]; conflict?: boolean }
+  > {
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; admitting ${input.execution} again by ${input.by} was refused`,
+      );
+      return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
+    }
+    const jobs = this.options.jobs;
+    if (!jobs)
+      return {
+        ok: false,
+        errors: [
+          { path: 'execution', message: 'only a run that runs as jobs can be admitted again' },
+        ],
+      };
+    const admitted = await jobs.runs.readmit({
+      dataset: input.dataset,
+      ...(input.pipeline ? { pipeline: input.pipeline } : {}),
+      execution: input.execution,
+      at: this.#now(),
+    });
+    return admitted.ok
+      ? { ok: true, value: this.admission(admitted.value) }
+      : { ok: false, errors: [{ path: 'execution', message: admitted.message }] };
+  }
+
+  /** In lockdown, an open run that runs as jobs, and is not being cancelled, says when its admission runs out (ADR 0033). */
+  admission(run: Execution): Execution {
+    return this.options.admits &&
+      run.admittedAt &&
+      !run.cancelRequestedAt &&
+      (run.status === 'queued' || run.status === 'running')
+      ? { ...run, admissionRunsOutAt: admissionRunsOutAt(run.admittedAt) }
+      : run;
   }
 
   onFinished(listener: (execution: Execution) => void) {

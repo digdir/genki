@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../../mock';
 import { exampleEndpoints, type SearchEnginesMockOptions } from '../../mock/search-engines';
 import { expectAccessible, renderAt } from '../../test-utils';
@@ -29,7 +29,10 @@ const switchSection = async () => {
 beforeEach(() => {
   window.location.hash = '';
 });
-afterEach(cleanup);
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 describe('Datasett: søkemotor', () => {
   it('shows the engine facts, what it can do and the services that search the dataset', async () => {
@@ -223,6 +226,25 @@ describe('Datasett: søkemotor', () => {
     ).toBeTruthy();
     expect(within(flow).queryByRole('button', { name: 'Ta i bruk' })).toBeNull();
     expect(await screen.findByText(/søker nå i/, {}, { timeout: 4000 })).toBeTruthy();
+  });
+
+  it("the portal's engine switch screen shows when admission runs out, and admits the switch again", async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-15T05:00:00Z'), shouldAdvanceTime: true });
+    await openKudos({
+      scenario: 'switching',
+      progressStep: 0,
+      admissionRunsOutAt: '2026-11-15T07:56:00Z',
+    });
+    const flow = await switchSection();
+    const warned = await within(flow).findByText(
+      /sluppet inn bare til 15\. november 2026 kl\. 08\.56/,
+    );
+    expect(warned.closest('[data-color="warning"]')).not.toBeNull();
+
+    fireEvent.click(within(flow).getByRole('button', { name: 'Slipp inn igjen' }));
+
+    const calm = await within(flow).findByText(/sluppet inn til 16\. november 2026 kl\. 06\.00/);
+    expect(calm.closest('[data-color="warning"]')).toBeNull();
   });
 
   it('a failed transfer offers Prøv igjen and Avbryt byttet, and the block explains it', async () => {

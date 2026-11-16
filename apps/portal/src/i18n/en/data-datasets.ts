@@ -213,6 +213,13 @@ const datasets = {
   changesNotSaved: 'The changes were not saved. {problem}',
   saving: 'Saving',
   runningLeave: 'The ingestion is in progress. The page updates itself, and you can leave it.',
+  admission:
+    'The ingestion is admitted until {time}. It then stops in the locked environment, unless it is admitted again.',
+  admissionSoon:
+    'The ingestion is admitted only until {time}. Admit it again before then, or it stops and must start over.',
+  readmit: 'Admit again',
+  readmitReason: 'Admitted again from the portal',
+  readmitFailed: 'The ingestion could not be admitted again. {problem}',
   ingestionDone: 'The ingestion is done',
   storedDocuments: '{amount} documents have been ingested.',
   someSkipped: '{amount} were skipped:',
@@ -466,6 +473,12 @@ export const searchEngine = {
   swStoppedText:
     '{target} did not respond. {current} is still in use, and the services notice nothing. What has been transferred stays until you try again or cancel.',
   swTechnical: 'Technical message: {message}',
+  swAdmission:
+    'The ingestion is admitted until {time}. The transfer then stops in the locked environment, unless it is admitted again.',
+  swAdmissionSoon:
+    'The ingestion is admitted only until {time}. Admit it again before then, or the transfer stops and must start over.',
+  swReadmit: 'Admit again',
+  swReadmitReason: 'Admitted again from the portal',
   swMayClose:
     'You can close the page. The transfer continues, and you are notified on Overview when it is done.',
   swQuality: 'Quality on the test set',

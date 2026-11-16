@@ -584,8 +584,12 @@ describe('lockdown', () => {
     `/tenants/${digdir}/datasets/sider/engine-switches`,
     `/tenants/${digdir}/datasets/sider/engine-switches/1/retry`,
     `/tenants/${digdir}/datasets/sider/engine-switches/1/activate`,
+    `/tenants/${digdir}/datasets/sider/engine-switches/1/readmit`,
+    `/tenants/${digdir}/datasets/sider/pipelines/nettsider/executions/a1/readmit`,
     `/operator/datasets/sider/engine-switches`,
     `/operator/datasets/sider/engine-switches/1/activate`,
+    `/operator/datasets/sider/engine-switches/1/readmit`,
+    `/operator/datasets/sider/pipelines/nettsider/executions/a1/readmit`,
     `/tenants/${digdir}/datasets/sider/enrichment/hypothetical-questions/apply`,
     `/tenants/${digdir}/connectors/kobling/sync`,
   ])('refuses new embeddings for a person in lockdown (%s)', async (path) => {
