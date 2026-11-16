@@ -3,6 +3,7 @@ import type { QueryIntent } from './intent.js';
 import type { EvidencePlan, ReadSignal } from './read-signals.js';
 import type { SufficiencyDecision } from './sufficiency.js';
 import type { RuntimeSkill } from './skills.js';
+import type { SourceFactsQuery, SourceFactsReport } from './source-facts.js';
 
 export type SearchType = 'phrase' | 'metadata' | 'content';
 
@@ -94,6 +95,7 @@ export interface AgentRetrieval {
     maxOptions: number,
     signal: AbortSignal,
   ): Promise<Record<string, { value: string; count: number }[]>>;
+  sourceFacts?(request: SourceFactsQuery, signal: AbortSignal): Promise<SourceFactsReport[]>;
 }
 
 export interface BudgetLimits {
@@ -242,6 +244,7 @@ export class Workspace {
   sourceOrder: Chunk[] = [];
   citationValidation: CitationValidation | undefined;
   noToolCallRetries = 0;
+  sourceFactsRead = false;
 
   constructor(readonly limits: BudgetLimits) {}
 

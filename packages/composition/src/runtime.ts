@@ -59,6 +59,7 @@ import {
   type DatasetConfig,
   type IndexWriterAdapter,
   type KnowledgeAdapter,
+  type KnowledgePort,
 } from '@genai/port-knowledge';
 import {
   liveSession,
@@ -115,8 +116,13 @@ import {
 } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
 import { typesenseIndexWriter } from '@genai/providers-typesense-writer';
-import { createAgentRetrieval, createRagRetrieval, retrievalConfig } from '@genai/retrieval';
-import { agentLoopConfig, createAgentLoop } from '@genai/strategy-agent-loop';
+import {
+  createAgentRetrieval,
+  createRagRetrieval,
+  retrievalConfig,
+  sourceFacts,
+} from '@genai/retrieval';
+import { agentLoopConfig, createAgentLoop, sourceFactsToolRef } from '@genai/strategy-agent-loop';
 import { createRagSingleShot, ragConfig } from '@genai/strategy-rag';
 import {
   createRemoteAgent,
@@ -323,6 +329,7 @@ export interface RuntimeInput {
   logFailureMessages?: boolean;
   derivedCatalog?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   sharedTools?: (connection: string) => string | undefined;
+  lastImport?: (dataset: string) => Promise<string | undefined>;
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
   foreignFetch?: (hosts: string[]) => typeof fetch;
   providerObjects?: ProviderObjectStore;
@@ -642,12 +649,30 @@ export const createRuntime = async (input: RuntimeInput) => {
     });
   const blob = new BlobPortProvider(blobStore);
 
+  const factSources = (ports: Record<string, KnowledgePort>) =>
+    Object.entries(ports).map(([dataset, port]) => {
+      const id = knowledge.resolve(dataset) ?? dataset;
+      const known = knowledge.datasets().get(id);
+      const lastImport = input.lastImport;
+      return {
+        id: dataset,
+        knowledge: port,
+        ...(known?.name ? { name: known.name } : {}),
+        ...(known?.valueTypes ? { valueTypes: known.valueTypes } : {}),
+        ...(lastImport ? { lastImport: () => lastImport(id) } : {}),
+      };
+    });
   const agentLoop = usingRetrievalPorts(
     createAgentLoop({
-      retrieval: async (ctx, config, request) =>
-        hasDataset(config as RuntimeConfig)
-          ? createAgentRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig, request))
-          : undefined,
+      retrieval: async (ctx, config, request) => {
+        if (!hasDataset(config as RuntimeConfig)) return undefined;
+        const ports = await openRetrievalPorts(ctx, config as RuntimeConfig, request);
+        return {
+          ...createAgentRetrieval(ports),
+          sourceFacts: (facts, signal) =>
+            sourceFacts(factSources(ports.sources), ports.filters, facts, signal),
+        };
+      },
     }),
   );
   const blocks = builtinBlocks();
@@ -740,7 +765,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       ],
       ...(input.extraStrategyConfigs ?? []),
     ]),
-    tools: new Map(),
+    tools: new Map<string, z.ZodType>([[sourceFactsToolRef, zod.strictObject({})]]),
     guardrails: guardrailSchemas,
     blocks: new Set(blocks.refs()),
     models: models.models(),
