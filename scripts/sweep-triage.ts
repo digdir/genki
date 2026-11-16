@@ -119,7 +119,9 @@ export function triage(findings: SweepFinding[], ledger: Ledger, advisories: Adv
         (normalizeTitle(a.summary) === normalizeTitle(finding.title) &&
           finding.path !== '' &&
           (a.description ?? '').includes(finding.path)) ||
-        (a.description ?? '').includes(finding.fingerprint),
+        (a.description ?? '')
+          .split(/\r?\n/)
+          .some((line) => line.trim() === `Sweep fingerprint: ${finding.fingerprint}`),
     );
     if (entry) result.handled.push({ finding, by: `ledger: ${entry.state}` });
     else if (same) result.handled.push({ finding, by: `advisory ${same.ghsa_id} (${same.state})` });
@@ -316,15 +318,19 @@ export function recordDecision(args: string[], deps: Deps): LedgerEntry {
   return entry;
 }
 
+export const ghEnv = (env: Record<string, string | undefined>) =>
+  Object.fromEntries(Object.entries(env).filter(([name]) => !TOKENS.includes(name)));
+
 function main(args: string[]) {
   if (Number(process.versions.node.split('.')[0]) < 24)
     throw new Error('needs Node 24: run `mise install` in the repository');
   const deps: Deps = {
     gh: (ghArgs) => {
-      const env = Object.fromEntries(
-        Object.entries(process.env).filter(([name]) => !TOKENS.includes(name)),
-      );
-      const gh = spawnSync('gh', ghArgs, { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
+      const gh = spawnSync('gh', ghArgs, {
+        encoding: 'utf8',
+        env: ghEnv(process.env),
+        maxBuffer: 64 * 1024 * 1024,
+      });
       if (gh.status !== 0)
         throw new Error(`gh ${ghArgs.slice(0, 2).join(' ')} failed: ${gh.stderr}`);
       return gh.stdout;

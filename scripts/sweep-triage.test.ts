@@ -9,6 +9,7 @@ import {
   decision,
   fetchAndTriage,
   fingerprint,
+  ghEnv,
   insideWorkTree,
   normalizeTitle,
   parseReport,
@@ -136,6 +137,23 @@ describe('dropping what was already handled', () => {
     expect(result.fresh).toEqual([]);
   });
 
+  it("drops a finding whose fingerprint is in an advisory's description", () => {
+    const found = one();
+    const result = triage([found], emptyLedger(), [
+      advisory({ description: `Text.\n\nSweep fingerprint: ${found.fingerprint}` }),
+    ]);
+    expect(result.fresh).toEqual([]);
+    expect(result.handled[0]?.by).toContain('GHSA-2222-3333-4444');
+  });
+
+  it('keeps a finding new when an advisory only mentions its fingerprint in passing', () => {
+    const found = one();
+    const result = triage([found], emptyLedger(), [
+      advisory({ description: `see ${found.fingerprint} here` }),
+    ]);
+    expect(result.fresh).toHaveLength(1);
+  });
+
   it('keeps a finding new when an advisory has the same title but another file', () => {
     const found = one();
     const result = triage([found], emptyLedger(), [
@@ -158,6 +176,26 @@ describe('dropping what was already handled', () => {
     expect(() => decision('fixed', 'https://example.test/pull/1')).toThrow();
     expect(() => decision('refuted', ' ')).toThrow();
     expect(() => decision('ignored', 'x')).toThrow();
+  });
+});
+
+describe('the gh runner', () => {
+  it('the gh runner drops GH_TOKEN, GITHUB_TOKEN and GH_ENTERPRISE_TOKEN', () => {
+    const env = ghEnv({
+      GH_TOKEN: 'a',
+      GITHUB_TOKEN: 'b',
+      GH_ENTERPRISE_TOKEN: 'c',
+      PATH: '/bin',
+    });
+    expect(env).toEqual({ PATH: '/bin' });
+  });
+});
+
+describe('the ledger file', () => {
+  it('refuses a ledger file that is not a sweep ledger', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'ledger-')), 'ledger.json');
+    writeFileSync(file, JSON.stringify({ schema: 'something-else', findings: {} }));
+    expect(() => readLedger(file)).toThrow('is not a sweep ledger');
   });
 });
 

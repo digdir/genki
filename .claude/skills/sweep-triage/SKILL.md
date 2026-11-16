@@ -56,7 +56,7 @@ genki's practice: a private draft advisory first, the fix in a pull request whos
 For each CONFIRMED finding, write the request body to `<folder>/<run id>/advisory-<fingerprint>.json`:
 
 - `summary`: one neutral line naming the weakness.
-- `description`: what is wrong, who could abuse it and how far it reaches, the trace, and the fix.
+- `description`: what is wrong, who could abuse it and how far it reaches, the trace, and the fix. End it with the line `Sweep fingerprint: <fingerprint>`; the next triage, and any other maintainer's, reads that line to see the finding as handled.
 - `cvss_vector_string` (CVSS 3.1) or `severity`, never both.
 - `cwe_ids`: the closest CWE.
 - `vulnerabilities`: the affected range, in the same shape as genki's latest published advisory: `env -u GH_TOKEN -u GITHUB_TOKEN gh api 'repos/digdir/genki/security-advisories?state=published&per_page=1' --jq '.[0].vulnerabilities'`.
