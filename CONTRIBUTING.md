@@ -94,8 +94,8 @@ The review reads one diff, so a gap that has been in the code from the start nev
 
 - **Cost.** Each of the four model steps stops at about 6 USD, so a run costs at most about 24 USD, roughly 260 kr; a usual run is expected to cost 80 to 150 kr. Each run records its cost and how each pass and the coordinator ended (success, failure, skipped or cancelled) in `security-sweep-run.json`, which holds no findings.
 - **Where findings go.** Never to an issue, comment or the job log: the repository is public, and so are its logs and artifacts. The findings are encrypted to the maintainers' public keys in the repository variable `SECURITY_SWEEP_PUBLIC_KEYS` and uploaded as `security-sweep.sealed.json`, kept for 14 days. Without that variable the sweep stops before it calls a model. The workflow token cannot create a security advisory, and a stored token that can is not worth the risk.
-- **Reading them.** `gh run download <run id> -n security-sweep-<run id>`, then `node scripts/security-sweep.ts open security-sweep.sealed.json <your private key>`. Open a draft advisory on the Security tab for each finding you confirm.
-- **Adding a maintainer key.** `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out sweep.pem`, keep `sweep.pem` to yourself, and add the output of `openssl pkey -in sweep.pem -pubout` to the variable. It takes several keys one after another.
+- **Reading them.** `gh run download <run id> -n security-sweep-<run id>`, then `node scripts/security-sweep.ts open security-sweep.sealed.json <your private key>`. Open a draft advisory on the Security tab for each finding you confirm. In Claude Code, `/sweep-triage` does all of this in a private folder outside the repository and remembers what was already triaged.
+- **Adding a maintainer key.** `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out sweep.pem`, keep `sweep.pem` to yourself, and add the output of `openssl pkey -in sweep.pem -pubout` to the variable. It takes several keys one after another, so any team member who triages can add their own.
 
 ## Who maintains genki
 
