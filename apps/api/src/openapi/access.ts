@@ -991,7 +991,7 @@ export const accessRoutes: RouteConfig[] = [
     method: 'post',
     path: '/tenants/{tenant}/api-keys/{id}/rotate',
     summary:
-      'Replace an API key with a new one carrying the same grants, except the test-runner grant, and revoke the old one (manage-services, audited)',
+      'Replace an API key with a new one carrying the same grants, except the test-runner grant, and revoke the old one (manage-services, audited). Answers 403 when the key or its policy grants a right the caller lacks',
     request: {
       params: z.object({ tenant, id: pathParam('id', '3f9a1c2b-7d4e-4b8a-9c11-2a6f0e5d8b77') }),
       headers: reason,
