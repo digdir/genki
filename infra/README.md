@@ -102,6 +102,29 @@ Each environment has a knowledge server of its own (ADR 0042), set up as its pla
 - **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
 - **Only its own logins connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to the environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left, or while another role holds one of the logins with inherit or set.
 
+### Disk tier
+
+`knowledgePostgresPerformanceTier` sets the disk's performance tier. Empty, the default, sends no tier, as the template did before it had one; what Azure then does to a tier raised by hand is not documented. Test sets `P30` (issue 599); prod sets none.
+
+A disk's size sets its lowest tier, and a 128 GB disk can go up to P50 ([Azure: performance tiers](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-change-performance)). At 128 GB ([Azure: disk targets](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-scalability-targets)):
+
+| Tier            | Base IOPS | Base MB/s |
+| --------------- | --------: | --------: |
+| P10 (the floor) |       500 |       100 |
+| P15             |     1,100 |       125 |
+| P20             |     2,300 |       150 |
+| P30             |     5,000 |       200 |
+
+Managed disks up to P20 also burst on credits, to 3,500 IOPS and 170 MB/s for up to 30 minutes ([Azure: disk bursting](https://learn.microsoft.com/en-us/azure/virtual-machines/disk-bursting)). In test, the Kudos fill ran out of burst credits on 2026-11-14 and ran at 3,600 to 4,100 read IOPS once the disk was at P30.
+
+**For a full fill or a new embedding model,** raise the tier first and step it back afterwards:
+
+1. Set `knowledgePostgresPerformanceTier = 'P30'` in `infra/env/<env>.bicepparam` and run infra. A tier changed only by hand (`az postgres flexible-server update -g <resource group> -n <server> --performance-tier P30`) goes back to the file's tier on the next infra run.
+2. Run the fill. Watch `disk_iops_consumed_percentage` and `disk_bandwidth_consumed_percentage` on the server in Azure Monitor: at 100 % the disk is holding the fill back.
+3. After the fill, set the file back to the lower tier and run infra. Azure lowers a tier only 12 hours after the last raise, and refuses an earlier change with `PerformanceTierCannotBeDowngradedBefore12HoursError` ([Azure: scale storage performance](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-scale-storage-performance)). Whether a tier change restarts a flexible server is not documented.
+
+Size the tier by the two `consumed_percentage` metrics, not by `read_iops` or `read_throughput`. The nightly recall check (`knowledge.check`, ADR 0042) runs one exact search per sample over the whole active partition from the window's start, for about an hour. On 2026-11-16, from 00:00 to 01:03 UTC, it read about 6,000 IOPS and 204 MB/s, while both consumed metrics stayed at 0 to 10 %.
+
 ### Stages
 
 `KNOWLEDGE_SERVER_STAGE`, a GitHub variable read by `infra.yml` and `deploy.yml`, set on the environment or, without access to environment settings, as a repository variable (then prod's environment needs `none` set, since a repository variable reaches every environment and an environment's own value wins): `none` (the default, and what an unset variable means: nothing of the knowledge server), `server` (the network, the server, the identities, the job, and Storage Blob Data Contributor on the container `conversions` for the knowledge worker identity), `apps` (also the API and worker settings: `KNOWLEDGE_PGHOST`, `KNOWLEDGE_PGDATABASE`, `KNOWLEDGE_READ_PGHOST` on the same server, each app's own `KNOWLEDGE_PGUSER` and `KNOWLEDGE_AZURE_CLIENT_ID`, and the worker's `KNOWLEDGE_VCORES`, `CONVERSIONS_BLOB_URL` and its readiness probe on `/readyz`). The worker stops at start while it has no login, so `apps` waits until the job has set up the database.
