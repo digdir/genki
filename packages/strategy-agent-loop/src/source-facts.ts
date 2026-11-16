@@ -57,7 +57,7 @@ const sourceFactsArgs = z.looseObject({
 
 const orderNotes: Record<string, string> = {
   'date-within-latest-years':
-    'newest first by publication date, taken from the latest values of the year field',
+    'newest first by publication date among the first documents listed for the latest values of the year field',
   date: 'newest first by publication date among the first documents listed',
   'listing-order': 'the documents carry no date, so they are in the order the index lists them',
 };
