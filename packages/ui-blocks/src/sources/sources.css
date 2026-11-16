@@ -406,4 +406,180 @@
       --_excerpt-padding: var(--ds-size-3) var(--ds-size-4) var(--ds-size-4);
     }
   }
+
+  /* ── The excerpts when the answer cites them (dev-kilder-hoyre and -2-detalj) ── */
+
+  .uib-sources-ex-overview,
+  .uib-sources-ex-detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-sources-ex-gap, var(--ds-size-3));
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+  .uib-sources-ex-lead {
+    margin: 0;
+    color: var(--genai-sources-ex-lead-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-ex-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-sources-ex-list-gap, var(--ds-size-2));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* The whole card is the button: Designsystemet's tinted card. Its hover is pinned to accent, as
+     the board draws it. */
+  .uib-sources-ex-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-sources-ex-card-gap, var(--ds-size-2));
+    inline-size: 100%;
+    font: inherit;
+    text-align: start;
+    color: inherit;
+    cursor: pointer;
+    background: var(--genai-sources-ex-card-background, var(--ds-color-background-tinted));
+  }
+  .uib-sources-ex-card:hover {
+    background: var(
+      --genai-sources-ex-card-hover-background,
+      var(--ds-color-accent-surface-tinted)
+    );
+  }
+  .uib-sources-ex-top {
+    display: flex;
+    align-items: center;
+    gap: var(--genai-sources-ex-top-gap, var(--ds-size-2));
+    min-inline-size: 0;
+  }
+  .uib-sources-ex-numbers {
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--genai-sources-ex-numbers-gap, var(--ds-size-1));
+  }
+  /* The answer's footnote mark, pinned to accent as it is, so a card's numbers are the text's. */
+  .uib-sources-ex-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-inline-size: var(--genai-sources-ex-number-size, var(--ds-size-4));
+    block-size: var(--genai-sources-ex-number-size, var(--ds-size-4));
+    padding: 0 var(--genai-sources-ex-number-padding, var(--ds-size-1));
+    border-radius: var(--genai-sources-ex-number-border-radius, var(--ds-border-radius-full));
+    font-family: var(--genai-sources-ex-number-font-family, var(--ds-font-family));
+    font-size: var(--genai-sources-ex-number-font-size, var(--ds-font-size-1));
+    font-weight: var(--genai-sources-ex-number-font-weight, var(--ds-font-weight-medium));
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    background: var(--genai-sources-ex-number-background, var(--ds-color-accent-surface-tinted));
+    color: var(--genai-sources-ex-number-color, var(--ds-color-accent-text-default));
+  }
+  .uib-sources-ex-number[data-selected] {
+    background: var(
+      --genai-sources-ex-number-current-background,
+      var(--ds-color-accent-base-default)
+    );
+    color: var(
+      --genai-sources-ex-number-current-color,
+      var(--ds-color-accent-base-contrast-default)
+    );
+  }
+  .uib-sources-ex-doc {
+    font-size: var(--genai-sources-ex-doc-font-size, var(--ds-font-size-1));
+    line-height: var(--genai-sources-ex-doc-line-height, var(--ds-body-xs-line-height));
+    color: var(--genai-sources-ex-doc-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-ex-title {
+    margin: 0;
+    color: var(--genai-sources-ex-title-color, var(--ds-color-text-default));
+  }
+  .uib-sources-ex-preview {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    color: var(--genai-sources-ex-preview-color, var(--ds-color-text-subtle));
+  }
+
+  /* The row over one excerpt stays put, under the panel's pinned switcher, while a long excerpt
+     scrolls under it. */
+  .uib-sources-ex-nav {
+    position: sticky;
+    inset-block-start: var(--uib-shell-pinned-block-size, 0);
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--genai-sources-ex-nav-gap, var(--ds-size-2));
+    padding-block-end: var(--genai-sources-ex-nav-padding, var(--ds-size-3));
+    border-block-end: var(--genai-sources-ex-nav-border-width, var(--ds-border-width-default)) solid
+      var(--genai-sources-ex-nav-border-color, var(--ds-color-border-subtle));
+    background: var(--genai-sources-ex-nav-background, var(--ds-color-background-default));
+  }
+  .uib-sources-ex-all {
+    margin-inline-start: calc(-1 * var(--genai-sources-ex-all-pull, var(--ds-size-2)));
+  }
+  .uib-sources-ex-step {
+    display: flex;
+    align-items: center;
+    gap: var(--genai-sources-ex-step-gap, var(--ds-size-1));
+  }
+  .uib-sources-ex-position {
+    min-inline-size: var(--genai-sources-ex-position-min-size, var(--ds-size-12));
+    text-align: center;
+    font-size: var(--genai-sources-ex-position-font-size, var(--ds-body-xs-font-size));
+    line-height: var(--genai-sources-ex-position-line-height, var(--ds-body-xs-line-height));
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .uib-sources-ex-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--genai-sources-ex-head-gap, var(--ds-size-3));
+  }
+  .uib-sources-ex-head > .uib-sources-ex-number {
+    flex-shrink: 0;
+    margin-block-start: var(--genai-sources-ex-head-number-offset, var(--ds-size-1));
+  }
+  .uib-sources-ex-titles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-sources-ex-titles-gap, var(--ds-size-1));
+    min-inline-size: 0;
+  }
+  /* Heading 2xs, Designsystemet's own size and weight. */
+  .uib-sources-ex-document {
+    margin: 0;
+  }
+  .uib-sources-ex-meta {
+    font-size: var(--genai-sources-ex-meta-font-size, var(--ds-body-xs-font-size));
+    line-height: var(--genai-sources-ex-meta-line-height, var(--ds-body-xs-line-height));
+    color: var(--genai-sources-ex-meta-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-ex-section {
+    margin: 0;
+    font-size: var(--genai-sources-ex-section-font-size, var(--ds-body-sm-font-size));
+    line-height: var(--genai-sources-ex-section-line-height, var(--ds-body-sm-line-height));
+    font-weight: var(--genai-sources-ex-section-font-weight, var(--ds-font-weight-semibold));
+  }
+  .uib-sources-ex-text {
+    padding: var(--genai-sources-ex-text-padding, var(--ds-size-4));
+    border-radius: var(--genai-sources-ex-text-border-radius, var(--ds-border-radius-md));
+    background: var(--genai-sources-ex-text-background, var(--ds-color-background-tinted));
+  }
+  .uib-sources-ex-quote {
+    font-size: var(--genai-sources-ex-quote-font-size, var(--ds-body-sm-font-size));
+    line-height: var(--genai-sources-ex-quote-line-height, var(--ds-line-height-lg));
+  }
+  .uib-sources-ex-quote > :first-child {
+    margin-block-start: 0;
+  }
+  .uib-sources-ex-quote > :last-child {
+    margin-block-end: 0;
+  }
 }

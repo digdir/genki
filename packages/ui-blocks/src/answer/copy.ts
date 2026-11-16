@@ -16,6 +16,8 @@ export interface AnswerCopyOptions {
   locale?: Locale | undefined;
   /** As the answer's `documentFootnotes`: footnotes that name documents keep their numbers. */
   documentFootnotes?: boolean | undefined;
+  /** As the answer's `numberEachFootnote`: each footnote keeps its own number, as drawn. */
+  numberEachFootnote?: boolean | undefined;
 }
 
 export interface AnswerCopy {
@@ -105,10 +107,18 @@ export const finishedText = (markdown: string) => {
  * source lacks it. With no sources, the clean text alone.
  */
 export const answerCopy = (text: string, options: AnswerCopyOptions = {}): AnswerCopy => {
-  const { sources = [], markers, locale = 'nb', documentFootnotes = false } = options;
+  const {
+    sources = [],
+    markers,
+    locale = 'nb',
+    documentFootnotes = false,
+    numberEachFootnote = false,
+  } = options;
   const t = translator(locale);
   const { pairing, met } = readFootnotes(text, sources, markers);
   const byExcerpt = pairing.mode === 'excerpt';
+  // Each footnote its own number: an excerpt's line names all of them, «[1, 4]».
+  const each = byExcerpt && numberEachFootnote;
   const keys = documentKeys(sources);
   const byDocument = documentFootnotes ? documentNumbers(pairing) : new Map<string, number>();
   const names = distinctNames(sources, (title, id) => t('sources.sameTitle', { title, id })).map(
@@ -121,7 +131,7 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
     return page === undefined ? named : t('answer.copyPage', { title: named, page });
   };
   const line = (
-    n: number | undefined,
+    n: number | string | undefined,
     title: string,
     page: number | undefined,
     at: SourceDocument,
@@ -165,7 +175,15 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
   };
 
   const references = byExcerpt
-    ? cited.map((c) => line(c.n, c.title, c.excerpt.page, c.source, partOf(c)))
+    ? cited.map((c) =>
+        line(
+          each ? (pairing.uses.get(c.excerpt.chunkId) ?? []).map((i) => i + 1).join(', ') : c.n,
+          c.title,
+          c.excerpt.page,
+          c.source,
+          partOf(c),
+        ),
+      )
     : byDocument.size
       ? sources
           .flatMap((source, i) => {
@@ -211,9 +229,11 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
   const inStep = seen.length === drawn.length && seen.every((n, i) => drawn[i]?.n === n);
   let at = 0;
   const body = plain(text, (n) => {
-    const dropped = inStep && drawn[at]?.dropped;
+    const met = inStep ? drawn[at] : undefined;
     at += 1;
-    return dropped ? null : label(n);
+    if (met?.dropped) return null;
+    if (each && met?.citation !== undefined && references.length > 0) return met.citation + 1;
+    return label(n);
   });
   return references.length === 0
     ? { text: body, sources: 0 }

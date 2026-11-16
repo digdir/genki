@@ -147,9 +147,15 @@
                 on «Tråder».
               </li>
               <li>
-                <strong>The next look's «Kilder»</strong> folds the documents the answer read but
-                cites nowhere under «Andre kilder som ble lest (N)», the Sources block's
-                <code>foldUncited</code>. The cited ones stand as before.
+                <strong>The next look's «Kilder»</strong>, when the answer cites excerpts
+                (dev-kilder-hoyre and -2-detalj): every cited excerpt as a card, and a footnote or a
+                card shows that excerpt whole, with «Alle utdrag» and ‹ 2 av 7 › through the
+                footnotes; the Sources block's <code>footnote</code> and
+                <code>onFootnoteChange</code>, held in the state as <code>shownFootnote</code>, so
+                the answer marks the same footnote. «Åpne i dokumentvisning» is there when
+                Dokumentvisning is on. When the answer cites documents, it folds the documents the
+                answer read but cites nowhere under «Andre kilder som ble lest (N)», the Sources
+                block's <code>foldUncited</code>, and the cited ones stand as before.
               </li>
               <li>
                 <strong>The next look's filter</strong> (dev-filter-panel): its own panel in the
@@ -588,8 +594,9 @@
                 The next look draws a footnote that names a document, the Answer block's
                 <code>documentFootnotes</code>, until genki cites excerpts: one number per cited
                 document, 1, 2, 3 by first citation, leading to the document in «Kilder». «Kopier
-                svaret» copies the same numbers. Answers that cite excerpts keep one number per
-                excerpt.
+                svaret» copies the same numbers. In answers that cite excerpts, each footnote has
+                its own number as it stands, the Answer block's <code>numberEachFootnote</code>, and
+                «Kopier svaret» keeps them.
               </li>
               <li>
                 The assembly measures nothing of the shell's. The shell pads a panel's region as

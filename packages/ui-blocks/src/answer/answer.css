@@ -84,6 +84,14 @@
     text-decoration: none;
     vertical-align: var(--genai-answer-footnote-raise, 0.25rem);
   }
+  /* The footnote Sources shows whole, filled as on hover (dev-kilder-hoyre-2-detalj). */
+  .uib-answer-mark[aria-current='true'] {
+    background: var(
+      --genai-answer-footnote-current-background,
+      var(--ds-color-accent-base-default)
+    );
+    color: var(--genai-answer-footnote-current-color, var(--ds-color-accent-base-contrast-default));
+  }
   /* Not while focused, where Designsystemet's own two rings take the shadow. */
   .uib-answer-mark:not(:focus-visible) {
     box-shadow: inset 0 0 0

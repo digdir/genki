@@ -128,6 +128,17 @@
                 <code>answerCopy</code> takes the same option, so a copied answer keeps them. When
                 the footnotes name excerpts, nothing changes: one number per excerpt.
               </li>
+              <li>
+                <code>numberEachFootnote</code>: when the footnotes name excerpts, each footnote has
+                its own number, 1, 2, 3 as they stand, named «Fotnote 2: …», so two that cite one
+                excerpt have two numbers (dev-kilder-hoyre). Sources' cards show every number an
+                excerpt has, and its ‹ 2 av 7 › counts footnotes. The next look turns it on.
+              </li>
+              <li>
+                <code>shownFootnote</code>: the footnote Sources shows whole, by its index in the
+                footnotes, is marked <code>aria-current</code> and filled as on hover
+                (dev-kilder-hoyre-2-detalj).
+              </li>
               <li><code>status</code>: streaming, complete, aborted or failed.</li>
               <li>
                 <code>failure</code>: why a failed answer failed, from the model, the search, the
@@ -303,6 +314,16 @@
                   <td><code>--genai-answer-footnote-color</code></td>
                   <td><code>--ds-color-accent-text-default</code></td>
                   <td>footnote color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-current-background</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>the background of the footnote Sources shows whole</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-current-color</code></td>
+                  <td><code>--ds-color-accent-base-contrast-default</code></td>
+                  <td>the color of the footnote Sources shows whole</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-font-size</code></td>

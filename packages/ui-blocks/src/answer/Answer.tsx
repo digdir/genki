@@ -73,6 +73,13 @@ export interface AnswerProps {
   markers?: readonly AnswerMarker[] | undefined;
   /** Footnotes that name documents drawn with each document's number, 1, 2, 3 by first citation. */
   documentFootnotes?: boolean | undefined;
+  /**
+   * When the footnotes name excerpts: each footnote its own number, 1, 2, 3 as they stand, so two
+   * that cite one excerpt have two numbers (dev-kilder-hoyre). Without it, the excerpt's number.
+   */
+  numberEachFootnote?: boolean | undefined;
+  /** The footnote Sources shows whole, by its index in the answer's footnotes: marked current. */
+  shownFootnote?: number | undefined;
   /** The text is the service's notice that it found nothing (`no_answer`), not an answer. */
   noAnswer?: boolean | undefined;
   /** A footnote was followed: its index in the answer's footnotes, and the item it cites. */
@@ -178,6 +185,8 @@ interface FootnoteProps {
   id: string | undefined;
   onOpen: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
   footnotes: Map<number, HTMLElement>;
+  /** The one Sources shows whole. */
+  current: boolean;
 }
 
 // The excerpt's number in a round mark, as kunnskapsassistenten draws it, or with
@@ -185,10 +194,26 @@ interface FootnoteProps {
 // a bare «[3]» tells a screen reader user nothing. The brackets stay in the text, out of sight,
 // so a copied answer still reads «[1]». With nowhere to go, it is a mark and not a link, which
 // would jump to the top of the page.
-const Footnote = ({ citation, number, label, href, id, onOpen, footnotes }: FootnoteProps) => (
+const Footnote = ({
+  citation,
+  number,
+  label,
+  href,
+  id,
+  onOpen,
+  footnotes,
+  current,
+}: FootnoteProps) => (
   <sup className="uib-answer-footnote">
     {href === undefined && onOpen === undefined ? (
-      <span id={id} className="uib-answer-mark" role="img" aria-label={label} title={label}>
+      <span
+        id={id}
+        className="uib-answer-mark"
+        role="img"
+        aria-label={label}
+        title={label}
+        aria-current={current || undefined}
+      >
         <span className="uib-answer-copy">[</span>
         {number}
         <span className="uib-answer-copy">]</span>
@@ -204,6 +229,7 @@ const Footnote = ({ citation, number, label, href, id, onOpen, footnotes }: Foot
         href={href ?? '#'}
         aria-label={label}
         title={label}
+        aria-current={current || undefined}
         onClick={onOpen}
       >
         <span className="uib-answer-copy">[</span>
@@ -245,6 +271,8 @@ export const Answer = ({
   sources,
   markers,
   documentFootnotes = false,
+  numberEachFootnote = false,
+  shownFootnote,
   noAnswer = false,
   onOpenCitation,
   onOpenDocument,
@@ -345,7 +373,12 @@ export const Answer = ({
   const footnoteOf = (citation: number) => {
     const item = pairing.targets[citation];
     if (item === undefined) return undefined;
-    const number = byExcerpt ? pairing.numbers.get(item) : byDocument.get(item);
+    const each = byExcerpt && numberEachFootnote;
+    const number = each
+      ? citation + 1
+      : byExcerpt
+        ? pairing.numbers.get(item)
+        : byDocument.get(item);
     const at = byExcerpt ? documentOf(item) : keys.indexOf(item);
     const source = at === undefined || at < 0 ? undefined : sources?.[at];
     if (number === undefined || at === undefined || !source) return undefined;
@@ -355,9 +388,11 @@ export const Answer = ({
       documentId: source.documentId,
       index: source.index,
     };
-    const label = byExcerpt
-      ? t('answer.footnote', { n: number, title })
-      : t('answer.footnoteDocument', { n: number, title });
+    const label = each
+      ? t('answer.footnoteEach', { n: number, title })
+      : byExcerpt
+        ? t('answer.footnote', { n: number, title })
+        : t('answer.footnoteDocument', { n: number, title });
     return { number, goal, label };
   };
 
@@ -386,6 +421,7 @@ export const Answer = ({
               : undefined
           }
           footnotes={footnotes.current}
+          current={shownFootnote === mark.citation}
         />
       );
     }

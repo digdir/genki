@@ -60,6 +60,7 @@ import {
   type ShellProfileProps,
   type ShellTool,
   type SourceDocument,
+  type SourceSelection,
   type SourceTarget,
 } from '@genai/ui-blocks';
 import {
@@ -169,6 +170,7 @@ const AnswerRow = ({
                 markers: turn.markers,
                 locale: t.locale,
                 documentFootnotes: a.look === 'next',
+                numberEachFootnote: a.look === 'next',
               });
               void copy(text, { kind: 'answer', sources });
             },
@@ -323,7 +325,8 @@ export const AssistantView = ({
     followed: NonNullable<AssistantState['lastFollowed']['current']>,
   ) => {
     a.lastFollowed.current = followed;
-    if (sourcesOn) a.showSources(turn.id, target);
+    if (sourcesOn)
+      a.showSources(turn.id, target, 'citation' in followed ? followed.citation : undefined);
     else if (documentOn) a.openDocument(turn.id, target, 'answer');
   };
 
@@ -459,8 +462,17 @@ export const AssistantView = ({
                   follow(turn, target, { turnId: turn.id, document: target });
                 },
                 sourcesUsed: true,
-                // Until genki cites excerpts, the next look marks each cited document.
-                ...(next ? { documentFootnotes: true } : {}),
+                // Until genki cites excerpts, the next look marks each cited document. When it
+                // does, each footnote has its own number, and the one Kilder shows is marked.
+                ...(next
+                  ? {
+                      documentFootnotes: true,
+                      numberEachFootnote: true,
+                      ...(a.tool === 'sources' && a.active && a.shownFootnote !== undefined
+                        ? { shownFootnote: { turnId: a.active.id, citation: a.shownFootnote } }
+                        : {}),
+                    }
+                  : {}),
               }
             : {})}
           onRegenerate={(turn, question) => {
@@ -914,6 +926,21 @@ export const AssistantView = ({
             headerColor: 'brand3',
             disclaimer: false,
             foldUncited: true,
+            // When the answer cites excerpts: every one as a card, and one whole.
+            footnote: a.shownFootnote,
+            onFootnoteChange: a.setShownFootnote,
+            ...(documentOn
+              ? {
+                  onOpenDocument: ({ source, excerpt }: Required<SourceSelection>) => {
+                    if (!a.active) return;
+                    a.openDocument(
+                      a.active.id,
+                      { chunkId: excerpt.chunkId, documentId: source.documentId },
+                      'sources',
+                    );
+                  },
+                }
+              : {}),
           }
         : {
             onAnswerChange: a.showAnswer,

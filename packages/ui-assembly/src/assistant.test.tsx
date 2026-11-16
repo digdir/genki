@@ -199,7 +199,7 @@ const ask = async (question?: string) => {
 
 const footnotes = () =>
   [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].filter((mark) =>
-    /^Utdrag \d+: /.test(mark.getAttribute('aria-label') ?? ''),
+    /^(?:Utdrag|Fotnote) \d+: /.test(mark.getAttribute('aria-label') ?? ''),
   );
 
 const state = (template: Parameters<typeof fromTemplate>[0]): BuilderState =>
@@ -3924,9 +3924,9 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     expect(clipboard).toEqual(['Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.']);
   });
 
-  it('keeps one number per excerpt for an answer that cites excerpts', async () => {
+  it('numbers each footnote as it stands for an answer that cites excerpts', async () => {
     await openStored(fromTemplate('knowledge-assistant-next').layout);
-    expect(documentMarks()).toEqual(['Utdrag 1: Tildelingsbrev 2022']);
+    expect(documentMarks()).toEqual(['Fotnote 1: Tildelingsbrev 2022']);
   });
 
   it('leaves «Kunnskapsassistenten» drawing no mark for a document', async () => {
@@ -3988,7 +3988,10 @@ describe('Kilder in the next look', () => {
     documentId: '43',
     excerpts: [{ chunkId: 'c2', text: 'Lest, men ikke brukt i svaret.' }],
   };
-  const drawStored = (template: 'knowledge-assistant' | 'knowledge-assistant-next') => {
+  const drawStored = (
+    template: 'knowledge-assistant' | 'knowledge-assistant-next',
+    citesExcerpts = true,
+  ) => {
     const { api } = fakeApi();
     api.loadThread = vi.fn(async () => ({
       title: 'En gammel tråd',
@@ -4001,7 +4004,9 @@ describe('Kilder in the next look', () => {
             text: answer,
             status: 'complete' as const,
             sources: [read, source],
-            markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+            ...(citesExcerpts
+              ? { markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }] }
+              : {}),
             created: 2,
           },
         },
@@ -4011,15 +4016,44 @@ describe('Kilder in the next look', () => {
     draw(fromTemplate(template).layout, api, true);
   };
   const showKilder = async () => {
-    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    await waitFor(() => expect(document.querySelectorAll('.uib-answer-mark')).toHaveLength(1));
     const shown = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
     if (shown) fireEvent.click(shown);
     chooseTool('Kilder');
   };
   const fold = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
 
-  it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)»', async () => {
+  it('shows each cited excerpt as a card, and a footnote shows it whole, marked in the answer', async () => {
     drawStored('knowledge-assistant-next');
+    await showKilder();
+    const cards = await screen.findByRole('list', { name: 'Utdrag i svaret' });
+    expect(
+      within(cards)
+        .getAllByRole('button')
+        .map((card) => card.getAttribute('aria-label')),
+    ).toEqual(['Fotnote 1: Utdrag, Tildelingsbrev 2022']);
+    // What the answer read and did not cite is not among the excerpts, and there is no search.
+    expect(screen.queryByText(read.title)).toBeNull();
+    expect(fold()).toBeNull();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+
+    const mark = screen.getByRole('link', { name: 'Fotnote 1: Tildelingsbrev 2022' });
+    fireEvent.click(mark);
+    await screen.findByText('1 av 1');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('heading', { name: 'Tildelingsbrev 2022' }),
+      ),
+    );
+    expect(mark.getAttribute('aria-current')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alle utdrag' }));
+    await waitFor(() => expect(mark.getAttribute('aria-current')).toBeNull());
+    expect(screen.getByRole('list', { name: 'Utdrag i svaret' })).toBeTruthy();
+  });
+
+  it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)» when it cites documents', async () => {
+    drawStored('knowledge-assistant-next', false);
     await showKilder();
     expect(fold()?.open).toBe(false);
     expect(fold()?.querySelector('summary')?.textContent).toBe('Andre kilder som ble lest (1)');

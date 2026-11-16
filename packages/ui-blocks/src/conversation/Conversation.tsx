@@ -106,6 +106,10 @@ export interface ConversationProps {
   sourcesUsed?: boolean | undefined;
   /** `Answer`'s `documentFootnotes`: marks per cited document until a service cites excerpts. */
   documentFootnotes?: boolean | undefined;
+  /** `Answer`'s `numberEachFootnote`: each footnote its own number, as they stand. */
+  numberEachFootnote?: boolean | undefined;
+  /** The footnote Sources shows whole: its answer, and its index in that answer's footnotes. */
+  shownFootnote?: { turnId: string; citation: number } | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
   closingQuestion?: boolean | undefined;
   /** Who answers, for a screen reader. Without it, the AI assistant. */
@@ -216,6 +220,8 @@ export const Conversation = ({
   onStalled,
   sourcesUsed,
   documentFootnotes,
+  numberEachFootnote,
+  shownFootnote,
   closingQuestion,
   assistantName,
   headingLevel = 3,
@@ -624,6 +630,8 @@ export const Conversation = ({
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
           documentFootnotes={documentFootnotes}
+          numberEachFootnote={numberEachFootnote}
+          shownFootnote={shownFootnote?.turnId === turn.id ? shownFootnote.citation : undefined}
           closingQuestion={closingQuestion}
           onRegenerate={onRegenerate && (() => regenerate(turn, question))}
           failure={turn.failure}

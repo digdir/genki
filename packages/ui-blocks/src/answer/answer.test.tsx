@@ -84,6 +84,29 @@ describe('the footnotes in the answer', () => {
     expect(footnotes().map((link) => link.textContent)).toEqual(['[1]', '[2]', '[3]', '[1]']);
   });
 
+  it('numbers each footnote as it stands with `numberEachFootnote`, two for one excerpt too', () => {
+    draw({ numberEachFootnote: true });
+    const marks = [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')];
+    expect(marks.map((link) => link.textContent)).toEqual(['[1]', '[2]', '[3]', '[4]']);
+    expect(marks.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Fotnote 1: Tildelingsbrev Nkom 2022',
+      'Fotnote 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Fotnote 3: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Fotnote 4: Tildelingsbrev Nkom 2022',
+    ]);
+  });
+
+  it('marks the footnote Sources shows whole as the current one, and no other', () => {
+    draw({ numberEachFootnote: true, shownFootnote: 2 });
+    const marks = [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')];
+    expect(marks.map((link) => link.getAttribute('aria-current'))).toEqual([
+      null,
+      null,
+      'true',
+      null,
+    ]);
+  });
+
   it('draws the number in a mark, the brackets kept for copying but out of sight', () => {
     draw();
     const mark = footnotes()[0] as HTMLElement;
@@ -714,6 +737,18 @@ describe('the answer as copied', () => {
         '[3] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, s. 12 (2022). https://kudos.dfo.no/dokument/2021',
       ].join('\n'),
     );
+  });
+
+  it('keeps each footnote’s own number with `numberEachFootnote`, and lists all of an excerpt’s', () => {
+    const copied = answerCopy(text, {
+      sources: [paged, tildeling, memo],
+      markers,
+      numberEachFootnote: true,
+    });
+    expect(copied.text).toContain(
+      'Internkontrollen følger DFØ [2], og bevilgningen var 594,2 mill. kroner [3]. Rapporteringen er fast [4].',
+    );
+    expect(copied.text).toContain('[1, 4] Tildelingsbrev Nkom 2022.');
   });
 
   it('tells two excerpts of one report apart in the reference list, as the screen does: by page, else section, else their first words', () => {
