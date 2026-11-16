@@ -320,7 +320,12 @@
   }
 
   /* The title's text on the head's top line, whatever the button beside it. */
-  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header {
+  .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-header,
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side
+    > .uib-shell-fill
+    > .uib-shell-box
+    > .uib-shell-header {
     align-items: start;
   }
 

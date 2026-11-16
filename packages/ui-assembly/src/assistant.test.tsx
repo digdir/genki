@@ -4148,7 +4148,7 @@ describe('the page around the blocks', () => {
     expect(outline().first?.tagName).toBe('H1');
   });
 
-  it('opens the panel Chat stands in from the start, as a drawer on a phone, so there is a field to ask in', async () => {
+  it('opens the panel Chat stands in from the start, over the whole shell on a phone, so there is a field to ask in', async () => {
     window.matchMedia = ((media: string) => {
       const below = /\(width < (\d+(?:\.\d+)?)px\)/.exec(media);
       return {
@@ -4162,15 +4162,10 @@ describe('the page around the blocks', () => {
       configurable: true,
       get: () => 390,
     });
-    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
-      this.setAttribute('open', '');
-    };
-    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
-      this.removeAttribute('open');
-    };
     draw(placeIn(state('sources-only'), 'chat', 'secondary').layout, fakeApi().api);
     const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
-    expect(field.closest('dialog')?.hasAttribute('open')).toBe(true);
+    expect(field.closest<HTMLElement>('.uib-shell-fill')?.hidden).toBe(false);
+    expect(field.closest('dialog')).toBeNull();
   });
 
   it('names a panel of three tools as one phrase', async () => {
