@@ -12,6 +12,9 @@ param registryServer string
 param keyVaultUri string
 param keyVaultSecretNames array
 param apiImage string
+param apiRevisionSuffix string = ''
+param apiLiveRevision string = ''
+param apiPreviousRevision string = ''
 param workerImage string
 param appsImage string
 
@@ -194,6 +197,20 @@ var doclingKeySecret = {
   identity: identityId
 }
 
+var apiAppName = '${name}-api'
+var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
+var apiTraffic = empty(apiLiveRevision)
+  ? [{ latestRevision: true, weight: 100 }]
+  : concat(
+      [{ revisionName: apiLiveRevision, weight: 100, label: 'live' }],
+      empty(apiCandidateRevision) || apiCandidateRevision == apiLiveRevision
+        ? []
+        : [{ revisionName: apiCandidateRevision, weight: 0, label: 'candidate' }],
+      empty(apiPreviousRevision) || contains([apiLiveRevision, apiCandidateRevision], apiPreviousRevision)
+        ? []
+        : [{ revisionName: apiPreviousRevision, weight: 0, label: 'previous' }]
+    )
+
 resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   name: '${name}-api'
   location: location
@@ -207,18 +224,20 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
     environmentId: environment.id
     workloadProfileName: 'Consumption'
     configuration: {
-      activeRevisionsMode: 'Single'
+      activeRevisionsMode: empty(apiLiveRevision) ? 'Single' : 'Multiple'
       ingress: {
         external: true
         targetPort: 8080
         transport: 'auto'
         allowInsecure: false
         customDomains: customDomains.api
+        traffic: apiTraffic
       }
       registries: [{ server: registryServer, identity: identityId }]
       secrets: secrets
     }
     template: {
+      revisionSuffix: empty(apiRevisionSuffix) ? null : apiRevisionSuffix
       containers: [
         {
           name: 'api'
@@ -504,6 +523,10 @@ output webAppNames array = [for (item, i) in webApps: web[i].name]
 output doclingName string = docling.name
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn
+output apiCandidateRevision string = apiCandidateRevision
+output apiCandidateUrl string = empty(apiLiveRevision) || empty(apiCandidateRevision) || apiCandidateRevision == apiLiveRevision
+  ? 'https://${api.properties.configuration.ingress.fqdn}'
+  : 'https://${apiAppName}---candidate.${environment.properties.defaultDomain}'
 output defaultFqdns object = {
   api: api.properties.configuration.ingress.fqdn
   portal: web[0].properties.configuration.ingress.fqdn

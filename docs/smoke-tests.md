@@ -2,6 +2,8 @@
 
 After every deploy to genki-test, the `smoke` workflow tests the running platform the way its users do: the API with a key, the portal and console in a browser, the playground, run timelines, validation and the operator screens. It then reads the pull requests merged since the last green run, runs the check groups those pull requests touch in full, and lets a model look for what the fixed checks miss. Unit tests use fakes; this is the one place the deployed system, the real providers and the real data are checked together.
 
+Before users get a new API, the deploy workflow's `gate` job runs the same checks against the new revision while it has no traffic, without the model review and without a browser, and a failed check stops the deploy ([Deploys users do not notice](../infra/README.md#deploys-users-do-not-notice)).
+
 It exists because the manual smoke test of 96305c01 on 2026-11-10 found four bugs and three oddities the unit tests had missed. The smoke test must catch every one of them, and the same kind of mistake in any later pull request. Its results also feed the AI review experiment: a failure it traces to a pull request the AI review saw is a candidate for the `escaped` label.
 
 ## What it would have caught on 2026-11-10
