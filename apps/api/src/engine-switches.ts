@@ -191,6 +191,16 @@ export interface CopyCounts {
   failed: number;
 }
 
+/** Equal counts in any key order, since a spec read back from jsonb has its keys reordered. */
+const sameCopyCounts = (a?: CopyCounts, b?: CopyCounts) =>
+  a === b ||
+  (a !== undefined &&
+    b !== undefined &&
+    a.copied === b.copied &&
+    a.failed === b.failed &&
+    Object.keys(a.skipped).length === Object.keys(b.skipped).length &&
+    Object.entries(a.skipped).every(([reason, n]) => b.skipped[reason] === n));
+
 export interface ServiceUse {
   tenant: string;
   id: string;
@@ -1349,7 +1359,7 @@ export const createEngineSwitchesModule =
       if (
         documents === spec.progress.documents &&
         failedDocuments === (spec.failedDocuments ?? 0) &&
-        JSON.stringify(copied) === JSON.stringify(spec.copied)
+        sameCopyCounts(copied, spec.copied)
       )
         return;
       await update(

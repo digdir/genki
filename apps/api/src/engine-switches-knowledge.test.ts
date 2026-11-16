@@ -866,7 +866,7 @@ describe("sending a switch's fill run back", () => {
 
 describe("following a ready switch's runs", () => {
   it('a ready switch whose refresh never started stays ready', async () => {
-    const clock = { now: new Date() };
+    const clock = { now: new Date('2026-10-07T10:00:00Z') };
     const booted = await boot({ clock });
     await folderDataset(booted, 'stille');
     const opened = await toReady(booted, 'stille');
@@ -928,6 +928,43 @@ describe("following a ready switch's runs", () => {
       copied: 5,
       failed: 0,
     });
+  });
+
+  it('a ready copy is not counted again while its counts stay the same', async () => {
+    /** Hands specs back with their keys reordered, as PostgreSQL's jsonb does. */
+    const sorted = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(sorted)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value)
+                .sort(([a], [b]) => a.length - b.length || a.localeCompare(b))
+                .map(([k, v]) => [k, sorted(v)]),
+            )
+          : value;
+    class JsonbOrder extends InMemoryConfigEntryStore {
+      override async latest(filter?: Parameters<InMemoryConfigEntryStore['latest']>[0]) {
+        return (await super.latest(filter)).map((e) => ({ ...e, spec: sorted(e.spec) }));
+      }
+      override async history(kind: string, scope: string, id: string) {
+        return (await super.history(kind, scope, id)).map((e) => ({ ...e, spec: sorted(e.spec) }));
+      }
+    }
+    const entries = new JsonbOrder();
+    const booted = await boot({ entries });
+    await copyDataset(booted, 'kopi-rolig');
+    const ready = await copiedToReady(
+      booted,
+      'kopi-rolig',
+      {},
+      { stored: 3, failedDocuments: 2, 'skipped.no_uuid': 1 },
+    );
+    const versions = async () => (await entries.history('engine-switch', digdir, ready.id)).length;
+    const before = await versions();
+
+    for (let i = 0; i < 3; i++) await booted.module.follow();
+
+    expect(await versions()).toBe(before);
   });
 
   it('a run of a cancelled switch cannot be sent back', async () => {
