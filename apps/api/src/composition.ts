@@ -31,9 +31,11 @@ import {
   type ConversationStore,
 } from '@genai/conversations';
 import {
+  flowDatasetProblems,
   flowInputProblems,
   flowTableProblems,
   flowUsesOf,
+  missingDatasetProblems,
   platformSettings,
   SettingsRegistry,
   strategyKey,
@@ -68,6 +70,7 @@ import {
   type WaitOptions,
 } from '@genai/eval';
 import {
+  gateQuota,
   InMemoryTraceDeliveries,
   klarsprakChecklist,
   nynorskReference,
@@ -168,6 +171,7 @@ import {
   type Strategy,
   type TaskStore,
   type ThreadErasure,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
@@ -272,6 +276,7 @@ import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { stateRegisterModule } from './state-register.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -356,6 +361,7 @@ export const platformModules: PlatformModuleFactory[] = [
   playgroundModule,
   engineSwitchesModule,
   knowledgeEndpointsModule,
+  stateRegisterModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
@@ -446,6 +452,7 @@ export interface PlatformInput {
   catalogs: Catalogs;
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   definitions: (
     plugins: PluginSchemas,
     sharedSkill?: SkillFinder,
@@ -1218,7 +1225,41 @@ export const createPlatform = async (input: PlatformInput) => {
   const pluginHosts = new Map<string, AllowedHost[]>();
   const pluginEgress = new EgressGuard(input.egress ?? {});
 
+  const usageCache = new Map<string, { at: number; month: string; tokens: number }>();
+  const monthlyTokensUsed = async (tenant: string, fresh = false, at = new Date()) => {
+    const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
+    const cached = usageCache.get(tenant);
+    if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
+      return cached.tokens;
+    let tokens = 0;
+    if (taskIndex.tokensUsed) tokens = await taskIndex.tokensUsed(tenant, month);
+    else
+      for (const tracked of await taskIndex.all(tenant)) {
+        const task = (await taskStore.get(tracked.task))?.task;
+        if (!task || task.tenant !== tenant || task.createdAt < month) continue;
+        if (originOf(task.service.capability.id) === 'assistant') continue;
+        tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
+      }
+    usageCache.set(tenant, { at: at.getTime(), month, tokens });
+    return tokens;
+  };
+  const numberSetting = (tenant: string, key: string, fallback: number) => {
+    const value = settings.effective(tenant)[key]?.value;
+    return typeof value === 'number' && value > 0 ? value : fallback;
+  };
+  const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
+    const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
+    const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
+    return {
+      usedTokens,
+      monthlyTokens,
+      usedPercent: Math.round((usedTokens / monthlyTokens) * 1000) / 10,
+      exhausted: usedTokens >= monthlyTokens,
+    };
+  };
+
   const runtime = await createRuntime({
+    modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
     catalogs: input.catalogs,
     secrets: input.secrets,
@@ -1281,6 +1322,7 @@ export const createPlatform = async (input: PlatformInput) => {
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
@@ -1457,6 +1499,11 @@ export const createPlatform = async (input: PlatformInput) => {
       return problems.length > 0 ? problems : undefined;
     }
     if (d.kind === 'Service') {
+      const unsearchable = missingDatasetProblems(
+        d,
+        (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
+      );
+      if (unsearchable.length > 0) return unsearchable;
       const flowOf = async (flowRef: string) => {
         const at = flowRef.lastIndexOf('@');
         const id = flowRef.slice(0, at);
@@ -1472,6 +1519,13 @@ export const createPlatform = async (input: PlatformInput) => {
           ? [
               ...flowInputProblems(d, flow, flowRef),
               ...flowTableProblems(d, flow, flowRef),
+              ...(await flowDatasetProblems(
+                d,
+                flow,
+                flowRef,
+                (block) => blocks.get(block)?.needsDataset === true,
+                flowOf,
+              )),
               ...(await describedStepProblems(d, flow, flowRef, {
                 descriptors: runtime.descriptors,
                 governance: runtime.governance,
@@ -1739,40 +1793,8 @@ export const createPlatform = async (input: PlatformInput) => {
   const registered = async (tenant: string) =>
     tenant === platformTenant || (await directory.list()).some((e) => e.orgNumber === tenant);
 
-  const usageCache = new Map<string, { at: number; month: string; tokens: number }>();
-  const monthlyTokensUsed = async (tenant: string, fresh = false, at = new Date()) => {
-    const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
-    const cached = usageCache.get(tenant);
-    if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
-      return cached.tokens;
-    let tokens = 0;
-    if (taskIndex.tokensUsed) tokens = await taskIndex.tokensUsed(tenant, month);
-    else
-      for (const tracked of await taskIndex.all(tenant)) {
-        const task = (await taskStore.get(tracked.task))?.task;
-        if (!task || task.tenant !== tenant || task.createdAt < month) continue;
-        if (originOf(task.service.capability.id) === 'assistant') continue;
-        tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
-      }
-    usageCache.set(tenant, { at: at.getTime(), month, tokens });
-    return tokens;
-  };
-  const numberSetting = (tenant: string, key: string, fallback: number) => {
-    const value = settings.effective(tenant)[key]?.value;
-    return typeof value === 'number' && value > 0 ? value : fallback;
-  };
   // Case slots shared by every test-set run on this instance.
   const caseSlots = evalSlots(input.evalSlots);
-  const quota = async (tenant: string, options: { fresh?: boolean } = {}) => {
-    const monthlyTokens = numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens);
-    const usedTokens = await monthlyTokensUsed(tenant, options.fresh);
-    return {
-      usedTokens,
-      monthlyTokens,
-      usedPercent: Math.round((usedTokens / monthlyTokens) * 1000) / 10,
-      exhausted: usedTokens >= monthlyTokens,
-    };
-  };
 
   const limiter = input.rateLimits?.limiter ?? new SlidingWindowLimiter();
   const invokes = (c: {
@@ -2490,6 +2512,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
+    evalSlots: caseSlots,
     sync: resync,
     mount,
   };

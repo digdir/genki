@@ -52,7 +52,7 @@ export const draftOrigins = ['builder', 'playground', 'skill-test', 'assistant']
 export type DraftOrigin = (typeof draftOrigins)[number];
 export type RunOrigin = DraftOrigin | typeof serviceOrigin;
 
-const draftPrefix = 'platform/draft/';
+export const draftCapabilityPrefix = 'platform/draft/';
 
 /** The platform's eval run: its task runs a test, so it counts as testing, as its cases do. */
 export const evalCapabilityId = 'platform/eval';
@@ -60,8 +60,8 @@ export const evalCapabilityId = 'platform/eval';
 export const originOf = (capabilityId: string): RunOrigin => {
   if (capabilityId.startsWith(assistantCapabilityPrefix)) return 'assistant';
   if (capabilityId === evalCapabilityId) return 'builder';
-  if (!capabilityId.startsWith(draftPrefix)) return serviceOrigin;
-  const segment = capabilityId.slice(draftPrefix.length).split('/')[0];
+  if (!capabilityId.startsWith(draftCapabilityPrefix)) return serviceOrigin;
+  const segment = capabilityId.slice(draftCapabilityPrefix.length).split('/')[0];
   return draftOrigins.find((o) => o === segment) ?? 'builder';
 };
 
@@ -447,7 +447,7 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
     definition: unknown,
     compiled: CompiledCapability,
   ): Promise<Omit<PreparedDraft, 'definition'> | DraftRunFailure> => {
-    const id = `${draftPrefix}${input.origin}/${createHash('sha256')
+    const id = `${draftCapabilityPrefix}${input.origin}/${createHash('sha256')
       .update(
         `${input.tenant}/${(definition as { metadata: { id: string } }).metadata.id}/${Date.now()}/${Math.random()}`,
       )

@@ -1,0 +1,35 @@
+title: Kjør et testsett og les resultatet
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/services/smoke/quality
+signedIn: true
+ready: Kjøringer av testsettet
+steps:
+  - say: Før en tjeneste tas i bruk, bør dere vite hvor godt den svarer. Det finner dere ut med et testsett.
+    hold: 1
+  - say: Et testsett er en samling spørsmål med det dere forventer av svaret. Her ser dere hvor mange testtilfeller settet har.
+    do:
+      - [find, text, Testtilfeller, hover]
+  - say: Testsettet kan kjøres mot utkastet eller mot den publiserte versjonen. GenKI stiller alle spørsmålene og gir hvert svar en poengsum.
+    do:
+      - [find, role, button, hover, --name, Kjør testsettet]
+  - say: Hver kjøring havner i listen, med tidspunkt og poeng. Slik ser dere om en endring gjorde tjenesten bedre eller dårligere.
+    do:
+      - [find, role, heading, hover, --name, Kjøringer av testsettet]
+  - say: Vi åpner den siste kjøringen.
+    do:
+      - [find, role, button, click, --name, Vis resultatet]
+      - [wait, --text, Resultat per testtilfelle, --timeout, '30000']
+  - say: Per testtilfelle ser dere spørsmålet, svaret tjenesten ga, og hvordan det ble vurdert. Et svar som bommer, er lett å finne og rette.
+    do:
+      - [find, role, heading, hover, --name, Resultat per testtilfelle]
+    hold: 1.5
+  - say: Under Kvalitetskrav bestemmer dere hva en versjon må klare før den publiseres.
+    do:
+      - [find, role, tab, click, --name, Kvalitetskrav]
+    hold: 1
+  - say: Og under Tilbakemeldinger samles tommel opp og ned fra brukerne, så testsettet kan vokse med det folk faktisk spør om.
+    do:
+      - [find, role, tab, hover, --name, Tilbakemeldinger]
+    hold: 1.5

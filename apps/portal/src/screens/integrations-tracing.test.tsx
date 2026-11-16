@@ -60,8 +60,11 @@ const renderTracing = async (
     instance?: { host: string; content: boolean } | null;
     /** The agency's services, or a failure to read them; the portal's mock otherwise. */
     services?: { id: string; name: string; lifecycle?: string }[] | 'fail';
+    /** Answer every listing after the first this late, so the screen shows its loading state. */
+    reloadAfterMs?: number;
   } = {},
 ) => {
+  let listings = 0;
   const calls: Call[] = [];
   const saved: Record<string, unknown>[] = [...(options.connections ?? [digdir])];
   const instance =
@@ -88,9 +91,20 @@ const renderTracing = async (
         : Response.json({
             data: options.services.map((x) => ({ lifecycle: 'active', ...x })),
           });
-    if (/\/tracing\/connections$/.test(path) && method === 'GET')
+    if (/\/tracing\/connections$/.test(path) && method === 'GET') {
+      listings += 1;
+      if (listings > 1 && options.reloadAfterMs)
+        await new Promise((resolve) => setTimeout(resolve, options.reloadAfterMs));
       return Response.json({ data: saved, ...(instance ? { instance } : {}) });
+    }
     const put = /\/tracing\/connections\/([^/]+)$/.exec(path);
+    if (put && method === 'DELETE') {
+      saved.splice(
+        saved.findIndex((c) => c.id === put[1]),
+        1,
+      );
+      return Response.json({});
+    }
     if (put && method === 'PUT') {
       const onInstance = body?.host === instance?.host;
       const connection = {
@@ -372,6 +386,91 @@ describe('Integrasjoner: Langfuse', () => {
       },
       { body: { secretKey: 'secret://tenant/999888777/langfuse-digdir' } },
     ]);
+  });
+});
+
+describe('Integrasjoner: Langfuse, the guide', () => {
+  const guideSummary = 'Slik vurderer Langfuse-dommere testkjøringene';
+  const guideOf = (section: HTMLElement) => {
+    const details = within(section).getByText(guideSummary).closest('details');
+    if (!details) throw new Error('the guide is not a details element');
+    return details;
+  };
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  afterEach(() => {
+    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('shows the Langfuse guide open while the organisation has no connection', async () => {
+    const { section } = await renderTracing({ connections: [] });
+    await within(section).findByText('Ingen tjenester er koblet til Langfuse.');
+
+    const guide = guideOf(section);
+    expect(guide.open).toBe(true);
+    const steps = within(guide).getByRole('list', { name: 'Fire steg' });
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(4);
+    const table = within(guide).getByRole('table', { name: 'Hvor det vises' });
+    expect(within(table).getAllByRole('row')).toHaveLength(5);
+    expect(within(guide).getByText(/environment none of \[genki-test-runs\]/)).toBeTruthy();
+    await expectAccessible(section);
+  });
+
+  it('folds the Langfuse guide once the organisation has a connection', async () => {
+    const { section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    expect(guideOf(section).open).toBe(false);
+  });
+
+  it('keeps the guide open or folded as the person chose when the connections reload', async () => {
+    const { section } = await renderTracing({ reloadAfterMs: 20 });
+    await within(section).findByText('https://langfuse.digdir.cloud');
+    fireEvent.click(within(section).getByText(guideSummary));
+    expect(guideOf(section).open).toBe(true);
+
+    const edit = async (reason: string) => {
+      const region = await screen.findByRole('region', { name: 'Langfuse' });
+      await within(region).findByText('https://langfuse.digdir.cloud');
+      fireEvent.click(within(region).getByRole('button', { name: 'Endre' }));
+      const form = within(region).getByRole('form', { name: 'Endre Langfuse-koblingen' });
+      fireEvent.change(within(form).getByLabelText(/Begrunnelse/), { target: { value: reason } });
+      return form;
+    };
+    // The reload swaps the section for a loading state, so each look finds it again.
+    const guideNow = async () => guideOf(await screen.findByRole('region', { name: 'Langfuse' }));
+
+    const adding = await edit('Legger til en tjeneste');
+    fireEvent.click(within(adding).getByRole('checkbox', { name: 'Postsortering' }));
+    fireEvent.click(within(adding).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText('Koblingen digdir er lagret.')).toBeTruthy();
+    await screen.findByText('Tjenester: rapportassistenten, postsortering');
+    expect((await guideNow()).open).toBe(true);
+
+    fireEvent.click(within(await guideNow()).getByText(guideSummary));
+    expect((await guideNow()).open).toBe(false);
+    const removing = await edit('Prosjektet er lagt ned');
+    fireEvent.click(within(removing).getByRole('button', { name: 'Fjern koblingen' }));
+    await screen.findByText('Ingen tjenester er koblet til Langfuse.');
+    expect((await guideNow()).open).toBe(false);
+  });
+
+  it("copies a dataset's name from the button beside it, for Langfuse's Dataset picker", async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void copied.push(text) },
+    });
+    const { section } = await renderTracing();
+    const list = await within(section).findByRole('list', { name: 'Datasett i Langfuse' });
+
+    fireEvent.click(
+      within(list).getByRole('button', {
+        name: 'Kopier navnet genki/rapportassistenten/rapport-kjerne',
+      }),
+    );
+
+    expect(copied).toEqual(['genki/rapportassistenten/rapport-kjerne']);
   });
 });
 

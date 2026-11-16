@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Principal, Task } from '@genai/contracts';
+import { textPart, type Principal, type Task } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
 import {
   apiKeyDigest,
@@ -239,7 +239,7 @@ const boot = async (
         ...(typeof params.name === 'string' ? { 'Mcp-Name': params.name } : {}),
       },
     });
-  return { send, mcp, platform, settings };
+  return { send, mcp, platform, settings, model };
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -541,6 +541,17 @@ describe('rate limits and quota', () => {
 
     expect(cancelled.status).toBe(404);
     expect(await cancelled.json()).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
+  it('a call through any route stops at the monthly token quota', async () => {
+    const { platform, model } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const run = await platform.kernel.invoke(kari, `${digdir}/veileder/default`, {
+      data: { query: 'hei' },
+      parts: [textPart('hei')],
+    });
+
+    await expect(run.result).rejects.toThrow(/monthly token quota/);
+    expect(model.seen).toEqual([]);
   });
 
   it('still answers MCP tools/list when the monthly token quota is used', async () => {

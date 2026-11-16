@@ -169,7 +169,7 @@ export const settings = {
   layerService: 'Service',
   layerDataset: 'Dataset',
   layerPinned: 'Pinned',
-  previewReason: 'Preview',
+  previewReason: 'Preview of the change',
   saved: '{label} is saved ({value}). The change is logged.',
   sensitivityLine: 'Sensitivity: {level}',
   editing: 'Editing: Platform default v{version}',

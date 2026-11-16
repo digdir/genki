@@ -356,6 +356,113 @@ describe('the recall check', () => {
     expect(starved?.recall).toBeLessThan(0.5);
   });
 
+  it('the recall check stops starting exact searches once told to stop, and judges the ones it ran', async () => {
+    const { generation } = await loaded(30);
+    let asked = 0;
+    const sample = await sampleRecall(owner, generation, {
+      sample: 20,
+      // Asked before each exact search: five run, then it stops.
+      stop: () => ++asked > 5,
+    });
+    expect(sample?.queries).toBe(5);
+    expect(sample?.cut).toBe(true);
+    expect(sample?.recall).toBeGreaterThan(0.9);
+    // A sample that ran to its end was not cut.
+    expect((await sampleRecall(owner, generation, { sample: 20 }))?.cut).toBe(false);
+  });
+
+  it('an expired recall check stops its query', async () => {
+    const { generation } = await loaded(10);
+    const chunks = partitionOf('kn_chunks', generation);
+    // Another session holds the partition, so the check's first query waits on it.
+    const holder = await admin.connect();
+    try {
+      await holder.query('begin');
+      await holder.query(`lock table ${chunks} in access exclusive mode`);
+      const expired = new AbortController();
+      const check = sampleRecall(owner, generation, { sample: 5, signal: expired.signal });
+      check.catch(() => undefined);
+      // Abort once the check's query waits on the lock, not after a guessed sleep.
+      for (let tries = 0; tries < 100; tries += 1) {
+        const { rows: waiting } = await admin.query<{ n: number }>(
+          `select count(*)::int as n from pg_stat_activity
+            where wait_event_type = 'Lock' and query like $1`,
+          [`%from ${chunks}%`],
+        );
+        if ((waiting[0]?.n ?? 0) > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expired.abort();
+      const outcome = await Promise.race([
+        check.then(
+          () => 'finished',
+          () => 'stopped',
+        ),
+        new Promise((resolve) => setTimeout(() => resolve('still running'), 5_000)),
+      ]);
+      expect(outcome).toBe('stopped');
+      // Stopped on the server too, while the lock is still held: nothing waits on the partition.
+      const { rows } = await admin.query(
+        `select count(*)::int as waiting from pg_stat_activity
+          where state = 'active' and query like $1 and pid <> pg_backend_pid()`,
+        [`%from ${chunks}%`],
+      );
+      expect(rows[0]).toEqual({ waiting: 0 });
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+  });
+
+  it('an abort that lands before the listener stops the check before its draw', async () => {
+    const { generation } = await loaded(10);
+    const chunks = partitionOf('kn_chunks', generation);
+    // The draw would wait on this lock, and a cancel sent before the listener existed is lost.
+    const holder = await admin.connect();
+    try {
+      await holder.query('begin');
+      await holder.query(`lock table ${chunks} in access exclusive mode`);
+      const expired = new AbortController();
+      const { signal } = expired;
+      const listen = signal.addEventListener.bind(signal);
+      signal.addEventListener = ((...args: Parameters<AbortSignal['addEventListener']>) => {
+        expired.abort();
+        listen(...args);
+      }) as AbortSignal['addEventListener'];
+      const check = sampleRecall(owner, generation, { sample: 5, signal });
+      check.catch(() => undefined);
+      const outcome = await Promise.race([
+        check.then(
+          () => 'finished',
+          () => 'stopped',
+        ),
+        new Promise((resolve) => setTimeout(() => resolve('still running'), 5_000)),
+      ]);
+      expect(outcome).toBe('stopped');
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+  });
+
+  it('an abort between two searches stops the check', async () => {
+    const { generation } = await loaded(30);
+    const expired = new AbortController();
+    let asked = 0;
+    const check = sampleRecall(owner, generation, {
+      sample: 20,
+      signal: expired.signal,
+      // The abort lands while no query runs, after the second exact search.
+      stop: () => {
+        asked += 1;
+        if (asked === 3) expired.abort();
+        return false;
+      },
+    });
+    await expect(check).rejects.toThrow('the recall check was stopped');
+    expect(asked).toBe(3);
+  });
+
   it("a generation's first recall check sets its baseline, and a REINDEX resets it", async () => {
     const { generation } = await loaded(4);
     expect(await recallBaseline(owner, generation, 0.99)).toBe(0.99);

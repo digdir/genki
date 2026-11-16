@@ -53,7 +53,9 @@ export interface StoredConversion extends ConverterKey {
    * `unsupported_type`, or `conversion_failed` for a PDF that cannot be opened or needs a
    * password (rows stored before issue 517 also hold it for other errors). Stored with no pages,
    * so documents skip the file with that reason and it is not converted again until a converter
-   * replaces it.
+   * replaces it. `unreachable` is a file its convert job could not fetch (issue 597): documents skip
+   * it too, but it counts as missing, so a record that lists it and is written again fetches it
+   * again.
    */
   failure?: string;
 }

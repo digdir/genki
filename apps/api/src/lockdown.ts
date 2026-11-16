@@ -79,6 +79,11 @@ export const ingestionRoutes = new Set([
   'POST /operator/datasets/:dataset/pipelines/:id/execute',
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
   'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
+  // Admitting a run again lets its jobs fetch, convert and embed for another 24 hours (ADR 0033).
+  'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/readmit',
+  'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/readmit',
+  'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/readmit',
+  'POST /operator/datasets/:id/engine-switches/:sid/readmit',
   'POST /tenants/:tenant/connectors/:id/sync',
   'POST /tenants/:tenant/datasets/:id/engine-switches',
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/retry',

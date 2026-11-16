@@ -685,6 +685,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
           tenant: l.task.tenant,
           principal: l.principal,
           task: l.task.id,
+          capability: l.capability.descriptor.id,
           signal: l.controller.signal,
           meter: (usage, model) => chargeLive(l, usage, { port, ref, ...(model ? { model } : {}) }),
           outputLimit: () => outputLimit(l),

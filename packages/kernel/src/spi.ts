@@ -63,6 +63,7 @@ export interface PortContext {
   tenant: string;
   principal: Principal;
   task: string;
+  capability?: string;
   signal: AbortSignal;
   meter(usage: Usage, model?: Ref): Promise<void>;
   outputLimit?(): number | undefined;

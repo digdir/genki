@@ -1,5 +1,5 @@
 # Marker 1.10.2 with the Marker service's pins (services/marker-pdf-to-markdown/requirements.txt, PR 91).
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 # build-essential: Triton compiles its launcher with the C compiler at run time (Surya's models).
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0 build-essential \
     && rm -rf /var/lib/apt/lists/*

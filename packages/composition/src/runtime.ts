@@ -36,6 +36,7 @@ import {
   InMemoryProviderObjects,
   type Capability as KernelCapability,
   type EventLog,
+  type GateOptions,
   type Kernel,
   type MediaOutputConfig,
   type ProviderObjectStore,
@@ -46,6 +47,7 @@ import {
   type StateStore,
   type Strategy,
   type TaskStore,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
@@ -165,7 +167,12 @@ import {
   withoutKnowledgeServer,
 } from './knowledge-context.js';
 import { sharedRecipeFinder } from './recipe-shares.js';
-import { openRetrievalPorts, usingRetrievalPorts, type RuntimeConfig } from './retrieval-ports.js';
+import {
+  hasDataset,
+  openRetrievalPorts,
+  usingRetrievalPorts,
+  type RuntimeConfig,
+} from './retrieval-ports.js';
 import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js';
 import { answerLanguageFor, houseStyleFor, withSettings } from './settings-runtime.js';
 import type { TenantSecretVault } from './tenant-secrets.js';
@@ -181,6 +188,8 @@ export const strategyModelNeeds = new Map<string, Capability[]>([
   [strategyKey('step-flow', 1), ['json-schema']],
   [strategyKey('live-session', 1), []],
 ]);
+
+export const strategyDatasetNeeds = new Set([strategyKey('rag-single-shot', 1)]);
 
 export const inMemoryClassifications = (): ModelClassificationStore => {
   const saved: Record<string, ModelClassification> = {};
@@ -271,6 +280,7 @@ export interface RuntimeInput {
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
   admitsModelUse?: (principal: Principal) => boolean;
+  modelQuota?: GateOptions['quota'];
   environmentTier?: EnvironmentTier;
   descriptors?: DescriptorRegistry;
   published?: (capabilityId: string) => boolean;
@@ -279,6 +289,7 @@ export interface RuntimeInput {
   state?: StateStore;
   observe?: (log: EventLog) => EventLog;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   egress?: EgressOptions;
   blobStore?: BlobStore;
   mediaOutput?: MediaOutputConfig;
@@ -454,6 +465,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
     mediaInput: blobMediaInput(blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    ...(input.modelQuota ? { quota: input.modelQuota } : {}),
     ...(input.logger
       ? {
           egress: (endpoint: string) =>
@@ -476,6 +488,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     secrets: catalogSecrets,
     priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
   });
   const loggedEmbedderRouter = input.logger
     ? loggedEmbedders(
@@ -558,6 +571,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     onParameterDropped: (model, parameter) =>
       input.logger?.('model rejected a request parameter', { model, parameter }),
   });
@@ -583,6 +597,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     adapters: rerankAdapters,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
   const migrated = await migrateConnections({
@@ -624,7 +639,9 @@ export const createRuntime = async (input: RuntimeInput) => {
   const agentLoop = usingRetrievalPorts(
     createAgentLoop({
       retrieval: async (ctx, config, request) =>
-        createAgentRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig, request)),
+        hasDataset(config as RuntimeConfig)
+          ? createAgentRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig, request))
+          : undefined,
     }),
   );
   const blocks = builtinBlocks();
@@ -727,6 +744,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     datasets: new Set(knowledge.datasets().keys()),
     datasetFilters: (dataset) => knowledge.datasets().get(dataset)?.filters,
     modelNeeds: strategyModelNeeds,
+    datasetNeeds: strategyDatasetNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
         ? ((config as { endpoint?: { residency?: Residency } } | null)?.endpoint?.residency ??

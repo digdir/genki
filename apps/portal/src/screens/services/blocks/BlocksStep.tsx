@@ -5,8 +5,10 @@ import {
   fitService,
   fromTemplate,
   offerOf,
+  turnOn,
   withProfile,
   type AssistantLayout,
+  type BlockId,
   type BuilderState,
   type ProfileData,
   type ServiceFacts,
@@ -106,6 +108,10 @@ export const useBlocksState = (
       setState(fitService({ layout, chosen: {} }, offered).state);
       setTemplate(undefined);
     },
+    add: (ids: readonly BlockId[]) => {
+      setState((s) => fitService(ids.reduce(turnOn, s), offered).state);
+      setTemplate(undefined);
+    },
     // The words are the service's, not a template's: the template stays chosen.
     setProfile: (profile: ProfileData | undefined) => setState((s) => withProfile(s, profile)),
   };
@@ -129,17 +135,25 @@ const ResizeHandle = ({
   onChange: (v: number) => void;
 }) => {
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  /** Where the drag began, and the size then; undefined when nothing is being dragged. */
+  const [drag, setDrag] = useState<{ from: number; size: number }>();
+  const at = (e: PointerEvent<HTMLDivElement>) => (axis === 'x' ? e.clientX : e.clientY);
   const start = (e: PointerEvent<HTMLDivElement>) => {
-    const from = axis === 'x' ? e.clientX : e.clientY;
-    const size = value;
-    const move = (ev: globalThis.PointerEvent) =>
-      onChange(clamp(axis === 'x' ? size + (ev.clientX - from) : size + (ev.clientY - from)));
-    const stop = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
+    // The main button, a touch or a pen; a right click is a menu, not a drag.
+    if (e.button !== 0) return;
+    // No text selection, so focus is moved here by hand for the arrow keys.
+    e.preventDefault();
+    e.currentTarget.focus();
+    // Every move and the release come here until the pointer is let go, wherever it is then.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ from: at(e), size: value });
+  };
+  const stop = () => setDrag(undefined);
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    if (!drag) return;
+    // No button is down: the release happened where the page could not see it.
+    if (e.buttons === 0) return stop();
+    onChange(clamp(drag.size + at(e) - drag.from));
   };
   const grow = axis === 'x' ? 'ArrowRight' : 'ArrowDown';
   const shrink = axis === 'x' ? 'ArrowLeft' : 'ArrowUp';
@@ -160,7 +174,12 @@ const ResizeHandle = ({
       aria-valuemax={max}
       aria-valuenow={value}
       tabIndex={0}
+      data-dragging={drag ? '' : undefined}
       onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onLostPointerCapture={stop}
       onKeyDown={key}
     />
   );
