@@ -34,14 +34,15 @@ export interface DocumentConverter {
 }
 
 /**
- * A file its converter refused, as its stored conversion records: documents skip the file with the
- * reason, and it is not converted again (ADR 0042).
+ * A file its converter refused, or a convert job could not fetch, as its stored conversion records:
+ * documents skip the file with the reason (ADR 0042). A refused file is not converted again; an
+ * `unreachable` one is fetched again when a record that lists it is written again (issue 597).
  */
 export class ConversionRefused extends Error {
   override readonly name = 'ConversionRefused';
   constructor(
     readonly file: string,
-    readonly reason: 'too_large' | 'unsupported_type' | 'conversion_failed',
+    readonly reason: 'too_large' | 'unsupported_type' | 'conversion_failed' | 'unreachable',
   ) {
     super(`the converter refused a file: ${reason}`);
   }
