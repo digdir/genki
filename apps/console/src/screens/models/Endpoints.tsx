@@ -3,6 +3,7 @@ import {
   Button,
   Checkbox,
   Fieldset,
+  FieldsetDescription,
   FieldsetLegend,
   Heading,
   Label,
@@ -65,7 +66,14 @@ interface EndpointSpec {
   baseURL?: string;
   families?: Record<string, string>;
   discovery?: DiscoveryRule[];
-  auth?: { kind?: string; secret?: string; header?: string };
+  auth?: {
+    kind?: string;
+    secret?: string;
+    header?: string;
+    clientId?: string;
+    tenant?: string;
+    scope?: string;
+  };
   settings?: Record<string, string>;
   keys?: Record<string, string>;
 }
@@ -75,6 +83,10 @@ interface PairRow {
   value: string;
 }
 
+type AuthKind = 'api-key' | 'bearer' | 'federated-app';
+const authKinds: readonly string[] = ['api-key', 'bearer', 'federated-app'];
+const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const scopePattern = /^[\x21-\x7e]{1,246}\/\.default$/;
 const settingNamePattern = /^[a-z][a-zA-Z0-9_]{0,31}$/;
 const settingValuePattern = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
 const rowsOf = (pairs: Record<string, string> | undefined, strip = '') =>
@@ -219,9 +231,12 @@ export const EndpointForm = ({
   const [baseURL, setBaseURL] = useState(spec.baseURL ?? '');
   const [settingRows, setSettingRows] = useState<PairRow[]>(rowsOf(spec.settings));
   const [keyRows, setKeyRows] = useState<PairRow[]>(rowsOf(spec.keys, secretPrefix));
-  const [authKind, setAuthKind] = useState<'api-key' | 'bearer'>(
-    spec.auth?.kind === 'bearer' ? 'bearer' : 'api-key',
+  const [authKind, setAuthKind] = useState<AuthKind>(
+    authKinds.includes(spec.auth?.kind ?? '') ? (spec.auth?.kind as AuthKind) : 'api-key',
   );
+  const [appClientId, setAppClientId] = useState(spec.auth?.clientId ?? '');
+  const [appTenant, setAppTenant] = useState(spec.auth?.tenant ?? '');
+  const [appScope, setAppScope] = useState(spec.auth?.scope ?? '');
   const [secretName, setSecretName] = useState(storedSecret);
   const [secretValue, setSecretValue] = useState('');
   const [secretSaved, setSecretSaved] = useState<string | undefined>();
@@ -271,6 +286,9 @@ export const EndpointForm = ({
         ? undefined
         : t('endpoints.secretNameHint'),
       secretValue: secretValue ? undefined : t('endpoints.secretValueHint'),
+      appClientId: guidPattern.test(appClientId) ? undefined : t('endpoints.guidHint'),
+      appTenant: guidPattern.test(appTenant) ? undefined : t('endpoints.guidHint'),
+      appScope: scopePattern.test(appScope) ? undefined : t('endpoints.scopeHint'),
       reason: reasonError(reason, t),
     };
     const found = Object.fromEntries(
@@ -297,16 +315,21 @@ export const EndpointForm = ({
 
   const save = async () => {
     setFailed(undefined);
-    if (!check(['id', 'baseURL', 'families', 'settings', 'keys', 'secretName', 'reason'])) return;
+    const signIn =
+      authKind === 'federated-app' ? ['appClientId', 'appTenant', 'appScope'] : ['secretName'];
+    if (!check(['id', 'baseURL', 'families', 'settings', 'keys', ...signIn, 'reason'])) return;
     setBusy(true);
     const header = authKind === 'api-key' ? spec.auth?.header : undefined;
     const input: ModelEndpointInput = {
       baseURL,
-      auth: {
-        kind: authKind,
-        secret: `${secretPrefix}${secretName}`,
-        ...(header ? { header } : {}),
-      },
+      auth:
+        authKind === 'federated-app'
+          ? { kind: authKind, clientId: appClientId, tenant: appTenant, scope: appScope }
+          : {
+              kind: authKind,
+              secret: `${secretPrefix}${secretName}`,
+              ...(header ? { header } : {}),
+            },
       families: Object.fromEntries(rows.map((r) => [r.family, r.base.trim()])),
       ...(rules.length || spec.discovery ? { discovery: rules.map(ruleOf) } : {}),
       ...(settingRows.length || spec.settings
@@ -495,51 +518,80 @@ export const EndpointForm = ({
           <Select
             id="endpoint-auth"
             value={authKind}
-            onChange={(e) => setAuthKind(e.target.value as 'api-key' | 'bearer')}
+            onChange={(e) => setAuthKind(e.target.value as AuthKind)}
           >
             <SelectOption value="api-key">{t('endpoints.apiKey')}</SelectOption>
             <SelectOption value="bearer">{t('endpoints.bearer')}</SelectOption>
+            <SelectOption value="federated-app">{t('endpoints.federatedApp')}</SelectOption>
           </Select>
         </div>
-        <Fieldset>
-          <FieldsetLegend>{t('endpoints.secret')}</FieldsetLegend>
-          <Textfield
-            label={t('endpoints.secretName')}
-            description={t('endpoints.secretStoredAs', {
-              name: `${secretPrefix}${secretName || `<${t('endpoints.secretNamePlaceholder')}>`}`,
-            })}
-            value={secretName}
-            onChange={(e) => {
-              setSecretName(e.target.value.trim());
-              setSecretSaved(undefined);
-            }}
-            error={errors.secretName}
-          />
-          <Textfield
-            label={t('endpoints.value')}
-            description={t('endpoints.valueDescription')}
-            type="password"
-            autoComplete="off"
-            value={secretValue}
-            onChange={(e) => setSecretValue(e.target.value)}
-            error={errors.secretValue}
-          />
-          <div className="actions-row">
-            <Button
-              variant="secondary"
-              data-size="sm"
-              loading={busy}
-              onClick={() => void saveSecret()}
-            >
-              {t('endpoints.saveSecret')}
-            </Button>
-          </div>
-          {secretSaved ? (
-            <Alert data-color="success" data-size="sm" role="status">
-              {t('endpoints.secretSaved', { name: secretSaved })}
-            </Alert>
-          ) : null}
-        </Fieldset>
+        {authKind === 'federated-app' ? (
+          <Fieldset>
+            <FieldsetLegend>{t('endpoints.federatedApp')}</FieldsetLegend>
+            <FieldsetDescription>{t('endpoints.federatedAppDescription')}</FieldsetDescription>
+            <Textfield
+              label={t('endpoints.appClientId')}
+              description={t('endpoints.appClientIdDescription')}
+              value={appClientId}
+              onChange={(e) => setAppClientId(e.target.value.trim())}
+              error={errors.appClientId}
+            />
+            <Textfield
+              label={t('endpoints.resourceTenant')}
+              description={t('endpoints.resourceTenantDescription')}
+              value={appTenant}
+              onChange={(e) => setAppTenant(e.target.value.trim())}
+              error={errors.appTenant}
+            />
+            <Textfield
+              label={t('endpoints.scope')}
+              description={t('endpoints.scopeDescription')}
+              value={appScope}
+              onChange={(e) => setAppScope(e.target.value.trim())}
+              error={errors.appScope}
+            />
+          </Fieldset>
+        ) : (
+          <Fieldset>
+            <FieldsetLegend>{t('endpoints.secret')}</FieldsetLegend>
+            <Textfield
+              label={t('endpoints.secretName')}
+              description={t('endpoints.secretStoredAs', {
+                name: `${secretPrefix}${secretName || `<${t('endpoints.secretNamePlaceholder')}>`}`,
+              })}
+              value={secretName}
+              onChange={(e) => {
+                setSecretName(e.target.value.trim());
+                setSecretSaved(undefined);
+              }}
+              error={errors.secretName}
+            />
+            <Textfield
+              label={t('endpoints.value')}
+              description={t('endpoints.valueDescription')}
+              type="password"
+              autoComplete="off"
+              value={secretValue}
+              onChange={(e) => setSecretValue(e.target.value)}
+              error={errors.secretValue}
+            />
+            <div className="actions-row">
+              <Button
+                variant="secondary"
+                data-size="sm"
+                loading={busy}
+                onClick={() => void saveSecret()}
+              >
+                {t('endpoints.saveSecret')}
+              </Button>
+            </div>
+            {secretSaved ? (
+              <Alert data-color="success" data-size="sm" role="status">
+                {t('endpoints.secretSaved', { name: secretSaved })}
+              </Alert>
+            ) : null}
+          </Fieldset>
+        )}
         <PairFields
           kind="setting"
           rows={settingRows}

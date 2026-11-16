@@ -27,9 +27,14 @@ export {
   authenticatedFetch,
   authHeaders,
   credentialFor,
+  federatedScopePattern,
+  FederatedSignInError,
+  guidPattern,
   SecretHostError,
   type Credential,
   type EndpointAuth,
+  type FederatedApp,
+  type FederatedTokens,
   type TokenProviders,
 } from './credentials.js';
 export {

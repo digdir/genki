@@ -171,6 +171,7 @@ import {
   type Strategy,
   type TaskStore,
   type ThreadErasure,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
@@ -449,6 +450,7 @@ export interface PlatformInput {
   catalogs: Catalogs;
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   definitions: (
     plugins: PluginSchemas,
     sharedSkill?: SkillFinder,
@@ -1318,6 +1320,7 @@ export const createPlatform = async (input: PlatformInput) => {
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),

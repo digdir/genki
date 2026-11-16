@@ -47,6 +47,7 @@ import {
   type StateStore,
   type Strategy,
   type TaskStore,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
@@ -288,6 +289,7 @@ export interface RuntimeInput {
   state?: StateStore;
   observe?: (log: EventLog) => EventLog;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   egress?: EgressOptions;
   blobStore?: BlobStore;
   mediaOutput?: MediaOutputConfig;
@@ -486,6 +488,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     secrets: catalogSecrets,
     priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
   });
   const loggedEmbedderRouter = input.logger
     ? loggedEmbedders(
@@ -568,6 +571,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     onParameterDropped: (model, parameter) =>
       input.logger?.('model rejected a request parameter', { model, parameter }),
   });
@@ -593,6 +597,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     adapters: rerankAdapters,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
   const migrated = await migrateConnections({
