@@ -197,6 +197,38 @@ const listed = async (fake: typeof fetch) => {
   return judge as LangfuseJudge;
 };
 
+/** Kunnskapsassistenten's live judges' mapping: paths into the question and the answer. */
+const kaMapping = [
+  { variable: 'question', source: 'input', jsonPath: '$.data.query' },
+  { variable: 'answer', source: 'output', jsonPath: '$[0].body.text' },
+  { variable: 'context', source: 'output', jsonPath: '$[1].body.json.sources' },
+];
+
+const kaSak = testCase.parse({
+  id: 'frist-klage',
+  split: 'validation',
+  input: { data: { query: 'Hvor lang er klagefristen?' } },
+});
+
+const kaSvar: Observation = {
+  answer: 'Klagefristen er tre uker.',
+  retrieved: [],
+  citations: [],
+  parts: [
+    { mime: 'text/plain', body: { kind: 'text', text: 'Klagefristen er tre uker.' } },
+    {
+      mime: 'application/json',
+      body: { kind: 'json', json: { sources: [{ document: 'forvaltningsloven' }] } },
+    },
+  ],
+};
+
+/** The judge of a one-rule project with this mapping, on a connection that receives content. */
+const listedWith = async (mapping: FakeEvaluator['variableMapping']) => {
+  const fake = fakeLangfuse({ rules: [rule({ mapping })], evaluators: [evaluator()] });
+  return langfuseJudges(api(fake)).evaluator(await listed(fake), { tenant: 'dfo', content: true });
+};
+
 const pendingOf = (score: Score, task = 'sak-1'): PendingScore => ({
   case: 'frist-klage',
   repeat: 0,
@@ -373,14 +405,136 @@ describe('Langfuse judges', () => {
 
     expect(judge.refused).toMatchObject({ reason: 'unsent-field', field: 'tool_calls' });
     expect(judge.refused?.message).toMatch(/tool_calls/);
-    // The answer goes as its parts, so no path into it reads what the judge expects.
-    const pathed = await listed(
-      fakeLangfuse({
-        rules: [rule({ mapping: [{ variable: 'svar', source: 'output', jsonPath: '$.text' }] })],
-        evaluators: [evaluator()],
-      }),
+  });
+
+  it('reads a judge that maps a path into the question or the answer', async () => {
+    const judge = await listed(
+      fakeLangfuse({ rules: [rule({ mapping: kaMapping })], evaluators: [evaluator()] }),
     );
-    expect(pathed.refused).toMatchObject({ reason: 'unread-path', field: 'output $.text' });
+
+    expect(judge.refused).toBeUndefined();
+    expect(judge.rule.mapping).toEqual(kaMapping);
+  });
+
+  it('refuses a judge whose path genki cannot read, naming the path', async () => {
+    const unread = [
+      '$..text',
+      '$[*].body',
+      "$['body']",
+      '$[-1]',
+      '$[0:2]',
+      '$[01]',
+      '$[0',
+      'body.text',
+      '$.',
+      '$.0a',
+    ];
+    for (const path of unread) {
+      const judge = await listed(
+        fakeLangfuse({
+          rules: [rule({ mapping: [{ variable: 'answer', source: 'output', jsonPath: path }] })],
+          evaluators: [evaluator()],
+        }),
+      );
+      expect(judge.refused, path).toMatchObject({ reason: 'unread-path', field: `output ${path}` });
+      expect(judge.refused?.message, path).toContain(path);
+      expect(judge.refused?.message, path).toContain('$, .key and [n]');
+    }
+  });
+
+  it("reads a judge's path in linear time", async () => {
+    const long = (path: string) =>
+      listed(
+        fakeLangfuse({
+          rules: [rule({ mapping: [{ variable: 'answer', source: 'output', jsonPath: path }] })],
+          evaluators: [evaluator()],
+        }),
+      );
+    const quickly = async (path: string) => {
+      const started = performance.now();
+      await long(path);
+      return performance.now() - started;
+    };
+
+    expect(await quickly(`$${'[0'.repeat(100_000)}`)).toBeLessThan(1000);
+    expect(await quickly(`$${'.a'.repeat(100_000)}!`)).toBeLessThan(1000);
+    expect((await long(`$${'[0]'.repeat(1000)}`)).refused).toBeUndefined();
+  });
+
+  it("leaves a case out before it runs when its question has nothing at the judge's path", async () => {
+    const judge = await listedWith(kaMapping);
+    const structured = testCase.parse({
+      id: 'strukturert',
+      split: 'validation',
+      input: { data: { query: 'Hvor lang er klagefristen?' } },
+      expected: { criteria: { criteria: 'Svaret sier tre uker.' } },
+    });
+
+    // A text case goes as genki's parts, where $.data.query finds nothing.
+    expect(judge.canRead?.(kriteriesak)).toBe(false);
+    expect(judge.canRead?.(structured)).toBe(true);
+    expect((await judge.evaluate(kriteriesak, kaSvar, ctx))[0]).toMatchObject({
+      state: 'not-applicable',
+      reason: 'the case has no input $.data.query',
+    });
+
+    const onParts = await listedWith([
+      { variable: 'question', source: 'input', jsonPath: '$.parts[0].body.text' },
+      ...kaMapping.slice(1),
+    ]);
+    expect(onParts.canRead?.(kriteriesak)).toBe(true);
+    expect(onParts.canRead?.(structured)).toBe(false);
+  });
+
+  it("finds the answer's path in the parts the case sent", async () => {
+    const judge = await listedWith(kaMapping);
+    const utenKilder: Observation = { ...kaSvar, parts: (kaSvar.parts ?? []).slice(0, 1) };
+
+    expect((await judge.evaluate(kaSak, kaSvar, ctx))[0]).toMatchObject({ state: 'pending' });
+    expect((await judge.evaluate(kaSak, utenKilder, ctx))[0]).toMatchObject({
+      state: 'not-applicable',
+      reason: 'the case has no output $[1].body.json.sources',
+    });
+  });
+
+  it('counts blank text, an empty list or an empty object at a path as nothing to judge', async () => {
+    const judge = await listedWith(kaMapping);
+    const answered = (text: string, json: unknown): Observation => ({
+      ...kaSvar,
+      parts: [
+        { mime: 'text/plain', body: { kind: 'text', text } },
+        { mime: 'application/json', body: { kind: 'json', json } },
+      ],
+    });
+    const stateOf = async (o: Observation) => (await judge.evaluate(kaSak, o, ctx))[0]?.state;
+
+    expect(await stateOf(answered('   ', { sources: [{ document: 'a' }] }))).toBe('not-applicable');
+    expect(await stateOf(answered('Tre uker.', { sources: [] }))).toBe('not-applicable');
+    expect(await stateOf(answered('Tre uker.', { sources: {} }))).toBe('not-applicable');
+    expect(await stateOf(answered('Tre uker.', { sources: null }))).toBe('not-applicable');
+    expect(await stateOf(answered('Tre uker.', { sources: 0 }))).toBe('pending');
+    expect(await stateOf(answered('Tre uker.', { sources: false }))).toBe('pending');
+  });
+
+  it("keeps checking the question's and the answer's text when a judge maps the whole field", async () => {
+    const judge = await listedWith([
+      { variable: 'question', source: 'input' },
+      { variable: 'answer', source: 'output', jsonPath: '$' },
+    ]);
+    const blank = testCase.parse({ ...kaSak, input: '   ' });
+    const tomtSvar: Observation = {
+      answer: '',
+      retrieved: [],
+      citations: [],
+      parts: [{ mime: 'text/plain', body: { kind: 'text', text: '' } }],
+    };
+
+    // Sent, a blank question is genki's parts and an empty answer a list of one part: never empty.
+    expect(judge.canRead?.(blank)).toBe(false);
+    expect((await judge.evaluate(kaSak, tomtSvar, ctx))[0]).toMatchObject({
+      state: 'not-applicable',
+      reason: 'the case has no output',
+    });
   });
 
   it('refuses a judge that judges only some items, by sampling or a filter, or that is not an LLM judge', async () => {
