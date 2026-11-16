@@ -114,6 +114,36 @@ describe('booting the API', () => {
     expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
   });
 
+  it('refuses to start when LOCKDOWN_SERVICE_GROUPS lists something that is not a group id', () => {
+    const serviceGroup = '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d';
+
+    expect(
+      bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: `${serviceGroup}, alle-ansatte` }),
+    ).toEqual([expect.stringContaining('alle-ansatte')]);
+    expect(bootProblems({ ...real, LOCKDOWN_SERVICE_GROUPS: serviceGroup })).toEqual([]);
+  });
+
+  it('startup refuses lockdown service groups without a service client list', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_SERVICE_GROUPS: '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('LOCKDOWN_SERVICE_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web' })).toEqual([]);
+  });
+
+  it('startup refuses a platform client in the service client list', () => {
+    expect(
+      bootProblems({
+        ...real,
+        OPERATOR_CLIENT_IDS: 'genki-console',
+        LOCKDOWN_SERVICE_CLIENT_IDS: 'ka-web,genki-portal,genki-console',
+      }),
+    ).toEqual([expect.stringContaining('genki-portal, genki-console')]);
+  });
+
   it('startup refuses bare OPERATOR_SUBJECTS outside dev mode', () => {
     const pair = 'https://test.ansattporten.no|subject-1';
 

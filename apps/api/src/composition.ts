@@ -348,6 +348,7 @@ import { servicesOpenApiModule } from './openapi/services.js';
 import { workOpenApiModule } from './openapi/work.js';
 import { schemasModule } from './schemas.js';
 import {
+  mayInvokeServices,
   mayUseModels,
   readOnlyInLockdown,
   withCredentialOrigin,
@@ -1269,7 +1270,7 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions: input.definitions,
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
-    ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
+    ...(input.lockdown ? { admitsModelUse: mayInvokeServices } : {}),
     ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
     ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
     published: (capability) => originOf(capability) === 'service',
