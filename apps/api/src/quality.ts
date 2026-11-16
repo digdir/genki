@@ -112,17 +112,27 @@ export const serviceDraftActions = [
 
 export const createQualityModule =
   (
-    options: { onBackground?: (work: Promise<void>) => void; leases?: LeaseOptions } = {},
+    options: {
+      onBackground?: (work: Promise<void>) => void;
+      leases?: LeaseOptions;
+      resumeEveryMs?: number;
+    } = {},
   ): PlatformModuleFactory =>
   (deps) => {
-    const evals = serviceEval(deps, options.leases);
-    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
-    const improving = improvements(deps, evals);
     const background = (work: Promise<void>) => {
       work.catch(() => undefined);
       options.onBackground?.(work);
     };
+    const evals = serviceEval(deps, options.leases, background);
+    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
+    const improving = improvements(deps, evals);
     background(improving.recover());
+    background(evals.resumeAbandoned());
+    const sweep = setInterval(
+      () => background(evals.resumeAbandoned()),
+      options.resumeEveryMs ?? 30_000,
+    );
+    sweep.unref?.();
 
     return {
       id: 'quality',
