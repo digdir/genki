@@ -121,6 +121,18 @@ var logAlerts = [
     threshold: thresholds.ingestionFailures
   }
   {
+    key: 'state-register'
+    title: 'State register stale'
+    description: 'The worker has not read Enhetsregisteret for two nights or more, so answers about which ministry an agency is under rest on an older register (ADR 0058).'
+    severity: 3
+    frequency: 'PT1H'
+    window: 'PT1H'
+    query: '${consoleLogs} | where Log has \'state register stale\' | extend entry = parse_json(Log) | where tostring(entry.msg) == \'state register stale\' | project TimeGenerated, ContainerAppName, lastGood = tostring(entry.lastGood), failedNights = toint(entry.failedNights), error = tostring(entry.error)'
+    measure: ''
+    aggregation: 'Count'
+    threshold: 1
+  }
+  {
     key: 'altinn'
     title: 'Altinn unavailable'
     description: 'At least ${thresholds.altinnFailures} Altinn rights lookups or token exchanges failed over 15 minutes.'

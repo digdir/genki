@@ -74,6 +74,25 @@ import type {
   TenantKey,
 } from './types';
 
+/** GET /operator/state-register: the register and how the state accounts differ (ADR 0058). */
+export interface StateRegisterView {
+  syncedAt: string | null;
+  lastGood: string | null;
+  failedNights: number;
+  units: number;
+  accountsPeriod: string | null;
+  same: number;
+  differences: {
+    orgnr: string;
+    name: string;
+    kind: 'mismatch' | 'budget-booking' | 'not-in-register';
+    registerMinistry?: string;
+    registerMinistryName?: string;
+    accountsMinistry?: string;
+    accountsMinistryName?: string;
+  }[];
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -458,6 +477,8 @@ export const createApiClient = ({
       ),
     openSupportSession: (tenant: string, reason: string, minutes = 30) =>
       call<SupportSession>('POST', '/support-sessions', { body: { tenant, reason, minutes } }),
+    stateRegister: (signal?: AbortSignal) =>
+      call<StateRegisterView>('GET', '/operator/state-register', { signal }),
     sharedServices: async (signal?: AbortSignal) =>
       (await call<{ data: SharedService[] }>('GET', '/operator/shared-services', { signal })).data,
     shareService: (
@@ -758,7 +779,7 @@ export const createApiClient = ({
     engineSwitchAction: (
       base: string,
       sid: string,
-      action: 'retry' | 'cancel' | 'activate' | 'rollback',
+      action: 'retry' | 'cancel' | 'activate' | 'rollback' | 'readmit',
       reason: string,
     ) =>
       call<EngineSwitch>('POST', `${base}/engine-switches/${encodeURIComponent(sid)}/${action}`, {

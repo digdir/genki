@@ -87,7 +87,8 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
                 as a(rank integer, converter text, derivation text, derivation_version integer)
                 on a.converter = c.converter and a.derivation = c.derivation
                and a.derivation_version = c.derivation_version
-             where c.sha256 = f.sha256)
+             -- A file its convert job could not fetch is fetched again (issue 597).
+             where c.sha256 = f.sha256 and c.failure is distinct from 'unreachable')
         order by f.file`,
       [record, acceptedJson(accepted)],
     );
@@ -100,7 +101,9 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       await lock(client, key);
       const { rows } = await client.query(
         `select 1 from src_conversions
-          where sha256 = $1 and converter = $2 and version = $3 and settings_hash = $4 limit 1`,
+          where sha256 = $1 and converter = $2 and version = $3 and settings_hash = $4
+            and failure is distinct from 'unreachable'
+          limit 1`,
         [target.sha256, target.converter, target.version, settingsHash(target.settings)],
       );
       if (rows.length > 0) return false;
@@ -136,7 +139,8 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
           JSON.stringify(conversion.settings),
           conversion.derivation.name,
           conversion.derivation.version,
-          conversion.pages,
+          // PostgreSQL refuses U+0000 in text, and converters read it out of some PDFs (issue 532).
+          conversion.pages.map((page) => page.replaceAll('\u0000', '')),
           conversion.outputPath ?? null,
           conversion.failure ?? null,
         ],

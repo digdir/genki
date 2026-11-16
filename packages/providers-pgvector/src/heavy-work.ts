@@ -237,17 +237,27 @@ export const cancelBackend = (owner: Pool, pid: number) =>
 
 export interface RecallSample {
   recall: number;
+  /** The exact searches that ran. */
   queries: number;
+  /** Whether `stop` ended the sample before all its searches ran. */
+  cut: boolean;
 }
 
 /**
  * recall@k of the generation's chunk index against exact search, for a random sample of its own
  * vectors as queries, at the `hnsw.ef_search` search uses. Nothing when it holds no vectors.
+ * `stop` is asked before each exact search, and `signal` cancels the running query (issue 615).
  */
 export const sampleRecall = async (
   owner: Pool,
   generation: string,
-  options: { sample: number; k?: number; efSearch?: number },
+  options: {
+    sample: number;
+    k?: number;
+    efSearch?: number;
+    stop?: () => boolean;
+    signal?: AbortSignal;
+  },
 ): Promise<RecallSample | undefined> => {
   const k = options.k ?? 10;
   const { rows: found } = await owner.query<{ dims: number | null }>(
@@ -258,8 +268,19 @@ export const sampleRecall = async (
   if (!dims) return undefined;
   const chunks = partitionOf('kn_chunks', generation);
   return onSession(owner, async (client) => {
+    const { signal } = options;
+    signal?.throwIfAborted();
+    const { rows: backend } = await client.query<{ pid: number }>('select pg_backend_pid() as pid');
+    const pid = backend[0]?.pid;
+    const cancel = () => {
+      if (pid !== undefined) void cancelBackend(owner, pid).catch(() => undefined);
+    };
+    signal?.addEventListener('abort', cancel, { once: true });
+    // A cancel that reaches an idle backend is ignored, so every query asks the signal first.
+    const go = () => signal?.throwIfAborted();
     await client.query('begin');
     try {
+      go();
       const { rows: queries } = await client.query<{ vec: string }>(
         `select vec::text as vec from ${chunks} where vec is not null order by random() limit $1`,
         [options.sample],
@@ -273,22 +294,37 @@ export const sampleRecall = async (
           String(options.efSearch),
         ]);
       const ann: string[][] = [];
-      for (const q of queries)
+      for (const q of queries) {
+        go();
         ann.push((await client.query<{ id: string }>(nearest, [q.vec])).rows.map((r) => r.id));
+      }
       await client.query(`set local enable_seqscan = on`);
       await client.query(`set local enable_indexscan = off`);
       await client.query(`set local enable_bitmapscan = off`);
       let hits = 0;
       let wanted = 0;
+      let ran = 0;
+      let cut = false;
       for (const [i, q] of queries.entries()) {
+        go();
+        if (options.stop?.()) {
+          cut = true;
+          break;
+        }
+        go();
         const exact = (await client.query<{ id: string }>(nearest, [q.vec])).rows.map((r) => r.id);
         const got = new Set(ann[i]);
         hits += exact.filter((id) => got.has(id)).length;
         wanted += exact.length;
+        ran += 1;
       }
-      return { recall: wanted ? hits / wanted : 1, queries: queries.length };
+      return { recall: wanted ? hits / wanted : 1, queries: ran, cut };
+    } catch (error) {
+      if (signal?.aborted) throw new Error('the recall check was stopped', { cause: error });
+      throw error;
     } finally {
-      await client.query('rollback');
+      signal?.removeEventListener('abort', cancel);
+      await client.query('rollback').catch(() => undefined);
     }
   });
 };
@@ -318,8 +354,10 @@ export const knowledgeHeavyWork = (owner: Pool) => ({
   toFreeze: () => generationsToFreeze(owner),
   progress: (pid: number) => buildProgress(owner, pid),
   cancel: (pid: number) => cancelBackend(owner, pid),
-  recall: (generation: string, options: { sample: number }) =>
-    sampleRecall(owner, generation, options),
+  recall: (
+    generation: string,
+    options: { sample: number; stop: () => boolean; signal: AbortSignal },
+  ) => sampleRecall(owner, generation, options),
   baseline: (generation: string, measured: number) => recallBaseline(owner, generation, measured),
   datasetOf: async (generation: string) => {
     const { rows } = await owner.query<{ dataset: string }>(

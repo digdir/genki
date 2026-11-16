@@ -885,3 +885,60 @@ describe('agent plug-ins in services', () => {
     );
   });
 });
+
+describe('an agent without a dataset', () => {
+  it('runs an agent-loop service with no dataset on its tools alone', async () => {
+    const { platform, register, adopt } = await boot();
+    const calls: unknown[] = [];
+    const url = await mcpServer((args) => {
+      calls.push(args);
+      return 'Sak 17 gjelder en tilskuddssøknad.';
+    });
+    const model = await fakeHttp((body) => {
+      const tools = (body.tools ?? []) as { function: { name: string } }[];
+      const answered = (body.messages as { role: string }[]).some((m) => m.role === 'tool');
+      const tool = tools[0]?.function.name;
+      return openAiChatFixture.reply(
+        tool && !answered
+          ? { kind: 'tool', id: 'call0', name: tool, arguments: JSON.stringify({ q: 'sak 17' }) }
+          : { kind: 'text', text: 'Saken gjelder en tilskuddssøknad.' },
+        body,
+        '',
+      );
+    });
+    fakes.push(model);
+    await register(modelPlugin(model.url, { capabilities: ['stream', 'tools', 'json-schema'] }));
+    await register({
+      manifest: {
+        kind: 'tool-source',
+        id: 'tool-source.saker',
+        version: '1',
+        contract: 'tool-source@1',
+        title: 'Saksarkiv',
+        hosts: ['127.0.0.1'],
+      },
+      endpoint: {
+        baseURL: `${url}/mcp`,
+        protocol: 'mcp',
+        example: { tool: 'finn-sak', input: { q: 'tilskudd' } },
+      },
+    });
+    await adopt('kari', other, 'model', 'model.leverandor');
+    await adopt('kari', other, 'tool', 'tool-source-saker');
+    const service = answerService('model.leverandor', {
+      strategy: { id: 'agent-loop', version: 1, config: {} },
+      knowledge: { datasets: [] },
+      tools: ['tool-source-saker.finn-sak@1'],
+    });
+    const published = await platform.definitions.publish(service, 'test', 'test');
+    expect(published.ok ? [] : published.errors).toEqual([]);
+    const before = calls.length;
+
+    const run = await platform.kernel.invoke(people.kari as Principal, `${other}/svar/default`, {
+      data: { query: 'Hva gjelder sak 17?' },
+    });
+
+    expect(textOf((await run.result) as never)).toBe('Saken gjelder en tilskuddssøknad.');
+    expect(calls.slice(before)).toEqual([{ q: 'sak 17' }]);
+  });
+});

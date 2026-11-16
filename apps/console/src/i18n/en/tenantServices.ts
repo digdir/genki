@@ -38,4 +38,5 @@ export const tenantServices = {
   byUnknown: 'Unknown person',
   archived: 'Archived',
   paused: 'Paused',
+  internal: 'Internal',
 } satisfies Translation<typeof source>;

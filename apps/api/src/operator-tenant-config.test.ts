@@ -390,6 +390,27 @@ describe('allowed hosts of a model connection', () => {
       ).toBe(400);
   });
 
+  it('refuses federated app sign-in on a tenant connection, because tenant connections take no settings', async () => {
+    const { call, support } = await boot();
+    const session = await support();
+    const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
+      method: 'PUT',
+      session,
+      body: {
+        families: { openai: '' },
+        baseURL: 'https://modeller.example.no/v1',
+        auth: {
+          kind: 'federated-app',
+          clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+          tenant: '11111111-2222-3333-4444-555555555555',
+          scope: 'api://gateway/.default',
+        },
+      },
+    });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await json(refused))).toContain('tenant endpoints use api-key or bearer');
+  });
+
   it('refuses allowed hosts on a tenant connection, because only the operator sets them', async () => {
     const { call, support } = await boot();
     const session = await support();

@@ -757,6 +757,7 @@ export interface TenantDefinition {
   publishedBy: string | null;
   publishedByName?: string;
   state?: 'active' | 'paused' | 'archived';
+  internal?: boolean;
 }
 
 export interface VersionSummary {
@@ -921,6 +922,8 @@ export interface EngineSwitch {
     verdict: 'same' | 'better' | 'worse';
   };
   comparisonNote?: string;
+  /** In lockdown, while the switch has open runs: the earliest time one of their admissions runs out. */
+  admissionRunsOutAt?: string;
 }
 
 export interface MethodEstimate {
@@ -1101,7 +1104,9 @@ export interface DiscoveryRule {
 
 export interface ModelEndpointInput {
   baseURL: string;
-  auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
+  auth:
+    | { kind: 'api-key' | 'bearer'; secret: string; header?: string }
+    | { kind: 'federated-app'; clientId: string; tenant: string; scope: string };
   families: Record<string, string>;
   discovery?: DiscoveryRule[];
   settings?: Record<string, string>;

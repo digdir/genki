@@ -90,6 +90,7 @@ beforeAll(async () => {
     work: [],
     open: openJobQueue,
     runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
+    log: () => undefined,
   });
   // Only retries change here: the API's right to send comes from openWorkerJobs alone.
   await installJobQueue(worker.pool, withoutRetries(knowledgePlatformQueues), {
@@ -198,11 +199,13 @@ const work = async <T extends { run: string }>(
   definition: QueueDefinition<T & Record<string, string>>,
   handler: Parameters<typeof admittedWork<T & Record<string, string>>>[1],
   lockdown = false,
+  now?: () => Date,
 ) => {
   const entry = admittedWork(definition, handler, {
     records,
     platformTenant: ORG,
     lockdown,
+    ...(now ? { now } : {}),
   });
   return queue.work(entry.queue, (job) => entry.handler(job));
 };
@@ -637,6 +640,117 @@ describe('the worker and the knowledge queues', () => {
     expect(await platformStates(expired)).toEqual([]);
   }, 90_000);
 
+  it('a dataset manager can admit a running run again, and its jobs work for another 24 hours in lockdown', async () => {
+    const at = pipeline();
+    const id = await insertRun(at, {
+      status: 'running',
+      admittedAt: new Date(Date.now() - 23 * hour).toISOString(),
+    });
+    const readmitted = await apiRuns.readmit({
+      dataset: at.dataset,
+      execution: id,
+      at: new Date().toISOString(),
+    });
+    expect(readmitted).toMatchObject({ ok: true, value: { id, status: 'running' } });
+    await sendIndex(id);
+    const embedded: string[] = [];
+    // 20 hours on: 43 hours after the first admission, 20 after the second.
+    const later = new Date(Date.now() + 20 * hour);
+    const stop = await work(
+      knowledge(),
+      knowledgeIndexQueue,
+      async ({ run: r }) => {
+        embedded.push(r.id);
+      },
+      true,
+      () => later,
+    );
+    await expect.poll(() => knowledgeStates(id), { timeout: 20_000 }).toEqual(['completed']);
+    await stop();
+    expect(embedded).toContain(id);
+    expect(await run(id)).toMatchObject({ status: 'running' });
+  }, 90_000);
+
+  it('admitting a run again keeps its waiting jobs', async () => {
+    const at = pipeline();
+    const started = await start(at, new Date(Date.now() - 23 * hour).toISOString());
+    await sendIndex(started.id, 'r-1');
+    await sendIndex(started.id, 'r-2');
+    const before = await platformStates(started.id);
+
+    const readmitted = await apiRuns.readmit({
+      dataset: at.dataset,
+      execution: started.id,
+      at: new Date().toISOString(),
+    });
+    await reconcile({ lockdown: true });
+
+    expect(readmitted.ok).toBe(true);
+    expect(await knowledgeStates(started.id)).toEqual(['created', 'created']);
+    expect(await platformStates(started.id)).toEqual(before);
+    expect(await run(started.id)).toMatchObject({ status: 'running', error: null });
+  });
+
+  it('a queued run can be admitted again, and an ended run cannot', async () => {
+    const at = pipeline();
+    const queued = await insertRun(at, {
+      status: 'queued',
+      admittedAt: new Date(Date.now() - 23 * hour).toISOString(),
+    });
+    const later = new Date(Date.now() + 2 * hour);
+    expect(
+      await apiRuns.readmit({
+        dataset: at.dataset,
+        execution: queued,
+        at: new Date().toISOString(),
+      }),
+    ).toMatchObject({ ok: true, value: { status: 'queued' } });
+    await reconcile({ lockdown: true, now: later });
+    expect(await run(queued)).toMatchObject({ status: 'running' });
+
+    const other = pipeline();
+    const ended = await insertRun(other, {
+      status: 'failed',
+      admittedAt: new Date(Date.now() - 30 * hour).toISOString(),
+    });
+    const refused = await apiRuns.readmit({
+      dataset: other.dataset,
+      execution: ended,
+      at: new Date().toISOString(),
+    });
+    expect(refused).toMatchObject({ ok: false });
+    expect(await run(ended)).toMatchObject({ status: 'failed' });
+
+    // Through a pipeline's route, only a run of that pipeline.
+    const elsewhere = await apiRuns.readmit({
+      dataset: at.dataset,
+      pipeline: 'nettsider',
+      execution: queued,
+      at: new Date().toISOString(),
+    });
+    expect(elsewhere).toMatchObject({ ok: false });
+  });
+
+  it('a run being cancelled cannot be admitted again', async () => {
+    const at = pipeline();
+    const started = await start(at, new Date(Date.now() - 23 * hour).toISOString());
+    await apiRuns.cancel({
+      dataset: at.dataset,
+      execution: started.id,
+      by: 'employee:test:kari',
+      at: new Date().toISOString(),
+    });
+
+    const refused = await apiRuns.readmit({
+      dataset: at.dataset,
+      execution: started.id,
+      at: new Date().toISOString(),
+    });
+
+    expect(refused).toMatchObject({ ok: false });
+    expect(await run(started.id)).toMatchObject({ admitted_at: started.admittedAt });
+  });
+
   it("a job's data never admits it in lockdown", async () => {
     const id = await insertRun(pipeline(), { status: 'running', admittedAt: null });
     expect(() =>
@@ -747,6 +861,27 @@ describe('the worker and the knowledge queues', () => {
       [at.dataset],
     );
     expect(rows).toEqual([]);
+  });
+
+  it('a run that did not run as jobs cannot be sent back', async () => {
+    const at = pipeline();
+    const id = await insertRun(at, { status: 'failed', admittedAt: new Date().toISOString() });
+    await api.pool.query(`update ingestion_executions set runs_as_jobs = false where id = $1`, [
+      id,
+    ]);
+    const sent = await apiRuns.redrive({
+      dataset: at.dataset,
+      pipeline: at.pipeline,
+      execution: id,
+      by: 'employee:test:kari',
+      reason: 'try again',
+      at: new Date().toISOString(),
+    });
+    expect(sent).toMatchObject({
+      ok: false,
+      message: 'only an ended run that runs as jobs can be sent back',
+    });
+    expect(await run(id)).toMatchObject({ status: 'failed' });
   });
 
   it('sending back refuses a run of another pipeline', async () => {

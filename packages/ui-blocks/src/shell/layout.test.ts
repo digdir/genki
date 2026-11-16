@@ -10,8 +10,6 @@ import {
   defaultMainSize,
   defaultPanelSizes,
   defaultRail,
-  drawerPlacement,
-  drawerWidth,
   fittedWidths,
   growthDirection,
   initialState,
@@ -210,15 +208,11 @@ describe('the state the reader changes', () => {
   });
 });
 
-describe('drawers', () => {
-  it('slide in from the edge each panel stands at', () => {
-    expect(drawerPlacement('primary')).toBe('left');
-    expect(drawerPlacement('secondary')).toBe('right');
-  });
-
-  it('are drawn at the design width, not a dragged one, and never wider than the window', () => {
-    expect(drawerWidth(geometry, 'primary', 1000)).toBe(400);
-    expect(drawerWidth(geometry, 'secondary', 390)).toBe(390);
+describe('a panel that fills the shell, below the drawer breakpoint', () => {
+  it('gets no width from the sums, since it takes the shell’s whole box', () => {
+    const style = layoutStyle(geometry, withCollapsed(start, 'primary', false), 1000, true, false);
+    expect(Object.keys(style).filter((name) => name.includes('drawer'))).toEqual([]);
+    expect(style['--uib-shell-primary-width']).toBe(`${defaultRail}px`);
   });
 });
 
@@ -304,13 +298,6 @@ describe('the row and the window, from 280 to 2000 px', () => {
       }
     }
     expect(found.slice(0, 10), `${found.length} cases`).toEqual([]);
-  });
-
-  it('never draws a drawer wider than the window', () => {
-    const found = windows.flatMap((viewport) =>
-      shellSides.filter((side) => drawerWidth(geometry, side, viewport) > viewport),
-    );
-    expect(found).toEqual([]);
   });
 
   it('gives the main column the whole width in the bar, as wide as the window allows', () => {

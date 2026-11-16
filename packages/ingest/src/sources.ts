@@ -60,8 +60,9 @@ const kudosTexts = async (
   const pending: { name: string; sha256: string }[] = [];
   let skip: SkipReason | undefined;
   let tooLarge = false;
+  let noUrl = false;
   const limit = options.maxFileBytes;
-  const nameOf = (file: KudosFile) => file.url.split('/').pop() ?? `${doc.id}.pdf`;
+  const nameOf = (file: KudosFile) => file.url?.split('/').pop() ?? `${doc.id}.pdf`;
   try {
     for (const file of doc.files ?? []) {
       if (limit !== undefined && Number(file.size ?? 0) > limit) {
@@ -85,6 +86,12 @@ const kudosTexts = async (
           if (!(error instanceof ConversionPending)) throw error;
           pending.push(...error.files);
         }
+        continue;
+      }
+      // KUDOS lists some files only by a `source_file_url` on another site, with no sha256 to check
+      // its bytes against, so such a file is left out (issue 581).
+      if (!file.url) {
+        noUrl = true;
         continue;
       }
       try {
@@ -125,6 +132,7 @@ const kudosTexts = async (
   }
   // A file left out for its size says more than a blank one beside it.
   if (texts.length === 0 && tooLarge) return { texts, files: read, skip: 'too_large' };
+  if (texts.length === 0 && !skip && noUrl) skip = 'unreachable';
   return texts.length === 0 && skip ? { texts, files: read, skip } : { texts, files: read };
 };
 

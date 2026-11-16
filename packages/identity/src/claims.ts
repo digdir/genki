@@ -17,6 +17,9 @@ export const isApiKeyPrincipal = (principal: Principal) => principal.issuer === 
 export const isTestRunnerKey = (principal: Principal) =>
   isApiKeyPrincipal(principal) && (principal.scopes?.includes(testRunnerScope) ?? false);
 
+export const seesInternalServices = (principal: Principal) =>
+  principal.kind === 'operator' || principal.kind === 'workload' || isTestRunnerKey(principal);
+
 export const ORGNO_AUTHORITY = 'iso6523-actorid-upis';
 
 export interface OrgNo {

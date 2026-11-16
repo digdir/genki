@@ -24,6 +24,8 @@ export interface SearchEnginesMockOptions {
   refresh?: boolean;
   /** Documents of the fill whose jobs ended as dead letters. */
   failedDocuments?: number;
+  /** In lockdown: when the running switch's admission runs out; admitting again moves it 24 hours on. */
+  admissionRunsOutAt?: string;
 }
 
 export const exampleDefaultEmbedding: DefaultEmbedding = {
@@ -277,6 +279,7 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
       if (options.scenario === 'switching')
         fresh.switch = newSwitch(dataset, fresh, 'opensearch-sev', 'copy', {
           progress: { percent: 40, documents: 19325, total: 48312 },
+          ...(options.admissionRunsOutAt ? { admissionRunsOutAt: options.admissionRunsOutAt } : {}),
         });
       if (options.scenario === 'worse')
         fresh.switch = newSwitch(dataset, fresh, 'azure-sverige', 'reingest', {
@@ -463,6 +466,12 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
       sw.progress = { percent: 0, documents: 0, total: sw.progress.total ?? 0 };
       delete sw.error;
       return request.json(sw, 202);
+    }
+    if (action === 'readmit' && sw) {
+      if (!sw.admissionRunsOutAt) return problem(409, 'Byttet har ingen åpne kjøringer.', 'state');
+      if (!reasonOf()) return problem(400, 'Begrunnelse mangler', 'reason');
+      sw.admissionRunsOutAt = new Date(Date.now() + 24 * 3_600_000).toISOString();
+      return request.json(sw);
     }
     if (action === 'cancel' && sw) {
       sw.state = 'cancelled';

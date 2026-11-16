@@ -14,8 +14,9 @@ import {
 } from './background-lease.js';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { appendVersion, platformScope, type ConfigEntry } from './config-store.js';
+import { draftCapabilityPrefix, evalCapabilityId } from './draft-runner.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
-import { candidateRelease, isCandidate } from './model-access.js';
+import { candidateRelease, isCandidate, triesCandidates } from './model-access.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { serviceEval, type Outcome } from './service-eval.js';
 
@@ -147,6 +148,9 @@ export const isMatrixPrincipal = (principal: Principal) =>
   principal.issuer === 'platform' &&
   principal.subject === matrixSubject;
 
+const isTrialCapability = (id: string) =>
+  id.startsWith(draftCapabilityPrefix) || id === evalCapabilityId;
+
 export const releaseGate = (
   inner: PolicyDecisionPoint,
   catalog: () => Pick<CatalogRegistry, 'get'> | undefined,
@@ -156,11 +160,15 @@ export const releaseGate = (
       return action === 'invoke' && !resource.id.startsWith('platform/draft/')
         ? { allow: false, reason: 'the quality matrix only runs draft services' }
         : { allow: true };
+    const trial = triesCandidates(principal);
+    if (trial && action === 'invoke' && !isTrialCapability(resource.id))
+      return { allow: false, reason: 'a candidate model is tried only in draft runs' };
     const gate = catalog();
     if (
       (action === 'use:model' || action === 'use:decision' || action === 'use:described') &&
       gate &&
-      isCandidate(gate, resource.id)
+      isCandidate(gate, resource.id) &&
+      !trial
     )
       return {
         allow: false,

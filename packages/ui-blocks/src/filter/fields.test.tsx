@@ -171,10 +171,10 @@ describe('a field', () => {
     const many: FilterField = {
       id: 'organisation',
       label: 'Virksomheter',
-      options: Array.from({ length: 150 }, (_, index) => ({ value: `Virksomhet ${index + 1}` })),
+      options: Array.from({ length: 202 }, (_, index) => ({ value: `Virksomhet ${index + 1}` })),
     };
     const first = (count: number) => many.options.slice(0, count).map((option) => option.value);
-    const warning = /^Høyst 100 kan brukes i ett felt/;
+    const warning = /^Velg høyst 100, eller alle unntatt høyst 100\./;
     const draw = (selected: string[]) =>
       render(
         <FacetField
@@ -186,13 +186,16 @@ describe('a field', () => {
         />,
       );
 
-    it('says so, with the way out, when more than the limit are chosen', () => {
+    it('says so, with the way out, when more than the limit are chosen and more than the limit left out', () => {
       draw(first(101));
       expect(
-        screen.getByText(
-          'Høyst 100 kan brukes i ett felt, og 101 er valgt. Fjern noen, eller velg alle.',
-        ),
+        screen.getByText('Velg høyst 100, eller alle unntatt høyst 100. Nå er 101 av 202 valgt.'),
       ).toBeTruthy();
+    });
+
+    it('says nothing when more than the limit are chosen and at most the limit left out', () => {
+      draw(first(102));
+      expect(document.querySelector('.ds-validation-message')).toBeNull();
     });
 
     it('says nothing at the limit', () => {
@@ -200,10 +203,37 @@ describe('a field', () => {
       expect(screen.queryByText(warning)).toBeNull();
     });
 
+    it('says the same of a year field with periods, by its years', () => {
+      const years = Array.from({ length: 202 }, (_, index) => String(1800 + index));
+      const yearField: FilterField = {
+        id: 'year',
+        label: 'År',
+        kind: 'year',
+        options: years.map((value) => ({ value })),
+      };
+      const drawYears = (selected: string[]) =>
+        render(
+          <YearRangeField
+            field={yearField}
+            selected={selected}
+            compact={false}
+            max={100}
+            onChange={() => {}}
+          />,
+        );
+      const { unmount } = drawYears(years.slice(0, 102));
+      expect(document.querySelector('.ds-validation-message')).toBeNull();
+      unmount();
+      drawYears(years.slice(0, 101));
+      expect(
+        screen.getByText('Velg høyst 100, eller alle unntatt høyst 100. Nå er 101 av 202 valgt.'),
+      ).toBeTruthy();
+    });
+
     it('says nothing when all are chosen, which is no narrowing and is not sent', () => {
-      draw(first(150));
+      draw(first(202));
       expect(screen.queryByText(warning)).toBeNull();
-      expect(screen.getByText('Alle 150 valgt, altså ingen avgrensning')).toBeTruthy();
+      expect(screen.getByText('Alle 202 valgt, altså ingen avgrensning')).toBeTruthy();
     });
   });
 
@@ -226,7 +256,7 @@ describe('a field', () => {
         />,
       );
       expect(screen.getByText('Alle 136 valgt, altså ingen avgrensning')).toBeTruthy();
-      expect(screen.queryByText(/^Høyst 100 kan brukes i ett felt/)).toBeNull();
+      expect(screen.queryByText(/^Velg høyst 100, eller alle unntatt/)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Velg alle virksomheter' })).toBeNull();
     });
 
@@ -402,10 +432,12 @@ describe('a year field with periods', () => {
     expect(screen.getByText('4 år valgt')).toBeTruthy();
   });
 
-  it('offers the period the text reads as, with its documents counted from the facets', () => {
+  it('offers the period the text reads as, with the years in it that have documents', () => {
     render(<Years />);
     type('20-22');
-    expect(screen.getByRole('option', { name: '2020–2022 (9)', hidden: true })).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: '2020–2022 (3 år med dokumenter)', hidden: true }),
+    ).toBeTruthy();
   });
 
   it('offers a year with no documents with 0, and it can be chosen', () => {
@@ -421,7 +453,7 @@ describe('a year field with periods', () => {
     const seen: string[][] = [];
     const { container } = render(<Years initial={['2019', '2020']} seen={seen} />);
     type('21-23');
-    choose('2021–2023 (12)');
+    choose('2021–2023 (3 år med dokumenter)');
     expect(seen.at(-1)).toEqual(['2019', '2020', '2021', '2022', '2023']);
     expect(chips(container)).toEqual(['2019–2023']);
   });
@@ -459,10 +491,10 @@ describe('a year field with periods', () => {
     const { container } = render(<Years />);
     type('2020-2');
     expect(offered(container)).toEqual([
-      '2020–2021 (5)',
-      '2020–2022 (9)',
-      '2020–2023 (14)',
-      '2020–2024 (20)',
+      '2020–2021 (2 år med dokumenter)',
+      '2020–2022 (3 år med dokumenter)',
+      '2020–2023 (4 år med dokumenter)',
+      '2020–2024 (5 år med dokumenter)',
     ]);
   });
 
@@ -534,7 +566,7 @@ describe('a year field with periods', () => {
     choose('2023 (5)');
     expect(said.at(-1)).toBe('Lagt til 2023');
     type('19-21');
-    choose('2019–2021 (6)');
+    choose('2019–2021 (3 år med dokumenter)');
     expect(said.at(-1)).toBe('Lagt til 2019–2021');
   });
 
@@ -543,10 +575,52 @@ describe('a year field with periods', () => {
     const said: Said = [];
     render(<Years initial={['2020', '2021', '2022', '2023']} seen={seen} said={said} />);
     type('21-22');
-    choose('2021–2022 (7)');
+    choose('2021–2022 (2 år med dokumenter)');
     expect(seen).toEqual([['2020', '2021', '2022', '2023']]);
     expect(said).toEqual(['2021–2022 er alt valgt.']);
     expect(input().value).toBe('');
+  });
+
+  it('takes only the years in a period that the field lists, not every calendar year', () => {
+    const seen: string[][] = [];
+    const field = { ...years, options: [...years.options, { value: '1950', count: 2 }] };
+    const { container } = render(<Years field={field} seen={seen} />);
+    type('1800-2020');
+    choose('1800–2020 (3 år med dokumenter)');
+    expect(seen.at(-1)).toEqual(['1950', '2019', '2020']);
+    expect(chips(container)).toEqual(['1950', '2019–2020']);
+  });
+
+  it('keeps a long period under the limit of values a field can send', () => {
+    const seen: string[][] = [];
+    render(<Years seen={seen} />);
+    typeThenEnter('1800-2200');
+    expect(seen.at(-1)).toEqual(['2019', '2020', '2021', '2022', '2023', '2024']);
+    expect(screen.queryByText(/Høyst 100/u)).toBeNull();
+  });
+
+  it('keeps a chosen year the list no longer has when a period is added', () => {
+    const seen: string[][] = [];
+    render(<Years initial={['2030']} seen={seen} />);
+    type('23-24');
+    choose('2023–2024 (2 år med dokumenter)');
+    expect(seen.at(-1)).toEqual(['2023', '2024', '2030']);
+  });
+
+  it('counts a period in years with documents, never a sum that can pass the documents there are', () => {
+    const { container } = render(<Years />);
+    type('2019-2024');
+    // The counts per year add up to 21, but a document with several years is in several.
+    expect(offered(container)).toEqual(['2019–2024 (6 år med dokumenter)']);
+  });
+
+  it('says a period with no listed years has no documents, and chooses nothing on Enter', () => {
+    const seen: string[][] = [];
+    const { container } = render(<Years seen={seen} />);
+    typeThenEnter('1700-1750');
+    expect(offered(container)).toEqual(['Ingen dokumenter i 1700–1750.']);
+    expect(seen).toEqual([]);
+    expect(input().value).toBe('1700-1750');
   });
 
   it('counts the years for a screen reader, not the chips', () => {

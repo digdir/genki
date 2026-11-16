@@ -172,7 +172,8 @@ export const blocks = defineNamespace({
     'Dommeren vurderer bare en del av svarene den får, så noen testtilfeller ville aldri fått vurdering. Sett sampling til 100 % i Langfuse for å ta den i bruk.',
   judgeRefusedFiltered:
     'Dommeren har et filter på {field}, som genki ikke kan lese før kjøringen. Fjern det filteret i Langfuse, eller hold testkjøringene utenfor med et annet filter.',
-  judgeRefusedPath: 'Dommeren leser {field}, en JSON-sti genki ikke kan lese.',
+  judgeRefusedPath:
+    'Dommeren leser {field}, en JSON-sti genki ikke kan lese. genki leser $, .nøkkel og [n], for eksempel $[0].body.text.',
   judgeRefusedSeveral:
     'Regelen kjører mer enn én evaluator. Gi regelen én evaluator i Langfuse for å ta den i bruk.',
   judgeRefusedPaused: 'Evaluatoren er satt på pause i Langfuse.',

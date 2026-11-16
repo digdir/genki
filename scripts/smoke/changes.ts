@@ -107,20 +107,45 @@ export interface Api {
   ): Promise<{ status: number; body: unknown; text: string }>;
 }
 
+const temporary = new Set([502, 503, 504]);
+
 export const github =
-  (token: string): Api =>
+  (
+    token: string,
+    options: {
+      send?: typeof fetch;
+      wait?: (ms: number) => Promise<void>;
+      tries?: number;
+    } = {},
+  ): Api =>
   async (path, init = {}) => {
-    const response = await fetch(`https://api.github.com${path}`, {
-      method: init.method ?? 'GET',
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: init.accept ?? 'application/vnd.github+json',
-        'content-type': 'application/json',
-      },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    const text = await response.text();
+    const send = options.send ?? fetch;
+    const wait = options.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const tries = (init.method ?? 'GET') === 'GET' ? (options.tries ?? 4) : 1;
+    let response: Response | undefined;
+    let text = '';
+    for (let attempt = 1; attempt <= tries; attempt++) {
+      try {
+        response = await send(`https://api.github.com${path}`, {
+          method: init.method ?? 'GET',
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: init.accept ?? 'application/vnd.github+json',
+            'content-type': 'application/json',
+          },
+          ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        text = await response.text();
+      } catch (error) {
+        if (attempt === tries) throw error;
+        await wait(500 * 2 ** (attempt - 1));
+        continue;
+      }
+      if (!temporary.has(response.status) || attempt === tries) break;
+      await wait(500 * 2 ** (attempt - 1));
+    }
+    if (!response) throw new Error(`GitHub did not answer ${path}`);
     if (response.status >= 400 && !init.allow?.includes(response.status))
       throw new Error(`GitHub answered ${response.status} to ${init.method ?? 'GET'} ${path}`);
     const json = (init.accept ?? '').includes('json') || init.accept === undefined;

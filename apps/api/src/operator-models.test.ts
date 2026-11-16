@@ -102,6 +102,49 @@ describe('platform models for operators', () => {
     ).toBe(403);
   });
 
+  it('adds a connection that signs in as a federated app, with no secret stored', async () => {
+    const { send } = await boot();
+    const app = {
+      kind: 'federated-app',
+      clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+      tenant: '11111111-2222-3333-4444-555555555555',
+      scope: 'api://gateway/.default',
+    };
+
+    const added = await send('/operator/model-endpoints', 'drift', {
+      body: { ...endpoint, id: 'gateway', auth: { ...app, secret: 'secret://platform/x' } },
+      reason,
+    });
+    const listed = await json<{ data: { id: string; spec: Record<string, unknown> }[] }>(
+      await send('/operator/catalog/entries?kind=model-endpoint', 'drift'),
+    );
+
+    expect(added.status).toBe(201);
+    expect(listed.data.find((e) => e.id === 'gateway')?.spec.auth).toEqual(app);
+  });
+
+  it('refuses a federated app whose tenant is not a GUID or whose scope is not /.default', async () => {
+    const { send } = await boot();
+    const refused = await send('/operator/model-endpoints', 'drift', {
+      body: {
+        ...endpoint,
+        id: 'gateway',
+        auth: {
+          kind: 'federated-app',
+          clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+          tenant: 'digdir.no/../x',
+          scope: 'api://gateway',
+        },
+      },
+      reason,
+    });
+
+    expect(refused.status).toBe(400);
+    expect((await json<{ errors: { path: string }[] }>(refused)).errors.map((e) => e.path)).toEqual(
+      ['auth.tenant', 'auth.scope'],
+    );
+  });
+
   it('refuses to remove an endpoint whose models services use, and removes an unused one', async () => {
     const { send, platform, admin } = await boot();
     await send('/operator/model-endpoints', 'drift', { body: endpoint, reason });

@@ -25,6 +25,7 @@ import {
   fileNameOf,
   isTransient,
   outcomeOf,
+  modelChecksRan,
   overallOutcome,
   parseJsonOr,
   parseSse,
@@ -406,6 +407,43 @@ describe('timelines', () => {
     expect(assessTimeline(http(200, t), { detected: [], tokens: true }).ok).toBe(false);
   });
 
+  const searched = (queries: string[], tags: string[]) => ({
+    ...timeline([]),
+    steps: [
+      {
+        type: 'search',
+        blocks: [
+          { kind: 'list', label: 'Search', items: queries },
+          { kind: 'tags', label: 'Found in the search', items: tags },
+        ],
+      },
+    ],
+  });
+  const amount = 'Hva koster et gebyr på 2000 kroner?';
+
+  it('passes a year the model wrote into its own search on a question that names none', () => {
+    const t = searched([amount, 'gebyrbeløp 2022 statistikk'], ['title: 2022, ranked higher']);
+    expect(assessTimeline(http(200, t), { detected: [], question: amount, tokens: true }).ok).toBe(
+      true,
+    );
+  });
+
+  it('fails an amount in the question read as a year', () => {
+    const t = searched([amount, 'gebyr på 2000 kroner'], ['title: 2000, ranked higher']);
+    expect(
+      assessTimeline(http(200, t), { detected: [], question: amount, tokens: true }),
+    ).toMatchObject({ ok: false, detail: 'unexpected detection title: 2000, ranked higher' });
+  });
+
+  it('fails a detection that no search names, as an alias of a word in the question', () => {
+    const question = 'Hva sier DFØ om veiledning?';
+    const t = searched(
+      [question],
+      ['orgs_long: Direktoratet for forvaltning og økonomistyring, ranked higher'],
+    );
+    expect(assessTimeline(http(200, t), { detected: [], question, tokens: true }).ok).toBe(false);
+  });
+
   it('fails a run that did not complete', () => {
     const t = { ...timeline([]), status: 'failed' };
     expect(assessTimeline(http(200, t), { tokens: true }).detail).toBe('status failed');
@@ -496,6 +534,12 @@ describe('outcomes', () => {
   it('calls a run without the core tier partial', () => {
     expect(overallOutcome([check({})], ['free', 'cheap'])).toBe('partial');
   });
+
+  it('says a model check ran only when a check outside the free tier was not skipped', () => {
+    expect(modelChecksRan([check({}), check({ tier: 'cheap', outcome: 'skip' })])).toBe(false);
+    expect(modelChecksRan([check({}), check({ tier: 'cheap', outcome: 'fail' })])).toBe(true);
+    expect(modelChecksRan([check({ tier: 'core', outcome: 'pass' })])).toBe(true);
+  });
 });
 
 describe('daily cap', () => {
@@ -516,6 +560,11 @@ describe('daily cap', () => {
 
   it('runs the free and cheap tiers when only those are asked for', () => {
     expect(tiersToRun('cheap', 0, 6).tiers).toEqual(['free', 'cheap']);
+  });
+
+  it('runs every wanted tier when uncapped, whatever the count', () => {
+    expect(tiersToRun('all', 99, 6, false)).toEqual({ tiers: allTiers });
+    expect(tiersToRun('all', undefined, 6, false)).toEqual({ tiers: allTiers });
   });
 
   it('needs no note for a free run, whatever the count', () => {

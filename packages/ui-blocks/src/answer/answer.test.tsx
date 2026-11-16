@@ -935,3 +935,101 @@ describe('the dev boards’ answer, `variant="plain"` (dev-kilder-hoyre)', () =>
     ]);
   });
 });
+
+describe('marks per document until a service cites excerpts, `documentFootnotes`', () => {
+  // Without markers, [N] is the source with index N: the model cites the second document first.
+  const byDocuments = 'Bevilgningen økte [2]. Rapporteringen er fast [1], som før [2].';
+  const documentMarks = () =>
+    [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].map((mark) => [
+      mark.getAttribute('aria-label'),
+      mark.textContent,
+    ]);
+
+  it('draws a mark per cited document, numbered 1, 2, 3 in the order the answer first cites them', () => {
+    render(<Answer text={byDocuments} sources={sources} documentFootnotes />);
+    expect(documentMarks()).toEqual([
+      ['Kilde 1: Tildelingsbrev Nkom 2022', '[1]'],
+      ['Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021', '[2]'],
+      ['Kilde 1: Tildelingsbrev Nkom 2022', '[1]'],
+    ]);
+  });
+
+  it('leads a mark to its document, not to an excerpt of it, without following the address', () => {
+    const onOpenCitation = vi.fn();
+    render(
+      <Answer
+        text={byDocuments}
+        sources={sources}
+        documentFootnotes
+        onOpenCitation={onOpenCitation}
+        href={(target) => `#kilde-${target.documentId ?? ''}`}
+      />,
+    );
+    const second = screen.getByRole('link', { name: /^Kilde 2: / });
+    expect(second.getAttribute('href')).toBe('#kilde-kudos::2021');
+    expect(fireEvent.click(second)).toBe(false);
+    expect(onOpenCitation).toHaveBeenCalledWith(1, { documentId: 'kudos::2021', index: 1 });
+  });
+
+  it('lists the documents under the answer in the order of their marks', () => {
+    render(<Answer text={byDocuments} sources={sources} documentFootnotes variant="plain" />);
+    const list = document.querySelector('.uib-answer-sources-used-list');
+    expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([
+      'Tildelingsbrev Nkom 2022',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    ]);
+  });
+
+  it('keeps one number per excerpt when the service cites excerpts', () => {
+    draw({ documentFootnotes: true });
+    expect(footnotes().map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Utdrag 1: Tildelingsbrev Nkom 2022',
+      'Utdrag 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Utdrag 3: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Utdrag 1: Tildelingsbrev Nkom 2022',
+    ]);
+  });
+
+  it('draws no mark for a document without it', () => {
+    render(<Answer text={byDocuments} sources={sources} />);
+    expect(document.querySelector('.uib-answer-mark')).toBeNull();
+  });
+
+  it('copies the marks as drawn, with a numbered line per document in the order of the marks', () => {
+    const copied = answerCopy(byDocuments, { sources, documentFootnotes: true });
+    expect(copied.sources).toBe(2);
+    expect(copied.text).toBe(
+      [
+        'Bevilgningen økte [1]. Rapporteringen er fast [2], som før [1].',
+        '',
+        'Kilder',
+        '[1] Tildelingsbrev Nkom 2022.',
+        '[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021',
+      ].join('\n'),
+    );
+  });
+
+  it('pairs with Sources: a mark lands on its document, which Sources opens with a way back', async () => {
+    const onReturn = vi.fn();
+    const Pair = () => {
+      const [target, setTarget] = useState<SourceTarget>();
+      const citations = useMemo(() => answerCitations(byDocuments, sources), []);
+      return (
+        <>
+          <Answer
+            text={byDocuments}
+            sources={sources}
+            documentFootnotes
+            onOpenCitation={(_, goal) => setTarget(goal)}
+          />
+          <Sources sources={sources} citations={citations} target={target} onReturn={onReturn} />
+        </>
+      );
+    };
+    render(<Pair />);
+    fireEvent.click(screen.getAllByRole('link', { name: /^Kilde 1: / })[0] as HTMLElement);
+    await frame();
+    expect(document.activeElement?.textContent).toBe(tildeling.title);
+    expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
+  });
+});

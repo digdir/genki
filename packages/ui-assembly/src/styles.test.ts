@@ -73,6 +73,12 @@ describe('the assembly’s styles', () => {
     expect(classes.filter((name) => !name.startsWith('.uia-'))).toEqual([]);
   });
 
+  it('hide the next look’s greeting and suggestions while a question is written, keeping their room', () => {
+    expect(flat).toContain(
+      '.uia-chat[data-typing] .uia-welcome, .uia-chat[data-typing] .uia-suggestions { visibility: hidden; }',
+    );
+  });
+
   it('sit in one layer after Designsystemet’s, so a host’s own CSS wins', () => {
     expect(
       css.trim().startsWith('@layer ds.theme, ds.base, ds.components, genai.components;'),

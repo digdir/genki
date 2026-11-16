@@ -18,7 +18,9 @@ export const storedConverter = (
     if (found.failure)
       throw new ConversionRefused(
         file.name,
-        found.failure === 'too_large' || found.failure === 'unsupported_type'
+        found.failure === 'too_large' ||
+          found.failure === 'unsupported_type' ||
+          found.failure === 'unreachable'
           ? found.failure
           : 'conversion_failed',
       );

@@ -238,6 +238,14 @@ export const TenantServices = ({
                             </Tag>
                           </>
                         ) : null}
+                        {d.internal ? (
+                          <>
+                            {' '}
+                            <Tag data-size="sm" data-color="info">
+                              {t('tenantServices.internal')}
+                            </Tag>
+                          </>
+                        ) : null}
                       </span>
                       <span className="meta">{d.id}</span>
                     </span>
