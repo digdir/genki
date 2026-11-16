@@ -70,10 +70,24 @@ describe('the Threads styles', () => {
     );
   });
 
-  it('cut a title in the design’s list after one line, so a row stays one line until hovered or focused', () => {
-    expect(ruleFor(".uib-threads[data-variant='nav'] .uib-threads-thread-title")).toContain(
-      '-webkit-line-clamp: var(--genai-threads-title-lines, 1)',
+  it('cut a one-line title in the design’s list where the row ends, not after its last whole word', () => {
+    expect(ruleFor('.uib-threads-thread-title')).toMatch(
+      /overflow: hidden;\s*white-space: nowrap;\s*text-overflow: ellipsis;/,
     );
+    const outsideQueries = css.replace(/@container[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, '');
+    const titleRules = [...outsideQueries.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, selector = '']) => selector.includes('.uib-threads-thread-title'))
+      .map(([, , body = '']) => body)
+      .join('\n');
+    expect(titleRules).not.toMatch(/white-space: normal|line-clamp/);
+  });
+
+  it('wrap a title in the design’s list to the host’s --genai-threads-title-lines of two or more, then «…»', () => {
+    const query =
+      /@container style\(--genai-threads-title-lines\) and \(not style\(--genai-threads-title-lines: 1\)\)\s*\{\s*\.uib-threads\[data-variant='nav'\] \.uib-threads-thread-title\s*\{([^{}]*)\}\s*\}/;
+    const wrapped = css.match(query)?.[1] ?? '';
+    expect(wrapped).toContain('-webkit-line-clamp: var(--genai-threads-title-lines, 1)');
+    expect(wrapped).toContain('white-space: normal');
   });
 
   it('stop a row reached by keyboard below the design’s «Ny tråd», not under it (WCAG 2.4.11)', () => {

@@ -10,6 +10,7 @@ import { keyPoliciesMock } from './mock/key-policies';
 import { maskinportenMock } from './mock/maskinporten';
 import { hooksMock } from './mock/hooks';
 import { triggersMock } from './mock/triggers';
+import { environmentsMock } from './mock/environments';
 import { preferencesMock } from './mock/preferences';
 import { onboardingMock } from './mock/onboarding';
 import { playgroundMock } from './mock/playground';
@@ -481,6 +482,7 @@ const featureMocks = {
   keyPolicies: keyPoliciesMock,
   hooks: hooksMock,
   triggers: triggersMock,
+  environments: environmentsMock,
   preferences: preferencesMock,
 };
 
@@ -778,6 +780,11 @@ export const mockFetch = (
     featureMocks.triggers(extras.features?.triggers),
     featureMocks.preferences(extras.features?.preferences),
     batchRuns,
+    featureMocks.environments({
+      latest: (service) =>
+        current.find((d) => d.kind === 'Service' && d.id === service)?.latest.version,
+      ...extras.features?.environments,
+    }),
     featureMocks.quality({
       published: (service) =>
         current.find((d) => d.kind === 'Service' && d.id === service)?.latest.definition,
@@ -1080,6 +1087,13 @@ export const mockFetch = (
       if (portal[2] === 'access') return json(access);
       if (portal[2] === 'usage') {
         const project = url.searchParams.get('project');
+        const environment = url.searchParams.get('environment');
+        if (environment)
+          return json({
+            ...usageReport,
+            environment,
+            byEnvironment: usageReport.byEnvironment?.filter((e) => e.environment === environment),
+          });
         if (!project) return json(usageReport);
         if (extras.usage)
           return json({
@@ -1096,8 +1110,12 @@ export const mockFetch = (
       if (portal[2] === 'integrations') return json(integrations);
       const status = url.searchParams.get('status');
       const wanted = url.searchParams.get('service');
+      const environment = url.searchParams.get('environment');
       const data = taskRows.filter(
-        (t) => (!status || t.status === status) && (!wanted || t.service === wanted),
+        (t) =>
+          (!status || t.status === status) &&
+          (!wanted || t.service === wanted) &&
+          (!environment || t.environment === environment),
       );
       return json({ data, total: data.length });
     }

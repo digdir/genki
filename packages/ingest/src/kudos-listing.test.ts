@@ -251,6 +251,32 @@ describe('a Kudos listing', () => {
     }
   });
 
+  it('a Kudos listing without types lists all of KUDOS newest first', async () => {
+    const byDate = (docs: KudosDocument[], sort: string) =>
+      [...docs].sort((a, b) =>
+        sort === 'newest'
+          ? String(b.publish_date).localeCompare(String(a.publish_date))
+          : String(a.publish_date).localeCompare(String(b.publish_date)),
+      );
+    const { access, calls } = fakeKudos({
+      docs: [
+        doc(1, { type: 'Årsrapport', publish_date: '2019-03-01' }),
+        doc(2, { type: 'Instruks', publish_date: '2025-10-01' }),
+        doc(3, { type: 'Tildelingsbrev', publish_date: '2022-01-15' }),
+      ],
+      order: byDate,
+    });
+    const listed = await all(await listingFor({ since: '1900-01-01' }, access));
+
+    const lists = calls.filter((c) => c.pathname === '/api/v0/documents');
+    expect(lists.length).toBeGreaterThan(0);
+    for (const c of lists) {
+      expect(c.searchParams.get('type')).toBeNull();
+      expect(c.searchParams.get('sort')).toBe('newest');
+    }
+    expect(listed.map((d) => d.id)).toEqual([2, 3, 1].map((n) => `kudos:${uuid(n)}`));
+  });
+
   it('a Kudos pipeline with orgs lists each org by actor_name', async () => {
     const owned = (n: number, name: string) =>
       doc(n, { owners: [{ alternative_names: [{ name, type: 'display' }] }] });

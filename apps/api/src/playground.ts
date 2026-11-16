@@ -36,7 +36,13 @@ import {
   type RunStats,
   type TimelineStep,
 } from './run-steps.js';
-import { modelDisplayNames, modelsForTenant } from './model-access.js';
+import {
+  candidatesIn,
+  isCandidate,
+  modelDisplayNames,
+  modelsForTenant,
+  withCandidateTrial,
+} from './model-access.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import { requireRight, rightLabels, type Right } from './rights.js';
 import { environmentsOf, environmentViews, productionEnvironment } from './service-environments.js';
@@ -204,6 +210,7 @@ export interface PlaygroundOptions {
     dataLocation: Residency;
     status: ModelStatus;
     policy?: PlaygroundPolicy;
+    candidate?: true;
   }[];
   datasets: { id: string; name: string; dataLocation: Residency; status: ModelStatus }[];
   skills: { id: string; name: string; version: number; ref: string }[];
@@ -508,7 +515,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
 
     const guard = async (
       c: Context,
-    ): Promise<{ principal: Principal; tenant: string } | Response> => {
+    ): Promise<{ principal: Principal; tenant: string; operator: boolean } | Response> => {
       const principal = await deps.authenticate(c.req.raw);
       if (!principal) return problem(c, 401, 'Unauthorized');
       const tenant = c.req.param('tenant') ?? '';
@@ -526,7 +533,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           { 'content-type': 'application/problem+json' },
         );
       if (!enabled(tenant)) return problem(c, 409, disabledTitle);
-      return { principal: scoped, tenant };
+      return { principal: scoped, tenant, operator: principal.kind === 'operator' };
     };
 
     const modelResidency = (id: string) => deps.models.models().get(id)?.residency;
@@ -887,7 +894,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             }),
         )
       ).flat();
-      const tenantModels = modelsForTenant(deps, g.tenant);
+      const tenantModels = modelsForTenant(deps, g.tenant, g.operator);
       const modelNames = modelDisplayNames(tenantModels);
       const options: PlaygroundOptions = {
         services,
@@ -899,6 +906,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             dataLocation: m.residency,
             status: v.status,
             ...(v.policy ? { policy: v.policy } : {}),
+            ...(isCandidate(deps.catalog, m.id) ? { candidate: true } : {}),
           };
         }),
         datasets: [...deps.knowledge.datasets()]
@@ -923,7 +931,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       return c.json(options);
     });
 
-    type Guarded = { principal: Principal; tenant: string };
+    type Guarded = { principal: Principal; tenant: string; operator: boolean };
     interface Prepared {
       request: PlaygroundRunRequest;
       definitions: {
@@ -1039,7 +1047,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       onEvent?: (event: Event) => void,
     ) =>
       deps.drafts.run({
-        principal: g.principal,
+        principal:
+          g.operator && candidatesIn(deps.catalog, d.definition).length > 0
+            ? withCandidateTrial(g.principal)
+            : g.principal,
         tenant: g.tenant,
         definition: withAnswerLanguage(d.definition, prepared.request.answerLanguage),
         files: d.files,

@@ -24,6 +24,8 @@ export const logArea = {
     query: 'Kjørings-ID eller tjeneste',
     service: 'Tjeneste',
     allServices: 'Alle tjenester',
+    environment: 'Miljø',
+    allEnvironments: 'Alle miljøer',
     status: 'Status',
     allStatuses: 'Alle statuser',
     trigger: 'Utløser',

@@ -70,6 +70,11 @@ const chunkStrategy = z.discriminatedUnion('kind', [
     width: z.number().int().positive(),
     overlap: z.number().int().min(0),
   }),
+  /** Each page on its own, split at paragraphs, lines, sentences and words when longer than the limit. */
+  z.strictObject({
+    kind: z.literal('page'),
+    splitMaxLength: z.number().int().positive().optional(),
+  }),
 ]);
 
 export const pipelineSpec = z.strictObject({
@@ -344,13 +349,18 @@ const metadataStyles: Record<PipelineSpec['chunking']['metadataStyle'], Metadata
 };
 
 const strategyOf = (spec: PipelineSpec['chunking']['strategy']): ChunkStrategy =>
-  spec.kind === 'fixed-width'
-    ? { kind: 'fixed-width', width: spec.width, overlap: spec.overlap }
-    : {
-        kind: 'header-based',
+  spec.kind === 'page'
+    ? {
+        kind: 'page',
         ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
-        ...(spec.overlap === undefined ? {} : { overlap: spec.overlap }),
-      };
+      }
+    : spec.kind === 'fixed-width'
+      ? { kind: 'fixed-width', width: spec.width, overlap: spec.overlap }
+      : {
+          kind: 'header-based',
+          ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
+          ...(spec.overlap === undefined ? {} : { overlap: spec.overlap }),
+        };
 
 export const chunkingOf = (spec: PipelineSpec['chunking']): ChunkDocumentConfig => ({
   strategy: strategyOf(spec.strategy),
@@ -1028,7 +1038,7 @@ export const knowledgeListingOf = async (
           record: { ...raw },
           metadata,
           files: (files ?? []).map((f) => ({
-            name: f.uuid ?? f.url,
+            name: f.uuid ?? f.url ?? '',
             ...(f.sha256 ? { sha256: f.sha256 } : {}),
             // A file KUDOS lists as too large is never downloaded, so it gets no convert job.
             ...(f.sha256 && Number(f.size ?? 0) <= maxDocumentBytes ? { converts: true } : {}),
@@ -1057,7 +1067,7 @@ export const knowledgeListingOf = async (
       );
       return sameFile(
         {
-          name: file.url.split('/').pop() ?? `${sha256}.pdf`,
+          name: file.url?.split('/').pop() ?? `${sha256}.pdf`,
           bytes,
           ...(file.mimetype ? { mimetype: file.mimetype } : {}),
         },

@@ -386,6 +386,7 @@ export const main = async () => {
       task: string;
       failed: boolean;
       detected?: string[];
+      question?: string;
       knownIssue?: string;
     }[] = [];
     const answer = (id: string) => async (result: HttpResult) => {
@@ -448,7 +449,7 @@ export const main = async () => {
             id: q.id,
             task,
             failed: reply ? runFailedOf(reply, q.stream) : false,
-            ...(q.detected ? { detected: q.detected } : {}),
+            ...(q.detected ? { detected: q.detected, question: q.question } : {}),
             ...(q.knownIssue ? { knownIssue: q.knownIssue } : {}),
           });
       }
@@ -463,6 +464,7 @@ export const main = async () => {
         tokens: true,
         failed: t.failed,
         ...(t.detected && !t.failed ? { detected: t.detected } : {}),
+        ...(t.question === undefined ? {} : { question: t.question }),
       });
       if (verdict.unavailable) skip('timeline', 'core', id, 'credential', verdict.detail);
       else {

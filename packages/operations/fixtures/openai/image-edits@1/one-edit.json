@@ -53,14 +53,20 @@
       }
     ],
     "usage": {
-      "inputTokens": 50,
-      "outputTokens": 50,
-      "requests": 1
+      "inputTokens": 10,
+      "requests": 1,
+      "units": {
+        "image-input-token": 40,
+        "image-output-token": 50
+      }
     }
   },
   "usage": {
-    "inputTokens": 50,
-    "outputTokens": 50,
-    "requests": 1
+    "inputTokens": 10,
+    "requests": 1,
+    "units": {
+      "image-input-token": 40,
+      "image-output-token": 50
+    }
   }
 }

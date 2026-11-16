@@ -679,6 +679,45 @@ describe('stored conversions', () => {
     }
   }, 120_000);
 
+  it("a failed convert job's error keeps its cause's code for the log, and no path", async () => {
+    const causes = [
+      {
+        error: Object.assign(new Error("ENOENT: no such file or directory, open '/data/a.pdf'"), {
+          code: 'ENOENT',
+        }),
+        code: 'ENOENT',
+      },
+      {
+        error: new TypeError("Cannot read properties of undefined (reading 'pages')"),
+        code: 'TypeError',
+      },
+    ];
+    for (const { error, code } of causes) {
+      await clearConvertJobs();
+      const bytes = pdfBytes([[`Kode ${code}.`]]);
+      const s = await scenario({
+        converter: {
+          extensions: ['.pdf'],
+          convert: async () => {
+            throw error;
+          },
+        },
+      });
+      await s.file('kode.pdf', bytes);
+      const { sent } = await ingest(s);
+
+      const failed = await handler(
+        s.work.knowledge,
+        'knowledge.convert',
+      )(job('knowledge.convert', sent[0]?.data ?? {})).catch(
+        (e: unknown) => e as Error & { code?: string },
+      );
+
+      expect(failed).toMatchObject({ code });
+      expect((failed as Error).message).not.toContain('/data');
+    }
+  }, 60_000);
+
   /** Converts each file in one dataset, then lists it in another: stored once as its failure. */
   const storedOnceAsFailure = async (
     cases: { name: string; bytes: Uint8Array; converter: DocumentConverter; reason: string }[],
@@ -918,6 +957,18 @@ describe('stored conversions', () => {
     expect(s.converted).toEqual([]);
     expect(await stored(await sha(encoder.encode(note)))).toEqual([]);
     expect(await chunks(s.generation)).toMatchObject([{ file: 'notat.md', page_from: 1 }]);
+  }, 60_000);
+
+  it('a document whose text contains U+0000 is indexed without it', async () => {
+    await clearConvertJobs();
+    const s = await scenario();
+    await s.file('nul.md', '# Notat\n\nTekst\u0000 med et nulltegn.');
+    await ingest(s);
+    await drain(s);
+
+    const texts = (await chunks(s.generation)).map((c) => c.text);
+    expect(texts.join(' ')).toContain('Tekst med et nulltegn.');
+    expect(texts.join(' ')).not.toContain('\u0000');
   }, 60_000);
 
   it('in lockdown, a conversion runs while any run waiting on it is admitted', async () => {
@@ -1462,6 +1513,32 @@ describe('seeded conversions', () => {
       badGzip,
     ]);
     expect(skipped.find((f) => f.sha256 === badGzip)?.reason).not.toMatch(/missing/);
+  }, 60_000);
+
+  it('a conversion whose pages contain U+0000 is stored without it', async () => {
+    const blob = seedContainer();
+    const seeded = shaStarting('f7');
+    await blob.put(seeded, ['Tabell\u0000 1', 'Side\u0000\u0000 to']);
+    const logged: string[] = [];
+    const s = await scenario({ nativeOutputs: blob.store, log: (msg) => logged.push(msg) });
+
+    await seed(s, 'f7');
+    const converted = shaStarting('f8');
+    await conversions.store(
+      {
+        sha256: converted,
+        converter: 'text-layer',
+        version: '1',
+        settings: {},
+        derivation: { name: 'text-layer', version: 1 },
+        pages: ['Arsrapport\u0000 2025'],
+      },
+      async () => null,
+    );
+
+    expect((await doclingRows(seeded)).map((row) => row.pages)).toEqual([['Tabell 1', 'Side to']]);
+    expect((await stored(converted)).map((row) => row.pages)).toEqual([['Arsrapport 2025']]);
+    expect(logged).toContain('a seed batch ended');
   }, 60_000);
 
   it('an unbound worker seeds nothing', async () => {

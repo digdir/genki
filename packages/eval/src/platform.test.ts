@@ -37,6 +37,7 @@ import {
   reviewCandidate,
   withoutExpiredCases,
   type EvalRun,
+  type Evaluator,
   type FeedbackRecord,
   type JudgeLabel,
   type RunStatus,
@@ -115,9 +116,9 @@ const setOf = (version = 1): TestSet =>
     },
   });
 
-const boot = async () => {
+const boot = async (extra: Evaluator[] = []) => {
   const holder: { kernel?: Kernel } = {};
-  const evaluators = [contractAssertions(), retrievalRecall(3)];
+  const evaluators = [contractAssertions(), retrievalRecall(3), ...extra];
   const evalCapability: Capability = {
     descriptor: descriptor('platform-eval'),
     strategy: { id: 'platform.eval.run', version: '1' },
@@ -130,6 +131,7 @@ const boot = async () => {
       evalRunStrategy({
         kernel: () => holder.kernel as Kernel,
         evaluators: new Map(evaluators.map((e) => [e.id, e])),
+        wait: { everyMs: 1 },
       }) as Strategy,
     ],
     capabilities: [
@@ -154,18 +156,22 @@ const boot = async () => {
 const settle = async (status: () => Promise<RunStatus>): Promise<RunStatus> => {
   for (let i = 0; i < 200; i += 1) {
     const current = await status();
-    if (current.state !== 'running') return current;
+    if (current.state !== 'running' && current.state !== 'waiting-for-scores') return current;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error('eval run did not finish');
 };
 
-const start = (service: Awaited<ReturnType<typeof boot>>['service'], subject: string) =>
+const start = (
+  service: Awaited<ReturnType<typeof boot>>['service'],
+  subject: string,
+  evaluators = ['contract', 'retrieval'],
+) =>
   service.startRun(kari, {
     tenant,
     capability: 'answer',
     testSet: { id: 'mini' },
-    evaluators: ['contract', 'retrieval'],
+    evaluators,
     provenance: { commit: 'abc', data: 'kudos@1' },
     service: 'kunnskapsassistenten',
     subject,
@@ -236,6 +242,56 @@ describe('eval service', () => {
     await expect(elsewhere.status(kari, 'finnes-ikke')).rejects.toBeInstanceOf(EvalAccessError);
   });
 
+  it('answers that a run is waiting for scores, and for how many, while its judge has not delivered', async () => {
+    let release = () => {};
+    const delivered = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const self: Evaluator = {
+      id: 'judge:later',
+      version: '1',
+      kind: 'model',
+      evaluate: async () => [
+        {
+          evaluator: self.id,
+          version: self.version,
+          metric: 'judge.later',
+          value: null,
+          applicable: true,
+          state: 'pending',
+        },
+      ],
+      collect: async (pending) => {
+        await delivered;
+        return pending.map((item) => ({
+          case: item.case,
+          repeat: item.repeat,
+          score: { ...item.score, value: 1, state: 'scored' },
+        }));
+      },
+    };
+    const { service } = await boot([self]);
+
+    const started = await start(service, 'v4', ['contract', 'judge:later']);
+    let waiting: RunStatus = { state: 'running', task: started.task };
+    for (let i = 0; i < 200 && waiting.state === 'running'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      waiting = await service.status(kari, started.task);
+    }
+    release();
+    const done = await settle(() => service.status(kari, started.task));
+
+    expect(waiting).toMatchObject({
+      state: 'waiting-for-scores',
+      task: started.task,
+      pending: 2,
+      until: expect.any(String),
+    });
+    expect(done.state).toBe('completed');
+    const runId = done.state === 'completed' ? done.run : '';
+    expect((await service.getRun(kari, runId)).metrics['judge.later']?.mean).toBe(1);
+  });
+
   it("compares two runs of the same test set and refuses another tenant's run", async () => {
     const { service } = await boot();
     const one = await start(service, 'v1');
@@ -285,12 +341,27 @@ const fakeRun = (id: string, subject: string, value: number, judges: string[] = 
     task: `t-${c}`,
     tags: [],
     scores: [
-      { evaluator: 'contract', version: '1', metric: 'answer-pattern', value, applicable: true },
-      { evaluator: 'judge', version: '1', metric: 'judge.correct', value, applicable: true },
+      {
+        evaluator: 'contract',
+        version: '1',
+        metric: 'answer-pattern',
+        value,
+        applicable: true,
+        state: 'scored' as const,
+      },
+      {
+        evaluator: 'judge',
+        version: '1',
+        metric: 'judge.correct',
+        value,
+        applicable: true,
+        state: 'scored' as const,
+      },
     ],
   })),
   metrics: {},
   byTag: {},
+  incomplete: [],
 });
 
 describe('publish gate', () => {
@@ -332,6 +403,34 @@ describe('publish gate', () => {
     expect(decision).toMatchObject({ allow: true, refused: [], advisory: [] });
   });
 
+  it('reads only completed runs: a newer run still running, failed or interrupted never hides the last completed one', async () => {
+    const unsettled = (id: string, status: 'running' | 'failed' | 'interrupted'): EvalRun => ({
+      ...fakeRun(id, 'v2', 0),
+      endedAt: '2026-10-06T10:09:00Z',
+      results: [],
+      metrics: {},
+      status,
+    });
+    const runs = await stored(
+      [fakeRun('r2', 'v2', 0.9), 'v2'],
+      [unsettled('r3', 'running'), 'v2'],
+      [unsettled('r4', 'failed'), 'v2'],
+      [unsettled('r5', 'interrupted'), 'v2'],
+    );
+
+    const decision = await publishGate({
+      tenant,
+      service: 'kunnskapsassistenten',
+      candidate: 'v2',
+      evaluation: { testSets: ['mini'], gates: ['pattern-floor'] },
+      runs,
+      registry,
+    });
+
+    expect(decision.allow).toBe(true);
+    expect(decision.results[0]?.reason).toBe('answer-pattern 0.900 >= 0.8');
+  });
+
   it('refuses a publish below a threshold or without a run, naming why', async () => {
     const low = await publishGate({
       tenant,
@@ -353,48 +452,6 @@ describe('publish gate', () => {
     expect(low.allow).toBe(false);
     expect(low.refused).toEqual(['pattern-floor on mini: answer-pattern 0.500 < 0.8']);
     expect(missing.refused).toEqual(['pattern-floor on mini: no eval run for test set mini']);
-  });
-
-  it('uses a fallback run only for a deterministic threshold gate the candidate has no eval run for', async () => {
-    const input = {
-      tenant,
-      service: 'kunnskapsassistenten',
-      candidate: 'v3',
-      evaluation: { testSets: ['mini'], gates: ['pattern-floor'] },
-      registry,
-    };
-
-    const fromFallback = await publishGate({
-      ...input,
-      runs: await stored([fakeRun('r2', 'v2', 0.5), 'v2']),
-      candidateFallback: {
-        runs: new Map([['mini', fakeRun('portal', 'v3', 0.9)]]),
-        metrics: ['answer-pattern'],
-      },
-    });
-    const storedWins = await publishGate({
-      ...input,
-      runs: await stored([fakeRun('r3', 'v3', 0.5), 'v3']),
-      candidateFallback: {
-        runs: new Map([['mini', fakeRun('portal', 'v3', 0.9)]]),
-        metrics: ['answer-pattern'],
-      },
-    });
-    const judgeGate = await publishGate({
-      ...input,
-      evaluation: { testSets: ['mini'], gates: ['no-judge-regression'] },
-      runs: await stored([fakeRun('r2', 'v2', 0.9), 'v2']),
-      candidateFallback: {
-        runs: new Map([['mini', fakeRun('portal', 'v3', 0.9)]]),
-        metrics: ['answer-pattern', 'judge.correct'],
-      },
-    });
-
-    expect(fromFallback.allow).toBe(true);
-    expect(judgeGate.refused).toEqual([
-      'no-judge-regression on mini: no eval run for test set mini',
-    ]);
-    expect(storedWins.refused).toEqual(['pattern-floor on mini: answer-pattern 0.500 < 0.8']);
   });
 
   it('lets a regression flagged by an uncalibrated judge advise but not block', async () => {

@@ -32,6 +32,9 @@ export const ingestSender = (jobs: Pick<JobQueue, 'send'>): IngestSender => ({
 export const queuedRunExistsMessage = (dataset: string, pipeline: string) =>
   `a run of ${dataset}/${pipeline} already waits for the open one; wait for it or cancel it`;
 
+export const readmitMessage =
+  'only a queued or running run that runs as jobs, and is not being cancelled, can be admitted again';
+
 export const sentBackMessage = 'only an ended run that runs as jobs can be sent back';
 
 export const ingestStillEndingMessage = (dataset: string, pipeline: string) =>
@@ -148,6 +151,28 @@ export class PostgresJobRuns {
         [input.execution, input.dataset, input.at, input.by],
       );
       return rows[0] && toExecution(rows[0]);
+    });
+  }
+
+  /** Admits a queued or running run again from `at`, and leaves its jobs as they are (ADR 0033). */
+  async readmit(input: {
+    dataset: string;
+    /** When given, the run must be one of this pipeline. */
+    pipeline?: string;
+    execution: string;
+    at: string;
+  }): Promise<JobRunResult> {
+    return withTenant(this.pool, executionScope(input.dataset), async (client) => {
+      const { rows } = await client.query<Row>(
+        `update ingestion_executions set admitted_at = $3
+          where id = $1 and dataset = $2 and runs_as_jobs and status in ('queued', 'running')
+            and cancel_requested_at is null and ($4::text is null or pipeline = $4)
+          returning *`,
+        [input.execution, input.dataset, input.at, input.pipeline ?? null],
+      );
+      return rows[0]
+        ? { ok: true as const, value: toExecution(rows[0]) }
+        : { ok: false as const, message: readmitMessage };
     });
   }
 

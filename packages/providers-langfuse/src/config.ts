@@ -17,6 +17,8 @@ export const exporterConfig = z.strictObject({
     ])
     .default({ kind: 'none' }),
   content: z.boolean().default(false),
+  /** With content: only these fields of an eval run's case, the ones its judges map (ADR 0040). */
+  fields: z.array(z.enum(['input', 'output', 'expected_output'])).optional(),
   sampleRate: z.number().min(0).max(1).default(1),
   environment: z.string().min(1).optional(),
   pseudonymKey: secret.optional(),

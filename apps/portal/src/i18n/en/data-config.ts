@@ -76,6 +76,8 @@ export const config = {
   caseIdLabel: 'Id of the case',
   caseInputLabel: 'Question or text',
   caseExpectedLabel: 'Expected answer',
+  caseCriteriaLabel: 'Criteria',
+  caseCriteriaMissing: 'Write the criteria the answer should meet.',
   caseSplitLabel: 'Used for',
   cancel: 'Cancel',
   caseSaved: 'The case {id} is saved in {set}.',

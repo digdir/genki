@@ -12,6 +12,10 @@ Workflow (repeat as needed):
 
 After each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.`;
 
+export const toolsOnlySystemPrompt = `You are an assistant with access to the tools listed for this conversation. Answer the user's question accurately, using the tools when they can help.
+
+Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why. When you have what you need, answer in your message text without calling a tool.`;
+
 export const agentTools: ToolSpec[] = [
   {
     name: 'search',

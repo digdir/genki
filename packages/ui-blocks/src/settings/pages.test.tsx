@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
+import { inEnglish } from '@genai/i18n/react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsExperiment } from './Choices.js';
+import { generalRowsOf } from './general.js';
 import { ColorSchemeToggle } from './Settings.js';
 import { SettingsMenu, settingsPageIds } from './SettingsMenu.js';
 import {
@@ -15,6 +17,9 @@ afterEach(cleanup);
 
 const nothingYet = () => screen.queryByText('Ingen valg her ennå.');
 const notice = () => document.querySelector('.uib-settings-page-notice');
+const lead = () => document.querySelector('.uib-settings-page-lead')?.textContent;
+const answerLanguage = { value: 'nb' as const, onChange: () => {} };
+const colorScheme = { value: 'auto' as const, onChange: () => {} };
 const rowTitles = () =>
   [...document.querySelectorAll('.uib-settings-row-title, .uib-settings-row .ds-label')].map(
     (title) => title.textContent,
@@ -31,7 +36,7 @@ describe('the settings menu', () => {
         .getAllByRole('button')
         .map((button) => button.textContent),
     ).toEqual([
-      'GenereltSpråk, svarlengde, utseende',
+      'Generelt',
       'Om degRolle og kontekst',
       'Beta-funksjonerPrøv før de er ferdige',
       'Personvern og dataLagring og sletting',
@@ -87,6 +92,37 @@ describe('the settings menu', () => {
     expect(onBack).toHaveBeenCalledOnce();
   });
 
+  it('names under «Generelt» only the rows the page draws, in its order', () => {
+    const { rerender } = render(
+      <SettingsMenu
+        onChange={() => {}}
+        pages={[{ id: 'general', rows: ['colorScheme'] }]}
+        value="general"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Generelt', description: 'Utseende' })).toBeTruthy();
+    rerender(
+      <SettingsMenu
+        onChange={() => {}}
+        pages={[{ id: 'general', rows: ['colorScheme', 'answerLanguage', 'answerLength'] }]}
+        value="general"
+      />,
+    );
+    expect(
+      screen.getByRole('button', {
+        name: 'Generelt',
+        description: 'Språk, svarlengde, utseende',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('promises nothing under «Generelt» when the host does not say what the page draws', () => {
+    render(<SettingsMenu onChange={() => {}} pages={[{ id: 'general' }]} value="general" />);
+    expect(screen.getByRole('button', { name: 'Generelt' }).hasAttribute('aria-describedby')).toBe(
+      false,
+    );
+  });
+
   it('takes a host’s own page by its words', () => {
     render(
       <SettingsMenu
@@ -127,7 +163,6 @@ describe('«Generelt»', () => {
     const onChange = vi.fn();
     render(<SettingsGeneral colorScheme={{ value: 'dark', onChange }} />);
     expect(screen.getByRole('heading', { level: 1, name: 'Generelt' })).toBeTruthy();
-    expect(screen.getByText('Språk, hvordan svarene ser ut, og hvor du starter.')).toBeTruthy();
     expect(rowTitles()).toEqual(['Utseende']);
     expect(notice()).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'Lyst' }));
@@ -163,6 +198,54 @@ describe('«Generelt»', () => {
     render(<SettingsGeneral />);
     expect(nothingYet()).toBeTruthy();
     expect(screen.queryAllByRole('radio')).toEqual([]);
+  });
+
+  it('says in its lead only what its rows offer', () => {
+    render(<SettingsGeneral colorScheme={{ value: 'dark', onChange: () => {} }} />);
+    expect(lead()).toBe('Hvordan tjenesten ser ut.');
+  });
+
+  it('names every row it draws in its lead, in the boards’ order', () => {
+    render(
+      <SettingsGeneral
+        answerLanguage={{ value: 'nb', onChange: () => {} }}
+        answerLength={{ value: 'normal', onChange: () => {} }}
+        colorScheme={{ value: 'auto', onChange: () => {} }}
+        openWith={{ value: 'new', onChange: () => {} }}
+        textSize={{ value: 'standard', onChange: () => {} }}
+      />,
+    );
+    expect(lead()).toBe(
+      'Språket i svarene, hvor lange svarene er, hvor du starter, hvordan tjenesten ser ut og hvor stor teksten er.',
+    );
+  });
+
+  it('has no lead when it draws none of its own rows', () => {
+    render(
+      <SettingsGeneral>
+        <p>Vertens egen rad</p>
+      </SettingsGeneral>,
+    );
+    expect(lead()).toBeUndefined();
+  });
+
+  it('says its lead and the menu’s line in English on an English page', () => {
+    render(
+      inEnglish(
+        <>
+          <SettingsMenu
+            onChange={() => {}}
+            pages={[{ id: 'general', rows: generalRowsOf({ answerLanguage, colorScheme }) }]}
+            value="general"
+          />
+          <SettingsGeneral answerLanguage={answerLanguage} colorScheme={colorScheme} />
+        </>,
+      ),
+    );
+    expect(
+      screen.getByRole('button', { name: 'General', description: 'Language, appearance' }),
+    ).toBeTruthy();
+    expect(lead()).toBe('The language of the answers and how the service looks.');
   });
 });
 
@@ -310,5 +393,46 @@ describe('«Personvern og data»', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Slett historikk' }));
     expect(clear).toHaveBeenCalledOnce();
+  });
+});
+
+describe('the host’s note on a settings page', () => {
+  const note = 'Valgene huskes i denne nettleseren.';
+  const page = () => document.querySelector('.uib-settings-page');
+
+  it('ends each page with the host’s note, under the rows, as quiet small text', () => {
+    const pages = [
+      <SettingsGeneral
+        colorScheme={{ value: 'auto', onChange: () => {} }}
+        key="general"
+        settingsNote={note}
+      />,
+      <SettingsAboutYou key="about-you" name="Kari Marie Nordmann" settingsNote={note} />,
+      <SettingsBeta
+        experiments={[{ id: 't0', title: 'Forsøk 0', on: false }]}
+        key="beta"
+        onExperimentChange={() => {}}
+        settingsNote={note}
+      />,
+      <SettingsPrivacy
+        improve={{ on: false, onChange: () => {} }}
+        key="privacy"
+        settingsNote={note}
+      />,
+    ];
+    for (const drawn of pages) {
+      render(drawn);
+      const last = page()?.lastElementChild;
+      expect(last?.textContent).toBe(note);
+      expect(last?.classList.contains('uib-settings-note')).toBe(true);
+      expect(last?.getAttribute('data-size')).toBe('sm');
+      cleanup();
+    }
+  });
+
+  it('leaves the host’s note off a page with nothing to choose, where it would speak of nothing', () => {
+    render(<SettingsPrivacy settingsNote={note} />);
+    expect(nothingYet()).toBeTruthy();
+    expect(screen.queryByText(note)).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import type {
   PlaygroundRunRequest,
   TestCaseCandidateRequest,
 } from '../../api/playground';
+import { createApiClient } from '../../api';
 import { examplePlaygroundOptions } from '../../data/playground';
 import { mockFetch } from '../../mock';
 import type { PlaygroundMockOptions } from '../../mock/playground';
@@ -483,6 +484,32 @@ describe('Prøveområde', () => {
     expect(screen.queryByText(/svarte ikke/)).toBeNull();
   });
 
+  it('shows the reason the API gives for a 403 that is not a model policy, not the model text', async () => {
+    await openPage({
+      forbidden: {
+        type: 'urn:genai:problem:test-runner-scope',
+        title: 'En testkjørernøkkel kan ikke gjøre dette',
+        detail: 'En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet.',
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(
+      await screen.findByText(
+        /^Kjøringen ble avvist: En testkjørernøkkel prøver bare smoke-tjenester i prøveområdet\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/kan ikke brukes i dette oppsettet/)).toBeNull();
+  });
+
+  it('never shows the English title of a 403 that has no detail', async () => {
+    await openPage({ forbidden: { type: 'about:blank', title: 'Forbidden' } });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/kan ikke brukes i dette oppsettet/)).toBeTruthy();
+    expect(screen.queryByText(/Forbidden/)).toBeNull();
+  });
+
   it('words a model residency refusal in the language of the screen', async () => {
     await openPage({
       invalidSetup: {
@@ -535,6 +562,29 @@ describe('Prøveområde', () => {
 
     await waitFor(() => expect(runs).toHaveLength(1));
     expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
+  });
+
+  it('marks a candidate model as not released in the model list and leaves released models unmarked', async () => {
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+      {
+        id: 'eu/mistral-next',
+        name: 'Mistral Next',
+        dataLocation: 'eu',
+        status: 'allowed',
+        candidate: true,
+      },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Endre oppsett' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
+    expect(screen.getByRole('radio', { name: /^Mistral Next.*Ikke sluppet/ })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: /^Mistral EU/ })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: /^Mistral EU.*Ikke sluppet/ })).toBeNull();
   });
 
   it('starts on the first service exposed for chat, not the first in the list', async () => {
@@ -611,6 +661,56 @@ describe('Prøveområde', () => {
         data: btoa(String.fromCharCode(...new TextEncoder().encode('Søker: Eksempel IL'))),
       },
     });
+  });
+
+  it('on the test page of a published service, the setup lists the draft and the published versions, and runs the chosen published one', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const setup = examplePlaygroundOptions.services[0]?.versions[0]?.setup;
+    if (!setup) throw new Error('example has no service');
+    const published = (version: number) => ({ version, draft: false, inUse: version === 2, setup });
+    const options: PlaygroundOptions = {
+      ...examplePlaygroundOptions,
+      services: [
+        { id: 'smoke', name: 'Smoke', latestVersion: 2, versions: [published(2), published(1)] },
+      ],
+    };
+    const api = createApiClient({
+      baseUrl: '/api',
+      fetch: withPlayground({ options, runs }),
+      token: () => 'kari',
+    });
+    const definition = {
+      apiVersion: 'genai/v1',
+      kind: 'Service',
+      metadata: { tenant: '991825827', id: 'smoke', name: 'Smoke' },
+      spec: { output: { kind: 'answer' } },
+    };
+    const { container } = render(
+      <PlaygroundPanel
+        layout="full"
+        context="service"
+        name="smoke"
+        api={api}
+        tenant="991825827"
+        tenantName="Testetaten"
+        serviceDraft={{ definition }}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
+    const picker = container.querySelector<HTMLSelectElement>('select[id$="-ver"]');
+    if (!picker) throw new Error('the setup shows no version picker');
+    expect([...picker.options].map((o) => o.value)).toEqual(['draft', '2', '1']);
+    expect(picker.value).toBe('draft');
+    fireEvent.change(picker, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Spørsmål' }), {
+      target: { value: 'Hva er smoke?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup.service).toEqual({ id: 'smoke', version: 2 });
   });
 
   it.each<PlaygroundState>(['empty', 'answer', 'compare', 'quota', 'not-allowed', 'error'])(

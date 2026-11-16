@@ -14,10 +14,21 @@ const chunking: ChunkDocumentConfig = {
 
 const sha = (c: string) => c.repeat(64);
 
+const byPage: ChunkDocumentConfig = {
+  strategy: { kind: 'page', splitMaxLength: 80 },
+  minimumLength: 1,
+  maximumLength: 4000,
+  metadataStyle: 'pr',
+};
+
 /** A document as an index job prepares it: chunked from its joined pages, then placed. */
-const prepared = (id: string, files: { name: string; sha256: string; pages: string[] }[]) => {
+const prepared = (
+  id: string,
+  files: { name: string; sha256: string; pages: string[] }[],
+  config: ChunkDocumentConfig = chunking,
+) => {
   const texts = files.map((f) => joinPages(f.pages));
-  const chunks = chunkDocument(id, texts, chunking);
+  const chunks = chunkDocument(id, texts, config);
   const doc = toIndexDocument(
     id,
     { id, title: 'Årsrapport' },
@@ -83,5 +94,62 @@ describe('chunks in the knowledge database', () => {
     const [chunk] = chunkDocument('4711', [text], chunking);
 
     expect(chunk?.chunk_id).toBe(chunkId('4711', 0, chunk?.content_markdown ?? ''));
+  });
+
+  it('every chunk carries its document, file and page, for a document with an attachment and a page split in two', () => {
+    // A text-layer page: lines joined by single newlines, no blank line to split at.
+    const long = [
+      'Første setning om tildelingen.',
+      'Andre setning om midlene.',
+      'Tredje setning om rapporteringen for hele året som gikk.',
+    ].join('\n');
+    const doc = prepared(
+      'kudos:4f1c',
+      [
+        {
+          name: 'tildelingsbrev.pdf',
+          sha256: sha('c'),
+          pages: ['Kort side.', long],
+        },
+        { name: 'vedlegg.pdf', sha256: sha('d'), pages: ['Vedlegg om rapportering.'] },
+      ],
+      byPage,
+    );
+
+    expect(
+      doc.chunks.map((c) => ({ file: c.file, sha: c.fileSha256, from: c.pageFrom, to: c.pageTo })),
+    ).toEqual([
+      { file: 'tildelingsbrev.pdf', sha: sha('c'), from: 1, to: 1 },
+      { file: 'tildelingsbrev.pdf', sha: sha('c'), from: 2, to: 2 },
+      { file: 'tildelingsbrev.pdf', sha: sha('c'), from: 2, to: 2 },
+      { file: 'vedlegg.pdf', sha: sha('d'), from: 1, to: 1 },
+    ]);
+    expect(doc.id).toBe('kudos:4f1c');
+    expect(new Set(doc.chunks.map((c) => c.id)).size).toBe(4);
+  });
+
+  it('every piece of a long page without blank lines stays on that page', () => {
+    const table = Array.from({ length: 60 }, (_, i) => `| Post ${i} | ${i * 1000} kroner |`).join(
+      '\n',
+    );
+    const doc = prepared(
+      'kudos:9a2b',
+      [{ name: 'regnskap.pdf', sha256: sha('e'), pages: ['Innledning.', table] }],
+      { ...byPage, strategy: { kind: 'page', splitMaxLength: 400 } },
+    );
+
+    expect(doc.chunks.length).toBeGreaterThan(2);
+    expect(doc.chunks.map((c) => c.pageFrom)).toEqual([1, ...doc.chunks.slice(1).map(() => 2)]);
+  });
+
+  it('a piece cut inside a line with runs of spaces stays on its page', () => {
+    const line = Array.from({ length: 16 }, (_, i) => `ord${i}`).join('  ');
+    const doc = prepared(
+      'kudos:7c3d',
+      [{ name: 'notat.pdf', sha256: sha('f'), pages: ['Kort side.', line] }],
+      { ...byPage, strategy: { kind: 'page', splitMaxLength: 60 } },
+    );
+
+    expect(doc.chunks.map((c) => c.pageFrom)).toEqual([1, 2, 2]);
   });
 });

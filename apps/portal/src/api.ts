@@ -4,9 +4,11 @@ import type { StepOperation } from './data/step-operations';
 import type { StrategyEntry } from './data/strategies';
 import { buildingBlocksApi } from './api/building-blocks';
 import { datasetsApi } from './api/datasets';
+import { environmentsApi } from './api/environments';
 import { keyPoliciesApi } from './api/key-policies';
 import { maskinportenApi } from './api/maskinporten';
 import { hooksApi } from './api/hooks';
+import { tracingApi } from './api/tracing';
 import { triggersApi } from './api/triggers';
 import { preferencesApi } from './api/preferences';
 import { onboardingApi } from './api/onboarding';
@@ -168,12 +170,14 @@ const featureClients = (ctx: ApiContext) => ({
   searchEngines: searchEnginesApi(ctx),
   assistant: assistantApi(ctx),
   datasets: datasetsApi(ctx),
+  environments: environmentsApi(ctx),
   quality: qualityApi(ctx),
   batchRuns: batchRunsApi(ctx),
   onboarding: onboardingApi(ctx),
   maskinporten: maskinportenApi(ctx),
   keyPolicies: keyPoliciesApi(ctx),
   hooks: hooksApi(ctx),
+  tracing: tracingApi(ctx),
   triggers: triggersApi(ctx),
   preferences: preferencesApi(ctx),
   recipes: recipesApi(ctx),
@@ -655,6 +659,7 @@ export const createApiClient = ({
         client?: string;
         expiresInDays?: number;
         allowedOverrides?: string[];
+        environments?: string[];
       },
       reason: string,
     ) =>
@@ -671,19 +676,32 @@ export const createApiClient = ({
         allowedOverrides ? { allowedOverrides } : {},
         { 'change-reason': reason },
       ),
-    usage: (tenant: string, days: number, signal?: AbortSignal, project?: string) =>
+    usage: (
+      tenant: string,
+      days: number,
+      signal?: AbortSignal,
+      project?: string,
+      environment?: string,
+    ) =>
       get<UsageReport>(
-        `${tenantPath(tenant)}/usage?days=${days}${project ? `&project=${encodeURIComponent(project)}` : ''}`,
+        `${tenantPath(tenant)}/usage?days=${days}${project ? `&project=${encodeURIComponent(project)}` : ''}${environment ? `&environment=${encodeURIComponent(environment)}` : ''}`,
         signal,
       ),
     tasks: (
       tenant: string,
-      filter: { status?: string; service?: string; from?: string; limit?: number },
+      filter: {
+        status?: string;
+        service?: string;
+        environment?: string;
+        from?: string;
+        limit?: number;
+      },
       signal?: AbortSignal,
     ) => {
       const query = new URLSearchParams();
       if (filter.status) query.set('status', filter.status);
       if (filter.service) query.set('service', filter.service);
+      if (filter.environment) query.set('environment', filter.environment);
       if (filter.from) query.set('from', filter.from);
       if (filter.limit) query.set('limit', String(filter.limit));
       const suffix = query.size > 0 ? `?${query.toString()}` : '';

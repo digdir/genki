@@ -11,6 +11,9 @@ import {
   nameKey,
   needWords,
   optionKey,
+  placeKey,
+  placesHelpKey,
+  placesOf,
   settingsSchema,
   zones,
 } from './catalogue.js';
@@ -103,6 +106,26 @@ describe('the block catalogue', () => {
       'approach',
       'document-view',
     ]);
+  });
+
+  it('offers Approach in the main column, in the secondary panel or in both, and every other block one zone at a time', () => {
+    expect(placesOf('approach')).toEqual(['main', 'secondary', 'both']);
+    expect(blockCatalogue.filter((spec) => spec.both).map((spec) => spec.id)).toEqual(['approach']);
+    expect(placesOf('chat')).toEqual(['main', 'secondary']);
+    expect(placesOf('sources')).toEqual(['secondary']);
+  });
+
+  it('lets only a block with exactly two zones stand in both', () => {
+    for (const spec of blockCatalogue.filter((s) => s.both))
+      expect(spec.zones, spec.id).toHaveLength(2);
+  });
+
+  it('names every place, «Begge steder» too, and says what each place draws for a block that may stand in both', () => {
+    for (const spec of blockCatalogue)
+      for (const place of placesOf(spec.id)) expect(has(placeKey(place)), place).toBe(true);
+    expect(nb.builder.zoneBoth).toBe('Begge steder');
+    for (const spec of blockCatalogue.filter((s) => s.both))
+      expect(has(placesHelpKey(spec.id)), spec.id).toBe(true);
   });
 
   it('makes Footnotes an option of Chat that needs Sources or Document view, not a block of its own', () => {

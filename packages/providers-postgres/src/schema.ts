@@ -48,6 +48,9 @@ const tenantTables = [
   'eval_candidates',
   'clients',
   'webhook_deliveries',
+  'trace_deliveries',
+  'sink_labels',
+  'sink_label_keys',
   'ingestion_executions',
   'knowledge_job_requests',
   'trigger_runs',
@@ -95,6 +98,7 @@ const definerFunctions = [
   'usage_open_starts(text)',
   'platform_usage_buckets(text[], timestamptz, timestamptz)',
   'platform_usage_unassigned(timestamptz, timestamptz)',
+  'pending_trace_deletes(integer)',
   'due_provider_objects(timestamptz, integer)',
 ];
 
@@ -722,6 +726,51 @@ const migrations: string[] = [
    )`,
   `create index if not exists webhook_deliveries_recent on webhook_deliveries (tenant, client, at desc)`,
   ...tenantIsolation('webhook_deliveries'),
+  `create table if not exists trace_deliveries (
+     tenant text not null,
+     sink text not null,
+     task text not null,
+     trace text not null,
+     state text not null,
+     attempts integer not null default 0,
+     last_error text,
+     updated_at timestamptz not null,
+     primary key (tenant, sink, trace)
+   )`,
+  `create index if not exists trace_deliveries_pending on trace_deliveries (updated_at) where state = 'pending'`,
+  `alter table trace_deliveries add column if not exists judges text[] not null default '{}'`,
+  ...tenantIsolation('trace_deliveries'),
+  // Labels brought back from a tenant's trace sink, every revision and state (ADR 0040).
+  // Append-only like judge_labels: a change of state is a new row, and the latest one holds.
+  `create table if not exists sink_labels (
+     seq bigint generated always as identity primary key,
+     tenant text not null,
+     id text not null,
+     revision text not null,
+     connection text not null,
+     judge text not null,
+     label jsonb not null
+   )`,
+  `create index if not exists sink_labels_latest_per_connection
+     on sink_labels (tenant, connection, id, revision, seq desc)`,
+  `create or replace trigger sink_labels_append_only before update or delete on sink_labels
+     for each row execute function refuse_change()`,
+  ...tenantIsolation('sink_labels'),
+  // The tenant's own key for labeller pseudonyms: never shown, so a pseudonym is not reversible.
+  `create table if not exists sink_label_keys (
+     tenant text primary key,
+     key text not null
+   )`,
+  `create or replace trigger sink_label_keys_append_only before update or delete on sink_label_keys
+     for each row execute function refuse_change()`,
+  ...tenantIsolation('sink_label_keys'),
+  `create or replace function pending_trace_deletes(p_limit integer) returns setof trace_deliveries
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from trace_deliveries where state = 'pending'
+         order by updated_at, tenant, sink, trace limit p_limit;
+     end $$`,
   `create table if not exists trigger_runs (
      id text primary key,
      tenant text not null,

@@ -97,6 +97,15 @@
                 tabs or a dropdown.
               </li>
               <li>
+                Fremgangsmåte is the card over each answer in the main column, the tool in the
+                secondary panel, or both, as the layout places it. The tool is the detailed one:
+                each step's time as genki reports it for the step's tool calls, the filter the
+                answer read from with its values, the sources used, how long it took, and the step
+                frames at the detailed level. Beside the tool, the card keeps only the steps, the
+                totals, «filteret er endret» and, in the next look, how many documents the answer
+                read from.
+              </li>
+              <li>
                 Dokumentvisning is a tool in the secondary panel, or takes the conversation's place
                 in the main column while a document is open.
               </li>
@@ -105,23 +114,42 @@
                 way back to the answer shows Chat's tool again.
               </li>
               <li>
-                <strong>The next look,</strong> a layout from the template
-                <code>knowledge-assistant-next</code>: the shell's cards frame, with no top bar.
-                Every panel is titled alike, «Tråder» and «Verktøy», and the primary panel lands on
-                «Tråder». The thread's title is the page's <code>h1</code> at the top of the main
-                card, where the conversation no longer names it, and the hidden <code>h1</code> with
-                the assistant's name is gone. With a reader in the profile, the reader stands pinned
-                at the primary panel's foot, the shell's <code>ShellProfile</code>, in place of
-                «Innlogget som» and the links: its menu has «Innstillinger», the profile's
-                <code>menu</code> pages and «Logg ut» when the profile gives a sign-out. Without a
-                reader, the links stay. The docked field stands on the card's ground. Every other
-                template draws what it drew before.
+                <strong>The next look,</strong> a layout whose <code>look</code> is
+                <code>next</code>, or one from the template
+                <code>knowledge-assistant-next</code> that names no look: the shell's cards frame,
+                with no top bar. Every panel is titled alike, «Tråder» and «Verktøy», and the
+                primary panel lands on «Tråder». The thread's title is the page's <code>h1</code> at
+                the top of the main card, where the conversation no longer names it, and the hidden
+                <code>h1</code> with the assistant's name is gone. With a reader in the profile, the
+                reader stands pinned at the primary panel's foot, the shell's
+                <code>ShellProfile</code>, in place of «Innlogget som» and the links: its menu has
+                «Innstillinger», the profile's <code>menu</code> pages and «Logg ut» when the
+                profile gives a sign-out. Without a reader, the links stay. The docked field stands
+                on the card's ground. Every other template draws what it drew before.
+              </li>
+              <li>
+                <strong>The next look's folded panels</strong> (dev-navbar, dev-verktoy-4): the
+                threads' panel folds to its button and «Ny tråd» as a plus, a link to a new thread,
+                with no avatar; the tools' panel folds to its button alone, with no tool icons. The
+                tools' icons stand in the switcher: Fremgangsmåte's robot and Kilder's
+                <code>FileSearchIcon</code>.
+              </li>
+              <li>
+                <strong>The next look's answer</strong> (dev-kilder-hoyre): no card and no name over
+                it (the Conversation block's <code>answerLabel</code> off), and footnote marks 16 px
+                tall, <code>--genai-answer-footnote-size</code> set to <code>--ds-size-4</code> on
+                the chat column.
               </li>
               <li>
                 <strong>The next look's thread list</strong> is the Threads block's
                 <code>variant="nav"</code> with no search: «Ny tråd» first, under «Tråder», and no
                 «Filtrer dokumenter», whose filter has a panel of its own. «Ny tråd» keeps the panel
                 on «Tråder».
+              </li>
+              <li>
+                <strong>The next look's «Kilder»</strong> folds the documents the answer read but
+                cites nowhere under «Andre kilder som ble lest (N)», the Sources block's
+                <code>foldUncited</code>. The cited ones stand as before.
               </li>
               <li>
                 <strong>The next look's filter</strong> (dev-filter-panel): its own panel in the
@@ -131,11 +159,30 @@
                 its profile <code>heading</code>. The filter belongs to the thread: the filter of
                 each thread's last question asked here is kept in the storage
                 (<code>threadFilters</code>), and opening the thread brings it back; genki keeps no
-                filter with a turn, so a thread asked elsewhere leaves the filter as it is. An
-                answer asked here says its filter inside «Fremgangsmåte», with «· filteret er
-                endret» when it differs from the answer before, and the line under the field says
-                what the next question reads from. The counts are exact, from the facets and the
+                filter with a turn, so a thread asked elsewhere leaves the filter as it is, and
+                stores it, so a reload shows it too. «Ny tråd» starts a thread with no filter,
+                «Alle», and so does a page opened on a new thread, as after a reload; the filter
+                stored from before is left as it is until a thread is opened. An answer asked here
+                says its filter inside «Fremgangsmåte», with «· filteret er endret» when it differs
+                from the answer before. No line under the field says what the next question reads
+                from: the filter's panel does. The counts are exact, from the facets and the
                 profile's <code>typeField</code>.
+              </li>
+              <li>
+                <strong>A narrower filter</strong>, the trial <code>compact-filter</code>, when the
+                profile offers it and the reader turns it on: the next look's filter panel beside
+                the threads is 230 px wide, its ticks in one column, and the threads take the rest
+                of the card. Resizing the card changes the threads' width only; the card goes no
+                narrower than the threads' 220 beside the filter. In a drawer the filter stands
+                under the threads at the drawer's width, its ticks in one column. Off, the filter is
+                as before: 440 of the card's 660, which goes no narrower.
+              </li>
+              <li>
+                <strong>Under the next look's answer</strong>: no follow-up questions over the
+                field, whatever the profile's <code>followUps</code> and Chat's option say, since
+                the catalogue keeps that option to the current look, and «Kopier lenke til tråden»
+                with no note that the link works only here: the answer actions'
+                <code>linkOnlyHere</code> is off. The answer's time stays at the row's end.
               </li>
             </ul>
           </div>
@@ -144,13 +191,43 @@
             <ul>
               <li>
                 <code>api</code>: the calls, from
-                <code>createGenkiApi({ baseUrl, tenant, profile, language })</code> through a proxy
-                that adds the key, or a fake in tests.
+                <code>createGenkiApi({ baseUrl, tenant, profile, language, headers })</code>, or a
+                fake in tests. Its <code>profile</code> is the one the assistant is drawn with,
+                below. A host reaches genki through a proxy that adds the key, or passes
+                <code>headers</code>, a callback that returns its credentials, such as
+                <code>{ authorization: 'Bearer …' }</code> with the person's token. It is called
+                before every request, the question's stream included, so a renewed token is used;
+                <code>Accept</code> and <code>Content-Type</code> stay the assembly's own. A
+                <code>401</code> fails the call with that status, as <code>HttpError</code> or
+                <code>@genai/client</code>'s <code>ApiError</code>, which the assembly shows as
+                access; a question stops at its new thread. A host's <code>ask</code> that throws
+                <code>NotAsked</code> before it yields anything was refused before it was asked: the
+                assembly takes the question out of its thread, with no failed answer, and puts a
+                question typed in the field back there while its thread is on screen and the field
+                is empty; the host says why. Thrown after it has yielded something, it is a failed
+                answer like any other error.
               </li>
-              <li><code>layout</code>: the builder's layout, zones and options.</li>
+              <li>
+                <code>layout</code>: the builder's layout, zones and options, and its
+                <code>profile</code>, the service's words as data, when it carries one.
+              </li>
               <li>
                 <code>service</code> and <code>tenant</code>; <code>model</code>, the variant to
                 start from.
+              </li>
+              <li>
+                A collection's document links, for a source that carries none: the profile's
+                <code>documentUrl</code>, a host's function, or its <code>documentLinks</code>, the
+                same as plain data, in the host's profile or the layout's. That is an address per
+                kind of number, <code>digits</code>, <code>uuid</code> or <code>any</code>, with
+                <code>{id}</code> where the number goes, encoded. A number takes the first that
+                fits, in that order, after the function. Only an http or https address becomes a
+                link, and a layout's only an https one whose host comes before the number. A stored
+                thread is linked by the collection its <code>corpus:</code> tag names. One that
+                names none, such as a thread asked in another client, is taken to be in the
+                profile's collection when the profile describes exactly one, and linked by it; with
+                several, none is guessed. A host whose readers also ask in collections it does not
+                describe describes them too, so that no such thread is linked by the wrong one.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,
@@ -162,14 +239,35 @@
                 <code>href</code> or an <code>onSelect</code>, and <code>extra</code>, the host's
                 own entries in its own words, such as a way back to an older client, before «Logg
                 ut». A page not given is not drawn. <code>signOut</code> is the host's sign-out, an
-                <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first forgets
-                the reader's choices kept in this browser, the threads' filters included, then calls
-                it and goes there. Without it, no «Logg ut» is drawn, in either look.
+                <code>href</code> and an optional <code>onSignOut</code>: «Logg ut» first stops
+                every answer still coming and forgets the reader's choices kept in this browser, the
+                threads' filters included, then calls it and goes there. Without it, no «Logg ut» is
+                drawn, in either look.
               </li>
               <li>
-                <code>threadInUrl</code>: the thread as <code>?t=</code>, «Innstillinger» as
-                <code>#innstillinger</code>, and the tab's title. With <code>paths</code>, a path
-                per page. <code>allThreads</code> lists every thread under the key.
+                The profile drawn is <code>profileOf(layout, profile)</code>: what the host's
+                profile sets wins, and the layout's <code>profile</code> fills the rest. A list the
+                host sets wins whole, an empty one too; <code>undefined</code> sets nothing. Each
+                collection is filled value by value, so the host's <code>documentUrl</code> goes
+                first and the layout's <code>documentLinks</code> link what it does not. Without a
+                profile in the layout, the host's is drawn as it is, so a host that passes a full
+                profile draws what it drew. A host with no code profile passes none and draws the
+                layout's. A link or link template in the layout's that is not https, with its host
+                before the number, is left out, checked or not. Either way the host gives
+                <code>createGenkiApi</code> the same <code>profileOf(layout, own)</code>, so the
+                fields, the collections' names, a stored answer's links and the line under a
+                document's title are in its words. A field the profile does not mark
+                <code>integer</code> is sent as the dataset declares it.
+              </li>
+              <li>
+                <code>now</code>: the clock, for the year a year field runs up to; tests give a
+                fixed one.
+              </li>
+              <li>
+                <code>threadInUrl</code>: the thread as <code>?t=</code>, opened only when the id
+                looks like one genki makes, «Innstillinger» as <code>#innstillinger</code>, and the
+                tab's title. With <code>paths</code>, a path per page. <code>allThreads</code> lists
+                every thread under the key.
               </li>
               <li>
                 <code>storage</code>: where the reader's choices are kept, such as
@@ -179,18 +277,24 @@
                 <code>onFeedback</code>, <code>onRename</code> and <code>onDelete</code>: without
                 them, none is offered. <code>onFeedback</code> gets the answer's
                 <code>answerId</code>, the <code>rating</code>, <code>reasons</code> and
-                <code>comment</code>, and <code>runId</code>: genki's id for the run that gave the
-                answer, which <code>POST /api/feedback</code> takes as <code>task</code>. It comes
-                from the stream's <code>genai-task</code> header, or from <code>task</code> on a
-                stored answer, so a proxy passes that header on; without it, <code>runId</code> is
-                left out and the host decides. It comes from the page, so a host whose proxy uses
-                one shared key sends feedback only on runs it made for that reader.
-                <code>onNotice</code>, <code>onThreadChange</code> and
-                <code>onStepsReported</code> tell the host what happened.
+                <code>comment</code>, on the click on a thumb and again in full with a comment, and
+                <code>runId</code>: genki's id for the run that gave the answer, which
+                <code>POST /api/feedback</code> takes as <code>task</code>. It comes from the
+                stream's <code>genai-task</code> header, or from <code>task</code> on a stored
+                answer, so a proxy passes that header on; without it, <code>runId</code> is left out
+                and the host decides. It comes from the page, so a host whose proxy uses one shared
+                key sends feedback only on runs it made for that reader. <code>onNotice</code>,
+                <code>onThreadChange</code> and <code>onStepsReported</code> tell the host what
+                happened.
               </li>
               <li>
                 <code>colorScheme</code> and <code>onColorSchemeChange</code>: the host keeps the
                 scheme. <code>mainId</code>: the target of «Hopp til hovedinnhold».
+              </li>
+              <li>
+                <code>frameWidth</code>: the assistant is drawn in a host's preview of that width,
+                on the host's page, so it draws no <code>h1</code> of its own and passes the width
+                to the shell.
               </li>
             </ul>
             <h2>For a host that only tries it</h2>
@@ -384,6 +488,33 @@
                 document where the collection declares its number as a filter field.
               </li>
               <li>
+                A field the profile marks <code>kind: 'year'</code> offers only years, newest first:
+                from its <code>years.first</code>, 1900 without it, up to its
+                <code>years.last</code>, the year it is in Norway without it (<code>now</code>).
+                Page numbers, parse noise and years far ahead, which genki returns as they are, are
+                left out, but a value the reader has chosen is always kept, so its chip can be
+                removed.
+              </li>
+              <li>
+                A filter field with every value chosen, as after «Velg alle», narrows nothing, so it
+                is left out of what goes to genki and of «Avgrenset til». The facets are asked
+                without a field that has every value in the collection chosen, the question without
+                one that has every value it lists chosen. «Avgrenset til» names the values as the
+                filter does, years in a row as one period.
+              </li>
+              <li>
+                genki's filter takes at most 100 values a field. A field with more chosen and at
+                most 100 left out goes as the values left out, <code>not-in-set</code>: by the
+                collection's values for the facets, by the field's list for the question. That keeps
+                documents with no value in the field, and drops a document that has a value left out
+                among several. With more than 100 on both sides, nothing is sent: the filter says
+                so, and a question fails with «Filteret kan ikke brukes» and why.
+              </li>
+              <li>
+                A facets address longer than 8,000 characters is not sent: Node answers 431 past 16
+                KB of headers, so the filter says it could not fetch the fields instead.
+              </li>
+              <li>
                 «Kopier svaret» copies what the screen says, through the answer block's
                 <code>answerCopy</code>. «Kopier lenke til tråden» is offered only where the thread
                 is in the address.
@@ -392,10 +523,58 @@
                 The page has one <code>h1</code>, the assistant's name, before the rest of the main
                 column, wherever Chat stands.
               </li>
-              <li>An assistant that goes stops its answer, and reports nothing after.</li>
+              <li>
+                An answer keeps coming while the reader opens another thread or a new one, and asks
+                there. Its thread keeps its turns: opened again, it shows the answer as far as it
+                has come and lets it finish, or as it ended, a failure too, though genki has not
+                stored it yet. The thread genki has stored never takes the place of an answer on its
+                way. A question sent while the thread is read waits until it is read, and one sent
+                while its answer comes waits for it. «Avbryt genereringen» stops the answer on
+                screen. The live region speaks only of the thread on screen. A question still
+                waiting to go when the reader opens another thread, or signs out, is not sent; one
+                typed in the field stays there.
+              </li>
+              <li>
+                A page reloaded while an answer comes no longer follows it, but genki goes on and
+                stores the answer when it is done. A thread whose last question genki has stored no
+                answer for, asked less than five minutes ago (genki's default deadline for a run),
+                says the answer may still be on its way, with «Hent på nytt», the Conversation
+                block's <code>onFetchAgain</code>: it reads the thread again in place and asks
+                nothing. A read that fails leaves the thread as it was, unless the thread is gone.
+                Older, read again after that, or a question whose answer failed on this page, it
+                says the question got no answer, with «Generer på nytt». genki says nothing of
+                whether a run is still going on any route the assembly uses, so the time asked is
+                all it has to go by, and the thread is read again only when the reader asks.
+              </li>
+              <li>
+                An assistant that goes stops every answer still coming, in the threads left too, and
+                reports nothing after. «Logg ut» stops them all too, and deleting a thread stops its
+                answer.
+              </li>
+              <li>
+                A question the host's service would not take (<code>NotAsked</code>) is taken back:
+                its thread shows the turns it had, a new one its start, and a question typed in the
+                field is there again if the field is still empty. Refused in a thread the reader has
+                left, it is gone from that thread on return, and not put in the field. The answers
+                in other threads go on.
+              </li>
+              <li>
+                In the next look, the front page gives way to the question: while the field holds
+                text, the greeting and the suggestions are hidden (<code>data-typing</code> on the
+                chat column, <code>visibility: hidden</code>), and they come back when it is
+                emptied. They keep their room, so the field does not move under the caret, and focus
+                stays in the field.
+              </li>
               <li>
                 Dokumentvisning's hint names what opens a document in the layout: «Vis i dokumentet»
                 in Kilder, or a footnote when Kilder is off.
+              </li>
+              <li>
+                The next look draws a footnote that names a document, the Answer block's
+                <code>documentFootnotes</code>, until genki cites excerpts: one number per cited
+                document, 1, 2, 3 by first citation, leading to the document in «Kilder». «Kopier
+                svaret» copies the same numbers. Answers that cite excerpts keep one number per
+                excerpt.
               </li>
               <li>
                 The assembly measures nothing of the shell's. The shell pads a panel's region as
@@ -426,10 +605,20 @@
                 canvas's «Spørsmål til én kilde» does?
               </li>
               <li>
+                How should a field with more than 100 chosen and more than 100 left out be asked
+                for, such as 200 of Kudos's 457 «Virksomhet»? genki's filter takes neither side, so
+                the filter says so and nothing is sent.
+              </li>
+              <li>
                 Dokumentvisning's jumps read the shell's pinned height only because the assembly
                 hands it to them. Should the block read
                 <code>--uib-shell-pinned-block-size</code> itself, as the shell's page offers it to
                 a block that pins its own head?
+              </li>
+              <li>
+                Should a profile without <code>suggestions</code> offer the service's example
+                questions? The definition has them in bokmål and English, but
+                <code>/v1/models</code> does not carry them yet.
               </li>
             </ul>
           </div>

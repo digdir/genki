@@ -12,6 +12,7 @@ import { memoryEngine, openTarget, type MemoryDatasetOptions } from '@genai/port
 import type { ChatResult, ModelPort } from '@genai/port-model';
 import {
   embedIndexDocument,
+  maxEmbeddingRequestBytes,
   folderSource,
   kudosSource,
   memoryPhraseCache,
@@ -381,6 +382,48 @@ describe('embedding index documents', () => {
     const embedded = await embedIndexDocument(doc, embedder);
     expect(sent.map((t) => Buffer.byteLength(t, 'utf8'))).toEqual([8190, 4]);
     expect(embedded.chunks.map((c) => c.text)).toEqual([long, 'kort']);
+    expect(embedded.chunks.every((c) => c.vector?.length === 2)).toBe(true);
+  });
+  const counting = (requests: string[][]) =>
+    ({
+      info: () => ({ id: 'fake/large-1536', dimensions: 2 }),
+      embed: async (texts: string[]) => {
+        requests.push(texts);
+        return { vectors: texts.map(() => [0.1, 0.2]) };
+      },
+    }) as unknown as Parameters<typeof embedIndexDocument>[1];
+  // Figure-heavy pages: 64 inputs cut to 8,191 bytes are about 524,000 bytes, and Azure counted
+  // more tokens than the 300,000 a request may hold (issue 581).
+  const figurePages = (n: number): IndexDocument => ({
+    id: 'kudos:f',
+    fields: {},
+    chunks: Array.from({ length: n }, (_, i) => ({
+      id: `c${i}`,
+      position: i,
+      text: `${String(i).padStart(4, '0')}|${'│ 1,2 │'.repeat(1000)}`,
+    })),
+    phrases: [],
+  });
+  const bytes = (texts: string[]) => texts.reduce((n, t) => n + Buffer.byteLength(t, 'utf8'), 0);
+
+  it('an embedding request never carries more bytes than the budget', async () => {
+    const requests: string[][] = [];
+    await embedIndexDocument(figurePages(64), counting(requests));
+
+    expect(requests.length).toBeGreaterThan(1);
+    for (const request of requests)
+      expect(bytes(request)).toBeLessThanOrEqual(maxEmbeddingRequestBytes);
+  });
+
+  it('texts over the budget are embedded in several requests, each text once', async () => {
+    const requests: string[][] = [];
+    // 40 texts are under the 64 a request takes, but their bytes are over the budget.
+    const embedded = await embedIndexDocument(figurePages(40), counting(requests));
+
+    expect(requests.length).toBe(2);
+    const sent = requests.flat();
+    expect(sent).toHaveLength(40);
+    expect(new Set(sent).size).toBe(40);
     expect(embedded.chunks.every((c) => c.vector?.length === 2)).toBe(true);
   });
 });

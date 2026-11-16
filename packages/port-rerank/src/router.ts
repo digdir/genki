@@ -46,6 +46,7 @@ const refusalCodes: Record<GateRefusal, RerankError['code']> = {
   processor: 'forbidden',
   media: 'bad_request',
   shape: 'bad_request',
+  quota: 'forbidden',
 };
 
 const rerankPayload: GatePayload<Ranked[]> = {

@@ -113,8 +113,10 @@
                 briefly as its heading allows.
               </li>
               <li>
-                One line per title, or two in <code>nav</code>; a cut title shows the whole row in a
-                box on hover or focus (WCAG 1.4.13). The link's name is the title alone.
+                One line per title, cut with «…» where the row ends, not after the last whole word;
+                in <code>nav</code> a host's <code>--genai-threads-title-lines</code> of 2 or more
+                wraps it to that many lines instead. A cut title shows the whole row in a box on
+                hover or focus (WCAG 1.4.13). The link's name is the title alone.
               </li>
               <li>
                 «Søk i tråder» filters as the person types and counts what is left. Over an empty
@@ -465,7 +467,10 @@
                 <tr>
                   <td><code>--genai-threads-title-lines</code></td>
                   <td>1</td>
-                  <td>the lines a title takes before «…» (<em>nav</em>)</td>
+                  <td>
+                    the lines a title takes before «…»: one is cut where the row ends, two or more
+                    after a word (<em>nav</em>)
+                  </td>
                 </tr>
                 <tr>
                   <td><code>--genai-threads-user-gap</code></td>

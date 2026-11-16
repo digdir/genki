@@ -48,6 +48,17 @@ export const blockIds = [
 ] as const;
 export type BlockId = (typeof blockIds)[number];
 
+/**
+ * How a layout's blocks are drawn. `next` is the «_Ready for dev» boards' look (the cards frame,
+ * the panels' titles, the profile menu), and every new look sits behind it until it is the only
+ * one; `current` is what layouts drew before it.
+ */
+export const looks = ['current', 'next'] as const;
+export type Look = (typeof looks)[number];
+
+export const isLook = (value: unknown): value is Look =>
+  typeof value === 'string' && (looks as readonly string[]).includes(value);
+
 /** A switch or a choice on a block, drawn in the builder and kept in the layout's settings. */
 export type BlockOption =
   | {
@@ -57,6 +68,8 @@ export type BlockOption =
       needs?: readonly Need[];
       /** Shown off and disabled until it is built. */
       status?: 'planned';
+      /** The looks that draw it; without, every look. In another look it is not in force. */
+      looks?: readonly Look[];
     }
   | {
       id: string;
@@ -65,6 +78,7 @@ export type BlockOption =
       default: string;
       needs?: readonly Need[];
       status?: 'planned';
+      looks?: readonly Look[];
     };
 
 export interface BlockSpec {
@@ -72,6 +86,8 @@ export interface BlockSpec {
   id: BlockId;
   /** The zones it may stand in, the default first. */
   zones: readonly Zone[];
+  /** It may also stand in both its zones at once, drawn in each its own way. */
+  both?: true;
   /** Its place among the blocks in each zone, from the top: lower comes first. */
   order: Partial<Record<Zone, number>>;
   /** Drawn in the panel's foot, not among its content: Innstillinger «nederst». */
@@ -143,7 +159,8 @@ export const blockCatalogue: readonly BlockSpec[] = [
         needs: ['component:sources|document-view'],
       },
       { id: 'suggestions', kind: 'switch', default: true },
-      { id: 'followUps', kind: 'switch', default: true },
+      // The next look draws no follow-ups: no board has them.
+      { id: 'followUps', kind: 'switch', default: true, looks: ['current'] },
       { id: 'disclaimer', kind: 'switch', default: true },
       { id: 'copy', kind: 'switch', default: true },
       // Off by default, as in kunnskapsassistenten since 6 October (AnswerActions' `feedback`).
@@ -176,6 +193,8 @@ export const blockCatalogue: readonly BlockSpec[] = [
     zones: ['main', 'secondary'],
     order: { main: 0, secondary: 0 },
     members: ['Approach'],
+    // The card over each answer in the main column, the tool in the secondary panel, or both.
+    both: true,
     needs: ['service:steps'],
     options: [
       { id: 'level', kind: 'choice', choices: ['standard', 'detailed'], default: 'standard' },
@@ -228,6 +247,15 @@ export const blockSpec = (id: BlockId): BlockSpec => byId.get(id) as BlockSpec;
 /** Where the block stands when it is turned on and nobody chose: its first zone. */
 export const defaultZone = (id: BlockId): Zone => blockSpec(id).zones[0] as Zone;
 
+/** Where the builder may put a block: one zone, or `both` of its zones where it allows. */
+export type Place = Zone | 'both';
+
+/** The places the builder offers a block: each of its zones, then both where it allows. */
+export const placesOf = (id: BlockId): Place[] => {
+  const spec = blockSpec(id);
+  return spec.both ? [...spec.zones, 'both'] : [...spec.zones];
+};
+
 /** The blocks that can stand in more than one zone, which the builder asks where to put. */
 export const movableBlocks = blockCatalogue.filter((spec) => spec.zones.length > 1);
 
@@ -279,6 +307,12 @@ export const settingsSchema = (id: BlockId) => {
 };
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The catalogue key of a place's name: a zone's, or «Begge steder». */
+export const placeKey = (place: Place) => `builder.zone${capital(place)}` as BuilderKey;
+
+/** The catalogue key of what each place draws, for a block that may stand in both. */
+export const placesHelpKey = (id: BlockId) => `${nameKey(id)}PlacesHelp` as BuilderKey;
 
 /** The catalogue key of an option's label. */
 export const optionKey = (id: BlockId, option: string) =>

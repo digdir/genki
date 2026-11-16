@@ -1,7 +1,7 @@
 # MinerU 4.1.6, standard tier, with its VLM on vLLM (mineru[full] installs vLLM on Linux). Needs a CUDA GPU.
 # Python 3.12 for vLLM's wheels; the page tests ran 3.13 on a Mac with the mlx engine and the same weights.
 # build-essential: Triton compiles its launcher with the C compiler at run time.
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 build-essential \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir "mineru[full]==4.1.6" "mineru-vl-utils[vllm]==2.0.8"

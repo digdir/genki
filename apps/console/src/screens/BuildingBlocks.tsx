@@ -821,6 +821,7 @@ const Detail = ({
                 value={value}
                 checked={draft === value}
                 onChange={() => {
+                  // A changed choice makes an open preview stale.
                   setDraft(value);
                   setPreview(undefined);
                 }}

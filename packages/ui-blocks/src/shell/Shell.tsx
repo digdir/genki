@@ -75,8 +75,8 @@ export interface ShellPanel {
   /** What the folded panel shows at its bottom, such as the reader's avatar. Not in the top row. */
   railFoot?: ReactNode;
   /**
-   * What the folded panel shows under its button, such as one button per tool that opens the
-   * panel on it (dev-verktoy-4), on a drawer's rail as well. Not in the top row.
+   * What the folded panel shows under its button, such as «Ny tråd» (dev-navbar), on a drawer's
+   * rail as well. Not in the top row.
    */
   rail?: ReactNode;
   /** The design's width, the floor and the ceiling, in CSS pixels. */
@@ -108,6 +108,8 @@ export interface ShellCompanion {
    * columns; the panel's own column keeps the rest, and a narrower panel narrows the companion.
    */
   width: number;
+  /** Keeps `width` whatever the panel's width, so the panel's own column takes every change. */
+  keepWidth?: boolean | undefined;
 }
 
 /** Something the host asks of a panel, once per object: `open`, `offer` or `close-drawers`. */
@@ -149,6 +151,8 @@ export interface ShellProps {
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
+  /** Drawn in a host's preview this wide: laid out for it, with no `<main>` and no skip links. */
+  frameWidth?: number | undefined;
   /** The gap beside an open panel in CSS pixels, 32, or 12 for cards. Must match `--genai-shell-gap`. */
   gap?: number | undefined;
   /** A folded panel's width in CSS pixels, 67, or 76 for cards. Must match its button and padding. */
@@ -180,6 +184,7 @@ export const Shell = ({
   request,
   compactBar = true,
   skipLinks,
+  frameWidth,
   frame = 'flush',
   inset: givenInset,
   gap: givenGap,
@@ -222,10 +227,17 @@ export const Shell = ({
   );
   const points = breakpoints(geometry);
 
-  const viewport = useViewportWidth();
-  const narrow = useMedia(narrowerThan(points.both));
-  const drawer = useMedia(narrowerThan(points.drawer));
-  const compact = useMedia(narrowerThan(points.compact)) && compactBar;
+  const windowWidth = useViewportWidth();
+  const inWindow = {
+    narrow: useMedia(narrowerThan(points.both)),
+    drawer: useMedia(narrowerThan(points.drawer)),
+    compact: useMedia(narrowerThan(points.compact)),
+  };
+  const viewport = frameWidth ?? windowWidth;
+  const below = (point: number) => (frameWidth === undefined ? undefined : frameWidth < point);
+  const narrow = below(points.both) ?? inWindow.narrow;
+  const drawer = below(points.drawer) ?? inWindow.drawer;
+  const compact = (below(points.compact) ?? inWindow.compact) && compactBar;
   // In the top row the cards frame has no margins: the row and the main column take the window.
   const sums = useMemo(() => (compact ? { ...geometry, inset: 0 } : geometry), [compact, geometry]);
 
@@ -361,7 +373,11 @@ export const Shell = ({
   const mainHeadRegion = (
     <div className="uib-shell-pinned" ref={setMainHead}>
       {mainTitle ? (
-        <Heading className="uib-shell-title" data-size="xs" level={1}>
+        <Heading
+          className="uib-shell-title"
+          data-size="xs"
+          level={frameWidth === undefined ? 1 : 2}
+        >
           {mainTitle}
         </Heading>
       ) : null}
@@ -369,10 +385,16 @@ export const Shell = ({
     </div>
   );
 
+  // In a host's preview the page, its `<main>` and its skip links are the host's.
+  const Main = frameWidth === undefined ? 'main' : 'div';
   return (
     <>
-      <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
-      {skipLinks}
+      {frameWidth === undefined ? (
+        <>
+          <SkipLink href={`#${mainId}`}>{t('shell.skipToMain')}</SkipLink>
+          {skipLinks}
+        </>
+      ) : null}
       <div
         className={classes('uib-shell', className)}
         data-compact={compact || undefined}
@@ -383,7 +405,7 @@ export const Shell = ({
       >
         {primary ? <Side side="primary" panel={primary} {...sideProps} /> : null}
 
-        <main
+        <Main
           className={classes('uib-shell-main', mainFocusable && 'ds-focus--inset')}
           id={mainId}
           // Observes only whether the focus is on the region itself.
@@ -401,7 +423,7 @@ export const Shell = ({
             {cards ? null : mainHeadRegion}
             {children}
           </div>
-        </main>
+        </Main>
 
         {secondary ? <Side side="secondary" panel={secondary} {...sideProps} /> : null}
       </div>
@@ -603,9 +625,11 @@ const Side = ({
         <div className="uib-shell-content">{companion.children}</div>
       </section>
     ) : null;
-  const leadWidth = companion
-    ? Math.max((geometry.panels[side]?.width ?? width) - companion.width, 0)
-    : undefined;
+  const leadWidth = companion?.keepWidth
+    ? `calc(100% - ${companion.width}px)`
+    : companion
+      ? `${Math.max((geometry.panels[side]?.width ?? width) - companion.width, 0)}px`
+      : undefined;
   const withCompanion = companion !== undefined && !railed;
 
   return (
@@ -631,9 +655,7 @@ const Side = ({
         className="uib-shell-box"
         data-companion={withCompanion || undefined}
         style={
-          withCompanion
-            ? ({ '--uib-shell-lead-width': `${leadWidth}px` } as CSSProperties)
-            : undefined
+          withCompanion ? ({ '--uib-shell-lead-width': leadWidth } as CSSProperties) : undefined
         }
       >
         {/* Outside the scroller, so the button never scrolls out of sight. */}
@@ -643,7 +665,7 @@ const Side = ({
           {railed ? null : <div className="uib-shell-head">{panel.head}</div>}
           {toggleLast && !withCompanion ? toggleButton : null}
         </div>
-        {/* On the rail a drawer leaves too, so a tool is one click away in a narrow window. */}
+        {/* On the rail a drawer leaves too, so its parts are one click away in a narrow window. */}
         {railed && panel.rail != null ? <div className="uib-shell-rail">{panel.rail}</div> : null}
         {drawer ? null : panelContent}
         {railed || footScrolls ? null : foot}

@@ -100,6 +100,8 @@ import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
+import { InterfaceTab } from './blocks/InterfaceTab';
+import { TryViewKeeper } from './blocks/TryViewKeeper';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -1172,6 +1174,21 @@ export const Builder = ({
           editor={setup(['start'])}
         />
       );
+    if (section === 'interface')
+      return (
+        <InterfaceTab
+          api={api}
+          tenant={tenant}
+          service={id}
+          definition={definition}
+          files={files}
+          narrow={narrow}
+          fullscreen={detail === 'preview'}
+          backHref={`#${servicePath(routeId, 'interface')}`}
+          onFullscreen={() => go('interface', '/preview')}
+          onExitFullscreen={() => go('interface')}
+        />
+      );
     if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
     if (section === 'quality') return <QualitySection {...screenProps} id={id} />;
     if (section === 'batch')
@@ -1253,7 +1270,7 @@ export const Builder = ({
 
   const content = <div className={`service-body service-${section}`}>{body}</div>;
 
-  return (
+  const page = (
     <ServicePageContext.Provider value>
       <div className="service-page">
         <ServiceHeader
@@ -1538,4 +1555,6 @@ export const Builder = ({
       </div>
     </ServicePageContext.Provider>
   );
+  // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
+  return <TryViewKeeper>{page}</TryViewKeeper>;
 };

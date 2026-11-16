@@ -1,5 +1,6 @@
 import type {
   CapabilityDescriptor,
+  EvaluationContext,
   Event,
   EventAudience,
   Input,
@@ -62,6 +63,7 @@ export interface PortContext {
   tenant: string;
   principal: Principal;
   task: string;
+  capability?: string;
   signal: AbortSignal;
   meter(usage: Usage, model?: Ref): Promise<void>;
   outputLimit?(): number | undefined;
@@ -102,8 +104,10 @@ export interface InvocationContext {
   budget: Budget;
   state: StateHandle;
   use<P>(port: string, ref: Ref, options?: UseOptions): Promise<P>;
-  invoke(capabilityId: string, input: Input): Promise<Run>;
+  invoke(capabilityId: string, input: Input, options?: SubInvokeOptions): Promise<Run>;
 }
+
+export type SubInvokeOptions = Pick<InvokeOptions, 'evaluation'>;
 
 export interface Run {
   task: string;
@@ -117,6 +121,8 @@ export interface InvokeOptions {
   deadlineMs?: number;
   budget?: Usage;
   maxOutputTokens?: number;
+  /** Recorded for audit beside the input, never in it; the strategy does not receive it. */
+  evaluation?: EvaluationContext;
   environment?: string;
 }
 

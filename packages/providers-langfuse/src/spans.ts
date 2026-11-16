@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Event, Ref, Task, Usage } from '@genai/contracts';
+import { experimentAttributes, itemAttributes, type Experiment } from './experiment.js';
 
 export type AnyValue =
   | { stringValue: string }
@@ -90,14 +91,20 @@ export interface BuildInput {
   firstTs: string;
   terminal: Event | undefined;
   content: boolean;
+  /** With content: only these fields go, and no error text. */
+  fields?: ('input' | 'output' | 'expected_output')[];
   environment?: string;
   userId?: string;
+  experiment?: Experiment;
 }
+
+const experimentOf = ({ experiment }: BuildInput) =>
+  experiment ? experimentAttributes(experiment, rootSpanIdFor(experiment.rootTask)) : {};
 
 const childSpans = (input: BuildInput, parent: string): OtlpSpan[] => {
   const { events, traceId, taskId, environment } = input;
   const spans: OtlpSpan[] = [];
-  const common = { 'deployment.environment.name': environment };
+  const common = { 'deployment.environment.name': environment, ...experimentOf(input) };
 
   events.forEach((event, index) => {
     if (event.type === 'kernel.usage') {
@@ -197,7 +204,9 @@ const childSpans = (input: BuildInput, parent: string): OtlpSpan[] => {
 };
 
 const rootSpan = (input: BuildInput, terminal: Event): OtlpSpan => {
-  const { task, taskId, events, content } = input;
+  const { task, taskId, events, content, fields } = input;
+  const sends = (field: 'input' | 'output' | 'expected_output') =>
+    content && (fields === undefined || fields.includes(field));
   const status = ((terminal.data ?? {}) as { status?: string }).status;
   const error = events.find((e) => e.type === 'kernel.error' && e.audience === 'audit')?.data as
     { code?: string; message?: string } | undefined;
@@ -205,7 +214,7 @@ const rootSpan = (input: BuildInput, terminal: Event): OtlpSpan => {
   const inputEvent = events.find((e) => e.type === 'kernel.task.input');
   const resultEvent = events.find((e) => e.type === 'kernel.result');
   const statusMessage = error
-    ? content && error.message
+    ? content && fields === undefined && error.message
       ? `${error.code}: ${error.message}`
       : error.code
     : undefined;
@@ -244,8 +253,15 @@ const rootSpan = (input: BuildInput, terminal: Event): OtlpSpan => {
       ),
       'genai.error.code': error?.code,
       'langfuse.observation.input':
-        content && inputEvent ? json((inputEvent.data as { input?: unknown }).input) : undefined,
-      'langfuse.observation.output': content && resultEvent ? json(resultEvent.data) : undefined,
+        sends('input') && inputEvent
+          ? json((inputEvent.data as { input?: unknown }).input)
+          : undefined,
+      'langfuse.observation.output':
+        sends('output') && resultEvent ? json(resultEvent.data) : undefined,
+      ...experimentOf(input),
+      ...(input.experiment?.rootTask === taskId
+        ? itemAttributes(input.experiment, sends('expected_output'))
+        : {}),
     }),
     status: {
       code: status === 'failed' ? STATUS_ERROR : status === 'completed' ? STATUS_OK : STATUS_UNSET,
