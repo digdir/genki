@@ -8,6 +8,8 @@ export const admittedCredentialScope = `${INTERNAL_GRANT_PREFIX}admitted-credent
 
 export const lockdownUserScope = `${INTERNAL_GRANT_PREFIX}lockdown-user`;
 
+export const lockdownServiceScope = `${INTERNAL_GRANT_PREFIX}lockdown-service-user`;
+
 export const testRunnerScope = `${INTERNAL_GRANT_PREFIX}test-runner`;
 
 export const LEGACY_KEY_ISSUER = 'urn:genai:legacy-api-key';
