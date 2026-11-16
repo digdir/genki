@@ -125,6 +125,63 @@ describe('the switcher pinned in the panel', () => {
 describe('the tinted switcher, the dev boards’', () => {
   const withIcon = (one: ShellTool): ShellTool => ({ ...one, icon: <svg data-icon={one.id} /> });
 
+  // As the browser does, which jsdom does not: a popover not in the page cannot be toggled.
+  const togglePopover = function (this: HTMLElement) {
+    if (!this.isConnected)
+      throw new DOMException('Invalid on disconnected popover elements.', 'InvalidStateError');
+    return false;
+  };
+
+  // The panel as the shell turns it into a drawer: a new pinned region, and the tools drawn anew.
+  const Panel = ({ drawer }: { drawer: boolean }) => {
+    const [region, setRegion] = useState<HTMLDivElement | null>(null);
+    const tools = (
+      <ShellTools
+        tools={[approach, sources, notes].map(withIcon)}
+        variant="tinted"
+        pinIn={region}
+      />
+    );
+    return drawer ? (
+      <dialog key="drawer" open>
+        <div ref={setRegion} data-testid="drawer-region" />
+        {tools}
+      </dialog>
+    ) : (
+      <aside key="panel">
+        <div ref={setRegion} data-testid="panel-region" />
+        {tools}
+      </aside>
+    );
+  };
+
+  it('keeps its menu when the panel becomes a drawer and back, drawn only in a region in the page', () => {
+    const before = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'togglePopover');
+    Object.defineProperty(HTMLElement.prototype, 'togglePopover', {
+      configurable: true,
+      writable: true,
+      value: togglePopover,
+    });
+    try {
+      const { rerender } = render(<Panel drawer={false} />);
+      expect(
+        screen.getByTestId('panel-region').querySelector('.uib-shell-tools-menu'),
+      ).not.toBeNull();
+      rerender(<Panel drawer />);
+      expect(
+        screen.getByTestId('drawer-region').querySelector('.uib-shell-tools-menu'),
+      ).not.toBeNull();
+      rerender(<Panel drawer={false} />);
+      expect(
+        screen.getByTestId('panel-region').querySelector('.uib-shell-tools-menu'),
+      ).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Fremgangsmåte, velg verktøy' })).toBeTruthy();
+    } finally {
+      if (before) Object.defineProperty(HTMLElement.prototype, 'togglePopover', before);
+      else delete (HTMLElement.prototype as { togglePopover?: unknown }).togglePopover;
+    }
+  });
+
   it('offers two tools as joined buttons with their icons, the tabs pattern kept (dev-verktoy-2)', () => {
     render(<ShellTools tools={[approach, sources].map(withIcon)} variant="tinted" />);
     const tablist = screen.getByRole('tablist', { name: 'Verktøy' });

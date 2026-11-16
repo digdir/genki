@@ -224,6 +224,8 @@ export const knowledgeErrors = {
   copyOrReingest: 'method is copy or reingest',
   retryStopped: 'Only a switch that has stopped can be retried.',
   switchEnded: 'The switch has already ended.',
+  switchRunDiscarded: 'The run wrote to a generation the switch has discarded.',
+  switchRunStillOpen: 'A run of the switch is still running.',
   switchNoOpenRuns: 'The switch has no open runs.',
   switchRunNotReadmitted: 'The run could not be admitted again.',
   switchNotReady: 'The switch is not ready to be put into use.',

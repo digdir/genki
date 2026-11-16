@@ -87,7 +87,22 @@ const fakeWorker = () => {
       await executions.save(marked);
       return marked;
     },
-    redrive: async () => ({ ok: false, message: 'not here' }),
+    // As the store does: an ended run that ran as jobs is reopened, whatever its dataset's engine.
+    redrive: async (input) => {
+      const run = await executions.get(input.execution);
+      if (
+        !run ||
+        run.dataset !== input.dataset ||
+        run.pipeline !== input.pipeline ||
+        !run.runsAsJobs ||
+        !['succeeded', 'failed'].includes(run.status)
+      )
+        return { ok: false, message: 'only an ended run that runs as jobs can be sent back' };
+      const reopened: Execution = { ...run, status: 'running', admittedAt: input.at };
+      delete reopened.endedAt;
+      await executions.save(reopened);
+      return { ok: true, value: reopened };
+    },
     readmit: async (input) => {
       const run = await executions.get(input.execution);
       if (
@@ -781,6 +796,199 @@ describe('switching a dataset into the knowledge database', () => {
     const opened = await started(booted, 'laast');
     expect(opened.state).toBe('running');
     expect(runOf(booted.worker, opened.id)).toMatchObject({ engineSwitch: opened.id });
+  });
+});
+
+describe("sending a switch's fill run back", () => {
+  /** A switch into the knowledge database whose fill ended with dead letters, ready to activate. */
+  const readyWithFailures = async (dataset: string) => {
+    const booted = await boot();
+    await folderDataset(booted, dataset);
+    const opened = await started(booted, dataset);
+    const run = runOf(booted.worker, opened.id) as Execution;
+    await booted.worker.end(run, 'succeeded', { stored: 8, failedDocuments: 2 });
+    expect(await followed(booted, dataset, opened.sid)).toMatchObject({ state: 'ready' });
+    return { booted, opened, run };
+  };
+  const sendBack = (booted: Booted, dataset: string, run: Execution) =>
+    booted.call(`${base(dataset)}/pipelines/filer/executions/${run.id}/redrive`, {
+      body: {},
+      reason: 'Sender døde jobber tilbake',
+    });
+
+  it("a switch's fill run can be sent back before the switch is activated", async () => {
+    const { booted, opened, run } = await readyWithFailures('tilbake');
+
+    const response = await sendBack(booted, 'tilbake', run);
+
+    expect(response.status).toBe(202);
+    expect(await json(response)).toMatchObject({ id: run.id, status: 'running' });
+    const { data } = await json<{ data: Execution[] }>(
+      await booted.call(`${base('tilbake')}/pipelines/filer/executions`),
+    );
+    expect(data.find((r) => r.id === run.id)).toMatchObject({ status: 'running' });
+    expect((await view(booted, 'tilbake', opened.sid)).state).toBe('ready');
+  });
+
+  it('a switch whose fill run is sent back counts what the run then stores', async () => {
+    const { booted, opened, run } = await readyWithFailures('teller');
+    expect(await view(booted, 'teller', opened.sid)).toMatchObject({ failedDocuments: 2 });
+    expect((await sendBack(booted, 'teller', run)).status).toBe(202);
+
+    await booted.worker.end(run, 'succeeded', { stored: 10 });
+    await booted.module.follow();
+
+    const seen = await view(booted, 'teller', opened.sid);
+    expect(seen.state).toBe('ready');
+    expect(seen.progress.documents).toBe(10);
+    expect(seen).not.toHaveProperty('failedDocuments');
+  });
+
+  it('a switch whose sent-back run is still running cannot be activated', async () => {
+    const { booted, opened, run } = await readyWithFailures('venter');
+    expect((await sendBack(booted, 'venter', run)).status).toBe(202);
+    const activate = () =>
+      booted.call(`${base('venter')}/engine-switches/${opened.sid}/activate`, { body: {} });
+
+    const refused = await activate();
+
+    expect(refused.status).toBe(409);
+    const { title } = await json<{ title: string }>(refused);
+    expect(translateMessage(title, 'nb')).toBe('En kjøring i byttet går fortsatt.');
+    expect(translateMessage(title, 'en')).toBe('A run of the switch is still running.');
+    expect(booted.worker.started.filter((r) => r.engineSwitch === opened.id)).toHaveLength(1);
+
+    await booted.worker.end(run, 'succeeded', { stored: 10 });
+    await booted.module.follow();
+    expect((await activate()).status).not.toBe(409);
+  });
+});
+
+describe("following a ready switch's runs", () => {
+  it('a ready switch whose refresh never started stays ready', async () => {
+    const clock = { now: new Date('2026-10-07T10:00:00Z') };
+    const booted = await boot({ clock });
+    await folderDataset(booted, 'stille');
+    const opened = await toReady(booted, 'stille');
+    booted.worker.jobRuns.runs.start = async () => {
+      throw new Error('the instance stopped before the refresh run started');
+    };
+    await booted.call(`${base('stille')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    for (let i = 0; i < 3; i++) {
+      clock.now = new Date(clock.now.getTime() + 3 * 60_000);
+      await booted.module.follow();
+    }
+
+    expect((await view(booted, 'stille', opened.sid)).state).toBe('ready');
+  });
+
+  it("a ready switch after a failed activation keeps its fill's counts", async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'publisering');
+    const opened = await toReady(booted, 'publisering');
+    await booted.call(`${base('publisering')}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    // The refresh run ends, and the switch goes back to ready with its refresh run as it would
+    // after a publish that failed.
+    const refresh = runOf(booted.worker, opened.id, 1);
+    await booted.worker.end(refresh, 'succeeded', { stored: 1 });
+    const entry = (await booted.entries.latest({ kind: 'engine-switch' })).find(
+      (e) => e.id === opened.id,
+    );
+    if (!entry) throw new Error('no switch entry');
+    await booted.entries.append({
+      ...entry,
+      spec: { ...(entry.spec as object), state: 'ready', runs: [refresh?.id] },
+      version: entry.version + 1,
+    } as never);
+
+    await booted.module.follow();
+
+    expect((await view(booted, 'publisering', opened.sid)).progress.documents).toBe(3);
+  });
+
+  it('a copy whose run is sent back counts what it copied then', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi-tilbake');
+    const ready = await copiedToReady(
+      booted,
+      'kopi-tilbake',
+      {},
+      { stored: 3, failedDocuments: 2 },
+    );
+    expect(ready.copy).toMatchObject({ copied: 3, failed: 2 });
+    const run = runOf(booted.worker, ready.id) as Execution;
+    await booted.worker.executions.save({ ...run, status: 'running' });
+    await booted.worker.end(run, 'succeeded', { stored: 5 });
+
+    await booted.module.follow();
+
+    expect((await view(booted, 'kopi-tilbake', ready.sid)).copy).toMatchObject({
+      copied: 5,
+      failed: 0,
+    });
+  });
+
+  it('a ready copy is not counted again while its counts stay the same', async () => {
+    /** Hands specs back with their keys reordered, as PostgreSQL's jsonb does. */
+    const sorted = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(sorted)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value)
+                .sort(([a], [b]) => a.length - b.length || a.localeCompare(b))
+                .map(([k, v]) => [k, sorted(v)]),
+            )
+          : value;
+    class JsonbOrder extends InMemoryConfigEntryStore {
+      override async latest(filter?: Parameters<InMemoryConfigEntryStore['latest']>[0]) {
+        return (await super.latest(filter)).map((e) => ({ ...e, spec: sorted(e.spec) }));
+      }
+      override async history(kind: string, scope: string, id: string) {
+        return (await super.history(kind, scope, id)).map((e) => ({ ...e, spec: sorted(e.spec) }));
+      }
+    }
+    const entries = new JsonbOrder();
+    const booted = await boot({ entries });
+    await copyDataset(booted, 'kopi-rolig');
+    const ready = await copiedToReady(
+      booted,
+      'kopi-rolig',
+      {},
+      { stored: 3, failedDocuments: 2, 'skipped.no_uuid': 1 },
+    );
+    const versions = async () => (await entries.history('engine-switch', digdir, ready.id)).length;
+    const before = await versions();
+
+    for (let i = 0; i < 3; i++) await booted.module.follow();
+
+    expect(await versions()).toBe(before);
+  });
+
+  it('a run of a cancelled switch cannot be sent back', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'forkastet');
+    const opened = await started(booted, 'forkastet');
+    const run = runOf(booted.worker, opened.id) as Execution;
+    await booted.worker.end(run, 'failed', {}, 'the listing failed');
+    await booted.module.follow();
+    expect(
+      (
+        await booted.call(`${base('forkastet')}/engine-switches/${opened.sid}/cancel`, {
+          body: {},
+        })
+      ).status,
+    ).toBe(200);
+
+    const response = await booted.call(
+      `${base('forkastet')}/pipelines/filer/executions/${run.id}/redrive`,
+      { body: {}, reason: 'Sender døde jobber tilbake' },
+    );
+
+    expect(response.status).toBe(409);
+    expect((await booted.worker.executions.get(run.id))?.status).toBe('failed');
   });
 });
 
