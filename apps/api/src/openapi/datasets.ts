@@ -1284,6 +1284,9 @@ const fieldRoutes: RouteConfig[] = [
       400: problem('No change reason, or an unknown fill'),
       ...operatorOnly,
       404: problem('No such platform dataset'),
+    },
+  }),
+];
 
 const ComparisonKind = z.enum(['mismatch', 'budget-booking', 'not-in-register']);
 
