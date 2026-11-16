@@ -243,11 +243,19 @@ export interface RecallSample {
 /**
  * recall@k of the generation's chunk index against exact search, for a random sample of its own
  * vectors as queries, at the `hnsw.ef_search` search uses. Nothing when it holds no vectors.
+ * `stop` is asked before each exact search, which reads the whole partition: the result counts
+ * only the searches that ran (issue 615). `signal` cancels the query that is running.
  */
 export const sampleRecall = async (
   owner: Pool,
   generation: string,
-  options: { sample: number; k?: number; efSearch?: number },
+  options: {
+    sample: number;
+    k?: number;
+    efSearch?: number;
+    stop?: () => boolean;
+    signal?: AbortSignal;
+  },
 ): Promise<RecallSample | undefined> => {
   const k = options.k ?? 10;
   const { rows: found } = await owner.query<{ dims: number | null }>(
@@ -258,6 +266,14 @@ export const sampleRecall = async (
   if (!dims) return undefined;
   const chunks = partitionOf('kn_chunks', generation);
   return onSession(owner, async (client) => {
+    const { signal } = options;
+    signal?.throwIfAborted();
+    const { rows: backend } = await client.query<{ pid: number }>('select pg_backend_pid() as pid');
+    const pid = backend[0]?.pid;
+    const cancel = () => {
+      if (pid !== undefined) void cancelBackend(owner, pid).catch(() => undefined);
+    };
+    signal?.addEventListener('abort', cancel, { once: true });
     await client.query('begin');
     try {
       const { rows: queries } = await client.query<{ vec: string }>(
@@ -280,15 +296,22 @@ export const sampleRecall = async (
       await client.query(`set local enable_bitmapscan = off`);
       let hits = 0;
       let wanted = 0;
+      let ran = 0;
       for (const [i, q] of queries.entries()) {
+        if (options.stop?.()) break;
         const exact = (await client.query<{ id: string }>(nearest, [q.vec])).rows.map((r) => r.id);
         const got = new Set(ann[i]);
         hits += exact.filter((id) => got.has(id)).length;
         wanted += exact.length;
+        ran += 1;
       }
-      return { recall: wanted ? hits / wanted : 1, queries: queries.length };
+      return { recall: wanted ? hits / wanted : 1, queries: ran };
+    } catch (error) {
+      if (signal?.aborted) throw new Error('the recall check was stopped', { cause: error });
+      throw error;
     } finally {
-      await client.query('rollback');
+      signal?.removeEventListener('abort', cancel);
+      await client.query('rollback').catch(() => undefined);
     }
   });
 };
@@ -318,8 +341,10 @@ export const knowledgeHeavyWork = (owner: Pool) => ({
   toFreeze: () => generationsToFreeze(owner),
   progress: (pid: number) => buildProgress(owner, pid),
   cancel: (pid: number) => cancelBackend(owner, pid),
-  recall: (generation: string, options: { sample: number }) =>
-    sampleRecall(owner, generation, options),
+  recall: (
+    generation: string,
+    options: { sample: number; stop: () => boolean; signal: AbortSignal },
+  ) => sampleRecall(owner, generation, options),
   baseline: (generation: string, measured: number) => recallBaseline(owner, generation, measured),
   datasetOf: async (generation: string) => {
     const { rows } = await owner.query<{ dataset: string }>(

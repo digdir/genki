@@ -578,7 +578,10 @@ describe('the nightly checks', () => {
         {
           server: server({
             chunks: vi.fn(async () => chunks),
-            recall: vi.fn(async () => ({ recall: 0.98, queries: 50 })),
+            recall: vi.fn(async (_g: string, options: { sample: number }) => ({
+              recall: 0.98,
+              queries: options.sample,
+            })),
             baseline: vi.fn(async () => 0.995),
           }),
         },
@@ -586,11 +589,17 @@ describe('the nightly checks', () => {
       );
     const small = drop(100_000);
     await checkWork(small.deps).handler(job(knowledgeCheckQueue, {}));
-    expect(small.deps.server.recall).toHaveBeenCalledWith('g-docs-1', { sample: 200 });
+    expect(small.deps.server.recall).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ sample: 200 }),
+    );
     expect(small.sent).toHaveLength(1);
     const large = drop(3_000_000);
     await checkWork(large.deps).handler(job(knowledgeCheckQueue, {}));
-    expect(large.deps.server.recall).toHaveBeenCalledWith('g-docs-1', { sample: 50 });
+    expect(large.deps.server.recall).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ sample: 50 }),
+    );
     expect(large.sent).toEqual([]);
   });
 
@@ -606,6 +615,107 @@ describe('the nightly checks', () => {
     );
     await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
     expect(t.sent).toEqual([]);
+  });
+});
+
+describe('the recall check inside its time', () => {
+  const minutes = (n: number) => new Date(night.getTime() + n * 60_000);
+
+  it('the recall check stops starting searches 90 minutes after the job starts', async () => {
+    let clock = night;
+    const stops: boolean[] = [];
+    const t = deps({
+      now: () => clock,
+      server: server({
+        recall: vi.fn(async (_generation: string, options: { stop: () => boolean }) => {
+          stops.push(options.stop());
+          clock = minutes(89);
+          stops.push(options.stop());
+          clock = minutes(90);
+          stops.push(options.stop());
+          return { recall: 0.995, queries: 200 };
+        }),
+      }),
+    });
+    const check = job(knowledgeCheckQueue, {});
+    await checkWork(t.deps).handler(check);
+    expect(stops).toEqual([false, false, true]);
+    // The job's signal goes along, so an expired job stops its query.
+    expect(t.deps.server.recall).toHaveBeenCalledWith(
+      'g-docs-1',
+      expect.objectContaining({ signal: check.signal }),
+    );
+  });
+
+  it('the margin follows the searches done, not the planned sample', async () => {
+    // 100,000 chunks plan 200 searches (margin 0.01); the deadline let 50 run (margin 0.02).
+    const t = deps(
+      {
+        server: server({
+          chunks: vi.fn(async () => 100_000),
+          recall: vi.fn(async () => ({ recall: 0.98, queries: 50 })),
+          baseline: vi.fn(async () => 0.995),
+        }),
+      },
+      night,
+    );
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(t.sent).toEqual([]);
+  });
+
+  it('a recall check cut short below 20 searches sends nothing and keeps the baseline', async () => {
+    const log = vi.fn();
+    const t = deps(
+      {
+        log,
+        server: server({
+          chunks: vi.fn(async () => 100_000),
+          recall: vi.fn(async () => ({ recall: 0.5, queries: 19 })),
+        }),
+      },
+      night,
+    );
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(t.sent).toEqual([]);
+    expect(t.deps.server.baseline).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('knowledge recall check cut short', {
+      generation: 'g-docs-1',
+      planned: 200,
+      queries: 19,
+    });
+  });
+
+  it('small generations are checked before large ones', async () => {
+    const sizes: Record<string, number> = { 'g-big': 3_000_000, 'g-small': 10, 'g-mid': 400_000 };
+    const t = deps(
+      {
+        datasets: () =>
+          ['g-big', 'g-small', 'g-mid'].map((generation) => ({
+            ...dataset,
+            id: `991825827/${generation}`,
+            generation,
+          })),
+        server: server({ chunks: vi.fn(async (generation: string) => sizes[generation] ?? 0) }),
+      },
+      night,
+    );
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(vi.mocked(t.deps.server.recall).mock.calls.map(([generation]) => generation)).toEqual([
+      'g-small',
+      'g-mid',
+      'g-big',
+    ]);
+  });
+
+  it("the recall check logs when each generation's check starts", async () => {
+    const log = vi.fn();
+    const t = deps({ log, server: server({ chunks: vi.fn(async () => 3_000_000) }) }, night);
+    await checkWork(t.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(log).toHaveBeenCalledWith('knowledge recall check started', {
+      generation: 'g-docs-1',
+      chunks: 3_000_000,
+      planned: 50,
+    });
   });
 });
 
