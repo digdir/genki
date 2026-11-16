@@ -12,6 +12,8 @@ param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appsImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param doclingImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appVersion string = 'bootstrap'
+@description('The worker\'s APP_VERSION; empty means appVersion.')
+param workerVersion string = ''
 
 @description('API revisions (deploy.yml): the new one\'s suffix, the one users get, and the one before it. Empty live: one revision.')
 param apiRevisionSuffix string = ''
@@ -369,6 +371,7 @@ module apps 'modules/containerapps.bicep' = {
     appsImage: appsImage
     doclingImage: doclingImage
     appVersion: appVersion
+    workerVersion: workerVersion
     appEnv: appEnv
     identityEnv: {
       ANSATTPORTEN_ISSUER: ansattportenIssuer

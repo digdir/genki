@@ -131,6 +131,7 @@ jobs:
       contents: read
       id-token: write
     outputs:
+      app: ${{ steps.plan.outputs.app }}
       image: ${{ steps.plan.outputs.image }}
       version: ${{ steps.plan.outputs.version }}
       suffix: ${{ steps.plan.outputs.suffix }}
@@ -202,8 +203,14 @@ jobs:
               echo "$placeholder"
             fi
           }
+          worker_app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-worker')].name | [0]" -o tsv)
+          worker_version=""
+          if [ -n "$worker_app" ]; then
+            worker_version=$(az containerapp show -g "$rg" -n "$worker_app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
+          fi
           {
             echo "app=$app"
+            echo "worker_version=${worker_version:-bootstrap}"
             echo "image=$image"
             echo "version=${version:-bootstrap}"
             echo "suffix=$suffix"
@@ -220,7 +227,7 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}-candidate" \
             --parameters infra/env/test.bicepparam \
-            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="${{ steps.plan.outputs.previous }}" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" \
+            --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="${{ steps.plan.outputs.previous }}" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
             --query properties.outputs > outputs.json
           {
             echo "revision=$(jq -r .apiCandidateRevision.value outputs.json)"
@@ -281,7 +288,7 @@ jobs:
           SMOKE_API_URL: ${{ needs.candidate.outputs.url }}
           SMOKE_EXPECT_SHA: ${{ github.sha }}
           SMOKE_REVIEW: 'false'
-          SMOKE_MAX_RUNS_PER_DAY: ${{ vars.SMOKE_MAX_RUNS_PER_DAY }}
+          SMOKE_CAPPED: 'false'
           SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -289,10 +296,15 @@ jobs:
       - name: no failed check
         env:
           OUTCOME: ${{ steps.run.outputs.outcome }}
+          MODELS: ${{ steps.run.outputs.models }}
           LIVE: ${{ needs.candidate.outputs.live }}
         run: |
           if [ "$OUTCOME" = fail ] || [ -z "$OUTCOME" ]; then
             echo "The smoke test failed on the candidate revision, so users keep $LIVE."
+            exit 1
+          fi
+          if [ "$MODELS" != true ]; then
+            echo "No model check ran on the candidate revision, so users keep $LIVE."
             exit 1
           fi
       - if: always()
@@ -302,6 +314,38 @@ jobs:
           path: smoke-out
           retention-days: 30
           if-no-files-found: ignore
+
+  discard:
+    needs: [candidate, gate]
+    if: >-
+      always() && needs.candidate.outputs.revision != '' && needs.candidate.outputs.live != '' &&
+      (needs.candidate.result == 'failure' || needs.gate.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: stop the candidate that failed
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          APP: ${{ needs.candidate.outputs.app }}
+          CANDIDATE: ${{ needs.candidate.outputs.revision }}
+          LIVE: ${{ needs.candidate.outputs.live }}
+        run: |
+          [ "$CANDIDATE" != "$LIVE" ] || exit 0
+          az containerapp revision deactivate -g "$RG" -n "$APP" --revision "$CANDIDATE"
+          {
+            echo "### Candidate stopped"
+            echo
+            echo "\`$CANDIDATE\` failed its checks and is stopped, so it runs no schedules. Users keep \`$LIVE\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-test:
     needs: [build, candidate, gate]

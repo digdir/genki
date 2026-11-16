@@ -24,6 +24,7 @@ param doclingImage string
 @description('Most Docling replicas at once; each converts one PDF at a time.')
 param doclingMaxReplicas int = 8
 param appVersion string
+param workerVersion string = ''
 param appEnv object
 param identityEnv object
 param webSettings object
@@ -149,7 +150,6 @@ var identityPlainEnv = filter(map(items(identityEnv), item => { name: item.key, 
 
 var serverEnv = concat(
   [
-    { name: 'APP_VERSION', value: appVersion }
     { name: 'GENAI_ENV', value: environmentName }
     { name: 'AZURE_CLIENT_ID', value: identityClientId }
     { name: 'PGHOST', value: postgresHost }
@@ -199,14 +199,13 @@ var doclingKeySecret = {
 
 var apiAppName = '${name}-api'
 var apiCandidateRevision = empty(apiRevisionSuffix) ? '' : '${apiAppName}--${apiRevisionSuffix}'
+var apiCandidateLabelled = !empty(apiCandidateRevision) && !contains([apiLiveRevision, apiPreviousRevision], apiCandidateRevision)
 var apiTraffic = empty(apiLiveRevision)
   ? [{ latestRevision: true, weight: 100 }]
   : concat(
       [{ revisionName: apiLiveRevision, weight: 100, label: 'live' }],
-      empty(apiCandidateRevision) || apiCandidateRevision == apiLiveRevision
-        ? []
-        : [{ revisionName: apiCandidateRevision, weight: 0, label: 'candidate' }],
-      empty(apiPreviousRevision) || contains([apiLiveRevision, apiCandidateRevision], apiPreviousRevision)
+      apiCandidateLabelled ? [{ revisionName: apiCandidateRevision, weight: 0, label: 'candidate' }] : [],
+      empty(apiPreviousRevision) || apiPreviousRevision == apiLiveRevision
         ? []
         : [{ revisionName: apiPreviousRevision, weight: 0, label: 'previous' }]
     )
@@ -243,7 +242,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }], serverEnv, knowledgeEnv.api)
+          env: concat([{ name: 'PORT', value: '8080' }, { name: 'APP_VERSION', value: appVersion }], serverEnv, knowledgeEnv.api)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }
@@ -281,7 +280,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
             name: 'worker'
             image: workerImage
             resources: { cpu: json(workerCpu), memory: workerMemory }
-            env: concat(serverEnv, knowledgeEnv.worker, doclingEnv, [
+            env: concat([{ name: 'APP_VERSION', value: empty(workerVersion) ? appVersion : workerVersion }], serverEnv, knowledgeEnv.worker, doclingEnv, [
               { name: 'NODE_OPTIONS', value: '--max-old-space-size=${workerHeapMb}' }
             ])
             volumeMounts: dataMount
@@ -524,9 +523,9 @@ output doclingName string = docling.name
 output knowledgeSetupJobName string = setupOn ? knowledgeSetupJob.name : ''
 output fqdn string = api.properties.configuration.ingress.fqdn
 output apiCandidateRevision string = apiCandidateRevision
-output apiCandidateUrl string = empty(apiLiveRevision) || empty(apiCandidateRevision) || apiCandidateRevision == apiLiveRevision
-  ? 'https://${api.properties.configuration.ingress.fqdn}'
-  : 'https://${apiAppName}---candidate.${environment.properties.defaultDomain}'
+output apiCandidateUrl string = !empty(apiLiveRevision) && apiCandidateLabelled
+  ? 'https://${apiAppName}---candidate.${environment.properties.defaultDomain}'
+  : 'https://${api.properties.configuration.ingress.fqdn}'
 output defaultFqdns object = {
   api: api.properties.configuration.ingress.fqdn
   portal: web[0].properties.configuration.ingress.fqdn

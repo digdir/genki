@@ -53,6 +53,34 @@ describe('a deploy to genki-test', () => {
     );
   });
 
+  it('keeps the worker reporting the version it runs while the candidate is checked', () => {
+    expect(step(job('candidate'), 'deploy').run).toContain(
+      'workerVersion="${{ steps.plan.outputs.worker_version }}"',
+    );
+    expect(step(job('deploy-test'), 'deploy').run).not.toContain('workerVersion=');
+  });
+
+  it('stops a candidate that failed its health check or the gate, never the live revision', () => {
+    const discard = job('discard');
+    expect(discard.needs).toEqual(['candidate', 'gate']);
+    expect(discard.if).toContain("needs.gate.result == 'failure'");
+    expect(discard.if).toContain("needs.candidate.result == 'failure'");
+    expect(discard.if).toContain("needs.candidate.outputs.live != ''");
+    const stop = discard.steps.find((s) => s.name === 'stop the candidate that failed');
+    expect(stop?.env?.CANDIDATE).toBe('${{ needs.candidate.outputs.revision }}');
+    expect(stop?.run).toContain('[ "$CANDIDATE" != "$LIVE" ] || exit 0');
+    expect(stop?.run).toContain('az containerapp revision deactivate');
+    expect(discard.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
+  });
+
+  it('promotes the candidate only when a model check ran on it, whatever the daily cap', () => {
+    const gate = job('gate');
+    expect(step(gate, 'run').env?.SMOKE_CAPPED).toBe('false');
+    expect(gate.steps.find((s) => s.name === 'no failed check')?.run).toContain(
+      '[ "$MODELS" != true ]',
+    );
+  });
+
   it('gives users the new API only after the smoke test passed on the candidate', () => {
     const promote = job('deploy-test');
     expect(promote.needs).toEqual(['build', 'candidate', 'gate']);
@@ -99,13 +127,14 @@ describe('the rollback workflow', () => {
     expect(run).toContain('--source previous --target live');
   });
 
-  it('keeps the labels when infra runs alone', () => {
+  it('keeps the labels and the worker version when infra runs alone', () => {
     const run = workflow('infra.yml')
       .jobs.apply?.steps.map((s) => s.run ?? '')
       .join('\n');
     expect(run).toContain(
       'apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}"',
     );
+    expect(run).toContain('workerVersion="${{ steps.current.outputs.worker_version }}"');
   });
 });
 
@@ -159,6 +188,23 @@ describe.skipIf(!hasAz && !process.env.CI)('API revisions in the template', () =
     const others = Object.entries(modes).filter(([name]) => !name.includes("'{0}-api'"));
     expect(others.length).toBeGreaterThan(0);
     for (const [name, mode] of others) expect({ name, mode }).toEqual({ name, mode: 'Single' });
+  });
+
+  it('keeps the previous label after a rollback, when the template names the previous revision', () => {
+    expect(variables.apiCandidateLabelled).toContain(
+      "not(contains(createArray(parameters('apiLiveRevision'), parameters('apiPreviousRevision')), variables('apiCandidateRevision')))",
+    );
+    expect(variables.apiTraffic).toContain(
+      "if(or(empty(parameters('apiPreviousRevision')), equals(parameters('apiPreviousRevision'), parameters('apiLiveRevision'))), createArray(), createArray(createObject('revisionName', parameters('apiPreviousRevision'), 'weight', 0, 'label', 'previous')))",
+    );
+  });
+
+  it('gives the worker its own version, the API version unless one is named', () => {
+    const worker = resources.find((r) => r.name.includes("'{0}-worker'"));
+    expect(JSON.stringify(worker?.properties.template)).toContain(
+      "createObject('name', 'APP_VERSION', 'value', if(empty(parameters('workerVersion')), parameters('appVersion'), parameters('workerVersion')))",
+    );
+    expect(variables.serverEnv).not.toContain('APP_VERSION');
   });
 
   it('labels the live revision with all traffic and the candidate and previous with none', () => {
