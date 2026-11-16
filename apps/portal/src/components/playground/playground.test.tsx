@@ -564,6 +564,29 @@ describe('Prøveområde', () => {
     expect(runs[0]?.compareWith?.model).toBe('eu/mistral');
   });
 
+  it('marks a candidate model as not released in the model list and leaves released models unmarked', async () => {
+    const options = structuredClone(examplePlaygroundOptions);
+    options.models = [
+      { id: 'eu/mistral', name: 'Mistral EU', dataLocation: 'eu', status: 'allowed' },
+      {
+        id: 'eu/mistral-next',
+        name: 'Mistral Next',
+        dataLocation: 'eu',
+        status: 'allowed',
+        candidate: true,
+      },
+    ];
+    for (const service of options.services)
+      for (const version of service.versions) version.setup.model = 'eu/mistral';
+    await openPage({ options });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Endre oppsett' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
+    expect(screen.getByRole('radio', { name: /^Mistral Next.*Ikke sluppet/ })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: /^Mistral EU/ })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: /^Mistral EU.*Ikke sluppet/ })).toBeNull();
+  });
+
   it('starts on the first service exposed for chat, not the first in the list', async () => {
     const options = structuredClone(examplePlaygroundOptions);
     options.services.sort((x) => (x.chat ? 1 : -1));

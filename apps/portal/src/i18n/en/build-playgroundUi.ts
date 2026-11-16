@@ -169,6 +169,7 @@ export const playgroundUi = {
     versionHelp:
       'Uses the model, datasets, skills and building blocks in {version}. You can change the model here without changing the service.',
     model: 'Model',
+    candidateModel: 'Not released',
     ruleOwnedBy: 'The rule is owned by {owner}.',
     datasets: 'Datasets',
     skills: 'Skills',
