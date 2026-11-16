@@ -47,9 +47,7 @@ describe('the Grensesnitt tab', () => {
     expect(navLink('Grensesnitt').getAttribute('aria-current')).toBe('page');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     fireEvent.click(screen.getByRole('radio', { name: 'Utgangspunkt' }));
-    expect(
-      screen.getByRole('button', { name: 'Bruk Alle klossene' }).ariaPressed,
-    ).toBe('true');
+    expect(screen.getByRole('button', { name: 'Bruk Alle klossene' }).ariaPressed).toBe('true');
     expectAccessible();
   });
 

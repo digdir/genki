@@ -1,11 +1,5 @@
 import { Paragraph } from '@digdir/designsystemet-react';
-import {
-  blockSpec,
-  templates,
-  zones,
-  type TemplateId,
-  type Zone,
-} from '@genai/ui-blocks/builder';
+import { blockSpec, templates, zones, type TemplateId, type Zone } from '@genai/ui-blocks/builder';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
 import { startingPoints } from './startingPoints';

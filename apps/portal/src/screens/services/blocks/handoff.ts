@@ -29,4 +29,3 @@ export const takeOver = (tenant: string, service: string) => {
     // Without storage there is nothing handed over.
   }
 };
-
