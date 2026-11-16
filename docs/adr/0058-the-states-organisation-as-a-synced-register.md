@@ -10,7 +10,7 @@ A service over agencies' documents is asked which agencies sit under a ministry,
 
 - **Enhetsregisteret is the authority for "under".** Under rundskriv W-01/2019, each ministry registers which ministry its agencies (organisasjonsform ORGL) are under, as `overordnetEnhet` pointing to the ministry (STAT), and keeps that current. The data is open under NLOD 2.0.
 - **DFØ's state accounts are a second authority.** Every state agency reports to the state accounts, which book it to its ministry (`Fagdepartement_Virksomhet`). The files are monthly, and yearly from 2014, under NLOD 2.0.
-- **The two agree.** On 2026-11-16, 162 of the 178 agencies in the September 2026 accounts had the same ministry in both. The others were bodies under Stortinget, SMK, the courts or Sametinget that the accounts book under a ministry's budget, and five with no parent in the register.
+- **The two agree.** On 2026-11-16, 162 of the 177 agencies in the September 2026 accounts had the same ministry in both. Of the others, 11 were bodies under Stortinget, SMK, the courts or Sametinget that the accounts book under a ministry's budget, and four had no parent in the register.
 
 ## Decision
 
@@ -18,20 +18,20 @@ The platform keeps a copy of the state's organisation, read from the authorities
 
 - **What is kept.** Each STAT unit and every ORGL unit that reaches one through its parents, at any depth: 324 units on 2026-11-16. Municipal units are left out. `packages/composition/src/state-register.ts` reads every STAT and ORGL unit from `data.brreg.no/enhetsregisteret/api/enheter`, `size=1000`, which is three calls.
 - **Where it is kept.** It lives in the platform's versioned configuration entries, `platform` scope, under five kinds:
-  - `state-register` (`enhetsregisteret`): the tree. A version is added only when the tree changed, with the changes since the version before: new, removed, or a new parent. So the versions are the change history, and each change is dated the night the sync saw it. The register itself gives no date for when a parent link took effect.
+  - `state-register` (`enhetsregisteret`): the tree. A version is added only when the tree changed, with the changes since the version before: new, removed, a new parent or a new name. So the versions are the change history, and each change is dated the night the sync saw it. The register itself gives no date for when a parent link took effect.
   - `state-register-sync`: the last good sync and the failed nights in a row.
   - `state-accounts`: one entry per year (`year-YYYY`) and one for the latest month (`month`). Each holds every agency's ministry by org number.
   - `state-register-check`: the mismatches of the last month checked.
   - `state-register-names`: the display names and abbreviations KUDOS (run by DFØ) gives each unit of the register, joined by org number. KUDOS's old names are left out: it points "Difi" to DFØ alone, though Difi was split between DFØ and Digdir.
 - **A bad read changes nothing.** A failed call, a page missing, fewer units than the register reported, or no STAT unit at all leaves the stored tree as it was. Only the sync status records the failure.
-- **Reads go through the egress guard.** The only hosts allowed are `data.brreg.no` and `statsregnskapet.dfo.no`. The state accounts are zip files: the guard returns the raw bytes, and the CSV inside is inflated as a stream. That way a year's 130 MB never sits in memory at once.
+- **The register and the state accounts are read through the egress guard,** which allows only `data.brreg.no` and `statsregnskapet.dfo.no`. KUDOS's actors are read with KUDOS's own client and rate limiter, as ingestion reads KUDOS. The state accounts are zip files: the guard returns the raw bytes, and the CSV inside is inflated as a stream. That way a year's 130 MB never sits in memory at once.
 - **The job.** The worker runs it at 02:40 Oslo time on one replica, under the leader lease `genai-worker-state-register`, and once at start when no register is stored. In order:
   1. It reads the register.
-  2. It loads each closed year of the state accounts that is missing, from 2014.
-  3. It reads the latest month and keeps it when its period is new.
+  2. It reads the latest month of the state accounts, then each year from 2014 to this one that is not yet stored with December, so a year read before DFØ closed it is read again until it holds December.
+  3. It keeps the latest month when its period is new.
   4. It reads KUDOS's actors through KUDOS's own rate limiter.
   5. It compares the latest month with the register.
-- **History.** A unit's ministry on a date before the first sync comes from that year's state accounts. On a date after the first sync, it comes from the register version current on that date. A body the register places under Stortinget, SMK, the courts or Sametinget gets no answer from the accounts, which book it under a ministry for the budget only.
+- **History.** A unit's ministry on a date before the first sync comes from that year's state accounts. A ministry renamed during a year keeps its old name on its own row there, so its code maps to the org number the latest month gives it. On a date after the first sync, it comes from the register version current on that date. A body the register places under Stortinget, SMK, the courts or Sametinget gets no answer from the accounts, which book it under a ministry for the budget only.
 - **The monthly check.** Each agency in the latest month is compared with its top unit in the register:
   - **Same:** the accounts give the same ministry.
   - **Budget booking:** the register's top unit is not one of the accounts' ministries, as for Stortinget, SMK, the courts and Sametinget.

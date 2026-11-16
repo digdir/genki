@@ -21,13 +21,15 @@ export interface RegisterUnit {
 }
 
 export interface RegisterChange {
-  change: 'new' | 'removed' | 'parent';
+  change: 'new' | 'removed' | 'parent' | 'name';
   orgnr: string;
   name: string;
   /** The parent before the change: of a removed unit, or one that moved. */
   from?: string;
   /** The parent after the change: of a new unit, or one that moved. */
   to?: string;
+  /** The name before a rename. */
+  previousName?: string;
 }
 
 export interface StateRegister {
@@ -162,14 +164,18 @@ export const diffRegister = (before: RegisterUnit[], after: RegisterUnit[]): Reg
         name: u.name,
         ...(u.parent ? { to: u.parent } : {}),
       });
-    else if (was.parent !== u.parent)
-      changes.push({
-        change: 'parent',
-        orgnr: u.orgnr,
-        name: u.name,
-        ...(was.parent ? { from: was.parent } : {}),
-        ...(u.parent ? { to: u.parent } : {}),
-      });
+    else {
+      if (was.parent !== u.parent)
+        changes.push({
+          change: 'parent',
+          orgnr: u.orgnr,
+          name: u.name,
+          ...(was.parent ? { from: was.parent } : {}),
+          ...(u.parent ? { to: u.parent } : {}),
+        });
+      if (was.name !== u.name)
+        changes.push({ change: 'name', orgnr: u.orgnr, name: u.name, previousName: was.name });
+    }
   }
   for (const u of before)
     if (!now.has(u.orgnr))

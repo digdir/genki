@@ -132,8 +132,16 @@ export const csvFields = (line: string): string[] => {
   return fields;
 };
 
-/** Reads the CSV inside a zip down to each agency's ministry and the last period. */
-export const readAccountsZip = async (zip: Uint8Array): Promise<AccountsEntry> => {
+/**
+ * Reads the CSV inside a zip down to each agency's ministry and the last period. A ministry's code
+ * maps to the org number of the row named as the code is; a ministry renamed during the year keeps
+ * its old name on its own row, so then the code maps to the org number `known` gives it, as the
+ * latest month does, when a row under the code has it.
+ */
+export const readAccountsZip = async (
+  zip: Uint8Array,
+  known: Record<string, string> = {},
+): Promise<AccountsEntry> => {
   const decoder = new TextDecoder('latin1');
   let columns: Record<string, number> | undefined;
   let rest = '';
@@ -173,6 +181,8 @@ export const readAccountsZip = async (zip: Uint8Array): Promise<AccountsEntry> =
   const ministries: Record<string, string> = {};
   for (const [orgnr, a] of agencies)
     if (a.name.toLowerCase() === codeNames.get(a.code)?.toLowerCase()) ministries[a.code] = orgnr;
+  for (const [code, orgnr] of Object.entries(known))
+    if (!ministries[code] && agencies.get(orgnr)?.code === code) ministries[code] = orgnr;
   return {
     period,
     ministries,
@@ -221,16 +231,17 @@ const saveAccounts = (
     at: at.toISOString(),
   });
 
-/** The years a sync loads when they are missing: every closed year DFØ publishes a file for. */
-export const closedYears = (now: Date) => {
+/** The years a sync reads: every year DFØ publishes a file for, this one included. */
+export const accountYears = (now: Date) => {
   const years: number[] = [];
-  for (let y = firstAccountsYear; y < now.getUTCFullYear(); y += 1) years.push(y);
+  for (let y = firstAccountsYear; y <= now.getUTCFullYear(); y += 1) years.push(y);
   return years;
 };
 
 /**
- * Loads each missing year once, then the latest month when its period is new. A file that
- * cannot be read changes nothing that is stored.
+ * Reads the latest month, then each year not yet stored up to December, so a year read before DFØ
+ * closed it is read again until it holds December; the month is kept when its period is new. A
+ * file that cannot be read changes nothing that is stored.
  */
 export const syncAccounts = async (deps: {
   configEntries: ConfigEntryStore;
@@ -239,12 +250,17 @@ export const syncAccounts = async (deps: {
   years?: number[];
 }): Promise<{ ok: true; period: string } | { ok: false; error: string }> => {
   try {
-    for (const year of deps.years ?? closedYears(deps.now())) {
-      if (await latestAccounts(deps.configEntries, `year-${year}`)) continue;
-      const entry = await readAccountsZip(await fetchZip(deps.guard, accountsYearUrl(year)));
+    const month = await readAccountsZip(await fetchZip(deps.guard, accountsMonthUrl));
+    for (const year of deps.years ?? accountYears(deps.now())) {
+      const kept = await latestAccounts(deps.configEntries, `year-${year}`);
+      if (kept?.period.endsWith('12')) continue;
+      const entry = await readAccountsZip(
+        await fetchZip(deps.guard, accountsYearUrl(year)),
+        month.ministries,
+      );
+      if (kept?.period === entry.period) continue;
       await saveAccounts(deps.configEntries, `year-${year}`, entry, deps.now());
     }
-    const month = await readAccountsZip(await fetchZip(deps.guard, accountsMonthUrl));
     const stored = await latestAccounts(deps.configEntries, 'month');
     if (stored?.period !== month.period)
       await saveAccounts(deps.configEntries, 'month', month, deps.now());

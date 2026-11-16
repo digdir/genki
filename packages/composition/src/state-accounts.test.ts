@@ -5,6 +5,7 @@ import type { GuardedRequest } from './exchange-rates.js';
 import {
   accountsMonthUrl,
   accountsYearUrl,
+  accountYears,
   checkAgainstAccounts,
   compareWithAccounts,
   latestAccounts,
@@ -209,6 +210,96 @@ describe('the state accounts', () => {
 
     expect(riksrevisjonen).toBeUndefined();
     expect(skatteetaten?.orgnr).toBe('972417807');
+  });
+
+  it('answers a date after the first sync from the register version current on that date', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const underKdd = Object.fromEntries(
+      Object.entries(register).map(([url, body]) => [
+        url,
+        body.replace(
+          '"organisasjonsnummer":"991825827","navn":"DIGITALISERINGSDIREKTORATET","organisasjonsform":{"kode":"ORGL"},"overordnetEnhet":"932384469"',
+          '"organisasjonsnummer":"991825827","navn":"DIGITALISERINGSDIREKTORATET","organisasjonsform":{"kode":"ORGL"},"overordnetEnhet":"972417858"',
+        ),
+      ]),
+    );
+    await syncRegister({
+      configEntries,
+      guard: guardFor(underKdd).guard,
+      now: at('2026-11-17T01:40:00Z'),
+    });
+    await syncRegister({
+      configEntries,
+      guard: guardFor(register).guard,
+      now: at('2026-11-20T01:40:00Z'),
+    });
+
+    const between = await ministryOn(configEntries, '991825827', new Date('2026-11-18T12:00:00Z'));
+    const after = await ministryOn(configEntries, '991825827', new Date('2026-11-21T12:00:00Z'));
+
+    expect(between?.orgnr).toBe('972417858');
+    expect(after?.orgnr).toBe('932384469');
+  });
+
+  it("maps a ministry code to the ministry the latest month gives it when the year's own row has an older name", async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const kmd = ['05', 'Kommunal- og moderniseringsdepartementet'] as const;
+    const year2014 = csv([
+      row('201412', ...kmd, '972417858', 'Kommunal- og regionaldepartementet'),
+      row('201412', ...kmd, '974760347', 'Sametinget'),
+      row('201412', ...kmd, '971161264', 'Husbanken'),
+    ]);
+
+    await syncAccounts({
+      configEntries,
+      guard: guardFor({
+        ...files(),
+        [accountsYearUrl(2014)]: zipOf('statsregnskapet_aar_2014.csv', year2014),
+      }).guard,
+      now: at('2026-11-17T01:45:00Z'),
+      years: [2014],
+    });
+
+    const y2014 = await latestAccounts(configEntries, 'year-2014');
+    expect(y2014?.ministries).toEqual({ '05': '972417858' });
+    expect(y2014?.agencies.find((a) => a.orgnr === '971161264')?.ministry).toBe('972417858');
+  });
+
+  it('loads a year again until its file reaches December', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const year2026 = (period: string) =>
+      zipOf(
+        'statsregnskapet_aar_2026.csv',
+        csv([
+          row(
+            period,
+            '15',
+            'Digitaliserings- og forvaltningsdepartementet',
+            '932384469',
+            'Digitaliserings- og forvaltningsdepartementet',
+          ),
+        ]),
+      );
+    const asked: string[] = [];
+    const sync = async (period: string, day: string) => {
+      const { guard, asked: urls } = guardFor({
+        ...files(),
+        [accountsYearUrl(2026)]: year2026(period),
+      });
+      await syncAccounts({ configEntries, guard, now: at(`${day}T01:45:00Z`), years: [2026] });
+      asked.push(...urls.map((u) => u.url).filter((u) => u === accountsYearUrl(2026)));
+    };
+
+    await sync('202609', '2026-11-17');
+    await sync('202612', '2027-01-17');
+    await sync('202612', '2027-02-17');
+
+    expect((await latestAccounts(configEntries, 'year-2026'))?.period).toBe('202612');
+    expect(asked).toHaveLength(2);
+  });
+
+  it('reads every year from 2014 to this one', () => {
+    expect(accountYears(new Date('2016-03-01T00:00:00Z'))).toEqual([2014, 2015, 2016]);
   });
 
   it('flags an agency whose ministry differs between the register and the latest state accounts', async () => {

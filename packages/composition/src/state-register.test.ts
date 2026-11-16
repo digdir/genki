@@ -153,6 +153,31 @@ describe('the state register', () => {
     expect(changes).toHaveLength(2);
   });
 
+  it('records a unit whose name changed', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const renamed = unit('991825827', 'DIGITALISERINGSDIREKTORATET (DIGDIR)', 'ORGL', '932384469');
+    await syncRegister({
+      configEntries,
+      guard: guardFor(registerOf([dfd], [digdir])).guard,
+      now: () => night('2026-11-16'),
+    });
+
+    await syncRegister({
+      configEntries,
+      guard: guardFor(registerOf([dfd], [renamed])).guard,
+      now: () => night('2026-11-17'),
+    });
+
+    expect((await latestRegister(configEntries))?.changes).toEqual([
+      {
+        change: 'name',
+        orgnr: '991825827',
+        name: 'DIGITALISERINGSDIREKTORATET (DIGDIR)',
+        previousName: 'DIGITALISERINGSDIREKTORATET',
+      },
+    ]);
+  });
+
   it('leaves the register as it was when a pull fails or returns fewer units than it reported', async () => {
     const configEntries = new InMemoryConfigEntryStore();
     await syncRegister({
