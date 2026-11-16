@@ -131,6 +131,12 @@ export const referenceFor = (
           untrusted('recipes', context.recipes),
         ]
       : []),
+    ...(target === 'service' && (context.interfaceBlocks?.length ?? 0) > 0
+      ? [
+          'Byggeklosser i grensesnittet, med behovene hos leserne hver kloss dekker (covers). Beskriver brukeren et slikt behov, velg klossen som dekker det med choose_interface_blocks:',
+          untrusted('interface-blocks', context.interfaceBlocks),
+        ]
+      : []),
     ...(strategySchema
       ? [
           `Skjema for /spec/strategy/config med ${strategyKey(String(strategy.id), Number(strategy.version))}: ${JSON.stringify(jsonSchema(strategySchema))}`,
