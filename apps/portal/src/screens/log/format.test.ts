@@ -14,6 +14,12 @@ describe('formatDuration', () => {
     expect(formatDuration(1203, createFormat('nb'))).toBe('20 min 3 s');
     expect(formatDuration(0.25, createFormat('nb'))).toBe('250 ms');
   });
+
+  it('carries a fraction of a second into the next minute, never writing 60 s', () => {
+    expect(formatDuration(1259.6, createFormat('nb'))).toBe('21 min');
+    expect(formatDuration(1259.4, createFormat('nb'))).toBe('20 min 59 s');
+    expect(formatDuration(3599.6, createFormat('nb'))).toBe('1 t 0 min');
+  });
 });
 
 describe('durationBetween', () => {

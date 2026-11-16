@@ -48,16 +48,15 @@ export const formatOffset = (seconds: number, f: Format) =>
       ? `+${f.decimal(seconds)} s`
       : `+${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
 
-export const formatDuration = (seconds: number, f: Format): string =>
-  seconds < 1
-    ? `${Math.round(seconds * 1000)} ms`
-    : seconds < 60
-      ? `${f.decimal(seconds)} s`
-      : seconds >= 3600
-        ? `${Math.floor(seconds / 3600)} ${f.locale === 'en' ? 'h' : 't'} ${Math.floor((seconds % 3600) / 60)} min`
-        : seconds % 60 === 0
-          ? `${seconds / 60} min`
-          : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+export const formatDuration = (seconds: number, f: Format): string => {
+  if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
+  if (seconds < 60) return `${f.decimal(seconds)} s`;
+  // Whole seconds first, so 59.6 s left over carries into the next minute instead of showing as 60 s.
+  const whole = Math.round(seconds);
+  if (whole >= 3600)
+    return `${Math.floor(whole / 3600)} ${f.locale === 'en' ? 'h' : 't'} ${Math.floor((whole % 3600) / 60)} min`;
+  return whole % 60 === 0 ? `${whole / 60} min` : `${Math.floor(whole / 60)} min ${whole % 60} s`;
+};
 
 /** How long a run took, from when it started to when it ended; undefined while it runs. */
 export const durationBetween = (startedAt: string, endedAt: string | null | undefined) => {
