@@ -282,15 +282,8 @@ const refusalOf = (error: unknown) =>
     ? fileRefusals[error.name]
     : undefined;
 
-/**
- * Why a convert job's fetch says the file cannot be had: KUDOS answered 404 or 410, or led to a landing
- * page with no PDF, or the download passed the size limit (issue 597). Every other
- * fetch error, such as a network error, is tried again.
- */
+/** Why a convert job's fetch cannot have the file (issue 597); other fetch errors are retried. */
 const fetchRefusalOf = (error: unknown) =>
-  // A file gets a convert job only when its source lists it under the limit or with no size, so a
-  // download past it is not what was listed: kept as unreachable, never as too large under a
-  // sha256 whose bytes were not seen.
   error instanceof FileUnreachable || error instanceof ResponseTooLarge ? 'unreachable' : undefined;
 
 /** A file a convert job could not fetch: tried again unless `fetchRefusalOf` names why. */
