@@ -1000,16 +1000,6 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           files: definition.files,
         });
       }
-      const quota = await quotaOf(g.tenant, true);
-      if (quota.exhausted) {
-        const exhausted: PlaygroundQuotaExhausted = {
-          type: 'about:blank',
-          title: quotaTitle,
-          status: 429,
-          quota: quotaView(quota),
-        };
-        return c.json(exhausted, 429, { 'content-type': 'application/problem+json' });
-      }
       if ('fields' in request.input)
         return {
           request,
@@ -1062,12 +1052,21 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         ...(onEvent ? { onEvent } : {}),
       });
 
-    const failureOf = (
+    const failureOf = async (
       g: Guarded,
       outcome: DraftRunFailure,
       name: PlaygroundSetupName,
-    ): { status: 400 | 403 | 422 | 502; body: unknown } => {
+    ): Promise<{ status: DraftRunFailure['status']; body: unknown }> => {
       if (outcome.status === 400) return { status: 400, body: invalidInputProblem(outcome.errors) };
+      if (outcome.status === 429) {
+        const exhausted: PlaygroundQuotaExhausted = {
+          type: 'about:blank',
+          title: quotaTitle,
+          status: 429,
+          quota: quotaView(await quotaOf(g.tenant, true)),
+        };
+        return { status: 429, body: exhausted };
+      }
       if (outcome.status === 502) {
         const code = outcome.code ?? 'model_error';
         const detailed = requireRight(g.principal, g.tenant, 'manage-services').ok;
@@ -1112,7 +1111,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
         await deps.blobs.delete({ tenant: g.tenant, path: uploaded });
       for (const [i, outcome] of outcomes.entries()) {
         if (outcome.ok) continue;
-        const failed = failureOf(g, outcome, definitions[i]?.name ?? 'setup');
+        const failed = await failureOf(g, outcome, definitions[i]?.name ?? 'setup');
         return c.json(failed.body, failed.status, {
           'content-type': 'application/problem+json',
         });
@@ -1139,6 +1138,10 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const details = mayDetail(g);
       const encoder = new TextEncoder();
       let open = true;
+      let begun = false;
+      let started: () => void = () => undefined;
+      const startedOrSettled = new Promise<void>((resolve) => (started = resolve));
+      let refusal: unknown;
       const body = new ReadableStream<Uint8Array>({
         start: (controller) => {
           const send = (event: string, data: unknown) => {
@@ -1167,10 +1170,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             const outcomes = await Promise.all(
               prepared.definitions.map(async (d) => {
                 const mapper = new RunMapper({ details });
-                let started = false;
+                let running = false;
                 const outcome = await runOne(g, prepared, d, (event) => {
-                  if (!started) {
-                    started = true;
+                  if (!running) {
+                    running = true;
+                    begun = true;
+                    started();
                     send('started', { setup: d.name, runId: event.task, startedAt: event.ts });
                   }
                   forward(d.name, mapper, mapper.push(event));
@@ -1180,10 +1185,15 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                     setup: d.name,
                     result: await resultOf(outcome, d.setup.output, details, mapper),
                   });
-                else send('failed', { setup: d.name, problem: failureOf(g, outcome, d.name).body });
+                else {
+                  const failed = await failureOf(g, outcome, d.name);
+                  if (failed.status === 429) refusal ??= failed.body;
+                  send('failed', { setup: d.name, problem: failed.body });
+                }
                 return outcome;
               }),
             );
+            started();
             if (prepared.uploaded && outcomes.some((o) => !o.ok))
               await deps.blobs.delete({ tenant: g.tenant, path: prepared.uploaded });
             send('done', { quota: quotaView(await quotaOf(g.tenant, true)) });
@@ -1203,6 +1213,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
               }),
             )
             .finally(() => {
+              started();
               if (!open) return;
               open = false;
               controller.close();
@@ -1212,6 +1223,11 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           open = false;
         },
       });
+      await startedOrSettled;
+      if (refusal && !begun) {
+        open = false;
+        return c.json(refusal, 429, { 'content-type': 'application/problem+json' });
+      }
       return new Response(body, {
         status: 200,
         headers: {

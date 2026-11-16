@@ -228,11 +228,6 @@ import {
   clientAddress,
   keyRateLimited,
   publicCardsPerMinute,
-  quotaExhausted,
-  quotaExhaustedDetail,
-  quotaExhaustedTitle,
-  quotaExhaustedType,
-  secondsToNextMonth,
   tooManyRequests,
   type RateLimiter,
 } from './rate-limit.js';
@@ -1258,6 +1253,21 @@ export const createPlatform = async (input: PlatformInput) => {
     };
   };
 
+  const ended = new Set(['completed', 'failed', 'cancelled']);
+  const usageLog: EventLog = {
+    append: async (event, scope) => {
+      const stored = await tracker.log.append(event, scope);
+      if (
+        event.type === 'kernel.task.status' &&
+        ended.has(String((event.data as { status?: unknown }).status))
+      )
+        usageCache.delete(scope.tenant);
+      return stored;
+    },
+    read: (task, fromSeq, isLive) => tracker.log.read(task, fromSeq, isLive),
+    wake: (task) => tracker.log.wake(task),
+  };
+
   const runtime = await createRuntime({
     modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
@@ -1274,7 +1284,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
     published: (capability) => originOf(capability) === 'service',
     ...(input.descriptors ? { descriptors: input.descriptors } : {}),
-    log: tracker.log,
+    log: usageLog,
     tasks: taskStore,
     prices,
     decorate: (capability, context) => decorate(capability, context),
@@ -1797,14 +1807,6 @@ export const createPlatform = async (input: PlatformInput) => {
   const caseSlots = evalSlots(input.evalSlots);
 
   const limiter = input.rateLimits?.limiter ?? new SlidingWindowLimiter();
-  const invokes = (c: {
-    req: { method: string; path: string; header(name: string): string | undefined };
-  }) =>
-    c.req.method === 'POST' &&
-    (c.req.path.startsWith('/v1/') ||
-      c.req.path.startsWith('/api/tools/call/') ||
-      (c.req.path === '/api/mcp' && c.req.header('mcp-method') === 'tools/call') ||
-      c.req.path.startsWith('/a2a/'));
   const headlessRagLimited = (c: { req: { method: string; path: string } }) =>
     c.req.method === 'POST' &&
     (c.req.path === '/api/mcp' ||
@@ -1847,10 +1849,6 @@ export const createPlatform = async (input: PlatformInput) => {
             'Too many requests',
             `The organisation allows ${perMinute} calls per minute.`,
           );
-    if (invokes(c)) {
-      const used = await quota(tenant);
-      if (used.exhausted) return quotaExhausted(c, used.monthlyTokens);
-    }
     return next();
   };
   const gate = tenantGate({
@@ -2146,7 +2144,6 @@ export const createPlatform = async (input: PlatformInput) => {
           kernel,
           evalCapability: evalCapability.descriptor.id,
           ...evalStores,
-          quotaExhausted: async (tenant) => (await quota(tenant, { fresh: true })).exhausted,
         },
       });
     if (admin) {
@@ -2266,18 +2263,6 @@ export const createPlatform = async (input: PlatformInput) => {
         overridePolicy,
         modelsOf,
         conversations: conversationTurns(conversations, callerOf, conversationId),
-        quotaExhausted: async (principal) => {
-          if (!principal.tenant) return undefined;
-          const used = await quota(principal.tenant);
-          return used.exhausted
-            ? {
-                type: quotaExhaustedType,
-                title: quotaExhaustedTitle,
-                detail: quotaExhaustedDetail(used.monthlyTokens),
-                retryAfterSeconds: secondsToNextMonth(),
-              }
-            : undefined;
-        },
       }),
     );
     app.route(

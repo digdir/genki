@@ -831,6 +831,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     capabilities: registry,
     ports,
     policy: operationTryPolicy(policy),
+    ...(input.modelQuota ? { quota: input.modelQuota } : {}),
     log,
     tasks: taskStore,
     ...(input.state ? { state: input.state } : {}),

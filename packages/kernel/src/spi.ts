@@ -166,7 +166,8 @@ export type KernelErrorCode =
   | 'invalid_state'
   | 'interrupted'
   | 'cancelled'
-  | 'misconfigured';
+  | 'misconfigured'
+  | 'quota_exhausted';
 
 export class KernelError extends Error {
   constructor(
@@ -177,3 +178,17 @@ export class KernelError extends Error {
     this.name = 'KernelError';
   }
 }
+
+const secondsToNextMonth = (now: Date) =>
+  Math.ceil((Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) - now.getTime()) / 1000);
+
+export const quotaExhaustedProblem = (error: unknown, now = new Date()) =>
+  error instanceof KernelError && error.code === 'quota_exhausted'
+    ? {
+        type: 'urn:genai:problem:quota-exhausted',
+        title: 'The monthly token quota is used up',
+        status: 429 as const,
+        detail: 'The organisation has used its monthly token quota for this month.',
+        retryAfterSeconds: secondsToNextMonth(now),
+      }
+    : undefined;

@@ -161,6 +161,12 @@ export interface OutsideRun {
   meter(ctx: PortContext, usage: Usage, model: Ref): Promise<void>;
 }
 
+/** Why the call's tenant may spend no more tokens now, or undefined when it may. */
+export type QuotaCheck = (call: {
+  tenant: string;
+  capability?: string;
+}) => Promise<string | undefined>;
+
 export interface GateOptions {
   admits?: (principal: Principal) => boolean;
   egress?: (endpoint: string) => typeof fetch | undefined;
@@ -168,8 +174,7 @@ export interface GateOptions {
   tier?: EnvironmentTier;
   media?: MediaOutput;
   mediaInput?: MediaInputSource;
-  /** Why the call's tenant may spend no more tokens now, or undefined when it may. */
-  quota?: (ctx: PortContext) => Promise<string | undefined>;
+  quota?: QuotaCheck;
 }
 
 export interface GateSession {

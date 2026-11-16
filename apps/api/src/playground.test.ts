@@ -623,7 +623,7 @@ describe('the playground', () => {
     expect(await blobs.list(tenant, 'playground/')).toEqual([]);
   });
 
-  it('a run is refused with 429 once the monthly tokens are used up', async () => {
+  it('an exhausted quota refuses a playground run with 429 from the kernel', async () => {
     const { settings, blobs, model, call, run } = await boot();
     expect((await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(200);
     expect(settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator')).toMatchObject({
@@ -668,7 +668,7 @@ describe('the playground', () => {
     expect(options.quota).toEqual({ usedPercent: 50, monthlyTokens: 50_000_000 });
     expect(answer.status).toBe(200);
     expect(answer.body).toMatchObject({ quota: { usedPercent: 50 } });
-    expect(sums).toEqual([tenant, tenant, tenant]);
+    expect(sums).toEqual([tenant, tenant]);
   });
 
   it('a playground answer saved as a test case keeps the chosen test set and origin', async () => {
@@ -810,6 +810,22 @@ describe('the playground run stream', () => {
     expect(res.status).toBe(403);
     expect(res.type).toContain('application/problem+json');
     expect(res.json).toMatchObject({ setup: 'setup', policy: { block: modelId } });
+  });
+
+  it('an exhausted quota refuses a streamed run with 429 from the kernel before the stream opens', async () => {
+    const app = await boot();
+    expect((await app.run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } })).status).toBe(
+      200,
+    );
+    app.settings.setTenant(tenant, 'usage.monthlyTokens', 10, 'operator');
+    const before = app.model.seen.length;
+
+    const res = await stream(app, { setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+
+    expect(res.status).toBe(429);
+    expect(res.type).toContain('application/problem+json');
+    expect(res.json).toMatchObject({ status: 429, quota: { monthlyTokens: 10 } });
+    expect(app.model.seen.length).toBe(before);
   });
 
   it('reports a failed model call in the stream and still closes with the quota', async () => {
