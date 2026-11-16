@@ -9,7 +9,7 @@ param serverName string
 @description('Resource id of the environment\'s network, whose apps reach the knowledge server.')
 param environmentVnetId string
 
-resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
+resource vnet 'Microsoft.Network/virtualNetworks@2024-10-01' = {
   name: name
   location: location
   tags: tags
@@ -44,7 +44,7 @@ resource links 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01
   }
 }]
 
-resource peering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-05-01' = {
+resource peering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-10-01' = {
   parent: vnet
   name: 'to-${last(split(environmentVnetId, '/'))}'
   properties: {
