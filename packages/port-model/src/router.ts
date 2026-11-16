@@ -176,8 +176,12 @@ const needed = (request: ChatRequest): Capability[] => [
 const glob = (pattern: string) =>
   new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
 
-const discoveredId = (prefix: string, deployment: string) =>
-  `${prefix}/${deployment}`.toLowerCase().replace(/[^\w./-]+/g, '-');
+const modelSlug = (deployment: string) =>
+  deployment
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+|-+$/g, '');
 
 const matches = (name: string, include: string[], exclude: string[]) =>
   include.some((p) => glob(p).test(name)) && !exclude.some((p) => glob(p).test(name));
@@ -394,7 +398,9 @@ export class ModelRouter implements PortProvider<ModelPort> {
           >)) {
             if (!matches(found.deployment, rule.include, rule.exclude)) continue;
             if (staticPairs.has(`${name}/${found.deployment}`)) continue;
-            const id = discoveredId(prefix, found.deployment);
+            const slug = modelSlug(found.deployment);
+            if (!slug) continue;
+            const id = `${prefix.toLowerCase()}/${slug}`;
             if (discovered.has(id)) continue;
             discovered.set(id, {
               model: {

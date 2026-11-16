@@ -196,6 +196,20 @@ describe('platform models for operators', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('accepts a connection that discovers its models from an OpenAI-compatible /models list', async () => {
+    const { send, platform } = await boot();
+
+    const created = await send('/operator/model-endpoints', 'drift', {
+      body: { ...endpoint, discovery: [{ source: 'openai-models' }] },
+      reason,
+    });
+
+    expect(created.status).toBe(201);
+    expect(platform.catalog.get('model-endpoint', 'sigma2')?.spec).toMatchObject({
+      discovery: [{ source: 'openai-models' }],
+    });
+  });
+
   it('lists every API a model can bind, with the models bound to it', async () => {
     const { send } = await boot();
 

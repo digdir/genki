@@ -39,7 +39,7 @@ endpoints:
         apis: { chat: openai/chat-completions@1 }
 ```
 
-A discovered model gets the id `<idPrefix>/<deployment>` in lower case, with characters other than letters, digits, `_`, `.`, `/` and `-` replaced by `-`, as the console does when a model is added by hand: `aivar:borealis` becomes `ai-gateway/aivar-borealis`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency, family or capabilities, so the operator sets them then. A listing that fails is reported for its connection in the refresh result.
+A discovered model gets the id `<idPrefix>/<deployment>` with the deployment slugged as the console does when a model is added by hand: lower case, characters other than letters, digits, `_`, `.` and `-` replaced by `-`, and leading and trailing separators removed. `aivar:borealis` becomes `ai-gateway/aivar-borealis`, and `meta-llama/Llama-3.1-8B` becomes `ai-gateway/meta-llama-llama-3.1-8b`. A deployment that is already a model on the connection is not listed again. A discovered model is a candidate until an operator confirms it, and the OpenAI list says nothing of residency, family or capabilities, so the operator sets them then. A listing that fails is reported for its connection in the refresh result.
 
 An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed` and so on) and a family. `GET /operator/apis` lists every API Genki can bind: built-in implementations and operation descriptors, under one id each. The built-in APIs are:
 

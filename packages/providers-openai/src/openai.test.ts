@@ -657,6 +657,20 @@ describe('OpenAI model list discovery', () => {
     expect(r.describe().map((m) => m.deployment)).toEqual(['aivar:borealis', 'sigma2:Qwen3.8-27B']);
   });
 
+  it('a listed id with a slash gets the same model id the console gives it when added by hand', async () => {
+    const { url } = await fake(() => ({
+      status: 200,
+      json: { object: 'list', data: [{ id: '/Meta-Llama/Llama-3.1-8B/', object: 'model' }] },
+    }));
+
+    const r = gateway(url);
+    await r.refresh();
+
+    expect(r.describe().map((m) => [m.id, m.deployment])).toEqual([
+      ['ai-gateway/meta-llama-llama-3.1-8b', '/Meta-Llama/Llama-3.1-8B/'],
+    ]);
+  });
+
   it('a model added by hand is not listed again as a candidate', async () => {
     const { url } = await fake(() => ({ status: 200, json: gatewayModels }));
 
