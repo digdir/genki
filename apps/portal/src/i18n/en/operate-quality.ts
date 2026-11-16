@@ -266,6 +266,7 @@ export const qualityArea = {
     runsLoading: 'Loading runs',
     notRunYet: 'The test set has not been run yet.',
     started: 'Started',
+    duration: 'Duration',
     version: 'Version',
     status: 'Status',
     score: 'Score',

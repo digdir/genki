@@ -48,13 +48,22 @@ export const formatOffset = (seconds: number, f: Format) =>
       ? `+${f.decimal(seconds)} s`
       : `+${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
 
-export const formatDuration = (seconds: number, f: Format) =>
+export const formatDuration = (seconds: number, f: Format): string =>
   seconds < 1
     ? `${Math.round(seconds * 1000)} ms`
     : seconds < 60
       ? `${f.decimal(seconds)} s`
-      : seconds % 60 === 0
-        ? `${seconds / 60} min`
-        : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+      : seconds >= 3600
+        ? `${Math.floor(seconds / 3600)} ${f.locale === 'en' ? 'h' : 't'} ${Math.floor((seconds % 3600) / 60)} min`
+        : seconds % 60 === 0
+          ? `${seconds / 60} min`
+          : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+
+/** How long a run took, from when it started to when it ended; undefined while it runs. */
+export const durationBetween = (startedAt: string, endedAt: string | null | undefined) => {
+  if (!endedAt) return undefined;
+  const ms = Date.parse(endedAt) - Date.parse(startedAt);
+  return Number.isFinite(ms) && ms >= 0 ? ms / 1000 : undefined;
+};
 
 export const whole = (n: number, f: Format) => f.number(Math.round(n));

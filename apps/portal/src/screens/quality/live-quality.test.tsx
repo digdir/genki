@@ -297,6 +297,52 @@ describe('live Testsett', () => {
     ).toBeTruthy();
   });
 
+  it('shows how long a finished run took, and no duration while a run is still going', async () => {
+    await openLive('', {
+      runs: [
+        {
+          id: 'run-ferdig',
+          service: 'rapportassistenten',
+          status: 'completed',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T09:00:00Z',
+          endedAt: '2026-11-11T10:15:30Z',
+          score: 1,
+          passed: 3,
+          total: 3,
+          finished: 3,
+          cases: [],
+        },
+        {
+          id: 'run-pågår',
+          service: 'rapportassistenten',
+          status: 'running',
+          testSet: 'rapport-kjerne',
+          version: 'draft',
+          startedAt: '2026-11-11T11:00:00Z',
+          endedAt: null,
+          score: null,
+          passed: null,
+          total: 3,
+          finished: 0,
+          cases: [],
+        },
+      ],
+    });
+    const [history] = await screen.findAllByRole('region', { name: 'Kjøringer av testsettet' });
+    const rows = await within(history as HTMLElement).findAllByRole('row');
+    expect(
+      within(history as HTMLElement).getByRole('columnheader', { name: 'Varighet' }),
+    ).toBeTruthy();
+    const durationOf = (status: string) => {
+      const row = rows.find((r) => within(r as HTMLElement).queryByText(status)) as HTMLElement;
+      return within(row).getAllByRole('cell')[1]?.textContent;
+    };
+    expect(durationOf('Ferdig')).toBe('1 t 15 min');
+    expect(durationOf('Kjører')).toBe('–');
+  });
+
   it('shows a run the platform restarted as interrupted, with the cases it finished and their cost', async () => {
     const finished = {
       caseId: 'tc-1',
