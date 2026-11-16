@@ -1,11 +1,12 @@
 # Conversion parts in the Docling export of KUDOS
 
-The three scripts here read a sample of the Docling 2.123.1 export of KUDOS PDFs (`<2 hex>/<sha256>/docling.json`) and measure the facts ADR 0055 rests on. Each script sorts the export's files by path and then draws its sample with `random.sample` and a seed, so the same seed gives the same files. Run on 13 November 2026. No document text is in this file.
+The four scripts here read a sample of the Docling 2.123.1 export of KUDOS PDFs (`<2 hex>/<sha256>/docling.json`) and measure the facts ADR 0055 rests on. Each script sorts the export's files by path and then draws its sample with `random.sample` and a seed, so the same seed gives the same files. Run on 13 November 2026. No document text is in this file.
 
 | Script              | Files | Seed 7 pages | Seed 11 pages |
 | :------------------ | ----: | -----------: | ------------: |
 | `stats.py`          |   200 |       11,175 |        12,178 |
 | `labels_footers.py` |   200 |       11,175 |        12,178 |
+| `spans.py`          |   200 |       11,175 |        12,178 |
 | `storage.py`        |   300 |       18,199 |     (not run) |
 
 ## Parts (`stats.py`)
@@ -26,9 +27,35 @@ Parts are the blocks `normalise.py` makes (`docling_blocks`, then `finish`).
 | Pages with a printed label (first pass)      |  71.5 % |  67.8 % |
 | Of those, label differs from the page number |  47.8 % |  55.6 % |
 
+The 3,160 and 3,338 tables include 249 and 234 with the label `document_index`, a table of contents.
+
+## Pages a part covers (`spans.py`)
+
+Pages come from every `prov` entry of an item. `stats.py` and `storage.py` use the first only.
+
+| Measure                                                       |          Seed 7 |         Seed 11 |
+| :------------------------------------------------------------ | --------------: | --------------: |
+| Parts on 1 page                                               |         119,284 |         135,145 |
+| Parts on 2 pages                                              |           1,955 |           2,162 |
+| Parts on 3 pages                                              |              31 |              28 |
+| Parts on 4 pages                                              |               2 |               5 |
+| Parts on 5 pages                                              |               2 |               0 |
+| Parts on 3 or more pages, all with the label `text`           |              35 |              33 |
+| Of those, with a page between that the part is not on         |              10 |              10 |
+| Tables (label `table`)                                        |           2,913 |           3,107 |
+| Tables on more than one page                                  |               0 |               0 |
+| Tables followed directly by a table on the next page          |     191 (6.6 %) |     265 (8.5 %) |
+| Of those, with the same number of columns                     |             145 |             219 |
+| Pages where no part starts                                    |     856 (7.7 %) |     494 (4.1 %) |
+| Body parts that start on an earlier page than the part before |   3, in 2 files |   4, in 2 files |
+| Parts with the label `document_index`                         |             249 |             234 |
+| Parts with a checkbox label                                   |             513 |             501 |
+| Parts with the label `page_number` or `title`                 |               0 |               0 |
+| Layers                                                        | body, furniture | body, furniture |
+
 ## Labels and footers (`labels_footers.py`)
 
-A page's label is the first furniture text on it that reads as a page number (`12`, `s. 12`, `side 3 av 9`). The rule keeps it when the nearest labelled page within 2 pages has the same offset from the physical page number. A running title left in the body is text that is not furniture, repeats on 3 or more pages of a file (digits folded) and sits only in the top 10 % or only in the bottom 10 % of the page (the strict same-band rule). A contact line is body text in the bottom 15 % of a page with a phone number, an e-mail address or a word such as `telefon` or `saksbehandler`.
+A page's label is the first furniture text on it that reads as a page number (`12`, `s. 12`, `side 3 av 9`). The rule keeps it when the nearest labelled page before it or the nearest after it, each within 2 pages, has the same offset from the physical page number, and drops a label with no labelled page within 2 pages. A running title left in the body is text that is not furniture, repeats on 3 or more pages of a file (digits folded) and sits only in the top 10 % or only in the bottom 10 % of the page (the strict same-band rule). A contact line is body text in the bottom 15 % of a page with a phone number, an e-mail address or a word such as `telefon` or `saksbehandler`.
 
 | Measure                                                   | Seed 7 | Seed 11 |
 | :-------------------------------------------------------- | -----: | ------: |
@@ -45,7 +72,7 @@ The script also prints the counts behind these shares, numbers in the body near 
 
 ## Storage (`storage.py`)
 
-PostgreSQL 17.11 in a throwaway container, 300 files, seed 7: 18,199 pages and 201,078 parts. A keeps one row per page with the page's parts as a jsonb array; B keeps one row per part. Times are medians over 200 warm calls with random arguments, in ms.
+PostgreSQL 17.11 in a throwaway container, 300 files, seed 7: 18,199 pages and 201,078 parts. A keeps one row per page with the page's parts as a jsonb array; B keeps one row per part. Times are medians over 200 warm calls with random arguments, in ms. The stored record is the benchmark's (`genki.blocks/1`), not ADR 0055's: one region a part, on its first page, table HTML with merged cells repeated, no unit kind, labels null, and heading paths of one step. The sizes are lower bounds for the ADR's record.
 
 | Measure                                          | A, a row a page |           B, a row a part |
 | :----------------------------------------------- | --------------: | ------------------------: |
@@ -68,6 +95,7 @@ PostgreSQL 17.11 in a throwaway container, 300 files, seed 7: 18,199 pages and 2
 ```sh
 python3 -I stats.py <export root> 200 7
 python3 -I labels_footers.py <export root> 200 7
+python3 -I spans.py <export root> 200 7
 docker run -d --name parts-measure -e POSTGRES_PASSWORD=x -p <port>:5432 postgres:17
 PARTS_DSN='host=127.0.0.1 port=<port> user=postgres password=x dbname=postgres' <python with psycopg> -I storage.py <export root> 300 7
 docker rm -f parts-measure

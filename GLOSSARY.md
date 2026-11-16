@@ -83,15 +83,15 @@ The text derived from one file's conversion, per page or as conversion parts, ke
 _Avoid_: parse, extraction, cache (alone)
 
 **Derivation**:
-How the text the chunker reads is made from a native output, such as `docling-pages` or `docling-parts`. A new derivation reads the Blob copy and needs no download and no converter call.
+How the text the chunker reads is made from a native output or from another stored conversion, such as `docling-pages`, `docling-parts` or `text-layer-parts`. A new derivation needs no download and no converter call.
 _Avoid_: post-processing, normalisation
 
 **Conversion part**:
-One piece of a stored conversion, in reading order: a heading, paragraph, list item, table, picture, caption, footnote or piece of furniture, with its box on each page it covers and its span in the conversion's text. Shared by every document and dataset that holds the file (ADR 0055).
+One piece of a stored conversion, in reading order: a heading, paragraph, list item, table, picture, caption, footnote or piece of furniture, with its place in each unit it covers (a box on a page or slide, or a locator into the source) and its span in the conversion's text. Shared by every document and dataset that holds the file (ADR 0055).
 _Avoid_: block, element, document part, segment
 
 **Furniture**:
-The parts of a file that repeat on every page and carry nothing of their own, such as page headers and footers and page numbers. Kept in the stored conversion so it can be drawn, never chunked or cited.
+The parts of a file that a reader sees but that carry nothing of their own, such as page headers and footers, page numbers and a site's menu. The converter marks them. Kept in the stored conversion so it can be drawn, never chunked or cited.
 _Avoid_: boilerplate, chrome, artefact
 
 **Kept conversion**:
