@@ -476,7 +476,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
               : toolsOnlySystemPrompt) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
-          attachedNote(workspace.attached) +
+          attachedNote(workspace.attached, Boolean(searchable)) +
           `\n\n${untrustedDataNote(config.languages)}`,
       },
       ...history.map((h) => ({ role: h.role, content: h.text })),

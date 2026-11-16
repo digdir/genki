@@ -1468,12 +1468,13 @@ export const createPlatform = async (input: PlatformInput) => {
           ? [
               ...flowInputProblems(d, flow, flowRef),
               ...flowTableProblems(d, flow, flowRef),
-              ...flowDatasetProblems(
+              ...(await flowDatasetProblems(
                 d,
                 flow,
                 flowRef,
                 (block) => blocks.get(block)?.needsDataset === true,
-              ),
+                flowOf,
+              )),
               ...(await describedStepProblems(d, flow, flowRef, {
                 descriptors: runtime.descriptors,
                 governance: runtime.governance,

@@ -31,6 +31,7 @@ const flow = {
 
 const rag = (s: { id: string }) => s.id === 'rag-single-shot';
 const retrieve = (block: string) => block === 'retrieve@1';
+const none = async () => undefined;
 
 describe('services that need a dataset', () => {
   it('an agent-loop service without a dataset has no dataset problem', () => {
@@ -52,14 +53,37 @@ describe('services that need a dataset', () => {
     expect(missingDatasetProblems(service(['kudos'], variants), rag)).toEqual([]);
   });
 
-  it('a flow step nested in a loop that searches needs a dataset', () => {
-    expect(flowDatasetProblems(service([]), flow, 'f@1', retrieve)).toEqual([
+  it('a flow step nested in a loop that searches needs a dataset', async () => {
+    expect(await flowDatasetProblems(service([]), flow, 'f@1', retrieve, none)).toEqual([
       {
         path: 'spec.knowledge.datasets',
         message:
           'the step flow f@1 searches a dataset in step sok (retrieve@1), and spec.knowledge.datasets is empty',
       },
     ]);
-    expect(flowDatasetProblems(service(['kudos']), flow, 'f@1', retrieve)).toEqual([]);
+    expect(await flowDatasetProblems(service(['kudos']), flow, 'f@1', retrieve, none)).toEqual([]);
+  });
+
+  it('refuses to publish a service without a dataset whose subflow searches', async () => {
+    const outer = {
+      kind: 'StepFlow',
+      spec: {
+        steps: [
+          { id: 'inn', subflow: 'f@1' },
+          { id: 'igjen', subflow: 'ytre@1' },
+        ],
+      },
+    } as unknown as StepFlowDefinition;
+    const flows: Record<string, StepFlowDefinition> = { 'f@1': flow, 'ytre@1': outer };
+
+    expect(
+      await flowDatasetProblems(service([]), outer, 'ytre@1', retrieve, async (ref) => flows[ref]),
+    ).toEqual([
+      {
+        path: 'spec.knowledge.datasets',
+        message:
+          'the step flow f@1 searches a dataset in step sok (retrieve@1), and spec.knowledge.datasets is empty',
+      },
+    ]);
   });
 });

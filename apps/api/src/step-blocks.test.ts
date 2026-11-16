@@ -332,6 +332,43 @@ describe('a service that searches but has no dataset', () => {
     ]);
   });
 
+  it('refuses to publish a service without a dataset whose subflow searches', async () => {
+    const inner = {
+      apiVersion: 'genai/v1',
+      kind: 'StepFlow',
+      metadata: { tenant, id: 'indre-sok', name: 'Indre søk' },
+      spec: {
+        purpose: 'Søker',
+        steps: [{ id: 'sok', block: 'retrieve@1', input: { query: '{{input.query}}' } }],
+      },
+    };
+    const outer = {
+      apiVersion: 'genai/v1',
+      kind: 'StepFlow',
+      metadata: { tenant, id: 'ytre-flyt', name: 'Ytre flyt' },
+      spec: {
+        purpose: 'Kaller en underflyt',
+        steps: [
+          { id: 'inn', subflow: 'indre-sok@1', input: { query: '{{input.query}}' } },
+          { id: 'skriv', block: 'template@1', input: { text: '{{input.query}}' } },
+        ],
+      },
+    };
+    const [, , refused] = await publish(
+      inner,
+      outer,
+      service({ id: 'step-flow', version: 1, config: { flow: 'ytre-flyt@1' } }),
+    );
+
+    expect(refused?.ok ? [] : refused?.errors).toEqual([
+      {
+        path: 'spec.knowledge.datasets',
+        message:
+          'the step flow indre-sok@1 searches a dataset in step sok (retrieve@1), and spec.knowledge.datasets is empty',
+      },
+    ]);
+  });
+
   it('a step flow service without a dataset publishes when the flow does not search', async () => {
     const flow = {
       apiVersion: 'genai/v1',

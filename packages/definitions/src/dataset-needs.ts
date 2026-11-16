@@ -35,17 +35,30 @@ const allSteps = (steps: FlowStep[]): FlowStep[] =>
     ]),
   ]);
 
-export const flowDatasetProblems = (
+export const flowDatasetProblems = async (
   service: ServiceDefinition,
   flow: StepFlowDefinition,
   ref: string,
   needsDataset: (block: string) => boolean,
-): ValidationError[] => {
+  flowOf: (ref: string) => Promise<StepFlowDefinition | undefined>,
+): Promise<ValidationError[]> => {
   if (service.spec.knowledge.datasets.length > 0) return [];
-  return allSteps(flow.spec.steps)
-    .filter((s) => s.block !== undefined && needsDataset(s.block))
-    .map((s) => ({
-      path: 'spec.knowledge.datasets',
-      message: `the step flow ${ref} searches a dataset in step ${s.id} (${s.block}), and spec.knowledge.datasets is empty`,
-    }));
+  const seen = new Set<string>([ref]);
+  const problems: ValidationError[] = [];
+  const visit = async (current: StepFlowDefinition, at: string) => {
+    for (const s of allSteps(current.spec.steps)) {
+      if (s.block !== undefined && needsDataset(s.block))
+        problems.push({
+          path: 'spec.knowledge.datasets',
+          message: `the step flow ${at} searches a dataset in step ${s.id} (${s.block}), and spec.knowledge.datasets is empty`,
+        });
+      if (s.subflow && !seen.has(s.subflow)) {
+        seen.add(s.subflow);
+        const sub = await flowOf(s.subflow);
+        if (sub) await visit(sub, s.subflow);
+      }
+    }
+  };
+  await visit(flow, ref);
+  return problems;
 };

@@ -843,6 +843,30 @@ describe('agent-loop strategy', () => {
     expect(out.text).toBe('Én åpen sak: #12 Fiks tavla.');
   });
 
+  it('an agent-loop service without a dataset gives the model the text of attached documents as untrusted data', async () => {
+    const out = await run({
+      withoutDataset: true,
+      registry: githubRegistry(),
+      tools: ['issues@1'],
+      config: { ...baseConfig, tools: ['issues@1'] },
+      parts: [
+        {
+          mime: 'text/plain',
+          body: { kind: 'text', text: 'Fristen er 1. mars.' },
+          meta: { attached: true, name: 'brev.txt', sha256: 'abc' },
+        },
+      ],
+      scripts: { primary: { loop: [() => result('Fristen er 1. mars.')] } },
+    });
+    const system = String(out.loops[0]?.messages[0]?.content);
+
+    expect(system).toContain(
+      '<untrusted_data kind="attached-document" title="brev.txt">\nFristen er 1. mars.\n</untrusted_data>',
+    );
+    expect(system).not.toContain('generate_response');
+    expect(out.text).toBe('Fristen er 1. mars.');
+  });
+
   it('an agent-loop service without a dataset answers a call to a search tool as an unknown tool', async () => {
     const out = await run({
       withoutDataset: true,
