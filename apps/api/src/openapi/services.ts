@@ -254,6 +254,13 @@ export const SinkJudgeSummary = z
   .openapi('SinkJudgeSummary');
 
 /** Run fields for its Langfuse judges. */
+export const staleJudgesField = z
+  .array(z.string())
+  .optional()
+  .describe(
+    "The judges recorded at an older version than the platform's judge has now; their scores are not comparable with the current judge's",
+  );
+
 export const sinkJudgeFields = {
   sinkJudges: z.array(SinkJudgeSummary),
   experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
@@ -412,6 +419,7 @@ const EvalRunSummary = z
       }),
     ),
     judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
+    staleJudges: staleJudgesField,
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),

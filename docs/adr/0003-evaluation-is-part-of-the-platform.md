@@ -35,7 +35,7 @@ These rules replace or extend the decision above once they are built. The ones m
   Until then its gates are advisory. A Langfuse judge is advisory whatever its calibration (ADR 0040).
 
 - **Calibration details.** Numeric verdicts are split at 0.5 into good and bad first. A gate checks the calibration of the judge that produced its metric, not of every judge in the run.
-- **Judge identity** (built for `judge:criteria`). A judge's identity includes its version and its model, and every result records it. Labels and calibration are kept per evaluator.
+- **Judge identity** (built for `judge:criteria`). A judge's identity includes its version and its model, and every result records it. Labels and calibration are kept per evaluator. A run judged by an older version of a platform judge than the current one is stale: a test-set run and a comparison name those judges in `staleJudges`, and the portal's run history marks the run. Runs whose judges differ in version are still not compared.
 - **Labels outlive judge versions.** Calibration labels are human verdicts on cases. When a judge's identity changes, the platform has the new identity score the labelled cases again, while their text is kept, and computes its kappa from those pairs. A new identity takes over only the labels of the same judge: for a Langfuse judge, the same tenant, connection and name, so its labels never come from another tenant. A Langfuse judge cannot be asked to score a case again, so its agreement uses the verdicts the earlier identities gave, and says how many of its labels they scored (ADR 0040).
 - **Re-running the baseline.** When a judge changes, the last published version's eval run is run again with the new judge before a no-regression comparison.
 

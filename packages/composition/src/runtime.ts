@@ -36,6 +36,7 @@ import {
   InMemoryProviderObjects,
   type Capability as KernelCapability,
   type EventLog,
+  type GateOptions,
   type Kernel,
   type MediaOutputConfig,
   type ProviderObjectStore,
@@ -278,6 +279,7 @@ export interface RuntimeInput {
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
   admitsModelUse?: (principal: Principal) => boolean;
+  modelQuota?: GateOptions['quota'];
   environmentTier?: EnvironmentTier;
   descriptors?: DescriptorRegistry;
   published?: (capabilityId: string) => boolean;
@@ -461,6 +463,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
     mediaInput: blobMediaInput(blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    ...(input.modelQuota ? { quota: input.modelQuota } : {}),
     ...(input.logger
       ? {
           egress: (endpoint: string) =>

@@ -76,6 +76,7 @@ const refusalCodes: Record<GateRefusal, EmbeddingError['code']> = {
   processor: 'bad_request',
   media: 'bad_request',
   shape: 'bad_request',
+  quota: 'bad_request',
 };
 
 const batches = <T>(items: T[], size: number | undefined): T[][] => {

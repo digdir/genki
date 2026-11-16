@@ -53,10 +53,26 @@ States to show: an empty library, a demo being recorded, a demo marked «Utdater
 
 ## Recording
 
-- **Where it runs.** First as a GitHub workflow in this repository, triggered by hand and after each deploy to genki-test, with the demos in `demos/`. Later as a durable job (ADR 0041) behind the console screens. Worker jobs are Kent's area; agree the job with him before building it.
+- **Where it runs.** First as a GitHub workflow in this repository, run by hand from main against genki-test, with the demos in `demos/`. Later as a durable job (ADR 0041) behind the console screens. Worker jobs are Kent's area; agree the job with him before building it.
 - **Who it logs in as.** A demo organisation of its own in genki-test with made-up services and data, never a real organisation's. Under the genki-test lockdown (ADR 0033) a TestID login can only read, so a demo that shows a change needs a recording identity with write rights in that one organisation.
 - **The voice.** Azure AI Speech, `nb-NO-PernilleNeural` today, called with an Entra token and no stored key. In the platform it is called as a provider API through a descriptor (ADR 0049), like any other. A local engine (VoiceStudio) is being compared by ear before anything is chosen.
 - **What is stored.** The YAML, each recording's mp4 and srt, the Genki version and the commit. No personal data: the demo organisation has none, and the recording identity is a test user.
+
+## Phase 1 as built
+
+- `.github/workflows/demos.yml` runs by hand from main, with **Run workflow** on the Actions tab (one demo or all). It does not run after a deploy: genki-test is deployed too often for that to be worth the voice and the minutes.
+- The `voice` job reads the lines aloud in the `smoke-review` environment with the review identity (`AZURE_REVIEW_*`), and keeps the clips in a cache keyed by the demo files. It is skipped when `SPEECH_RESOURCE` is not set, and the demos are then recorded with subtitles only. To turn it on, set `SPEECH_RESOURCE` and `SPEECH_RESOURCE_GROUP` (and `SPEECH_SUBSCRIPTION` if it is not the review subscription) in `smoke-review`, and give the review identity _Cognitive Services Speech User_ on that resource.
+- The `record` job signs in with the smoke test's key (`SMOKE_API_KEY` in `genki-test`) and has no Azure identity. It keeps each demo's mp4, srt and any `failed-step-<n>.png` as the `demos` artifact for 30 days.
+- The demos run in the smoke test's own organisation, not a demo organisation. They pass by screens that can show who made a key or a version, so check a recording before it leaves Digdir.
+- `test-set` needs at least one earlier run of the smoke service's test set, and `playground` asks the model one question on every run.
+
+## Add a demo
+
+1. Copy a file in `demos/` and give it a short English file name, such as `service-from-template.yaml`. The title and every line are in bokmål, with no em-dashes.
+2. Write one step per thing you show: one or two sentences in `say`, and the clicks in `do`. Find elements by role and their Norwegian name, as in `[find, role, button, click, --name, Endre oppsett]`; the names are in `apps/*/src/i18n/nb`. After a click that loads a screen, add `[wait, --text, <a text on that screen>, --timeout, '30000']`.
+3. Show, but do not finish, anything that writes: no publish, no key, no test set run. The recording key can only change `smoke-*` services.
+4. Keep it to one or two minutes. `node scripts/demo.ts check` estimates the length, and `scripts/demo.test.ts` fails a demo outside that range.
+5. Record it locally against genki-test with `node scripts/demo.ts record --only <name>`, or run the `demos` workflow by hand with its name, and watch the video before you open a pull request.
 
 ## Open questions
 
@@ -67,7 +83,7 @@ States to show: an empty library, a demo being recorded, a demo marked «Utdater
 
 ## Phases
 
-1. **The recorder in the repository.** `scripts/demo.ts`, `demos/*.yaml`, a workflow that records after each deploy and keeps the mp4s as artifacts. Make three or four real demos with the sellers to learn what a good one looks like.
+1. **The recorder in the repository.** `scripts/demo.ts`, `demos/*.yaml`, a workflow that records by hand and keeps the mp4s as artifacts. Make three or four real demos with the sellers to learn what a good one looks like.
 2. **The library.** Screens 1, 2 and 6, reading the recordings the workflow produced.
 3. **The writer.** `demo-writer` as a platform-tenant service with its test set, and screens 3 to 5, with recording as a job.
 

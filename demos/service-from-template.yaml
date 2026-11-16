@@ -1,0 +1,42 @@
+title: Lag en tjeneste fra en mal
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/services/new
+signedIn: true
+ready: Eller start fra en mal
+steps:
+  - say: Slik lager en virksomhet en ny KI-tjeneste i GenKI. Vi starter på siden Ny tjeneste i portalen.
+    hold: 1
+  - say: Den raskeste veien er å beskrive med egne ord hva tjenesten skal gjøre. Byggeassistenten foreslår da et oppsett som dere kan justere.
+    do:
+      - [
+          find,
+          label,
+          Hva skal tjenesten gjøre?,
+          fill,
+          Svare innbyggere på spørsmål om byggesak,
+          med kilder fra kommunens veiledere.,
+        ]
+  - say: Dere kan også starte fra en mal. Malene dekker vanlige oppgaver i offentlig sektor.
+    do:
+      - [find, role, heading, hover, --name, Eller start fra en mal]
+  - say: Spør dokumentene våre svarer på spørsmål med kilder fra deres egne dokumenter. Utkast til svarbrev og Klarspråk for utgående brev hjelper saksbehandlere å skrive.
+    do:
+      - [find, role, button, hover, --name, Spør dokumentene våre]
+  - say: Sorter innkommende post, Oppsummer høringssvar og Møtereferat fra lydopptak tar seg av mengdearbeidet.
+    do:
+      - [find, role, button, hover, --name, Møtereferat fra lydopptak]
+  - say: Når dere velger en mal, åpnes tjenesten i byggeren. Her ser vi en tjeneste som allerede er satt opp.
+    do:
+      - [open, https://portal.genki-test.digdir.cloud/#/services/smoke/setup]
+      - [wait, --text, Formål og målgruppe, --timeout, '30000']
+    hold: 1
+  - say: Bare navn og formål må fylles ut. Resten har trygge standardvalg for modell, språk og vern, som dere kan endre senere.
+    do:
+      - [find, label, Formål, hover]
+  - say: Byggeassistenten ved siden av kan gjøre endringene for dere. Alt lagres som et utkast til dere velger å publisere.
+    do:
+      - [find, label, Skriv til assistenten, hover]
+  - say: Neste steg er å prøve tjenesten i prøveområdet, før noen andre får tilgang til den.
+    hold: 1.5

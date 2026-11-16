@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { inEnglish } from '@genai/i18n/react';
 import { App } from './App';
 import { mockEntra, operatorRole } from './auth';
 
@@ -130,6 +131,61 @@ describe('live platform settings', () => {
     );
     expect(put?.body).toEqual({ value: 60 });
     expect(put?.reason).toBe('Raskere svar for alle');
+  });
+
+  it('previews a platform default with a preview reason the API accepts, then asks for the saving reason', async () => {
+    const { fetch: base } = platform();
+    const saved: string[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input), 'http://localhost');
+      const path = url.pathname.replace(/^\/api/, '');
+      if (path === '/settings')
+        return json({
+          data: [
+            {
+              key: 'usage.monthlyTokens',
+              description: 'Tokens per month',
+              category: 'usage',
+              axis: 'service',
+              sensitivity: 'normal',
+              default: 100000000,
+              settableAt: ['platform'],
+              schema: { type: 'integer', minimum: 1 },
+            },
+          ],
+        });
+      if (path === '/settings/defaults')
+        return json({ data: [{ key: 'usage.monthlyTokens', version: 1, value: 100000000 }] });
+      if (path === '/settings/defaults/usage.monthlyTokens/changelog') return json({ data: [] });
+      if (path === '/settings/defaults/usage.monthlyTokens' && init?.method === 'PUT') {
+        const reason = decodeURIComponent(new Headers(init.headers).get('change-reason') ?? '');
+        if (reason.trim().length < 10) return json({ title: 'Invalid request', status: 400 }, 400);
+        if (url.search.includes('dryRun')) return json({ dryRun: true, services: [] });
+        saved.push(reason);
+        return json({ task: 't1', value: {} });
+      }
+      return base(input, init);
+    };
+    const auth = mockEntra({ name: 'Ola Drift', roles: [operatorRole] });
+    await auth.login();
+    window.location.hash = '#/settings';
+    render(inEnglish(<App auth={auth} fetch={fetch} />));
+
+    fireEvent.click(await screen.findByRole('button', { name: /Tokens per month/ }));
+    fireEvent.change(await screen.findByLabelText('Value'), { target: { value: '150000000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview the change' }));
+
+    await waitFor(() => expect(document.getElementById('grunn')).toBeTruthy());
+    expect(screen.queryByText(/Write a reason of at least/)).toBeNull();
+    await waitFor(() => {
+      if (!saved.length) {
+        fireEvent.change(document.getElementById('grunn') as HTMLElement, {
+          target: { value: 'More headroom for the pilots' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      }
+      expect(saved).toEqual(['More headroom for the pilots']);
+    });
   });
 
   it('edits a house style in a multi-line field and a short text in a single line', async () => {
