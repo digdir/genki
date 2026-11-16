@@ -130,18 +130,28 @@ export const mixArgs = (
   ];
 };
 
+export const scriptLiteral = (value: unknown) =>
+  JSON.stringify(value).replace(
+    /[<>/\u2028\u2029]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+
 export const languageScript = (language: string) => {
   const tag = languageTag.exec(language);
   if (!tag) throw new Error(`language must be a tag like nb-NO, not ${language}`);
-  return `Object.defineProperty(navigator,'languages',{get:()=>['${tag[0]}','${tag[1]}']});Object.defineProperty(navigator,'language',{get:()=>'${tag[0]}'});`;
+  return `Object.defineProperty(navigator,'languages',{get:()=>${scriptLiteral([tag[0], tag[1]])}});Object.defineProperty(navigator,'language',{get:()=>${scriptLiteral(tag[0])}});`;
 };
 
-export const sessionScript = (
+const clientId = /^[\w.-]{1,128}$/;
+
+export const demoSessions = (
   key: string,
   apps: { portal: string; console: string; portalClientId: string; tenant: string },
   now: number,
-) => {
-  const sessions = {
+): Record<string, [string, string]> => {
+  if (!clientId.test(apps.portalClientId))
+    throw new Error('the portal config has a client id that is not a plain name');
+  return {
     [new URL(apps.portal).origin]: [
       `${apps.portalClientId}.session`,
       JSON.stringify({
@@ -156,8 +166,10 @@ export const sessionScript = (
       JSON.stringify({ name: 'Demo', roles: ['GenAI.Operator'], token: key }),
     ],
   };
-  return `(()=>{const s=${JSON.stringify(sessions)}[location.origin];if(s&&!sessionStorage.getItem(s[0]))sessionStorage.setItem(s[0],s[1]);})();`;
 };
+
+export const sessionScript = (sessions: Record<string, [string, string]>) =>
+  `(()=>{const s=${scriptLiteral(sessions)}[location.origin];if(s&&!sessionStorage.getItem(s[0]))sessionStorage.setItem(s[0],s[1]);})();`;
 
 export const browserCommands = [
   'find',
@@ -514,14 +526,16 @@ async function record(path: string, silent: boolean): Promise<'recorded' | 'skip
       writeFileSync(
         file,
         sessionScript(
-          key,
-          {
-            portal,
-            console: consoleUrl,
-            portalClientId: portalClientIdOf(await config.text()),
-            tenant,
-          },
-          Date.now(),
+          demoSessions(
+            key,
+            {
+              portal,
+              console: consoleUrl,
+              portalClientId: portalClientIdOf(await config.text()),
+              tenant,
+            },
+            Date.now(),
+          ),
         ),
         { mode: 0o600 },
       );

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   cached,
+  demoSessions,
   estimateDemo,
   keep,
   languageScript,
@@ -13,6 +14,7 @@ import {
   pickDemos,
   retrying,
   runStep,
+  scriptLiteral,
   sessionScript,
   srtTime,
   ssml,
@@ -47,7 +49,7 @@ describe('demo recordings', () => {
 
   it('tells the browser the demo language and its base language', () => {
     expect(languageScript('nb-NO')).toBe(
-      "Object.defineProperty(navigator,'languages',{get:()=>['nb-NO','nb']});Object.defineProperty(navigator,'language',{get:()=>'nb-NO'});",
+      'Object.defineProperty(navigator,\'languages\',{get:()=>["nb-NO","nb"]});Object.defineProperty(navigator,\'language\',{get:()=>"nb-NO"});',
     );
   });
 
@@ -205,33 +207,85 @@ describe('demo recordings', () => {
     expect(now()).toBe(2_000);
   });
 
+  const apps = {
+    portal: 'https://portal.example/',
+    console: 'https://console.example',
+    portalClientId: 'abc',
+    tenant: '312521172',
+  };
+  const sessionPrefix = '(()=>{const s=';
+  const sessionSuffix =
+    '[location.origin];if(s&&!sessionStorage.getItem(s[0]))sessionStorage.setItem(s[0],s[1]);})();';
+  const sessionData = (script: string) => {
+    expect(script.startsWith(sessionPrefix)).toBe(true);
+    expect(script.endsWith(sessionSuffix)).toBe(true);
+    return JSON.parse(script.slice(sessionPrefix.length, -sessionSuffix.length)) as Record<
+      string,
+      [string, string]
+    >;
+  };
+  const hostile = [
+    '"',
+    "'",
+    '`',
+    '${alert(1)}',
+    '</script><script>alert(1)</script>',
+    '\\',
+    '\\"',
+    '\u2028',
+    '\u2029',
+    '"});alert(1);//',
+  ];
+
   it('puts the key only into the session of the portal or console origin it is on', () => {
-    const script = sessionScript(
-      'k3y',
-      {
-        portal: 'https://portal.example/',
-        console: 'https://console.example',
-        portalClientId: 'abc',
-        tenant: '312521172',
-      },
-      Date.parse('2026-11-13T10:00:00Z'),
-    );
-    const run = (origin: string) => {
-      const store = new Map<string, string>();
-      const sessionStorage = {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => store.set(k, v),
-      };
-      new Function('location', 'sessionStorage', script)({ origin }, sessionStorage);
-      return store;
-    };
-    const portal = JSON.parse(run('https://portal.example').get('abc.session') ?? '{}');
+    const sessions = demoSessions('k3y', apps, Date.parse('2026-11-13T10:00:00Z'));
+    expect(Object.keys(sessions).sort()).toEqual([
+      'https://console.example',
+      'https://portal.example',
+    ]);
+    const [portalName, portalValue] = sessions['https://portal.example'] ?? [];
+    expect(portalName).toBe('abc.session');
+    const portal = JSON.parse(portalValue ?? '{}');
     expect(portal).toMatchObject({ token: 'k3y', organisations: [{ orgNumber: '312521172' }] });
     expect(portal.expiresAt).toBe(Date.parse('2026-11-13T11:00:00Z'));
-    expect(JSON.parse(run('https://console.example').get('console.session') ?? '{}').token).toBe(
-      'k3y',
-    );
-    expect(run('https://evil.example').size).toBe(0);
+    const [consoleName, consoleValue] = sessions['https://console.example'] ?? [];
+    expect(consoleName).toBe('console.session');
+    expect(JSON.parse(consoleValue ?? '{}').token).toBe('k3y');
+    expect(sessionData(sessionScript(sessions))).toEqual(sessions);
+  });
+
+  it('embeds a hostile value in browser code only as one literal that reads back unchanged', () => {
+    for (const value of hostile) {
+      const literal = scriptLiteral(value);
+      expect(literal).toMatch(/^"[^<>/\u2028\u2029]*"$/);
+      expect(literal.slice(1, -1)).not.toMatch(/(^|[^\\])(\\\\)*"/);
+      expect(JSON.parse(literal)).toBe(value);
+    }
+  });
+
+  it('keeps a hostile key and tenant as data in the session script', () => {
+    for (const value of hostile) {
+      const sessions = demoSessions(value, { ...apps, tenant: value }, 0);
+      const script = sessionScript(sessions);
+      expect(script.slice(sessionPrefix.length, -sessionSuffix.length)).not.toMatch(
+        /[<>\u2028\u2029]/,
+      );
+      const data = sessionData(script);
+      expect(data).toEqual(sessions);
+      const portal = JSON.parse(data['https://portal.example']?.[1] ?? '{}');
+      expect(portal.token).toBe(value);
+      expect(portal.organisations[0].orgNumber).toBe(value);
+    }
+  });
+
+  it('refuses a portal client id that is not a plain name', () => {
+    for (const value of [...hostile, '', 'a b', 'x'.repeat(129)])
+      expect(() => demoSessions('k3y', { ...apps, portalClientId: value }, 0)).toThrow(
+        /client id that is not a plain name/,
+      );
+    expect(() =>
+      demoSessions('k3y', { ...apps, portalClientId: '0f3c-4e.portal_1' }, 0),
+    ).not.toThrow();
   });
 
   it('records one demo by name and refuses a name that is not a demo', () => {
