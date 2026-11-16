@@ -884,7 +884,7 @@ describe('stored conversions', () => {
     expect(rows).toEqual([{ state: 'skipped', reason: 'unreachable' }]);
   }, 60_000);
 
-  it('a convert job whose download passes the size limit stores the file as too_large', async () => {
+  it('a convert job whose download passes the size limit stores the file as unreachable', async () => {
     await clearConvertJobs();
     const s = await scenario({ fetchError: () => new ResponseTooLarge('over the limit') });
     const pdf = reportOf('for-stor');
@@ -896,12 +896,12 @@ describe('stored conversions', () => {
       `select failure from src_conversions where sha256 = $1`,
       [await sha(pdf)],
     );
-    expect(kept).toEqual([{ failure: 'too_large' }]);
+    expect(kept).toEqual([{ failure: 'unreachable' }]);
     const { rows } = await admin.query(
       `select state, reason from src_documents where dataset = $1`,
       [s.dataset.id],
     );
-    expect(rows).toEqual([{ state: 'skipped', reason: 'too_large' }]);
+    expect(rows).toEqual([{ state: 'skipped', reason: 'unreachable' }]);
   }, 60_000);
 
   it('a convert job whose fetch fails on the network is tried again', async () => {
@@ -1289,6 +1289,75 @@ describe('stored conversions', () => {
 
     expect(s.converted).toEqual(['opptatt.pdf']);
     expect(s.sent.filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
+  }, 60_000);
+
+  it('a convert job tried again after a busy index job does not fetch an unreachable file again', async () => {
+    await clearConvertJobs();
+    let fetches = 0;
+    const s = await scenario({
+      fetchError: () => {
+        fetches += 1;
+        return new FileUnreachable('KUDOS answered 404');
+      },
+    });
+    await s.file('opptatt-borte.pdf', reportOf('opptatt-borte'));
+    const { run, sent } = await ingest(s);
+    const record = (
+      await admin.query<{ number: string }>(
+        `select number::text from src_documents where dataset = $1`,
+        [s.dataset.id],
+      )
+    ).rows[0]?.number as string;
+    const index = queues.find((q) => q.name === 'knowledge.index') as QueueDefinition;
+    const key = `${s.generation}#${record}`;
+    await knowledgeQueue.send(
+      index,
+      { run, tenant: ORG, generation: s.generation, record },
+      { key },
+    );
+    const convert = handler(s.work.knowledge, 'knowledge.convert');
+    const [convertJob] = sent;
+
+    await expect(convert(job('knowledge.convert', convertJob?.data ?? {}))).rejects.toThrow(
+      /IndexJobBusy/,
+    );
+    await admin.query(`delete from pgboss.job where singleton_key = $1`, [key]);
+    await convert({ ...job('knowledge.convert', convertJob?.data ?? {}), retryCount: 1 });
+
+    expect(fetches).toBe(1);
+    expect(s.sent.filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
+  }, 60_000);
+
+  it('a convert job fetches a file stored as unreachable again', async () => {
+    await clearConvertJobs();
+    const s = await scenario();
+    const pdf = reportOf('igjen');
+    await s.file('igjen.pdf', pdf);
+    const { sent } = await ingest(s);
+    // Stored as unreachable by an earlier job, after this record started waiting.
+    await conversions.store(
+      {
+        sha256: await sha(pdf),
+        converter: 'text-layer',
+        version: '1',
+        settings: {},
+        derivation: { name: 'text-layer', version: 1 },
+        pages: [],
+        failure: 'unreachable',
+      },
+      async () => null,
+    );
+
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', sent[0]?.data ?? {}));
+
+    expect(s.converted).toEqual(['igjen.pdf']);
+    const { rows } = await admin.query(`select failure from src_conversions where sha256 = $1`, [
+      await sha(pdf),
+    ]);
+    expect(rows).toEqual([{ failure: null }]);
   }, 60_000);
 
   it('a first run makes 20,000 records wait in one transaction', async () => {
