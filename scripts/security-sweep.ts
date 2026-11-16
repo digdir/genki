@@ -11,7 +11,7 @@ import {
   randomBytes,
   type KeyObject,
 } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,23 +79,25 @@ export function confirmedFindings(output: { findings?: Finding[] } | null): Find
   return kept.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'Important' ? -1 : 1));
 }
 
-export function unfinishedSteps(outcomes: string): string[] {
-  return outcomes
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((pair) => pair.split('='))
-    .filter(
-      ([step, outcome]) =>
-        outcome !== 'success' && !(step === 'coordinate' && outcome === 'skipped'),
-    )
-    .map(([step]) => step ?? '');
-}
-
-export const STEPS = [...PASSES, 'coordinate'] as const;
+export const STEPS = [
+  'login',
+  'tenancy',
+  'tenancy_retry',
+  'rights',
+  'rights_retry',
+  'secrets',
+  'secrets_retry',
+  'merge',
+  'coordinate',
+] as const;
+const VERDICT_STEPS = ['keys', ...STEPS, 'seal'] as const;
 const OUTCOMES = ['success', 'failure', 'skipped', 'cancelled'] as const;
 export type Outcome = (typeof OUTCOMES)[number];
 
-export function stepOutcomes(outcomes: string): Record<(typeof STEPS)[number], Outcome | null> {
+function outcomesOf<S extends string>(
+  outcomes: string,
+  steps: readonly S[],
+): Record<S, Outcome | null> {
   const pairs = new Map(
     outcomes
       .split(/\s+/)
@@ -103,11 +105,62 @@ export function stepOutcomes(outcomes: string): Record<(typeof STEPS)[number], O
       .map((pair) => pair.split('=') as [string, string | undefined]),
   );
   return Object.fromEntries(
-    STEPS.map((step) => {
+    steps.map((step) => {
       const outcome = pairs.get(step);
       return [step, OUTCOMES.find((o) => o === outcome) ?? null];
     }),
-  ) as Record<(typeof STEPS)[number], Outcome | null>;
+  ) as Record<S, Outcome | null>;
+}
+
+export const stepOutcomes = (outcomes: string) => outcomesOf(outcomes, STEPS);
+
+const passOutcome = (o: Record<(typeof STEPS)[number], Outcome | null>, pass: Pass) => {
+  const retry = o[`${pass}_retry`];
+  return retry && retry !== 'skipped' ? retry : o[pass];
+};
+
+const modelSteps = (o: Record<(typeof STEPS)[number], Outcome | null>) => [
+  ...PASSES.map((pass) => [pass, passOutcome(o, pass)] as const),
+  ['coordinate', o.coordinate] as const,
+];
+
+const finished = (step: string, outcome: Outcome | null) =>
+  outcome === 'success' || (step === 'coordinate' && outcome === 'skipped');
+
+const missedSteps = (o: Record<(typeof STEPS)[number], Outcome | null>) =>
+  modelSteps(o).filter(
+    ([step, outcome]) =>
+      !finished(step, outcome) || (step === 'coordinate' && o.merge !== 'success'),
+  );
+
+const mergeNote = (o: Record<(typeof STEPS)[number], Outcome | null>) =>
+  o.merge === 'success' ? [] : [['merge', o.merge] as const];
+
+export function unfinishedSteps(outcomes: string): string[] {
+  const o = stepOutcomes(outcomes);
+  return [...missedSteps(o), ...mergeNote(o)].map(([step]) => step);
+}
+
+export function verdict(outcomes: string): { ok: boolean; summary: string } {
+  const o = outcomesOf(outcomes, VERDICT_STEPS);
+  const steps = modelSteps(o);
+  const missed = missedSteps(o);
+  const setup = [
+    ...(o.keys === 'success' ? [] : [`key check ${o.keys ?? 'did not run'}`]),
+    ...(o.login === 'success' ? [] : [`Azure login ${o.login ?? 'did not run'}`]),
+  ];
+  const progress =
+    `${steps.length - missed.length} of ${steps.length} steps finished` +
+    [...missed, ...mergeNote(o)]
+      .map(([step, outcome]) => `, ${step} ${outcome ?? 'did not run'}`)
+      .join('');
+  const sealed = o.seal === 'success';
+  const summary =
+    [...setup, progress].join('; ') +
+    (sealed
+      ? '; findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them.'
+      : '; nothing was sealed.');
+  return { ok: setup.length === 0 && missed.length === 0 && sealed, summary };
 }
 
 export function report(
@@ -262,10 +315,14 @@ const readJson = <T>(path: string): T | null => {
   }
 };
 
-const passExecutions = () =>
-  PASSES.map((pass) =>
-    readJson<ExecutionMessage[]>(join(env('RUNNER_TEMP'), `sweep-${pass}.json`)),
-  );
+const execution = (name: string) =>
+  readJson<ExecutionMessage[]>(join(env('RUNNER_TEMP'), `sweep-${name}.json`));
+const firstAttempts = () => PASSES.map((pass) => execution(pass));
+const retries = () => PASSES.map((pass) => execution(`${pass}-retry`));
+const passExecutions = () => {
+  const [first, retry] = [firstAttempts(), retries()];
+  return PASSES.map((_, i) => retry[i] ?? first[i] ?? null);
+};
 
 function main(command: string | undefined, args: string[]) {
   if (command === 'keys') {
@@ -298,9 +355,20 @@ function main(command: string | undefined, args: string[]) {
       model: env('MODEL'),
       startedAt: env('STARTED_AT'),
       outcomes: env('OUTCOMES'),
-      executions: [...passExecutions(), coordinator].map((e) => e ?? []),
+      executions: [
+        ...firstAttempts().map((e) => e ?? []),
+        ...retries().filter((e) => e !== null),
+        coordinator ?? [],
+      ],
     });
     writeFileSync('security-sweep-run.json', JSON.stringify(record, null, 2));
+    return;
+  }
+  if (command === 'verdict') {
+    const { ok, summary } = verdict(env('OUTCOMES'));
+    if (env('GITHUB_STEP_SUMMARY')) appendFileSync(env('GITHUB_STEP_SUMMARY'), `${summary}\n`);
+    console.log(summary);
+    if (!ok) process.exitCode = 1;
     return;
   }
   if (command === 'open') {
@@ -314,7 +382,7 @@ function main(command: string | undefined, args: string[]) {
     );
     return;
   }
-  throw new Error('usage: security-sweep.ts keys | merge | seal | open <sealed> <key>');
+  throw new Error('usage: security-sweep.ts keys | merge | seal | verdict | open <sealed> <key>');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))

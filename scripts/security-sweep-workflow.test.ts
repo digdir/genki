@@ -57,8 +57,11 @@ describe('the security sweep workflow', () => {
   it('runs three focused passes and a coordinator, all on Opus with a cost cap', () => {
     expect(models.map((s) => s.id)).toEqual([
       'pass_tenancy',
+      'pass_tenancy_retry',
       'pass_rights',
+      'pass_rights_retry',
       'pass_secrets',
+      'pass_secrets_retry',
       'coordinate',
     ]);
     for (const step of models) {
@@ -88,9 +91,7 @@ describe('the security sweep workflow', () => {
     const scripts = job.steps.map((s) => s.run ?? '').join('\n');
     expect(scripts).not.toMatch(/\b(echo|cat|jq|head|tail|printf)\b.*(EXECUTION|sweep-|\.sweep)/);
     expect(scripts).not.toMatch(/set -\w*x/);
-    expect(scripts.match(/^.*GITHUB_STEP_SUMMARY.*$/gm)).toEqual([
-      'echo "Findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them." >> "$GITHUB_STEP_SUMMARY"',
-    ]);
+    expect(scripts).not.toContain('GITHUB_STEP_SUMMARY');
   });
 
   it('keeps model output out of every step env, which the runner prints in the job log', () => {
@@ -102,7 +103,41 @@ describe('the security sweep workflow', () => {
 
   it('hands the seal step only how each model step ended, for the run record', () => {
     expect(job.steps.find((s) => s.id === 'seal')?.env?.OUTCOMES).toBe(
-      'tenancy=${{ steps.pass_tenancy.outcome }} rights=${{ steps.pass_rights.outcome }} secrets=${{ steps.pass_secrets.outcome }} coordinate=${{ steps.coordinate.outcome }}',
+      [
+        'login=${{ steps.login.outcome }}',
+        'tenancy=${{ steps.pass_tenancy.outcome }} tenancy_retry=${{ steps.pass_tenancy_retry.outcome }}',
+        'rights=${{ steps.pass_rights.outcome }} rights_retry=${{ steps.pass_rights_retry.outcome }}',
+        'secrets=${{ steps.pass_secrets.outcome }} secrets_retry=${{ steps.pass_secrets_retry.outcome }}',
+        'merge=${{ steps.merge.outcome }}',
+        'coordinate=${{ steps.coordinate.outcome }}',
+      ].join(' '),
+    );
+  });
+
+  it('retries a failed pass once, with the same prompt and cost cap', () => {
+    for (const pass of ['tenancy', 'rights', 'secrets']) {
+      const first = models.find((s) => s.id === `pass_${pass}`);
+      const retry = models.find((s) => s.id === `pass_${pass}_retry`);
+      expect(retry?.if).toBe(`steps.pass_${pass}.outcome == 'failure'`);
+      expect(retry?.['continue-on-error']).toBe(true);
+      expect(retry?.with).toEqual(first?.with);
+      expect(retry?.env).toEqual(first?.env);
+    }
+  });
+
+  it('ends the job in failure after uploading when the sweep did not finish', () => {
+    const last = job.steps.at(-1);
+    const upload = job.steps.findIndex((s) => s.uses?.startsWith('actions/upload-artifact@'));
+    expect(upload).toBe(job.steps.length - 2);
+    expect(last?.if).toBe('always()');
+    expect(last?.['continue-on-error']).toBeUndefined();
+    expect(last?.run).toBe('node scripts/security-sweep.ts verdict');
+    expect(last?.env?.OUTCOMES).toBe(
+      [
+        'keys=${{ steps.start.outcome }}',
+        job.steps.find((s) => s.id === 'seal')?.env?.OUTCOMES,
+        'seal=${{ steps.seal.outcome }}',
+      ].join(' '),
     );
   });
 
@@ -111,13 +146,17 @@ describe('the security sweep workflow', () => {
   });
 
   it('moves each pass execution file aside so no later step reads a stale one', () => {
-    for (const pass of ['tenancy', 'rights', 'secrets']) {
-      const move = job.steps.find((s) => s.env?.EXECUTION?.includes(`steps.pass_${pass}.`));
-      expect(move?.if).toBe('always()');
-      expect(move?.run).toBe(
-        `mv "$EXECUTION" "$RUNNER_TEMP/sweep-${pass}.json" 2>/dev/null || true`,
-      );
-    }
+    for (const pass of ['tenancy', 'rights', 'secrets'])
+      for (const [step, file] of [
+        [`pass_${pass}`, pass],
+        [`pass_${pass}_retry`, `${pass}-retry`],
+      ]) {
+        const move = job.steps.find((s) => s.env?.EXECUTION?.includes(`steps.${step}.`));
+        expect(move?.if).toBe('always()');
+        expect(move?.run).toBe(
+          `mv "$EXECUTION" "$RUNNER_TEMP/sweep-${file}.json" 2>/dev/null || true`,
+        );
+      }
   });
 
   it('spends nothing unless there is a key to seal the findings to', () => {

@@ -16,6 +16,7 @@ import {
   stepOutcomes,
   structuredOutput,
   unfinishedSteps,
+  verdict,
   type Candidate,
   type Finding,
 } from './security-sweep.ts';
@@ -109,11 +110,26 @@ describe('confirmed findings', () => {
 
   it('says the report may miss findings when a pass or the coordinator did not finish', () => {
     expect(
-      unfinishedSteps('tenancy=success rights=failure secrets=skipped coordinate=skipped'),
+      unfinishedSteps(
+        'tenancy=success rights=failure secrets=skipped merge=success coordinate=skipped',
+      ),
     ).toEqual(['rights', 'secrets']);
+    expect(
+      unfinishedSteps(
+        'tenancy=failure tenancy_retry=success rights=failure rights_retry=failure secrets=success secrets_retry=skipped merge=success coordinate=success',
+      ),
+    ).toEqual(['rights']);
     const text = report([], { sha: 'a'.repeat(40), runUrl: 'u', unfinished: ['rights'] });
     expect(text).toContain('rights did not finish');
     expect(text).toContain('No confirmed findings.');
+  });
+
+  it('warns in the sealed report that findings may be missing when the merge failed', () => {
+    expect(
+      unfinishedSteps(
+        'tenancy=success rights=success secrets=success merge=failure coordinate=skipped',
+      ),
+    ).toEqual(['coordinate', 'merge']);
   });
 
   it('writes who could abuse each finding and how far it reaches into the report', () => {
@@ -177,26 +193,46 @@ describe('the run record', () => {
 
   it('says how each pass and the coordinator ended, so a reader needs no job log', () => {
     expect(
-      stepOutcomes('tenancy=success rights=failure secrets=cancelled coordinate=skipped'),
+      stepOutcomes(
+        'login=success tenancy=failure tenancy_retry=success rights=failure rights_retry=failure secrets=cancelled secrets_retry=skipped coordinate=skipped',
+      ),
     ).toEqual({
-      tenancy: 'success',
+      login: 'success',
+      tenancy: 'failure',
+      tenancy_retry: 'success',
       rights: 'failure',
+      rights_retry: 'failure',
       secrets: 'cancelled',
+      secrets_retry: 'skipped',
+      merge: null,
       coordinate: 'skipped',
     });
   });
 
   it('records an unknown or missing outcome as null, never as the text it was given', () => {
     expect(stepOutcomes('tenancy=success rights=leaked-text')).toEqual({
+      ...{
+        login: null,
+        tenancy: null,
+        tenancy_retry: null,
+        rights: null,
+        rights_retry: null,
+        secrets: null,
+        secrets_retry: null,
+        merge: null,
+        coordinate: null,
+      },
       tenancy: 'success',
-      rights: null,
-      secrets: null,
-      coordinate: null,
     });
     expect(stepOutcomes('')).toEqual({
+      login: null,
       tenancy: null,
+      tenancy_retry: null,
       rights: null,
+      rights_retry: null,
       secrets: null,
+      secrets_retry: null,
+      merge: null,
       coordinate: null,
     });
   });
@@ -285,7 +321,101 @@ describe('the sweep commands in the workflow', () => {
     });
     expect(sealed.status, sealed.stderr).toBe(0);
     expect(JSON.parse(readFileSync(join(dir, 'security-sweep-run.json'), 'utf8')).outcomes).toEqual(
-      { tenancy: 'success', rights: 'failure', secrets: 'success', coordinate: 'skipped' },
+      {
+        login: null,
+        tenancy: 'success',
+        tenancy_retry: null,
+        rights: 'failure',
+        rights_retry: null,
+        secrets: 'success',
+        secrets_retry: null,
+        merge: null,
+        coordinate: 'skipped',
+      },
+    );
+  });
+
+  it('merge takes a retried pass from its retry, and seal counts the cost of both attempts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-'));
+    writeFileSync(
+      join(dir, 'sweep-tenancy.json'),
+      JSON.stringify(
+        execution({ candidates: [] }, { subtype: 'error_max_turns', total_cost_usd: 6 }),
+      ),
+    );
+    writeFileSync(
+      join(dir, 'sweep-tenancy-retry.json'),
+      JSON.stringify(execution({ candidates: [candidate()] }, { total_cost_usd: 2 })),
+    );
+    expect(run('merge', dir, {}).stdout).toBe('count=1\n');
+    const sealed = run('seal', dir, { SWEEP_PUBLIC_KEYS: rsa().publicKey, SHA: 'a'.repeat(40) });
+    expect(sealed.status, sealed.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(dir, 'security-sweep-run.json'), 'utf8')).cost_usd).toBe(8);
+  });
+
+  it('verdict writes only outcomes to the job summary and exits non-zero when the sweep is incomplete', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sweep-'));
+    const summary = join(dir, 'summary.md');
+    const outcomes =
+      'keys=success login=success tenancy=failure tenancy_retry=failure rights=success secrets=success coordinate=success merge=success seal=success';
+    const result = run('verdict', dir, { GITHUB_STEP_SUMMARY: summary, OUTCOMES: outcomes });
+    expect(result.status).toBe(1);
+    expect(readFileSync(summary, 'utf8')).toBe(`${verdict(outcomes).summary}\n`);
+  });
+});
+
+describe('the verdict at the end of the job', () => {
+  const complete =
+    'keys=success login=success tenancy=success rights=success secrets=success coordinate=success merge=success seal=success';
+
+  it('a complete run ends the job in success and says the findings are sealed', () => {
+    expect(verdict(complete)).toEqual({
+      ok: true,
+      summary:
+        '4 of 4 steps finished; findings sealed for the maintainers. See the security sweep section in CONTRIBUTING.md to open them.',
+    });
+    expect(verdict(complete.replace('coordinate=success', 'coordinate=skipped')).ok).toBe(true);
+  });
+
+  it('a run with a failed pass ends the job in failure', () => {
+    const result = verdict(`${complete} tenancy=failure tenancy_retry=failure`);
+    expect(result.ok).toBe(false);
+    expect(result.summary).toMatch(/^3 of 4 steps finished, tenancy failure; findings sealed/);
+  });
+
+  it('a pass that succeeded on its retry counts as finished', () => {
+    expect(verdict(`${complete} rights=failure rights_retry=success`).ok).toBe(true);
+  });
+
+  it('a run whose coordinator failed ends the job in failure', () => {
+    expect(verdict(complete.replace('coordinate=success', 'coordinate=failure')).ok).toBe(false);
+  });
+
+  it('a run whose merge failed ends the job in failure, though the coordinator was skipped', () => {
+    const result = verdict(
+      complete
+        .replace('coordinate=success', 'coordinate=skipped')
+        .replace('merge=success', 'merge=failure'),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.summary).toMatch(
+      /^3 of 4 steps finished, coordinate skipped, merge failure; findings sealed/,
+    );
+  });
+
+  it('a run whose Azure login failed ends the job in failure', () => {
+    const result = verdict(
+      'keys=success login=failure tenancy=skipped rights=skipped secrets=skipped coordinate=skipped merge=success seal=success',
+    );
+    expect(result.ok).toBe(false);
+    expect(result.summary).toMatch(/^Azure login failure; 1 of 4 steps finished, tenancy skipped/);
+  });
+
+  it('a run without a key to seal to ends the job in failure and says nothing was sealed', () => {
+    const result = verdict('keys=failure');
+    expect(result.ok).toBe(false);
+    expect(result.summary).toBe(
+      'key check failure; Azure login did not run; 0 of 4 steps finished, tenancy did not run, rights did not run, secrets did not run, coordinate did not run, merge did not run; nothing was sealed.',
     );
   });
 });
