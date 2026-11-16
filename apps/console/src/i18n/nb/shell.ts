@@ -12,6 +12,7 @@ export const shell = defineNamespace({
   pageBuildingBlocks: 'Byggeklosser',
   pageSearchEngines: 'Søkemotorer',
   pageSharedServices: 'Fellestjenester',
+  pageStateRegister: 'Statens organisering',
   pageSettings: 'Innstillinger',
   pageQuality: 'Kvalitet',
   pageQualityMatrix: 'Kvalitetsmatrise og dommere',

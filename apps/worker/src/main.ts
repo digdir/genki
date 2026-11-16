@@ -23,6 +23,14 @@ import {
   runtimeBlocksOf,
   saveUsdNok,
   scheduleUsdNok,
+  checkAgainstAccounts,
+  latestRegister,
+  scheduleRegisterSync,
+  stateRegisterGuard,
+  syncAccounts,
+  syncRegister,
+  syncRegisterNames,
+  type RegisterSync,
   TenantSecretVault,
   traceSinkAccess,
   tracesContent,
@@ -64,7 +72,14 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
-import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai/ingest';
+import {
+  copyListing,
+  copyOwner,
+  knowledgeListingOf,
+  kudosClient,
+  kudosProd,
+  type CopyIds,
+} from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
@@ -898,6 +913,63 @@ if (db)
     })
     .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
 
+// The state's organisation (ADR 0058): Enhetsregisteret every night, then DFØ's state accounts as
+// its check and history, and KUDOS's names for its units. One replica runs it, under a lease.
+const stateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-state-register') : undefined;
+const stateGuard = stateRegisterGuard();
+const stateKudos = kudosClient({ profile: kudosProd });
+const afterRegisterSync = async (result: { ok: boolean }) => {
+  if (!db || !result.ok) return;
+  const now = () => new Date();
+  const accounts = await syncAccounts({ configEntries: db.configEntries, guard: stateGuard, now });
+  if (!accounts.ok) log('state accounts failed', { error: accounts.error });
+  await syncRegisterNames({ configEntries: db.configEntries, kudos: stateKudos, now }).catch(
+    (error: unknown) => log('state register names failed', { error: String(error) }),
+  );
+  await checkAgainstAccounts({
+    configEntries: db.configEntries,
+    now,
+    onMismatch: (rows) =>
+      log('state register mismatch', {
+        units: rows.map((r) => ({
+          orgnr: r.orgnr,
+          name: r.name,
+          register: r.registerMinistry ?? null,
+          accounts: r.accountsMinistry ?? null,
+        })),
+      }),
+  });
+};
+const onStateStale = (sync: RegisterSync) => log('state register stale', { ...sync });
+const stateRegister = db
+  ? scheduleRegisterSync({
+      configEntries: db.configEntries,
+      guard: stateGuard,
+      ...(stateLease ? { active: () => stateLease.tryAcquire() } : {}),
+      afterSync: afterRegisterSync,
+      onStale: onStateStale,
+      onError: (error) => log('state register sync failed', { error: String(error) }),
+    })
+  : undefined;
+if (db)
+  void latestRegister(db.configEntries)
+    .then(async (known) => {
+      // The first start reads it at once, on one replica, instead of waiting for the night.
+      if (known || (stateLease && !(await stateLease.tryAcquire()))) return;
+      const result = await syncRegister({
+        configEntries: db.configEntries,
+        guard: stateGuard,
+        now: () => new Date(),
+        onStale: onStateStale,
+      });
+      log(
+        'state register',
+        result.ok ? { units: result.register.units.length } : { error: result.error },
+      );
+      await afterRegisterSync(result);
+    })
+    .catch((error: unknown) => log('state register sync failed', { error: String(error) }));
+
 const sweepLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
   : undefined;
@@ -985,6 +1057,7 @@ const stop = () => {
   knowledgeProgress.stop();
   retention?.stop();
   exchangeRate?.stop();
+  stateRegister?.stop();
   providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);

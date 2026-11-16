@@ -1256,6 +1256,42 @@ const knowledgeEngineRoutes: RouteConfig[] = [
 
 const operatorOnly = { 401: problem('Not signed in'), 403: problem('Not an operator') };
 
+const ComparisonKind = z.enum(['mismatch', 'budget-booking', 'not-in-register']);
+
+const stateRegisterRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'get',
+    path: '/operator/state-register',
+    summary:
+      "The state's organisation from Enhetsregisteret: when it was last read, and each agency the state accounts book to another ministry (operators)",
+    responses: {
+      200: json(
+        z.object({
+          syncedAt: z.string().nullable(),
+          lastGood: z.string().nullable(),
+          failedNights: z.number().int(),
+          units: z.number().int(),
+          accountsPeriod: z.string().nullable(),
+          same: z.number().int(),
+          differences: z.array(
+            z.object({
+              orgnr: z.string(),
+              name: z.string(),
+              kind: ComparisonKind,
+              registerMinistry: z.string().optional(),
+              registerMinistryName: z.string().optional(),
+              accountsMinistry: z.string().optional(),
+              accountsMinistryName: z.string().optional(),
+            }),
+          ),
+        }),
+        'The register and its differences with the state accounts',
+      ),
+      ...operatorOnly,
+    },
+  }),
+];
+
 const knowledgeEndpointRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
@@ -1707,6 +1743,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
     ...pipelineRoutes(tenantBase),
   ],
   'knowledge-endpoints': knowledgeEndpointRoutes,
+  'state-register': stateRegisterRoutes,
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
   'dataset-delete': deleteRoutes,
