@@ -3,12 +3,7 @@ import { EgressGuard } from '@genai/providers-mcp-client';
 import { appendVersion, platformScope, type ConfigEntryStore } from './config-store.js';
 import type { GuardedRequest } from './exchange-rates.js';
 
-/**
- * The state's organisation as Enhetsregisteret registers it (ADR 0058): each ministry (STAT) and
- * every unit under it (ORGL), with the parent each ministry has registered for its agencies
- * (rundskriv W-01/2019). Read nightly through the egress guard and kept as versioned config
- * entries: a new version only when the tree changed, so the versions are the change history.
- */
+/** The state's organisation from Enhetsregisteret, as versioned config entries (ADR 0058). */
 
 export interface RegisterUnit {
   orgnr: string;
@@ -228,10 +223,7 @@ const saveSync = async (configEntries: ConfigEntryStore, sync: RegisterSync, at:
     at: at.toISOString(),
   });
 
-/**
- * One night's sync: read the whole register, keep the state tree, and save a new version when it
- * changed. A failed or partial read changes nothing but the sync status.
- */
+/** One night's sync: a new version on change; a failed or partial read changes nothing. */
 export const syncRegister = async (deps: {
   configEntries: ConfigEntryStore;
   guard: GuardedRequest;

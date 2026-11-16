@@ -7,10 +7,7 @@ import {
 import { operatorOf } from './knowledge-endpoints.js';
 import type { PlatformModuleFactory } from './platform-modules.js';
 
-/**
- * The state register as operators see it in the console (ADR 0058): when it was last read, and
- * every agency the state accounts book to another ministry than the register gives.
- */
+/** The state register for operators: its dates and its differences (ADR 0058). */
 export const stateRegisterModule: PlatformModuleFactory = (deps) => ({
   id: 'state-register',
   mount: (app, mounted) => {

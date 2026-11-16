@@ -1,11 +1,7 @@
 import { appendVersion, platformScope, type ConfigEntryStore } from './config-store.js';
 import { latestRegister } from './state-register.js';
 
-/**
- * The names people use for a unit of the state, from KUDOS (run by DFØ): its display name and
- * abbreviation, joined to the register by org number (ADR 0058). Old names are left out: KUDOS
- * points «Difi» to DFØ alone, though Difi was split between DFØ and Digdir.
- */
+/** KUDOS's display names and abbreviations for the register's units, by org number (ADR 0058). */
 
 /** KUDOS's `/api/v0/actors`, page by page; the worker gives it KUDOS's client and rate limiter. */
 export interface KudosActorPages {

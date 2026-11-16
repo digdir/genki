@@ -8,11 +8,7 @@ import {
 } from './state-register.js';
 import type { GuardedRequest } from './exchange-rates.js';
 
-/**
- * DFØ's state accounts (statsregnskapet, NLOD 2.0) book every state agency to the ministry it
- * belongs to (`Fagdepartement_Virksomhet`). They check the register each month and give the
- * ministry for each year before genki's first sync (ADR 0058).
- */
+/** DFØ's state accounts: each agency's ministry, the register's check and history (ADR 0058). */
 
 export interface AccountsAgency {
   orgnr: string;
@@ -132,12 +128,7 @@ export const csvFields = (line: string): string[] => {
   return fields;
 };
 
-/**
- * Reads the CSV inside a zip down to each agency's ministry and the last period. A ministry's code
- * maps to the org number of the row named as the code is; a ministry renamed during the year keeps
- * its old name on its own row, so then the code maps to the org number `known` gives it, as the
- * latest month does, when a row under the code has it.
- */
+/** Each agency's ministry and the last period; a renamed ministry maps by `known`. */
 export const readAccountsZip = async (
   zip: Uint8Array,
   known: Record<string, string> = {},
@@ -238,11 +229,7 @@ export const accountYears = (now: Date) => {
   return years;
 };
 
-/**
- * Reads the latest month and keeps it when its period is new, then each year up to the latest
- * month's year that is not yet stored with December, so a year read before DFØ closed it is read
- * again until it holds December. A file that cannot be read changes nothing that is stored.
- */
+/** The latest month, then each year until it holds December; a bad file changes nothing. */
 export const syncAccounts = async (deps: {
   configEntries: ConfigEntryStore;
   guard: GuardedRequest;
@@ -254,8 +241,7 @@ export const syncAccounts = async (deps: {
     const stored = await latestAccounts(deps.configEntries, 'month');
     if (stored?.period !== month.period)
       await saveAccounts(deps.configEntries, 'month', month, deps.now());
-    // DFØ publishes a year's file with its first month, about two months after it: in January
-    // the new year has no file yet, so years go only to the latest month's year.
+    // In January the new year has no file yet: years go only to the latest month's year.
     const lastYear = Number(month.period.slice(0, 4));
     for (const year of (deps.years ?? accountYears(deps.now())).filter((y) => y <= lastYear)) {
       const kept = await latestAccounts(deps.configEntries, `year-${year}`);
@@ -273,12 +259,7 @@ export const syncAccounts = async (deps: {
   }
 };
 
-/**
- * A unit's ministry on a date: from the register version that was current then, or, before
- * genki's first sync, from that year's state accounts. A body the register places under a top
- * unit that is not one of the accounts' ministries (Stortinget, SMK, the courts, Sametinget) is
- * booked under a ministry for the budget only, so the accounts give no answer for it.
- */
+/** A unit's ministry on a date: the register then, or the accounts before the first sync. */
 export const ministryOn = async (
   configEntries: ConfigEntryStore,
   orgnr: string,
@@ -306,11 +287,7 @@ export const ministryOn = async (
   return { orgnr: ministry, source: accountsSource, asOf: String(year) };
 };
 
-/**
- * Each agency in the latest month of the accounts against the register. A body whose register
- * top is not one of the accounts' ministries (Stortinget, SMK, the courts, Sametinget) is booked
- * under a ministry for the budget only.
- */
+/** Each agency of the latest month against the register; non-ministry tops are budget bookings. */
 export const compareWithAccounts = async (
   configEntries: ConfigEntryStore,
 ): Promise<ComparisonRow[] | undefined> => {
