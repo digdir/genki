@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Event } from '@genai/contracts';
-import { costOf, monthlyQuotaGate } from './quota.js';
+import { costOf, gateQuota, monthlyQuotaGate, quotaExhaustedMessage } from './quota.js';
 
 const usage = (model: string, inputTokens: number, outputTokens: number) =>
   ({
@@ -44,5 +44,29 @@ describe('the cost of a run', () => {
       costMicroNok: 115_000,
     });
     expect(unpriced).toEqual({ usage: { inputTokens: 1010, outputTokens: 10 } });
+  });
+});
+
+describe('the monthly token quota in the model gate', () => {
+  const tenant = '991825827';
+  const usedUp = gateQuota(async () => true);
+
+  it('refuses a call in a run once the tenant has used its monthly tokens', async () => {
+    expect(await usedUp({ tenant, capability: `${tenant}/klarsprak/default` })).toBe(
+      quotaExhaustedMessage,
+    );
+    expect(
+      await gateQuota(async () => false)({ tenant, capability: `${tenant}/klarsprak/default` }),
+    ).toBeUndefined();
+  });
+
+  it('lets the builder assistant through, since it spends its own daily budget', async () => {
+    expect(
+      await usedUp({ tenant, capability: 'platform/draft/assistant/builder' }),
+    ).toBeUndefined();
+  });
+
+  it('lets a call outside a run through, since the monthly quota counts only runs', async () => {
+    expect(await usedUp({ tenant })).toBeUndefined();
   });
 });

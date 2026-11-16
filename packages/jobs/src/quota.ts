@@ -35,6 +35,14 @@ export const monthlyQuotaGate =
     return { ok: true, budget: { inputTokens: left, outputTokens: left } };
   };
 
+/** The gate's quota check: calls in a run count, the builder assistant keeps its own daily budget. */
+export const gateQuota =
+  (exhausted: (tenant: string) => Promise<boolean>) =>
+  async (call: { tenant: string; capability?: string }) => {
+    if (!call.capability || call.capability.startsWith(assistantCapabilityPrefix)) return undefined;
+    return (await exhausted(call.tenant)) ? quotaExhaustedMessage : undefined;
+  };
+
 const record = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 

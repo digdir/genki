@@ -129,7 +129,10 @@ const lane = <Req>(
     const upstream: string[] = [];
     const metered: Usage[] = [];
     const audit: GateRecord[] = [];
-    const gate = createGate({ admits: () => setup.admitted ?? true });
+    const gate = createGate({
+      admits: () => setup.admitted ?? true,
+      quota: async () => (setup.quotaExhausted ? 'the monthly token quota is used up' : undefined),
+    });
     const send = (r: Req) => {
       upstream.push(...sent(r));
       if (setup.failUpstream) throw new Error('the provider is down');
