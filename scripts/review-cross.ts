@@ -667,19 +667,76 @@ export function foundryError(status: number, body: unknown, secret = ''): string
   return message ? `${head}: ${message}` : head;
 }
 
-export function responsesClient(base: string, token: string) {
+export const RETRY = { attempts: 6, baseMs: 4_000, capMs: 60_000, budgetMs: 480_000 };
+
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+export function retryWaitMs(headers: Pick<Headers, 'get'>, attempt: number, now = Date.now()) {
+  const number = (name: string) => {
+    const raw = headers.get(name);
+    return raw === null || raw.trim() === '' ? NaN : Number(raw);
+  };
+  const ms = number('retry-after-ms');
+  const seconds = number('retry-after');
+  const reset = number('x-ratelimit-reset-tokens');
+  let asked = NaN;
+  if (Number.isFinite(ms)) asked = ms;
+  else if (Number.isFinite(seconds)) asked = seconds * 1000;
+  else if (Number.isFinite(reset)) asked = reset * 1000;
+  else {
+    const date = Date.parse(headers.get('retry-after') ?? '');
+    if (Number.isFinite(date)) asked = date - now;
+  }
+  const wait = Number.isFinite(asked) ? asked : RETRY.baseMs * 2 ** attempt;
+  return Math.min(RETRY.capMs, Math.max(0, Math.round(wait)));
+}
+
+export function responsesClient(
+  base: string,
+  token: string,
+  deps: {
+    fetch?: typeof fetch;
+    sleep?: (ms: number) => Promise<void>;
+    log?: (line: string) => void;
+  } = {},
+) {
+  const send = deps.fetch ?? fetch;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const log = deps.log ?? ((line: string) => process.stderr.write(`${line}\n`));
+  let waited = 0;
   return async (body: Record<string, unknown>): Promise<ModelResponse> => {
-    const res = await fetch(`${base}/responses`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(300_000),
-    });
-    if (!res.ok) {
-      const json: unknown = await res.json().catch(() => null);
-      throw new Error(foundryError(res.status, json, token));
+    for (let attempt = 0; ; attempt++) {
+      const last = attempt >= RETRY.attempts - 1;
+      let res: Response | undefined;
+      let failure: unknown;
+      try {
+        res = await send(`${base}/responses`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(300_000),
+        });
+      } catch (error) {
+        failure = error;
+      }
+      if (res?.ok) return (await res.json()) as ModelResponse;
+      if (res && !RETRYABLE.has(res.status)) {
+        const json: unknown = await res.json().catch(() => null);
+        throw new Error(foundryError(res.status, json, token));
+      }
+      const wait = res ? retryWaitMs(res.headers, attempt) : retryWaitMs(new Headers(), attempt);
+      if (last || waited + wait > RETRY.budgetMs) {
+        if (!res) throw failure;
+        const json: unknown = await res.json().catch(() => null);
+        throw new Error(foundryError(res.status, json, token));
+      }
+      await res?.body?.cancel().catch(() => undefined);
+      log(
+        `Foundry ${res ? res.status : 'network error'}, retrying in ${Math.round(wait / 1000)}s (attempt ${attempt + 1} of ${RETRY.attempts})`,
+      );
+      waited += wait;
+      await sleep(wait);
     }
-    return (await res.json()) as ModelResponse;
   };
 }
 
