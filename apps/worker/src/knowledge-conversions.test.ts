@@ -2495,4 +2495,120 @@ describe('replacement runs', () => {
       'tenants',
     ]);
   }, 60_000);
+  it("a replacement's conversion leaves a record that still waits on another file to that file's conversion", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['To filer.']));
+    const s = await scenario({ docling, now: () => night });
+    // One document with two files: a folder document is one file, so its record lists both here.
+    const firstFile = reportOf('two-files-a');
+    const first = await sha(firstFile);
+    await s.file('a.pdf', firstFile);
+    await s.file('b.pdf', reportOf('two-files-b'));
+    const run = await fill(s);
+    const [one, two] = (
+      await admin.query<{ id: string }>(
+        `select id from src_documents where dataset = $1 order by id`,
+        [s.dataset.id],
+      )
+    ).rows;
+    await admin.query(`update src_files set document = $2 where dataset = $1 and document = $3`, [
+      s.dataset.id,
+      one?.id,
+      two?.id,
+    ]);
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+    const convert = s.sent.find(
+      (j) =>
+        j.queue === 'knowledge.convert' && j.data.run === replacement?.id && j.data.file === first,
+    );
+    expect(convert).toBeDefined();
+    const before = s.sent.length;
+
+    // The record still waits on the other file, so this conversion leaves its index job to that one.
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}));
+
+    expect(s.sent.slice(before).filter((j) => j.queue === 'knowledge.index')).toEqual([]);
+  }, 60_000);
+
+  it("a replacement's conversion whose record's index job is still queued is tried again", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Opptatt.']));
+    const s = await scenario({ docling, now: () => night });
+    await s.file('rapport.pdf', reportOf('busy-holder'));
+    const run = await fill(s);
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+    const convert = s.sent.find(
+      (j) => j.queue === 'knowledge.convert' && j.data.run === replacement?.id,
+    );
+    // A daily run wrote the record again, which ended its wait, and its index job still waits.
+    const [record] = (
+      await admin.query<{ record: string }>(
+        `select number::text as record from src_documents where dataset = $1`,
+        [s.dataset.id],
+      )
+    ).rows;
+    await admin.query(`delete from src_conversion_waits where dataset = $1`, [s.dataset.id]);
+    await knowledgeQueue.send(
+      knowledgeIndexQueue,
+      { run: run, tenant: s.tenant, generation: s.generation, record: record?.record ?? '' },
+      { key: `${s.generation}#${record?.record}` },
+    );
+
+    await expect(
+      handler(s.work.knowledge, 'knowledge.convert')(job('knowledge.convert', convert?.data ?? {})),
+    ).rejects.toThrow(/IndexJobBusy/);
+  }, 60_000);
+
+  it("a replacement's conversion indexes no record of another pipeline that holds the file", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Bare egen.']));
+    const s = await scenario({ docling, now: () => night });
+    const shared = reportOf('held-by-two-pipelines');
+    await s.file('egen.pdf', shared);
+    await s.file('annen.pdf', shared);
+    const run = await fill(s);
+    // The same file in a document another pipeline owns.
+    await admin.query(
+      `update src_documents d set owners = array['annen']
+         from src_files f
+        where f.dataset = d.dataset and f.document = d.id and d.dataset = $1 and f.file like '%annen%'`,
+      [s.dataset.id],
+    );
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+    const convert = s.sent.find(
+      (j) => j.queue === 'knowledge.convert' && j.data.run === replacement?.id,
+    );
+    const before = s.sent.length;
+
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}));
+
+    expect(s.sent.slice(before).filter((j) => j.queue === 'knowledge.index')).toHaveLength(1);
+  }, 60_000);
 });

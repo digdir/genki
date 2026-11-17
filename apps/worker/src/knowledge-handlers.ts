@@ -775,15 +775,23 @@ export const knowledgeWork = (
     if (run.replaces && stored.pages.length > 0) {
       const { generation } = await datasetOf(deps, run, job.signal);
       const indexed = new Set([...sent, ...busy].map((w) => w.record));
+      let stillBusy = 0;
       for (const record of await conversions.holding(run.dataset, run.pipeline, job.data.file))
-        if (!indexed.has(record))
-          await sendIndex({
+        if (!indexed.has(record)) {
+          const queued = await sendIndex({
             dataset: run.dataset,
             record,
             generation,
             run: run.id,
             tenant: executionScope(run.dataset),
           });
+          if (queued === null) stillBusy += 1;
+        }
+      // As for a waiting record: its index job may have read the old pages, so the job is tried again.
+      if (stillBusy > 0)
+        throw new IndexJobBusy(
+          `${stillBusy} record(s) holding the file had an index job still queued or running; tried again`,
+        );
     }
     if (busy.length > 0)
       throw new IndexJobBusy(

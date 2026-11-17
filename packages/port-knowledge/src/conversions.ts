@@ -184,8 +184,9 @@ export interface StoredConversions {
     limit: number,
   ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
   /**
-   * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file: the
-   * documents a replacement's new conversion is indexed for, waiting or not.
+   * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file and wait
+   * on no conversion: the documents a replacement's new conversion is indexed for, beside those
+   * whose wait it ended.
    */
   holding(dataset: string, pipeline: string, sha256: string): Promise<string[]>;
 }

@@ -315,7 +315,10 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
          from src_documents d
          join src_files f on f.dataset = d.dataset and f.document = d.id
         where d.dataset = $1 and $2 = any(d.owners) and f.sha256 = $3
-          and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))`,
+          and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))
+          -- A record still waiting on a conversion is indexed when its last one is stored.
+          and not exists (select 1 from src_conversion_waits w
+                           where w.dataset = d.dataset and w.record = d.number)`,
       [dataset, pipeline, sha256],
     );
     return rows.map((r) => r.record);
