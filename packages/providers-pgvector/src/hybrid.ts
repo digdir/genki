@@ -38,7 +38,11 @@ export const rrfMerge = (lists: Hit[][], k: number, limit: number): SearchResult
   };
 };
 
-const statementTimeout = '57014';
+// A raw statement timeout on the platform database, or the knowledge database's KnowledgeError for it.
+const timedOut = (error: unknown) => {
+  const code = (error as { code?: string } | null)?.code;
+  return code === '57014' || code === 'timeout';
+};
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -62,7 +66,7 @@ export const searchHybrid = async (
     return {
       ...rrfMerge([(near as PromiseFulfilledResult<SearchResult>).value.hits], rrfK, limit),
       warning: `text search ${
-        (text.reason as { code?: string }).code === statementTimeout
+        timedOut(text.reason)
           ? `took longer than ${textMs / 1000} s`
           : `failed: ${messageOf(text.reason)}`
       }; these hits come from vector search only`,
