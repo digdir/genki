@@ -70,7 +70,7 @@ const fixtureRequest = z.strictObject({
   path: z.string().min(1).max(500),
   query: z.record(z.string(), z.string()).optional(),
   headers: z.record(z.string(), z.string()).optional(),
-  body: z.unknown(),
+  body: z.unknown().optional(),
 });
 
 const fixtureResponse = z.strictObject({
@@ -372,13 +372,17 @@ const typedBytes = (body: unknown) =>
     ? { type: body.mediaType, bytes: Buffer.from(body.data, 'base64') }
     : undefined;
 
+const nullBodyStatuses = new Set([204, 205, 304]);
+
 const replayed = (step: Step | undefined, response: FixtureResponse) => {
+  const status = response.status ?? 200;
+  if (nullBodyStatuses.has(status) || (status < 300 && step?.response.encoding === 'none'))
+    return new Response(null, { status, headers: response.headers ?? {} });
   const typed = step?.response.encoding === 'binary' ? typedBytes(response.body) : undefined;
   const headers = {
     'content-type': typed?.type ?? defaultContentType(step),
     ...response.headers,
   };
-  const status = response.status ?? 200;
   const stream = step?.response.stream;
   const body =
     status < 300 && stream
@@ -615,7 +619,7 @@ const checks: {
           ...same(`${at}path`, request.path, want.path),
           ...same(`${at}query`, request.query, want.query ?? {}),
           ...same(`${at}headers`, request.headers, want.headers ?? {}),
-          ...same(`${at}body`, request.body, want.body),
+          ...same(`${at}body`, request.body ?? null, want.body ?? null),
           ...(request.credentialSent ? [] : [`${at}the endpoint credential was not sent`]),
           ...(request.signingKeySent ? [`${at}the key that only signs was sent`] : []),
         ];

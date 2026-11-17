@@ -5,11 +5,16 @@ import { InMemoryProviderObjects } from '@genai/kernel';
 import { memoryLedger } from './contract.js';
 import { parseDescriptor } from './descriptor.js';
 import { deleteProviderObject } from './executor.js';
-import { call, json, refused } from './kit.test-utils.js';
+import { call, empty, json, refused } from './kit.test-utils.js';
 
 const testdata = join(import.meta.dirname, 'testdata', 'descriptors', 'example');
 const yamlOf = (name: string) => readFileSync(join(testdata, `${name}.yaml`), 'utf8');
 const summarize = () => parseDescriptor(yamlOf('summarize-file@1'));
+const emptyDelete = (yaml = yamlOf('summarize-file@1')) =>
+  yaml.replace(
+    '      path: /files/{steps.upload.file}\n    wire:\n      response:\n        object:\n          deleted: boolean\n',
+    '      path: /files/{steps.upload.file}\n    response:\n      encoding: none\n    wire: {}\n',
+  );
 const text = (s: string) => ({ mediaType: 'text/plain', data: Buffer.from(s).toString('base64') });
 const input = { document: text('Hello there'), filename: 'notes.txt' };
 const errorOf = (outcome: unknown) => (outcome as { error: Error }).error;
@@ -46,6 +51,27 @@ describe('objects left at the provider (C)', () => {
       }),
     ]);
     expect(kept.open.size).toBe(0);
+  });
+
+  it('a delete step that declares no answer body strikes the object when the provider answers 204 with no body', async () => {
+    const yaml = emptyDelete();
+    expect(yaml).not.toBe(yamlOf('summarize-file@1'));
+    const kept = memoryLedger();
+    const { outcome, exchanges } = await call(
+      parseDescriptor(yaml),
+      input,
+      [upload, summary, empty()],
+      { endpoint: endpointWith(kept.ledger) },
+    );
+    expect(outcome).toMatchObject({ result: { summary: 'A greeting.' } });
+    expect(kept.open.size).toBe(0);
+    expect(exchanges[0]?.steps?.at(-1)?.response).toEqual({ status: 204, body: null });
+  });
+
+  it('a step that declares no answer body may not declare wire.response', () => {
+    expect(
+      refused(emptyDelete().replace('    wire: {}\n', '    wire:\n      response: plain\n')),
+    ).toMatch(/remove_file.*a step without an answer body declares no wire.response/);
   });
 
   it('leaves the object open in the ledger when the provider will not delete it, and the answer still returns', async () => {

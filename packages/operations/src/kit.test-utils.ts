@@ -20,6 +20,8 @@ export interface Reply {
   body: unknown;
 }
 
+export const empty = (status = 204): Reply => ({ status, body: undefined });
+
 export const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Reply => ({
   status,
   body,
@@ -49,6 +51,8 @@ export const call = async (
     sent.push({ url: new URL(String(url)), init });
     const reply = replies[sent.length - 1];
     if (!reply) return Response.json({ error: { message: 'no more replies' } }, { status: 500 });
+    if (reply.body === undefined)
+      return new Response(null, { status: reply.status ?? 204, headers: reply.headers });
     const type = reply.type ?? 'application/json';
     const body =
       type === 'application/json' ? JSON.stringify(reply.body) : (reply.body as BodyInit);

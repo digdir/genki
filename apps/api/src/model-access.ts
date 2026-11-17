@@ -24,17 +24,34 @@ export const withCandidateTrial = (principal: Principal): Principal =>
 const objectOf = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
-export const candidatesIn = (catalog: Pick<CatalogRegistry, 'get'>, definition: unknown) => {
+export const modelsNamedIn = (definition: unknown): { path: string; model: string }[] => {
   const spec = objectOf(objectOf(definition).spec);
   const model = objectOf(spec.model);
   const variants = Array.isArray(spec.variants) ? spec.variants : [];
-  return [
-    model.primary,
-    model.fallback,
-    ...Object.values(objectOf(model.roles)),
-    ...variants.map((v) => objectOf(v).model),
-  ].filter((m): m is string => typeof m === 'string' && isCandidate(catalog, m));
+  const named: [string, unknown][] = [
+    ['spec.model', model.primary],
+    ['spec.model.fallback', model.fallback],
+    ...Object.entries(objectOf(model.roles)).map(([role, m]): [string, unknown] => [
+      `spec.model.roles.${role}`,
+      m,
+    ]),
+    ...Object.entries(objectOf(model.operations)).map(([kind, m]): [string, unknown] => [
+      `spec.model.operations.${kind}`,
+      m,
+    ]),
+    ...variants.map((v, i): [string, unknown] => [`spec.variants.${i}.model`, objectOf(v).model]),
+    [
+      'spec.guardrails.purpose-check.model',
+      objectOf(objectOf(spec.guardrails)['purpose-check']).model,
+    ],
+  ];
+  return named.flatMap(([path, m]) => (typeof m === 'string' && m ? [{ path, model: m }] : []));
 };
+
+export const candidatesIn = (catalog: Pick<CatalogRegistry, 'get'>, definition: unknown) =>
+  modelsNamedIn(definition)
+    .map((n) => n.model)
+    .filter((m) => isCandidate(catalog, m));
 
 const belongsElsewhere = (catalog: Pick<CatalogRegistry, 'get'>, model: string, tenant: string) => {
   const item = catalog.get('model', model);
