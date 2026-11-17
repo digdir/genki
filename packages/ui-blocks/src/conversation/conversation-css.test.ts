@@ -53,6 +53,12 @@ describe('the conversation styles', () => {
     );
   });
 
+  it('draw the question on the tinted Card’s own ground unless the host names another', () => {
+    expect(flat).toContain(
+      'background: var(--genai-conversation-question-background, var(--ds-color-surface-tinted));',
+    );
+  });
+
   it('keep the search strip over the conversation while it scrolls', () => {
     expect(flat).toContain('position: sticky;');
     expect(flat).toContain(

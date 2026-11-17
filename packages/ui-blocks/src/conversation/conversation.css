@@ -38,6 +38,8 @@
       --genai-conversation-question-border-color,
       var(--ds-color-surface-tinted)
     );
+    /* The tinted Card's own ground unless the host names another. */
+    background: var(--genai-conversation-question-background, var(--ds-color-surface-tinted));
     max-inline-size: var(--genai-conversation-question-max-inline-size, 85%);
     overflow-wrap: anywhere;
   }

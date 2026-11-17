@@ -1186,6 +1186,11 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     const question = document.querySelector('.uib-conversation-question');
     expect(question?.getAttribute('data-variant')).toBe('tinted');
     expect(question?.getAttribute('data-color')).toBe('neutral');
+    // Lighter than the summaries' surface-tinted, so the question is not read as one of them.
+    const chat = document.querySelector<HTMLElement>('.uia-chat');
+    expect(chat?.style.getPropertyValue('--genai-conversation-question-background')).toBe(
+      'var(--ds-color-neutral-background-tinted)',
+    );
   });
 
   it('draws the answer with no name over it (dev-kilder-hoyre)', async () => {

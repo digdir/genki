@@ -103,8 +103,13 @@ const sourcesTool = {
 // `compact-filter`: a field's ticks in one column, so the filter fits its narrow panel.
 const oneColumnTicks = { '--genai-filter-checkboxes-columns': '1' } as CSSProperties;
 
-// The next look's footnote marks, 16 px as dev-kilder-hoyre draws them.
-const nextFootnotes = { '--genai-answer-footnote-size': 'var(--ds-size-4)' } as CSSProperties;
+// The next look's footnote marks, 16 px as dev-kilder-hoyre draws them, and the reader's question
+// a lighter grey than the summaries of Fremgangsmåte, Kilder and the Kildeliste.
+const nextFootnotes = {
+  '--genai-answer-footnote-size': 'var(--ds-size-4)',
+  '--genai-conversation-question-background': 'var(--ds-color-neutral-background-tinted)',
+  '--genai-conversation-question-border-color': 'var(--ds-color-neutral-background-tinted)',
+} as CSSProperties;
 
 // The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
 // Kilder's page with a magnifier. Notater's pencil waits for the block.
