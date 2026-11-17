@@ -127,10 +127,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # Only HEAD's history: the full fetch brings every branch, and one false positive there failed every pull request.
       - name: gitleaks
         run: >-
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0
-          git /repo --redact --no-banner --exit-code 1
+          git /repo --log-opts=HEAD --redact --no-banner --exit-code 1
 
   image:
     needs: scope
