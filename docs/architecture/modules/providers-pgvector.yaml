@@ -8,7 +8,8 @@ status: Provider
 packages:
   - '@genai/providers-pgvector'
 summary: Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.
-description: Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement.
+description:
+  Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits.
   Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay
   invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to
   `connection` knowledge, on the knowledge server through the API's reader pool or the worker's
@@ -31,6 +32,7 @@ files:
   - packages/providers-pgvector/src/engine.ts
   - packages/providers-pgvector/src/schema.ts
   - packages/providers-pgvector/src/sql.ts
+  - packages/providers-pgvector/src/hybrid.ts
   - packages/providers-pgvector/src/knowledge-setup.ts
   - packages/providers-pgvector/src/partitions.ts
   - packages/providers-pgvector/src/knowledge-writer.ts
