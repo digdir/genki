@@ -4,6 +4,7 @@ import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import { descriptorRegistry, loadDescriptors, parseDescriptor } from '@genai/operations';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
+import type { UnmaskedInputUse } from './operation-governance.js';
 import { bootPlatform, digdir, other } from './testkit.js';
 
 const classifyYaml = (status: 'review' | 'described') => `
@@ -740,7 +741,7 @@ describe('processor records', () => {
         (
           (await (
             await booted.send('/definitions/validate', 'kari', { body: { definition } })
-          ).json()) as { unmaskedInput?: { mediaType: string; consent?: unknown }[] }
+          ).json()) as { unmaskedInput?: UnmaskedInputUse[] }
         ).unmaskedInput ?? [];
       const before = await listed(unconsented);
       expect(before).toEqual([
