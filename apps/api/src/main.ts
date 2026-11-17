@@ -59,7 +59,7 @@ import {
   platformTenantFrom,
   keepRunningOnRejection,
 } from '@genai/composition';
-import { createApp } from './app.js';
+import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
@@ -615,7 +615,9 @@ const admin = createAdmin({
   names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
+const builtAt = buildTimeOf(process.env.APP_BUILT_AT);
 const app = createApp(version, {
+  ...(builtAt ? { builtAt } : {}),
   requestTiming: {
     write: (entry) => log('request', { ...entry }),
     slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,

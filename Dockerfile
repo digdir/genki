@@ -50,6 +50,7 @@ FROM node-runtime AS worker
 CMD ["node", "apps/worker/dist/main.js"]
 
 FROM node-runtime AS api
-ENV PORT=8080
+ARG SOURCE_DATE_EPOCH
+ENV PORT=8080 APP_BUILT_AT=${SOURCE_DATE_EPOCH}
 EXPOSE 8080
 CMD ["node", "apps/api/dist/main.js"]

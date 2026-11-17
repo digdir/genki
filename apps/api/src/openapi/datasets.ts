@@ -181,6 +181,14 @@ const DatasetReader = z
   })
   .openapi('DatasetReader');
 
+const DatasetListItem = DatasetWithStatus.extend({
+  usedByCount: z
+    .number()
+    .int()
+    .optional()
+    .describe('How many published services and adopted building blocks of the tenant read it'),
+}).openapi('DatasetListItem');
+
 const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
   usedBy: z
@@ -1200,7 +1208,7 @@ const datasetRoutes = (base: Base): RouteConfig[] => {
         : 'Every dataset on the platform (operators)',
       request: { params: z.object(base.params) },
       responses: {
-        200: json(list(tenantSide ? DatasetWithStatus : Dataset), 'Datasets'),
+        200: json(list(tenantSide ? DatasetListItem : Dataset), 'Datasets'),
         ...withoutNotFound(base, guarded(base)),
       },
     }),

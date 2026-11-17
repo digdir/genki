@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Execution } from './ingestion.js';
-import { elapsed, operationsOverview, type OperationsDeps } from './operations.js';
+import { elapsed, forTenant, operationsOverview, type OperationsDeps } from './operations.js';
 
 const now = new Date('2026-10-08T10:00:00Z');
 
@@ -183,5 +183,49 @@ describe('operations overview', () => {
     expect(elapsed(59_000)).toBe('0 min');
     expect(elapsed(3 * 60 * 60_000)).toBe('3 t');
     expect(elapsed(72 * 60_000)).toBe('1 t 12 min');
+  });
+});
+
+describe('the status a tenant sees', () => {
+  it("measures runs and ingestion from the tenant's own work only, and lists only its own failing schedules", async () => {
+    const shared = deps({
+      tasks: async () => [
+        { task: 't1', tenant: '991825827', status: 'completed', at: '2026-10-08T09:50:00Z' },
+        { task: 't2', tenant: '889640782', status: 'failed', at: '2026-10-08T09:50:00Z' },
+      ],
+      pipelines: async () => [
+        {
+          tenant: '889640782',
+          dataset: 'hemmelig',
+          pipeline: 'natt',
+          scheduled: true,
+          executions: [execution({ status: 'failed', error: 'nede' })],
+        },
+      ],
+    });
+
+    const overview = await operationsOverview(
+      forTenant(
+        {
+          ...shared,
+          models: () => [
+            { id: 'gpt-4o', endpoint: 'foundry-openai', enabled: true },
+            { id: '889640782/egen', endpoint: '889640782/egen', enabled: true },
+            { id: '991825827/egen', endpoint: '991825827/egen', enabled: true },
+          ],
+        },
+        '991825827',
+      ),
+    );
+
+    expect(overview.components.find((c) => c.name === 'Kjøringer')).toMatchObject({
+      status: 'normal',
+      errorRate: '0 %',
+    });
+    expect(overview.triggers).toEqual([]);
+    expect(overview.queue).toEqual([]);
+    expect(JSON.stringify(overview)).not.toContain('hemmelig');
+    expect(JSON.stringify(overview)).not.toContain('889640782');
+    expect(JSON.stringify(overview)).toContain('991825827/egen');
   });
 });

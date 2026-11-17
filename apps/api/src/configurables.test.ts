@@ -547,6 +547,31 @@ describe('tenant catalog entries', () => {
   });
 });
 
+describe('the dataset list', () => {
+  it("counts only the tenant's own services that read each dataset", async () => {
+    const { platform, call } = await boot();
+    const reading = (tenant: string, id: string) =>
+      service({ tenant, id, spec: { knowledge: { datasets: [{ dataset: 'digdir/kudos' }] } } });
+    for (const [tenant, id] of [
+      [digdir, 'svar'],
+      [digdir, 'svar-to'],
+      [other, 'svar-annen'],
+    ] as const)
+      expect(
+        (await platform.definitions.publish(reading(tenant, id), 'test', 'test', files)).ok,
+      ).toBe(true);
+    const countOf = async (tenant: string, who: string) =>
+      (
+        await json<{ data: { id: string; usedByCount: number }[] }>(
+          await call(`/tenants/${tenant}/datasets`, who),
+        )
+      ).data.find((d) => d.id === 'digdir/kudos')?.usedByCount;
+
+    expect(await countOf(digdir, 'kari')).toBe(2);
+    expect(await countOf(other, 'ola')).toBe(1);
+  });
+});
+
 describe('ingestion pipelines', () => {
   const pipeline = {
     id: 'nettsider',

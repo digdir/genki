@@ -719,6 +719,60 @@ describe('usage you can trust', () => {
     );
   });
 
+  it('flags the monthly quota once usage reaches 80 percent of it, and not before', async () => {
+    const used: Record<string, number> = { [digdir]: 40_000, [other]: 39_999 };
+    const { send } = await setup({
+      quota: async (tenant) => ({ usedTokens: used[tenant] ?? 0, monthlyTokens: 50_000 }),
+    });
+    const quotaOf = async (tenant: string, who: string) =>
+      (
+        await json<{ quota: { usedPercent: number; alertPercent: number; alert: boolean } }>(
+          await send(`/tenants/${tenant}/usage`, who),
+        )
+      ).quota;
+
+    expect(await quotaOf(digdir, 'kari')).toMatchObject({
+      usedPercent: 80,
+      alertPercent: 80,
+      alert: true,
+    });
+    expect(await quotaOf(other, 'ola')).toMatchObject({ alert: false });
+  });
+
+  it('splits ingestion usage per day', async () => {
+    const { send } = await setup({
+      ingestionUsage: async () => [
+        {
+          at: '2026-10-05T07:00:00Z',
+          dataset: `${digdir}/veiledning`,
+          model: 'foundry/text-embedding-3-small',
+          usage: { inputTokens: 1_000, requests: 10 },
+        },
+        {
+          at: '2026-10-06T07:00:00Z',
+          dataset: `${digdir}/veiledning`,
+          model: 'foundry/text-embedding-3-small',
+          usage: { inputTokens: 3_000, requests: 30 },
+        },
+      ],
+    });
+    const body = await json<{
+      daily: {
+        date: string;
+        ingestion: { inputTokens: number };
+        testing: { inputTokens: number };
+      }[];
+    }>(await send(`/tenants/${digdir}/usage?days=3`, 'kari'));
+
+    expect(body.daily.map((d) => [d.date, d.ingestion.inputTokens, d.testing.inputTokens])).toEqual(
+      [
+        ['2026-10-04', 0, 0],
+        ['2026-10-05', 1_000, 0],
+        ['2026-10-06', 3_000, 0],
+      ],
+    );
+  });
+
   it('shows a service whose primary model is retired as paused in the overview', async () => {
     const { send } = await setup({
       serviceHealth: async () => ({
