@@ -785,8 +785,10 @@ describe('live dataset tabs and polling', () => {
         `#/datasets/${encodeURIComponent('999888777/nettsider')}/filters`,
       ),
     );
-    expect(screen.getByRole('tab', { name: 'Filtre i søket' }).getAttribute('aria-selected')).toBe(
-      'true',
+    await waitFor(() =>
+      expect(
+        screen.getByRole('tab', { name: 'Filtre i søket' }).getAttribute('aria-selected'),
+      ).toBe('true'),
     );
   });
 
