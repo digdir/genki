@@ -427,6 +427,24 @@ describe('conversation routes for frontends', () => {
     expect(answer).toMatchObject({ sources, markers });
   });
 
+  it('returns the steps an answer was stored with, and none for an answer stored without', async () => {
+    const { send, store } = setup();
+    const { json } = await create(send, 'ka', 'u');
+    const owner = { tenant: '991825827', user: 'legacy-api-key|key-ka#u' };
+    const steps = [
+      { event: 'agent/iteration-started', iteration: 1, 'max-iterations': 10 },
+      { stage: 'tool', tool: 'search', iteration: 1, event: 'tool/call' },
+    ];
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: 'Først.', steps });
+    await store.append(owner, json.conversation.id, { role: 'assistant', text: 'Så.' });
+
+    const [first, second] = (await messagesOf(send, json.conversation.id)).slice(-2);
+
+    expect(first).toMatchObject({ text: 'Først.', steps });
+    expect(second?.text).toBe('Så.');
+    expect(second).not.toHaveProperty('steps');
+  });
+
   it('returns every field a stored excerpt was given, also one the store does not name', async () => {
     const { send, store } = setup();
     const { json } = await create(send, 'ka', 'u');

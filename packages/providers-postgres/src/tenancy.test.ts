@@ -179,6 +179,27 @@ describe('postgres conversations', () => {
     expect(stored?.sources).toEqual(sources);
   });
 
+  it('keeps the steps of an answer with the message, and none on a message stored without', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    const steps = [
+      { event: 'agent/iteration-started', iteration: 1, 'max-iterations': 10 },
+      {
+        event: 'agent/turn-completed',
+        iteration: 1,
+        'tool-calls': [{ tool: 'read_chunks', args: { chunk_ids: ['c1'] }, 'ok?': true }],
+      },
+    ];
+    await conversations.append(kari, created.id, { role: 'assistant', text: '[1]', steps });
+    await conversations.append(kari, created.id, { role: 'assistant', text: '[2]' });
+
+    const [first, second] = ((await conversations.messages(kari, created.id)) ?? []).slice(-2);
+
+    expect(first?.steps).toEqual(steps);
+    expect(second?.text).toBe('[2]');
+    expect(second).not.toHaveProperty('steps');
+  });
+
   it('reads a message stored without markers as it was, with no markers field', async () => {
     const conversations = store();
     const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });

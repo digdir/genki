@@ -303,6 +303,7 @@ export class PostgresConversationStore implements ConversationStore {
       chunks: input.chunks ?? [],
       ...(input.sources?.length ? { sources: input.sources } : {}),
       ...(input.markers?.length ? { markers: input.markers } : {}),
+      ...(input.steps?.length ? { steps: input.steps } : {}),
       ...(input.diagnostics === undefined ? {} : { diagnostics: input.diagnostics }),
       ...(input.task === undefined ? {} : { task: input.task }),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),

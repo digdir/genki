@@ -107,6 +107,7 @@ const publicMessage = (m: Message, diagnostics: boolean) => ({
   })),
   ...(m.sources?.length ? { sources: m.sources } : {}),
   ...(m.markers?.length ? { markers: m.markers } : {}),
+  ...(m.steps?.length ? { steps: m.steps } : {}),
   ...(diagnostics && m.diagnostics !== undefined ? { diagnostics: m.diagnostics } : {}),
   ...(m.task === undefined ? {} : { task: m.task }),
   ...(m.attachments?.length ? { attachments: m.attachments } : {}),
