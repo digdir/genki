@@ -108,7 +108,6 @@ const oneColumnTicks = { '--genai-filter-checkboxes-columns': '1' } as CSSProper
 const nextFootnotes = {
   '--genai-answer-footnote-size': 'var(--ds-size-4)',
   '--genai-conversation-question-background': 'var(--ds-color-neutral-background-tinted)',
-  '--genai-conversation-question-border-color': 'var(--ds-color-neutral-background-tinted)',
 } as CSSProperties;
 
 // The tools' icons in the next look, as the dev-verktoy boards draw them: Fremgangsmåte's robot,
