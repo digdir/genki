@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from 'react';
 import { flushSync } from 'react-dom';
 import { markPageLoad, onRefreshed } from './api/cache';
 
@@ -133,6 +133,7 @@ const restoreScroll = (top: number) => {
 
 export const useRoute = () => {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
+  const [pending, startNavigation] = useTransition();
   useEffect(() => {
     window.history.scrollRestoration = 'manual';
     let current = entryIndex() ?? 0;
@@ -151,7 +152,8 @@ export const useRoute = () => {
         restoring = scrollPositions.get(idx) ?? 0;
         traversal = true;
       }
-      setRoute(parseRoute(window.location.hash));
+      const next = parseRoute(window.location.hash);
+      startNavigation(() => setRoute(next));
     };
     window.addEventListener('hashchange', update);
     return () => window.removeEventListener('hashchange', update);
@@ -159,7 +161,20 @@ export const useRoute = () => {
   useLayoutEffect(() => {
     if (restoring !== undefined) restoreScroll(restoring);
   }, [route]);
-  return route;
+  return [route, pending] as const;
+};
+
+export const useDelayed = (active: boolean, delayMs: number) => {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setShown(false);
+      return;
+    }
+    const timer = setTimeout(() => setShown(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [active, delayMs]);
+  return active && shown;
 };
 
 export const NARROW_QUERY = '(max-width: 759px)';

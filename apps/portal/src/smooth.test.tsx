@@ -9,6 +9,25 @@ interface Call {
   path: string;
 }
 
+const chunks = vi.hoisted(() => {
+  const gate = () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    return { held, release: () => release() };
+  };
+  return { usage: gate(), access: gate() };
+});
+
+vi.mock('./screens/Usage', async (importOriginal) => {
+  await chunks.usage.held;
+  return importOriginal();
+});
+
+vi.mock('./screens/Access', async (importOriginal) => {
+  await chunks.access.held;
+  return importOriginal();
+});
+
 const recording = (base: typeof fetch = mockFetch()) => {
   const calls: Call[] = [];
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -163,6 +182,35 @@ describe('a smooth portal', () => {
     await screen.findByRole('heading', { level: 1, name: 'Logg' });
     await settle();
     expect(api.gets(/\/tasks$/)).toBe(1);
+  });
+
+  it('navigation keeps the previous screen while the next one is pending', async () => {
+    await renderAt('#/overview');
+    await screen.findByRole('region', { name: 'Tjenester' });
+
+    await go('#/statistics');
+
+    expect(screen.getByRole('region', { name: 'Tjenester' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Henter …' })).toBeNull();
+    await act(async () => chunks.usage.release());
+    expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Tjenester' })).toBeNull();
+  });
+
+  it('the progress bar appears only after 200 ms', async () => {
+    const bar = () => screen.queryByRole('progressbar', { name: 'Henter …' });
+    await renderAt('#/overview');
+    await screen.findByRole('region', { name: 'Tjenester' });
+
+    await go('#/access');
+
+    expect(bar()).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+    expect(bar()).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(bar()).toBeTruthy();
+    await act(async () => chunks.access.release());
+    await waitFor(() => expect(bar()).toBeNull());
   });
 
   it('going back to a list puts it back where it was scrolled to', async () => {

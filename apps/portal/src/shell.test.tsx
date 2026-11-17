@@ -291,17 +291,19 @@ describe('shell', () => {
 
   it('follows the hash when navigating', async () => {
     await renderAt('#/overview');
-    go('#/log');
+    await go('#/log');
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(within(menu).getByRole('link', { name: 'Logg' }).getAttribute('aria-current')).toBe(
-      'page',
+    await waitFor(() =>
+      expect(within(menu).getByRole('link', { name: 'Logg' }).getAttribute('aria-current')).toBe(
+        'page',
+      ),
     );
   });
 
   it('moves focus to the main content when going to another page', async () => {
     await renderAt('#/overview');
-    go('#/log');
-    expect(document.activeElement?.id).toBe('hovedinnhold');
+    await go('#/log');
+    await waitFor(() => expect(document.activeElement?.id).toBe('hovedinnhold'));
   });
 
   it.each([
