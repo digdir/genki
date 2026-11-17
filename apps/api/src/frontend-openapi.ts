@@ -205,7 +205,7 @@ const Source = z
       .string()
       .optional()
       .describe(
-        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos, the publisher, or the owners when Kudos names none.",
+        "The organisation that published the document, several joined with a comma. Present only when the document's fields name one; on Kudos, the publisher, or the owners when Kudos lists none.",
       ),
   })
   .passthrough()

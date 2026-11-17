@@ -132,12 +132,12 @@ const publishedAtOf = (fields: Record<string, unknown>) =>
     .map((name) => isoDate(joined(fields, name)))
     .find((v) => v !== undefined);
 
-/** The document's publisher, several joined with a comma, as a source names it. */
 const namesIn = (value: unknown) =>
   (Array.isArray(value) ? value : [value]).flatMap((v) =>
     typeof v === 'string' && v.trim() ? [v.trim()] : [],
   );
 
+/** The document's publisher, several joined with a comma, as a source names it. */
 const publisherOf = (fields: Record<string, unknown>) => {
   const listed = namesIn(joined(fields, 'publisher_names'));
   const names = listed.length ? listed : namesIn(joined(fields, 'publisher'));
