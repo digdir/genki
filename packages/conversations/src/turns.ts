@@ -14,6 +14,7 @@ export interface ConversationTurns {
   open(request: Request, input: { conversationId?: string; agentId: string }): Promise<OpenedTurns>;
   append(request: Request, conversationId: string, message: NewMessage): Promise<void>;
   discard(request: Request, conversationId: string): Promise<void>;
+  owns(request: Request, conversationId: string): Promise<boolean>;
 }
 
 const turnOwner = (
@@ -64,7 +65,7 @@ export const conversationTurns = (
         ok: true,
         id: conversationId,
         history: activeBranch(messages).flatMap((m): PriorTurn[] =>
-          (m.role === 'user' || m.role === 'assistant') && m.text.trim() !== ''
+          (m.role === 'user' || m.role === 'assistant') && m.text.trim() !== '' && !m.stopped
             ? [{ role: m.role, text: m.text }]
             : [],
         ),
@@ -83,6 +84,10 @@ export const conversationTurns = (
     discard: async (request, conversationId) => {
       const found = await ownerFor(request);
       if (found) await store.delete(found.owner, conversationId);
+    },
+    owns: async (request, conversationId) => {
+      const found = await ownerFor(request);
+      return found ? (await store.get(found.owner, conversationId)) !== undefined : false;
     },
   };
 };

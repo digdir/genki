@@ -105,6 +105,51 @@ describe('conversation turns for MCP', () => {
     });
   });
 
+  it('leaves a stopped answer out of the history the next question gets, and keeps it in the thread', async () => {
+    const store = new InMemoryConversationStore();
+    const turns = conversationTurns(
+      store,
+      async () => ({ principal: key }),
+      () => 'n',
+    );
+    const opened = await turns.open(request(), { agentId: 'a' });
+    if (!opened.ok) throw new Error('not opened');
+    await turns.append(request(), opened.id, { role: 'user', text: 'Spørsmål' });
+    await turns.append(request(), opened.id, {
+      role: 'assistant',
+      text: 'Svaret begy',
+      task: 't1',
+      stopped: true,
+    });
+
+    const again = await turns.open(request(), { conversationId: opened.id, agentId: 'a' });
+    const stored = await store.messages({ tenant: '991825827', user: userKey(key) }, opened.id);
+
+    expect(again).toMatchObject({ history: [{ role: 'user', text: 'Spørsmål' }] });
+    expect(stored?.at(-1)).toMatchObject({ text: 'Svaret begy', task: 't1', stopped: true });
+  });
+
+  it('says a conversation is owned only by the caller and X-User-Id that started it', async () => {
+    const store = new InMemoryConversationStore();
+    const bound = conversationTurns(
+      store,
+      async () => ({ principal: key, externalUsers: true }),
+      () => 'n',
+    );
+    const other = conversationTurns(
+      store,
+      async () => ({ principal: { ...key, subject: 'other' }, externalUsers: true }),
+      () => 'n',
+    );
+    const opened = await bound.open(request({ 'x-user-id': 'ola' }), { agentId: 'a' });
+    if (!opened.ok) throw new Error('not opened');
+
+    expect(await bound.owns(request({ 'x-user-id': 'ola' }), opened.id)).toBe(true);
+    expect(await bound.owns(request({ 'x-user-id': 'kari' }), opened.id)).toBe(false);
+    expect(await other.owns(request({ 'x-user-id': 'ola' }), opened.id)).toBe(false);
+    expect(await bound.owns(request({ 'x-user-id': 'ola' }), 'unknown')).toBe(false);
+  });
+
   it("answers conversation_not_found for another caller's conversation", async () => {
     const store = new InMemoryConversationStore();
     const mine = conversationTurns(

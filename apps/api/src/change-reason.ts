@@ -14,6 +14,7 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'DELETE /api/mcp': 'run',
   'POST /a2a/:agent': 'run',
   'POST /v1/chat/completions': 'run',
+  'POST /v1/tasks/:task/cancel': 'run',
   'POST /api/tools/call/:tool': 'run',
   'POST /api/feedback': 'feedback',
   'POST /onboarding/requests': 'application',

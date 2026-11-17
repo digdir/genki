@@ -517,6 +517,7 @@ describe('openapi.json for a frontend', () => {
   const frontendOperations: [string, string][] = [
     ['get', '/v1/models'],
     ['post', '/v1/chat/completions'],
+    ['post', '/v1/tasks/{task}/cancel'],
     ['get', '/v1/models/{id}/schema'],
     ['get', '/api/conversations'],
     ['post', '/api/conversations'],
@@ -560,7 +561,7 @@ describe('openapi.json for a frontend', () => {
       'sources',
     );
     expect(Object.keys(spec.components.schemas.StoredMessage?.properties ?? {})).toEqual(
-      expect.arrayContaining(['text', 'chunks', 'task', 'input']),
+      expect.arrayContaining(['text', 'chunks', 'task', 'stopped', 'input']),
     );
   });
 
