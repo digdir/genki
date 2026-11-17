@@ -24,8 +24,8 @@ export const datasetSearch = defineNamespace({
   search: 'Søk',
   hits: 'Treff',
   summary: {
-    one: '{count} treff på {ms} ms med profilen {profile}',
-    other: '{count} treff på {ms} ms med profilen {profile}',
+    one: '{count} treff på {ms} ms med profilen {profile}.',
+    other: '{count} treff på {ms} ms med profilen {profile}.',
   },
   found: 'Søkemotoren fant {found} i alt.',
   filtersApplied: 'Filtre brukt: {filters}',

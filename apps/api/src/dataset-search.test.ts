@@ -293,7 +293,10 @@ describe('searching a dataset directly', () => {
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({
       errors: [
-        { path: 'filters', message: `dataset ${digdir}/filer cannot filter on owner_orgnr` },
+        {
+          path: 'filters.owner_orgnr',
+          message: `Datasettet ${digdir}/filer har ikke feltet «owner_orgnr» som filter`,
+        },
       ],
     });
     expect(searches).toHaveLength(0);

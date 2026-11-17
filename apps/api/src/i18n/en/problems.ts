@@ -103,6 +103,7 @@ export const problems = {
   datasetSearchNoProfile: 'The dataset {dataset} has no search profile «{profile}»',
   datasetSearchRefused: 'The search was not let through',
   datasetSearchPeopleOnly: 'Only people can search a dataset directly',
+  datasetSearchUndeclaredFilter: 'The dataset {dataset} has no filter field «{field}»',
   datasetSearchBlocked: '{dataset} cannot be used by the organisation',
   diagnosticsServiceNotFound: 'Service not found',
   diagnosticsServiceNoDataset: 'The service has no dataset',

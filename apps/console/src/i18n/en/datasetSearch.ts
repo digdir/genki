@@ -26,8 +26,8 @@ export const datasetSearch = {
   search: 'Search',
   hits: 'Hits',
   summary: {
-    one: '{count} hit in {ms} ms with the profile {profile}',
-    other: '{count} hits in {ms} ms with the profile {profile}',
+    one: '{count} hit in {ms} ms with the profile {profile}.',
+    other: '{count} hits in {ms} ms with the profile {profile}.',
   },
   found: 'The search engine found {found} in all.',
   filtersApplied: 'Filters applied: {filters}',

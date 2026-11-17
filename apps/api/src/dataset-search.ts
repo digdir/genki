@@ -181,6 +181,14 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
             },
           ],
         });
+      const undeclared = Object.keys(body.filters ?? {}).filter((f) => !(f in info.filters));
+      if (undeclared.length)
+        return problem(c, 422, t('problems.diagnosticsSearchInvalid'), {
+          errors: undeclared.map((field) => ({
+            path: `filters.${field}`,
+            message: t('problems.datasetSearchUndeclaredFilter', { dataset, field }),
+          })),
+        });
       const filters = (body.filters ?? {}) as Record<string, never>;
       const limit = body.limit ?? 10;
       const { value: result } = await deps.searchTask(searcher(principal, tenant), (ctx) =>

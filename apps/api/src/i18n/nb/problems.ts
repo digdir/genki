@@ -104,6 +104,7 @@ export const problems = defineNamespace({
   datasetSearchNoProfile: 'Datasettet {dataset} har ingen søkeprofil «{profile}»',
   datasetSearchRefused: 'Søket ble ikke sluppet gjennom',
   datasetSearchPeopleOnly: 'Bare personer kan søke direkte i et datasett',
+  datasetSearchUndeclaredFilter: 'Datasettet {dataset} har ikke feltet «{field}» som filter',
   datasetSearchBlocked: '{dataset} kan ikke brukes hos virksomheten',
   diagnosticsServiceNotFound: 'Fant ikke tjenesten',
   diagnosticsServiceNoDataset: 'Tjenesten har ikke noe datasett',
