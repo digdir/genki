@@ -273,19 +273,16 @@ describe('pausing and archiving from the service page', () => {
 });
 
 describe('Oversikt in live mode', () => {
-  it('lists own datasets whose last ingestion failed or was cancelled, and counts running ones', async () => {
+  it('lists own datasets whose last ingestion failed or was cancelled under what needs you', async () => {
     await open('#/overview');
 
-    const section = (
-      await screen.findByRole('heading', { name: 'Innlesinger som trenger oppfølging' })
-    ).closest('section') as HTMLElement;
+    const section = await screen.findByRole('region', { name: 'Trenger deg nå' });
     await within(section).findByText('stopp');
 
     expect(within(section).getByText('avbrutt')).toBeTruthy();
     expect(within(section).queryByText('ok')).toBeNull();
     expect(within(section).queryByText('delt')).toBeNull();
     expect(within(section).queryByText('pagar')).toBeNull();
-    expect(within(section).getByText('1 innlesing pågår')).toBeTruthy();
     expect(within(section).getByText('Feilet')).toBeTruthy();
     expect(within(section).getByText('Avbrutt')).toBeTruthy();
   });

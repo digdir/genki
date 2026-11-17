@@ -19,7 +19,7 @@ import {
   triggerKinds,
   type ChangeEntry,
 } from '../../data/log';
-import { serviceLabel as serviceLabelOf, statusOf } from '../../format';
+import { isTrialService, serviceLabel as serviceLabelOf, statusOf } from '../../format';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { navigate, useAsync } from '../../hooks';
 import { ErrorState, Loading } from '../../states';
@@ -58,6 +58,8 @@ export const RunsTab = ({
   canReveal,
   live = false,
   onChange,
+  initialStatus = '',
+  initialService = '',
 }: {
   api: ApiClient;
   tenant: string;
@@ -66,11 +68,14 @@ export const RunsTab = ({
   canReveal: boolean;
   live?: boolean;
   onChange: (entry: ChangeEntry) => void;
+  initialStatus?: TaskStatus | '';
+  initialService?: string;
 }) => {
   const t = useT();
   const f = useFormat();
-  const [form, setForm] = useState<Filters>(empty);
-  const [applied, setApplied] = useState<Filters & { n: number }>({ ...empty, n: 0 });
+  const initial: Filters = { ...empty, status: initialStatus, service: initialService };
+  const [form, setForm] = useState<Filters>(initial);
+  const [applied, setApplied] = useState<Filters & { n: number }>({ ...initial, n: 0 });
   const [overrides, setOverrides] = useState<Record<string, TaskStatus>>({});
   const handled = useRef(0);
   const [services] = useAsync(
@@ -82,7 +87,10 @@ export const RunsTab = ({
   );
   const names: Record<string, string> = services.status === 'ready' ? services.data : {};
   const serviceLabel = (id: string) => names[id] ?? serviceLabelOf(id);
-  const titleOf = (row: TaskRow) => row.serviceName ?? serviceLabel(row.service);
+  const titleOf = (row: TaskRow) =>
+    isTrialService(row.service)
+      ? t('usage.trialRuns')
+      : (row.serviceName ?? serviceLabel(row.service));
   const [environments] = useAsync(
     async (signal) =>
       live && form.service

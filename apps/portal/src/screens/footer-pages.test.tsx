@@ -31,46 +31,33 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('footer pages', () => {
-  it('links the user guide to the real portal screens', async () => {
+  it("Kom i gang shows the four steps ticked from the organisation's real data", async () => {
     await open('#/onboarding');
     expect(await screen.findByRole('heading', { level: 1, name: 'Kom i gang' })).toBeTruthy();
-    const targets = Object.fromEntries(
-      [
-        'Oversikt',
-        'Tjenester',
-        'Datasett',
-        'Byggeklosser',
-        'Fellestjenester',
-        'Prøveområdet',
-        'Kall en tjeneste fra kode',
-        'API-referansen',
-        'Statistikk',
-        'Logg',
-        'Tilgang',
-        'Innstillinger',
-      ].map((name) => [
-        name,
-        screen
-          .getAllByRole('link', { name })
-          .map((a) => a.getAttribute('href'))
-          .find((href) => href !== null && document.querySelector(`main a[href="${href}"]`)),
-      ]),
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /1. Legg til en kilde \(gjort\)/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /2. Lag tjenesten \(gjort\)/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Se datasettene' }).getAttribute('href')).toBe(
+      '#/datasets',
     );
-    expect(targets).toMatchObject({
-      Oversikt: '#/overview',
-      Tjenester: '#/services',
-      Datasett: '#/datasets',
-      Byggeklosser: '#/building-blocks',
-      Fellestjenester: '#/shared-services',
-      Prøveområdet: '#/playground',
-      'Kall en tjeneste fra kode': '#/developer/api/code',
-      'API-referansen': '#/api-reference',
-      Statistikk: '#/statistics',
-      Logg: '#/log',
-      Tilgang: '#/access',
-      Innstillinger: '#/settings',
-    });
+    expect(screen.getByRole('link', { name: 'Slik behandles data' }).getAttribute('href')).toBe(
+      '#/data-handling',
+    );
     expectAccessible();
+  });
+
+  it('says a missing page is not found and links to Oversikt', async () => {
+    await open('#/docs');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Fant ikke siden' })).toBeTruthy();
+    expect(screen.getByText('Adressen «#/docs» finnes ikke, eller siden er flyttet.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Gå til Oversikt' }).getAttribute('href')).toBe(
+      '#/overview',
+    );
   });
 
   it('shows what Driftsstatus checks, that the API answers, and the version', async () => {

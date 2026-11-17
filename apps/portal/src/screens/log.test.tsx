@@ -247,7 +247,7 @@ describe('run timeline', () => {
     expect(within(changes).getByText(/«Sikkerhetshendelse»/)).toBeTruthy();
   });
 
-  it('t2: approval opens by default, needs a comment to reject and stays named', async () => {
+  it('t2: a waiting approval shows its details and no approve or reject the portal cannot send', async () => {
     await renderAt('#/log/t2');
     await steps();
 
@@ -256,31 +256,14 @@ describe('run timeline', () => {
         'Godkjenninger vises alltid med navn. Det er ansvar for beslutninger, ikke overvåking.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Ukjent steg: testetaten.risikoscore')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Avvis/ }));
-    expect(screen.getByText('Skriv hvorfor du avviser utkastet.')).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText('Kommentar'), { target: { value: 'Feil beløp' } });
-    fireEvent.click(screen.getByRole('button', { name: /Avvis/ }));
-
     expect(
-      screen.getByText('Utkastet er avvist. Ingenting er sendt til saksbehandlingssystemet.'),
+      screen.getByText(
+        'Kjøringen venter på godkjenning. Portalen kan ikke godkjenne eller avvise ennå.',
+      ),
     ).toBeTruthy();
-    expect(screen.getByText('Avvist av Kari Nordmann: «Feil beløp»')).toBeTruthy();
-    expect(screen.getByText('Ikke levert')).toBeTruthy();
-    const list = screen.getByRole('region', { name: 'Siste kjøringer' });
-    expect(
-      within(within(list).getByRole('link', { name: /Vedtaksutkast/ })).getByText('Avbrutt'),
-    ).toBeTruthy();
-  });
-
-  it('t2: approving delivers the draft', async () => {
-    await renderAt('#/log/t2');
-    await steps();
-    fireEvent.click(screen.getByRole('button', { name: 'Godkjenn' }));
-    expect(screen.getByText('Utkastet er godkjent og levert til sak 2026/1432.')).toBeTruthy();
-    expect(screen.getByText('Levert til saksbehandlingssystemet')).toBeTruthy();
-    expect(screen.getByText('41 min 21 s')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Godkjenn' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Avvis/ })).toBeNull();
+    expect(screen.queryByLabelText('Kommentar')).toBeNull();
   });
 
   it('t3: shows extracted fields when the result step is opened', async () => {
@@ -290,7 +273,7 @@ describe('run timeline', () => {
     expect(screen.getByText('Elvebakken Musikkorps')).toBeTruthy();
   });
 
-  it('t4: a failed run can be started again', async () => {
+  it('t4: a failed run offers no Kjør på nytt, since nothing can start it again', async () => {
     await renderAt('#/log/t4');
     await steps();
     expect(
@@ -298,9 +281,51 @@ describe('run timeline', () => {
         'Ikke sendt til Langfuse: tjenesten er ikke valgt under Sporing og evaluering.',
       ),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør på nytt' }));
-    expect(screen.getByText('Kjøringen er startet på nytt.')).toBeTruthy();
-    expect(screen.getByText('Pågår')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Kjør på nytt' })).toBeNull();
+  });
+
+  it('Vis hvem is not offered without the right to manage services', async () => {
+    const auth = mockAnsattporten({
+      name: 'Ingrid Berg',
+      organisations: [
+        { orgNumber: '999888777', name: 'Testetaten', actions: ['use-services', 'view-usage'] },
+      ],
+    });
+    await auth.login();
+    window.location.hash = '#/log/t1';
+    render(<App auth={auth} fetch={mockFetch()} />);
+    await steps();
+
+    expect(screen.queryByRole('button', { name: 'Vis hvem' })).toBeNull();
+  });
+
+  it('a failed-runs link from Oversikt opens Logg filtered to failed runs', async () => {
+    await renderAt('#/log?status=failed');
+    await screen.findByRole('region', { name: 'Siste kjøringer' });
+
+    expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('failed');
+  });
+
+  it('keeps the run filters when switching to Endringer and back', async () => {
+    await renderAt('#/log');
+    await screen.findByRole('region', { name: 'Siste kjøringer' });
+    fireEvent.change(screen.getByLabelText('Kjørings-ID eller tjeneste'), {
+      target: { value: 'vedtak' },
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Endringer' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Endringer' }).getAttribute('aria-selected')).toBe(
+        'true',
+      ),
+    );
+    expect(window.location.hash).toBe('#/log?tab=changes');
+    fireEvent.click(screen.getByRole('tab', { name: 'Kjøringer' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/log'));
+
+    expect((screen.getByLabelText('Kjørings-ID eller tjeneste') as HTMLInputElement).value).toBe(
+      'vedtak',
+    );
   });
 
   it('t5: batch view with a 10 % live region, progressbar, filters and item timelines', async () => {
@@ -318,9 +343,7 @@ describe('run timeline', () => {
       name: /Åpne tidslinjen for Høringssvar_017.pdf/,
     })[0];
     expect(open?.getAttribute('href')).toBe('#/log/t5/17');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Avbryt jobben' }));
-    expect(screen.getByText(/Jobben er avbrutt\./)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Avbryt jobben' })).toBeNull();
     expectAccessible();
   });
 

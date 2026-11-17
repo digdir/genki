@@ -131,20 +131,23 @@ describe('a smooth portal', () => {
     const held = heldFetch(/\/usage\?days=\d+$/);
     await renderAt('#/overview', held.fetch);
 
-    const services = await screen.findByRole('region', { name: 'Tjenester' });
+    const services = await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
     expect(within(services).getByRole('link', { name: 'Rapportassistenten' })).toBeTruthy();
-    expect(screen.getByText('Henter forbruk')).toBeTruthy();
+    expect(screen.getByText('Henter bruken')).toBeTruthy();
     await held.release();
   });
 
-  it('the overview waits for what decides its alerts, so they do not push the page down', async () => {
+  it('the overview checks everything that decides what needs you before listing it', async () => {
     const held = heldFetch(/\/settings\/effective$/);
     await renderAt('#/overview', held.fetch);
     await settle();
 
-    expect(screen.queryByRole('region', { name: 'Tjenester' })).toBeNull();
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(within(attention).getByLabelText('Sjekker hva som trenger deg')).toBeTruthy();
     await held.release();
-    expect(await screen.findByRole('region', { name: 'Tjenester' })).toBeTruthy();
+    await waitFor(() =>
+      expect(within(attention).queryByLabelText('Sjekker hva som trenger deg')).toBeNull(),
+    );
   });
 
   it('a check that only reads, such as validating a definition, keeps the cached screens', async () => {
@@ -177,7 +180,7 @@ describe('a smooth portal', () => {
     const before = api.calls.length;
 
     await go('#/overview?org=999777666');
-    await screen.findByRole('region', { name: 'Tjenester' });
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
     await settle();
 
     const asked = api.calls.slice(before).map((c) => c.path);
@@ -188,7 +191,7 @@ describe('a smooth portal', () => {
   it('resting the pointer on a link loads the next screen before the click', async () => {
     const api = recording();
     await renderAt('#/overview', api.fetch);
-    await screen.findByRole('region', { name: 'Tjenester' });
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
     await settle();
     expect(api.gets(/\/tasks$/)).toBe(0);
 
@@ -255,21 +258,21 @@ describe('a smooth portal', () => {
 
   it('navigation keeps the previous screen while the next one is pending', async () => {
     await renderAt('#/overview');
-    await screen.findByRole('region', { name: 'Tjenester' });
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
 
     await go('#/statistics');
 
-    expect(screen.getByRole('region', { name: 'Tjenester' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Mest brukt siste 7 dager' })).toBeTruthy();
     expect(screen.queryByRole('status', { name: 'Henter …' })).toBeNull();
     await act(async () => chunks.usage.release());
     expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Tjenester' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Mest brukt siste 7 dager' })).toBeNull();
   });
 
   it('the progress bar appears only after 200 ms', async () => {
     const bar = () => screen.queryByRole('progressbar', { name: 'Henter …' });
     await renderAt('#/overview');
-    await screen.findByRole('region', { name: 'Tjenester' });
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
 
     await go('#/access');
 

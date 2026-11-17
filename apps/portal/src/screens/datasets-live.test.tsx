@@ -314,9 +314,9 @@ describe('live new dataset', () => {
     const fresh: typeof fetch = (input, init) =>
       /\/overview$/.test(urlOf(input)) ? services(input, init) : empty.fetch(input, init);
     await renderLive('#/overview', fresh);
-    const start = await screen.findByRole('region', { name: 'Kom i gang' });
+    const start = await screen.findByRole('region', { name: 'Kom i gang med Testetaten' });
     expect(
-      within(start).getByRole('link', { name: 'Legg til datasett' }).getAttribute('href'),
+      (await within(start).findByRole('link', { name: 'Nytt datasett' })).getAttribute('href'),
     ).toBe('#/datasets/new');
     cleanup();
 
@@ -324,9 +324,9 @@ describe('live new dataset', () => {
     const later: typeof fetch = (input, init) =>
       /\/overview$/.test(urlOf(input)) ? services(input, init) : withData.fetch(input, init);
     await renderLive('#/overview', later);
-    const done = await screen.findByRole('region', { name: 'Kom i gang' });
-    await within(done).findByText('Ferdig');
-    expect(within(done).queryByRole('link', { name: 'Legg til datasett' })).toBeNull();
+    const done = await screen.findByRole('region', { name: 'Kom i gang med Testetaten' });
+    await within(done).findByRole('heading', { name: /1. Legg til en kilde \(gjort\)/ });
+    expect(within(done).queryByRole('link', { name: 'Nytt datasett' })).toBeNull();
   });
 });
 
