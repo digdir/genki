@@ -429,8 +429,7 @@
     padding: 0;
     list-style: none;
   }
-  /* The whole card is the button: Designsystemet's tinted card. Its hover is pinned to accent, as
-     the board draws it. */
+  /* The whole card is the button; its hover is pinned to accent, as the board draws it. */
   .uib-sources-ex-card {
     display: flex;
     flex-direction: column;
@@ -506,8 +505,7 @@
     color: var(--genai-sources-ex-preview-color, var(--ds-color-text-subtle));
   }
 
-  /* The row over one excerpt stays put, under the panel's pinned switcher, while a long excerpt
-     scrolls under it. */
+  /* Stays under the panel's pinned switcher while a long excerpt scrolls. */
   .uib-sources-ex-nav {
     position: sticky;
     inset-block-start: var(--uib-shell-pinned-block-size, 0);

@@ -4057,7 +4057,6 @@ describe('Kilder in the next look', () => {
         .getAllByRole('button')
         .map((card) => card.getAttribute('aria-label')),
     ).toEqual(['Fotnote 1: Utdrag, Tildelingsbrev 2022']);
-    // What the answer read and did not cite is not among the excerpts, and there is no search.
     expect(screen.queryByText(read.title)).toBeNull();
     expect(fold()).toBeNull();
     expect(screen.queryByRole('searchbox')).toBeNull();

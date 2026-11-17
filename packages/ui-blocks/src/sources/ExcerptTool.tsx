@@ -14,7 +14,6 @@ import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } fro
 
 type Level = 2 | 3 | 4 | 5 | 6;
 
-/** One cited excerpt, once, with every footnote that cites it, numbered 1, 2, 3 as they stand. */
 interface Cited {
   chunkId: string;
   source: SourceDocument;
@@ -25,16 +24,15 @@ interface Cited {
 
 export interface ExcerptToolProps {
   sources: readonly SourceDocument[];
-  /** Each document's name, as Sources tells two with one title apart. */
   names: readonly string[];
-  /** The pairing in excerpt mode: every footnote names its excerpt. */
+  /** Excerpt mode only. */
   pairing: Pairing;
-  /** How many footnotes the answer has, the `N` of «n av N». */
+  /** How many footnotes the answer has. */
   total: number;
-  /** The footnote shown whole, by its index in the answer's footnotes; none shows them all. */
+  /** Index in the answer's footnotes; none shows every excerpt. */
   footnote: number | undefined;
   onFootnoteChange: (citation: number | undefined) => void;
-  /** Opens the shown excerpt in Dokumentvisning; without it there is no such button. */
+  /** Without it, no «Åpne i dokumentvisning» button. */
   onOpenDocument?: ((selection: Required<SourceSelection>) => void) | undefined;
   /** Each request from outside to show a footnote, such as a footnote followed in the answer. */
   request?: SourceTarget | undefined;
@@ -49,12 +47,7 @@ const yearOf = (date: string | undefined) => {
   return Number.isNaN(year) ? undefined : String(year);
 };
 
-/**
- * Kilder when the answer cites excerpts (dev-kilder-hoyre and dev-kilder-hoyre-2-detalj): every
- * cited excerpt as a card in the order the footnotes first cite them, and one excerpt whole, with
- * the footnotes to step through and the way back to all of them. Which footnote is shown is the
- * app's, so the answer can mark the same one.
- */
+/** Kilder when the answer cites excerpts: every excerpt as a card, or one shown whole. */
 export const ExcerptTool = ({
   sources,
   names,
@@ -73,7 +66,7 @@ export const ExcerptTool = ({
   const stepped = useRef(false);
   const left = useRef<string | undefined>(undefined);
 
-  // The numbers' map keeps the order of first citation, the footnotes' own order.
+  // The map's order is the order of first citation.
   const cited = useMemo(
     () =>
       [...pairing.numbers.keys()].flatMap((chunkId): Cited[] => {
@@ -89,8 +82,7 @@ export const ExcerptTool = ({
   const target = footnote === undefined ? undefined : pairing.targets[footnote];
   const shown = target === undefined ? undefined : cited.find((c) => c.chunkId === target);
 
-  // Into one excerpt from a card or the answer, the focus goes to its document; a step keeps the
-  // focus on the step pressed. Back to all, it goes to the card the reader came from.
+  // Focus: the document on the way in, the step pressed on a step, the card on the way back.
   useEffect(() => {
     if (shown) {
       left.current = shown.chunkId;
@@ -112,10 +104,12 @@ export const ExcerptTool = ({
 
   if (shown && footnote !== undefined) {
     const step = (by: 1 | -1) => {
-      // With one footnote a step changes nothing, so no effect would clear the flag.
-      if (total < 2) return;
+      let next = footnote;
+      do next = (next + by + total) % total;
+      while (next !== footnote && !cited.some((c) => c.chunkId === pairing.targets[next]));
+      if (next === footnote) return;
       stepped.current = true;
-      onFootnoteChange((footnote + by + total) % total);
+      onFootnoteChange(next);
     };
     const meta = shown.source.meta?.length
       ? [...shown.source.meta]
@@ -242,6 +236,7 @@ export const ExcerptTool = ({
                     else cards.current.delete(c.chunkId);
                   }}
                   aria-label={t('sources.excerptCard', {
+                    count: c.numbers.length,
                     numbers: c.numbers.join(` ${t('sources.and')} `),
                     title: section,
                     document: c.name,

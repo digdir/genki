@@ -75,10 +75,6 @@ export interface AnswerProps {
   markers?: readonly AnswerMarker[] | undefined;
   /** Footnotes that name documents drawn with each document's number, 1, 2, 3 by first citation. */
   documentFootnotes?: boolean | undefined;
-  /**
-   * When the footnotes name excerpts: each footnote its own number, 1, 2, 3 as they stand, so two
-   * that cite one excerpt have two numbers (dev-kilder-hoyre). Without it, the excerpt's number.
-   */
   numberEachFootnote?: boolean | undefined;
   /** The footnote Sources shows whole, by its index in the answer's footnotes: marked current. */
   shownFootnote?: number | undefined;
@@ -98,15 +94,7 @@ export interface AnswerProps {
   target?: AnswerTarget | undefined;
   /** Search hits to mark in the text, found in the words the answer is drawn with. */
   highlight?: MarkdownHighlight | undefined;
-  /**
-   * «Kilder brukt i svaret» under a finished answer, or with `variant="plain"` the Kildeliste
-   * (dev-kildeliste).
-   */
   sourcesUsed?: boolean | undefined;
-  /**
-   * Shows «Kopier kildeliste» in the Kildeliste of a `plain` answer: the app puts the Markdown on
-   * the clipboard, and the button says «Kopiert» when the promise it returns resolves.
-   */
   onCopyReferences?: ((markdown: string) => Promise<void> | void) | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
   closingQuestion?: boolean | undefined;
@@ -125,10 +113,6 @@ export interface AnswerProps {
   headingLevel?: 2 | 3 | 4 | undefined;
   /** Designsystemet's `data-color` for the card, set only when given. */
   color?: string | undefined;
-  /**
-   * `plain`, the dev boards' answer (dev-kilder-hoyre): no card around it, and the Kildeliste in
-   * place of «Kilder brukt i svaret» (dev-kildeliste). `card`, the default: the answer in a card.
-   */
   variant?: 'card' | 'plain' | undefined;
   className?: string | undefined;
 }
@@ -194,7 +178,6 @@ interface FootnoteProps {
   id: string | undefined;
   onOpen: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
   footnotes: Map<number, HTMLElement>;
-  /** The one Sources shows whole. */
   current: boolean;
 }
 
@@ -431,7 +414,6 @@ export const Answer = ({
               : undefined
           }
           footnotes={footnotes.current}
-          // Only an excerpt is shown whole in Sources.
           current={byExcerpt && shownFootnote === mark.citation}
         />
       );
@@ -482,7 +464,6 @@ export const Answer = ({
   }, [sources, pairing, byExcerpt, byDocument, keys, names]);
 
   const plain = variant === 'plain';
-  // The Kildeliste, with the numbers the footnotes are drawn with.
   const referenceList = useMemo(
     () =>
       plain ? references(sources ?? [], pairing, { documentFootnotes, numberEachFootnote }) : [],

@@ -104,15 +104,8 @@ export interface SourcesProps {
   onSelect?: ((selection: SourceSelection) => void) | undefined;
   excerptActions?: ((selection: Required<SourceSelection>) => ReactNode) | undefined;
   sourceActions?: ((source: SourceDocument) => ReactNode) | undefined;
-  /**
-   * With `onFootnoteChange`, in the `tool` variant, and when every footnote names its excerpt:
-   * the footnote shown whole, by its index in `citations`, and none for all the excerpts as cards
-   * (dev-kilder-hoyre and -2-detalj). The app holds it, so the answer can mark the same footnote.
-   */
   footnote?: number | undefined;
-  /** Turns on the excerpts' cards and the one shown whole, in the `tool` variant: see `footnote`. */
   onFootnoteChange?: ((citation: number | undefined) => void) | undefined;
-  /** «Åpne i dokumentvisning» under the excerpt shown whole. */
   onOpenDocument?: ((selection: Required<SourceSelection>) => void) | undefined;
   children?: ReactNode;
   className?: string | undefined;
@@ -1010,7 +1003,6 @@ export const Sources = ({
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
-  // Every excerpt as a card, and one whole, in place of the documents: no search and no fold.
   const excerptView =
     variant === 'tool' &&
     onFootnoteChange !== undefined &&

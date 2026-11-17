@@ -579,8 +579,6 @@ export const useAssistant = ({
 
   const [activeId, setActiveId] = useState<string>();
   const [sourceTarget, setSourceTarget] = useState<SourceTarget>();
-  // The footnote Kilder shows whole, by its index in the active answer's footnotes; none shows
-  // all the excerpts (dev-kilder-hoyre). Cleared with the target, for a new answer or thread.
   const [shownFootnote, setShownFootnote] = useState<number>();
   const [answerTarget, setAnswerTarget] = useState<ConversationTarget>();
   const lastFollowed = useRef<ConversationTarget>(undefined);
@@ -1173,10 +1171,6 @@ export const useAssistant = ({
     if (chatZone === 'secondary') setRequest({ action: 'open', side: 'secondary' });
   }, [chatZone]);
 
-  /**
-   * A footnote or a document asks for Kilder: the panel opens, on the Kilder tool. A footnote, by
-   * its index in the answer's footnotes, is shown whole; a document shows all the excerpts.
-   */
   const showSources = (turnId: string, target: SourceTarget, footnote?: number) => {
     setActiveId(turnId);
     setSourceTarget({ ...target });

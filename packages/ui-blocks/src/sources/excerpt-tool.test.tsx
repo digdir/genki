@@ -48,10 +48,9 @@ const r2023: SourceDocument = {
 
 const cite = (...chunks: string[]): SourceCitation[] => chunks.map((chunkId) => ({ chunkId }));
 
-// Footnote 1 and 4 cite the same excerpt, as 2 and 5 do on the board.
+// Footnotes 1 and 4 cite the same excerpt.
 const citations = cite('kudos::2021-1', 'kudos::2022-1', 'kudos::2021-2', 'kudos::2021-1');
 
-/** The app's part: it holds which footnote is shown, as `useAssistant` does. */
 const Host = (props: Partial<SourcesProps> & { start?: number | undefined }) => {
   const { start, ...rest } = props;
   const [footnote, setFootnote] = useState<number | undefined>(start);
@@ -80,7 +79,7 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
       screen.getByText('Viser 3 utdrag fra 2 dokumenter. Trykk på et utdrag for å lese hele.'),
     ).toBeTruthy();
     expect(cards().map((card) => card.getAttribute('aria-label'))).toEqual([
-      'Fotnote 1 og 4: Ressursbruk og måloppnåelse, Årsrapport Nkom 2021',
+      'Fotnoter 1 og 4: Ressursbruk og måloppnåelse, Årsrapport Nkom 2021',
       'Fotnote 2: Ressursbruk, Årsrapport Nkom 2022',
       'Fotnote 3: Internkontroll og risikovurdering, Årsrapport Nkom 2021',
     ]);
@@ -117,13 +116,21 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Årsrapport Nkom 2022' })).toBeTruthy();
     fireEvent.click(next);
     fireEvent.click(next);
-    // Footnote 4 is footnote 1's excerpt again.
     expect(screen.getByText('4 av 4')).toBeTruthy();
     expect(screen.getByText(/594,2 mill\. kroner/)).toBeTruthy();
     fireEvent.click(next);
     expect(screen.getByText('1 av 4')).toBeTruthy();
     fireEvent.click(previous);
     expect(screen.getByText('4 av 4')).toBeTruthy();
+  });
+
+  it('steps past a footnote whose excerpt never arrived', () => {
+    render(<Host start={0} citations={cite('kudos::2021-1', 'kudos::lost', 'kudos::2022-1')} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Neste fotnote' }));
+    expect(screen.getByText('3 av 3')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'Årsrapport Nkom 2022' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Forrige fotnote' }));
+    expect(screen.getByText('1 av 3')).toBeTruthy();
   });
 
   it('goes back to all excerpts with the focus on the card it came from', async () => {
@@ -146,7 +153,6 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
   });
 
   it('gives the year a document was published as the Kildeliste does, in UTC', () => {
-    // Half past midnight on New Year's Day in Oslo is still the old year in UTC.
     const late = { ...r2021, publishedAt: '2021-12-31T23:30:00Z' };
     render(<Host start={0} sources={[late, r2022, r2023]} />);
     expect(screen.getByText(/2021 · s\. 32/)).toBeTruthy();

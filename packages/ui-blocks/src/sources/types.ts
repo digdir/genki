@@ -24,15 +24,7 @@ export interface SourceDocument {
   excerpt?: string | undefined;
   version?: string | undefined;
   publishedAt?: string | undefined;
-  /**
-   * What kind of document it is, «Årsrapport», for the Kildeliste. A host's own: genki's
-   * `sources[]` does not send it yet.
-   */
   documentType?: string | undefined;
-  /**
-   * The organisation that published it, for the Kildeliste. A host's own: genki's `sources[]`
-   * does not send it yet.
-   */
   publisher?: string | undefined;
   /** A host's own line under the title, instead of the block's. */
   meta?: readonly string[] | undefined;

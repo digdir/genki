@@ -77,12 +77,14 @@ export const nbSources = defineNamespace({
   excerptsCaption: 'Utdrag svaret bygger på',
   otherSources: 'Andre kilder som ble lest ({count})',
   otherSourcesList: 'Andre kilder som ble lest',
-  // The excerpts in the tool when the answer cites excerpts (dev-kilder-hoyre and -2-detalj).
   excerptsShown: { one: 'Viser 1 utdrag', other: 'Viser {count} utdrag' },
   excerptsFrom: { one: 'fra 1 dokument', other: 'fra {count} dokumenter' },
   excerptsLead: '{shown} {from}. Trykk på et utdrag for å lese hele.',
   excerptsList: 'Utdrag i svaret',
-  excerptCard: 'Fotnote {numbers}: {title}, {document}',
+  excerptCard: {
+    one: 'Fotnote {numbers}: {title}, {document}',
+    other: 'Fotnoter {numbers}: {title}, {document}',
+  },
   and: 'og',
   allExcerpts: 'Alle utdrag',
   stepFootnotes: 'Bla i fotnotene',
@@ -181,7 +183,10 @@ export const enSources = {
   excerptsFrom: { one: 'from 1 document', other: 'from {count} documents' },
   excerptsLead: '{shown} {from}. Press an excerpt to read all of it.',
   excerptsList: 'Excerpts in the answer',
-  excerptCard: 'Footnote {numbers}: {title}, {document}',
+  excerptCard: {
+    one: 'Footnote {numbers}: {title}, {document}',
+    other: 'Footnotes {numbers}: {title}, {document}',
+  },
   and: 'and',
   allExcerpts: 'All excerpts',
   stepFootnotes: 'Step through the footnotes',

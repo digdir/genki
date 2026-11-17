@@ -462,13 +462,10 @@ export const AssistantView = ({
                   follow(turn, target, { turnId: turn.id, document: target });
                 },
                 sourcesUsed: true,
-                // Until genki cites excerpts, the next look marks each cited document. When it
-                // does, each footnote has its own number, and the one Kilder shows is marked.
                 ...(next
                   ? {
                       documentFootnotes: true,
                       numberEachFootnote: true,
-                      // The Kildeliste's «Kopier kildeliste», with the layout's copy switch.
                       ...(a.option('chat', 'copy')
                         ? {
                             onCopyReferences: (_turn: ConversationAnswer, markdown: string) =>
@@ -933,7 +930,6 @@ export const AssistantView = ({
             headerColor: 'brand3',
             disclaimer: false,
             foldUncited: true,
-            // When the answer cites excerpts: every one as a card, and one whole.
             footnote: a.shownFootnote,
             onFootnoteChange: a.setShownFootnote,
             ...(documentOn

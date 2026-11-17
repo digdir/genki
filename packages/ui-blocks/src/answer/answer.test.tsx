@@ -1011,7 +1011,6 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
 
   it('lists each document once, with every footnote that cites it in front, sorted by the first', () => {
     drawList();
-    // [1] and [4] cite the letter, [2] and [3] the report.
     expect(rows()).toEqual([
       'Fotnoter 1, 4Tildelingsbrev Nkom 2022.',
       'Fotnoter 2, 3Årsrapport, 2022, Årsrapport Nasjonal kommunikasjonsmyndighet 2021. Nasjonal kommunikasjonsmyndighet. Side 12–13. https://kudos.dfo.no/dokument/2021',
@@ -1055,7 +1054,6 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
       expect(button.textContent).toBe('Kopiert');
       act(() => vi.advanceTimersByTime(1));
       expect(button.textContent).toBe('Kopier kildeliste');
-      // A second copy says «Kopiert» for the whole time again.
       await act(async () => {
         fireEvent.click(button);
       });

@@ -4,28 +4,19 @@ import type { SourceDocument } from '../sources/types.js';
 import { documentNumbers } from './citations.js';
 import { translator } from './i18n.js';
 
-/** One document in the Kildeliste: the footnotes that cite it, and what its reference says. */
 export interface Reference {
   key: string;
-  /** Every footnote in the answer that leads to it, as drawn: «2, 5, 6». */
   footnotes: readonly number[];
-  /** What kind of document it is, «Årsrapport». */
   documentType?: string | undefined;
   title: string;
-  /** The year it was published, from `publishedAt`. */
   year?: number | undefined;
-  /** The organisation that published it. */
   publisher?: string | undefined;
-  /** The pages of its cited excerpts, as runs from one page to another, in order. */
   pages: readonly PageRun[];
-  /** Its address, only when it is a web address: a link from untrusted data goes nowhere else. */
   url?: string | undefined;
 }
 
 export interface ReferenceOptions {
-  /** As the answer's `documentFootnotes`: footnotes that name documents keep their numbers. */
   documentFootnotes?: boolean | undefined;
-  /** As the answer's `numberEachFootnote`: each footnote keeps its own number, as drawn. */
   numberEachFootnote?: boolean | undefined;
 }
 
@@ -37,10 +28,8 @@ const yearOf = (date: string | undefined) => {
 // No `<` or `>`, which would end the copied `<…>` link early.
 const webAddress = /^https?:\/\/[^\s<>]+$/i;
 
-// One line, so a line break in a title cannot start a row of its own in the copied list.
 const oneLine = (text: string | undefined) => text?.replace(/\s+/g, ' ').trim() || undefined;
 
-/** From one page to another, the same page when it is one. */
 export type PageRun = readonly [number, number];
 
 /** Runs of pages, sorted and joined where they touch or overlap. */
@@ -54,11 +43,6 @@ const joinRuns = (runs: readonly PageRun[]): PageRun[] => {
   return joined;
 };
 
-/**
- * The Kildeliste under an answer (dev-kildeliste): each document the answer cites once, with
- * every footnote that leads to it, sorted by its first footnote. The numbers are the ones the
- * answer draws, by the same options, so «2, 5, 6» in the list are the marks in the text.
- */
 export const references = (
   sources: readonly SourceDocument[],
   pairing: Pairing,
@@ -83,7 +67,6 @@ export const references = (
         )
       : [byDocument.get(key)].filter((n): n is number => n !== undefined);
     const footnotes = [...new Set(numbers)].toSorted((a, b) => a - b);
-    // A document cited as a whole has no pages of its own in the answer.
     const pages = byExcerpt
       ? joinRuns(
           cited.flatMap((e): PageRun[] =>
@@ -105,27 +88,26 @@ export const references = (
       },
     ];
   });
-  // Sorting is stable: documents without a number keep the order of `sources`, last.
   return rows.toSorted((a, b) => (a.footnotes[0] ?? Infinity) - (b.footnotes[0] ?? Infinity) || 0);
 };
 
-/** Pages in runs, «12–13, 27», with an en dash between the ends of a run. */
 export const pageRanges = (runs: readonly PageRun[]) =>
   runs.map(([from, to]) => (from === to ? `${from}` : `${from}–${to}`)).join(', ');
 
-/**
- * A reference in its parts, in the order it is read: «Årsrapport, 2022, *Årsrapport 2021*.
- * Nasjonal kommunikasjonsmyndighet. Side 12–13, 27. URL». A part the source lacks is left out.
- */
+const ended = (text: string) => /[.?!]/.test(text.at(-1) ?? '');
+
 export const referenceParts = (reference: Reference, locale: Locale) => {
   const t = translator(locale);
+  const title = reference.title || t('sources.untitled');
   return {
-    /** Before the title, each followed by a comma: the document type and the year. */
     lead: [reference.documentType, reference.year?.toString()].filter(
       (part): part is string => !!part,
     ),
-    title: reference.title || t('sources.untitled'),
-    publisher: reference.publisher,
+    title,
+    titleEnd: ended(title) ? '' : '.',
+    publisher:
+      reference.publisher &&
+      (ended(reference.publisher) ? reference.publisher : `${reference.publisher}.`),
     pages: reference.pages.length
       ? t('answer.referencePages', {
           count: reference.pages.reduce((n, [from, to]) => n + (to > from ? 2 : 1), 0),
@@ -135,24 +117,16 @@ export const referenceParts = (reference: Reference, locale: Locale) => {
   };
 };
 
-// Markdown's own characters in a text, so it is its words and never a link or emphasis.
-const escaped = (text: string) => text.replace(/[\\`*_[\]<>#|~]/g, (c) => `\\${c}`);
+const escaped = (text: string) => text.replace(/[\\`*_[\]<>#|~&]/g, (c) => `\\${c}`);
 
-/**
- * What «Kopier kildeliste» puts on the clipboard (rd-kildeliste-md): one bullet per document, in
- * the list's order, its footnotes in brackets, then the reference as the list shows it, the title
- * in italics and the address in angle brackets so it is a link:
- * `- [2, 5, 6] Årsrapport, 2022, *Årsrapport 2021*. Nkom. Side 12–13, 27. <URL>`.
- * No heading, so the reader can put the list under their own.
- */
 export const referencesMarkdown = (list: readonly Reference[], locale: Locale) =>
   list
     .map((reference) => {
-      const { lead, title, publisher, pages } = referenceParts(reference, locale);
+      const { lead, title, titleEnd, publisher, pages } = referenceParts(reference, locale);
       return [
         reference.footnotes.length ? `- [${reference.footnotes.join(', ')}]` : '-',
-        `${lead.map((part) => `${escaped(part)}, `).join('')}*${escaped(title)}*.`,
-        publisher ? `${escaped(publisher)}.` : undefined,
+        `${lead.map((part) => `${escaped(part)}, `).join('')}*${escaped(title)}*${titleEnd}`,
+        publisher ? escaped(publisher) : undefined,
         pages ? `${pages}.` : undefined,
         reference.url ? `<${reference.url}>` : undefined,
       ]

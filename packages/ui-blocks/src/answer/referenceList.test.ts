@@ -13,7 +13,6 @@ const report = (year: number, pages: number[]): SourceDocument => ({
   excerpts: pages.map((page, i) => ({ chunkId: `${year}-${i}`, text: 'Utdrag.', page })),
 });
 
-// The board's four reports: [1] the first, [2], [5], [6] the second, [3], [7] the third, [4] the last.
 const sources = [
   report(2021, [9]),
   report(2022, [12, 13, 27]),
@@ -126,6 +125,31 @@ describe('the Kildeliste', () => {
     expect(referencesMarkdown(list, 'nb')).toBe(
       String.raw`- [1] *Rapport \*utkast\* \[1\]*. A\_B.`,
     );
+  });
+
+  it('puts no full stop after a title or publisher that already ends with one, or with a question', () => {
+    const asked: SourceDocument = {
+      title: 'Hva er kunstig intelligens?',
+      publisher: 'Nkom m.fl.',
+      excerpts: [{ chunkId: 'a', text: 'A' }],
+    };
+    const list = references(
+      [asked],
+      readFootnotes('A [1]', [asked], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1] *Hva er kunstig intelligens?* Nkom m.fl.');
+  });
+
+  it('copies an ampersand as itself, never as the start of an HTML entity', () => {
+    const entity: SourceDocument = {
+      title: 'Rapport &lt;utkast&gt;',
+      excerpts: [{ chunkId: 'a', text: 'A' }],
+    };
+    const list = references(
+      [entity],
+      readFootnotes('A [1]', [entity], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    expect(referencesMarkdown(list, 'nb')).toBe(String.raw`- [1] *Rapport \&lt;utkast\&gt;*.`);
   });
 
   it('copies no address with an angle bracket, which would end its link early', () => {

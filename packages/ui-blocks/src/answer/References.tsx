@@ -4,17 +4,8 @@ import { useEffect, useState } from 'react';
 import { useT } from './i18n.js';
 import { referenceParts, referencesMarkdown, type Reference } from './referenceList.js';
 
-/** How long «Kopiert» stands on the button after a copy. */
 export const REFERENCES_COPIED_MS = 2500;
 
-/**
- * The Kildeliste under an answer (dev-kildeliste): closed until the reader opens it, one row per
- * document with the footnotes that cite it in a column in front, and its reference: the document
- * type, the year, the title, the publisher, the pages and the address, each where the source has it.
- * Its one job is to be copied: «Kopier kildeliste» hands the app the list as Markdown, and says
- * «Kopiert» once the app has put it on the clipboard. It leads nowhere in Sources; the footnotes
- * in the text do.
- */
 export const References = ({
   list,
   onCopy,
@@ -34,10 +25,9 @@ export const References = ({
   const copy = async () => {
     try {
       await onCopy?.(referencesMarkdown(list, t.locale));
-      // A new number for each copy, so a second click starts the time again.
       setCopied((n) => n + 1);
     } catch {
-      // The clipboard refused: the button keeps saying what it does.
+      // The clipboard refused; the button stays as it was.
     }
   };
   return (
@@ -47,7 +37,10 @@ export const References = ({
         <Details.Content>
           <ul className="uib-answer-references-list" aria-label={t('answer.references')}>
             {list.map((reference) => {
-              const { lead, title, publisher, pages } = referenceParts(reference, t.locale);
+              const { lead, title, titleEnd, publisher, pages } = referenceParts(
+                reference,
+                t.locale,
+              );
               return (
                 <li key={reference.key} className="uib-answer-references-row">
                   <span className="uib-answer-references-footnotes">
@@ -60,7 +53,9 @@ export const References = ({
                   </span>
                   <span className="uib-answer-references-reference">
                     {lead.map((part) => `${part}, `).join('')}
-                    <em>{title}</em>.{publisher ? ` ${publisher}.` : ''}
+                    <em>{title}</em>
+                    {titleEnd}
+                    {publisher ? ` ${publisher}` : ''}
                     {pages ? ` ${pages}.` : ''}
                     {reference.url ? (
                       <>

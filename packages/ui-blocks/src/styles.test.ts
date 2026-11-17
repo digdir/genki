@@ -70,7 +70,6 @@ const accentPins = [
   '--genai-sources-toggle-color',
   '--genai-sources-excerpt-active-background',
   '--genai-sources-excerpt-active-marker-color',
-  // The excerpts' footnote numbers, as the answer's marks, and a card's hover (dev-kilder-hoyre).
   '--genai-sources-ex-card-hover-background',
   '--genai-sources-ex-number-background',
   '--genai-sources-ex-number-color',

@@ -84,7 +84,7 @@
     text-decoration: none;
     vertical-align: var(--genai-answer-footnote-raise, 0.25rem);
   }
-  /* The footnote Sources shows whole, filled as on hover (dev-kilder-hoyre-2-detalj). */
+  /* The footnote Sources shows whole, filled as on hover. */
   .uib-answer-mark[aria-current='true'] {
     background: var(
       --genai-answer-footnote-current-background,
@@ -255,14 +255,10 @@
     overflow: visible;
   }
 
-  /* The Kildeliste under a `plain` answer (dev-kildeliste): Details in a Card, as «Kilder brukt
-     i svaret», closed until the reader opens it. */
   .uib-answer-references-card {
     margin-block: var(--genai-answer-references-spacing, var(--ds-size-8));
   }
-  /* One grid for the whole list, so the footnote column is as wide in every row: as wide as its
-     longest numbers, up to a limit where they wrap, and the reference takes the rest. Each row
-     is a list item on the list's own columns. */
+  /* One grid for the whole list, so the footnote column is as wide in every row. */
   .uib-answer-references-list {
     display: grid;
     grid-template-columns:

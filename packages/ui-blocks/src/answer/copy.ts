@@ -117,7 +117,6 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
   const t = translator(locale);
   const { pairing, met } = readFootnotes(text, sources, markers);
   const byExcerpt = pairing.mode === 'excerpt';
-  // Each footnote its own number: an excerpt's line names all of them, «[1, 4]».
   const each = byExcerpt && numberEachFootnote;
   const keys = documentKeys(sources);
   const byDocument = documentFootnotes ? documentNumbers(pairing) : new Map<string, number>();

@@ -56,7 +56,6 @@ export const nbAnswer = defineNamespace({
   copyHeading: 'Kilder',
   copyPage: '{title}, s. {page}',
   copyPart: '{title}, «{part}»',
-  // The Kildeliste under the answer (dev-kildeliste).
   references: 'Kildeliste',
   referenceFootnotes: { one: 'Fotnote', other: 'Fotnoter' },
   referencePages: { one: 'Side {pages}', other: 'Side {pages}' },
