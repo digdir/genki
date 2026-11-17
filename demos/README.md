@@ -15,7 +15,7 @@ steps:
     hold: 1
 ```
 
-`do` takes [agent-browser](https://github.com/vercel-labs/agent-browser) commands: `find`, `click`, `fill`, `type`, `press`, `hover`, `select`, `scroll`, `wait`, `open` and a few more. Commands that read the page's storage or run code, such as `eval`, `storage` and `cookies`, are refused. A click or fill is tried again for up to 15 seconds while the screen loads; after that the recording stops with the step, its line and the command, and leaves `failed-step-<n>.png`. `hold` is the seconds to wait after the line has been read (0.6 by default).
+`do` takes [agent-browser](https://github.com/vercel-labs/agent-browser) commands: `find`, `click`, `fill`, `type`, `press`, `hover`, `select`, `scroll`, `wait`, `open` and a few more. Commands that read the page's storage or run code, such as `eval`, `storage` and `cookies`, are refused. A click or fill is tried again for up to 15 seconds while the screen loads; after that the recording stops with the step, its line and the command, and leaves `failed-step-<n>.png` (`failed-step-0.png` when the start page never shows `ready`). A browser command that hangs is stopped after three minutes. `hold` is the seconds to wait after the line has been read (0.6 by default).
 
 `signedIn: true` opens the portal and console with the key in `DEMO_API_KEY`, the way the smoke test does; without the key that demo is skipped. `ready` is a text on the start page to wait for before recording starts.
 
@@ -33,6 +33,6 @@ node scripts/demo.ts record --silent demos/portal-tour.yaml   # subtitles only, 
 
 Without the speech settings, and without a saved clip for every line, a demo is recorded with subtitles only.
 
-Each line is sent to the voice once and cached in `demos/out/.voice`, so recording again only pays for changed lines. A recording drives genki-test like a person would, so record against the test environment only.
+Each line is sent to the voice once and cached in `demos/out/.voice`, so recording again only pays for changed lines. A recording drives genki-test like a person would, so record against the test environment only. The `demos` workflow records them all after each deploy to genki-test; see `docs/design/demos/brief.md`. Only `playground` sends a question to a model.
 
 See `docs/design/demos/brief.md` for where this is going.

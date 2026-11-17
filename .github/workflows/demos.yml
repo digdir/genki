@@ -1,7 +1,10 @@
 name: demos
-run-name: demos ${{ inputs.demo || 'all' }}
+run-name: demos ${{ github.event.workflow_run.head_sha || inputs.demo || 'all' }}
 
 on:
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
   workflow_dispatch:
     inputs:
       demo:
@@ -21,7 +24,12 @@ concurrency:
 
 jobs:
   voice:
-    if: github.ref == 'refs/heads/main' && inputs.narrate
+    if: >-
+      (github.event_name == 'workflow_run' || inputs.narrate) && (
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: smoke-review
@@ -34,6 +42,7 @@ jobs:
       - if: vars.SPEECH_RESOURCE != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
       - if: vars.SPEECH_RESOURCE != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -66,15 +75,21 @@ jobs:
 
   record:
     needs: voice
-    if: always() && needs.voice.result != 'cancelled' && github.ref == 'refs/heads/main'
+    if: >-
+      always() && needs.voice.result != 'cancelled' && (
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment: genki-test
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -1,0 +1,36 @@
+title: Modellene i konsollen
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://console.genki-test.digdir.cloud/#/models?tab=models
+signedIn: true
+ready: Pris per 1 000 tokens
+steps:
+  - say: Konsollen er der Digdir drifter GenKI for alle virksomhetene. Her bestemmes hvilke modeller plattformen tilbyr.
+    hold: 1
+  - say: Hver modell har en tilkobling til en leverandør. Listen viser hva modellen kan brukes til.
+    do:
+      - [find, role, columnheader, hover, --name, Type kall og API]
+    hold: 1
+  - say: For hver modell står det hvor dataene behandles. I Norge, i EU og EØS, eller globalt.
+    do:
+      - [find, role, columnheader, hover, --name, Data behandles]
+    hold: 1
+  - say: En tjeneste som bare tillater behandling i Norge eller EU, kan bare velge modeller som er satt til det.
+    hold: 1
+  - say: Prisen per tusen tokens står også her. Det er den virksomhetene ser igjen i statistikken sin.
+    do:
+      - [find, role, columnheader, hover, --name, Pris per 1 000 tokens]
+    hold: 1
+  - say: Vi kan søke etter en modell, for eksempel de minste og billigste.
+    do:
+      - [find, label, Søk etter modell, fill, mini]
+    hold: 1.5
+  - say: Under Tilkoblinger står leverandørene, og hvilke modeller hver av dem har.
+    do:
+      - [find, role, tab, click, --name, Tilkoblinger]
+    hold: 1.5
+  - say: Hver endring her krever en begrunnelse, og havner i revisjonsloggen. Slik ser dere i ettertid hvem som endret hva, og hvorfor.
+    do:
+      - [find, role, link, hover, --name, Revisjon]
+    hold: 2

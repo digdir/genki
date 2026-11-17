@@ -12,13 +12,16 @@ import {
   parseArgs,
   parseDemo,
   pickDemos,
+  readyFailure,
   retrying,
   runStep,
   scriptLiteral,
   sessionScript,
   srtTime,
   ssml,
+  StepFailure,
   subtitles,
+  summaryOf,
 } from './demo.ts';
 
 const demosDir = join(import.meta.dirname, '../demos');
@@ -178,6 +181,78 @@ describe('demo recordings', () => {
       'Step 3 («Åpne tjenestene») failed on: find role link click --name Tjenester\n  No element found: Tjenester',
     );
     expect(now()).toBeGreaterThanOrEqual(15_000);
+  });
+
+  it('names the failed step by number, so the summary can point at its screenshot', () => {
+    const { now, pause } = clock();
+    const failure = (() => {
+      try {
+        runStep(
+          { say: 'Hei', do: [['find', 'role', 'link', 'click']] },
+          4,
+          () => {
+            throw new Error('No element found');
+          },
+          1_000,
+          now,
+          pause,
+        );
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(failure).toBeInstanceOf(StepFailure);
+    expect((failure as StepFailure).step).toBe(5);
+  });
+
+  it('reports a start page that never shows its ready text as step 0', () => {
+    const demo = parseDemo(
+      minimal('  - say: Hei\n').replace('steps:', 'ready: Prøveområde\nsteps:'),
+    );
+    const failure = readyFailure(
+      demo,
+      Object.assign(new Error('x'), { stderr: 'Timeout 30000ms' }),
+    );
+    expect(failure.step).toBe(0);
+    expect(failure.message).toBe(
+      'The start page https://portal.genki-test.digdir.cloud never showed «Prøveområde»\n  Timeout 30000ms',
+    );
+  });
+
+  it('sums up each demo with its result, length, sound and file', () => {
+    expect(
+      summaryOf([
+        {
+          name: 'usage',
+          outcome: 'recorded',
+          steps: 8,
+          seconds: 71.6,
+          voice: false,
+          file: 'usage/usage.mp4',
+        },
+        {
+          name: 'run-log',
+          outcome: 'failed',
+          steps: 7,
+          failedStep: 3,
+          reason: 'Step 3 failed on: find | x\n  No element',
+        },
+        { name: 'tour', outcome: 'skipped', steps: 5, reason: 'needs DEMO_API_KEY to sign in' },
+      ]),
+    ).toBe(
+      [
+        '### Demos',
+        '',
+        '1 recorded, 1 failed, 1 skipped.',
+        '',
+        '| Demo | Result | Steps | Length | Sound | File |',
+        '| --- | --- | --- | --- | --- | --- |',
+        '| usage | recorded | 8 | 72 s | subtitles only | usage/usage.mp4 |',
+        '| run-log | failed at step 3, see failed-step-3.png: Step 3 failed on: find / x   No element | 7 |  |  |  |',
+        '| tour | skipped: needs DEMO_API_KEY to sign in | 5 |  |  |  |',
+        '',
+      ].join('\n'),
+    );
   });
 
   it('does not repeat a navigation that failed', () => {

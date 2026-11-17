@@ -309,10 +309,64 @@ const firstLine = (error: unknown) =>
     (error instanceof Error ? error.message : String(error))
   ).split('\n')[0];
 
+export class StepFailure extends Error {
+  readonly step: number;
+
+  constructor(message: string, step: number) {
+    super(message);
+    this.step = step;
+  }
+}
+
 export const stepFailure = (index: number, step: DemoStep, command: string[], error: unknown) =>
-  new Error(
+  new StepFailure(
     `Step ${index + 1} («${step.say.slice(0, 60)}») failed on: ${command.join(' ')}\n  ${firstLine(error)}`,
+    index + 1,
   );
+
+export const readyFailure = (demo: Demo, error: unknown) =>
+  new StepFailure(
+    `The start page ${demo.start} never showed «${demo.ready ?? ''}»\n  ${firstLine(error)}`,
+    0,
+  );
+
+export interface DemoResult {
+  name: string;
+  outcome: 'recorded' | 'skipped' | 'failed';
+  steps: number;
+  seconds?: number;
+  voice?: boolean;
+  file?: string;
+  failedStep?: number;
+  reason?: string;
+}
+
+const cell = (text: string) => text.split('\n').join(' ').replace(/\|/g, '/');
+
+export const summaryOf = (results: DemoResult[]) => {
+  const rows = results.map((r) => {
+    const length = r.seconds === undefined ? '' : `${Math.round(r.seconds)} s`;
+    const sound = r.voice === undefined ? '' : r.voice ? 'voice' : 'subtitles only';
+    const result =
+      r.outcome === 'failed'
+        ? `failed${r.failedStep === undefined ? '' : ` at step ${r.failedStep}, see failed-step-${r.failedStep}.png`}: ${cell(r.reason ?? '')}`
+        : r.outcome === 'skipped'
+          ? `skipped: ${cell(r.reason ?? '')}`
+          : 'recorded';
+    return `| ${r.name} | ${result} | ${r.steps} | ${length} | ${sound} | ${r.file ?? ''} |`;
+  });
+  const count = (o: DemoResult['outcome']) => results.filter((r) => r.outcome === o).length;
+  return [
+    '### Demos',
+    '',
+    `${count('recorded')} recorded, ${count('failed')} failed, ${count('skipped')} skipped.`,
+    '',
+    '| Demo | Result | Steps | Length | Sound | File |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...rows,
+    '',
+  ].join('\n');
+};
 
 export const runStep = (
   step: DemoStep,
@@ -346,8 +400,10 @@ export const pickDemos = (dir: string, only?: string, files: string[] = []) => {
     .map((f) => join(dir, f));
 };
 
-const run = (cmd: string, args: string[]) =>
-  execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const commandTimeoutMs = 180_000;
+
+const run = (cmd: string, args: string[], timeout = commandTimeoutMs) =>
+  execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout });
 
 const speechConfigured = () =>
   Boolean(
@@ -467,14 +523,19 @@ async function voice(path: string) {
   console.log(`${basename(path)}: ${demo.steps.length} lines voiced`);
 }
 
-async function record(path: string, silent: boolean): Promise<'recorded' | 'skipped'> {
+async function record(path: string, silent: boolean): Promise<DemoResult> {
   const demo = parseDemo(readFileSync(path, 'utf8'), path);
   const name = basename(path, '.yaml');
   const env = process.env;
   const key = env.DEMO_API_KEY || undefined;
   if (demo.signedIn && !key) {
     console.log(`${name}: skipped, it needs DEMO_API_KEY to sign in`);
-    return 'skipped';
+    return {
+      name,
+      outcome: 'skipped',
+      steps: demo.steps.length,
+      reason: 'needs DEMO_API_KEY to sign in',
+    };
   }
   const out = resolve('demos/out', name);
   const cache = cacheDir();
@@ -507,6 +568,7 @@ async function record(path: string, silent: boolean): Promise<'recorded' | 'skip
   };
   const lines: TimedLine[] = [];
   const raw = join(out, 'raw.webm');
+  let seconds: number | undefined;
   try {
     const init = [join(scripts, 'language.js')];
     writeFileSync(init[0], languageScript(demo.language), { mode: 0o600 });
@@ -552,8 +614,13 @@ async function record(path: string, silent: boolean): Promise<'recorded' | 'skip
     ]);
     const [w, h] = demo.viewport ?? [1280, 720];
     ab('set', 'viewport', String(w), String(h));
-    ab('wait', '--load', 'load');
-    if (demo.ready) ab('wait', '--text', demo.ready, '--timeout', '30000');
+    try {
+      ab('wait', '--load', 'load');
+      if (demo.ready) ab('wait', '--text', demo.ready, '--timeout', '30000');
+    } catch (error) {
+      quietly('screenshot', join(out, 'failed-step-0.png'));
+      throw readyFailure(demo, error);
+    }
 
     ab('record', 'start', raw, '--cursor');
     const t0 = Date.now();
@@ -562,6 +629,7 @@ async function record(path: string, silent: boolean): Promise<'recorded' | 'skip
         const at = (Date.now() - t0) / 1000;
         const clip = clips[i] as Clip;
         lines.push({ at, seconds: clip.seconds, text: step.say });
+        console.log(`${name}: step ${i + 1}/${demo.steps.length}`);
         try {
           runStep(step, i, ab);
         } catch (error) {
@@ -571,6 +639,7 @@ async function record(path: string, silent: boolean): Promise<'recorded' | 'skip
         const elapsed = (Date.now() - t0) / 1000 - at;
         sleep((clip.seconds + (step.hold ?? 0.6) - elapsed) * 1000);
       });
+      seconds = (Date.now() - t0) / 1000;
     } finally {
       quietly('record', 'stop');
     }
@@ -585,10 +654,17 @@ async function record(path: string, silent: boolean): Promise<'recorded' | 'skip
   const voiced = clips.flatMap((c, i) =>
     c.file ? [{ file: c.file, at: (lines[i] as TimedLine).at }] : [],
   );
-  run('ffmpeg', mixArgs(raw, voiced, srt, mp4, demo.language));
+  run('ffmpeg', mixArgs(raw, voiced, srt, mp4, demo.language), 600_000);
   rmSync(raw, { force: true });
   console.log(`${name}: ${mp4}`);
-  return 'recorded';
+  return {
+    name,
+    outcome: 'recorded',
+    steps: demo.steps.length,
+    seconds,
+    voice: narrate,
+    file: `${name}/${name}.mp4`,
+  };
 }
 
 export const parseArgs = (argv: string[]) => {
@@ -600,10 +676,18 @@ export const parseArgs = (argv: string[]) => {
   return { mode, silent: args.includes('--silent'), only: only || undefined, files };
 };
 
+const stepsIn = (path: string) => {
+  try {
+    return parseDemo(readFileSync(path, 'utf8'), path).steps.length;
+  } catch {
+    return 0;
+  }
+};
+
 async function main(argv: string[]) {
   const { mode, silent, only, files } = parseArgs(argv);
   const demos = pickDemos(resolve('demos'), only, files);
-  const summary: string[] = [];
+  const results: DemoResult[] = [];
   let failed = false;
   for (const path of demos) {
     const name = basename(path, '.yaml');
@@ -614,19 +698,25 @@ async function main(argv: string[]) {
           `${name}: ${demo.steps.length} steps, about ${Math.round(estimateDemo(demo))} s`,
         );
       } else if (mode === 'voice') await voice(path);
-      else summary.push(`| ${name} | ${await record(path, silent)} |`);
+      else results.push(await record(path, silent));
     } catch (error) {
       failed = true;
       const why = error instanceof Error ? error.message : String(error);
       console.error(`${name}: ${why}`);
-      summary.push(`| ${name} | failed: ${why.split('\n').join(' ').replace(/\|/g, '/')} |`);
+      results.push({
+        name,
+        outcome: 'failed',
+        steps: stepsIn(path),
+        reason: why,
+        ...(error instanceof StepFailure ? { failedStep: error.step } : {}),
+      });
     }
   }
-  if (mode === 'record' && process.env.GITHUB_STEP_SUMMARY)
-    appendFileSync(
-      process.env.GITHUB_STEP_SUMMARY,
-      `### Demos\n\n| Demo | Result |\n| --- | --- |\n${summary.join('\n')}\n`,
-    );
+  if (mode === 'record') {
+    const summary = summaryOf(results);
+    console.log(`\n${summary}`);
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+  }
   if (failed) process.exitCode = 1;
 }
 
