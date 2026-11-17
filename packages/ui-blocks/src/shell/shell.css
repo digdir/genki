@@ -353,6 +353,23 @@
     --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
   }
 
+  /* Beside a title, the button is centred on the title's line, not the title on the button: the
+     titles keep their one line across the panels, and the button stands half its extra height
+     above it. Moved, not resized, so nothing under the row moves. A rail has no title. */
+  .uib-shell[data-frame='cards']
+    > .uib-shell-side:not([data-collapsed])
+    .uib-shell-header
+    > .uib-shell-toggle {
+    translate: 0
+      calc(
+        (
+            var(--genai-shell-title-line-height, var(--ds-size-8)) -
+              var(--genai-shell-rail-button-size, var(--ds-size-11))
+          ) /
+          2
+      );
+  }
+
   /* The foot under a line inside the card's edges, as the design's profile. */
   .uib-shell[data-frame='cards'] > .uib-shell-side > .uib-shell-box > .uib-shell-foot {
     align-self: stretch;

@@ -214,6 +214,12 @@ describe('the Shell styles', () => {
     );
   });
 
+  it('centre an open panel’s button on its title’s line, moved and not resized, and leave a rail’s alone', () => {
+    expect(css).toContain(
+      ".uib-shell[data-frame='cards'] > .uib-shell-side:not([data-collapsed]) .uib-shell-header > .uib-shell-toggle { translate: 0 calc((var(--genai-shell-title-line-height, var(--ds-size-8)) - var(--genai-shell-rail-button-size, var(--ds-size-11))) / 2); }",
+    );
+  });
+
   it('keep what a rail shows at its bottom out of the top row', () => {
     expect(css).toContain('.uib-shell[data-compact] .uib-shell-rail-foot { display: none; }');
   });
