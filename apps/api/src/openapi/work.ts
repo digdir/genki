@@ -17,6 +17,9 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
+import { incidentResolvedType } from '../platform-status.js';
+import { quotaRequestDecidedType, quotaRequestPendingType } from '../quota-requests.js';
+import { runFinishedType, runNotCancellableType } from '../tenant-run-cancel.js';
 import { sinkJudgeFields, staleJudgesField } from './services.js';
 
 /** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
@@ -1015,7 +1018,9 @@ const taskRoutes: RouteConfig[] = [
     responses: {
       200: json(z.object({ task: z.string(), status: z.literal('cancelled') }), 'Cancelled'),
       202: json(z.object({ task: z.string(), status: taskStatus }), 'Stop asked, not landed yet'),
-      409: problem('The run has finished, or was not started through an API entry point'),
+      409: problem(
+        `${runFinishedType}: the run has finished; ${runNotCancellableType}: it was not started through an API entry point`,
+      ),
       ...memberWrite,
     },
   }),
@@ -2935,7 +2940,7 @@ const operationsRoutes: RouteConfig[] = [
     },
     responses: {
       201: json(QuotaRequest, 'Requested'),
-      409: problem('A request is already waiting for a decision'),
+      409: problem(`${quotaRequestPendingType}: a request is already waiting for a decision`),
       ...memberWrite,
     },
   }),
@@ -2982,7 +2987,7 @@ const operationsRoutes: RouteConfig[] = [
       200: json(QuotaRequest, 'Decided'),
       400: problem('Invalid decision or missing change reason'),
       404: problem('No such request'),
-      409: problem('Already decided'),
+      409: problem(`${quotaRequestDecidedType}: the request is already decided`),
       ...operatorOnly,
     },
   }),
@@ -3028,7 +3033,7 @@ const operationsRoutes: RouteConfig[] = [
       200: json(Incident, 'Resolved'),
       400: problem('Missing change reason'),
       404: problem('No such incident'),
-      409: problem('Already resolved'),
+      409: problem(`${incidentResolvedType}: the incident is already resolved`),
       ...operatorOnly,
     },
   }),

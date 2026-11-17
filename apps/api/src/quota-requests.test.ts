@@ -85,7 +85,12 @@ describe('quota requests', () => {
     const { ask } = await boot();
     await ask(digdir, 'kari');
 
-    expect((await ask(digdir, 'kari')).status).toBe(409);
+    const again = await ask(digdir, 'kari');
+
+    expect(again.status).toBe(409);
+    expect(await readJson(again)).toMatchObject({
+      type: 'urn:genai:problem:quota-request-pending',
+    });
   });
 
   it("keeps a tenant's requests away from other tenants", async () => {
@@ -113,6 +118,9 @@ describe('quota requests', () => {
     expect(decided.status).toBe(200);
     expect(await readJson(decided)).toMatchObject({ state: 'approved' });
     expect(again.status).toBe(409);
+    expect(await readJson(again)).toMatchObject({
+      type: 'urn:genai:problem:quota-request-decided',
+    });
     expect((await admin.audit()).map((e) => [e.action, e.outcome])).toContainEqual([
       'platform.quota.decide',
       'applied',

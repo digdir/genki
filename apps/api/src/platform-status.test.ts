@@ -80,6 +80,7 @@ describe('platform status for tenants', () => {
 
     expect(resolved.status).toBe(200);
     expect(again.status).toBe(409);
+    expect(await readJson(again)).toMatchObject({ type: 'urn:genai:problem:incident-resolved' });
     expect(await titlesFor(digdir, 'kari')).toEqual([]);
     expect((await admin.audit()).map((e) => e.action)).toEqual(
       expect.arrayContaining(['platform.incident.save', 'platform.incident.resolve']),

@@ -28,6 +28,7 @@ const people: Record<string, Principal> = {
   kari: member('kari', digdir, ['use-services']),
   per: member('per', digdir, ['use-services']),
   admin: member('admin', digdir, ['use-services', 'manage-services']),
+  lead: member('lead', digdir, ['manage-services']),
   ola: member('ola', other, ['use-services', 'manage-services']),
 };
 
@@ -128,7 +129,12 @@ const boot = async () => {
     const stored = await tasks.get(task);
     if (stored) await tasks.put({ ...stored, task: { ...stored.task, parent: 'parent-task' } });
   };
-  return { start, cancel, audit, platform, makeChild };
+  const statusOf = async (task: string) => (await tasks.get(task))?.task.status;
+  const finish = async (task: string) => {
+    const stored = await tasks.get(task);
+    if (stored) await tasks.put({ ...stored, task: { ...stored.task, status: 'completed' } });
+  };
+  return { start, cancel, audit, platform, makeChild, statusOf, finish };
 };
 
 describe('stopping one run from the tenant', () => {
@@ -153,6 +159,22 @@ describe('stopping one run from the tenant', () => {
     expect((await cancel(digdir, task, 'admin')).status).toBe(200);
   });
 
+  it("lets one with only manage-services stop someone else's run", async () => {
+    const { start, cancel, audit } = await boot();
+    const task = await start('kari', 'rest');
+
+    expect((await cancel(digdir, task, 'lead')).status).toBe(200);
+    expect(await audit()).toMatchObject([{ outcome: 'applied', target: `task:${task}` }]);
+  });
+
+  it("refuses one with only use-services to stop someone else's run, and leaves it running", async () => {
+    const { start, cancel, statusOf } = await boot();
+    const task = await start('kari', 'rest');
+
+    expect((await cancel(digdir, task, 'per')).status).toBe(403);
+    expect(await statusOf(task)).toBe('running');
+  });
+
   it("answers 404 for another organisation's run, also through the caller's own tenant", async () => {
     const { start, cancel } = await boot();
     const task = await start('kari', 'rest');
@@ -165,7 +187,10 @@ describe('stopping one run from the tenant', () => {
     const { start, cancel } = await boot();
     const task = await start('kari');
 
-    expect((await cancel(digdir, task, 'kari')).status).toBe(409);
+    const res = await cancel(digdir, task, 'kari');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ type: 'urn:genai:problem:run-not-cancellable' });
   });
 
   it('refuses a child task, even one with an entry point', async () => {
@@ -174,6 +199,17 @@ describe('stopping one run from the tenant', () => {
     await makeChild(task);
 
     expect((await cancel(digdir, task, 'kari')).status).toBe(409);
+  });
+
+  it('refuses a run that has already finished', async () => {
+    const { start, cancel, finish } = await boot();
+    const task = await start('kari', 'rest');
+    await finish(task);
+
+    const res = await cancel(digdir, task, 'kari');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ type: 'urn:genai:problem:run-finished' });
   });
 
   it('refuses a stop without a change reason', async () => {

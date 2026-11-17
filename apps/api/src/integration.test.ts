@@ -181,6 +181,13 @@ const boot = async () => {
       authorizedFor: [{ org: tenant }],
     } as Principal,
     ops: { kind: 'operator', issuer: 'test', subject: 'ops' },
+    per: {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'per',
+      tenant,
+      authorizedFor: [{ org: tenant, actions: ['use-services'] }],
+    } as Principal,
     ola: {
       kind: 'employee',
       issuer: 'test',
@@ -511,6 +518,70 @@ describe('the integrated platform', () => {
     failing = false;
     expect((await sync()).status).toBe(200);
     expect(await lastSync()).toEqual({ at: expect.any(String), ok: true });
+  });
+
+  it('keeps a sync error that echoes the connection secret only in redacted form, and shows it only to those who manage tools', async () => {
+    const { platform, app } = await boot();
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id,
+            error: {
+              code: -32000,
+              message: `refused ${req.headers.authorization}, key tool-token-7f3a`,
+            },
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    await app.request(`/tenants/${tenant}/secrets/case-api`, {
+      method: 'PUT',
+      headers: as('kari', { 'change-reason': 'test av endringen' }),
+      body: JSON.stringify({
+        value: 'tool-token-7f3a',
+        allowedHosts: [`http://127.0.0.1:${port}`],
+      }),
+    });
+    await platform.connections.save({
+      connection: {
+        id: 'saker',
+        tenant,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+        auth: { kind: 'bearer', secret: `secret://tenant/${tenant}/case-api` },
+      },
+      tools: [],
+      pending: [],
+    } as Parameters<typeof platform.connections.save>[0]);
+
+    const sync = await app.request(`/tenants/${tenant}/tool-connections/saker/sync`, {
+      method: 'POST',
+      headers: as('kari', { 'change-reason': 'test av endringen' }),
+    });
+    const lastSync = async (who: string) =>
+      (
+        (await (
+          await app.request(`/tenants/${tenant}/tool-connections`, { headers: as(who) })
+        ).json()) as { data: { lastSync?: { ok: boolean; error?: string } }[] }
+      ).data[0]?.lastSync;
+    const managed = await lastSync('kari');
+
+    expect(sync.status).toBe(400);
+    expect(await sync.text()).not.toContain('tool-token-7f3a');
+    expect(managed?.error).toContain('[redacted]');
+    expect(managed?.error).not.toContain('tool-token-7f3a');
+    expect(await lastSync('per')).toEqual({ at: expect.any(String), ok: false });
   });
 
   it('records feedback on an answer through the KA-compatible route', async () => {

@@ -1,3 +1,4 @@
+import { redactSecrets } from './sync-errors.js';
 import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
 import { quotaRefused } from './rate-limit.js';
@@ -53,7 +54,7 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, seesUsage, type Right } from './rights.js';
+import { rightRefused, rightsOf, seesUsage, type Right } from './rights.js';
 import { backgroundLeases } from './background-lease.js';
 import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -172,6 +173,18 @@ export interface ToolAdminDeps {
 
 const syncErrorLength = 500;
 
+const connectionSecrets = async (tools: ToolAdminDeps, tenant: string, id: string) => {
+  const connection = (await tools.connections.get(tenant, id))?.connection;
+  const auth = connection?.auth;
+  if (!auth) return [];
+  const targets =
+    auth.kind === 'oauth-client-credentials'
+      ? [connection.endpoint, auth.tokenUrl]
+      : [connection.endpoint];
+  const value = await tools.secrets.resolveFor(tenant, auth.secret, targets).catch(() => undefined);
+  return value ? [value] : [];
+};
+
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator'
     ? principal.actor !== undefined && principal.tenant === tenant
@@ -285,7 +298,8 @@ export const adminExtensions = (deps: {
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const raw = error instanceof Error ? error.message : String(error);
+      const message = redactSecrets(raw, await connectionSecrets(deps.tools, tenant, id));
       await remember(message.slice(0, syncErrorLength));
       return { ok: false, errors: [{ path: 'id', message }], target };
     }
@@ -511,6 +525,8 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const entered = enterTenant(c, access, principal, param(c, 'tenant'));
     if ('response' in entered) return entered.response;
     const tenant = param(c, 'tenant');
+    const held = rightsOf(entered.principal, tenant);
+    const managesTools = held.has('manage-services') || held.has('register-building-blocks');
     const states = await deps.connections.list(tenant);
     return c.json({
       data: states.map((s) => ({
@@ -520,7 +536,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         endpoint: s.connection.endpoint,
         version: s.connection.version,
         tools: s.tools.map((t) => t.name),
-        ...(s.lastSync ? { lastSync: s.lastSync } : {}),
+        ...(s.lastSync
+          ? {
+              lastSync: managesTools ? s.lastSync : { at: s.lastSync.at, ok: s.lastSync.ok },
+            }
+          : {}),
       })),
     });
   });

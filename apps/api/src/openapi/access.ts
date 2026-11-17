@@ -1353,7 +1353,9 @@ export const accessRoutes: RouteConfig[] = [
               lastSync: z
                 .object({ at: z.string(), ok: z.boolean(), error: z.string().optional() })
                 .optional()
-                .describe('The last sync and why it failed, kept until the next sync'),
+                .describe(
+                  'The last sync, kept until the next sync. `error` is redacted and shown only to callers with register-building-blocks or manage-services',
+                ),
             }),
           ),
         }),

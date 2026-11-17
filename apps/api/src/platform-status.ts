@@ -1,4 +1,5 @@
 import type { Principal } from '@genai/contracts';
+import type { ValidationError } from '@genai/definitions';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant } from './access.js';
@@ -10,9 +11,16 @@ import {
   type ConfigEntry,
   type ConfigEntryStore,
 } from './config-store.js';
-import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import {
+  changeReasonOf,
+  isReasonLongEnough,
+  reasonTooShort,
+  problem as sharedProblem,
+} from './http.js';
 import type { OperationsOverview } from './operations.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
+
+export const incidentResolvedType = 'urn:genai:problem:incident-resolved';
 
 export const incidentKind = 'platform-incident';
 export const incidentActions = ['platform.incident.save', 'platform.incident.resolve'] as const;
@@ -49,10 +57,13 @@ export const openIncidentsFor = async (store: Pick<ConfigEntryStore, 'latest'>, 
 
 type Status = 400 | 401 | 403 | 404 | 409;
 
-const problem = (c: Context, status: Status, title: string, errors: unknown[] = []) =>
-  c.json({ type: 'about:blank', title, status, errors }, status, {
-    'content-type': 'application/problem+json',
-  });
+const problem = (
+  c: Context,
+  status: Status,
+  title: string,
+  errors: ValidationError[] = [],
+  type?: string,
+) => sharedProblem(c, status, title, { errors, ...(type ? { type } : {}) });
 
 export interface PlatformStatusOptions {
   now?: () => Date;
@@ -182,9 +193,13 @@ export const createPlatformStatusModule =
           ) as ConfigEntry<Incident> | undefined;
           if (!found || found.deleted) return problem(c, 404, 'Not found');
           if (found.spec.resolvedAt)
-            return problem(c, 409, 'Conflict', [
-              { path: 'state', message: 'the incident is already resolved' },
-            ]);
+            return problem(
+              c,
+              409,
+              'Conflict',
+              [{ path: 'state', message: 'the incident is already resolved' }],
+              incidentResolvedType,
+            );
           return audited(c, guard.principal, 'platform.incident.resolve', guard.reason, {
             ...found.spec,
             resolvedAt: now().toISOString(),

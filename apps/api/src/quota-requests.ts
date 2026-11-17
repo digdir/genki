@@ -1,11 +1,21 @@
 import type { Principal } from '@genai/contracts';
+import type { ValidationError } from '@genai/definitions';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant } from './access.js';
 import { actorOf, AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
 import { appendVersion, serialized, type ConfigEntry } from './config-store.js';
-import { actorNameOf, changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
+import {
+  actorNameOf,
+  changeReasonOf,
+  isReasonLongEnough,
+  reasonTooShort,
+  problem as sharedProblem,
+} from './http.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
+
+export const quotaRequestPendingType = 'urn:genai:problem:quota-request-pending';
+export const quotaRequestDecidedType = 'urn:genai:problem:quota-request-decided';
 
 export const quotaRequestKind = 'quota-request';
 export const quotaRequestActions = ['platform.quota.request', 'platform.quota.decide'] as const;
@@ -31,10 +41,13 @@ export const QuotaDecisionBody = z.strictObject({ decision: z.enum(['approved', 
 
 type Status = 400 | 401 | 403 | 404 | 409;
 
-const problem = (c: Context, status: Status, title: string, errors: unknown[] = []) =>
-  c.json({ type: 'about:blank', title, status, errors }, status, {
-    'content-type': 'application/problem+json',
-  });
+const problem = (
+  c: Context,
+  status: Status,
+  title: string,
+  errors: ValidationError[] = [],
+  type?: string,
+) => sharedProblem(c, status, title, { errors, ...(type ? { type } : {}) });
 
 const invalid = (c: Context, issues: z.core.$ZodIssue[]) =>
   problem(
@@ -125,9 +138,13 @@ export const createQuotaRequestsModule =
         const result = await writes(async () => {
           if ((await list(tenant)).some((r) => r.request.state === 'pending'))
             return {
-              response: problem(c, 409, 'Conflict', [
-                { path: 'state', message: 'a quota request is already waiting for a decision' },
-              ]),
+              response: problem(
+                c,
+                409,
+                'Conflict',
+                [{ path: 'state', message: 'a quota request is already waiting for a decision' }],
+                quotaRequestPendingType,
+              ),
             };
           const actor = entered.principal.actor ?? entered.principal;
           const name = actorNameOf(c) ?? actor.name;
@@ -190,15 +207,21 @@ export const createQuotaRequestsModule =
           if (!found || found.deleted) return { response: problem(c, 404, 'Not found') };
           if (found.spec.state !== 'pending')
             return {
-              response: problem(c, 409, 'Conflict', [
-                {
-                  path: 'state',
-                  message:
-                    found.spec.state === 'approved'
-                      ? 'the quota request is already approved'
-                      : 'the quota request is already rejected',
-                },
-              ]),
+              response: problem(
+                c,
+                409,
+                'Conflict',
+                [
+                  {
+                    path: 'state',
+                    message:
+                      found.spec.state === 'approved'
+                        ? 'the quota request is already approved'
+                        : 'the quota request is already rejected',
+                  },
+                ],
+                quotaRequestDecidedType,
+              ),
             };
           const name = actorNameOf(c) ?? principal.name;
           const decided: QuotaRequest = {

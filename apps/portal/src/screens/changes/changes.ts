@@ -144,6 +144,11 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.tools.register': 'changes.toolsRegister',
   'platform.tools.sync': 'changes.toolsSync',
   'platform.trigger.pause': 'changes.triggerPause',
+  'platform.incident.resolve': 'changes.incidentResolve',
+  'platform.incident.save': 'changes.incidentSave',
+  'platform.quota.decide': 'changes.quotaDecide',
+  'platform.quota.request': 'changes.quotaRequest',
+  'platform.run.cancel': 'changes.taskCancel',
 };
 
 export const auditActionsWithLabels = Object.keys(actionKeys);
