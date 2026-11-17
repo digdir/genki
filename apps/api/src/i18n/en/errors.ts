@@ -123,6 +123,7 @@ export const catalogErrors = {
   keysCount: 'at most 4 named keys',
   secretReference: 'must be a secret:// reference',
   onlyOperatorSets: 'only the operator sets {field}, and only on a model connection',
+  gatewayBoolean: 'gateway must be true or false',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',

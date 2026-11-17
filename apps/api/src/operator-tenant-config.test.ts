@@ -427,6 +427,23 @@ describe('allowed hosts of a model connection', () => {
     expect(refused.status).toBe(400);
     expect(JSON.stringify(await json(refused))).toContain('only the operator sets allowedHosts');
   });
+
+  it('refuses the gateway mark on a tenant connection, because only the operator sets it', async () => {
+    const { call, support } = await boot();
+    const session = await support();
+    const refused = await call(`/tenants/${tenant}/catalog/model-endpoint/eget`, {
+      method: 'PUT',
+      session,
+      body: {
+        families: { openai: '' },
+        baseURL: 'https://modeller.example.no/v1',
+        auth: { kind: 'api-key', secret: `secret://tenant/${tenant}/key` },
+        gateway: true,
+      },
+    });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await json(refused))).toContain('only the operator sets gateway');
+  });
 });
 
 describe('settings and named keys of a model connection', () => {

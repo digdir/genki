@@ -79,6 +79,7 @@ interface EndpointSpec {
     tenant?: string;
     scope?: string;
   };
+  gateway?: boolean;
   settings?: Record<string, string>;
   keys?: Record<string, string>;
 }
@@ -242,6 +243,7 @@ export const EndpointForm = ({
   const [appClientId, setAppClientId] = useState(spec.auth?.clientId ?? '');
   const [appTenant, setAppTenant] = useState(spec.auth?.tenant ?? '');
   const [appScope, setAppScope] = useState(spec.auth?.scope ?? '');
+  const [gateway, setGateway] = useState(spec.gateway === true);
   const [secretName, setSecretName] = useState(storedSecret);
   const [secretValue, setSecretValue] = useState('');
   const [secretSaved, setSecretSaved] = useState<string | undefined>();
@@ -336,6 +338,7 @@ export const EndpointForm = ({
               ...(header ? { header } : {}),
             },
       families: Object.fromEntries(rows.map((r) => [r.family, r.base.trim()])),
+      ...(gateway || spec.gateway ? { gateway } : {}),
       ...(rules.length || spec.discovery ? { discovery: rules.map(ruleOf) } : {}),
       ...(settingRows.length || spec.settings
         ? { settings: Object.fromEntries(settingRows.map((r) => [r.name, r.value])) }
@@ -618,6 +621,12 @@ export const EndpointForm = ({
             ) : null}
           </Fieldset>
         )}
+        <Checkbox
+          label={t('endpoints.gateway')}
+          description={t('endpoints.gatewayDescription')}
+          checked={gateway}
+          onChange={(e) => setGateway(e.target.checked)}
+        />
         <PairFields
           kind="setting"
           rows={settingRows}

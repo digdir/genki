@@ -1108,6 +1108,7 @@ export interface ModelEndpointInput {
     | { kind: 'api-key' | 'bearer'; secret: string; header?: string }
     | { kind: 'federated-app'; clientId: string; tenant: string; scope: string };
   families: Record<string, string>;
+  gateway?: boolean;
   discovery?: DiscoveryRule[];
   settings?: Record<string, string>;
   keys?: Record<string, string>;

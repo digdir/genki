@@ -122,6 +122,7 @@ export const catalogErrors = defineNamespace({
   keysCount: 'høyst 4 navngitte nøkler',
   secretReference: 'må være en secret://-referanse',
   onlyOperatorSets: 'bare operatøren setter {field}, og bare på en modellkobling',
+  gatewayBoolean: 'gateway må være true eller false',
   endpointExists: 'Endepunktet finnes allerede',
   endpointModelsInUse: 'Modellene fra endepunktet er i bruk',
   usesModelFrom: '{tenant}/{service} bruker en modell fra {id}',

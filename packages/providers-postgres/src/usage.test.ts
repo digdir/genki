@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { memoryUsageSource, pollUsage, toUsageRow, type UsageRow } from '@genai/port-usage';
+import { memoryUsageSource, pollUsage, type UsageRow } from '@genai/port-usage';
 import { createPostgresStores, LocalKeyWrapper, withTenant, workerRole } from './index.js';
 import { stopPostgres } from './testing/index.js';
 
@@ -48,14 +48,18 @@ afterAll(async () => {
 const setup = () => {
   let now = new Date(day + 30 * 60_000);
   const fake = memoryUsageSource({ id: `gw-${randomBytes(4).toString('hex')}`, now: () => now });
-  fake.addKey({ id: 'a', subject: { kind: 'service', id: 'ka', org: ORG_A } });
-  fake.addKey({ id: 'b', subject: { kind: 'org', id: ORG_B } });
-  fake.addKey({ id: 'stranger', subject: { kind: 'org', id: STRANGER } });
-  fake.addKey({ id: 'none' });
+  const orgs: Record<string, string | undefined> = {
+    a: ORG_A,
+    b: ORG_B,
+    stranger: STRANGER,
+    none: undefined,
+  };
   const record = (key: string, hour: number, model = 'gpt-test') => {
     now = new Date(Math.max(now.getTime(), day + hour * hourMs + 2 * 60_000));
+    const org = orgs[key];
     fake.record({
-      key,
+      client: key,
+      ...(org ? { org } : {}),
       model,
       at: new Date(day + hour * hourMs + 60_000),
       inputTokens: 100,
@@ -66,14 +70,8 @@ const setup = () => {
   const poll = () =>
     pollUsage(fake, worker.usageBuckets, { firstStart: new Date(day), now: () => now });
   const fakeRows = async () =>
-    (
-      await fake.query({
-        from: new Date(day),
-        to: new Date(day + 24 * hourMs),
-        bucket: 'hour',
-        groupBy: ['model', 'subject'],
-      })
-    ).data.map((r) => toUsageRow(fake.id, r));
+    (await fake.usage({ from: new Date(day), to: new Date(day + 24 * hourMs), bucket: 'hour' }))
+      .rows;
   return { fake, record, poll, fakeRows, setNow: (at: number) => (now = new Date(at)) };
 };
 

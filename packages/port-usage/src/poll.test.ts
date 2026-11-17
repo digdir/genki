@@ -1,20 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { memoryUsageSource } from './memory.js';
 import { InMemoryUsageBuckets, pollUsage } from './poll.js';
-import { toUsageRow, type UsageQuery, type UsageRow, type UsageSource } from './usage.js';
+import type { UsageQuery, UsageRow, UsageSource } from './usage.js';
 
 const tenant = '991825827';
 const stranger = '889640782';
 const hourMs = 3_600_000;
 const day = Date.parse('2026-10-12T00:00:00Z');
 
-const setup = (extra: { pageSize?: number } = {}) => {
+const callers: Record<string, { client: string; org?: string }> = {
+  'k-own': { client: 'portal', org: tenant },
+  'k-genki': { client: 'genki', org: tenant },
+  'k-stranger': { client: 'portal', org: stranger },
+  'k-none': { client: 'portal' },
+};
+
+const setup = () => {
   let now = new Date(day + 30 * 60_000);
-  const fake = memoryUsageSource({ now: () => now, ...extra });
-  fake.addKey({ id: 'k-own', subject: { kind: 'org', id: tenant } });
-  fake.addKey({ id: 'k-svc', subject: { kind: 'service', id: 'ka', org: tenant } });
-  fake.addKey({ id: 'k-stranger', subject: { kind: 'org', id: stranger } });
-  fake.addKey({ id: 'k-none' });
+  const fake = memoryUsageSource({ now: () => now, genkiClients: ['genki'] });
   const store = new InMemoryUsageBuckets(() => [tenant]);
   const clock = {
     set: (at: number) => (now = new Date(at)),
@@ -24,7 +27,7 @@ const setup = (extra: { pageSize?: number } = {}) => {
   const record = (key: string, hour: number, extraCall: { model?: string } = {}) => {
     clock.set(Math.max(now.getTime(), at(hour, 2).getTime()));
     fake.record({
-      key,
+      ...(callers[key] as { client: string; org?: string }),
       model: extraCall.model ?? 'gpt-test',
       at: at(hour),
       inputTokens: 100,
@@ -33,22 +36,9 @@ const setup = (extra: { pageSize?: number } = {}) => {
     });
   };
   const poll = () => pollUsage(fake, store, { firstStart: new Date(day), now: clock.now });
-  const fakeRows = async () => {
-    const rows: UsageRow[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await fake.query({
-        from: new Date(day),
-        to: new Date(day + 2 * 24 * hourMs),
-        bucket: 'hour',
-        groupBy: ['model', 'subject'],
-        ...(cursor ? { cursor } : {}),
-      });
-      rows.push(...page.data.map((r) => toUsageRow(fake.id, r)));
-      cursor = page.next ?? undefined;
-    } while (cursor);
-    return rows;
-  };
+  const fakeRows = async () =>
+    (await fake.usage({ from: new Date(day), to: new Date(day + 2 * 24 * hourMs), bucket: 'hour' }))
+      .rows;
   const sorted = (rows: UsageRow[]) =>
     rows
       .map((r) => {
@@ -64,7 +54,7 @@ describe('the usage poll', () => {
   it("leaves the stored rows equal to the fake's after a second poll, and after an open bucket closes", async () => {
     const { store, clock, record, poll, fakeRows, sorted } = setup();
     record('k-own', 0);
-    record('k-svc', 0);
+    record('k-genki', 0);
     record('k-own', 1);
     await poll();
     record('k-own', 1, { model: 'later' });
@@ -88,7 +78,9 @@ describe('the usage poll', () => {
 
     expect(first.closedThrough).toBe(new Date(day + 2 * hourMs).toISOString());
     expect(await store.closedThrough(fake.id)).toBe(first.closedThrough);
-    expect(fake.seen.map((q) => q.from.toISOString())).toEqual([first.closedThrough]);
+    expect(fake.seen.map((q) => new Date(q.timeRange.from).toISOString())).toEqual([
+      first.closedThrough,
+    ]);
   });
 
   it("replaces an open bucket's stored rows as a whole", async () => {
@@ -145,16 +137,17 @@ describe('the usage poll', () => {
     expect(store.all().map((r) => r.requests)).toEqual([1]);
   });
 
-  it('asks in pieces of at most 31 days and reads every page', async () => {
-    const { fake, store, clock, record } = setup({ pageSize: 1 });
+  it('asks in pieces of at most 31 days', async () => {
+    const { fake, store, clock, record } = setup();
     record('k-own', 0);
-    record('k-svc', 0);
+    record('k-genki', 0);
     clock.set(day + 40 * 24 * hourMs);
     await pollUsage(fake, store, { firstStart: new Date(day), now: clock.now });
 
-    const spans = fake.seen.map((q) => (q.to.getTime() - q.from.getTime()) / (24 * hourMs));
+    const spans = fake.seen.map(
+      (q) => (Date.parse(q.timeRange.to) - Date.parse(q.timeRange.from)) / (24 * hourMs),
+    );
     expect(Math.max(...spans)).toBeLessThanOrEqual(31);
-    expect(fake.seen.filter((q) => q.cursor !== undefined)).toHaveLength(1);
     expect(store.all()).toHaveLength(2);
   });
 
