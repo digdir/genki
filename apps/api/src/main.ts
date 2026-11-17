@@ -212,6 +212,8 @@ if (trustedEntra)
   log('lockdown: Entra logins in the configured groups are admitted', {
     groups: trustedEntra.groups.length,
     userGroups: trustedEntra.userGroups?.length ?? 0,
+    serviceGroups: trustedEntra.serviceGroups?.length ?? 0,
+    serviceClients: trustedEntra.serviceClientIds?.length ?? 0,
     clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });

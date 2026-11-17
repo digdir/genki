@@ -295,6 +295,11 @@ a.nav-link:hover {
   margin-top: var(--ds-size-1);
 }
 
+.source-page {
+  display: block;
+  margin-top: var(--ds-size-1);
+}
+
 .feedback {
   display: flex;
   flex-direction: column;

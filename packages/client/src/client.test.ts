@@ -321,6 +321,36 @@ describe('@genai/client requests', () => {
     expect(answer.sources[0]?.excerpts).toEqual(headedExcerpts);
   });
 
+  it("keeps each excerpt's page, the page it ends on and its link to that page", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const { fetchFn } = recording(() =>
+      Response.json({
+        id: 'c',
+        choices: [{ message: { content: 'Se [1].' } }],
+        sources: [
+          {
+            index: 1,
+            title: 'Sykepenger',
+            excerpts: [
+              { chunk_id: 'c1', text: 'Sammendrag.', page: 6, page_end: 7, url: `${pdf}#page=6` },
+              { chunk_id: 'c2', text: 'Risiko.', page: '9', url: 9 },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const answer = await createClient({ baseUrl: 'http://api', fetch: fetchFn }).ask({
+      service: 's',
+      question: 'q',
+    });
+
+    expect(answer.sources[0]?.excerpts).toEqual([
+      { chunkId: 'c1', text: 'Sammendrag.', page: 6, pageEnd: 7, url: `${pdf}#page=6` },
+      { chunkId: 'c2', text: 'Risiko.' },
+    ]);
+  });
+
   it('leaves the heading out when the excerpt has none', async () => {
     const { fetchFn } = recording(() =>
       Response.json({

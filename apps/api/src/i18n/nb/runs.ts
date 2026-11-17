@@ -2,8 +2,6 @@ import { defineNamespace } from '@genai/i18n';
 
 export const runs = defineNamespace({
   taskStatusOneOf: 'status er en av {values}',
-  quotaExhaustedTitle: 'Månedskvoten for tokens er brukt opp',
-  quotaExhaustedDetail: 'Kjøringen kan startes igjen neste måned, eller når kvoten økes.',
   failModel: 'Vi fikk ikke svar fra modellen.',
   failStrategy: 'Tjenesten feilet underveis.',
   originBuilder: 'Byggeren (utkast)',

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as builder from '@genai/ui-blocks/builder';
@@ -20,7 +20,12 @@ const reached = (start: string) => {
     }
   };
   visit(start);
-  return [...seen].map((file) => file.slice(join(here, '..').length + 1));
+  return [...seen].map((file) =>
+    file
+      .slice(join(here, '..').length + 1)
+      .split(sep)
+      .join('/'),
+  );
 };
 
 describe('the builder’s own entry, `@genai/ui-blocks/builder`', () => {

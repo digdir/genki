@@ -25,7 +25,7 @@ import {
   type IngestSource,
   type KudosProfile,
 } from './index.js';
-import { firstHeading, yamlName } from './folder.js';
+import { firstHeading, toPosix, yamlName } from './folder.js';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -371,11 +371,11 @@ describe('folder loader', () => {
       const files = await findFolderFiles(root);
 
       expect(files.map((f) => f.path)).toEqual([
-        join(root, 'a.html'),
-        join(root, 'b', 'vei_til-maal.md'),
+        toPosix(join(root, 'a.html')),
+        toPosix(join(root, 'b', 'vei_til-maal.md')),
       ]);
       expect(pathToDoc(files[1] as { path: string; lastmod: string })).toMatchObject({
-        id: documentId(join(root, 'b', 'vei_til-maal.md')),
+        id: documentId(toPosix(join(root, 'b', 'vei_til-maal.md'))),
         title: 'Vei til maal',
         type: 'folder',
       });

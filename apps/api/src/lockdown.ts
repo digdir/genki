@@ -2,7 +2,9 @@ import {
   configuredCredentialScope,
   employeeClientIds,
   isLockdown,
+  lockdownServiceScope,
   lockdownUserScope,
+  mayInvokeServices,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -24,7 +26,9 @@ export {
   configuredCredentialScope,
   employeeClientIds,
   isLockdown,
+  lockdownServiceScope,
   lockdownUserScope,
+  mayInvokeServices,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -74,6 +78,14 @@ export const modelRunRoutes = new Set([
   'POST /tenants/:tenant/skills/:id/fix',
 ]);
 
+export const serviceCallRoutes = new Set([
+  'POST /api/mcp',
+  'DELETE /api/mcp',
+  'POST /a2a/:agent',
+  'POST /v1/chat/completions',
+  'POST /api/tools/call/:tool',
+]);
+
 export const ingestionRoutes = new Set([
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/execute',
   'POST /operator/datasets/:dataset/pipelines/:id/execute',
@@ -116,7 +128,7 @@ const refusal = (title: string, detail: string) => ({
 
 const lockedProblem = (route: string, principal: Principal) => {
   if (modelRunRoutes.has(route))
-    return mayUseModels(principal)
+    return (serviceCallRoutes.has(route) ? mayInvokeServices : mayUseModels)(principal)
       ? undefined
       : refusal(t('problems.modelsLocked'), t('problems.modelsLockedDetail'));
   if (ingestionRoutes.has(route))

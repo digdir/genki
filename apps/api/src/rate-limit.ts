@@ -1,3 +1,4 @@
+import { quotaExhaustedProblem } from '@genai/kernel';
 import type { Context } from 'hono';
 
 export type RateDecision = { ok: true } | { ok: false; retryAfterSeconds: number };
@@ -59,23 +60,15 @@ export const tooManyRequests = (
     'retry-after': String(retryAfterSeconds),
   });
 
-export const quotaExhaustedType = 'urn:genai:problem:quota-exhausted';
-export const quotaExhaustedTitle = 'The monthly token quota is used up';
+export type QuotaProblem = NonNullable<ReturnType<typeof quotaExhaustedProblem>>;
 
-export const quotaExhaustedDetail = (monthlyTokens: number) =>
-  `The organisation has used its ${monthlyTokens} tokens for this month.`;
+export const quotaExhausted = (c: Context, spent: QuotaProblem) =>
+  tooManyRequests(c, spent.retryAfterSeconds, spent.type, spent.title, spent.detail);
 
-export const secondsToNextMonth = (now = new Date()) =>
-  Math.ceil((Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) - now.getTime()) / 1000);
-
-export const quotaExhausted = (c: Context, monthlyTokens: number) =>
-  tooManyRequests(
-    c,
-    secondsToNextMonth(),
-    quotaExhaustedType,
-    quotaExhaustedTitle,
-    quotaExhaustedDetail(monthlyTokens),
-  );
+export const quotaRefused = (c: Context, error: unknown) => {
+  const spent = quotaExhaustedProblem(error);
+  return spent ? quotaExhausted(c, spent) : undefined;
+};
 
 export const rateLimitedBody = (limit: number) => ({
   error: { code: 'rate_limited', message: 'Too many requests', limit, window_ms: windowMs },

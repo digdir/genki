@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(`${import.meta.dirname}/${path}`, 'utf8');
@@ -8,6 +9,7 @@ const flatten = (css: string) =>
 
 // Every block's own stylesheet, branded the Designsystemet way.
 const sheets = readdirSync(import.meta.dirname, { recursive: true, encoding: 'utf8' })
+  .map((path) => path.split(sep).join('/'))
   .filter((path) => path.endsWith('.css') && path.includes('/'))
   .sort()
   .map((path) => {

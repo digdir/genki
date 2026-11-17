@@ -93,7 +93,11 @@
               <li>
                 <strong>The whole document, beta</strong>: a PDF the host fetches, in the browser's
                 own viewer in place of the excerpts, as tall as the view has room for, under the
-                same head, «Les dokumentet på Kudos» and «Spør om dette dokumentet». No excerpt is
+                same head, «Les dokumentet på Kudos» and «Spør om dette dokumentet». It opens at the
+                shown excerpt's page, <code>#page=N</code>, when the host says the file is that
+                excerpt's own (<code>source</code> is the excerpt's <code>url</code> before
+                <code>#page=N</code>); another file, or one the host does not name, opens at its
+                start. A footnote to another page loads the file anew at that page. No excerpt is
                 marked in it, so there is no «Utdrag i svaret» row and no quote note. It is beta
                 because the file comes from the host until genki offers a route for a document's
                 file, and the excerpts cannot be marked in it before genki gives their place. Where
@@ -147,10 +151,12 @@
               <li>
                 <code>file</code>, beta: the targeted document's whole file as the host finds it,
                 <code>{ status: 'loading' }</code>, <code>'ready'</code> with
-                <code>{ url, mediaType }</code>, <code>'none'</code> or <code>'failed'</code>. Only
-                an <code>application/pdf</code> at an http or https address, or a path on the host's
-                site, is shown. Without it the view is the excerpts as before, with no line about a
-                file. In an assistant, <code>@genai/ui-assembly</code> fills it from the host's
+                <code>{ url, mediaType, source? }</code>, <code>'none'</code> or
+                <code>'failed'</code>; <code>source</code> is the address of the file it stands for,
+                as the excerpts' <code>url</code> names it. Only an <code>application/pdf</code> at
+                an http or https address, or a path on the host's site, is shown. Without it the
+                view is the excerpts as before, with no line about a file. In an assistant,
+                <code>@genai/ui-assembly</code> fills it from the host's
                 <code>documentFile</code> while the block's option «Vis hele dokumentet (beta)»
                 (<code>file</code>, on by default) is on.
               </li>

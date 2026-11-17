@@ -376,6 +376,13 @@ export const sourceUrl = (source: PlaygroundSource) => {
   return undefined;
 };
 
+/** The source's PDF at its page, from an http(s) file address only. */
+export const sourcePageLink = (source: PlaygroundSource) => {
+  const file = source.fileUrl?.trim();
+  if (source.page === undefined || !file || !/^https?:\/\//i.test(file)) return undefined;
+  return `${file.split('#', 1)[0]}#page=${source.page}`;
+};
+
 export const sourceExcerpt = (source: PlaygroundSource) =>
   (source.excerpt ?? source.text ?? '').trim() || undefined;
 

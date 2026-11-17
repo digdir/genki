@@ -9,6 +9,7 @@ export const steps = defineNamespace({
   toolRerank: 'Rangerte treffene',
   toolGenerate: 'Skrev svaret',
   toolInspect: 'Så på filtrene',
+  toolSourceFacts: 'Så på hva kilden inneholder',
   toolSkill: 'Brukte en ferdighet',
   toolOther: 'Verktøy «{name}»',
   remoteAgent: 'Egen motor «{host}»',

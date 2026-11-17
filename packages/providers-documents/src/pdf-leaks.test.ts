@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,8 +15,8 @@ const run = (body: string) => {
   const script = join(dir, 'probe.mts');
   writeFileSync(
     script,
-    `import { createLocalConverter, guardPdfParseLeaks } from ${JSON.stringify(join(here, 'index.ts'))};
-import { pdfWithBrokenPages } from ${JSON.stringify(join(here, 'testing', 'index.ts'))};
+    `import { createLocalConverter, guardPdfParseLeaks } from ${JSON.stringify(pathToFileURL(join(here, 'index.ts')).href)};
+import { pdfWithBrokenPages } from ${JSON.stringify(pathToFileURL(join(here, 'testing', 'index.ts')).href)};
 ${body}
 await new Promise((resolve) => setTimeout(resolve, 500));
 console.log('still running');

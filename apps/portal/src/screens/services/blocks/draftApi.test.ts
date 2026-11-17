@@ -145,6 +145,38 @@ describe('the draft API for the try view', () => {
     ]);
   });
 
+  it("passes on an excerpt's heading, page and link to its page to the preview's Sources block", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const paged = result('Ja');
+    if (paged.event !== 'result') throw new Error('expected a result');
+    paged.result.sources = [
+      {
+        chunkId: 'c1',
+        title: 'Evaluering',
+        document: 'd1',
+        text: 'Funn.',
+        headers: ['3 Funn', '3.1 Kommunene'],
+        page: 12,
+        pageEnd: 13,
+        fileUrl: pdf,
+      },
+      { chunkId: 'c2', title: 'Evaluering', document: 'd1', text: 'Råd.', page: 14 },
+    ];
+    const { draftApi } = draft({ definition }, () => [paged]);
+    const done = (await ask(draftApi, 'Virker ordningen?')).at(-1);
+    expect(done?.type === 'done' && done.answer.sources[0]?.excerpts).toEqual([
+      {
+        chunkId: 'c1',
+        text: 'Funn.',
+        heading: '3 Funn › 3.1 Kommunene',
+        page: 12,
+        pageEnd: 13,
+        url: `${pdf}#page=12`,
+      },
+      { chunkId: 'c2', text: 'Råd.', page: 14 },
+    ]);
+  });
+
   it('answers with the clarifying question when the run asks one, and says when it found no answer', async () => {
     const asking = result('');
     if (asking.event === 'result')

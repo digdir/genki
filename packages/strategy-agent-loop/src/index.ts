@@ -68,6 +68,7 @@ import {
   type ClarificationRequest,
   type SufficiencyDecision,
 } from './sufficiency.js';
+import { isSourceFactsRef, runSourceFacts, sourceFactsTool } from './source-facts.js';
 import {
   defaultSearchSettings,
   insufficientContextResponse,
@@ -98,6 +99,7 @@ export * from './intent.js';
 export * from './prompts.js';
 export * from './read-signals.js';
 export * from './skills.js';
+export * from './source-facts.js';
 export * from './sources.js';
 export * from './structured.js';
 export * from './sufficiency.js';
@@ -359,6 +361,9 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
   ...(c.url === undefined ? {} : { url: c.url }),
   text: stripPageMarkers(c.content).trim(),
   ...(c.headers?.length ? { headers: c.headers } : {}),
+  ...(c.page === undefined ? {} : { page: c.page }),
+  ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
+  ...(c.fileUrl === undefined ? {} : { fileUrl: c.fileUrl }),
   ...(c.document === undefined ? {} : { document: c.document }),
   ...(c.position === undefined ? {} : { position: c.position }),
   ...(c.version === undefined ? {} : { version: c.version }),
@@ -384,7 +389,7 @@ const openExtraTools = async (
   ctx: InvocationContext,
   config: AgentLoopRuntimeConfig,
 ): Promise<ExtraTool[]> => {
-  const refs = (config.tools ?? []).filter((r) => !r.startsWith('rag@'));
+  const refs = (config.tools ?? []).filter((r) => !r.startsWith('rag@') && !isSourceFactsRef(r));
   const tools: ExtraTool[] = [];
   for (const ref of refs) {
     const at = ref.lastIndexOf('@');
@@ -393,7 +398,11 @@ const openExtraTools = async (
       toolRef(ref.slice(0, at), ref.slice(at + 1), config.model.tenant ?? ctx.tenant),
     );
     const definition = port.definition();
-    if (isBuiltinTool(definition.name) || definition.name === useSkillTool.name)
+    if (
+      isBuiltinTool(definition.name) ||
+      definition.name === useSkillTool.name ||
+      definition.name === sourceFactsTool.name
+    )
       throw new Error(`tool ${ref} collides with the built-in tool ${definition.name}`);
     tools.push({
       port,
@@ -452,8 +461,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const maxIterations = settings.maxIterations ?? 10;
     const temperature = settings.temperature ?? 0.1;
     const skills = config.skills ?? [];
+    const sourceFactsOn = Boolean(
+      searchable?.sourceFacts && (config.tools ?? []).some(isSourceFactsRef),
+    );
     const toolSpecs = [
       ...(searchable ? agentTools : []),
+      ...(sourceFactsOn ? [sourceFactsTool] : []),
       ...(skills.length ? [useSkillTool] : []),
       ...extra.map((t) => t.spec),
     ];
@@ -579,6 +592,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           Boolean(settings.noToolCallRetry) &&
           Boolean(searchable) &&
           workspace.searches.length === 0 &&
+          !workspace.sourceFactsRead &&
           (cutOff || !(await isSmallTalk(query)));
         if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
@@ -646,6 +660,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           if (outcome.read)
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
           if (call.name === 'generate_response') generated = true;
+        } else if (sourceFactsOn && call.name === sourceFactsTool.name) {
+          const facts = await runSourceFacts(retrieval, args.value, ctx.signal);
+          content = facts.content;
+          if (facts.ok) workspace.sourceFactsRead = true;
         } else if (skills.length && call.name === useSkillTool.name) {
           content = useSkill(skills, args.value, workspace.loadedSkills);
         } else {

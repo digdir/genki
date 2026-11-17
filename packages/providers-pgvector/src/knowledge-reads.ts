@@ -24,6 +24,12 @@ interface HitRow {
   title: string | null;
   url: string | null;
   fields: Record<string, unknown>;
+  // Undefined from read functions created before these columns, until the worker migrates.
+  page_from?: number | null;
+  page_to?: number | null;
+  file?: string | null;
+  file_sha256?: string | null;
+  heading_path?: string[] | null;
   score: number | null;
   total: number | null;
 }
@@ -80,6 +86,50 @@ const failIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw signal.reason ?? new Error('aborted');
 };
 
+const isPdf = (file: Record<string, unknown>, url: URL) =>
+  typeof file.mimetype === 'string'
+    ? /^application\/pdf\s*(?:;|$)/i.test(file.mimetype)
+    : url.pathname.toLowerCase().endsWith('.pdf');
+
+/**
+ * The address the document's own record gives the chunk's file, matched by its sha256, without a
+ * fragment so `#page=N` can follow. Only an http(s) PDF: a page anchor opens nothing in other files.
+ */
+const fileUrlOf = (fields: Record<string, unknown>, sha256: string | null) => {
+  if (!sha256 || !Array.isArray(fields.files)) return undefined;
+  const file = (fields.files as unknown[]).find(
+    (f): f is Record<string, unknown> =>
+      typeof f === 'object' && f !== null && (f as { sha256?: unknown }).sha256 === sha256,
+  );
+  if (typeof file?.url !== 'string') return undefined;
+  let url: URL;
+  try {
+    url = new URL(file.url);
+  } catch {
+    return undefined;
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || !isPdf(file, url))
+    return undefined;
+  url.hash = '';
+  return url.href;
+};
+
+/** The chunk's page, file and heading path from its columns, over what its metadata says (ADR 0042). */
+const placeOf = (row: HitRow) => {
+  const fileUrl = fileUrlOf(row.fields, row.file_sha256 ?? null);
+  return {
+    ...(row.page_from == null
+      ? {}
+      : {
+          page: row.page_from,
+          ...(row.page_to != null && row.page_to !== row.page_from ? { pageEnd: row.page_to } : {}),
+        }),
+    ...(row.file == null ? {} : { file: row.file }),
+    ...(row.heading_path?.length ? { headingPath: row.heading_path } : {}),
+    ...(fileUrl ? { fileUrl } : {}),
+  };
+};
+
 const hitOf = (row: HitRow): Hit => ({
   id: row.id,
   score: row.score ?? 0,
@@ -88,7 +138,7 @@ const hitOf = (row: HitRow): Hit => ({
   ...(row.url === null ? {} : { url: row.url }),
   document: row.doc_id,
   position: row.position,
-  fields: { ...row.fields, ...row.metadata },
+  fields: { ...row.fields, ...row.metadata, ...placeOf(row) },
 });
 
 /** Reads a dataset on the knowledge server only through its read functions, as the reader. */

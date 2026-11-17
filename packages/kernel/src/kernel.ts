@@ -27,7 +27,7 @@ import {
   type TaskStore,
 } from './memory.js';
 import { DeltaCoalescer } from './deltas.js';
-import type { UseOptions } from './gate.js';
+import type { QuotaCheck, UseOptions } from './gate.js';
 import {
   KERNEL_MAJOR,
   KernelError,
@@ -66,6 +66,7 @@ export interface KernelOptions {
   capabilities: Capability[] | CapabilitySource;
   ports: Record<string, PortProvider>;
   policy: PolicyDecisionPoint;
+  quota?: QuotaCheck;
   log?: EventLog;
   tasks?: TaskStore;
   state?: StateStore;
@@ -734,6 +735,10 @@ export const createKernel = (options: KernelOptions): Kernel => {
       capabilityRef(capability.descriptor),
     );
     if (!decision.allow) throw new KernelError('forbidden', decision.reason);
+    if (!parent) {
+      const spent = await options.quota?.({ tenant, capability: capability.descriptor.id });
+      if (spent) throw new KernelError('quota_exhausted', spent);
+    }
     const depth = parent ? parent.depth + 1 : 0;
     if (depth > limits.maxDepth)
       throw new KernelError('limit_exceeded', `invocation depth over ${limits.maxDepth}`);

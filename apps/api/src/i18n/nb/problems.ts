@@ -116,6 +116,7 @@ export const problems = defineNamespace({
   keyPolicyNoKey: 'Fant ikke nøkkelen',
   keyPolicyBoundKey: 'En nøkkel som er bundet til én tjeneste, kan ikke ha en tilgangspolicy',
   keyPolicyBeyondRights: 'Policyen gir mer enn du kan gi. Du mangler rettigheten {right}',
+  keyBeyondRights: 'Nøkkelen gir mer enn du kan gi. Du mangler rettigheten {right}',
   taskExportNotFound: 'Fant ikke kjøringen',
   taskExportNotRecorded: 'Eksporten ble ikke registrert i revisjonssporet, så den ble stoppet',
   uploadTooManyFiles: 'Send med høyst {count} filer i hver forespørsel.',

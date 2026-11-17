@@ -28,6 +28,7 @@ import type { Format, PlainKey, T } from '../../i18n';
 import { modelLabel } from '../../models';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
+import { durationBetween, formatDuration } from '../log/format';
 import { problemTitle, type SetFlash } from './shared';
 
 const pollMs = 2000;
@@ -748,6 +749,7 @@ export const RunHistory = ({
             <Table.Head>
               <Table.Row>
                 <Table.HeaderCell scope="col">{t('quality.started')}</Table.HeaderCell>
+                <Table.HeaderCell scope="col">{t('quality.duration')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('quality.version')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('quality.model')}</Table.HeaderCell>
                 <Table.HeaderCell scope="col">{t('quality.status')}</Table.HeaderCell>
@@ -766,9 +768,11 @@ export const RunHistory = ({
             <Table.Body>
               {runs.map((r) => {
                 const [text, color] = statusTag(t, r);
+                const took = durationBetween(r.startedAt, r.endedAt);
                 return (
                   <Table.Row key={r.id}>
                     <Table.Cell>{dateTime(r.startedAt)}</Table.Cell>
+                    <Table.Cell>{took === undefined ? '–' : formatDuration(took, f, t)}</Table.Cell>
                     <Table.Cell>{versionText(t, r.version)}</Table.Cell>
                     <Table.Cell>{r.model ? modelLabel(r.model, modelList) : '–'}</Table.Cell>
                     <Table.Cell>

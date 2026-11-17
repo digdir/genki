@@ -289,6 +289,42 @@ describe('source excerpts in Prøveområde', () => {
     expect(screen.getByRole('region', { name: 'Tekst fra Veileder' })).toBeTruthy();
   });
 
+  it("the playground's source detail shows its page and a link to it", () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    card(
+      result({
+        sources: [
+          {
+            chunkId: 'c1',
+            title: 'Evaluering',
+            text: 'Funn.',
+            page: 12,
+            pageEnd: 13,
+            fileUrl: pdf,
+          },
+          { chunkId: 'c2', title: 'Notat', text: 'Råd.', page: 4, fileUrl: 'javascript:alert(1)' },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Detaljer om Evaluering' }));
+    const detail = screen
+      .getByRole('region', { name: 'Tekst fra Evaluering' })
+      .closest('section') as HTMLElement;
+    expect(within(detail).getByText('Side')).toBeTruthy();
+    expect(within(detail).getByText('12–13')).toBeTruthy();
+    const link = within(detail).getByRole('link', { name: /^Les side 12/ });
+    expect(link.getAttribute('href')).toBe(`${pdf}#page=12`);
+    expect(link.getAttribute('target')).toBe('_blank');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detaljer om Notat' }));
+    const other = screen
+      .getByRole('region', { name: 'Tekst fra Notat' })
+      .closest('section') as HTMLElement;
+    expect(within(other).getByText('4')).toBeTruthy();
+    // Only an http or https PDF address is a link.
+    expect(within(other).queryByRole('link', { name: /Les side/ })).toBeNull();
+  });
+
   it('keeps the dataset and a single ordinal in the list, with technical identifiers behind info', () => {
     card(
       result({

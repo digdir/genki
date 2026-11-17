@@ -171,6 +171,24 @@ const Source = z
           .describe(
             'The section the excerpt is from: its heading path as plain text, levels joined by ` › `. Present only when the index gives the excerpt a heading.',
           ),
+        page: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'The page of its file the excerpt starts on. Present only when the index gives the excerpt a page; answers stored before pages were kept have none.',
+          ),
+        page_end: z
+          .number()
+          .int()
+          .optional()
+          .describe('The page the excerpt ends on, present only when it is after `page`.'),
+        url: z
+          .string()
+          .optional()
+          .describe(
+            "The excerpt's PDF opened at its page, `…#page=N`: the address the document's own record gives the excerpt's file. Present only for an http or https PDF; the source's `url` stays the document's page.",
+          ),
         markers: z
           .array(z.string())
           .optional()

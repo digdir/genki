@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -245,23 +245,44 @@ describe('the read-only tools the model gets', () => {
     expect(searchTool(ws, { text: 't.o' })).toBe('No matches.');
   });
 
-  it('refuses a tracked symlink that points outside the checkout', () => {
-    const root = mkdtempSync(join(tmpdir(), 'cross-'));
-    const outside = mkdtempSync(join(tmpdir(), 'cross-out-'));
-    writeFileSync(join(outside, 'secret'), 'token');
-    mkdirSync(join(root, 'src'));
-    writeFileSync(join(root, 'src/a.ts'), 'ok');
-    symlinkSync(join(outside, 'secret'), join(root, 'src/link.ts'));
-    const disk = diskWorkspace(root, ['src/a.ts', 'src/link.ts']);
-    expect(disk.read('src/a.ts')).toBe('ok');
-    expect(disk.read('src/link.ts')).toBeNull();
-  });
+  // Windows lets only developer mode or an administrator make symlinks; the rule cannot be tried without one.
+  const symlinksAllowed = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'symlink-probe-'));
+    try {
+      symlinkSync(join(dir, 'target'), join(dir, 'link'));
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'EPERM') return false;
+      throw error;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
 
-  it('refuses a tracked file that is not a regular file without blocking on it', () => {
-    const root = mkdtempSync(join(tmpdir(), 'cross-'));
-    execFileSync('mkfifo', [join(root, 'pipe')]);
-    expect(diskWorkspace(root, ['pipe']).read('pipe')).toBeNull();
-  });
+  it.skipIf(!symlinksAllowed())(
+    'refuses a tracked symlink that points outside the checkout',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'cross-'));
+      const outside = mkdtempSync(join(tmpdir(), 'cross-out-'));
+      writeFileSync(join(outside, 'secret'), 'token');
+      mkdirSync(join(root, 'src'));
+      writeFileSync(join(root, 'src/a.ts'), 'ok');
+      symlinkSync(join(outside, 'secret'), join(root, 'src/link.ts'));
+      const disk = diskWorkspace(root, ['src/a.ts', 'src/link.ts']);
+      expect(disk.read('src/a.ts')).toBe('ok');
+      expect(disk.read('src/link.ts')).toBeNull();
+    },
+  );
+
+  // Windows has no named pipes on the file system, so there is no file that is not a regular file to try.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a tracked file that is not a regular file without blocking on it',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'cross-'));
+      execFileSync('mkfifo', [join(root, 'pipe')]);
+      expect(diskWorkspace(root, ['pipe']).read('pipe')).toBeNull();
+    },
+  );
 
   it('refuses a tracked file over one megabyte', () => {
     const root = mkdtempSync(join(tmpdir(), 'cross-'));

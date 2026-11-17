@@ -480,11 +480,13 @@ describe.skipIf(!live)('live anthropic-messages on Azure AI Foundry', () => {
             families: { anthropic: '' },
             baseURL: process.env.FOUNDRY_CLAUDE_BASE_URL,
             auth: { kind: 'api-key', secret: 'secret://env/foundry-claude-key' },
-            discovery: {
-              source: 'azure-deployments',
-              from: 'listing',
-              include: ['claude-sonnet-*'],
-            },
+            discovery: [
+              {
+                source: 'azure-deployments',
+                from: 'listing',
+                include: ['claude-sonnet-*'],
+              },
+            ],
           },
         },
       },

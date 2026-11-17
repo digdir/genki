@@ -14,7 +14,8 @@ Status: accepted, 2026-10-12 (built; secrets bound to hosts, 2026-10-16). Propos
 - The check sits where a connection resolves its secret for an outbound request (`TenantSecrets.resolveFor` in `providers-mcp-client`). It covers MCP, A2A, OpenAPI and remote agents, and for OAuth client credentials both the token address and the call address. A secret without hosts is sent nowhere. Redirects to another origin are never followed, so the secret does not travel with one.
 - Registration refuses a connection whose endpoint, document address or token address is outside the secret's hosts, before any contract test sends a request.
 - Tenant catalog endpoints (model, embedding, rerank and knowledge) check the same hosts against their `baseURL` when they resolve a tenant secret (`credentialFor` in the kernel). Cached OAuth access tokens are keyed by connection, endpoint, token address and secret, so a token is only reused for the connection it was issued to.
-- A database pipeline may name the secret its connector created. Naming any other tenant secret as the database password needs `manage-services` as well as `manage-datasets`.
+- A database pipeline may name the secret its connector created, with the connector's host, port, database, user and TLS setting. Naming any other tenant secret as the database password, or changing any of those settings while keeping the connector's secret, needs `manage-services` as well as `manage-datasets`.
+- A connector's secret is bound to the connector's database host when the connector is approved and when its password is set again. A database pipeline refuses to send a password to a host outside the secret's hosts; an origin set through the hosts route counts by its host name.
 
 ## Why
 
@@ -25,4 +26,4 @@ Status: accepted, 2026-10-12 (built; secrets bound to hosts, 2026-10-16). Propos
 - Adding a tool is a registration with review, not a free-form URL in a definition.
 - The builder assistant can only suggest tools that are already registered.
 - Secrets that existed before 2026-10-16 were bound once, by migration, to the origins of the tool connections, service definitions and tenant catalog endpoints that already used them, so those keep working. Review the bound hosts after the migration, since an origin already in use was kept as it was. Secrets no one used get no hosts until someone with `manage-services` sets them.
-- Not covered by the host binding: database passwords (sent to a database, not over HTTP; guarded by the right rule above) and operator plug-in endpoints, which use platform secrets.
+- Not covered by the host binding: a database password in a secret that has no hosts (a connector approved before 2026-11-16 until its password is set again, or a secret named by someone with `manage-services`; guarded by the right rule above) and operator plug-in endpoints, which use platform secrets.

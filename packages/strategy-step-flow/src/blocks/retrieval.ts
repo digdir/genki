@@ -439,6 +439,9 @@ export const sourceRecord = (c: FlowChunk) => ({
   ...(c.url === undefined ? {} : { url: c.url }),
   ...(c.content === undefined ? {} : { text: c.content }),
   ...(c.headers === undefined ? {} : { headers: c.headers }),
+  ...(c.page === undefined ? {} : { page: c.page }),
+  ...(c.pageEnd === undefined ? {} : { pageEnd: c.pageEnd }),
+  ...(c.fileUrl === undefined ? {} : { fileUrl: c.fileUrl }),
   ...(c.document === undefined ? {} : { document: c.document }),
   ...(c.position === undefined ? {} : { position: c.position }),
 });

@@ -1123,6 +1123,12 @@ const PlaygroundResult = z
         url: z.string().optional(),
         text: z.string().optional(),
         headers: z.array(z.string()).optional(),
+        page: z.number().int().optional(),
+        pageEnd: z.number().int().optional(),
+        fileUrl: z
+          .string()
+          .optional()
+          .describe("The chunk's PDF as its document's record names it, for a link to `#page=N`."),
         document: z.string().optional(),
         position: z.number().optional(),
         version: z.union([z.string(), z.number()]).optional(),
@@ -1882,6 +1888,7 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing definition or query, or input that does not fit (code invalid_input)'),
       ...tenantErrors,
       422: problem('Invalid definition'),
+      429: problem('The monthly token quota is used up'),
       502: problem('The run failed; `code`, `step` and `runId` say where'),
     },
   }),

@@ -29,7 +29,16 @@ export interface MessageSource {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string; position?: number; markers?: string[] }[];
+  excerpts: {
+    chunk_id: string;
+    text: string;
+    position?: number;
+    heading?: string;
+    page?: number;
+    page_end?: number;
+    url?: string;
+    markers?: string[];
+  }[];
   markers?: string[];
 }
 
