@@ -719,6 +719,54 @@ describe('read functions on the knowledge server', () => {
       const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
       expect(hit?.fields).toMatchObject({ page: 12, pageEnd: 13, fileUrl: pdf });
     });
+
+    it("a server whose read functions return another hit shape gets this release's when it migrates", async () => {
+      // As a later release would leave them, which a rollback to this one must replace.
+      await owner.query(`drop function kn_fetch(text, text, text[])`);
+      await owner.query(
+        `create function kn_fetch(p_dataset text, p_generation text, p_ids text[])
+           returns table (id text, text text, doc_id text, "position" integer, metadata jsonb, title text,
+             url text, fields jsonb, page_from integer, page_to integer, file text, file_sha256 text,
+             heading_path text[], page_label text, score double precision, total integer, data_version bigint)
+           language plpgsql as $$ begin end $$`,
+      );
+      await migrateKnowledgeServer(owner);
+      const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
+      expect(hit?.fields).toMatchObject({ page: 12, pageEnd: 13, fileUrl: pdf });
+      // This release's own functions are kept as they are, not dropped on every start.
+      const oids = async () =>
+        (
+          await owner.query<{ oid: string }>(
+            `select p.oid::text from pg_proc p where p.proname in ('kn_search', 'kn_fetch', 'kn_range') order by 1`,
+          )
+        ).rows.map((r) => r.oid);
+      const before = await oids();
+      await migrateKnowledgeServer(owner);
+      expect(await oids()).toEqual(before);
+    });
+
+    it('an API replica reading functions from before this change keeps the page metadata gives', async () => {
+      // A deploy starts new API replicas before the worker migrates the knowledge server.
+      try {
+        await owner.query(`drop function if exists kn_fetch(text, text, text[])`);
+        await owner.query(
+          `create function kn_fetch(p_dataset text, p_generation text, p_ids text[])
+             returns table (id text, text text, doc_id text, "position" integer, metadata jsonb, title text,
+               url text, fields jsonb, score double precision, total integer, data_version bigint)
+             language sql security definer set search_path = pg_catalog, public as $$
+               select 'kopi#0', 'Tekst', 'kopi', 0, '{"page": 30, "pageEnd": 31}'::jsonb, 'Kopi',
+                 null::text, '{}'::jsonb, null::float8, null::int, 1::bigint $$`,
+        );
+        await owner.query(
+          `grant execute on function kn_fetch(text, text, text[]) to ${knowledgeRoles.reader}`,
+        );
+        const [hit] = await connectionOf().fetch(config, ['kopi#0'], signal);
+        expect(hit?.fields).toMatchObject({ page: 30, pageEnd: 31 });
+        expect(Object.keys(hit?.fields ?? {})).not.toContain('file');
+      } finally {
+        await migrateKnowledgeServer(owner);
+      }
+    });
   });
 
   it('a document listing past its last page still counts every document', async () => {

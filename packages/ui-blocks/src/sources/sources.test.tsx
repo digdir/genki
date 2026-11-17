@@ -120,9 +120,9 @@ describe('the sources block', () => {
     expect(quote().classList.contains('uib-sources-preview')).toBe(false);
   });
 
-  it('the sources block shows «side N» and «Les side N» for an excerpt from the knowledge database', () => {
+  it('shows «side 12–13» for an excerpt that runs on to the next page, and «Les side 12» only with a link', () => {
     const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
-    // As genki's /v1 sends it for a chunk on pages 12 and 13 of a PDF, through sourceFromWire.
+    // An excerpt on pages 12 and 13 of a PDF with a link to its page, and one on page 14 without.
     const evaluering: SourceDocument = {
       index: 1,
       title: 'Evaluering av tilskudd',

@@ -282,7 +282,8 @@ const createFunctions = [
          p_ids, p_id_hashes, ds, g, ds, g, ds, ds);
      end $$`,
   // Return types gained data_version, and the hits their chunk's page, file and heading path,
-  // which create or replace cannot change; dropped and created again in the migration's transaction.
+  // which create or replace cannot change: a hit function whose columns are not this release's,
+  // older or newer (after a rollback), is dropped and created again in the migration's transaction.
   `do $$ declare f regprocedure;
    begin
      for f in select p.oid::regprocedure from pg_proc p
@@ -290,7 +291,8 @@ const createFunctions = [
                   and p.proname in ('kn_search', 'kn_fetch', 'kn_range', 'kn_facets', 'kn_documents', 'kn_resolve_citation')
                   and (not ('data_version' = any(coalesce(p.proargnames, '{}')))
                        or (p.proname in ('kn_search', 'kn_fetch', 'kn_range')
-                           and not ('page_from' = any(coalesce(p.proargnames, '{}'))))) loop
+                           and replace(pg_get_function_result(p.oid), '"', '')
+                               <> 'TABLE(${hitColumns.replaceAll('"', '')})')) loop
        execute format('drop function %s', f);
      end loop;
    end $$`,

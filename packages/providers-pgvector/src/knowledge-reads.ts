@@ -24,11 +24,12 @@ interface HitRow {
   title: string | null;
   url: string | null;
   fields: Record<string, unknown>;
-  page_from: number | null;
-  page_to: number | null;
-  file: string | null;
-  file_sha256: string | null;
-  heading_path: string[] | null;
+  // Undefined from read functions created before these columns, until the worker migrates.
+  page_from?: number | null;
+  page_to?: number | null;
+  file?: string | null;
+  file_sha256?: string | null;
+  heading_path?: string[] | null;
   score: number | null;
   total: number | null;
 }
@@ -115,17 +116,15 @@ const fileUrlOf = (fields: Record<string, unknown>, sha256: string | null) => {
 
 /** The chunk's page, file and heading path from its columns, over what its metadata says (ADR 0042). */
 const placeOf = (row: HitRow) => {
-  const fileUrl = fileUrlOf(row.fields, row.file_sha256);
+  const fileUrl = fileUrlOf(row.fields, row.file_sha256 ?? null);
   return {
-    ...(row.page_from === null
+    ...(row.page_from == null
       ? {}
       : {
           page: row.page_from,
-          ...(row.page_to !== null && row.page_to !== row.page_from
-            ? { pageEnd: row.page_to }
-            : {}),
+          ...(row.page_to != null && row.page_to !== row.page_from ? { pageEnd: row.page_to } : {}),
         }),
-    ...(row.file === null ? {} : { file: row.file }),
+    ...(row.file == null ? {} : { file: row.file }),
     ...(row.heading_path?.length ? { headingPath: row.heading_path } : {}),
     ...(fileUrl ? { fileUrl } : {}),
   };
