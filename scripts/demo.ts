@@ -333,11 +333,6 @@ export const readyFailure = (demo: Demo, error: unknown) =>
 export interface DemoResult {
   name: string;
   outcome: 'recorded' | 'skipped' | 'failed';
-  steps: number;
-  seconds?: number;
-  voice?: boolean;
-  file?: string;
-  failedStep?: number;
   reason?: string;
 }
 
@@ -462,7 +457,7 @@ async function speak(
       },
       body: ssml(text, demo.voice, demo.language),
     });
-    if (!res.ok) throw new Error(`Speech answered ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Speech answered ${res.status}`);
     keep(file, Buffer.from(await res.arrayBuffer()));
   }
   return file;
@@ -503,12 +498,7 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
   const key = env.DEMO_API_KEY || undefined;
   if (demo.signedIn && !key) {
     console.log(`${name}: skipped, it needs DEMO_API_KEY to sign in`);
-    return {
-      name,
-      outcome: 'skipped',
-      steps: demo.steps.length,
-      reason: 'needs DEMO_API_KEY to sign in',
-    };
+    return { name, outcome: 'skipped', reason: 'needs DEMO_API_KEY to sign in' };
   }
   const out = resolve('demos/out', name);
   const cache = cacheDir();
@@ -541,7 +531,6 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
   };
   const lines: TimedLine[] = [];
   const raw = join(out, 'raw.webm');
-  let seconds: number | undefined;
   try {
     const init = [join(scripts, 'language.js')];
     writeFileSync(init[0], languageScript(demo.language), { mode: 0o600 });
@@ -612,7 +601,6 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
         const elapsed = (Date.now() - t0) / 1000 - at;
         sleep((clip.seconds + (step.hold ?? 0.6) - elapsed) * 1000);
       });
-      seconds = (Date.now() - t0) / 1000;
     } finally {
       quietly('record', 'stop');
     }
@@ -630,14 +618,7 @@ async function record(path: string, silent: boolean): Promise<DemoResult> {
   run('ffmpeg', mixArgs(raw, voiced, srt, mp4, demo.language), 600_000);
   rmSync(raw, { force: true });
   console.log(`${name}: ${mp4}`);
-  return {
-    name,
-    outcome: 'recorded',
-    steps: demo.steps.length,
-    seconds,
-    voice: narrate,
-    file: `${name}/${name}.mp4`,
-  };
+  return { name, outcome: 'recorded' };
 }
 
 export const parseArgs = (argv: string[]) => {
@@ -647,14 +628,6 @@ export const parseArgs = (argv: string[]) => {
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : undefined;
   const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--only');
   return { mode, silent: args.includes('--silent'), only: only || undefined, files };
-};
-
-const stepsIn = (path: string) => {
-  try {
-    return parseDemo(readFileSync(path, 'utf8'), path).steps.length;
-  } catch {
-    return 0;
-  }
 };
 
 async function main(argv: string[]) {
@@ -676,13 +649,7 @@ async function main(argv: string[]) {
       failed = true;
       const why = error instanceof Error ? error.message : String(error);
       console.error(`${name}: ${why}`);
-      results.push({
-        name,
-        outcome: 'failed',
-        steps: stepsIn(path),
-        reason: why,
-        ...(error instanceof StepFailure ? { failedStep: error.step } : {}),
-      });
+      results.push({ name, outcome: 'failed', reason: why });
     }
   }
   const resultOf = (r: DemoResult) =>
