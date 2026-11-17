@@ -330,7 +330,7 @@ describe('live mode shows only platform data', () => {
   });
 
   it('exports from the platform and offers no example targets in settings', async () => {
-    await renderLive('#/settings?tab=transfer');
+    await renderLive('#/settings/all');
 
     expect(await screen.findByText('0 definisjoner, 0 innstillinger')).toBeTruthy();
     expect(screen.queryByRole('combobox', { name: 'Tjeneste' })).toBeNull();

@@ -163,9 +163,18 @@ describe('shell', () => {
     ['#/integrations', '#/developer/systems'],
     ['#/integrations?tab=hooks&saved=Fnr', '#/developer/hooks?saved=Fnr'],
     ['#/integrations?tab=tracing', '#/developer/runs'],
-    ['#/integrations/code', '#/developer/api/code'],
+    ['#/integrations/code', '#/developer/api'],
     ['#/integrations/hooks/fnr', '#/developer/hooks/fnr'],
   ])('sends the old Integrasjoner address %s on to %s', async (from, to) => {
+    await renderAt(from);
+    await waitFor(() => expect(window.location.hash).toBe(to));
+  });
+
+  it.each([
+    ['#/status', '#/developer/status'],
+    ['#/developer/api/code', '#/developer/api'],
+    ['#/developer/settings', '#/settings/all'],
+  ])('sends the old address %s on to %s', async (from, to) => {
     await renderAt(from);
     await waitFor(() => expect(window.location.hash).toBe(to));
   });
@@ -308,7 +317,6 @@ describe('shell', () => {
 
   it.each([
     ['/onboarding', 'Kom i gang'],
-    ['/status', 'Driftsstatus'],
     ['/contact', 'Kontakt Digdir'],
   ])('gives the unbuilt %s page its own h1', async (path, title) => {
     await renderAt(`#${path}`);
@@ -317,7 +325,6 @@ describe('shell', () => {
 
   it.each([
     ['/onboarding', /Slik henger sidene sammen/],
-    ['/status', /Siden spør plattformens API om det svarer/],
     ['/contact', /ikke et eget kontaktpunkt for brukerstøtte ennå/],
   ])(
     'gives the footer page %s honest content instead of the not designed placeholder',

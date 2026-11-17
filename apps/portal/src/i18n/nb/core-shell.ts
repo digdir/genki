@@ -124,5 +124,17 @@ export const devTools = defineNamespace({
   apiDesc: 'Referansen til API-et og dokumentasjon for utviklere.',
   openLog: 'Åpne Logg',
   openStepFlows: 'Åpne Stegflyter',
-  openApiReference: 'Åpne API-referansen',
+  needsFollowUp: '{count} trenger oppfølging',
+  apiTabs: 'API',
+  apiStart: 'Kom i gang',
+  apiReference: 'Referanse',
+  statusChecked: 'Sist sjekket kl. {time}.',
+  statusCheckNow: 'Sjekk nå',
+  statusNoContact: 'Vi fikk ikke kontakt med API-et',
+  statusNoContactText:
+    'Det kan bety at API-et er nede, eller at nettverket ditt ikke når det. Sjekk igjen om litt.',
+  statusWhatWeCheck: 'Det vi sjekker',
+  statusApiCheck: 'API-et svarer',
+  statusApiHow: 'Spør /health når du åpner siden eller trykker «Sjekk nå».',
+  statusAnsweredIn: 'Svarte på {ms} ms',
 });

@@ -20,7 +20,7 @@ import { ApiError, type ApiClient } from '../../api';
 import { actorLabel, formatDateTime } from '../../format';
 import { useT, type Format, type T } from '../../i18n';
 import { useAsync } from '../../hooks';
-import { useRights } from '../../Shell';
+import { needsRight, useRights } from '../../Shell';
 import { ApiCallLink, type ApiCallPreview } from '../../components/ApiCall';
 import { NotDecided } from '../../components/NotDecided';
 import { SidePanel } from '../../components/SidePanel';
@@ -38,6 +38,7 @@ import {
   editLayerFor,
   effectiveOf,
   formatValue,
+  fromApiValue,
   isSet,
   layerName,
   layersFor,
@@ -225,20 +226,24 @@ export const SettingPanel = ({
   const [reason, setReason] = useState('');
   const [reasonErr, setReasonErr] = useState('');
   const [saveErr, setSaveErr] = useState('');
-  const [stale, setStale] = useState(false);
+  const [stale, setStale] = useState<{ theirs: string } | undefined>();
   const [busy, setBusy] = useState(false);
 
   const liveService = liveMode && el === 'T' && serviceId !== undefined && s.type !== 'secret';
   const isDraft = el === 'T' && !liveService;
   const setByDigdir = el === 'V' && !!s.setByDigdir;
-  const canEditHere =
+  const secretNotSent = liveMode && s.type === 'secret';
+  const settableHere =
     !setByDigdir &&
     s.scope.includes(el === 'V' ? 'virksomhet' : el === 'T' ? 'tjeneste' : 'datasett');
+  const canEditHere = settableHere && !secretNotSent && canAudit;
   const editHeading = canEditHere
     ? t('settings.panelNewValue')
     : setByDigdir
       ? t('settings.panelSetByDigdir')
-      : t('settings.panelCannotHere');
+      : settableHere
+        ? t('settings.panelValueHere')
+        : t('settings.panelCannotHere');
   const pinned = ctx.kind !== 'tenant' ? s.pins?.[ctx.target] : undefined;
   const live = el === 'V' && s.apiKey !== undefined && s.type !== 'secret';
   const layerLabel = t('settings.panelLayerOf', {
@@ -249,13 +254,13 @@ export const SettingPanel = ({
   const resetPreview = () => {
     setPreview(undefined);
     setSaveErr('');
-    setStale(false);
+    setStale(undefined);
   };
 
   const runPreview = async (change: Change) => {
     setErr('');
     setSaveErr('');
-    setStale(false);
+    setStale(undefined);
     setReason('');
     setReasonErr('');
     const local = buildPreview(s, change, ctx, names, t, f);
@@ -369,19 +374,35 @@ export const SettingPanel = ({
         else if (c.kind === 'value')
           await api.setTenantSetting(tenant, key, toApiValue(s, c.v), finalReason);
       } catch (error) {
-        const conflict = error instanceof ApiError && error.status === 409;
+        const status = error instanceof ApiError ? error.status : undefined;
         const details = error instanceof ApiError ? error.problem?.errors : undefined;
-        setStale(conflict);
-        setSaveErr(
-          conflict
-            ? (error.problem?.detail ?? tRef.current('settings.panelStale'))
-            : details?.length
-              ? details.map((d) => settingErrorText(d.message, tRef.current)).join(' ')
-              : tRef.current('settings.panelSaveFailed'),
-        );
+        if (status === 409) {
+          const current = await (
+            liveService
+              ? api.effectiveSettings(tenant, serviceId ?? '')
+              : api.tenantEffectiveSettings(tenant)
+          ).catch(() => undefined);
+          const value = current?.[key]?.value;
+          setStale({
+            theirs: value === undefined ? '' : show(fromApiValue(s, value)),
+          });
+          setSaveErr('');
+        } else {
+          setStale(undefined);
+          setSaveErr(
+            status === 403
+              ? tRef.current('settings.panelRefused', {
+                  right: tRef.current('rights.manageServices'),
+                })
+              : details?.length
+                ? details.map((d) => settingErrorText(d.message, tRef.current)).join(' ')
+                : tRef.current('settings.panelSaveFailed'),
+          );
+        }
         setBusy(false);
         return;
       }
+      setStale(undefined);
       setBusy(false);
     }
     if (c.kind === 'reset') {
@@ -515,6 +536,14 @@ export const SettingPanel = ({
           {editHeading}
         </Heading>
         {setByDigdir ? <Paragraph>{t('settings.panelSetByDigdirHelp')}</Paragraph> : null}
+        {settableHere && secretNotSent ? (
+          <Paragraph>{t('settings.panelSecretNotHere')}</Paragraph>
+        ) : null}
+        {settableHere && !secretNotSent && !canAudit ? (
+          <Paragraph>
+            {t('settings.panelNoRight', { need: needsRight('manage-services', t) })}
+          </Paragraph>
+        ) : null}
         {canEditHere ? (
           <>
             {s.type === 'secret' ? (
@@ -727,14 +756,16 @@ export const SettingPanel = ({
               {reasonErr ? <ValidationMessage>{reasonErr}</ValidationMessage> : null}
             </Field>
           )}
+          {stale ? (
+            <Alert data-color="warning" data-size="sm" role="alert">
+              {t('settings.panelConflict', {
+                value: stale.theirs || t('settings.panelInheritedWord'),
+              })}
+            </Alert>
+          ) : null}
           {saveErr ? (
             <Alert data-color="danger" data-size="sm">
               {saveErr}
-              {stale ? (
-                <Button variant="secondary" data-size="sm" onClick={() => window.location.reload()}>
-                  {t('settings.panelReload')}
-                </Button>
-              ) : null}
             </Alert>
           ) : null}
           <div className="actions">
@@ -744,7 +775,11 @@ export const SettingPanel = ({
               loading={busy}
               onClick={() => void save()}
             >
-              {isDraft ? t('settings.panelSaveDraft') : t('common.save')}
+              {isDraft
+                ? t('settings.panelSaveDraft')
+                : stale
+                  ? t('settings.panelSaveMineAnyway')
+                  : t('common.save')}
             </Button>
             <Button variant="secondary" onClick={resetPreview}>
               {t('common.cancel')}

@@ -60,16 +60,17 @@ export const apirefArea = {
     copy: 'Copy {what}',
     tryHeading: 'Try',
     tryAs:
-      'You call as <strong>{name}</strong> for {tenant}, with your rights from Altinn: {held}. The response is an example. No call is sent.',
+      'You call as <strong>{name}</strong> for {tenant}, with your rights from Altinn: {held}. The call goes to the API with your sign-in.',
     tryAnonymous:
-      'You call for {tenant}, with your rights from Altinn: {held}. The response is an example. No call is sent.',
+      'You call for {tenant}, with your rights from Altinn: {held}. The call goes to the API with your sign-in.',
     heldNone: 'none',
-    invalidJson: 'The content is not valid JSON.',
+    tryReadOnly:
+      'Here you can only try read calls (GET), so nothing changes by accident. Use the curl example above to send this call.',
+    tryRefused:
+      'The API refused the call because you lack the right it requires. Your rights apply, here too.',
+    tryNoAnswer: 'The API did not answer',
     invalidRequest: '400 Invalid request',
     fillIn: 'Fill in "{name}".',
-    forbiddenNote:
-      'The call was rejected because you are not a Digdir operator. Your rights apply, here too.',
-    bodyLabel: 'Body (JSON)',
     send: 'Send',
     sending: 'Sending',
     response: 'Response',
@@ -82,8 +83,6 @@ export const apirefArea = {
     errors: 'Error codes',
     actionsIntro:
       'This is what "Show API call" looks like for important actions in the portal. The link sits next to the button and opens the call the button will make.',
-    actionDone:
-      '"{button}" was done in the prototype. The same call could have been made from a system.',
     schemaUnavailable: 'The schema is not available in the API yet.',
     colField: 'Field',
     colRequired: 'Required',

@@ -63,8 +63,8 @@ describe('footer pages', () => {
       Byggeklosser: '#/building-blocks',
       Fellestjenester: '#/shared-services',
       Prøveområdet: '#/playground',
-      'Kall en tjeneste fra kode': '#/developer/api/code',
-      'API-referansen': '#/api-reference',
+      'Kall en tjeneste fra kode': '#/developer/api',
+      'API-referansen': '#/developer/api/reference',
       Statistikk: '#/statistics',
       Logg: '#/log',
       Tilgang: '#/access',
@@ -73,16 +73,29 @@ describe('footer pages', () => {
     expectAccessible();
   });
 
-  it('shows the API health and version on the status page', async () => {
-    await open('#/status', health([up('1.4.2')]));
+  it('shows what Driftsstatus checks, that the API answers, and the version', async () => {
+    await open('#/developer/status', health([up('1.4.2')]));
     expect(await screen.findByText('1.4.2')).toBeTruthy();
+    expect(screen.getByText('API-et svarer')).toBeTruthy();
     expect(screen.getByText('Svarer')).toBeTruthy();
     expect(screen.getByText('Versjon')).toBeTruthy();
   });
 
+  it('shows a commit version as its short hash', async () => {
+    await open('#/developer/status', health([up('a3f9c12d4e5f60718293a4b5c6d7e8f901234567')]));
+    expect(await screen.findByText('a3f9c12')).toBeTruthy();
+  });
+
+  it('checks again when the person presses Sjekk nå', async () => {
+    await open('#/developer/status', health([up('1.0.0'), up('1.0.1')]));
+    expect(await screen.findByText('1.0.0')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sjekk nå' }));
+    expect(await screen.findByText('1.0.1')).toBeTruthy();
+  });
+
   it('says the API does not answer and checks again on request', async () => {
-    await open('#/status', health([down, down, up('2.0.0')]));
-    expect(await screen.findByText(/API-et svarer ikke akkurat nå/)).toBeTruthy();
+    await open('#/developer/status', health([down, down, up('2.0.0')]));
+    expect(await screen.findByText('Vi fikk ikke kontakt med API-et')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sjekk igjen' }));
     expect(await screen.findByText('2.0.0')).toBeTruthy();
   });
@@ -95,8 +108,8 @@ describe('footer pages', () => {
   });
 
   it('shows the footer pages in English when the language is English', async () => {
-    await open('#/status', health([up('dev')]), ['en']);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Service status' })).toBeTruthy();
+    await open('#/developer/status', health([up('dev')]), ['en']);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Developer tools' })).toBeTruthy();
     expect(await screen.findByText('Answering')).toBeTruthy();
     cleanup();
     await open('#/contact', mockFetch(), ['en']);
