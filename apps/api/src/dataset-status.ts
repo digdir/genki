@@ -132,3 +132,17 @@ export const datasetStatus = async (
     skipped: last?.report?.skippedDocuments ?? [],
   };
 };
+
+export const lastImportAt = async (
+  ingestion: Pick<IngestionService, 'list' | 'executions'>,
+  item: Pick<CatalogItem, 'scope' | 'id'>,
+): Promise<string | undefined> => {
+  const runs = await Promise.all(
+    (await ingestion.list(item.scope, item.id)).map((p) => ingestion.executions(item.id, p.id)),
+  );
+  return runs
+    .flat()
+    .flatMap((run) => (run.status === 'succeeded' && run.endedAt ? [run.endedAt] : []))
+    .sort()
+    .at(-1);
+};

@@ -269,6 +269,73 @@ describe('agent retrieval factory', () => {
     expect(await agent.facets(['secret'], 2, signal)).toEqual({});
   });
 
+  const counted = () => {
+    const rows = [
+      { orgs_short: 'Digdir', concerned_years: '2022' },
+      { orgs_short: 'Digdir', concerned_years: '2023' },
+      { orgs_short: 'NAV', concerned_years: '2022' },
+      { orgs_short: 'NAV', concerned_years: '2024' },
+      { orgs_short: 'NAV', concerned_years: '2024' },
+    ];
+    const port: KnowledgePort = {
+      info: () => ({
+        id: 'kudos',
+        residency: 'norway',
+        filters: { orgs_short: 'multiselect', concerned_years: 'multiselect' },
+        profiles: ['content'],
+      }),
+      search: async () => ({ hits: [] }),
+      searchMany: async (requests) => requests.map(() => ({ hits: [] })),
+      fetch: async () => [],
+      range: async () => [],
+      facets: async (fields, filters = {}) => {
+        const kept = rows.filter((row) =>
+          Object.entries(filters).every(
+            ([f, v]) => Array.isArray(v) && v.map(String).includes(row[f as keyof typeof row]),
+          ),
+        );
+        return Object.fromEntries(
+          fields.map((f) => {
+            const counts = new Map<string, number>();
+            for (const row of kept) {
+              const value = row[f as keyof typeof row];
+              counts.set(value, (counts.get(value) ?? 0) + 1);
+            }
+            return [f, [...counts].map(([value, count]) => ({ value, count }))];
+          }),
+        );
+      },
+    };
+    return port;
+  };
+
+  it('inspect_filters never counts or names values outside the service fixed filter', async () => {
+    const agent = createAgentRetrieval({
+      knowledge: counted(),
+      filters: { orgs_short: ['Digdir'] },
+    });
+
+    expect(await agent.facets(['orgs_short', 'concerned_years'], 10, signal)).toEqual({
+      orgs_short: [{ value: 'Digdir', count: 2 }],
+      concerned_years: [
+        { value: '2022', count: 1 },
+        { value: '2023', count: 1 },
+      ],
+    });
+  });
+
+  it('inspect_filters counts within every field of the service filter', async () => {
+    const agent = createAgentRetrieval({
+      knowledge: counted(),
+      filters: { orgs_short: ['NAV'], concerned_years: ['2024'] },
+    });
+
+    expect(await agent.facets(['orgs_short', 'concerned_years'], 10, signal)).toEqual({
+      orgs_short: [{ value: 'NAV', count: 2 }],
+      concerned_years: [{ value: '2024', count: 2 }],
+    });
+  });
+
   it('reranks read chunks in the reranker order with headers it saw earlier, and leaves them alone without a reranker', async () => {
     const s = stub();
     const r = reranker(() => [

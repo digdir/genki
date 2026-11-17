@@ -34,7 +34,7 @@ import {
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
-import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
+import { knowledgeDropQueue, knowledgeFieldsQueue, knowledgeKeys } from '@genai/jobs';
 import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
@@ -121,6 +121,13 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
         await started()
       ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
     },
+    // New fields on a dataset's stored documents, written by the worker (ADR 0042).
+    refreshFields: async (input: { tenant: string; dataset: string; fill: string }) => {
+      const data = knowledgeFieldsQueue.payload.parse(input);
+      await (
+        await started()
+      ).send(knowledgeFieldsQueue, data, { key: knowledgeKeys.fields(input.dataset) });
+    },
   };
 };
 
@@ -205,6 +212,8 @@ if (trustedEntra)
   log('lockdown: Entra logins in the configured groups are admitted', {
     groups: trustedEntra.groups.length,
     userGroups: trustedEntra.userGroups?.length ?? 0,
+    serviceGroups: trustedEntra.serviceGroups?.length ?? 0,
+    serviceClients: trustedEntra.serviceClientIds?.length ?? 0,
     clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });

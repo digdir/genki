@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-16: rotating a key keeps it within the person's rights
+
+- `POST /tenants/{tenant}/api-keys/{id}/rotate` answers `403` when the key's own scopes or its policy's scopes need a right the person rotating it lacks, as saving or attaching a policy does. The key stays as it was.
+
 ### 2026-11-13: runs judged by an older judge
 
 - `GET /tenants/{tenant}/services/{id}/eval-runs`, `GET /tenants/{tenant}/eval-runs/{runId}` (the `service` answer only) and `GET /eval-runs/compare` add `staleJudges` when a test-set run was judged by an older version of a platform judge, such as `judge:criteria`, than the one in use now. The field is left out otherwise, and nothing else changes. Capability runs from `GET /tenants/{tenant}/eval-runs` and `GET /eval-runs/{id}` do not carry it.

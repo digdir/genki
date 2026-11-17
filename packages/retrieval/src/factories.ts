@@ -12,6 +12,7 @@ import type { RerankPort } from '@genai/port-rerank';
 import { retrievalConfig } from './config.js';
 import {
   callerFirst,
+  portFilters,
   toFilterMapFields,
   type FilterInput,
   type HeadlessFilterField,
@@ -390,7 +391,7 @@ export const createAgentRetrieval = (options: RetrievalFactoryOptions) => {
       const declared = options.knowledge.info().filters;
       const known = fields.filter((f) => f in declared);
       if (known.length === 0) return {};
-      const values = await options.knowledge.facets(known);
+      const values = await options.knowledge.facets(known, portFilters(options.filters));
       return Object.fromEntries(
         Object.entries(values).map(([f, list]) => [f, list.slice(0, maxOptions)]),
       );

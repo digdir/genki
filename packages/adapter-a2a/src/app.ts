@@ -9,7 +9,7 @@ import {
   type Principal,
   type Task,
 } from '@genai/contracts';
-import { KernelError, type Kernel, type Run } from '@genai/kernel';
+import { KernelError, quotaExhaustedProblem, type Kernel, type Run } from '@genai/kernel';
 import {
   a2aVersion,
   acceptsOutput,
@@ -284,7 +284,8 @@ export const createA2aApp = (options: A2aAppOptions) => {
   };
 
   type Started =
-    { run: Run; contextId: string; read: ReadMessage } | { error: RpcBody; status?: number };
+    | { run: Run; contextId: string; read: ReadMessage }
+    | { error: RpcBody; status?: number; headers?: Record<string, string> };
 
   const start = async (
     id: JsonRpcId,
@@ -388,6 +389,17 @@ export const createA2aApp = (options: A2aAppOptions) => {
       });
       return { run, contextId, read };
     } catch (error) {
+      const spent = quotaExhaustedProblem(error);
+      if (spent)
+        return {
+          error: rpcError(id, errorCodes.quotaExhausted, spent.title, {
+            type: spent.type,
+            status: spent.status,
+            detail: spent.detail,
+          }),
+          status: spent.status,
+          headers: { 'Retry-After': String(spent.retryAfterSeconds) },
+        };
       if (error instanceof KernelError)
         return {
           error: rpcError(id, errorCodes.internal, error.message, { code: error.code }),
@@ -408,7 +420,7 @@ export const createA2aApp = (options: A2aAppOptions) => {
     params: Record<string, unknown>,
   ) => {
     const started = await start(id, principal, entry, params);
-    if ('error' in started) return json(c, started.error, started.status);
+    if ('error' in started) return json(c, started.error, started.status, started.headers);
     const { run, contextId, read } = started;
     const configuration = isRecord(params.configuration) ? params.configuration : {};
     const history = userHistory(read, run.task, contextId, configuration.historyLength);
@@ -543,7 +555,7 @@ export const createA2aApp = (options: A2aAppOptions) => {
     params: Record<string, unknown>,
   ) => {
     const started = await start(id, principal, entry, params);
-    if ('error' in started) return json(c, started.error, started.status);
+    if ('error' in started) return json(c, started.error, started.status, started.headers);
     const { run, contextId, read } = started;
     const configuration = isRecord(params.configuration) ? params.configuration : {};
     return sse(c, async (write) => {

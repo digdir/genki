@@ -643,7 +643,7 @@ const BatchExport = z
 const proposalShape = {
   id: z.string(),
   level: z.number().int().min(1).max(4),
-  kind: z.enum(['change', 'connector', 'building_block', 'platform_change']),
+  kind: z.enum(['change', 'connector', 'building_block', 'platform_change', 'interface']),
   title: z.string(),
   detail: z.string(),
   section: z.string().optional(),
@@ -660,6 +660,8 @@ const proposalShape = {
   quality: z.string().optional(),
   platformChange: record.optional(),
   approval: z.object({ right: z.string() }).optional(),
+  flows: z.array(record).optional(),
+  blocks: z.array(z.string()).optional(),
 };
 
 const AssistantTurn = z
@@ -1886,6 +1888,7 @@ export const serviceRoutes: RouteConfig[] = [
       400: problem('Missing definition or query, or input that does not fit (code invalid_input)'),
       ...tenantErrors,
       422: problem('Invalid definition'),
+      429: problem('The monthly token quota is used up'),
       502: problem('The run failed; `code`, `step` and `runId` say where'),
     },
   }),

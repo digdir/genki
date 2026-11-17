@@ -6,6 +6,7 @@ import {
   firstLoadFiles,
   measureFirstLoad,
   overBudget,
+  viteBuildCommand,
   type FirstLoad,
   type Manifest,
 } from './size-budget.ts';
@@ -73,5 +74,23 @@ describe('first-load size budget', () => {
     const apps = join(import.meta.dirname, '..', 'apps');
     const built = readdirSync(apps).filter((app) => existsSync(join(apps, app, 'vite.config.ts')));
     expect(Object.keys(budgets).sort()).toEqual(built.sort());
+  });
+
+  it('builds each app through the node that runs the script, not npx, so the check runs on Windows', () => {
+    const vite = join('C:\\repo', 'node_modules', 'vite', 'bin', 'vite.js');
+    expect(viteBuildCommand('C:\\out\\portal', 'C:\\repo')).toEqual({
+      command: process.execPath,
+      args: [
+        vite,
+        'build',
+        '--manifest',
+        '--outDir',
+        'C:\\out\\portal',
+        '--emptyOutDir',
+        '--logLevel',
+        'error',
+      ],
+    });
+    expect(existsSync(viteBuildCommand('x').args[0] as string)).toBe(true);
   });
 });

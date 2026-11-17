@@ -23,12 +23,18 @@ import {
 } from '@genai/definitions';
 import type { UsageSummary } from '@genai/eval';
 import { assistantCapabilityPrefix } from '@genai/jobs';
-import type { Capability as KernelCapability, CapabilityRegistry, Kernel } from '@genai/kernel';
+import {
+  quotaExhaustedProblem,
+  type Capability as KernelCapability,
+  type CapabilityRegistry,
+  type Kernel,
+} from '@genai/kernel';
 import { blobPart, type BlobStore } from '@genai/port-blob';
 import { residencies, type Residency } from '@genai/port-model';
 import { parse as parseYaml } from 'yaml';
 import { completeService } from './definition-completion.js';
 import { failureFromError } from './failures.js';
+import type { QuotaProblem } from './rate-limit.js';
 import { strategyCatalogue } from './strategy-catalogue.js';
 import { withFieldOptions, type FacetCount, type FacetSource } from './input-options.js';
 
@@ -154,11 +160,12 @@ export interface DraftRunSuccess {
 
 export interface DraftRunFailure {
   ok: false;
-  status: 400 | 403 | 422 | 502;
+  status: 400 | 403 | 422 | 429 | 502;
   errors: { path: string; message: string }[];
   task?: string;
   code?: string;
   step?: string;
+  quota?: QuotaProblem;
 }
 
 export type DraftRunOutcome = DraftRunSuccess | DraftRunFailure;
@@ -402,6 +409,9 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
       settled = true;
       if (task) deps.wake?.(task);
       await tail;
+      const spent = quotaExhaustedProblem(error);
+      if (spent)
+        return { ...failure(429, 'quota', spent.detail), code: 'quota_exhausted', quota: spent };
       const failed = failureFromError(error);
       return {
         ...failure(502, '', failed.message),

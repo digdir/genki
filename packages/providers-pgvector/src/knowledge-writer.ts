@@ -96,6 +96,19 @@ const withoutNul = (text: string) => text.replaceAll('\u0000', '');
 const jsonWithoutNul = (value: unknown) =>
   JSON.stringify(value, (_, v: unknown) => (typeof v === 'string' ? withoutNul(v) : v));
 
+/** Writes a document's fields and `fields_text` alone, in the caller's transaction; chunks stay. */
+export const updateDocumentFields = (
+  client: PoolClient,
+  target: Pick<DocumentTarget, 'generation' | 'via'>,
+  id: string,
+  fields: Record<string, unknown>,
+) =>
+  client.query(
+    `update ${tableOf(target, 'kn_docs')} set fields = $3, fields_text = $4
+      where generation = $1 and id = $2`,
+    [target.generation, id, jsonWithoutNul(fields), withoutNul(fieldsText(fields))],
+  );
+
 /** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
 export const replaceDocument = async (
   client: PoolClient,

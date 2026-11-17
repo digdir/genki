@@ -5,8 +5,10 @@ import {
   fitService,
   fromTemplate,
   offerOf,
+  turnOn,
   withProfile,
   type AssistantLayout,
+  type BlockId,
   type BuilderState,
   type ProfileData,
   type ServiceFacts,
@@ -104,6 +106,10 @@ export const useBlocksState = (
     // A pasted layout replaces this one, and its blocks the draft cannot back are held.
     paste: (layout: AssistantLayout) => {
       setState(fitService({ layout, chosen: {} }, offered).state);
+      setTemplate(undefined);
+    },
+    add: (ids: readonly BlockId[]) => {
+      setState((s) => fitService(ids.reduce(turnOn, s), offered).state);
       setTemplate(undefined);
     },
     // The words are the service's, not a template's: the template stays chosen.

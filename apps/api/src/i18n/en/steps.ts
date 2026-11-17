@@ -10,6 +10,7 @@ export const steps = {
   toolRerank: 'Ranked the hits',
   toolGenerate: 'Wrote the answer',
   toolInspect: 'Looked at the filters',
+  toolSourceFacts: 'Looked at what the source holds',
   toolSkill: 'Used a skill',
   toolOther: 'Tool "{name}"',
   remoteAgent: 'Own engine "{host}"',

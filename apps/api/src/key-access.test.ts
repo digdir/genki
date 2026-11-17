@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { textPart, type Principal, type Task } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
@@ -497,14 +499,48 @@ describe('rate limits and quota', () => {
     expect((await mcp('alle', 'tools/list')).status).toBe(429);
   });
 
-  it('refuses a service call once the monthly token quota is used', async () => {
-    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
-    const refused = await send('/api/tools/call/veileder__default', 'veileder', {
-      body: { query: 'hei' },
+  it('an exhausted quota refuses a service invoke on /v1, tools/call and A2A with 429 from the kernel', async () => {
+    const { send, platform, model } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const agent = service('agent');
+    await platform.definitions.publish(
+      { ...agent, spec: { ...agent.spec, exposure: { rest: true, a2a: true } } },
+      'test',
+      'test',
+      files,
+    );
+    const messages = [{ role: 'user', content: 'hei' }];
+
+    const problems = [
+      await send('/v1/chat/completions', 'veileder', {
+        body: { model: 'veileder__default', messages },
+      }),
+      await send('/v1/chat/completions', 'veileder', {
+        body: { model: 'veileder__default', messages, stream: true },
+      }),
+      await send('/api/tools/call/veileder__default', 'veileder', { body: { query: 'hei' } }),
+    ];
+    const a2a = await send('/a2a/agent__default', 'kari', {
+      body: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'SendMessage',
+        params: { message: { messageId: 'm1', role: 'ROLE_USER', parts: [{ text: 'hei' }] } },
+      },
     });
 
-    expect(refused.status).toBe(429);
-    expect(await refused.json()).toMatchObject({ type: 'urn:genai:problem:quota-exhausted' });
+    for (const refused of [...problems, a2a]) {
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get('retry-after')).toMatch(/^\d+$/);
+    }
+    for (const refused of problems)
+      expect(await refused.json()).toMatchObject({
+        type: 'urn:genai:problem:quota-exhausted',
+        status: 429,
+      });
+    expect(await a2a.json()).toMatchObject({
+      error: { code: -32029, data: { type: 'urn:genai:problem:quota-exhausted', status: 429 } },
+    });
+    expect(model.seen).toEqual([]);
     expect((await send('/v1/models', 'veileder')).status).toBe(200);
   });
 
@@ -537,13 +573,37 @@ describe('rate limits and quota', () => {
 
   it('a call through any route stops at the monthly token quota', async () => {
     const { platform, model } = await boot({ monthlyTokens: 100, usedTokens: 150 });
-    const run = await platform.kernel.invoke(kari, `${digdir}/veileder/default`, {
+    const run = platform.kernel.invoke(kari, `${digdir}/veileder/default`, {
       data: { query: 'hei' },
       parts: [textPart('hei')],
     });
 
-    await expect(run.result).rejects.toThrow(/monthly token quota/);
+    await expect(run).rejects.toMatchObject({
+      code: 'quota_exhausted',
+      message: expect.stringMatching(/monthly token quota/),
+    });
     expect(model.seen).toEqual([]);
+  });
+
+  it('no route-level quota lookup remains: entry points leave the refusal to the kernel and the gate', () => {
+    const entryPoints = [
+      'apps/api/src/composition.ts',
+      'apps/api/src/extensions.ts',
+      'apps/api/src/dataset-enrichment.ts',
+      'apps/api/src/playground.ts',
+      'packages/adapter-openai/src/app.ts',
+      'packages/adapter-mcp/src/app.ts',
+      'packages/adapter-a2a/src/app.ts',
+    ];
+    const root = join(import.meta.dirname, '..', '..', '..');
+
+    const checks = entryPoints.filter((file) =>
+      /if\s*\([^)]*\.exhausted\b|quotaExhausted\??\.?\(/.test(
+        readFileSync(join(root, file), 'utf8'),
+      ),
+    );
+
+    expect(checks).toEqual([]);
   });
 
   it('still answers MCP tools/list when the monthly token quota is used', async () => {

@@ -109,7 +109,11 @@ const impliedRights = (scopes: readonly string[]): readonly Right[] => [
   ),
 ];
 
-const rightBeyondHolder = (principal: Principal, tenant: string, scopes: readonly string[]) => {
+export const rightBeyondHolder = (
+  principal: Principal,
+  tenant: string,
+  scopes: readonly string[],
+) => {
   if (!rightsAreChecked(principal)) return undefined;
   const held = rightsOf(principal, tenant);
   return impliedRights(scopes).find((r) => !held.has(r));
