@@ -68,6 +68,26 @@ describe('the state register screen', () => {
     expect(within(rows[1] as HTMLElement).getByText('Avvik')).toBeTruthy();
   });
 
+  it('shows the NLOD credit with links to the licence and the sources on Statens organisering', async () => {
+    render(<StateRegister api={apiFor({ 'GET /operator/state-register': register })} />);
+
+    const credit = (await screen.findByText(/Inneholder data under/)).closest('p') as HTMLElement;
+
+    expect(credit.textContent).toBe(
+      'Inneholder data under norsk lisens for offentlige data (NLOD) tilgjengeliggjort av Brønnøysundregistrene og Direktoratet for forvaltning og økonomistyring (DFØ).',
+    );
+    const href = (name: string) => within(credit).getByRole('link', { name }).getAttribute('href');
+    expect(href('norsk lisens for offentlige data (NLOD)')).toBe(
+      'https://data.norge.no/nlod/no/2.0',
+    );
+    expect(href('Brønnøysundregistrene')).toBe(
+      'https://data.brreg.no/enhetsregisteret/oppslag/enheter',
+    );
+    expect(href('Direktoratet for forvaltning og økonomistyring (DFØ)')).toBe(
+      'https://statsregnskapet.dfo.no/',
+    );
+  });
+
   it('warns when the register has not been read for two nights', async () => {
     render(
       <StateRegister

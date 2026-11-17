@@ -1,5 +1,6 @@
 import {
   Alert,
+  Link,
   Paragraph,
   Table,
   TableBody,
@@ -23,6 +24,9 @@ const kindColor: Record<Kind, 'warning' | 'neutral' | 'info'> = {
   'budget-booking': 'neutral',
   'not-in-register': 'info',
 };
+const registerUrl = 'https://data.brreg.no/enhetsregisteret/oppslag/enheter';
+const accountsUrl = 'https://statsregnskapet.dfo.no/';
+
 const kindLabel = {
   mismatch: 'stateRegister.kindMismatch',
   'budget-booking': 'stateRegister.kindBudgetBooking',
@@ -72,6 +76,17 @@ export const StateRegister = ({ api }: { api: ApiClient }) => {
                   same: state.data.same,
                 })
               : t('stateRegister.noAccounts')}
+          </Paragraph>
+          <Paragraph data-size="sm">
+            {t('stateRegister.creditBefore')}
+            <Link href={t('stateRegister.creditLicenceUrl')}>
+              {t('stateRegister.creditLicence')}
+            </Link>
+            {t('stateRegister.creditBy')}
+            <Link href={registerUrl}>{t('stateRegister.creditRegister')}</Link>
+            {t('stateRegister.creditAnd')}
+            <Link href={accountsUrl}>{t('stateRegister.creditAccounts')}</Link>
+            {t('stateRegister.creditAfter')}
           </Paragraph>
           {state.data.differences.length === 0 ? (
             <EmptyState title={t('stateRegister.noneTitle')}>

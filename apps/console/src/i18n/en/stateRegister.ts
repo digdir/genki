@@ -22,4 +22,12 @@ export const stateRegister = {
   kindMismatch: 'Mismatch',
   kindBudgetBooking: 'Budget booking',
   kindNotInRegister: 'No ministry in the register',
+  creditBefore: 'Contains data under the ',
+  creditLicence: 'Norwegian licence for Open Government data (NLOD)',
+  creditLicenceUrl: 'https://data.norge.no/nlod/en/2.0',
+  creditBy: ' distributed by ',
+  creditRegister: 'Brønnøysundregistrene',
+  creditAnd: ' and ',
+  creditAccounts: 'the Norwegian Agency for Public and Financial Management (DFØ)',
+  creditAfter: '.',
 } satisfies Translation<typeof source>;

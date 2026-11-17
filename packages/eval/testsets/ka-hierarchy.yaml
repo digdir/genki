@@ -1,0 +1,304 @@
+apiVersion: genai/v1
+kind: TestSet
+metadata:
+  tenant: '991825827'
+  id: ka-hierarchy
+  name: Kunnskapsassistenten, statens organisering
+  version: 1
+spec:
+  service: kunnskapsassistenten
+  corpus: digdir/kudos
+  provenance:
+    status: draft
+    reviewer: ''
+    drafted: 2026-11-17
+    registerDate: 2026-11-17
+    source: Enhetsregisteret, data.brreg.no/enhetsregisteret/api/enheter, STAT and ORGL read 2026-11-17 09:48 UTC (324 units under the state); KUDOS display names; the year-2022 state accounts for the case on 2022
+    licence: 'Register and state accounts data: NLOD 2.0 (Brønnøysundregistrene, DFØ)'
+    note: Correctness cases have no source criterion; the three cites-source cases score citing. Wrote-about cases depend on Kudos search, which times out in test (issue 675).
+  cases:
+    - id: kah-under-dfd
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Digitaliserings- og forvaltningsdepartementet?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse direkte under Digitaliserings- og forvaltningsdepartementet: Datatilsynet, Departementenes digitaliseringsorganisasjon, Departementenes sikkerhets- og serviceorganisasjon, Digitaliseringsdirektoratet, Nasjonal kommunikasjonsmyndighet, Statsbygg og Statsforvalterens fellestjenester, og de ti statsforvalterembetene. Svaret nevner alle disse; statsforvalterne kan nevnes samlet som Statsforvalteren. Svaret sier ikke at Direktoratet for forvaltning og økonomistyring (DFØ), Norges forskningsråd eller Statens pensjonskasse ligger under departementet; de ligger under Finansdepartementet, Kunnskapsdepartementet og Arbeids- og inkluderingsdepartementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - trap
+        - register-2026-11-17
+    - id: kah-under-fin
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Finansdepartementet?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse direkte under Finansdepartementet: Direktoratet for forvaltning og økonomistyring, Finanstilsynet, Skatteetaten, Statistisk sentralbyrå og Tolletaten. Svaret nevner alle disse og ingen virksomhet som ikke ligger under departementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - register-2026-11-17
+    - id: kah-under-hod
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Helse- og omsorgsdepartementet?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse direkte under Helse- og omsorgsdepartementet: Bioteknologirådet, Direktoratet for medisinske produkter, Direktoratet for strålevern og atomsikkerhet, Folkehelseinstituttet, Helsedirektoratet, Nasjonalt klageorgan for helsetjenesten, Norsk pasientskadeerstatning, Statens helsetilsyn, Statens undersøkelseskommisjon for helse- og omsorgstjenesten og Veterinærmedisinsk legemiddelinformasjonssenter. Svaret nevner alle disse og ingen virksomhet som ikke ligger under departementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - register-2026-11-17
+    - id: kah-under-aid
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter er underlagt Arbeids- og inkluderingsdepartementet?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse direkte under Arbeids- og inkluderingsdepartementet: Arbeidsretten, Arbeidstilsynet, Integrerings- og mangfoldsdirektoratet, Maritim pensjonskasse, NAV Arbeids- og velferdsetaten, Riksmekleren, Statens arbeidsmiljøinstitutt, Statens pensjonskasse og Trygderetten. Svaret nevner alle disse og ingen virksomhet som ikke ligger under departementet. NAV-enhetene som NAV Vestland ligger under Arbeids- og velferdsetaten, ikke direkte under departementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - register-2026-11-17
+    - id: kah-under-kdd
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke etater ligger under Kommunal- og distriktsdepartementet i dag?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse direkte under Kommunal- og distriktsdepartementet: Direktoratet for byggkvalitet, Distriktssenteret, Husbanken, Internasjonalt reindriftssenter, Kartverket og Valgdirektoratet. Svaret nevner alle disse og ingen virksomhet som ikke ligger under departementet. Svaret sier ikke at Digitaliseringsdirektoratet ligger under departementet; det ligger under Digitaliserings- og forvaltningsdepartementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - trap
+        - register-2026-11-17
+    - id: kah-under-smk
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Statsministerens kontor?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse direkte under Statsministerens kontor: Regjeringsadvokaten. Svaret nevner alle disse og ingen virksomhet som ikke ligger under departementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - register-2026-11-17
+    - id: kah-under-jd
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Justis- og beredskapsdepartementet?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse 20 direkte under Justis- og beredskapsdepartementet: Advokattilsynet, Den militære disiplinærmyndighet, Direktoratet for samfunnssikkerhet og beredskap, Hovedredningssentralen, Høgskolen for kriminalomsorg (HKO), Kommisjonen for gjenopptakelse av straffesaker, Konfliktrådet, Kontoret for voldsoffererstatning, Kriminalomsorgsdirektoratet, Nasjonal sikkerhetsmyndighet, Politiet, Politiets sikkerhetstjeneste, Riksadvokaten, Sikkerhet og beredskap, Sivil klareringsmyndighet, Spesialenheten for politisaker, Statens sivilrettsforvaltning, Sysselmesteren på svalbard, Utlendingsdirektoratet og Utlendingsnemnda. Svaret nevner Politiet og minst ni andre av disse, og ingen virksomhet som ikke ligger under departementet. Nevner svaret Kripos, Økokrim eller politidistriktene, sier det at de ligger under Politiet, ikke direkte under departementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - level-2
+        - register-2026-11-17
+    - id: kah-under-kd
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Kunnskapsdepartementet?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse 35 direkte under Kunnskapsdepartementet: 22. juli-senteret, Arkitektur- og designhøgskolen i Oslo, De nasjonale forskningsetiske komiteene (FEK), De samiske videregående skoler, karasjok og kautokeino, Direktoratet for høyere utdanning og kompetanse, Foreldreutvalget for grunnopplæring, Høgskolen i Molde, Høgskolen i Østfold, Høgskulen i Volda, Høgskulen på Vestlandet, Kunnskapssektorens tjenesteleverandør (Sikt), Kunsthøgskolen i Oslo, NMBU, NOKUT, NTNU, Nord universitet, Norges forskningsråd, Norges grønne fagskole (Vea), Norges handelshøgskole, Norges idrettshøgskole, Norges musikkhøgskole, Norsk utenrikspolitisk institutt, OsloMet - storbyuniversitetet, Statens lånekasse for utdanning, Statped, Sámi allaskuvla Samisk høgskole, Sørsamisk kunnskapspark, Universitetet i Agder, Universitetet i Bergen, Universitetet i Innlandet, Universitetet i Oslo, Universitetet i Stavanger, Universitetet i Sørøst-Norge, Universitetet i Tromsø og Utdanningsdirektoratet. Svaret nevner minst ti av disse og ingen virksomhet som ikke ligger under departementet.'
+      tags:
+        - ministry-to-agencies
+        - correctness
+        - register-2026-11-17
+    - id: kah-over-dfo
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement ligger DFØ under?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger Direktoratet for forvaltning og økonomistyring under Finansdepartementet. Svaret sier dette. Svaret sier ikke at DFØ ligger under Digitaliserings- og forvaltningsdepartementet.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - trap
+        - register-2026-11-17
+    - id: kah-over-nfr
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement er Forskningsrådet underlagt?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger Norges forskningsråd under Kunnskapsdepartementet. Svaret sier dette. Svaret kan nevne at flere departementer finansierer Forskningsrådet, men sier at det ligger under Kunnskapsdepartementet.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - trap
+        - register-2026-11-17
+    - id: kah-over-spk
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Under hvilket departement ligger Statens pensjonskasse?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger Statens pensjonskasse under Arbeids- og inkluderingsdepartementet. Svaret sier dette. Svaret sier ikke at Statens pensjonskasse ligger under Digitaliserings- og forvaltningsdepartementet.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - trap
+        - register-2026-11-17
+    - id: kah-over-helfo
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement hører Helfo til?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger Helfo under Helse- og omsorgsdepartementet, via Helsedirektoratet. Svaret sier dette, og nevner leddene imellom.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - level-2
+        - register-2026-11-17
+    - id: kah-over-nav-vestland
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement hører NAV Vestland til, og hvilke ledd er det imellom?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger NAV vestland under Arbeids- og inkluderingsdepartementet, via NAV arbeids- og tjenestelinjen og NAV Arbeids- og velferdsetaten. Svaret sier dette, og nevner leddene imellom.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - level-3
+        - register-2026-11-17
+    - id: kah-over-kripos
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvem er Kripos underlagt?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger Kripos under Justis- og beredskapsdepartementet, via Politiet. Svaret sier dette, og nevner leddene imellom.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - level-2
+        - register-2026-11-17
+    - id: kah-over-digdir
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement ligger Digdir under?
+      expected:
+        criteria:
+          criteria: Per 2026-11-17 ligger Digitaliseringsdirektoratet under Digitaliserings- og forvaltningsdepartementet. Svaret sier dette. Svaret sier ikke at Digdir ligger under Kommunal- og distriktsdepartementet i dag.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - trap
+        - register-2026-11-17
+    - id: kah-over-digdir-2022
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement lå Digitaliseringsdirektoratet under i 2022?
+      expected:
+        criteria:
+          criteria: I 2022 lå Digitaliseringsdirektoratet under Kommunal- og distriktsdepartementet, slik statsregnskapet for 2022 fører det. Svaret sier dette, og sier ikke at det lå under Digitaliserings- og forvaltningsdepartementet i 2022.
+      tags:
+        - agency-to-ministry
+        - correctness
+        - past-date
+        - trap
+        - register-2026-11-17
+    - id: kah-wrote-dfd-ki
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hva har virksomhetene under Digitaliserings- og forvaltningsdepartementet skrevet om kunstig intelligens?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse under Digitaliserings- og forvaltningsdepartementet: Datatilsynet, Departementenes digitaliseringsorganisasjon, Departementenes sikkerhets- og serviceorganisasjon, Digitaliseringsdirektoratet, Nasjonal kommunikasjonsmyndighet, Statsbygg, Statsforvaltaren i Møre og Romsdal, Statsforvaltaren i Rogaland, Statsforvaltaren i Vestland, Statsforvalteren i Agder, Statsforvalteren i Innlandet, Statsforvalteren i Nordland, Statsforvalteren i Troms og Finnmark, Statsforvalteren i Trøndelag, Statsforvalteren i Vestfold og Telemark, Statsforvalteren i Østfold, Buskerd, Oslo og Akershus og Statsforvalterens fellestjenester. Svaret bygger bare på dokumenter fra disse virksomhetene om kunstig intelligens, og sier hvilken virksomhet hvert funn kommer fra. Det tilskriver ikke dokumenter fra andre virksomheter til dem. Finner det ingenting fra en virksomhet, sier det det.'
+      tags:
+        - wrote-about
+        - correctness
+        - register-2026-11-17
+    - id: kah-wrote-kdd-bolig
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hva skriver etatene under Kommunal- og distriktsdepartementet om bolig?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse under Kommunal- og distriktsdepartementet: Direktoratet for byggkvalitet, Distriktssenteret, Husbanken, Internasjonalt reindriftssenter, Kartverket og Valgdirektoratet. Svaret bygger bare på dokumenter fra disse virksomhetene om bolig, og sier hvilken virksomhet hvert funn kommer fra. Det tilskriver ikke dokumenter fra andre virksomheter til dem. Finner det ingenting fra en virksomhet, sier det det.'
+      tags:
+        - wrote-about
+        - correctness
+        - register-2026-11-17
+    - id: kah-wrote-fin-digitalisering
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hva har virksomhetene under Finansdepartementet skrevet om digitalisering?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse under Finansdepartementet: Direktoratet for forvaltning og økonomistyring, Finanstilsynet, Skatteetaten, Statistisk sentralbyrå og Tolletaten. Svaret bygger bare på dokumenter fra disse virksomhetene om digitalisering, og sier hvilken virksomhet hvert funn kommer fra. Det tilskriver ikke dokumenter fra andre virksomheter til dem. Finner det ingenting fra en virksomhet, sier det det.'
+      tags:
+        - wrote-about
+        - correctness
+        - register-2026-11-17
+    - id: kah-wrote-hod-ventetid
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hva sier virksomhetene under Helse- og omsorgsdepartementet om ventetid?
+      expected:
+        criteria:
+          criteria: 'Per 2026-11-17 ligger disse under Helse- og omsorgsdepartementet: Bioteknologirådet, Direktoratet for medisinske produkter, Direktoratet for strålevern og atomsikkerhet, Folkehelseinstituttet, Helsedirektoratet, Nasjonalt klageorgan for helsetjenesten, Norsk pasientskadeerstatning, Statens helsetilsyn, Statens undersøkelseskommisjon for helse- og omsorgstjenesten og Veterinærmedisinsk legemiddelinformasjonssenter. Svaret bygger bare på dokumenter fra disse virksomhetene om ventetid, og sier hvilken virksomhet hvert funn kommer fra. Det tilskriver ikke dokumenter fra andre virksomheter til dem. Finner det ingenting fra en virksomhet, sier det det.'
+      tags:
+        - wrote-about
+        - correctness
+        - register-2026-11-17
+    - id: kah-cites-under-dfd
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilke virksomheter ligger under Digitaliserings- og forvaltningsdepartementet? Oppgi kilde.
+      expected:
+        criteria:
+          criteria: 'Svaret oppgir Enhetsregisteret som kilde og nevner datoen opplysningene gjelder, for eksempel «Kilde: Enhetsregisteret, per 17.11.2026». Om svaret ellers er riktig, vurderes ikke her.'
+      tags:
+        - cites-source
+        - register-2026-11-17
+    - id: kah-cites-over-datatilsynet
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement ligger Datatilsynet under?
+      expected:
+        criteria:
+          criteria: 'Svaret oppgir Enhetsregisteret som kilde og nevner datoen opplysningene gjelder, for eksempel «Kilde: Enhetsregisteret, per 17.11.2026». Om svaret ellers er riktig, vurderes ikke her.'
+      tags:
+        - cites-source
+        - register-2026-11-17
+    - id: kah-cites-over-udir
+      split: validation
+      type: criteria
+      grounding: answer-only
+      input: Hvilket departement ligger Utdanningsdirektoratet under?
+      expected:
+        criteria:
+          criteria: 'Svaret oppgir Enhetsregisteret som kilde og nevner datoen opplysningene gjelder, for eksempel «Kilde: Enhetsregisteret, per 17.11.2026». Om svaret ellers er riktig, vurderes ikke her.'
+      tags:
+        - cites-source
+        - register-2026-11-17

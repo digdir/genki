@@ -28,6 +28,7 @@ export * from './exchange-rates.js';
 export * from './state-register.js';
 export * from './state-accounts.js';
 export * from './state-register-names.js';
+export * from './state-organisation-tool.js';
 export * from './operation-try.js';
 export * from './media-output.js';
 export * from './operation-governance.js';

@@ -403,6 +403,12 @@ const autoReadTopK = async (
   }
 };
 
+/**
+ * Org-number filters (issue 621) are never dropped when they find nothing: a search without them
+ * would return other organisations' documents as theirs. Other filters fall back as before.
+ */
+const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
+
 const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace, retrieval, signal } = env;
   const settings = env.search ?? defaultSearchSettings;
@@ -430,6 +436,16 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     if (signal.aborted) throw error;
     return {
       content: `Search backend error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const kept = (filters ?? []).filter((f) => keptWhenEmpty.has(f.field));
+  if (kept.length > 0 && outcome.chunks.length === 0) {
+    workspace.recordSearch(args.data.queries, [], false, { filters: filters ?? [] });
+    const named = kept.map((f) => `${f.field} ${f.selectedOptions.join(', ')}`).join(' and ');
+    return {
+      content: `Search found 0 chunks with ${named}. The filter was kept: these organisations have no documents that match. Search again with other words, or say that their documents do not cover this.`,
+      retrieved: [],
+      search: { queries: args.data.queries, ...(filters?.length ? { filters } : {}) },
     };
   }
   let fellBack = false;
