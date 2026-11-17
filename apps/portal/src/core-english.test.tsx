@@ -12,10 +12,8 @@ import { translator } from './i18n';
 import { exampleOrganisations, mockFetch } from './mock';
 import { NoAccess } from './screens/NoAccess';
 import { DataHandlingContent } from './screens/DataHandling';
-import { Startside } from './screens/Startside';
 import { requestProblems } from './screens/Unregistered';
 import { needsRight, rightLabel } from './Shell';
-import { expectAccessible } from './test-utils';
 
 document.getAnimations ??= () => [];
 
@@ -93,26 +91,6 @@ describe('shared helpers in English', () => {
 });
 
 describe('screens in English', () => {
-  it('presents the front page in English', () => {
-    render(inEnglish(<Startside onLogin={() => undefined} busy={false} failed />));
-    expect(
-      screen.getByRole('heading', {
-        level: 1,
-        name: 'Generative AI for public organisations, run by Digdir',
-      }),
-    ).toBeTruthy();
-    const anchors = screen.getByRole('navigation', { name: 'On this page' });
-    expect(
-      within(anchors)
-        .getAllByRole('link')
-        .map((a) => a.textContent),
-    ).toEqual(['Shared services', 'Examples', 'Price and terms', 'Data', 'Documentation']);
-    expect(screen.getByRole('alert').textContent).toBe('Sign-in failed. Try again.');
-    expect(screen.getByRole('link', { name: 'See prices' })).toBeTruthy();
-    expect(document.body.textContent).toContain('Today the models run in Azure');
-    expectAccessible();
-  });
-
   it('shows the data handling page in English', () => {
     render(inEnglish(<DataHandlingContent />));
     expect(screen.getByRole('heading', { level: 1, name: 'How data is handled' })).toBeTruthy();

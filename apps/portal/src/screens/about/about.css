@@ -18,35 +18,6 @@
   }
 }
 
-.about-site .start-preview {
-  background: var(--ds-color-neutral-background-tinted);
-}
-
-.about-site .start-preview-bar {
-  max-width: var(--about-max);
-  min-height: 44px;
-  align-items: center;
-  padding: 0 var(--about-gutter);
-  box-sizing: border-box;
-}
-
-.about-site .start-preview-bar .ds-switch,
-.about-site .start-preview-bar .ds-field {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-}
-
-.about-site .start-preview-bar label {
-  white-space: nowrap;
-}
-
-@media (max-width: 419px) {
-  .about-site .start-preview-bar label {
-    font-size: var(--ds-font-size-2);
-  }
-}
-
 .about-bar {
   max-width: var(--about-max);
   margin: 0 auto;
