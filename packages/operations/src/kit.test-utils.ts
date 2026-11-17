@@ -52,7 +52,7 @@ export const call = async (
     const reply = replies[sent.length - 1];
     if (!reply) return Response.json({ error: { message: 'no more replies' } }, { status: 500 });
     if (reply.body === undefined)
-      return new Response(null, { status: reply.status ?? 204, headers: reply.headers });
+      return new Response(null, { status: reply.status ?? 204, headers: reply.headers ?? {} });
     const type = reply.type ?? 'application/json';
     const body =
       type === 'application/json' ? JSON.stringify(reply.body) : (reply.body as BodyInit);

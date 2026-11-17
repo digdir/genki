@@ -630,6 +630,40 @@ describe('a candidate model that serves only an operation kind', () => {
   });
 });
 
+describe('a candidate model that serves only reranking', () => {
+  const reranker = 'colbert/kandidat';
+
+  it('cannot be the reranker of a published service until it is released', async () => {
+    const { platform, send } = await boot(true);
+    const added = await send(
+      'PUT',
+      `/operator/models/${reranker}`,
+      'operator',
+      {
+        endpoint: 'colbert',
+        deployment: 'kandidat-omrangering',
+        residency: 'global',
+        capabilities: [],
+        apis: { rerank: 'colbert/rerank@1' },
+      },
+      { 'change-reason': reason },
+    );
+    const definition = service(current);
+
+    const published = await platform.definitions.publish(
+      { ...definition, spec: { ...definition.spec, knowledge: { datasets: [], reranker } } },
+      'kari',
+      'omrangering',
+    );
+
+    expect(added.status).toBe(200);
+    expect(published.ok ? [] : published.errors).toContainEqual({
+      path: 'spec.knowledge.reranker',
+      message: `model ${reranker} is not released yet; it is waiting for the quality matrix`,
+    });
+  });
+});
+
 describe('releasing a model nobody can compare against', () => {
   it('needs a reason of at least 20 characters and records that no matrix was run', async () => {
     const { admin, release, send, visible } = await boot(true, false);
@@ -767,6 +801,15 @@ describe('trying a candidate model before release', () => {
         reason: 'a candidate model is tried only in draft runs',
       });
       expect(draft.allow).toBe(true);
+    });
+
+    it('refuses a candidate reranker unless the principal is marked to try it', async () => {
+      const reranker = { kind: 'reranker', id: candidate } as const;
+
+      expect((await gate.decide(person, 'use:rerank', reranker)).allow).toBe(false);
+      expect((await gate.decide(withCandidateTrial(person), 'use:rerank', reranker)).allow).toBe(
+        true,
+      );
     });
 
     it('an API key confined to its grants never tries a candidate, even with the mark', async () => {

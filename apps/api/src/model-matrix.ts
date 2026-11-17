@@ -158,7 +158,10 @@ export const releaseGate = (
       return { allow: false, reason: 'a candidate model is tried only in draft runs' };
     const gate = catalog();
     if (
-      (action === 'use:model' || action === 'use:decision' || action === 'use:described') &&
+      (action === 'use:model' ||
+        action === 'use:decision' ||
+        action === 'use:described' ||
+        action === 'use:rerank') &&
       gate &&
       isCandidate(gate, resource.id) &&
       !trial

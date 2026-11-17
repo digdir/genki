@@ -44,6 +44,7 @@ export const modelsNamedIn = (definition: unknown): { path: string; model: strin
       'spec.guardrails.purpose-check.model',
       objectOf(objectOf(spec.guardrails)['purpose-check']).model,
     ],
+    ['spec.knowledge.reranker', objectOf(spec.knowledge).reranker],
   ];
   return named.flatMap(([path, m]) => (typeof m === 'string' && m ? [{ path, model: m }] : []));
 };

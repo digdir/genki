@@ -39,7 +39,7 @@ A model an operator adds is a candidate (`release: candidate`) until the quality
 - the quality matrix's own system user, which may run only draft services;
 - an operator who tries the candidate in a draft: a playground run, or a test set run on a saved or sent draft. The API marks such a run with an internal grant (`grant:candidate-trial`) only when the caller logged in as an operator and the draft names a candidate. A principal with the mark may invoke only draft capabilities and the eval run, so it cannot reach a published service, and the mark never counts on a principal confined to a key or client. The rest of the policy, lockdown admission included, still applies.
 
-Publishing a service that names a candidate is refused, so published services and API keys never use one. That holds wherever a service names a model: the primary, fallback and role models, `spec.model.operations`, a variant's model and the purpose check's model (2026-11-17). Service managers in a tenant do not get the mark: a candidate is a platform model, owned by no tenant, and stays hidden from them until it is released.
+Publishing a service that names a candidate is refused, so published services and API keys never use one. That holds wherever a service names a model: the primary, fallback and role models, `spec.model.operations`, a variant's model, the purpose check's model and the reranker in `spec.knowledge.reranker`, which the release gate also refuses at run time (2026-11-17). Service managers in a tenant do not get the mark: a candidate is a platform model, owned by no tenant, and stays hidden from them until it is released.
 
 ### Descriptors and three tiers
 
