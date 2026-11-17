@@ -154,6 +154,7 @@ export interface ApiContext {
   ) => Promise<T>;
   tenantPath: (tenant: string) => string;
   query?: <T>(method: string, path: string, body: unknown) => Promise<T>;
+  invalidate?: (tenant: string) => void;
   send?: (
     method: string,
     path: string,
@@ -277,7 +278,10 @@ export const createApiClient = ({
     path: string,
     body: unknown,
     headers: Record<string, string> = {},
-  ) => afterWrite(path, () => sendJson<T>(method, path, body, headers));
+  ) =>
+    method === 'GET'
+      ? sendJson<T>(method, path, body, headers)
+      : afterWrite(path, () => sendJson<T>(method, path, body, headers));
 
   const sendRaw = async (
     method: string,
@@ -299,8 +303,15 @@ export const createApiClient = ({
     });
   };
 
-  const raw = (method: string, path: string, body: unknown, headers: Record<string, string> = {}) =>
-    afterWrite(path, () => sendRaw(method, path, body, headers));
+  const raw = (
+    method: string,
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) =>
+    method === 'GET'
+      ? sendRaw(method, path, body, headers)
+      : afterWrite(path, () => sendRaw(method, path, body, headers));
 
   return {
     cache,
@@ -309,7 +320,14 @@ export const createApiClient = ({
       get<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
     isReadOnlyInLockdown: async (signal?: AbortSignal) =>
       (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
-    ...featureClients({ get, request, tenantPath, send: raw, query: sendJson }),
+    ...featureClients({
+      get,
+      request,
+      tenantPath,
+      send: raw,
+      query: sendJson,
+      invalidate: (tenant: string) => cache.invalidate(encodeURIComponent(tenant)),
+    }),
     stepOperations: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: StepOperation[] }>(`${tenantPath(tenant)}/step-flows/operations`, signal))
         .data,

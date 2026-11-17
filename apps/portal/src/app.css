@@ -672,6 +672,51 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   }
 }
 
+.state.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+}
+
+.navigation-progress {
+  position: fixed;
+  top: var(--header-offset, 0px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.navigation-progress::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--ds-color-accent-base-default);
+  animation: navigation-progress 1.2s ease-in-out infinite;
+}
+
+@keyframes navigation-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navigation-progress::before {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .state.empty {
   padding: 28px 20px;
   border: 1px dashed var(--ds-color-neutral-border-default);
