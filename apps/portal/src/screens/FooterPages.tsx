@@ -1,9 +1,6 @@
-import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
+import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
-import type { ApiClient } from '../api';
-import { useAsync } from '../hooks';
 import { useT } from '../i18n';
-import { Loading } from '../states';
 
 const link = (href: string) => (chunks: ReactNode) => <a href={href}>{chunks}</a>;
 
@@ -49,36 +46,6 @@ export const Guide = () => {
         })}
       </Paragraph>
       <Paragraph>{t('app.guideRights')}</Paragraph>
-    </>
-  );
-};
-
-export const Status = ({ api }: { api: Pick<ApiClient, 'getHealth'> }) => {
-  const t = useT();
-  const [health, retry] = useAsync((signal) => api.getHealth(signal), [api]);
-  return (
-    <>
-      <Paragraph>{t('app.statusIntro')}</Paragraph>
-      {health.status === 'loading' ? (
-        <Loading label={t('app.statusChecking')} />
-      ) : health.status === 'error' ? (
-        <Alert data-color="danger">
-          <Paragraph>{t('app.statusDown')}</Paragraph>
-          <Button variant="secondary" data-size="sm" onClick={retry}>
-            {t('app.statusCheckAgain')}
-          </Button>
-        </Alert>
-      ) : (
-        <dl>
-          <dt>{t('app.statusApi')}</dt>
-          <dd>{t('app.statusUp')}</dd>
-          <dt>{t('app.statusVersion')}</dt>
-          <dd>{health.data.version}</dd>
-        </dl>
-      )}
-      <Paragraph>
-        {t.rich('app.statusScope', { services: link('#/services'), log: link('#/log') })}
-      </Paragraph>
     </>
   );
 };

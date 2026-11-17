@@ -22,12 +22,15 @@ const pick = (input: HTMLElement, name: string, size = 1000) => {
   fireEvent.change(input, { target: { files: [file] } });
 };
 
+const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 beforeEach(() => {
   window.location.hash = '';
 });
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
+  if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+  else Reflect.deleteProperty(navigator, 'clipboard');
 });
 
 describe('Fellestjenester: liste', () => {
@@ -230,6 +233,8 @@ describe('Fellestjenester: detalj', () => {
   });
 
   it('klar: runs the sample and shows result, change notes and copy', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     await openDetail('klarsprak', 'Klarspråk');
     expect((screen.getByLabelText('Tekst du vil skrive om') as HTMLTextAreaElement).value).toMatch(
@@ -249,7 +254,8 @@ describe('Fellestjenester: detalj', () => {
       within(resultBox()).getByText('Ferdig på 2,1 s · 1 240 tokens · Borealis-27B, Norge'),
     ).toBeTruthy();
     fireEvent.click(within(resultBox()).getByRole('button', { name: 'Kopier resultatet' }));
-    expect(within(resultBox()).getByText('Kopiert')).toBeTruthy();
+    expect(await within(resultBox()).findByText('Kopiert')).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/Du får ikke tilskudd\./));
     expect(within(resultBox()).getByRole('link', { name: 'Se tidslinjen' })).toBeTruthy();
     expectAccessible();
   });

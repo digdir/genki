@@ -1,7 +1,7 @@
 import {
   Alert,
   Button,
-  Details,
+  Dialog,
   Heading,
   Paragraph,
   Tag,
@@ -24,82 +24,150 @@ const errorText = (error: unknown, t: T) =>
 
 const emptyForm = { id: '', name: '', endpoint: '', secretName: '', secretValue: '' };
 
+interface Pending {
+  title: string;
+  button: string;
+  done: string;
+  run: (reason: string) => Promise<unknown>;
+}
+
+const DialogHead = ({ id, title, onClose }: { id: string; title: string; onClose: () => void }) => {
+  const t = useT();
+  return (
+    <div className="int-dialog-head">
+      <Heading level={2} data-size="xs" id={id}>
+        {title}
+      </Heading>
+      <Button variant="tertiary" data-size="sm" onClick={onClose}>
+        {t('common.close')}
+      </Button>
+    </div>
+  );
+};
+
 export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
   const t = useT();
   const [state, retry] = useAsync((signal) => api.integrations(tenant, signal), [api, tenant]);
+  const [message, setMessage] = useState<string>();
+  const [form, setForm] = useState<typeof emptyForm>();
+  const [askDiscard, setAskDiscard] = useState(false);
+  const [pending, setPending] = useState<Pending>();
   const [reason, setReason] = useState('');
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | undefined>();
-  const [form, setForm] = useState(emptyForm);
+  const [reasonShown, setReasonShown] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const act = async (run: () => Promise<unknown>, done: string) => {
-    setMessage(undefined);
-    const reasonError = reasonProblem(reason, t);
-    if (reasonError) {
-      setMessage({ ok: false, text: reasonError });
-      return;
+  const reasonError = reasonShown ? reasonProblem(reason, t) : undefined;
+
+  const reset = () => {
+    setReason('');
+    setReasonShown(false);
+    setError('');
+    setAskDiscard(false);
+  };
+
+  const run = async (work: (reason: string) => Promise<unknown>, done: string) => {
+    if (busy) return false;
+    if (reasonProblem(reason, t)) {
+      setReasonShown(true);
+      return false;
     }
+    setBusy(true);
+    setError('');
     try {
-      await run();
-      setMessage({ ok: true, text: done });
+      await work(reason.trim());
+      setMessage(done);
       retry();
+      reset();
+      return true;
     } catch (e) {
-      setMessage({ ok: false, text: errorText(e, t) });
+      setError(errorText(e, t));
+      return false;
+    } finally {
+      setBusy(false);
     }
   };
 
-  const storeSecret = async (origin: string) => {
-    const allowedHosts = await hostsToStore(api, tenant, form.secretName, origin, t);
-    await api.setSecret(tenant, form.secretName, form.secretValue, reason.trim(), allowedHosts);
-  };
-
-  const register = () =>
-    act(async () => {
-      const url = new URL(form.endpoint);
-      if (form.secretName && form.secretValue) await storeSecret(url.origin);
+  const register = async (draft: typeof emptyForm) => {
+    const ok = await run(async (why) => {
+      const url = new URL(draft.endpoint);
+      if (draft.secretName && draft.secretValue) {
+        const allowedHosts = await hostsToStore(api, tenant, draft.secretName, url.origin, t);
+        await api.setSecret(tenant, draft.secretName, draft.secretValue, why, allowedHosts);
+      }
       await api.registerConnection(
         tenant,
         {
-          id: form.id,
-          name: form.name || form.id,
-          endpoint: form.endpoint,
+          id: draft.id,
+          name: draft.name || draft.id,
+          endpoint: draft.endpoint,
           version: '1.0',
           allow: [{ host: url.hostname, ...(url.port ? { port: Number(url.port) } : {}) }],
-          ...(form.secretName
-            ? { auth: { kind: 'bearer', secret: `secret://tenant/${tenant}/${form.secretName}` } }
+          ...(draft.secretName
+            ? { auth: { kind: 'bearer', secret: `secret://tenant/${tenant}/${draft.secretName}` } }
             : {}),
         },
-        reason.trim(),
+        why,
       );
-      setForm(emptyForm);
     }, t('integConnections.registered'));
+    if (ok) setForm(undefined);
+  };
+
+  const formDirty = (draft: typeof emptyForm) =>
+    Object.values(draft).some((v) => v.trim() !== '') || reason.trim() !== '';
+
+  const tryCloseForm = () => {
+    if (form && formDirty(form) && !askDiscard) setAskDiscard(true);
+    else {
+      setForm(undefined);
+      reset();
+    }
+  };
+
+  const reasonField = (
+    <Textfield
+      id="integrations-reason"
+      label={t('common.reason')}
+      description={t('integConnections.reasonHelp')}
+      value={reason}
+      error={reasonError}
+      onChange={(e) => setReason(e.target.value)}
+    />
+  );
 
   return (
     <section aria-labelledby="mcp-h" className="stack-md">
-      <div className="stack-sm">
-        <Heading level={2} data-size="xs" id="mcp-h">
-          {t('integConnections.heading')}
-        </Heading>
-        <Paragraph data-size="sm" className="meta">
-          {t('integConnections.intro')}
-        </Paragraph>
+      <div className="int-intro">
+        <div className="stack-sm int-intro-text">
+          <Heading level={3} data-size="xs" id="mcp-h">
+            {t('integConnections.heading')}
+          </Heading>
+          <Paragraph data-size="sm" className="meta">
+            {t('integConnections.intro')}
+          </Paragraph>
+        </div>
+        <Button
+          variant="primary"
+          onClick={() => {
+            reset();
+            setMessage(undefined);
+            setForm(emptyForm);
+          }}
+        >
+          {t('integConnections.registerServer')}
+        </Button>
       </div>
-      <Textfield
-        id="integrations-reason"
-        className="int-field-md"
-        label={t('common.reason')}
-        description={t('integConnections.reasonHelp')}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-      />
       <div aria-live="polite">
         {message ? (
-          <Alert data-color={message.ok ? 'success' : 'danger'} data-size="sm">
-            {message.text}
+          <Alert data-color="success" data-size="sm">
+            {message}
           </Alert>
         ) : null}
       </div>
       {state.status === 'loading' ? <Loading label={t('integConnections.loading')} /> : null}
-      {state.status === 'error' ? <ErrorState error={state.error} onRetry={retry} /> : null}
+      {state.status === 'error' ? (
+        <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
+      ) : null}
       {state.status === 'ready' ? (
         state.data.connections.length === 0 ? (
           <div className="int-empty">
@@ -141,7 +209,7 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
                 )}
                 {c.pending.length > 0 ? (
                   <Alert data-color="warning" data-size="sm">
-                    <Heading level={3} data-size="2xs">
+                    <Heading level={4} data-size="2xs">
                       {t('integConnections.pendingHeading')}
                     </Heading>
                     <Paragraph data-size="sm">{t('integConnections.pendingText')}</Paragraph>
@@ -154,12 +222,16 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
                           <Button
                             data-size="sm"
                             variant="secondary"
-                            onClick={() =>
-                              void act(
-                                () => api.approveTool(tenant, c.id, tool.name, reason.trim()),
-                                t('integConnections.approved', { name: tool.name }),
-                              )
-                            }
+                            onClick={() => {
+                              reset();
+                              setMessage(undefined);
+                              setPending({
+                                title: t('integConnections.approve', { name: tool.name }),
+                                button: t('integConnections.approve', { name: tool.name }),
+                                done: t('integConnections.approved', { name: tool.name }),
+                                run: (why) => api.approveTool(tenant, c.id, tool.name, why),
+                              });
+                            }}
                           >
                             {t('integConnections.approve', { name: tool.name })}
                           </Button>
@@ -172,12 +244,16 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
                   <Button
                     data-size="sm"
                     variant="secondary"
-                    onClick={() =>
-                      void act(
-                        () => api.syncConnection(tenant, c.id, reason.trim()),
-                        t('integConnections.synced', { name: c.name }),
-                      )
-                    }
+                    onClick={() => {
+                      reset();
+                      setMessage(undefined);
+                      setPending({
+                        title: t('integConnections.sync', { name: c.name }),
+                        button: t('integConnections.syncButton'),
+                        done: t('integConnections.synced', { name: c.name }),
+                        run: (why) => api.syncConnection(tenant, c.id, why),
+                      });
+                    }}
                   >
                     {t('integConnections.sync', { name: c.name })}
                   </Button>
@@ -187,17 +263,72 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
           </ul>
         )
       ) : null}
-      <Details>
-        <Details.Summary>{t('integConnections.registerServer')}</Details.Summary>
-        <Details.Content>
+      {pending ? (
+        <Dialog
+          open
+          modal
+          closeButton={false}
+          onCancel={(e) => {
+            e.preventDefault();
+            setPending(undefined);
+          }}
+          aria-labelledby="conn-confirm-h"
+          className="int-dialog"
+        >
+          <div className="stack-dialog stack-sm">
+            <DialogHead
+              id="conn-confirm-h"
+              title={pending.title}
+              onClose={() => setPending(undefined)}
+            />
+            {reasonField}
+            {error ? (
+              <Alert data-color="danger" data-size="sm" role="alert">
+                {error}
+              </Alert>
+            ) : null}
+            <div className="actions">
+              <Button
+                variant="primary"
+                loading={busy}
+                onClick={() =>
+                  void run(pending.run, pending.done).then((ok) => ok && setPending(undefined))
+                }
+              >
+                {pending.button}
+              </Button>
+              <Button variant="secondary" onClick={() => setPending(undefined)}>
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
+      {form ? (
+        <Dialog
+          open
+          modal
+          closeButton={false}
+          onCancel={(e) => {
+            e.preventDefault();
+            tryCloseForm();
+          }}
+          aria-labelledby="conn-new-h"
+          className="int-dialog"
+        >
           <form
-            className="stack-sm int-field-md"
+            className="stack-dialog stack-sm"
             aria-label={t('integConnections.newConnection')}
             onSubmit={(e) => {
               e.preventDefault();
-              void register();
+              void register(form);
             }}
           >
+            <DialogHead
+              id="conn-new-h"
+              title={t('integConnections.newConnection')}
+              onClose={tryCloseForm}
+            />
             <Textfield
               id="connection-id"
               label={t('integConnections.shortName')}
@@ -231,12 +362,37 @@ export const Connections = ({ api, tenant }: { api: ApiClient; tenant: string })
               value={form.secretValue}
               onChange={(e) => setForm({ ...form, secretValue: e.target.value })}
             />
-            <div>
-              <Button type="submit">{t('integConnections.register')}</Button>
-            </div>
+            {reasonField}
+            {error ? (
+              <Alert data-color="danger" data-size="sm" role="alert">
+                {error}
+              </Alert>
+            ) : null}
+            {askDiscard ? (
+              <Alert data-color="warning" data-size="sm" role="alert">
+                {t('integKeys.discardAsk')}
+                <div className="actions">
+                  <Button data-size="sm" variant="secondary" onClick={() => setAskDiscard(false)}>
+                    {t('integKeys.goBack')}
+                  </Button>
+                  <Button data-size="sm" variant="primary" onClick={tryCloseForm}>
+                    {t('integKeys.discard')}
+                  </Button>
+                </div>
+              </Alert>
+            ) : (
+              <div className="actions">
+                <Button type="submit" loading={busy}>
+                  {t('integConnections.register')}
+                </Button>
+                <Button variant="secondary" onClick={tryCloseForm}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            )}
           </form>
-        </Details.Content>
-      </Details>
+        </Dialog>
+      ) : null}
     </section>
   );
 };

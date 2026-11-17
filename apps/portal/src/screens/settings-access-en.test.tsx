@@ -28,7 +28,7 @@ const renderEnglish = async (path: string) => {
 
 describe('settings in English', () => {
   it('shows the grid, the panel and the preview in English', async () => {
-    await renderEnglish('#/settings');
+    await renderEnglish('#/settings/all');
     const region = await screen.findByRole('region', { name: 'Settings per layer' });
     expect(screen.getByRole('heading', { level: 1, name: 'Settings for Testetaten' })).toBeTruthy();
     expect(
@@ -48,7 +48,7 @@ describe('settings in English', () => {
   });
 
   it('offers export and import in English', async () => {
-    await renderEnglish('#/settings?tab=transfer');
+    await renderEnglish('#/settings/all');
     expect(await screen.findByText('What do you want to do?')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'Import from file' }));
     expect(screen.getByText('Configuration file (YAML)')).toBeTruthy();

@@ -211,7 +211,13 @@ const userMenuLinks: readonly (readonly [string, PlainKey])[] = [
   ['#/data-handling', 'shell.menuDataHandling'],
 ];
 
-const readableUnregistered = ['api-reference', 'shared-services', 'data-handling', 'profile'];
+const readableUnregistered = [
+  '/api-reference',
+  '/developer/api/reference',
+  '/shared-services',
+  '/data-handling',
+  '/profile',
+];
 
 interface ShellProps {
   session: Session;
@@ -371,7 +377,8 @@ export const Shell = ({
   const actions = organisation.actions ?? profile.rights;
   const actionsKey = actions.join('\u0000');
   const { rights, labels } = useMemo(() => rightsFor(actions, t), [actionsKey, t]);
-  const gated = unregistered && !readableUnregistered.includes(area);
+  const gated =
+    unregistered && !readableUnregistered.some((p) => path === p || path.startsWith(`${p}/`));
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
   const [above, setAbove] = useState<CSSProperties>();
   // In the sidebar a menu opens above its button, placed from where the button is now.

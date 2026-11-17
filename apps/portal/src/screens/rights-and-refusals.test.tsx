@@ -389,6 +389,8 @@ describe('an organisation Digdir has not registered', () => {
   it('lets an unregistered organisation read the API reference', async () => {
     await renderAs('#/api-reference', unregistered());
 
+    await waitFor(() => expect(window.location.hash).toBe('#/developer/api/reference'));
+    expect(await screen.findByRole('navigation', { name: 'Endepunkter' })).toBeTruthy();
     await waitFor(() =>
       expect(
         screen.queryByRole('heading', { name: 'Virksomheten er ikke registrert ennå' }),
