@@ -7717,7 +7717,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -7761,7 +7761,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8287,7 +8287,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -8331,7 +8331,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8585,7 +8585,7 @@
                       type: 'object',
                       properties: {
                         method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
-                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                         follow: {
                           type: 'string',
                           format: 'starts_with',
@@ -8626,7 +8626,7 @@
                         encoding: {
                           default: 'json',
                           type: 'string',
-                          enum: ['json', 'binary', 'text', 'ndjson'],
+                          enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                         },
                         headers: {
                           default: {},
