@@ -17,6 +17,7 @@ const datasetSubPaths = new Set([
   'enrichment',
   'fields',
   'uploads',
+  'search',
 ]);
 const catalogSubPaths = new Set(['versions']);
 

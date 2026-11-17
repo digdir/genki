@@ -2,6 +2,8 @@ import { translator, type Locale, type T } from './i18n';
 import { tenantLabel } from './tenant-names';
 import type {
   AuditEntry,
+  DatasetSearchAnswer,
+  DatasetSearchRequest,
   ModelClassification,
   ModelPrice,
   OperatorModel,
@@ -748,6 +750,9 @@ export const createApiClient = ({
           signal,
         })
       ).data,
+    /** Searches a dataset directly, as a service's search does; `base` is the dataset's path. */
+    datasetSearch: (base: string, body: DatasetSearchRequest, signal?: AbortSignal) =>
+      call<DatasetSearchAnswer>('POST', `${base}/search`, { body, signal }),
     /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
     datasetEngine: (base: string, signal?: AbortSignal) =>
       call<DatasetEngine>('GET', `${base}/engine`, { signal }),

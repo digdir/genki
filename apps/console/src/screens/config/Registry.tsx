@@ -51,6 +51,8 @@ interface Props {
   mandatory?: boolean;
   describe?: (entry: ConfigEntry) => string;
   detail?: (entry: ConfigEntry) => ReactNode;
+  /** What a row the viewer cannot edit shows under its content, such as a dataset's search. */
+  readOnlyDetail?: (entry: ConfigEntry) => ReactNode;
   filter?: (entry: ConfigEntry) => boolean;
 }
 
@@ -222,6 +224,7 @@ const Editor = ({
   template,
   mandatory,
   detail,
+  readOnlyDetail,
   tenant,
   onSaved,
   onCancel,
@@ -232,6 +235,7 @@ const Editor = ({
   template: Record<string, unknown>;
   mandatory: boolean;
   detail?: ((entry: ConfigEntry) => ReactNode) | undefined;
+  readOnlyDetail?: ((entry: ConfigEntry) => ReactNode) | undefined;
   tenant: TenantView | undefined;
   onSaved: (message: string) => void;
   onCancel: () => void;
@@ -395,6 +399,7 @@ const Editor = ({
         </Button>
       </div>
       {entry && detail && !readOnly ? detail(entry) : null}
+      {entry && readOnlyDetail && readOnly ? readOnlyDetail(entry) : null}
       {entry && !readOnly ? (
         <div className="stack-sm">
           <Heading level={4} data-size="2xs">
@@ -415,6 +420,7 @@ export const Registry = ({
   mandatory = false,
   describe,
   detail,
+  readOnlyDetail,
   filter,
   tenant,
 }: Props) => {
@@ -544,6 +550,7 @@ export const Registry = ({
           mandatory={mandatory}
           tenant={tenant}
           detail={detail}
+          readOnlyDetail={readOnlyDetail}
           onCancel={() => setOpen(undefined)}
           onSaved={(message) => {
             flash.show(message);
