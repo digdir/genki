@@ -34,6 +34,12 @@ const access = defineNamespace({
   colleaguesInAltinn:
     'Portalen henter ikke kollegenes rettigheter fra Altinn ennå. Se hvem som har hvilke rettigheter i Altinn.',
   servicesLead: 'Alle med «{right}» kan bruke alle tjenestene.',
+  serviceKeysLead:
+    'Systemer kaller en tjeneste med en API-nøkkel som er bundet til den. Nøklene lages og trekkes tilbake under Kanaler og frontend på tjenesten, og hver endring logges.',
+  serviceKeys: {
+    one: '1 API-nøkkel er bundet til tjenesten',
+    other: '{count} API-nøkler er bundet til tjenesten',
+  },
   loadingServices: 'Henter tjenestene',
   noServicesTitle: 'Ingen tjenester ennå',
   noServicesText: 'Tjenestene dere publiserer, vises her.',
