@@ -36,15 +36,33 @@ describe('the Kildeliste', () => {
     ]);
   });
 
-  it('gathers the pages of a document’s cited excerpts, each once, in runs', () => {
-    expect(pageRanges([12, 13, 27])).toBe('12–13, 27');
-    expect(pageRanges([1, 2, 3, 5, 7, 8])).toBe('1–3, 5, 7–8');
+  it('gathers the pages of a document’s cited excerpts in runs, joined where they touch', () => {
+    expect(
+      pageRanges([
+        [12, 13],
+        [27, 27],
+      ]),
+    ).toBe('12–13, 27');
     expect(references(sources, pairing).map((r) => pageRanges(r.pages))).toEqual([
       '9',
       '12–13, 27',
       '11, 13',
       '10',
     ]);
+  });
+
+  it('counts an excerpt that runs over several pages as all of them, «Side 4–6»', () => {
+    const long: SourceDocument = {
+      title: 'Veileder',
+      excerpts: [
+        { chunkId: 'a', text: 'A', page: 4, pageEnd: 5 },
+        { chunkId: 'b', text: 'B', page: 5, pageEnd: 6 },
+        { chunkId: 'c', text: 'C', page: 9, pageEnd: 9 },
+      ],
+    };
+    const marked = ['a', 'b', 'c'].map((chunkId, i) => ({ marker: String(i + 1), chunkId }));
+    const list = references([long], readFootnotes('A [1] B [2] C [3]', [long], marked).pairing);
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1, 2, 3] *Veileder*. Side 4–6, 9.');
   });
 
   it('copies each document as type, year, title, publisher, pages and address, with its footnotes in brackets', () => {
@@ -108,6 +126,51 @@ describe('the Kildeliste', () => {
     expect(referencesMarkdown(list, 'nb')).toBe(
       String.raw`- [1] *Rapport \*utkast\* \[1\]*. A\_B.`,
     );
+  });
+
+  it('copies no address with an angle bracket, which would end its link early', () => {
+    const sly: SourceDocument = {
+      title: 'Rapport',
+      url: 'https://nkom.no>[Logg-inn](https://evil.example/login)',
+      excerpts: [{ chunkId: 'a', text: 'A' }],
+    };
+    const list = references(
+      [sly],
+      readFootnotes('A [1]', [sly], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    expect(list[0]?.url).toBeUndefined();
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1] *Rapport*.');
+  });
+
+  it('keeps each document on one line, whatever line breaks its title or publisher has', () => {
+    const broken: SourceDocument = {
+      title: 'Rapport\n- [9] Falsk kilde',
+      publisher: 'Nkom\r\n\nAS',
+      excerpts: [{ chunkId: 'a', text: 'A' }],
+    };
+    const list = references(
+      [broken],
+      readFootnotes('A [1]', [broken], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    expect(referencesMarkdown(list, 'nb')).toBe(
+      String.raw`- [1] *Rapport - \[9\] Falsk kilde*. Nkom AS.`,
+    );
+  });
+
+  it('reads a long hostile title, address and page span in linear time', () => {
+    const long: SourceDocument = {
+      title: `${' \n'.repeat(50_000)}*`,
+      url: `https://${'a'.repeat(100_000)}<`,
+      excerpts: [{ chunkId: 'a', text: 'A', page: 1, pageEnd: Number.MAX_SAFE_INTEGER }],
+    };
+    const started = performance.now();
+    const list = references(
+      [long],
+      readFootnotes('A [1]', [long], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    referencesMarkdown(list, 'nb');
+    expect(performance.now() - started).toBeLessThan(200);
+    expect(list[0]?.url).toBeUndefined();
   });
 
   it('gives a document cited as a whole its mark’s number and no pages', () => {

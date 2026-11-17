@@ -431,7 +431,8 @@ export const Answer = ({
               : undefined
           }
           footnotes={footnotes.current}
-          current={shownFootnote === mark.citation}
+          // Only an excerpt is shown whole in Sources.
+          current={byExcerpt && shownFootnote === mark.citation}
         />
       );
     }

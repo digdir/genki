@@ -133,6 +133,25 @@ describe('the excerpts in Kilder (dev-kilder-hoyre)', () => {
     expect(document.activeElement).toBe(cards()[2]);
   });
 
+  it('gives the focus to the card it came from even after a step that had nowhere to go', async () => {
+    render(<Host start={0} citations={cite('kudos::2021-1')} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Neste fotnote' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Alle utdrag' }));
+    await frame();
+    fireEvent.click(cards()[0] as HTMLElement);
+    await frame();
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { level: 3, name: 'Årsrapport Nkom 2021' }),
+    );
+  });
+
+  it('gives the year a document was published as the Kildeliste does, in UTC', () => {
+    // Half past midnight on New Year's Day in Oslo is still the old year in UTC.
+    const late = { ...r2021, publishedAt: '2021-12-31T23:30:00Z' };
+    render(<Host start={0} sources={[late, r2022, r2023]} />);
+    expect(screen.getByText(/2021 · s\. 32/)).toBeTruthy();
+  });
+
   it('goes back to the answer on Escape', () => {
     const back = vi.fn();
     render(<Host start={1} onReturn={back} />);

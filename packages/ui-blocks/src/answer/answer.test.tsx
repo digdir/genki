@@ -107,6 +107,21 @@ describe('the footnotes in the answer', () => {
     ]);
   });
 
+  it('marks no footnote current when the footnotes name documents, which Sources never shows whole', () => {
+    render(
+      <Answer
+        text="Bevilgningen økte [2]. Rapporteringen er fast [1]."
+        sources={sources}
+        documentFootnotes
+        numberEachFootnote
+        shownFootnote={0}
+      />,
+    );
+    const marks = [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')];
+    expect(marks).toHaveLength(2);
+    expect(marks.map((mark) => mark.getAttribute('aria-current'))).toEqual([null, null]);
+  });
+
   it('draws the number in a mark, the brackets kept for copying but out of sight', () => {
     draw();
     const mark = footnotes()[0] as HTMLElement;
@@ -1040,6 +1055,16 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
       expect(button.textContent).toBe('Kopiert');
       act(() => vi.advanceTimersByTime(1));
       expect(button.textContent).toBe('Kopier kildeliste');
+      // A second copy says «Kopiert» for the whole time again.
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      act(() => vi.advanceTimersByTime(2000));
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      act(() => vi.advanceTimersByTime(2000));
+      expect(button.textContent).toBe('Kopiert');
     } finally {
       vi.useRealTimers();
     }

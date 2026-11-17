@@ -3941,6 +3941,14 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     expect(screen.getByRole('button', { name: 'Kopiert' })).toBeTruthy();
   });
 
+  it('offers «Kopier kildeliste» only when the layout lets the answer be copied', async () => {
+    const off = withSetting(fromTemplate('knowledge-assistant-next'), 'chat', 'copy', false).layout;
+    draw(off, fakeApi().api, true);
+    await ask();
+    fireEvent.click(await screen.findByText('Kildeliste'));
+    expect(screen.queryByRole('button', { name: 'Kopier kildeliste' })).toBeNull();
+  });
+
   it('numbers each footnote as it stands for an answer that cites excerpts', async () => {
     await openStored(fromTemplate('knowledge-assistant-next').layout);
     expect(documentMarks()).toEqual(['Fotnote 1: Tildelingsbrev 2022']);

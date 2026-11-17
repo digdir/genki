@@ -45,7 +45,7 @@ export interface ExcerptToolProps {
 }
 
 const yearOf = (date: string | undefined) => {
-  const year = date ? new Date(date).getFullYear() : Number.NaN;
+  const year = date ? new Date(date).getUTCFullYear() : Number.NaN;
   return Number.isNaN(year) ? undefined : String(year);
 };
 
@@ -112,6 +112,8 @@ export const ExcerptTool = ({
 
   if (shown && footnote !== undefined) {
     const step = (by: 1 | -1) => {
+      // With one footnote a step changes nothing, so no effect would clear the flag.
+      if (total < 2) return;
       stepped.current = true;
       onFootnoteChange((footnote + by + total) % total);
     };

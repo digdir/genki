@@ -126,7 +126,8 @@
                 answer first cites it, named «Kilde 1: …». It leads to the document, not an excerpt.
                 «Kilder brukt i svaret» lists the documents in the order of their numbers, and
                 <code>answerCopy</code> takes the same option, so a copied answer keeps them. When
-                the footnotes name excerpts, nothing changes: one number per excerpt.
+                the footnotes name excerpts, nothing changes: one number per excerpt, unless
+                <code>numberEachFootnote</code>.
               </li>
               <li>
                 <code>numberEachFootnote</code>: when the footnotes name excerpts, each footnote has
@@ -160,7 +161,9 @@
                 the title. Escape and «Tilbake til svaret» go back to whichever the reader followed.
               </li>
               <li>
-                <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen.
+                <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen. A
+                <code>plain</code> answer draws the Kildeliste instead, which leads nowhere, so
+                these three and <code>href</code> for titles and excerpts do nothing there.
                 <code>onOpenExcerpt</code>: an excerpt under a title, «Utdrag 1», was chosen, with
                 the excerpt to show in Sources. <code>href</code> gives a footnote, a title and an
                 excerpt an address, for a new tab; with neither <code>href</code> nor
@@ -196,10 +199,13 @@
                 where they wrap. Then the reference: document type, year, <em>title</em>. Publisher.
                 Side 12–13, 27. Address. The type and the publisher are a source's
                 <code>documentType</code> and <code>publisher</code>, which a host sets: genki's
-                <code>sources[]</code> sends neither yet, nor an excerpt's page, so against genki a
-                row reads «2022, <em>Tittel</em>. Address». A part the source lacks is left out. The
-                pages are those of the cited excerpts, in runs, and the address is a link only when
-                it is a web address. It leads nowhere in Sources; the footnotes in the text do.
+                <code>sources[]</code> sends neither yet, so against genki a row reads «2022,
+                <em>Tittel</em>. Side 12. Address». A part the source lacks is left out, and a line
+                break in a title or publisher becomes a space. The pages are those of the cited
+                excerpts, from <code>page</code> to <code>pageEnd</code>, joined in runs. The
+                address is shown, as a link, only when it is a web address with no
+                <code>&lt;</code> or <code>&gt;</code>. It leads nowhere in Sources; the footnotes
+                in the text do.
               </li>
               <li>
                 <code>onCopyReferences</code>: shows «Kopier kildeliste» under the Kildeliste. The

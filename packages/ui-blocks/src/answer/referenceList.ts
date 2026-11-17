@@ -16,8 +16,8 @@ export interface Reference {
   year?: number | undefined;
   /** The organisation that published it. */
   publisher?: string | undefined;
-  /** The pages of its cited excerpts, in order, each once. */
-  pages: readonly number[];
+  /** The pages of its cited excerpts, as runs from one page to another, in order. */
+  pages: readonly PageRun[];
   /** Its address, only when it is a web address: a link from untrusted data goes nowhere else. */
   url?: string | undefined;
 }
@@ -34,7 +34,25 @@ const yearOf = (date: string | undefined) => {
   return Number.isNaN(year) ? undefined : year;
 };
 
-const webAddress = /^https?:\/\/\S+$/i;
+// No `<` or `>`, which would end the copied `<…>` link early.
+const webAddress = /^https?:\/\/[^\s<>]+$/i;
+
+// One line, so a line break in a title cannot start a row of its own in the copied list.
+const oneLine = (text: string | undefined) => text?.replace(/\s+/g, ' ').trim() || undefined;
+
+/** From one page to another, the same page when it is one. */
+export type PageRun = readonly [number, number];
+
+/** Runs of pages, sorted and joined where they touch or overlap. */
+const joinRuns = (runs: readonly PageRun[]): PageRun[] => {
+  const joined: [number, number][] = [];
+  for (const [from, to] of runs.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])) {
+    const last = joined.at(-1);
+    if (last && from <= last[1] + 1) last[1] = Math.max(last[1], to);
+    else joined.push([from, to]);
+  }
+  return joined;
+};
 
 /**
  * The Kildeliste under an answer (dev-kildeliste): each document the answer cites once, with
@@ -67,8 +85,10 @@ export const references = (
     const footnotes = [...new Set(numbers)].toSorted((a, b) => a - b);
     // A document cited as a whole has no pages of its own in the answer.
     const pages = byExcerpt
-      ? [...new Set(cited.flatMap((e) => (e.page === undefined ? [] : [e.page])))].toSorted(
-          (a, b) => a - b,
+      ? joinRuns(
+          cited.flatMap((e): PageRun[] =>
+            e.page === undefined ? [] : [[e.page, Math.max(e.page, e.pageEnd ?? e.page)]],
+          ),
         )
       : [];
     const url = source.url?.trim();
@@ -76,10 +96,10 @@ export const references = (
       {
         key,
         footnotes,
-        documentType: source.documentType?.trim() || undefined,
-        title: source.title.trim(),
+        documentType: oneLine(source.documentType),
+        title: oneLine(source.title) ?? '',
         year: yearOf(source.publishedAt),
-        publisher: source.publisher?.trim() || undefined,
+        publisher: oneLine(source.publisher),
         pages,
         url: url && webAddress.test(url) ? url : undefined,
       },
@@ -90,15 +110,8 @@ export const references = (
 };
 
 /** Pages in runs, «12–13, 27», with an en dash between the ends of a run. */
-export const pageRanges = (pages: readonly number[]) => {
-  const runs: [number, number][] = [];
-  for (const page of pages) {
-    const last = runs.at(-1);
-    if (last && page === last[1] + 1) last[1] = page;
-    else runs.push([page, page]);
-  }
-  return runs.map(([from, to]) => (from === to ? `${from}` : `${from}–${to}`)).join(', ');
-};
+export const pageRanges = (runs: readonly PageRun[]) =>
+  runs.map(([from, to]) => (from === to ? `${from}` : `${from}–${to}`)).join(', ');
 
 /**
  * A reference in its parts, in the order it is read: «Årsrapport, 2022, *Årsrapport 2021*.
@@ -115,7 +128,7 @@ export const referenceParts = (reference: Reference, locale: Locale) => {
     publisher: reference.publisher,
     pages: reference.pages.length
       ? t('answer.referencePages', {
-          count: reference.pages.length,
+          count: reference.pages.reduce((n, [from, to]) => n + (to > from ? 2 : 1), 0),
           pages: pageRanges(reference.pages),
         })
       : undefined,
