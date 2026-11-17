@@ -2311,6 +2311,7 @@ export const createPlatform = async (input: PlatformInput) => {
             action: 'use-services',
           })),
         prices,
+        modelResidency: (id) => models.describe().find((m) => m.id === id)?.residency,
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
         countingRule: () => {

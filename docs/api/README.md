@@ -63,6 +63,14 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-17: one residency and price source, failure causes, last use and dataset documents
+
+- `GET /tenants/{tenant}/services` gives each service `model: { id, residency }`: the primary model and where it processes data, from the platform's model list, the same source as `GET /models` and the building blocks. `residency` is `null` for a model the list does not know. `spec.model.residency` in the definition is the widest residency the service allows, not where its model runs.
+- The usage totals (`totals` on `GET /tenants/{tenant}/usage`, `usageThisMonth` on `GET /tenants/{tenant}/overview` and each `usage` on `GET /operator/usage`) gain `unpricedModels`: the models with use in the period and no price in the model list. `costMicroNok` then counts only the priced part. Every kroner figure comes from the model list's prices, or from the AI gateway's charge for a model counted there. The report's `priced` is now the same as `totals.priced`, so an open unit without a price also makes it `false`.
+- `GET /tenants/{tenant}/tasks` and `GET /tenants/{tenant}/tasks/{task}` give a failed run `failure: { code, reason, step? }`, as `GET /tenants/{tenant}/tasks/mine` does: a code, a fixed sentence for it and the failed step. Never the provider's or model's error text.
+- An API key's `lastUsedAt` is written about once a minute per key at most (requests at the same moment, or on several replicas, can still write it more often). The key's usage count now counts the minutes in which the key was used, not each request.
+- `GET /tenants/{tenant}/datasets/{id}/documents?limit=&offset=` lists one page of a dataset's documents (see [datasets.md](datasets.md#listing-a-datasets-documents)).
+
 ### 2026-11-17: text files to a step flow
 
 - `/v1/chat/completions` takes a `file` content part in the last user message, `{ "type": "file", "file": { "filename": "brev.txt", "file_data": "data:text/plain;base64,<base64>" } }`, as OpenAI clients send it. It reaches a step flow as `{{input.files.N}}`, the same media reference as audio and images, so a `call-operation@1` step can pass it to a descriptor. A service takes a type this way when it is in `spec.input.accepts` and a `call-operation@1` step of the service's flow takes it as media input; `GET /v1/models` shows those types as `_files: { accepts, max_bytes, max_count }` (10 MiB, 5 parts with audio and images together). `file_id` is not supported. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`. A file is not masked, so the step publishes only when the service's risk assessment records unmasked input of that media type, such as `text/plain` (`spec.riskConfirmation.unmaskedInput`), and the gate checks it again on every call.

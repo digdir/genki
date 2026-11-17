@@ -12,7 +12,13 @@ import {
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { datasetInUseType, datasetRunOpenType } from '../dataset-delete.js';
-import { datasetSearchBody } from '../dataset-search.js';
+import {
+  datasetDocumentsFailedType,
+  datasetDocumentsPeopleOnlyType,
+  datasetDocumentsUnsupportedType,
+  datasetSearchBody,
+  maxDocumentsLimit,
+} from '../dataset-search.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
 import { switchStates } from '../engine-switches.js';
 import { changeReason, Problem, problemContent } from '../http.js';
@@ -1850,6 +1856,80 @@ const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
   }),
 );
 
+const typedProblem = (type: string, description: string) => ({
+  description,
+  content: {
+    'application/problem+json': { schema: Problem.extend({ type: z.literal(type) }) },
+  },
+});
+
+const DatasetDocument = z
+  .object({
+    id: z.string().describe('The document id'),
+    title: z.string().optional(),
+    url: z.string().optional().describe("The public source link, by the dataset's link rule"),
+    fields: z.record(z.string(), z.unknown()).describe("The document's fields"),
+  })
+  .openapi('DatasetDocument');
+
+const documentRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/datasets/{id}/documents',
+    summary:
+      "One page of the documents in a dataset in the tenant's catalogue (any person in the tenant; not audited)",
+    description:
+      "The tenant's own datasets and the platform datasets shared with it, by id or alias, read through the dataset's knowledge port. No model is called.",
+    request: {
+      params: z.object({ tenant, id: param('digdir/kudos') }),
+      query: z.object({
+        limit: z
+          .string()
+          .optional()
+          .describe(`1 to ${maxDocumentsLimit}, default 50; more is refused, not cut`),
+        offset: z
+          .string()
+          .optional()
+          .describe(
+            'Documents to skip, default 0; a multiple of limit, since some engines read in whole pages',
+          ),
+      }),
+    },
+    responses: {
+      200: json(
+        z
+          .object({
+            dataset: z.string().describe('The dataset, aliases resolved'),
+            limit: z.number().int(),
+            offset: z.number().int(),
+            found: z.number().int().optional().describe('All documents, when the engine counts'),
+            documents: z.array(DatasetDocument),
+          })
+          .openapi('DatasetDocumentsPage'),
+        'One page of documents',
+      ),
+      401: either('Not signed in'),
+      403: typedProblem(datasetDocumentsPeopleOnlyType, 'An API key or system caller'),
+      404: either("No such tenant for you, or no such dataset in the tenant's catalogue"),
+      422: {
+        description: 'A limit or offset out of range, or an engine that cannot list documents',
+        content: {
+          'application/problem+json': {
+            schema: z.union([
+              Problem,
+              Problem.extend({ type: z.literal(datasetDocumentsUnsupportedType) }),
+            ]),
+          },
+        },
+      },
+      502: typedProblem(
+        datasetDocumentsFailedType,
+        'The search engine failed; its error text is never passed on',
+      ),
+    },
+  }),
+];
+
 export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
@@ -1866,7 +1946,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
   'dataset-delete': deleteRoutes,
-  'dataset-search': searchRoutes,
+  'dataset-search': [...searchRoutes, ...documentRoutes],
   'dataset-enrichment': enrichmentRoutes,
   'operator-models': operatorModelRoutes,
   'operator-catalog': operatorCatalogRoutes,
