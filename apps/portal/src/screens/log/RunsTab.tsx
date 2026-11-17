@@ -59,6 +59,7 @@ export const RunsTab = ({
   live = false,
   onChange,
   initialStatus = '',
+  initialService = '',
 }: {
   api: ApiClient;
   tenant: string;
@@ -68,15 +69,13 @@ export const RunsTab = ({
   live?: boolean;
   onChange: (entry: ChangeEntry) => void;
   initialStatus?: TaskStatus | '';
+  initialService?: string;
 }) => {
   const t = useT();
   const f = useFormat();
-  const [form, setForm] = useState<Filters>({ ...empty, status: initialStatus });
-  const [applied, setApplied] = useState<Filters & { n: number }>({
-    ...empty,
-    status: initialStatus,
-    n: 0,
-  });
+  const initial: Filters = { ...empty, status: initialStatus, service: initialService };
+  const [form, setForm] = useState<Filters>(initial);
+  const [applied, setApplied] = useState<Filters & { n: number }>({ ...initial, n: 0 });
   const [overrides, setOverrides] = useState<Record<string, TaskStatus>>({});
   const handled = useRef(0);
   const [services] = useAsync(

@@ -449,7 +449,10 @@ const UsageView = ({
                   <span aria-hidden="true">{arrow('cost')}</span>
                 </TableHeaderCell>
                 {group === 'model' ? (
-                  <TableHeaderCell scope="col">{t('usage.processedIn')}</TableHeaderCell>
+                  <>
+                    <TableHeaderCell scope="col">{t('usage.pricePerThousand')}</TableHeaderCell>
+                    <TableHeaderCell scope="col">{t('usage.processedIn')}</TableHeaderCell>
+                  </>
                 ) : null}
               </TableRow>
             </TableHead>
@@ -473,6 +476,22 @@ const UsageView = ({
                   </TableCell>
                   <TableCell className="num">{money(f, t, r.cost)}</TableCell>
                   {group === 'model' ? (
+                    <TableCell className="small">
+                      {r.price === undefined
+                        ? t('usage.priceUnknown')
+                        : r.price === null
+                          ? t('usage.notPriced')
+                          : t('usage.modelPrice', {
+                              input: f.number(r.price.inputPerThousand, {
+                                maximumFractionDigits: 4,
+                              }),
+                              output: f.number(r.price.outputPerThousand, {
+                                maximumFractionDigits: 4,
+                              }),
+                            })}
+                    </TableCell>
+                  ) : null}
+                  {group === 'model' ? (
                     <TableCell>
                       <Tag data-size="sm" data-color={r.norway ? 'success' : 'info'}>
                         {r.location}
@@ -490,7 +509,12 @@ const UsageView = ({
                 <TableCell className="num">{nb(f, sum.tin + sum.tout)}</TableCell>
                 <TableCell className="num">{nb(f, sum.runs)}</TableCell>
                 <TableCell className="num">{money(f, t, sum.cost)}</TableCell>
-                {group === 'model' ? <TableCell /> : null}
+                {group === 'model' ? (
+                  <>
+                    <TableCell />
+                    <TableCell />
+                  </>
+                ) : null}
               </TableRow>
             </TableFoot>
           </Table>

@@ -44,6 +44,12 @@ export const overview = {
     one: '{count} run failed in the last day.',
     other: '{count} runs failed in the last day.',
   },
+  failedByService: 'By service:',
+  failedInService: {
+    one: '{count} failed run in {service}',
+    other: '{count} failed runs in {service}',
+  },
+  failedMore: 'and {count} more',
   seeRuns: 'See the runs',
   qualityWarning: '{service}: {message}',
   seeService: 'See the service',

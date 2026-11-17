@@ -14,7 +14,7 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../api';
 import type { DatasetView } from '../api/datasets';
 import { Icon } from '../components/Icon';
@@ -24,7 +24,7 @@ import type { ScreenProps } from '../screen';
 import { useRights } from '../Shell';
 import { failureText } from './datasets/live-model';
 import { ErrorState, Loading, limitOf, refusalOf } from '../states';
-import type { Overview as OverviewData, UsageReport } from '../types';
+import type { Overview as OverviewData, TaskRow, UsageReport } from '../types';
 import { LiveChanges } from './changes/LiveChanges';
 import { allDone, doneCount, ownDataset, startProgress, StartSteps } from './start-progress';
 import {
@@ -54,6 +54,25 @@ export const monthLabel = (f: Format, date: Date) => {
   const name = f.month(date, { year: true });
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
+
+const shownFailingServices = 3;
+
+const failedByService = (rows: TaskRow[]) => {
+  const counts = new Map<string, { id: string; name: string; count: number }>();
+  for (const row of rows) {
+    const entry = counts.get(row.service) ?? {
+      id: row.service,
+      name: row.serviceName ?? row.service,
+      count: 0,
+    };
+    entry.count += 1;
+    counts.set(row.service, entry);
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+};
+
+const failedRunsPath = (service?: string) =>
+  `#/log?status=failed${service ? `&service=${encodeURIComponent(service)}` : ''}`;
 
 type Started = Record<string, 'starting' | 'started' | { error: string }>;
 
@@ -317,6 +336,26 @@ export const Overview = ({
     { keepPreviousFor: tenant },
   );
   const { started, retry } = useIngestRetry(api, tenant, retryDatasets);
+  const failedRuns = overview.status === 'ready' ? overview.data.review.failedTasksLastDay : 0;
+  const [failedServices] = useAsync(
+    async (signal) =>
+      failedRuns > 0
+        ? failedByService(
+            (
+              await api.tasks(
+                tenant,
+                {
+                  status: 'failed',
+                  from: new Date(now.getTime() - 86_400_000).toISOString(),
+                  limit: 500,
+                },
+                signal,
+              )
+            ).data,
+          )
+        : [],
+    [api, tenant, now, failedRuns],
+  );
   const quota = settings.status === 'ready' ? quotaOf(settings.data) : null;
 
   const own = datasets.status === 'ready' ? datasets.data.filter(ownDataset(tenant)) : [];
@@ -455,15 +494,44 @@ export const Overview = ({
       ),
     });
   }
-  const failedRuns = overview.data.review.failedTasksLastDay;
-  if (failedRuns > 0)
+  if (failedRuns > 0) {
+    const perService = failedServices.status === 'ready' ? failedServices.data : [];
+    const shown = perService.slice(0, shownFailingServices);
+    const more = perService.length - shown.length;
     items.push({
       key: 'runs',
       badge: t('overview.badgeErrors'),
       color: 'danger',
-      text: t('overview.runsFailed', { count: failedRuns }),
-      action: <a href="#/log?status=failed">{t('overview.seeRuns')}</a>,
+      text: (
+        <>
+          {t('overview.runsFailed', { count: failedRuns })}
+          {shown.length > 0 ? (
+            <span className="attention-detail">
+              {t('overview.failedByService')}{' '}
+              {shown.map((s, i) => (
+                <Fragment key={s.id}>
+                  {i > 0 ? ', ' : ''}
+                  <a
+                    href={failedRunsPath(s.id)}
+                    aria-label={t('overview.failedInService', { count: s.count, service: s.name })}
+                  >
+                    {s.name}
+                  </a>{' '}
+                  ({f.number(s.count)})
+                </Fragment>
+              ))}
+              {more > 0 ? ` ${t('overview.failedMore', { count: more })}` : ''}
+            </span>
+          ) : null}
+        </>
+      ),
+      action: (
+        <a href={failedRunsPath(perService.length === 1 ? perService[0]?.id : undefined)}>
+          {t('overview.seeRuns')}
+        </a>
+      ),
     });
+  }
   if (usage.status === 'error' && !refusalOf(usage.error))
     items.push({
       key: 'quota-unknown',

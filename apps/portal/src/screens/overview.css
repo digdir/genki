@@ -215,6 +215,11 @@
   color: var(--ds-color-danger-text-default);
 }
 
+.attention-detail {
+  display: block;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
 .attention-none {
   margin: 0;
   padding: 14px 0;

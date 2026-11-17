@@ -2,7 +2,13 @@ import { usageModels, usageServices, zeroUsage } from '../../data/usage';
 import { isTrialService, notPriced, serviceLabel } from '../../format';
 import type { Format, T } from '../../i18n';
 import { modelLabel } from '../../models';
-import type { EffectiveSetting, ModelOption, UsageReport, UsageTotals } from '../../types';
+import type {
+  EffectiveSetting,
+  ModelOption,
+  ModelPrice,
+  UsageReport,
+  UsageTotals,
+} from '../../types';
 
 export const quotaSetting = 'usage.monthlyTokens';
 
@@ -187,6 +193,7 @@ export interface Category {
   location?: string;
   norway?: boolean;
   extra?: boolean;
+  price?: ModelPrice | null;
 }
 
 export interface Bar {
@@ -239,6 +246,7 @@ export const categories = (
           ? t(residencyKey[known.residency ?? 'unknown'])
           : (info?.location ?? t('usage.residencyUnknown')),
         ...(known?.residency === 'norway' || info?.location === 'Norge' ? { norway: true } : {}),
+        ...(known ? { price: known.price ?? null } : {}),
       };
     });
   }

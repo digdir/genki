@@ -36,6 +36,12 @@ export const overview = defineNamespace({
     one: '{count} kjøring feilet det siste døgnet.',
     other: '{count} kjøringer feilet det siste døgnet.',
   },
+  failedByService: 'Per tjeneste:',
+  failedInService: {
+    one: '{count} feilet kjøring i {service}',
+    other: '{count} feilede kjøringer i {service}',
+  },
+  failedMore: 'og {count} til',
   seeRuns: 'Se kjøringene',
   qualityWarning: '{service}: {message}',
   seeService: 'Se tjenesten',

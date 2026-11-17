@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { exampleServices, exampleTimeline, mockFetch } from '../mock';
 import { expectAccessible, failingFetch, renderAt } from '../test-utils';
@@ -200,6 +200,70 @@ describe('Oversikt', () => {
     expect(await screen.findByText(/Vi fikk ikke hentet bruken/)).toBeTruthy();
     expect(screen.getByText(/Vi fikk ikke sjekket kvoten/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Mest brukt siste 7 dager' })).toBeTruthy();
+  });
+
+  it('names the services whose runs failed in the last day and links each to its failed runs', async () => {
+    const failed = (id: string, service: string, serviceName: string) => ({
+      id,
+      status: 'failed',
+      service,
+      serviceName,
+      capability: service,
+      version: 1,
+      environment: null,
+      createdAt: new Date().toISOString(),
+      endedAt: null,
+    });
+    const asked: string[] = [];
+    const base = replacing(
+      /\/overview$/,
+      { ...calm, review: { pendingToolChanges: 0, failedTasksLastDay: 3 } },
+      withUsage(normalUsage, noFailedDatasets),
+    );
+    await renderAt('#/overview', async (input, init) => {
+      const url = String(input);
+      if (/\/tasks\?/.test(url)) {
+        asked.push(url);
+        if (url.includes('status=failed') && url.includes('from='))
+          return Response.json({
+            data: [
+              failed('r1', 'klarsprak', 'Klarspråk'),
+              failed('r2', 'postsortering', 'Postsortering'),
+              failed('r3', 'klarsprak', 'Klarspråk'),
+            ],
+            total: 3,
+          });
+      }
+      return base(input, init);
+    });
+
+    const link = await screen.findByRole('link', { name: '2 feilede kjøringer i Klarspråk' });
+    expect(link.getAttribute('href')).toBe('#/log?status=failed&service=klarsprak');
+    expect(
+      screen.getByRole('link', { name: '1 feilet kjøring i Postsortering' }).getAttribute('href'),
+    ).toBe('#/log?status=failed&service=postsortering');
+    expect(screen.getByText(/3 kjøringer feilet det siste døgnet/)).toBeTruthy();
+    expect(asked.some((u) => /status=failed/.test(u) && /limit=500/.test(u))).toBe(true);
+  });
+
+  it('opens Logg filtered on the service and status named in the address', async () => {
+    const asked: string[] = [];
+    const base = mockFetch();
+    await renderAt('#/log?status=failed&service=rapportassistenten', async (input, init) => {
+      if (/\/tasks(\?|$)/.test(String(input))) asked.push(String(input));
+      return base(input, init);
+    });
+
+    await waitFor(() =>
+      expect(
+        asked.some((u) => u.includes('status=failed') && u.includes('service=rapportassistenten')),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect((screen.getByLabelText('Tjeneste') as HTMLSelectElement).value).toBe(
+        'rapportassistenten',
+      ),
+    );
   });
 
   it('shows a checklist that ticks itself off for a tenant without services', async () => {

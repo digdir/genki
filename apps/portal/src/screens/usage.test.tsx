@@ -223,6 +223,43 @@ describe('Forbruk', () => {
     expect(within(models_).getAllByText('Ikke priset').length).toBeGreaterThan(0);
   });
 
+  it('shows the price per 1 000 tokens of each model from the model list', async () => {
+    const usage = { inputTokens: 800, outputTokens: 200, requests: 1, costMicroNok: 1_000 };
+    const report: UsageReport = {
+      ...emptyReport,
+      totals: usage,
+      daily: [{ date: '2026-10-05', usage }],
+      byModel: [
+        { model: 'foundry-openai/gpt-4.1-mini', usage },
+        { model: 'tenant/norsk-7b', usage },
+        { model: 'gone/old-model', usage },
+      ],
+    };
+    const models = [
+      {
+        id: 'foundry-openai/gpt-4.1-mini',
+        name: 'GPT-4.1 mini',
+        residency: 'global' as const,
+        capabilities: [],
+        price: { inputPerThousand: 0.0042, outputPerThousand: 0.0168 },
+      },
+      { id: 'tenant/norsk-7b', residency: 'norway' as const, capabilities: [], price: null },
+    ];
+    await renderAt(
+      '#/statistics?by=model',
+      mockFetch(undefined, undefined, models, undefined, { usage: report }),
+    );
+
+    const region = await table('Fordelt på modell');
+    expect(
+      within(region).getByRole('columnheader', { name: 'Pris per 1 000 tokens' }),
+    ).toBeTruthy();
+    const row = (name: RegExp) => within(region).getByRole('rowheader', { name }).parentElement;
+    expect(row(/GPT-4\.1 mini/)?.textContent).toContain('0,0042 kr inn, 0,0168 kr ut');
+    expect(row(/^norsk-7b/)?.textContent).toContain('Ikke priset');
+    expect(row(/old-model/)?.textContent).toContain('Ukjent');
+  });
+
   it('shows usage per project and filters the page to one project', async () => {
     const { calls, fetch } = recording();
     await renderAt('#/statistics', fetch);

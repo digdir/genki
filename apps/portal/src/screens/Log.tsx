@@ -27,6 +27,7 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
   const [changes, setChanges] = useState<ChangeEntry[]>(live ? [] : exampleChanges);
   const canReveal = useRights().has('manage-services');
   const status = statuses.find((s) => s === route.query.get('status'));
+  const service = route.query.get('service') ?? '';
   const itemIndex = item && /^\d+$/.test(item) ? Number(item) : undefined;
 
   return (
@@ -57,6 +58,7 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
             live={live}
             onChange={(entry) => setChanges((c) => [entry, ...c])}
             {...(status ? { initialStatus: status } : {})}
+            {...(service ? { initialService: service } : {})}
           />
         </Tabs.Panel>
         <Tabs.Panel value="changes">

@@ -314,7 +314,12 @@ describe('run timeline', () => {
     });
 
     fireEvent.click(screen.getByRole('tab', { name: 'Endringer' }));
-    await waitFor(() => expect(window.location.hash).toBe('#/log?tab=changes'));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Endringer' }).getAttribute('aria-selected')).toBe(
+        'true',
+      ),
+    );
+    expect(window.location.hash).toBe('#/log?tab=changes');
     fireEvent.click(screen.getByRole('tab', { name: 'Kjøringer' }));
     await waitFor(() => expect(window.location.hash).toBe('#/log'));
 

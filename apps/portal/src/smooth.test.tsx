@@ -258,21 +258,21 @@ describe('a smooth portal', () => {
 
   it('navigation keeps the previous screen while the next one is pending', async () => {
     await renderAt('#/overview');
-    await screen.findByRole('region', { name: 'Tjenester' });
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
 
     await go('#/statistics');
 
-    expect(screen.getByRole('region', { name: 'Tjenester' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Mest brukt siste 7 dager' })).toBeTruthy();
     expect(screen.queryByRole('status', { name: 'Henter …' })).toBeNull();
     await act(async () => chunks.usage.release());
     expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Tjenester' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Mest brukt siste 7 dager' })).toBeNull();
   });
 
   it('the progress bar appears only after 200 ms', async () => {
     const bar = () => screen.queryByRole('progressbar', { name: 'Henter …' });
     await renderAt('#/overview');
-    await screen.findByRole('region', { name: 'Tjenester' });
+    await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
 
     await go('#/access');
 
