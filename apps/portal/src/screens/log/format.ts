@@ -48,13 +48,24 @@ export const formatOffset = (seconds: number, f: Format) =>
       ? `+${f.decimal(seconds)} s`
       : `+${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
 
-export const formatDuration = (seconds: number, f: Format) =>
-  seconds < 1
-    ? `${Math.round(seconds * 1000)} ms`
-    : seconds < 60
-      ? `${f.decimal(seconds)} s`
-      : seconds % 60 === 0
-        ? `${seconds / 60} min`
-        : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+export const formatDuration = (seconds: number, f: Format, t: T): string => {
+  if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
+  if (seconds < 60) return `${f.decimal(seconds)} s`;
+  // Whole seconds first, so 59.6 s left over carries into the next minute instead of showing as 60 s.
+  const whole = Math.round(seconds);
+  if (whole >= 3600)
+    return t('logRun.batchDuration', {
+      hours: Math.floor(whole / 3600),
+      minutes: Math.floor((whole % 3600) / 60),
+    });
+  return whole % 60 === 0 ? `${whole / 60} min` : `${Math.floor(whole / 60)} min ${whole % 60} s`;
+};
+
+/** How long a run took, from when it started to when it ended; undefined while it runs. */
+export const durationBetween = (startedAt: string, endedAt: string | null | undefined) => {
+  if (!endedAt) return undefined;
+  const ms = Date.parse(endedAt) - Date.parse(startedAt);
+  return Number.isFinite(ms) && ms >= 0 ? ms / 1000 : undefined;
+};
 
 export const whole = (n: number, f: Format) => f.number(Math.round(n));

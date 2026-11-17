@@ -334,7 +334,7 @@ export const Steps = ({
                   <span className="log-step-times">
                     <span>{formatOffset(step.at, f)}</span>
                     {step.durationSeconds !== undefined ? (
-                      <span>{formatDuration(step.durationSeconds, f)}</span>
+                      <span>{formatDuration(step.durationSeconds, f, t)}</span>
                     ) : null}
                     {step.tokens ? (
                       <span>{t('logSteps.tokens', { count: step.tokens })}</span>
