@@ -25,6 +25,7 @@ import {
   EmptyState,
   ErrorState,
   Filter,
+  FilterBasis,
   FilterRead,
   NotFoundState,
   Settings,
@@ -239,6 +240,7 @@ const approachOf = (
   const changed =
     asked && before?.scope?.selection ? !sameSelection(before.scope.selection, asked) : false;
   const count = turn.scope?.documents;
+  const used = turn.answer?.sources?.length;
   // Beside the tool, the card says only how many documents the answer read from.
   const scope =
     asked && place !== 'compact' ? (
@@ -246,6 +248,9 @@ const approachOf = (
     ) : asked && count !== undefined ? (
       <FilterRead selection={{}} count={count} />
     ) : undefined;
+  // The next look's card is the dev boards' (dev-fremgangsmate-1 and -2): the filter the answer
+  // built on, when the service has one, then the process. Its tool is the dev-verktoy boards' list.
+  const card = next && !tool;
   return (
     <>
       <Approach
@@ -253,11 +258,23 @@ const approachOf = (
         working={busy}
         startedAt={approach.startedAt}
         {...(approach.finishedAt ? { finishedAt: approach.finishedAt } : {})}
-        {...(turn.answer?.sources ? { used: turn.answer.sources.length } : {})}
-        // The next look's tool is the dev-verktoy boards' list; its card is their bar.
-        {...(next ? (tool ? { variant: 'list' as const } : { summary: 'totals' as const }) : {})}
-        {...(changed ? { note: t('filter.changed') } : {})}
-        {...(scope ? { scope } : {})}
+        {...(used === undefined || card ? {} : { used })}
+        {...(card ? { variant: 'sections' as const } : next ? { variant: 'list' as const } : {})}
+        {...(card && asked
+          ? {
+              filter: (
+                <FilterBasis
+                  selection={asked}
+                  fields={a.facets}
+                  count={count}
+                  used={used}
+                  previous={changed ? before?.scope?.selection : undefined}
+                />
+              ),
+            }
+          : {})}
+        {...(changed && !card ? { note: t('filter.changed') } : {})}
+        {...(scope && !card ? { scope } : {})}
       />
       {a.level === 'detailed' && place !== 'compact' ? (
         // No block draws the detailed level yet: the step frames as genki sent them, for now.

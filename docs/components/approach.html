@@ -146,8 +146,17 @@
                 title, and a grey line under it: its <code>description</code>, or «Leste 11 utdrag
                 nøye» for the excerpts it read. Given a <code>note</code>, a <code>scope</code>, or
                 <code>read</code> or <code>used</code>, it draws those as well, and each step's time
-                when the steps carry one. <code>card</code>, the default, is the card above the
-                answer.
+                when the steps carry one. <code>sections</code> is the dev boards' card above the
+                answer (dev-fremgangsmate-1 and -2): Card and Details as Designsystemet draws them,
+                as the Kildeliste is, closed once the answer is done. It holds the
+                <code>filter</code> when given, a line, then «Prosess» over the numbered steps, each
+                with its title and one grey line under it, and «Tok 41 sekunder» at the foot.
+                <code>card</code>, the default, is the card above the answer.
+              </li>
+              <li>
+                <code>filter</code>: in the <code>sections</code> variant, what the answer was asked
+                with, over the steps, such as the filter's <code>FilterBasis</code>. Left out for a
+                service with no filter, and the card starts at «Prosess».
               </li>
             </ul>
             <h3>A step</h3>
@@ -268,6 +277,51 @@
                   <td><code>--genai-approach-step-link-font-size</code></td>
                   <td><code>--ds-font-size-2</code></td>
                   <td>«Vis de 17 som er lest» and «Utdyp hva som mangler»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-sections-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the sections card: its text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-sections-line-height</code></td>
+                  <td><code>--ds-line-height-md</code></td>
+                  <td>the sections card: its line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-divider-spacing</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the sections card: space over and under the line after the filter</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-heading-font-size</code></td>
+                  <td><code>--ds-font-size-3</code></td>
+                  <td>the sections card: «Prosess»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-heading-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>the sections card: «Prosess»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-heading-spacing</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the sections card: space under «Prosess»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-process-indent</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the sections card: the numbers' indent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-process-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the sections card: space between the steps</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-approach-sections-footer-spacing</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the sections card: space over the time</td>
                 </tr>
                 <tr>
                   <td><code>--genai-approach-footer-spacing</code></td>

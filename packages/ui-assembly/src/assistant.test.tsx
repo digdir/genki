@@ -1739,8 +1739,6 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /Avbryt/ })).toBeNull());
   };
   const note = () => document.querySelector('.uib-filter-next')?.textContent;
-  const bars = () =>
-    [...document.querySelectorAll('.uib-approach summary')].map((summary) => summary.textContent);
 
   it('draws the filter as its own panel in the threads’ card, for the next question', async () => {
     drawNext(counted().api);
@@ -1810,34 +1808,58 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     expect(screen.queryByText(/Neste spørsmål leser fra/)).toBeNull();
   });
 
-  it('says the filter inside Fremgangsmåte, and «filteret er endret» only when it changed', async () => {
+  // «Filteret svaret bygger på» in each answer's card, as rows of label and value.
+  const bases = () =>
+    [...document.querySelectorAll('.uib-approach .uib-filter-basis')].map((basis) =>
+      [...basis.querySelectorAll('dt')].map(
+        (label) => `${label.textContent}: ${label.nextElementSibling?.textContent}`,
+      ),
+    );
+
+  it('draws Fremgangsmåte as Card and Details, with the filter the answer built on over «Prosess» (dev-fremgangsmate-1)', async () => {
+    drawNext(counted().api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await tick(/^Årsrapport/);
+    await askMore('Hva er fast?');
+    const card = document.querySelector<HTMLElement>('.uib-approach');
+    expect(card?.getAttribute('data-variant')).toBe('sections');
+    expect(card?.querySelector('.ds-card > details summary')?.textContent).toBe('Fremgangsmåte');
+    const basis = within(card as HTMLElement).getByRole('region', {
+      name: 'Filteret svaret bygger på',
+      hidden: true,
+    });
+    expect(basis.querySelector('.uib-filter-basis-lead')?.textContent).toBe(
+      'Leste fra 3 dokumenter. 1 av dem er brukt i svaret.',
+    );
+    expect(bases()).toEqual([['Dokumenttype: Årsrapport']]);
+    expect(basis.querySelector('dd .ds-tag')?.textContent).toBe('Årsrapport');
+    expect(
+      within(card as HTMLElement).getByRole('list', { name: 'Prosess', hidden: true }),
+    ).toBeTruthy();
+    expect(card?.querySelector('.uib-approach-footer')?.textContent).toMatch(/^Tok \d+ sekund/);
+    // Not said again under the answer: the filter is in Fremgangsmåte.
+    expect(screen.queryByText(/Avgrenset til/)).toBeNull();
+  });
+
+  it('says what changed in the filter since the answer before, and nothing when it did not', async () => {
     const { api, asked } = counted();
     drawNext(api);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
-    await waitFor(() => expect(bars()).toEqual(['FremgangsmåteBrukte 1 kilde']));
-    const chips = screen.getByRole('list', {
-      name: 'Filteret dette svaret bygger på',
-      hidden: true,
-    });
-    expect(chips.textContent).toBe('Årsrapport');
-    expect(chips.closest('.uib-approach-scope')?.textContent).toBe(
-      'Leste fra 3 dokumenter:Årsrapport',
-    );
     await tick(/^Tildelingsbrev/);
     await askMore('Og i år?');
-    await waitFor(() => expect(bars()).toHaveLength(2));
-    expect(bars()[1]).toBe('FremgangsmåteBrukte 1 kilde · filteret er endret');
     await askMore('Og neste år?');
-    await waitFor(() => expect(bars()).toHaveLength(3));
-    expect(bars()[2]).toBe('FremgangsmåteBrukte 1 kilde');
     expect(asked).toHaveLength(3);
-    // Not said again under the answer: the filter is in Fremgangsmåte.
-    expect(screen.queryByText(/Avgrenset til/)).toBeNull();
+    expect(bases()).toEqual([
+      ['Dokumenttype: Årsrapport'],
+      // Every type ticked narrows nothing, so the field reads «Alle».
+      ['Dokumenttype: Alle', 'Endret siden forrige svar: Årsrapport er tatt ut'],
+      ['Dokumenttype: Alle'],
+    ]);
   });
 
-  it('says the filter in full in the tool, and only how many it read from in the bar beside it', async () => {
+  it('keeps the filter in full and the totals in the tool when the layout also puts Fremgangsmåte there', async () => {
     const withTool = {
       ...nextLayout,
       zones: {
@@ -1849,30 +1871,14 @@ describe('the filter in the next look (dev-filter-panel)', () => {
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
-    const scopes = () =>
-      [...document.querySelectorAll('.uib-approach-scope')].map((scope) => [
-        scope.closest('aside') ? 'tool' : 'bar',
-        scope.textContent,
-      ]);
-    await waitFor(() => expect(scopes()).toHaveLength(2));
-    expect(scopes()).toEqual([
-      ['bar', 'Leste fra 3 dokumenter'],
-      ['tool', 'Leste fra 3 dokumenter:Årsrapport'],
-    ]);
     const tool = document.querySelector('aside .uib-approach[data-variant="list"]');
-    expect(tool?.querySelector('.uib-approach-footer')?.textContent).toMatch(/^Brukte 1 kilde/);
-  });
-
-  it('draws the bar alone, with the filter in full, when the layout puts Fremgangsmåte only in the main column', async () => {
-    drawNext(counted().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
-    await tick(/^Årsrapport/);
-    await askMore('Hva er fast?');
-    await waitFor(() => expect(bars()).toEqual(['FremgangsmåteBrukte 1 kilde']));
-    expect(document.querySelector('aside .uib-approach')).toBeNull();
-    expect(document.querySelector('.uib-approach-scope')?.textContent).toBe(
-      'Leste fra 3 dokumenter:Årsrapport',
+    await waitFor(() =>
+      expect(tool?.querySelector('.uib-approach-scope')?.textContent).toBe(
+        'Leste fra 3 dokumenter:Årsrapport',
+      ),
     );
+    expect(tool?.querySelector('.uib-approach-footer')?.textContent).toMatch(/^Brukte 1 kilde/);
+    expect(bases()).toEqual([['Dokumenttype: Årsrapport']]);
   });
 
   it('brings back a thread’s last filter when the thread is opened again', async () => {
