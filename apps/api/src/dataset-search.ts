@@ -1,6 +1,7 @@
 import type { Principal } from '@genai/contracts';
-import type { PortContext } from '@genai/kernel';
-import type { Hit, KnowledgeRouter } from '@genai/port-knowledge';
+import { KernelError, type PortContext } from '@genai/kernel';
+import { mayUseModels, withModelAdmission } from '@genai/composition';
+import { KnowledgeError, type Hit, type KnowledgeRouter } from '@genai/port-knowledge';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant, type Access } from './access.js';
@@ -53,14 +54,21 @@ export interface DatasetSearchDeps {
   clock?: () => number;
 }
 
-/** The router caps a search at 100 hits; asking for more is refused, not cut. */
+/** The router clamps a search at 100 hits; the route refuses more instead of cutting it silently. */
 export const maxSearchLimit = 100;
 
 export const datasetSearchBody = z.strictObject({
   query: z.string().trim().min(1).max(2000),
-  filters: z.record(z.string(), z.unknown()).optional(),
-  profile: z.string().min(1).optional(),
-  limit: z.number().int().min(1).max(maxSearchLimit).optional(),
+  filters: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Filters in the shape a run takes, on the dataset's declared fields"),
+  profile: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("One of the dataset's search profiles; default its first"),
+  limit: z.number().int().min(1).max(maxSearchLimit).optional().describe('Default 10'),
 });
 
 const manageRights: Right[] = ['manage-services', 'manage-datasets'];
@@ -104,6 +112,22 @@ const codeOf = (error: unknown) =>
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+/** The scope with which the kernel's invoke policy admits a platform system principal. */
+const systemScope = 'legacy:query';
+
+/** The task runs as the platform for the tenant, the person as actor: the route checked their rights, which may lack use-services. */
+const searcher = (person: Principal, tenant: string): Principal => {
+  const system: Principal = {
+    kind: 'agency-system',
+    issuer: 'platform',
+    subject: 'dataset-search',
+    tenant,
+    scopes: [systemScope],
+    actor: person,
+  };
+  return mayUseModels(person) ? withModelAdmission(system) : system;
+};
+
 export const mountDatasetSearch = <E extends Env, S extends Schema, B extends string>(
   app: Hono<E, S, B>,
   deps: DatasetSearchDeps,
@@ -115,6 +139,7 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
     principal: Principal,
     tenant: string,
     dataset: string,
+    sharedWith = tenant,
   ): Promise<Response> => {
     const parsed = datasetSearchBody.safeParse(await c.req.json().catch(() => undefined));
     if (!parsed.success)
@@ -130,7 +155,7 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
       // The same router a service run searches through: its filter checks, limit cap and timeout.
       const open = (ctx: PortContext) =>
         deps.knowledge.open(
-          { kind: 'dataset', id: dataset, tenant },
+          { kind: 'dataset', id: dataset, tenant: sharedWith },
           { ...ctx, signal: AbortSignal.any([ctx.signal, c.req.raw.signal]) },
         );
       const info = open({
@@ -155,7 +180,7 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
         });
       const filters = (body.filters ?? {}) as Record<string, never>;
       const limit = body.limit ?? 10;
-      const { value: result } = await deps.searchTask(principal, (ctx) =>
+      const { value: result } = await deps.searchTask(searcher(principal, tenant), (ctx) =>
         open(ctx).search({
           query: body.query,
           profile,
@@ -179,7 +204,12 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
       if (spent) return spent;
       const code = codeOf(error);
       const message = messageOf(error);
-      if (code === 'forbidden') return problem(c, 404, t('problems.diagnosticsDatasetNotFound'));
+      if (error instanceof KnowledgeError && code === 'forbidden')
+        return problem(c, 404, t('problems.diagnosticsDatasetNotFound'));
+      if (error instanceof KernelError && code === 'forbidden')
+        return problem(c, 403, t('problems.datasetSearchRefused'), {
+          errors: [{ path: 'kernel', message }],
+        });
       if (code === 'bad_request' || code === 'unsupported')
         return problem(c, 422, t('problems.diagnosticsSearchInvalid'), {
           errors: [{ path: body.filters ? 'filters' : 'body', message }],
@@ -236,7 +266,15 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
     const item = deps.catalog.get('dataset', deps.knowledge.resolve(asked) ?? asked);
     if (!item || item.scope !== platformScope)
       return problem(c, 404, t('problems.diagnosticsDatasetNotFound'));
-    return search(c, { ...principal, tenant: deps.platformTenant }, deps.platformTenant, item.id);
+    // A platform dataset shared with listed tenants is read as the first of them; usage stays the platform's.
+    const shared = deps.knowledge.datasets().get(item.id)?.tenants?.[0];
+    return search(
+      c,
+      { ...principal, tenant: deps.platformTenant },
+      deps.platformTenant,
+      item.id,
+      shared ?? deps.platformTenant,
+    );
   });
 };
 

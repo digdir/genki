@@ -189,7 +189,7 @@ export const knowledgeReads = <D>(
     if (code === '57014')
       return new KnowledgeError(
         'timeout',
-        `reading ${dataset.id} took longer than ${options.timeoutMs} ms`,
+        `reading ${dataset.id} was stopped by its statement timeout`,
       );
     return error;
   };

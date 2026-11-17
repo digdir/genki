@@ -40,6 +40,7 @@ export const datasetSearch = {
   pages: 'Pages {page}–{pageEnd}',
   untitled: 'Untitled',
   fields: 'Fields',
+  engineDetails: 'Message from the search engine, in English:',
   timedOut: 'The search took longer than the limit.',
   invalid: 'The search was refused:',
   blocked: 'The dataset cannot be used: {rule} ({owner})',

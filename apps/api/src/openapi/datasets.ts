@@ -12,6 +12,7 @@ import {
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { datasetInUseType, datasetRunOpenType } from '../dataset-delete.js';
+import { datasetSearchBody } from '../dataset-search.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
 import { switchStates } from '../engine-switches.js';
 import { changeReason, Problem, problemContent } from '../http.js';
@@ -1807,27 +1808,13 @@ const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
     method: 'post',
     path: `${base.path}/datasets/{id}/search`,
     summary: isTenant(base)
-      ? "Search a dataset in the tenant's catalogue as a service run searches it, without a model call (needs manage-services or manage-datasets; not audited)"
-      : 'Search a platform dataset as a service run searches it, without a model call (operators; not audited)',
+      ? "Search a dataset in the tenant's catalogue as a service run searches it, without a chat model call (needs manage-services or manage-datasets; not audited)"
+      : 'Search a platform dataset as a service run searches it, without a chat model call (operators; not audited)',
     description:
       "One query through the dataset's knowledge port: the same filter checks, limit cap and timeout as a service's search. A filter that matches nothing answers no hits and is never retried without the filter. The query embeds for a vector search, so the route is closed in lockdown. The query is not logged.",
     request: {
       params: z.object({ ...base.params, id: param('digdir/kudos') }),
-      body: body(
-        z.object({
-          query: z.string().min(1).max(2000),
-          filters: z
-            .record(z.string(), z.unknown())
-            .optional()
-            .openapi({ example: { owner_orgnr: ['991825827'] } })
-            .describe("Filters in the shape a run takes, on the dataset's declared fields"),
-          profile: z
-            .string()
-            .optional()
-            .describe("One of the dataset's search profiles; default its first"),
-          limit: z.number().int().min(1).max(100).optional().describe('Default 10'),
-        }),
-      ),
+      body: body(datasetSearchBody),
     },
     responses: {
       200: json(DatasetSearchAnswer, 'The hits and what was searched'),
@@ -1835,7 +1822,7 @@ const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
       ...(isTenant(base)
         ? {
             403: either(
-              "Missing both manage-services and manage-datasets, or the tenant's block policy does not allow the dataset",
+              "Missing both manage-services and manage-datasets, the tenant's block policy does not allow the dataset, or the kernel refused the search",
             ),
           }
         : {}),
@@ -1844,7 +1831,9 @@ const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
       ),
       429: either("The organisation's monthly token quota is used up"),
       502: either('The search engine failed'),
-      504: either('The search took longer than the endpoint allows'),
+      504: either(
+        'A search on the knowledge database took longer than the timeout; other engines answer 502',
+      ),
     },
   }),
 );

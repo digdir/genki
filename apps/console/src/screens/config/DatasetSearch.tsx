@@ -51,10 +51,7 @@ export interface SearchDraft {
   values: Record<string, string>;
 }
 
-/**
- * Drafts kept by dataset path above the catalogue list, so a reload of the list, or a newer
- * version of the entry, does not empty the form.
- */
+/** Drafts by dataset path, kept above the list so a reload does not empty the form. */
 export type SearchDrafts = Map<string, SearchDraft>;
 
 export const useSearchDrafts = (): SearchDrafts => useRef<SearchDrafts>(new Map()).current;
@@ -400,6 +397,9 @@ export const DatasetSearch = ({
       {outcome?.kind === 'failed' ? (
         <Alert data-color="danger" data-size="sm" role="alert">
           <Paragraph data-size="sm">{outcome.message}</Paragraph>
+          {outcome.details.length ? (
+            <Paragraph data-size="sm">{t('datasetSearch.engineDetails')}</Paragraph>
+          ) : null}
           {outcome.details.length ? (
             <ul className="plain">
               {outcome.details.map((d, i) => (

@@ -1276,7 +1276,7 @@ const searchDataset = tool({
   name: 'search_dataset',
   title: 'Search a dataset',
   description:
-    'Search one dataset in this organisation\'s catalogue the way a service run searches it, and see the raw hits: chunk, document, score, page, fields and text. No chat model is called; a vector search embeds the query, which counts against the organisation\'s usage. Use it to check a filter or a query before changing a service. Filters take the shape a run takes, on the dataset\'s declared fields, for example {"owner_orgnr": ["991825827"]}. A filter that matches nothing gives no hits.',
+    'Search one dataset in this organisation\'s catalogue the way a service run searches it, and see the raw hits: chunk, document, score, page, fields and text. No chat model is called; a vector search embeds the query, which counts against the organisation\'s usage. Use it to check a filter or a query before changing a service. Filters take the shape a run takes, on the dataset\'s declared fields, for example {"owner_orgnr": "991825827"}. A filter that matches nothing gives no hits.',
   kind: 'read',
   args: z.strictObject({
     dataset: z.string().min(1).describe('The dataset id, such as digdir/kudos'),

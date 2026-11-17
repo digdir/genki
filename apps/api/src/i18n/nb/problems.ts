@@ -102,6 +102,7 @@ export const problems = defineNamespace({
   datasetSearchNeedsRight:
     'Du trenger rettigheten «Administrere tjenester» eller «Administrere datasett»',
   datasetSearchNoProfile: 'Datasettet {dataset} har ingen søkeprofil «{profile}»',
+  datasetSearchRefused: 'Søket ble ikke sluppet gjennom',
   datasetSearchBlocked: '{dataset} kan ikke brukes hos virksomheten',
   diagnosticsServiceNotFound: 'Fant ikke tjenesten',
   diagnosticsServiceNoDataset: 'Tjenesten har ikke noe datasett',

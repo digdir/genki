@@ -157,7 +157,8 @@ describe('searching a dataset in the console', () => {
 
     const alert = await within(panel).findByRole('alert');
     expect(alert.textContent).toContain('Søket tok lengre tid enn grensen');
-    expect(alert.textContent).toContain('15000 ms');
+    expect(within(alert).getByText('Melding fra søkemotoren, på engelsk:')).toBeTruthy();
+    expect(within(alert).getByRole('listitem').textContent).toBe('search timed out after 15000 ms');
   });
 
   it('keeps the chosen filter when the dataset list reloads', async () => {

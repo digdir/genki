@@ -383,6 +383,28 @@ describe('searching a dataset directly', () => {
     ).toBe(404);
   });
 
+  it('answers 403 with the reason when the kernel refuses the search task', async () => {
+    const { search } = await boot({
+      refuse: new KernelError('forbidden', 'the authorization service is unavailable'),
+    });
+
+    const response = await search(tenantPath('filer'), 'kari', { query: 'tilskudd' });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      errors: [{ path: 'kernel', message: 'the authorization service is unavailable' }],
+    });
+  });
+
+  it('lets an operator search a platform dataset shared only with listed tenants', async () => {
+    const { search } = await boot();
+
+    const response = await search(operatorPath('digdir/kun-nav'), 'drift', { query: 'tilskudd' });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ dataset: 'digdir/kun-nav' });
+  });
+
   it("searches with the same limits and timeout as a service's search", async () => {
     const { search, knowledge, connects } = await boot({ timeoutMs: 7_000 });
     const request = { query: 'tilskudd', filters: { kategori: 'Veiledning' }, limit: 2 };
@@ -416,9 +438,11 @@ describe('searching a dataset directly', () => {
     await search(tenantPath('filer'), 'kari', { query: 'tilskudd' });
     await search(operatorPath('digdir/felles'), 'drift', { query: 'tilskudd' });
 
-    expect(tracked.map((t) => [t.principal.subject, t.principal.tenant])).toEqual([
-      ['kari', digdir],
-      ['drift', digdir],
+    expect(
+      tracked.map((t) => [t.principal.kind, t.principal.tenant, t.principal.actor?.subject]),
+    ).toEqual([
+      ['agency-system', digdir, 'kari'],
+      ['agency-system', digdir, 'drift'],
     ]);
     expect(searches).toHaveLength(2);
   });
@@ -478,6 +502,45 @@ describe('the dataset search on the platform', () => {
     kari: people.kari as Principal,
     drift: people.drift as Principal,
   };
+
+  it('reaches the search engine for an operator and for a dataset manager without use-services', async () => {
+    const closedPort = {
+      endpoints: {
+        search: {
+          engine: 'typesense',
+          baseURL: 'http://127.0.0.1:9',
+          auth: { kind: 'api-key', secret: 'secret://env/search-key' },
+        },
+      },
+      datasets: [
+        {
+          id: 'digdir/kudos',
+          endpoint: 'search',
+          residency: 'norway',
+          options: {
+            collections: { docs: 'docs', chunks: 'chunks' },
+            profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
+          },
+        },
+      ],
+    };
+    const { send } = await bootPlatform({
+      people: { ...platformPeople, ingrid: people.ingrid as Principal },
+      knowledge: closedPort,
+    });
+    const body = { query: 'tilskudd' };
+
+    const answers = [
+      await send(operatorPath('digdir/kudos'), 'drift', { body }),
+      await send(tenantPath('digdir/kudos'), 'ingrid', { body }),
+    ];
+
+    // Nothing listens on the port: a search that got past the kernel fails at the engine.
+    for (const answer of answers) {
+      expect(answer.status).toBe(502);
+      expect(await answer.json()).toMatchObject({ errors: [{ path: 'knowledge' }] });
+    }
+  });
 
   it('mounts both routes on the platform', async () => {
     const { send } = await bootPlatform({ people: platformPeople });

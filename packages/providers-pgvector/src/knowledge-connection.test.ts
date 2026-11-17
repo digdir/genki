@@ -129,7 +129,7 @@ describe('a pgvector endpoint on the knowledge server', () => {
     expect(failure).toBeInstanceOf(KnowledgeError);
     expect(failure).toMatchObject({
       code: 'timeout',
-      message: 'reading digdir/kudos took longer than 5000 ms',
+      message: 'reading digdir/kudos was stopped by its statement timeout',
     });
   });
 

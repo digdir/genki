@@ -38,6 +38,7 @@ export const datasetSearch = defineNamespace({
   pages: 'Side {page}–{pageEnd}',
   untitled: 'Uten tittel',
   fields: 'Felt',
+  engineDetails: 'Melding fra søkemotoren, på engelsk:',
   timedOut: 'Søket tok lengre tid enn grensen.',
   invalid: 'Søket ble avvist:',
   blocked: 'Datasettet kan ikke brukes: {rule} ({owner})',
