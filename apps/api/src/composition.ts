@@ -42,6 +42,8 @@ import {
   strategyKey,
   toCapabilities,
   validateDefinition,
+  variantId,
+  variantStrategyOf,
   type CompiledCapability,
   type DefinitionStore,
   type PluginSchemas,
@@ -1763,9 +1765,14 @@ export const createPlatform = async (input: PlatformInput) => {
       const spec = (await definitions.get('Service', compiled.service.tenant, compiled.service.id))
         ?.definition.spec;
       if (!spec) return [];
-      const uses = flowUsesOf(spec as Parameters<typeof flowUsesOf>[0]);
+      const typed = spec as ServiceDefinition['spec'];
+      const variant = typed.variants?.find((v) => variantId(v) === compiled.variant);
+      const uses = flowUsesOf(typed);
       const own = uses.filter((u) => u.variant === compiled.variant);
-      const refs = (own.length ? own : uses.filter((u) => !u.variant)).map((u) => u.flow);
+      const runsService = !variant || variantStrategyOf(typed, variant) === typed.strategy;
+      const refs = (own.length ? own : runsService ? uses.filter((u) => !u.variant) : []).map(
+        (u) => u.flow,
+      );
       if (refs.length === 0) return [];
       const stepTypes = await stepMediaTypes(refs, {
         descriptors: runtime.descriptors,

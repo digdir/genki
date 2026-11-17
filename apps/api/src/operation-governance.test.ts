@@ -860,6 +860,77 @@ describe('processor records', () => {
       expect(booted.server.seen).toEqual([]);
     });
 
+    it('is refused when a text/plain file is not valid UTF-8', async () => {
+      const booted = await ready();
+      expect(messages(await publishText(booted, textConsent))).toEqual([]);
+      const response = await upload(booted, {
+        filename: 'brev.txt',
+        file_data: `data:text/plain;base64,${Buffer.from([0xff, 0xfe, 0x00]).toString('base64')}`,
+      });
+      expect(response.status).toBe(415);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'unsupported_document_type',
+      );
+      expect(booted.server.seen).toEqual([]);
+    });
+
+    it('is not offered for a variant whose own strategy is not a step flow', async () => {
+      const booted = await ready();
+      const published = await booted.platform.definitions.publish(textFlow(), 'test', 'test');
+      expect(published.ok ? [] : published.errors).toEqual([]);
+      expect(
+        messages(
+          await booted.platform.definitions.publish(
+            {
+              ...service,
+              spec: {
+                ...service.spec,
+                riskConfirmation: textConsent,
+                variants: [
+                  'default',
+                  {
+                    id: 'kort',
+                    strategy: {
+                      id: 'single-call',
+                      version: 1,
+                      config: { instructions: 'Svar kort.' },
+                    },
+                  },
+                ],
+              },
+            },
+            'test',
+            'test',
+          ),
+        ),
+      ).toEqual([]);
+      const listed = (await (await booted.send('/v1/models', 'app')).json()) as {
+        data: { id: string; _files?: unknown }[];
+      };
+      expect(listed.data.find((m) => m.id === 'sortering__default')?._files).toBeDefined();
+      expect(listed.data.find((m) => m.id === 'sortering__kort')).toBeDefined();
+      expect(listed.data.find((m) => m.id === 'sortering__kort')?._files).toBeUndefined();
+      const response = await booted.send('/v1/chat/completions', 'app', {
+        body: {
+          model: 'sortering__kort',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Les dokumentet' },
+                { type: 'file', file: { filename: 'brev.txt', file_data: asDataUrl(letter) } },
+              ],
+            },
+          ],
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+        'documents_not_accepted',
+      );
+      expect(booted.server.seen).toEqual([]);
+    });
+
     it('is not published as input without recorded consent for unmasked text/plain', async () => {
       const booted = await ready();
       expect(messages(await publishText(booted))).toMatch(
