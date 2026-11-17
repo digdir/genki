@@ -28,7 +28,7 @@ interface Call {
   body: unknown;
 }
 
-const live = async (hash: string, { secretsFail = false } = {}) => {
+const live = async (hash: string, { secretsFail = false, runsFail = false } = {}) => {
   const calls: Call[] = [];
   const base = mockFetch();
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -41,6 +41,11 @@ const live = async (hash: string, { secretsFail = false } = {}) => {
     });
     if (secretsFail && new URL(url, 'http://test').pathname.endsWith('/secrets'))
       return new Response(JSON.stringify({ title: 'Forbidden', status: 403 }), { status: 403 });
+    if (runsFail && /\/triggers\/[^/]+\/runs/.test(url))
+      return new Response(JSON.stringify({ title: 'Unavailable', status: 503 }), {
+        status: 503,
+        headers: { 'content-type': 'application/problem+json' },
+      });
     return base(input, init);
   };
   const auth = mockAnsattporten(kari);
@@ -145,6 +150,16 @@ describe('Integrasjoner: utløsere fra API-et', () => {
       '#/log/opg_post_118',
       '#/log/opg_post_117',
     ]);
+  });
+
+  it('shows an error, not zero events, when the runs of a trigger cannot be fetched', async () => {
+    await live('#/integrations?tab=triggers', { runsFail: true });
+    fireEvent.click(await row(/Køen «post-inn»/));
+
+    expect(await screen.findByText('Vi fikk ikke hentet hendelsene')).toBeTruthy();
+    expect(screen.getAllByText(/Fikk ikke hentet hendelsene/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Ingen ennå/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });
 
   it('says the trigger works when the service run failed, and leads to the run', async () => {
@@ -280,5 +295,32 @@ describe('Integrasjoner: koble til system i en dialog', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Forkast' }));
     expect(screen.queryByRole('form', { name: 'Ny MCP-kobling' })).toBeNull();
     expect(calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+});
+
+describe('API-nøkler fra API-et', () => {
+  it('shows when a key was last used from the lastUsedAt the API lists', async () => {
+    await live('#/developer/keys');
+
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    expect(within(list).getByText(/sist brukt 7\. okt\. 2026/)).toBeTruthy();
+  });
+
+  it('says a key is not used yet only when the API lists lastUsedAt as null', async () => {
+    await live('#/developer/keys');
+
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    expect(within(list).getAllByText(/ikke brukt ennå/)).toHaveLength(1);
+  });
+});
+
+describe('Utløsere in live mode', () => {
+  it('opens no example trigger, so it never asks for the runs of a trigger that does not exist', async () => {
+    const calls = await live('#/integrations?tab=triggers');
+    await row(/Køen «post-inn»/);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(calls.filter((c) => /\/triggers\/(okon|ko-post)\/runs/.test(c.url))).toEqual([]);
+    expect(calls.filter((c) => /\/triggers\/[^/]+\/runs/.test(c.url))).toEqual([]);
   });
 });

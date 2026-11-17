@@ -23,13 +23,20 @@ export type Group = 'service' | 'model';
 const monthName = (f: Format, year: number, month: number) =>
   f.month(new Date(Date.UTC(year, month, 15)));
 
+const hues = [
+  'var(--ds-color-accent-border-default)',
+  'var(--ds-color-brand1-border-default)',
+  'var(--ds-color-success-border-default)',
+  'var(--ds-color-brand2-border-default)',
+  'var(--ds-color-neutral-border-default)',
+];
+
+const gap = 'var(--ds-color-neutral-background-default)';
+
 export const COLORS = [
-  'var(--ds-color-accent-base-default)',
-  'var(--ds-color-brand1-base-default)',
-  'var(--ds-color-brand2-base-default)',
-  'var(--ds-color-brand3-base-default)',
-  'var(--ds-color-success-base-default)',
-  'var(--ds-color-neutral-base-default)',
+  ...hues,
+  ...hues.map((c) => `repeating-linear-gradient(45deg, ${c} 0 5px, ${gap} 5px 7px)`),
+  ...hues.map((c) => `repeating-linear-gradient(0deg, ${c} 0 3px, ${gap} 3px 5px)`),
 ];
 
 export const nb = (f: Format, n: number) => f.number(Math.round(n)).replace(/[\u00a0\u202f]/g, ' ');

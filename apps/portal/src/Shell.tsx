@@ -30,7 +30,7 @@ import {
 } from 'react';
 import type { ApiClient } from './api';
 import { Icon, type IconComponent } from './components/Icon';
-import { formatOrgNumber, profileFor } from './data/organisations';
+import { formatOrgNumber, hasOwnName, organisationName, profileFor } from './data/organisations';
 import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
@@ -51,7 +51,6 @@ export const navigationGroups: readonly NavGroup[] = [
         path: '/services',
         label: 'shell.navServices',
         icon: RectangleSectionsIcon,
-        also: ['/step-flows'],
       },
       {
         path: '/shared-services',
@@ -67,7 +66,7 @@ export const navigationGroups: readonly NavGroup[] = [
         path: '/building-blocks',
         label: 'shell.navBuildingBlocks',
         icon: ComponentIcon,
-        also: ['/skills'],
+        also: ['/skills', '/step-flows'],
       },
       { path: '/playground', label: 'shell.navPlayground', icon: SandboxIcon },
       {
@@ -408,6 +407,7 @@ export const Shell = ({
 
   const profile = profileFor(organisation.orgNumber, organisation.name);
   const orgNr = formatOrgNumber(organisation.orgNumber);
+  const orgName = organisationName(organisation, t);
   const multi = session.organisations.length > 1;
   const actions = organisation.actions ?? profile.rights;
   const actionsKey = actions.join('\u0000');
@@ -450,7 +450,8 @@ export const Shell = ({
         aria-expanded={open === 'user'}
         aria-haspopup="menu"
         aria-controls={open === 'user' ? 'user-menu' : undefined}
-        aria-label={t('shell.userMenuButton', { name: session.name })}
+        aria-label={t('shell.userMenuButton', { name: session.name, organisation: orgName })}
+        className="user-button"
         onClick={(e) => toggle('user', e.currentTarget)}
         onKeyDown={(e) => {
           if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -461,7 +462,12 @@ export const Shell = ({
         <Avatar data-size="sm" aria-hidden="true">
           {initials(session.name)}
         </Avatar>
-        {narrow || (userInSidebar && collapsed) ? null : <span>{session.name}</span>}
+        {narrow || (userInSidebar && collapsed) ? null : (
+          <span className="user-button-text">
+            <span className="user-button-name">{session.name}</span>
+            {userInSidebar ? <span className="user-button-org">{orgName}</span> : null}
+          </span>
+        )}
       </Button>
       {open === 'user' ? (
         <div
@@ -478,7 +484,14 @@ export const Shell = ({
         >
           <div className="popover-head" role="presentation">
             <span className="popover-title">{session.name}</span>
-            <span className="meta">{t('shell.actingFor', { name: organisation.name, orgNr })}</span>
+            {session.email && session.email !== session.name ? (
+              <span className="meta">{session.email}</span>
+            ) : null}
+            <span className="user-menu-org">
+              {hasOwnName(organisation)
+                ? t('shell.actingFor', { name: orgName })
+                : t('shell.actingForNumber', { orgNr })}
+            </span>
           </div>
           <ul className="user-menu-list" role="presentation">
             {userMenuLinks.map(([href, label]) => (
@@ -515,30 +528,29 @@ export const Shell = ({
           aria-expanded={open === 'org'}
           aria-haspopup="true"
           aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
-            name: organisation.name,
+            name: orgName,
             orgNr,
           })}
           onClick={(e) => toggle('org', e.currentTarget)}
-          title={orgCompact ? organisation.name : undefined}
+          title={orgCompact ? orgName : undefined}
         >
           {orgCompact ? (
             <Icon icon={Buildings3Icon} />
           ) : (
             <>
               <span className="org-button">
-                <span className="org-name">{organisation.name}</span>
+                <span className="org-name">{orgName}</span>
                 {narrow ? null : <span className="meta">{orgMeta}</span>}
               </span>
               <Icon icon={ChevronDownIcon} size={16} />
             </>
           )}
         </Button>
-      ) : (
-        <div className="org-static" title={orgCompact ? organisation.name : undefined}>
+      ) : userInSidebar ? null : (
+        <div className="org-static">
           <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-          {orgCompact ? <Icon icon={Buildings3Icon} /> : null}
-          <span className={orgCompact ? 'visually-hidden' : 'org-button'}>
-            <span className="org-name">{organisation.name}</span>
+          <span className="org-button">
+            <span className="org-name">{orgName}</span>
             {narrow ? null : <span className="meta">{orgMeta}</span>}
           </span>
         </div>
@@ -575,7 +587,7 @@ export const Shell = ({
                     }}
                   />
                   <span className="org-option-text">
-                    <span className="org-option-name">{org.name}</span>
+                    <span className="org-option-name">{organisationName(org, t)}</span>
                     <span className="meta">
                       {checked && unregistered
                         ? t('shell.orgOptionUnregistered', {

@@ -1,8 +1,8 @@
-import { Alert, Button, Dialog, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
+import { Alert, Button, Dialog, Heading, Paragraph } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import { useState } from 'react';
 import type { ApiClient } from '../../api';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
-import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import type { ServiceLifecycleView } from '../../types';
 
@@ -34,27 +34,23 @@ export const ServiceLifecycle = ({
   tenant,
   id,
   name,
+  lifecycle,
   onChanged,
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   name: string;
+  lifecycle: ServiceLifecycleView;
   onChanged?: () => void;
 }) => {
   const t = useT();
-  const [version, setVersion] = useState(0);
-  const [state] = useAsync(
-    (signal) => api.serviceLifecycle(tenant, id, signal),
-    [api, tenant, id, version],
-  );
   const [change, setChange] = useState<Change>();
   const [reason, setReason] = useState('');
   const [showError, setShowError] = useState(false);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  if (state.status !== 'ready') return null;
-  const current = state.data.state;
+  const current = lifecycle.state;
   const offered: Change[] =
     current === 'active'
       ? ['pause', 'archive']
@@ -89,7 +85,6 @@ export const ServiceLifecycle = ({
     try {
       await api.setServiceLifecycle(tenant, id, target[change], reason.trim());
       close();
-      setVersion((v) => v + 1);
       onChanged?.();
     } catch {
       setFailed(true);
@@ -100,18 +95,13 @@ export const ServiceLifecycle = ({
 
   return (
     <>
-      {current === 'paused' ? (
-        <Tag data-size="sm" data-color="warning">
-          {t('serviceLifecycle.tagPaused')}
-        </Tag>
-      ) : null}
-      {current === 'archived' ? (
-        <Tag data-size="sm" data-color="neutral">
-          {t('serviceLifecycle.tagArchived')}
-        </Tag>
-      ) : null}
       {offered.map((c) => (
-        <Button key={c} variant="tertiary" data-size="sm" onClick={() => setChange(c)}>
+        <Button
+          key={c}
+          variant={c === 'restore' ? 'secondary' : 'tertiary'}
+          data-size="sm"
+          onClick={() => setChange(c)}
+        >
           {t(actionKey[c])}
         </Button>
       ))}
@@ -151,5 +141,35 @@ export const ServiceLifecycle = ({
         </Dialog>
       ) : null}
     </>
+  );
+};
+
+export const ArchivedBanner = ({
+  canRestore,
+  ...props
+}: {
+  api: ApiClient;
+  tenant: string;
+  id: string;
+  name: string;
+  lifecycle: ServiceLifecycleView;
+  canRestore: boolean;
+  onChanged?: () => void;
+}) => {
+  const t = useT();
+  const f = useFormat();
+  const { at, reason } = props.lifecycle;
+  return (
+    <div role="status" className="archived-banner">
+      <div className="archived-banner-text">
+        <strong>{t('serviceLifecycle.archivedTitle')}</strong>
+        <span>
+          {at ? `${t('serviceLifecycle.archivedAt', { date: f.date(at, 'medium') })} ` : ''}
+          {reason ? `«${reason}». ` : ''}
+          {t('serviceLifecycle.archivedText')}
+        </span>
+      </div>
+      {canRestore ? <ServiceLifecycle {...props} /> : null}
+    </div>
   );
 };

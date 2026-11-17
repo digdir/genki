@@ -156,6 +156,9 @@ export const integrationsArea = {
       'You have no published services yet. Publish a service before you register a frontend.',
   },
   integTriggers: {
+    runsFailed: 'We could not fetch the events',
+    runsFailedWhy: 'The events for the trigger did not answer. That does not mean there were none.',
+    runsUnknown: 'Could not fetch the events',
     runQuota: 'Not started because the monthly token quota is used up',
     runCost: ' · {cost}',
     kindDocument: 'When a document arrives',
@@ -350,7 +353,6 @@ export const integrationsArea = {
   },
   integKeys: {
     loading: 'Loading API keys',
-    notUsedYet: 'not used yet',
     createdToday: 'today by you',
     rotatedToday: 'rotated today by you',
     unknownDate: 'unknown date',
@@ -395,6 +397,8 @@ export const integrationsArea = {
     listLabel: 'API keys',
     revokedStatus: 'Revoked',
     prefixCreated: '{prefix}… · created {created}',
+    rateNotUsed: '{rate} calls per minute · not used yet',
+    rateOnly: '{rate} calls per minute',
     rateLastUsed: '{rate} calls per minute · last used {last}',
     editAccess: 'Edit access',
     rotate: 'Rotate',

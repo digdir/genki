@@ -272,6 +272,60 @@ describe('pausing and archiving from the service page', () => {
   });
 });
 
+describe('an archived service', () => {
+  it('reads as archived only, with a read-only banner, the read-only tabs and no publishing', async () => {
+    await open('#/services/rapportassistenten');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Arkiver' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), {
+      target: { value: 'Erstattet av en ny tjeneste' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Arkiver' }));
+
+    expect(await screen.findByText('Tjenesten er arkivert og kan bare leses.')).toBeTruthy();
+    const header = screen.getByRole('banner');
+    expect(within(header).getByText('Arkivert')).toBeTruthy();
+    expect(within(header).queryByText('I bruk')).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
+    const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
+    expect(within(tabs).queryByRole('link', { name: 'Oppsett' })).toBeNull();
+    expect(within(tabs).getByRole('link', { name: 'Versjoner' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
+  });
+});
+
+describe('an archived service opened at an editing address', () => {
+  const archivedFetch = (): typeof fetch => {
+    const base = platform();
+    return async (input, init) =>
+      String(input).endsWith('/services/rapportassistenten/lifecycle') && !init?.method
+        ? Response.json({ state: 'archived', reason: 'Erstattet av en ny tjeneste' })
+        : base(input, init);
+  };
+
+  it.each(['settings', 'channels', 'interface', 'batch'])(
+    'shows Oversikt and no editable form at #/services/<id>/%s',
+    async (section) => {
+      const auth = mockAnsattporten(kari);
+      await auth.login();
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      render(<App auth={auth} fetch={archivedFetch()} live />);
+
+      await screen.findByText('Tjenesten er arkivert og kan bare leses.');
+      const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
+      expect(
+        within(tabs).getByRole('link', { name: 'Oversikt' }).getAttribute('aria-current'),
+      ).toBe('page');
+      const main = screen.getByRole('main');
+      expect(within(main).queryAllByRole('textbox')).toEqual([]);
+      expect(within(main).queryAllByRole('combobox')).toEqual([]);
+      expect(within(main).queryByRole('button', { name: /^Lagre/ })).toBeNull();
+    },
+  );
+});
+
 describe('Oversikt in live mode', () => {
   it('lists own datasets whose last ingestion failed or was cancelled under what needs you', async () => {
     await open('#/overview');

@@ -31,6 +31,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('footer pages', () => {
+  it('Kom i gang promises no way to limit access under Tilgang, which cannot restrict anyone', async () => {
+    await open('#/onboarding');
+    await screen.findByRole('heading', { level: 1, name: 'Kom i gang' });
+
+    expect(await screen.findByText(/kan alle i virksomheten med «Bruke tjenester»/)).toBeTruthy();
+    expect(screen.queryByText(/begrense det under Tilgang/)).toBeNull();
+  });
+
   it("Kom i gang shows the four steps ticked from the organisation's real data", async () => {
     await open('#/onboarding');
     expect(await screen.findByRole('heading', { level: 1, name: 'Kom i gang' })).toBeTruthy();

@@ -79,6 +79,10 @@ export const Page = ({
   if (area === 'developer' && id === 'api' && sub === 'code')
     return <MovedTo hash="#/developer/api" />;
   if (area === 'developer' && id === 'settings') return <MovedTo hash="#/settings/all" />;
+  if (area === 'developer' && id === 'step-flows')
+    return (
+      <MovedTo hash={window.location.hash.replace(/^#\/developer\/step-flows/, '#/step-flows')} />
+    );
   if (area === 'developer')
     return id === 'hooks' && sub ? (
       <Integrations {...props} />
@@ -90,6 +94,8 @@ export const Page = ({
   if (area === 'help') return <MovedTo hash="#/onboarding" />;
   if (area === 'onboarding') return <Onboarding {...props} />;
   if (area === 'api-reference') return <MovedTo hash={apiReferenceHashFor(props.route)} />;
+  if (area === 'log' && !id && props.route.query.get('tab') === 'changes')
+    return <MovedTo hash="#/log/changes" />;
   if (area === 'log') return <Log {...props} />;
   if (area === 'status') return <MovedTo hash="#/developer/status" />;
   if (area === 'settings' && props.route.query.get('tab') === 'transfer')

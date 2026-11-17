@@ -174,9 +174,60 @@ describe('shell', () => {
     ['#/status', '#/developer/status'],
     ['#/developer/api/code', '#/developer/api'],
     ['#/developer/settings', '#/settings/all'],
+    ['#/developer/step-flows', '#/step-flows'],
+    ['#/developer/step-flows/ai-overview', '#/step-flows/ai-overview'],
+    ['#/log?tab=changes', '#/log/changes'],
   ])('sends the old address %s on to %s', async (from, to) => {
     await renderAt(from);
     await waitFor(() => expect(window.location.hash).toBe(to));
+  });
+
+  it('marks Byggeklosser, not Tjenester, as the current menu item on the step-flow page', async () => {
+    await renderAt('#/step-flows');
+
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    expect(
+      within(menu).getByRole('link', { name: 'Byggeklosser' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(within(menu).getByRole('link', { name: 'Tjenester' }).getAttribute('aria-current')).toBe(
+      null,
+    );
+  });
+
+  it('names the platform Generativ KI-plattform from Digdir in the side menu', async () => {
+    await renderAt('#/overview');
+
+    const brand = within(screen.getByRole('navigation', { name: 'Hovedmeny' })).getByRole('link', {
+      name: /Generativ KI-plattform/,
+    });
+    expect(brand.textContent).toBe('DigdirGenerativ KI-plattform');
+  });
+
+  it('shows the person and the organisation by name on the account button and in its menu', async () => {
+    await renderAt('#/overview');
+
+    const button = screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' });
+    expect(button.textContent).toBe('KNKari NordmannTestetaten');
+    fireEvent.click(button);
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+    expect(within(menu).getByText('Handler for Testetaten')).toBeTruthy();
+  });
+
+  it('shows the organisation number only when the organisation has no name', async () => {
+    const auth = mockAnsattporten({
+      name: 'Ingrid Berg',
+      organisations: [{ orgNumber: '312521172', name: '312521172' }],
+    });
+    await auth.login();
+    window.location.hash = '#/overview';
+    render(<App auth={auth} fetch={mockFetch()} />);
+
+    const button = await screen.findByRole('button', {
+      name: 'Brukermeny for Ingrid Berg, Org.nr. 312 521 172',
+    });
+    fireEvent.click(button);
+    expect(screen.getByText('Handler for org.nr. 312 521 172')).toBeTruthy();
+    expect(await screen.findByText(/^Org.nr. 312 521 172 · /)).toBeTruthy();
   });
 
   it('sends the old user guide address on to Kom i gang', async () => {
@@ -229,7 +280,7 @@ describe('shell', () => {
   it('lists the user menu in design order and closes it with Escape, back on its button', async () => {
     await renderAt('#/overview');
 
-    const button = screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' });
+    const button = screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' });
     fireEvent.click(button);
     const menu = screen.getByRole('menu', { name: 'Brukermeny' });
     expect(
@@ -247,9 +298,12 @@ describe('shell', () => {
   it('moves through the user menu with the arrow keys, Home and End', async () => {
     await renderAt('#/overview');
 
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }), {
-      key: 'ArrowDown',
-    });
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+      {
+        key: 'ArrowDown',
+      },
+    );
     const menu = screen.getByRole('menu', { name: 'Brukermeny' });
     expect(document.activeElement?.textContent).toBe('Profil');
     fireEvent.keyDown(menu, { key: 'ArrowDown' });
@@ -313,7 +367,9 @@ describe('shell', () => {
     fireEvent.mouseDown(screen.getByRole('main'));
     expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Brukermeny for Kari Nordmann, Testetaten' }),
+    );
     const menu = screen.getByRole('menu', { name: 'Brukermeny' });
     fireEvent.mouseDown(within(menu).getByText('Profil'));
     expect(screen.getByRole('menu', { name: 'Brukermeny' })).toBeTruthy();
@@ -451,11 +507,13 @@ describe('login through Ansattporten in live mode', () => {
 
   it('returns to the start page after Logg ut', async () => {
     render(<App auth={callbackClient()} fetch={mockFetch()} live />);
-    await screen.findByRole('button', { name: 'Ingrid Berg, åpne brukermeny' });
+    await screen.findByRole('button', { name: 'Brukermeny for Ingrid Berg, Testdepartementet' });
 
     await waitFor(() => {
       if (!screen.queryByRole('menu', { name: 'Brukermeny' }))
-        fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Brukermeny for Ingrid Berg, Testdepartementet' }),
+        );
       const menu = screen.getByRole('menu', { name: 'Brukermeny' });
       fireEvent.click(within(menu).getByRole('menuitem', { name: 'Logg ut' }));
     });

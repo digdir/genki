@@ -475,7 +475,7 @@ describe('the change log in live mode', () => {
     render(asManager(<LiveChanges api={api} tenant={tenant} />));
 
     const items = await screen.findAllByRole('listitem');
-    expect(items[0]?.textContent).toMatch(/^Digdir publiserte klarsprak, versjon 3/);
+    expect(items[0]?.textContent).toMatch(/^Digdir publiserte versjon 3 av klarsprak/);
     expect(items[1]?.textContent).toMatch(/^Kari Nordmann lagret testsettet kjerne, versjon 2/);
     expect(screen.queryByText(/Ansatt i virksomheten/)).toBeNull();
   });

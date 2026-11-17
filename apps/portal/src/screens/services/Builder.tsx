@@ -96,7 +96,7 @@ import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
 import { availableSections, servicePath, type ServiceSection } from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
-import { ServiceLifecycle } from '../service/ServiceLifecycle';
+import { ArchivedBanner, ServiceLifecycle } from '../service/ServiceLifecycle';
 import { ServiceNav } from '../service/ServiceNav';
 import { SettingsSection } from '../service/SettingsSection';
 import { StrategyPanel } from '../service/StrategyPanel';
@@ -241,6 +241,8 @@ export const newServiceInit = (
   };
 };
 
+const archivedSections: ServiceSection[] = ['overview', 'quality', 'versions', 'log'];
+
 export const Builder = ({
   api,
   tenant,
@@ -248,7 +250,7 @@ export const Builder = ({
   live = false,
   init,
   route,
-  section,
+  section: routeSection,
   detail,
   pane: initialPane,
   openPublish,
@@ -320,7 +322,14 @@ export const Builder = ({
   const [adding, setAdding] = useState<{ key: string; blocks: readonly string[] }>();
   const clearAdding = useCallback(() => setAdding(undefined), []);
   const rights = useRights();
-  const readOnly = !rights.has('manage-services');
+  const [lifecycleState, reloadLifecycle] = useAsync(
+    async (signal) => (live && !isNew ? api.serviceLifecycle(tenant, id, signal) : undefined),
+    [api, tenant, id, live, isNew],
+  );
+  const lifecycle = lifecycleState.status === 'ready' ? lifecycleState.data : undefined;
+  const archived = lifecycle?.state === 'archived';
+  const section = archived && !archivedSections.includes(routeSection) ? 'overview' : routeSection;
+  const readOnly = !rights.has('manage-services') || archived;
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
   const [done, setDone] = useState<Record<string, boolean>>({});
@@ -1110,7 +1119,9 @@ export const Builder = ({
       ? [t('services.suggestCost'), t('services.suggestRerun'), t('services.suggestPrivacy')]
       : [t('services.suggestCost'), t('services.suggestShorter'), t('services.suggestTest')];
   const name = service.metadata.name || t('services.newServiceName');
-  const sections = availableSections({ isNew });
+  const sections = archived
+    ? availableSections({ isNew }).filter((s) => archivedSections.includes(s))
+    : availableSections({ isNew });
   const withAssistant = !readOnly && (section === 'setup' || section === 'test');
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
@@ -1356,23 +1367,31 @@ export const Builder = ({
         <ServiceHeader
           name={name}
           status={
-            init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
-              ? 'I bruk'
-              : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
-                ? 'I test'
-                : init.status
+            archived
+              ? 'Arkivert'
+              : lifecycle?.state === 'paused'
+                ? 'Satt på pause'
+                : init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
+                  ? 'I bruk'
+                  : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
+                    ? 'I test'
+                    : init.status
           }
           meta={meta}
           flash={flash}
           actions={
             <>
-              {live && canPublish && !isNew ? (
+              {live && canPublish && !isNew && lifecycle && !archived ? (
                 <ServiceLifecycle
                   api={api}
                   tenant={tenant}
                   id={id}
                   name={service.metadata.name || id}
-                  {...(onPublished ? { onChanged: onPublished } : {})}
+                  lifecycle={lifecycle}
+                  onChanged={() => {
+                    reloadLifecycle();
+                    onPublished?.();
+                  }}
                 />
               ) : null}
               {live || !canPublish ? null : (
@@ -1390,12 +1409,12 @@ export const Builder = ({
                   {t('services.deleteDraft')}
                 </Button>
               ) : null}
-              {canPublish &&
-              !isNew &&
-              current > 0 &&
-              !changes.length &&
-              draftRevision === 0 &&
-              !edited ? (
+              {archived ? null : canPublish &&
+                !isNew &&
+                current > 0 &&
+                !changes.length &&
+                draftRevision === 0 &&
+                !edited ? (
                 <span className="meta">{t('services.nothingToPublish')}</span>
               ) : canPublish ? (
                 <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
@@ -1431,7 +1450,20 @@ export const Builder = ({
           </Alert>
         ) : null}
         <ServiceNav id={routeId} sections={sections} current={section} />
-        {readOnly ? (
+        {archived && lifecycle ? (
+          <ArchivedBanner
+            api={api}
+            tenant={tenant}
+            id={id}
+            name={service.metadata.name || id}
+            lifecycle={lifecycle}
+            canRestore={rights.has('manage-services')}
+            onChanged={() => {
+              reloadLifecycle();
+              onPublished?.();
+            }}
+          />
+        ) : readOnly ? (
           <Alert data-color="info" data-size="sm">
             <Heading level={2} data-size="2xs">
               {t('servicesScreen.readOnlyTitle')}

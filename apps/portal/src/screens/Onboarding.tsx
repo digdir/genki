@@ -1,3 +1,4 @@
+import { daysThisMonth } from '../usage-window';
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useT } from '../i18n';
 import { useAsync } from '../hooks';
@@ -13,7 +14,7 @@ export const Onboarding = ({ api, tenant, tenantName }: ScreenProps) => {
       const [overview, datasets, usage] = await Promise.all([
         api.overview(tenant, signal),
         api.datasets.list(tenant, signal),
-        api.usage(tenant, Math.max(new Date().getUTCDate(), 1), signal).catch(() => undefined),
+        api.usage(tenant, daysThisMonth(), signal).catch(() => undefined),
       ]);
       const trialTokens = usage ? tokensOf(monthUsage(withTrialRows(usage)).trial) : 0;
       return startProgress(tenant, { datasets, services: overview.services, trialTokens });

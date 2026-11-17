@@ -54,6 +54,7 @@ export type PortalRight =
 
 export interface Session {
   name: string;
+  email?: string;
   organisations: Organisation[];
   token: string;
 }
@@ -371,6 +372,7 @@ export interface ApiKeyView {
   createdAt: string | null;
   createdBy?: string | null;
   createdByName?: string;
+  lastUsedAt?: string | null;
   modelsInLockdown?: boolean;
   expiresAt: string | null;
   revokedAt: string | null;

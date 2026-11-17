@@ -1,3 +1,4 @@
+import { daysThisMonth } from '../../usage-window';
 import { CheckmarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
@@ -201,10 +202,7 @@ export const BatchWizard = ({
     (signal) => api.tenantEffectiveSettings(tenant, signal),
     [api, tenant],
   );
-  const [usage] = useAsync(
-    (signal) => api.usage(tenant, Math.max(new Date().getDate(), 1), signal),
-    [api, tenant],
-  );
+  const [usage] = useAsync((signal) => api.usage(tenant, daysThisMonth(), signal), [api, tenant]);
 
   const known = pick.state === 'ready' ? pick.estimate : undefined;
   const allKnown = !!known && known.items <= known.preview.length;

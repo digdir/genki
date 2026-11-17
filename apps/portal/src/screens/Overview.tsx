@@ -1,3 +1,4 @@
+import { daysThisMonth } from '../usage-window';
 import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
@@ -14,15 +15,17 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ApiClient } from '../api';
 import type { DatasetView } from '../api/datasets';
 import { Icon } from '../components/Icon';
+import { isTrialService } from '../format';
 import { useT, type Format, type T } from '../i18n';
 import { useAsync, type AsyncState } from '../hooks';
 import type { ScreenProps } from '../screen';
 import { useRights } from '../Shell';
 import { failureText } from './datasets/live-model';
+import { datasetTabPath } from './datasets/model';
 import { ErrorState, Loading, limitOf, refusalOf } from '../states';
 import type { Overview as OverviewData, TaskRow, UsageReport } from '../types';
 import { LiveChanges } from './changes/LiveChanges';
@@ -55,24 +58,51 @@ export const monthLabel = (f: Format, date: Date) => {
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
 
-const shownFailingServices = 3;
+const dayMs = 86_400_000;
 
-const failedByService = (rows: TaskRow[]) => {
-  const counts = new Map<string, { id: string; name: string; count: number }>();
+export const startOfDay = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+const localDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export interface FailedRuns {
+  today: { id: string; name: string; count: number }[];
+  week: Map<string, number>;
+  complete: boolean;
+}
+
+export const countFailedRuns = (rows: TaskRow[], total: number, now: Date): FailedRuns => {
+  const since = startOfDay(now).getTime();
+  const today = new Map<string, { id: string; name: string; count: number }>();
+  const week = new Map<string, number>();
   for (const row of rows) {
-    const entry = counts.get(row.service) ?? {
+    if (isTrialService(row.service)) continue;
+    week.set(row.service, (week.get(row.service) ?? 0) + 1);
+    if (Date.parse(row.createdAt) < since) continue;
+    const entry = today.get(row.service) ?? {
       id: row.service,
       name: row.serviceName ?? row.service,
       count: 0,
     };
     entry.count += 1;
-    counts.set(row.service, entry);
+    today.set(row.service, entry);
   }
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return {
+    today: [...today.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+    week,
+    complete: rows.length >= total,
+  };
 };
 
-const failedRunsPath = (service?: string) =>
-  `#/log?status=failed${service ? `&service=${encodeURIComponent(service)}` : ''}`;
+export const failedRunsToday = (service: string, now: Date) =>
+  `#/log/runs?status=failed&service=${encodeURIComponent(service)}&date=${localDate(now)}`;
+
+const partlyRead = (d: DatasetView) =>
+  d.lastExecution !== null &&
+  !failedRecently(d) &&
+  !isRunning(d) &&
+  d.lastExecution.status !== 'cancelled' &&
+  d.lastExecution.skipped > 0;
 
 type Started = Record<string, 'starting' | 'started' | { error: string }>;
 
@@ -185,7 +215,9 @@ const UsageFigures = ({ report, quota }: { report: UsageReport; quota: number | 
           className="quota-bar"
         >
           <div
-            className={pct >= 80 ? 'quota-fill over' : 'quota-fill'}
+            className={
+              pct >= 100 ? 'quota-fill full' : pct >= 80 ? 'quota-fill high' : 'quota-fill'
+            }
             style={{ width: `${Math.min(pct, 100)}%` }}
           />
         </div>
@@ -252,12 +284,25 @@ const AttentionList = ({
   );
 };
 
-const TopServices = ({ services }: { services: OverviewData['services'] }) => {
+const TopServices = ({
+  services,
+  failed,
+}: {
+  services: OverviewData['services'];
+  failed: FailedRuns | undefined;
+}) => {
   const t = useT();
   const f = useFormat();
   const top = [...services]
     .sort((a, b) => (b.runsThisWeek ?? 0) - (a.runsThisWeek ?? 0))
     .slice(0, 5);
+  const failedCell = (id: string) => {
+    if (!failed) return '';
+    const count = failed.week.get(id) ?? 0;
+    return failed.complete || count === 0
+      ? f.number(count)
+      : t('overview.atLeast', { value: f.number(count) });
+  };
   return (
     <section aria-labelledby="top-h" className="stack-sm overview-top">
       <div className="row-between">
@@ -266,7 +311,7 @@ const TopServices = ({ services }: { services: OverviewData['services'] }) => {
         </Heading>
         <a href="#/services">{t('overview.allServices', { count: services.length })}</a>
       </div>
-      <div className="table-scroll">
+      <div className="overview-table-wrap">
         <Table className="overview-table">
           <TableHead>
             <TableRow>
@@ -274,30 +319,39 @@ const TopServices = ({ services }: { services: OverviewData['services'] }) => {
               <TableHeaderCell scope="col" className="num">
                 {t('overview.colRuns')}
               </TableHeaderCell>
+              <TableHeaderCell scope="col" className="num">
+                {t('overview.colFailed')}
+              </TableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {top.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell>
-                  <span className="tag-row">
-                    <a href={`#/services/${encodeURIComponent(s.id)}`}>{s.name}</a>
-                    {s.latestVersion === null ? (
-                      <Tag data-size="sm" data-color="neutral">
-                        {t('serviceList.statusDraft')}
-                      </Tag>
-                    ) : s.status === 'paused' ? (
-                      <Tag data-size="sm" data-color="warning">
-                        {t('serviceList.statusPaused')}
-                      </Tag>
-                    ) : null}
-                  </span>
-                </TableCell>
-                <TableCell className="num numeric">
-                  {s.runsThisWeek === undefined ? '' : f.number(s.runsThisWeek)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {top.map((s) => {
+              const failures = failed?.week.get(s.id) ?? 0;
+              return (
+                <TableRow key={s.id}>
+                  <TableCell>
+                    <span className="tag-row">
+                      <a href={`#/services/${encodeURIComponent(s.id)}`}>{s.name}</a>
+                      {s.latestVersion === null ? (
+                        <Tag data-size="sm" data-color="neutral">
+                          {t('serviceList.statusDraft')}
+                        </Tag>
+                      ) : s.status === 'paused' ? (
+                        <Tag data-size="sm" data-color="warning">
+                          {t('overview.tagPaused')}
+                        </Tag>
+                      ) : null}
+                    </span>
+                  </TableCell>
+                  <TableCell className="num numeric">
+                    {s.runsThisWeek === undefined ? '' : f.number(s.runsThisWeek)}
+                  </TableCell>
+                  <TableCell className={failures > 0 ? 'num numeric has-failures' : 'num numeric'}>
+                    {failedCell(s.id)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -322,7 +376,7 @@ export const Overview = ({
   );
   const [usage, retryUsage] = useAsync(
     async (signal) =>
-      withTrialRows(withPricing(await api.usage(tenant, Math.max(now.getUTCDate(), 1), signal))),
+      withTrialRows(withPricing(await api.usage(tenant, daysThisMonth(now), signal))),
     [api, tenant, now],
     { keepPreviousFor: tenant },
   );
@@ -336,26 +390,20 @@ export const Overview = ({
     { keepPreviousFor: tenant },
   );
   const { started, retry } = useIngestRetry(api, tenant, retryDatasets);
-  const failedRuns = overview.status === 'ready' ? overview.data.review.failedTasksLastDay : 0;
-  const [failedServices] = useAsync(
-    async (signal) =>
-      failedRuns > 0
-        ? failedByService(
-            (
-              await api.tasks(
-                tenant,
-                {
-                  status: 'failed',
-                  from: new Date(now.getTime() - 86_400_000).toISOString(),
-                  limit: 500,
-                },
-                signal,
-              )
-            ).data,
-          )
-        : [],
-    [api, tenant, now, failedRuns],
+  const hasServices = overview.status === 'ready' && overview.data.services.length > 0;
+  const [failedRuns, retryFailedRuns] = useAsync(
+    async (signal) => {
+      if (!hasServices) return undefined;
+      const result = await api.tasks(
+        tenant,
+        { status: 'failed', from: new Date(now.getTime() - 7 * dayMs).toISOString(), limit: 500 },
+        signal,
+      );
+      return countFailedRuns(result.data, result.total, now);
+    },
+    [api, tenant, now, hasServices],
   );
+  const failed = failedRuns.status === 'ready' ? failedRuns.data : undefined;
   const quota = settings.status === 'ready' ? quotaOf(settings.data) : null;
 
   const own = datasets.status === 'ready' ? datasets.data.filter(ownDataset(tenant)) : [];
@@ -421,6 +469,7 @@ export const Overview = ({
       : undefined;
   const showStart = services.length === 0 || (progress !== undefined && !allDone(progress));
 
+  const names = new Map(services.map((s) => [s.id, s.name]));
   const items: Item[] = [];
   if (datasets.status === 'error')
     items.push({
@@ -494,40 +543,64 @@ export const Overview = ({
       ),
     });
   }
-  if (failedRuns > 0) {
-    const perService = failedServices.status === 'ready' ? failedServices.data : [];
-    const shown = perService.slice(0, shownFailingServices);
-    const more = perService.length - shown.length;
+  if (failedRuns.status === 'error')
     items.push({
-      key: 'runs',
-      badge: t('overview.badgeErrors'),
+      key: 'runs-unknown',
+      badge: t('overview.badgeUnknown'),
+      color: 'neutral',
+      alert: true,
+      text: t('overview.runsUnknown'),
+      action: (
+        <Button variant="tertiary" data-size="sm" onClick={retryFailedRuns}>
+          {t('overview.retryCheck')}
+        </Button>
+      ),
+    });
+  for (const run of failed?.today ?? []) {
+    const name = names.get(run.id) ?? run.name;
+    items.push({
+      key: `runs-${run.id}`,
+      badge: t('overview.badgeErrorsToday'),
       color: 'danger',
       text: (
         <>
-          {t('overview.runsFailed', { count: failedRuns })}
-          {shown.length > 0 ? (
-            <span className="attention-detail">
-              {t('overview.failedByService')}{' '}
-              {shown.map((s, i) => (
-                <Fragment key={s.id}>
-                  {i > 0 ? ', ' : ''}
-                  <a
-                    href={failedRunsPath(s.id)}
-                    aria-label={t('overview.failedInService', { count: s.count, service: s.name })}
-                  >
-                    {s.name}
-                  </a>{' '}
-                  ({f.number(s.count)})
-                </Fragment>
-              ))}
-              {more > 0 ? ` ${t('overview.failedMore', { count: more })}` : ''}
-            </span>
-          ) : null}
+          <a href={`#/services/${encodeURIComponent(run.id)}`}>{name}</a>
+          {t('overview.failedToday', { count: run.count })}
         </>
       ),
       action: (
-        <a href={failedRunsPath(perService.length === 1 ? perService[0]?.id : undefined)}>
+        <a
+          href={failedRunsToday(run.id, now)}
+          aria-label={t('overview.seeRunsFor', { service: name })}
+        >
           {t('overview.seeRuns')}
+        </a>
+      ),
+    });
+  }
+  for (const d of own.filter(partlyRead)) {
+    const last = d.lastExecution;
+    if (!last) continue;
+    items.push({
+      key: `partial-${d.fullId}`,
+      badge: t('overview.badgePartial'),
+      color: 'warning',
+      text: (
+        <>
+          <a href={`#/datasets/${encodeURIComponent(d.id)}`}>{d.name}</a>
+          {t('overview.partialText', {
+            count: last.stored,
+            skipped: f.number(last.skipped),
+            total: f.number(last.stored + last.skipped),
+          })}
+        </>
+      ),
+      action: (
+        <a
+          href={`#${datasetTabPath(d.id, 'ingestions')}`}
+          aria-label={t('overview.seeFilesFor', { name: d.name })}
+        >
+          {t('overview.seeFiles')}
         </a>
       ),
     });
@@ -563,7 +636,6 @@ export const Overview = ({
         action: <a href="#/statistics">{t('overview.seeUsagePerService')}</a>,
       });
   }
-  const names = new Map(services.map((s) => [s.id, s.name]));
   for (const w of overview.data.qualityWarnings)
     items.push({
       key: `quality-${w.service}-${w.message}`,
@@ -578,7 +650,10 @@ export const Overview = ({
       ),
     });
   const checking =
-    datasets.status === 'loading' || usage.status === 'loading' || settings.status === 'loading';
+    datasets.status === 'loading' ||
+    usage.status === 'loading' ||
+    settings.status === 'loading' ||
+    failedRuns.status === 'loading';
 
   return (
     <div className="stack overview">
@@ -613,16 +688,12 @@ export const Overview = ({
       ) : null}
 
       {services.length > 0 ? (
-        <AttentionList
-          items={checking ? [] : items.slice(0, 4)}
-          checking={checking}
-          checkedAt={checkedAt}
-        />
+        <AttentionList items={checking ? [] : items} checking={checking} checkedAt={checkedAt} />
       ) : null}
 
       {services.length > 0 ? (
         <div className="overview-grid">
-          <TopServices services={services} />
+          <TopServices services={services} failed={failed} />
           <aside
             className="stack overview-aside"
             aria-label={t('overview.usageHeading', { month })}
@@ -633,7 +704,7 @@ export const Overview = ({
                 {t('overview.changes')}
               </Heading>
               <LiveChanges api={api} tenant={tenant} limit={3} />
-              <a href="#/log?tab=changes">{t('overview.seeLog')}</a>
+              <a href="#/log/changes">{t('overview.seeLog')}</a>
             </section>
           </aside>
         </div>

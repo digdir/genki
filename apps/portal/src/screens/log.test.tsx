@@ -241,7 +241,7 @@ describe('run timeline', () => {
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Endringer' }));
-    await waitFor(() => expect(window.location.hash).toBe('#/log?tab=changes'));
+    await waitFor(() => expect(window.location.hash).toBe('#/log/changes'));
     const changes = await screen.findByRole('list', { name: 'Endringer' });
     expect(within(changes).getByText(/Viste hvem A-4K7Q er i kjøringen t1/)).toBeTruthy();
     expect(within(changes).getByText(/«Sikkerhetshendelse»/)).toBeTruthy();
@@ -319,7 +319,7 @@ describe('run timeline', () => {
         'true',
       ),
     );
-    expect(window.location.hash).toBe('#/log?tab=changes');
+    expect(window.location.hash).toBe('#/log/changes');
     fireEvent.click(screen.getByRole('tab', { name: 'Kjøringer' }));
     await waitFor(() => expect(window.location.hash).toBe('#/log'));
 

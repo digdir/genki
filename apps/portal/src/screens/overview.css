@@ -89,19 +89,23 @@
 
 .quota-bar {
   position: relative;
-  height: 14px;
-  border-radius: 999px;
+  height: 8px;
+  border-radius: 4px;
   background: var(--ds-color-neutral-surface-tinted);
-  border: 1px solid var(--ds-color-neutral-border-default);
   overflow: hidden;
 }
 
 .quota-fill {
   height: 100%;
+  border-radius: 4px;
   background: var(--ds-color-accent-base-default);
 }
 
-.quota-fill.over {
+.quota-fill.high {
+  background: var(--ds-color-warning-base-default);
+}
+
+.quota-fill.full {
   background: var(--ds-color-danger-base-default);
 }
 
@@ -243,8 +247,34 @@
   min-width: 0;
 }
 
+.overview-table-wrap {
+  overflow-x: auto;
+}
+
+.overview-table {
+  width: 100%;
+  font-size: 15px;
+}
+
+.overview-table :is(th, td) {
+  padding-inline: 0;
+  background: transparent;
+}
+
+.overview-table th {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
 .overview-table .num {
   text-align: right;
+  padding-inline-start: 16px;
+}
+
+.overview-table .has-failures {
+  color: var(--ds-color-danger-text-default);
+  font-weight: 600;
 }
 
 .usage-parts,
@@ -293,4 +323,15 @@
 .overview-changes {
   padding-top: 20px;
   border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.overview-changes .card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overview-changes .card-rows > li {
+  padding: 0;
+  border-bottom: 0;
 }

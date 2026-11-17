@@ -89,7 +89,9 @@ export const serviceUi = {
     resume: 'Ta i bruk igjen',
     archive: 'Arkiver',
     restore: 'Gjenopprett',
-    tagPaused: 'Satt på pause',
+    archivedTitle: 'Tjenesten er arkivert og kan bare leses.',
+    archivedAt: 'Arkivert {date}.',
+    archivedText: 'Den svarer ikke, og ingen kan endre den.',
     tagArchived: 'Arkivert',
     pauseTitle: 'Sett {name} på pause',
     pauseInfo:
