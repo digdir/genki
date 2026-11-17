@@ -48,6 +48,20 @@ describe('combine', () => {
     ]);
   });
 
+  it("matches the gateway's model name and genki's model id each with its own side of the rule", () => {
+    const genkiSide = { ...measured, model: 'ai-gateway/borealis' };
+    const gatewaySide = { ...throughGenkiKey, model: 'aivar:borealis' };
+    const counted = combine([genkiSide, gatewaySide], {
+      throughGateway: (model) => model === 'ai-gateway/borealis',
+      gatewayModel: (model) => model === 'aivar:borealis',
+    });
+
+    expect(sumUsage(counted).cost).toEqual([
+      { currency: 'NOK', micros: 0 },
+      { currency: 'USD', micros: 700 },
+    ]);
+  });
+
   it("counts a tenant's own gateway calls in full whatever genki routes", () => {
     expect(combine([own], { throughGateway: () => true })).toEqual([own]);
   });

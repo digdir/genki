@@ -133,7 +133,10 @@ export class MemoryUsageSource implements UsageSource, UsageGateway {
         if (g.field === 'provider') group.provider = c.provider;
         else if (g.field === 'requestModel') group.requestModel = c.model;
         else if (g.field === 'responseModel') group.responseModel = c.responseModel;
-        else if (g.field === 'attributes') group[g.key] = attributes[g.key] ?? null;
+        else if (g.field === 'attributes' && g.key === 'usage.org')
+          group['usage.org'] = c.org ?? null;
+        else if (g.field === 'attributes' && g.key === 'usage.client')
+          group['usage.client'] = c.client;
       }
       const key = JSON.stringify(Object.entries(group).sort(([a], [b]) => a.localeCompare(b)));
       const start = from + Math.floor((c.at - from) / step) * step;

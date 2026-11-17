@@ -1,4 +1,4 @@
-import type { UsageReads } from '@genai/port-usage';
+import { throughGatewayConnections, type UsageReads } from '@genai/port-usage';
 import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
@@ -2207,6 +2207,14 @@ export const createPlatform = async (input: PlatformInput) => {
         prices,
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
+        countingRule: () => {
+          const { endpoints } = runtime.catalog.effective().models;
+          return throughGatewayConnections(
+            models.describe(),
+            (endpoint) =>
+              (endpoints[endpoint] as { gateway?: unknown } | undefined)?.gateway === true,
+          );
+        },
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);

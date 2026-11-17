@@ -105,7 +105,7 @@ export const gatewayUsageConfigFromEnv = (
     problems.push('GATEWAY_USAGE_CREDENTIAL must be a secret:// reference');
   const since = new Date(env.GATEWAY_USAGE_SINCE ?? '2026-11-01T00:00:00Z');
   if (Number.isNaN(since.getTime())) problems.push('GATEWAY_USAGE_SINCE must be a date');
-  const genkiClient = env.GATEWAY_USAGE_GENKI_CLIENT?.trim() || federatedApp?.clientId;
+  const genkiClient = env.GATEWAY_USAGE_GENKI_CLIENT?.trim() || 'genki';
   const timeoutMs = Number(env.GATEWAY_USAGE_TIMEOUT_MS ?? defaultGatewayTimeoutMs);
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0)
     problems.push('GATEWAY_USAGE_TIMEOUT_MS must be a whole number of milliseconds');
@@ -115,7 +115,7 @@ export const gatewayUsageConfigFromEnv = (
       id: 'gateway',
       baseUrl: withoutTrailingSlashes(baseUrl as string),
       ...(federatedApp ? { federatedApp } : { credential: credential as string }),
-      genkiClients: genkiClient ? [genkiClient] : [],
+      genkiClients: [genkiClient],
       since,
       timeoutMs,
       maxResponseBytes: 32 * 1024 * 1024,

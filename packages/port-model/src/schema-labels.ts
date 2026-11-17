@@ -125,6 +125,10 @@ const nb = {
     label: 'Flere nøkler',
     help: 'Navngitte hemmeligheter som bare en signeringsmodul kan bruke. De sendes aldri med en forespørsel.',
   },
+  gateway: {
+    label: 'Dette er KI-gatewayen',
+    help: 'Hvert modellkall sender genki-tenant med organisasjonsnummeret til virksomheten kallet gjelder. Bare en operatør setter det.',
+  },
   discovery: { label: 'Finn modeller automatisk' },
   'discovery.source': { label: 'Kilde' },
   'discovery.from': { label: 'Bruk oppslaget fra endepunktet' },
@@ -220,6 +224,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   keys: {
     label: 'More keys',
     help: 'Named secrets that only a signing module can use. They are never sent with a request.',
+  },
+  gateway: {
+    label: 'This is the AI gateway',
+    help: 'Every model call sends genki-tenant with the organisation number of the tenant the call is for. Only an operator sets it.',
   },
   discovery: { label: 'Find models automatically' },
   'discovery.source': { label: 'Source' },

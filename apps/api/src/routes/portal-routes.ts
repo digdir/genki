@@ -17,6 +17,7 @@ import type { TaskErasure } from '@genai/kernel';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import {
   combine,
+  directOnly,
   genkiCostCounts,
   genkiSource,
   inNok,
@@ -198,7 +199,7 @@ export interface PortalRouteDeps {
   qualityWarnings?(tenant: string): Promise<{ service: string; message: string }[]>;
   drafts?: DraftRunner;
   gatewayUsage?: UsageReads;
-  throughGateway?(model: string): boolean;
+  countingRule?(): CountingRule;
   testRunnerKeys?: boolean;
   now?(): Date;
   newKey?(): string;
@@ -900,8 +901,6 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     });
   };
 
-  const counting: CountingRule = { throughGateway: deps.throughGateway ?? (() => false) };
-
   const gatewayWindow = async (tenants: string[], from: Date, to: Date): Promise<GatewayWindow> => {
     if (!deps.gatewayUsage) return { rows: [], rates: [] };
     const [rows, rates] = await Promise.all([
@@ -923,6 +922,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const withGateway = deps.gatewayUsage !== undefined;
     const gatewayRead =
       withGateway && !scoped ? (preloaded ?? gatewayWindow([tenant], from, to)) : undefined;
+    const counting = gatewayRead && deps.countingRule ? deps.countingRule() : directOnly;
     const [all, projectTasks] = await Promise.all([
       deps.definitions.capabilities(),
       deps.projectTasks?.(tenant),

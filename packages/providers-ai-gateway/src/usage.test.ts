@@ -173,11 +173,15 @@ describe('the ai gateway usage source', () => {
     });
   });
 
-  it("turns the real answer into one row per hour, model and organisation, with genki's client marked as genki", async () => {
+  it("turns the real answer into one row per hour, model and organisation, with genki's client marked as genki by default", async () => {
     const { server } = await serve();
     server.answerWith(realAnswer);
+    const { config } = gatewayUsageConfigFromEnv({
+      GATEWAY_USAGE_URL: server.url,
+      GATEWAY_USAGE_CREDENTIAL: 'secret://env/gateway-usage-key',
+    });
     const source = aiGatewayUsageSource(
-      { ...configFor(server), genkiClients: ['genki'] },
+      { ...configFor(server), genkiClients: config?.genkiClients ?? [] },
       { secrets, egress, now: () => new Date('2026-11-17T13:00:00Z') },
     );
     const { rows } = await source.usage({
@@ -400,7 +404,7 @@ describe('gateway settings', () => {
 
     expect(problems).toEqual([]);
     expect(config?.credential).toBeUndefined();
-    expect(config?.genkiClients).toEqual(['334f8fa1-437e-4b84-bceb-f320fb60f3ed']);
+    expect(config?.genkiClients).toEqual(['genki']);
     expect(config?.federatedApp).toEqual({
       clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
       tenant: '11111111-2222-3333-4444-555555555555',

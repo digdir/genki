@@ -1176,7 +1176,9 @@ describe('usage from an AI gateway', () => {
   });
 
   it("counts the cost of a call through the gateway from the gateway once genki's endpoint runs through it", async () => {
-    const { send } = await threeCalls({ throughGateway: (model) => model === routed });
+    const { send } = await threeCalls({
+      countingRule: () => ({ throughGateway: (model) => model === routed }),
+    });
     const body = await json<Report>(await send(`/tenants/${digdir}/usage?days=1`, 'kari'));
 
     expect(body.totals).toMatchObject({
