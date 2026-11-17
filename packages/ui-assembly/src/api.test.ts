@@ -62,6 +62,48 @@ const api = () => createGenkiApi({ baseUrl: '/genki', tenant: 'digdir' });
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("a streamed answer's pages", () => {
+  it('keeps the page of each excerpt and its link to that page, as a reloaded thread does', async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const paged = {
+      ...wireSource,
+      excerpts: [
+        { chunk_id: 'c1', text: 'Sammendrag.', page: 6, page_end: 7, url: `${pdf}#page=6` },
+        { chunk_id: 'c2', text: 'Risiko.', page: 9 },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/api/conversations')
+          ? json({ conversation: { id: 't1' } })
+          : stream(
+              { id: 'a1', choices: [{ delta: { content: 'Ned [1], kort [2].' } }] },
+              { id: 'a1', sources: [paged], citations: [], markers: wireMarkers },
+              '[DONE]',
+            ),
+      ),
+    );
+    const events: StreamEvent[] = [];
+    for await (const event of api().ask({
+      question: 'Sykepenger?',
+      model: 'ka__default',
+      dataset: { tenant: 'digdir', key: 'kudos' },
+      steps: false,
+      signal: new AbortController().signal,
+    }))
+      events.push(event);
+    const done = events.find((e) => e.type === 'done');
+    const sources = done?.type === 'done' ? done.answer.sources : [];
+    expect(
+      sources.map((s, at) => sourceFromWire(s, undefined, at)).flatMap((s) => s.excerpts),
+    ).toEqual([
+      expect.objectContaining({ chunkId: 'c1', page: 6, pageEnd: 7, url: `${pdf}#page=6` }),
+      expect.objectContaining({ chunkId: 'c2', page: 9 }),
+    ]);
+  });
+});
+
 describe('the excerpt markers a service names', () => {
   it('passes on the markers @genai/client reads off the stream, on `sources` and on the answer', async () => {
     vi.stubGlobal(
@@ -322,6 +364,66 @@ describe('a source from the wire', () => {
       ],
     });
     expect(excerpts.map((excerpt) => 'heading' in excerpt)).toEqual([true, false, false]);
+  });
+
+  it("keeps an excerpt's page, the page it ends on and its link to that page", () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const { excerpts } = sourceFromWire({
+      title: 'Evaluering',
+      document_id: 'kudos:d1',
+      excerpts: [
+        { chunk_id: 'c1', text: 'Først.', page: 12, page_end: 13, url: `${pdf}#page=12` },
+        { chunk_id: 'c2', text: 'Så.', page: 14 },
+        { chunk_id: 'c3', text: 'Til slutt.', page: '15' as unknown as number, url: 7 as never },
+        { chunk_id: 'c4', text: 'Lenke.', page: 16, url: 'javascript:alert(1)//#page=16' },
+      ],
+    });
+    expect(excerpts.map((e) => [e.chunkId, e.page, e.pageEnd, e.url])).toEqual([
+      ['c1', 12, 13, `${pdf}#page=12`],
+      ['c2', 14, undefined, undefined],
+      ['c3', undefined, undefined, undefined],
+      // Only an http or https address is a link, whatever it ends in.
+      ['c4', 16, undefined, undefined],
+    ]);
+  });
+
+  it('a stored turn from before this change shows its sources as before', async () => {
+    const stored = {
+      index: 1,
+      title: 'Tildelingsbrev',
+      url: 'https://kudos.dfo.no/dokument/d1',
+      document_id: 'kudos:d1',
+      excerpts: [{ chunk_id: 'c1', text: 'Først.', position: 0, heading: '1 Innledning' }],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        json({
+          conversation: { id: 't1', topic: 'Mål', tags: [], created: 1 },
+          messages: [
+            { id: 'q', role: 'user', text: 'Mål?', created: 1, chunks: [] },
+            {
+              id: 'a',
+              role: 'assistant',
+              text: 'Mål [1].',
+              created: 2,
+              chunks: [],
+              sources: [stored],
+            },
+          ],
+        }),
+      ),
+    );
+    const sources = (await api().loadThread('t1')).turns[0]?.answer?.sources;
+    expect(sources).toStrictEqual([
+      {
+        index: 1,
+        title: 'Tildelingsbrev',
+        url: 'https://kudos.dfo.no/dokument/d1',
+        documentId: 'kudos:d1',
+        excerpts: [{ chunkId: 'c1', text: 'Først.', position: 0, heading: '1 Innledning' }],
+      },
+    ]);
   });
 
   it('links a source without a link of its own from the collection’s templates, and keeps one it has', () => {

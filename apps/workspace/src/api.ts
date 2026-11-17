@@ -94,7 +94,13 @@ interface OwuiSource {
   title?: string;
   url?: string;
   excerpt?: string;
-  excerpts?: { chunk_id?: string; text?: string }[];
+  excerpts?: {
+    chunk_id?: string;
+    text?: string;
+    page?: number;
+    page_end?: number;
+    url?: string;
+  }[];
   markers?: string[];
   index?: number;
   version?: string | number;
@@ -137,6 +143,22 @@ const passageOf = (s: OwuiSource, chunkId = s.source?.id) => {
     .trim();
   if (!text) return undefined;
   return text.length > passageLength ? `${text.slice(0, passageLength).trimEnd()}…` : text;
+};
+
+const wholePage = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+/** The page of the excerpt a source shows, where it ends when later, and its PDF at that page. */
+const pageOf = (s: OwuiSource, chunkId: string | undefined) => {
+  const e = s.excerpts?.find((x) => x.chunk_id === chunkId);
+  const page = wholePage(e?.page);
+  if (!e || page === undefined) return {};
+  const end = wholePage(e.page_end);
+  return {
+    page,
+    ...(end !== undefined && end > page ? { pageEnd: end } : {}),
+    ...(e.url && /^https?:\/\//i.test(e.url) ? { pageUrl: e.url } : {}),
+  };
 };
 
 const provenanceOf = (s: OwuiSource) => ({
@@ -189,6 +211,7 @@ const markedSources = (markers: Marker[], sources: OwuiSource[], untitled: strin
         document: m.document,
         ...linkable(s.source?.url ?? s.url),
         ...(excerpt ? { excerpt } : {}),
+        ...pageOf(s, m.chunk_id),
         ...provenanceOf(s),
       },
     ];
@@ -197,11 +220,13 @@ const markedSources = (markers: Marker[], sources: OwuiSource[], untitled: strin
 // Each source under the `index` its answer gave it, as streamed or as stored.
 const indexedSources = (sources: OwuiSource[], untitled: string): Source[] =>
   sources.map((s) => {
-    const excerpt = passageOf(s, s.source?.id ?? s.excerpts?.[0]?.chunk_id);
+    const shown = s.source?.id ?? s.excerpts?.[0]?.chunk_id;
+    const excerpt = passageOf(s, shown);
     return {
       title: s.metadata?.[0]?.name ?? s.source?.name ?? s.title ?? untitled,
       ...linkable(s.source?.url ?? s.url),
       ...(excerpt ? { excerpt } : {}),
+      ...pageOf(s, shown),
       ...(typeof s.index === 'number' ? { index: s.index } : {}),
       ...provenanceOf(s),
     };

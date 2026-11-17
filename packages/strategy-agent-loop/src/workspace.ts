@@ -16,6 +16,9 @@ export interface ChunkSummary {
   title?: string;
   url?: string;
   headers?: string[];
+  page?: number;
+  pageEnd?: number;
+  fileUrl?: string;
   score?: number;
   rerankScore?: number;
   rank?: number;

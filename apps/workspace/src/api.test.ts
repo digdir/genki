@@ -57,6 +57,29 @@ describe('source passages', () => {
 
     expect(source?.excerpt).toContain('Kostnadsrammen er 3,8 mill. kroner.');
   });
+  it('a source carries the page of the excerpt it shows, and its PDF at that page', () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const excerpts = [
+      { chunk_id: 'c1', text: 'Sammendrag.', page: 6, page_end: 7, url: `${pdf}#page=6` },
+      { chunk_id: 'c2', text: 'Risiko.', page: 9, url: 'javascript:alert(1)//#page=9' },
+    ];
+    const marked = sourcesFrom({
+      sources: [{ title: 'Sykepenger', excerpts, markers: ['1', '2'] }],
+      markers: [
+        { marker: '1', chunk_id: 'c1', document: 'd1' },
+        { marker: '2', chunk_id: 'c2', document: 'd1' },
+      ],
+    });
+    expect(marked.map((s) => [s.index, s.page, s.pageEnd, s.pageUrl])).toEqual([
+      [1, 6, 7, `${pdf}#page=6`],
+      // Only an http or https address is a link.
+      [2, 9, undefined, undefined],
+    ]);
+    const [indexed] = sourcesFrom({
+      sources: [{ title: 'Sykepenger', index: 1, source: { id: 'c1' }, excerpts }],
+    });
+    expect([indexed?.page, indexed?.pageEnd, indexed?.pageUrl]).toEqual([6, 7, `${pdf}#page=6`]);
+  });
 });
 
 describe('workspace api', () => {

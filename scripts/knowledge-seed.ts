@@ -31,6 +31,60 @@ const doc = (id: string, title: string, fields: Record<string, unknown>, texts: 
     phrases: [],
   }) satisfies IndexDocument;
 
+// A public KUDOS report as the knowledge database holds one made from a stored conversion: its
+// record's files, and chunks with their file, pages and heading path, the text as on those pages
+// of the PDF. Its file is real, so «Les side N» and Dokumentvisning open the right page (issue 642).
+const sykepengerUuid = 'a3313528-5945-4149-b8e6-e45215a3cd02';
+const sykepengerFile = {
+  uuid: 'a3313a88-2c8c-4b69-b05f-c641e23156db',
+  url: `https://kudos.dfo.no/dokument/${sykepengerUuid}/filer/a3313a88-2c8c-4b69-b05f-c641e23156db.pdf`,
+  sha256: 'ec49e9922a2954de4cf1ca8a1832432146a0856d41e893669eb9a3906c99c5ba',
+  mimetype: 'application/pdf',
+  pages: 39,
+};
+const sykepengerChunk = (
+  position: number,
+  pages: [number, number],
+  headingPath: string[],
+  text: string,
+) => ({
+  id: `kudos:${sykepengerUuid}#${position}`,
+  position,
+  text,
+  file: 'sykepenger.pdf',
+  fileSha256: sykepengerFile.sha256,
+  pageFrom: pages[0],
+  pageTo: pages[1],
+  ...(headingPath.length ? { headingPath } : {}),
+});
+const sykepenger = {
+  id: `kudos:${sykepengerUuid}`,
+  title: 'Rapport for 2025 om utbetaling av sykepenger i Nav',
+  url: `https://kudos.dfo.no/dokument/${sykepengerUuid}`,
+  fields: { type: ['rapport'], files: [sykepengerFile], file_sha256: [sykepengerFile.sha256] },
+  chunks: [
+    sykepengerChunk(
+      0,
+      [2, 2],
+      [],
+      'Revisjonen er gjennomført som en del av Riksrevisjonens kontroll av disposisjoner i henhold til lov om Riksrevisjonen, INTOSAIs standard for etterlevelsesrevisjon (ISSAI 4000) og Riksrevisjonens faglige retningslinjer for etterlevelsesrevisjon.',
+    ),
+    sykepengerChunk(
+      1,
+      [6, 7],
+      ['1 Sammendrag'],
+      'Sykepenger er en økonomisk støtteordning som forvaltes av Nav. I 2025 mottok Nav 3,4 millioner digitale søknader om sykepenger og utbetalte i overkant av 63 milliarder kroner til arbeidstakere, frilansere og selvstendig næringsdrivende. Vi konkluderer med at Nav ikke i tilstrekkelig grad sikrer at sykepengeutbetalingene i saksbehandlingssystemet Speil er i henhold til folketrygdloven og økonomireglementet.',
+    ),
+    sykepengerChunk(
+      2,
+      [9, 9],
+      ['2.3 Risiko ved utbetaling av sykepenger'],
+      'Nav opplyser at det i 2025 ble tatt ut 468 801 varsler til manuell saksbehandling i Speil. De fleste sykepengesøknadene behandles automatisk. De innebygde kontrollene i Speil og risikomodulen skal sikre at regelverket følges, slik at sykepengeutbetalingene blir korrekte.',
+    ),
+  ],
+  phrases: [],
+} satisfies IndexDocument;
+
 const documents = [
   doc('tilskudd-2024', 'Tilskudd til digitalisering 2024', { type: ['rapport'] }, [
     'Kommunene kan søke tilskudd til digitalisering av tjenester.',
@@ -42,6 +96,7 @@ const documents = [
   doc('sky-veileder', 'Veileder for skytjenester', { type: ['veileder'] }, [
     'Virksomheter som tar i bruk skytjenester bør gjøre en risikovurdering først.',
   ]),
+  sykepenger,
 ];
 
 const dataset: DatasetConfig = {
