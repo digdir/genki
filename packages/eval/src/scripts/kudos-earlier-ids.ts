@@ -16,7 +16,7 @@
  * `.data/kudos-earlier-ids/redirects.jsonl`, so a stopped run goes on where it stopped. `check`
  * keeps a redirect only when a file sha256 of the old document is among the live document's files
  * (today's index was filled from KUDOS's test copy) and writes
- * `packages/ingest/src/kudos-earlier-ids.json`.
+ * `packages/contracts/src/kudos-earlier-ids.json`.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -40,7 +40,7 @@ const cache = join(root, '.data', 'kudos-earlier-ids');
 const oldFile = join(cache, 'old.json');
 const redirectsFile = join(cache, 'redirects.jsonl');
 const liveFile = join(cache, 'live.jsonl');
-const mapFile = join(root, 'packages', 'ingest', 'src', 'kudos-earlier-ids.json');
+const mapFile = join(root, 'packages', 'contracts', 'src', 'kudos-earlier-ids.json');
 
 const collections = {
   docs: 'KUDOS_preprod_v4_documents_ab897fbdedfa',
