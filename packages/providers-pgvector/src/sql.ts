@@ -34,11 +34,11 @@ export const listOf = (json: string) =>
 const anyTermQuery = (config: string, text: string) =>
   `replace(plainto_tsquery(${config}::regconfig, ${text})::text, ' & ', ' | ')::tsquery`;
 
-/** Every word must match; quoted words match as a phrase, as in a web search. */
+/** Every word must match; quoted words match as a phrase. */
 const allTermsQuery = (config: string, text: string) =>
   `websearch_to_tsquery(${config}::regconfig, ${text})`;
 
-/** The most matches a text search ranks: a word in every eighth chunk must not rank the whole partition. */
+/** The most matches a text search ranks, so a common word does not rank a whole partition. */
 export const textRankCap = 5000;
 
 const textOf = (json: string) =>
@@ -143,14 +143,14 @@ export const searchSql = (input: SearchSql) => {
     const tsvOf = () => docVector(params, input.profile.fields, config);
     const table = target === 'chunks' ? 'kn_chunks' : 'kn_phrases';
     const id = target === 'chunks' ? 'x.id' : 'x.chunk_id';
-    /** At most `textRankCap` matches are read, then ranked; which of a larger set is the index's order. */
+    // The matches are planned uncapped, so the index finds them; then at most `textRankCap` are read.
     const ranked = (q: string) => {
       if (target === 'docs') {
         const tsv = tsvOf();
-        return `select first.id, ts_rank_cd(m.tsv, ${q})::float8 as s from (
+        return `with m as materialized (
             select d.id as doc, ${tsv} as tsv from kn_docs d
-            where d.dataset = ${dataset} and d.generation = ${active} and ${tsv} @@ ${q} and ${where}
-            limit ${textRankCap}) m
+            where d.dataset = ${dataset} and d.generation = ${active} and ${tsv} @@ ${q} and ${where})
+          select first.id, ts_rank_cd(m.tsv, ${q})::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
           cross join lateral (
             select c.id from kn_chunks c
             where c.dataset = ${dataset} and c.generation = ${active} and c.doc_id = m.doc
@@ -158,10 +158,14 @@ export const searchSql = (input: SearchSql) => {
           ) first
           order by s desc, first.id limit ${candidates}`;
       }
-      return `select id, max(ts_rank_cd(m.tsv, ${q}))::float8 as s from (
-          select ${id} as id, x.tsv from ${table} x ${docJoin('x')}
-          where x.dataset = ${dataset} and x.generation = ${active} and x.tsv @@ ${q} and ${where}
-          limit ${textRankCap}) m
+      const docFilter =
+        where === 'true'
+          ? ''
+          : ` and exists (select 1 from kn_docs d where d.dataset = x.dataset and d.generation = x.generation and d.id = x.doc_id and ${where})`;
+      return `with m as materialized (
+          select ${id} as id, x.tsv from ${table} x
+          where x.dataset = ${dataset} and x.generation = ${active} and x.tsv @@ ${q}${docFilter})
+        select id, max(ts_rank_cd(m.tsv, ${q}))::float8 as s from (select id, tsv from m limit ${textRankCap}) m
         group by id order by s desc, id limit ${candidates}`;
     };
     if (all && target === 'docs') {
@@ -182,8 +186,7 @@ export const searchSql = (input: SearchSql) => {
         where x.dataset = ${dataset} and x.generation = ${active} and ${where}
         group by ${id} order by s desc, id limit ${candidates})`);
     } else if (mode === 'text') {
-      // No vector half fills the list, so chunks holding some of the words follow those
-      // holding all of them: each tier's score is kept apart, all-words above.
+      // No vector half fills the list, so some-words matches follow the all-words ones, scored below 1.
       const query = params.add(input.query);
       ctes.push(`t_all as (${ranked(allTermsQuery(config(), query))}),
         t_any as (${ranked(anyTermQuery(config(), query))}),
@@ -191,7 +194,9 @@ export const searchSql = (input: SearchSql) => {
           select id, 1 + s / (1 + s) as s from t_all
           union all
           select id, s / (1 + s) from t_any
-          where (select count(*) from t_all) < ${candidates} and id not in (select id from t_all)) u
+          where (select count(*) from t_all) < ${candidates}
+            and strpos(${allTermsQuery(config(), query)}::text, '!') = 0
+            and id not in (select id from t_all)) u
           order by s desc, id limit ${candidates})`);
     } else {
       // A hybrid profile's text half keeps the all-words matches only: its vector half fills the list.

@@ -20,10 +20,7 @@ export type SearchOne = (
 /** The candidates each half of a search ranks, as the SQL has always taken them. */
 export const candidatesFor = (limit: number) => Math.max(limit * 4, 50);
 
-/**
- * Reciprocal rank fusion of ranked lists, as `kn_search` does in SQL: a hit scores
- * `1 / (k + rank)` in each list it is in, ranks counted from 1 in the list's own order.
- */
+/** Reciprocal rank fusion as `kn_search` does it in SQL: `1 / (k + rank)` per list, ranks from 1. */
 export const rrfMerge = (lists: Hit[][], k: number, limit: number): SearchResult => {
   const merged = new Map<string, { hit: Hit; score: number }>();
   for (const list of lists)
@@ -45,11 +42,7 @@ const statementTimeout = '57014';
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/**
- * Runs a hybrid search as two statements, so a slow text half cannot take the vector hits with it:
- * the text half (the hybrid profile without its vector: all words must match) under its own shorter
- * limit, the vector half beside it, merged by RRF. A half that fails leaves the other's hits and a warning.
- */
+/** A hybrid search as two statements, so a slow or failed half leaves the other's hits and a warning. */
 export const searchHybrid = async (
   one: SearchOne,
   p: Profile,

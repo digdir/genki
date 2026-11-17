@@ -967,6 +967,7 @@ describe('text search on the knowledge server', () => {
       profiles: {
         content: { target: 'chunks', mode: 'hybrid' },
         mening: { target: 'chunks', mode: 'vector' },
+        ord: { target: 'chunks', mode: 'text' },
         metadata: { target: 'docs', mode: 'text' },
       },
     },
@@ -1049,6 +1050,31 @@ describe('text search on the knowledge server', () => {
     expect(missing?.hits.map((h) => h.document).sort()).toEqual(['alle', 'noen', 'rekke']);
   });
 
+  it('a text-only search that excludes a word never returns a chunk holding it', async () => {
+    const [result] = await connectionOf().search(
+      at,
+      [{ query: 'lønn -menn', profile: 'ord' }],
+      signal,
+    );
+    expect(result?.hits.map((h) => h.document).sort()).toEqual(['alle', 'rekke']);
+  });
+
+  it('a hybrid search whose query cannot be embedded searches text as a text profile does, with a warning', async () => {
+    const unembedded = readEngine(api.pools, () => ({
+      embed: async () => {
+        throw new Error('the embedding service is down');
+      },
+    }));
+    const [result] = await connectionOf(unembedded).search(
+      at,
+      [{ query: 'kvinners lønn tjente', profile: 'content' }],
+      signal,
+    );
+    expect(result?.warning).toMatch(/^vector search is unavailable/);
+    expect(result?.hits.map((h) => h.document).sort()).toEqual(['alle', 'noen', 'rekke']);
+    expect(result?.hits.every((h) => h.score < 1)).toBe(true);
+  });
+
   describe('with more matches than the cap', () => {
     const bulkGeneration = 'g-20261117-bulk';
     const bulk = dataset('digdir/bulk', 8, {
@@ -1069,8 +1095,9 @@ describe('text search on the knowledge server', () => {
       const docs = partitionOf('kn_docs', bulkGeneration);
       const chunks = partitionOf('kn_chunks', bulkGeneration);
       await owner.query(
-        `insert into ${docs} (dataset, generation, id, fields, config)
-           select 'digdir/bulk', $1, 'mange-' || n, '{}', 'norwegian' from generate_series(1, 6000) n`,
+        `insert into ${docs} (dataset, generation, id, title, fields, config)
+           select 'digdir/bulk', $1, 'mange-' || n, 'Budsjett ' || n, '{}', 'norwegian'
+           from generate_series(1, 6000) n`,
         [bulkGeneration],
       );
       await owner.query(
@@ -1079,18 +1106,31 @@ describe('text search on the knowledge server', () => {
            from generate_series(1, 6000) n`,
         [bulkGeneration],
       );
+      // Two words in half the chunks each, never in the same one.
+      await owner.query(
+        `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config)
+           select 'digdir/bulk', $1, 'hver-' || n, 'mange-' || (n % 6000 + 1), n,
+             case when n % 2 = 0 then 'havneavgift ' else 'kystverket ' end || n, 'norwegian'
+           from generate_series(1, 100000) n`,
+        [bulkGeneration],
+      );
       await owner.query(`analyze ${docs}`);
       await owner.query(`analyze ${chunks}`);
     }, 60_000);
 
+    const statementFor = async (target: string, mode: string, query: string) => {
+      const { rows } = await owner.query<{ sql: string }>(
+        `select kn_search_sql($1, $2, $3, $4, $5, null, null, '[]', 10, 50, 60) as sql`,
+        [bulk.id, bulkGeneration, target, mode, query],
+      );
+      return rows[0]?.sql ?? '';
+    };
+
     it('a text search ranks at most 5,000 of the chunks it matches', async () => {
-      const rankedRows = async (mode: string, query: string) => {
-        const { rows } = await owner.query<{ sql: string }>(
-          `select kn_search_sql($1, $2, 'chunks', $3, $4, null, null, '[]', 10, 50, 60) as sql`,
-          [bulk.id, bulkGeneration, mode, query],
-        );
+      const rankedRows = async (target: string, mode: string, query: string) => {
+        const sql = await statementFor(target, mode, query);
         const { rows: plan } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
-          `explain (analyze, format json) ${rows[0]?.sql}`,
+          `explain (analyze, format json) ${sql}`,
         );
         const read: number[] = [];
         const walk = (node: PlanNode) => {
@@ -1102,14 +1142,35 @@ describe('text search on the knowledge server', () => {
         if (explained) walk(explained['QUERY PLAN'][0].Plan);
         return read;
       };
-      // All words, as a hybrid search's text half runs it, and the fallback to some of them.
-      for (const [mode, query] of [
-        ['hybrid', 'budsjett regnskap'],
-        ['text', 'budsjett tjente'],
+      // All words, as a hybrid search's text half runs it, the fallback to some of them, and documents.
+      for (const [target, mode, query] of [
+        ['chunks', 'hybrid', 'budsjett regnskap'],
+        ['chunks', 'text', 'budsjett tjente'],
+        ['docs', 'text', 'budsjett'],
       ] as const) {
-        const read = await rankedRows(mode, query);
+        const read = await rankedRows(target, mode, query);
         expect(read.length).toBeGreaterThan(0);
         expect(Math.max(...read)).toBeLessThanOrEqual(5000);
+      }
+    });
+
+    it('a text search for words common apart but never together reads a small part of the partition', async () => {
+      const chunks = partitionOf('kn_chunks', bulkGeneration);
+      for (const mode of ['hybrid', 'text']) {
+        const { rows } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+          `explain (analyze, format json) ${await statementFor('chunks', mode, 'havneavgift kystverket')}`,
+        );
+        let read = 0;
+        const walk = (node: PlanNode) => {
+          if (node['Relation Name'] === chunks)
+            read +=
+              (node['Actual Rows'] + (node['Rows Removed by Filter'] ?? 0)) * node['Actual Loops'];
+          node.Plans?.forEach(walk);
+        };
+        const [explained] = rows;
+        if (explained) walk(explained['QUERY PLAN'][0].Plan);
+        // The partition holds 106,002 chunks; the some-words fallback reads until it has 5,000.
+        expect(read).toBeLessThan(15_000);
       }
     });
 
@@ -1172,6 +1233,7 @@ interface PlanNode {
   'Relation Name'?: string;
   'Actual Rows': number;
   'Actual Loops': number;
+  'Rows Removed by Filter'?: number;
   Plans?: PlanNode[];
 }
 

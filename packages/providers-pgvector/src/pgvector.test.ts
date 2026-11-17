@@ -282,6 +282,11 @@ describe('pgvector engine', () => {
       expect(hits[2]?.score).toBeLessThan(1);
     });
 
+    it('a platform text search that excludes a word never returns a chunk holding it', async () => {
+      const { hits } = await port().search({ query: 'lønn -menn', profile: 'ord' });
+      expect(hits.map((h) => h.document).sort()).toEqual(['alle', 'rekke']);
+    });
+
     it('a platform text search ranks at most 5,000 of the chunks it matches', async () => {
       const bulk = config('pgvector/bulk', { filters: {} });
       await seed(writerOf(engineWith()), bulk, [single('a', 'A', ['budsjett'])]);

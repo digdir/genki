@@ -1,4 +1,5 @@
 import { clauseFits, kindsOf, type DatasetConfig, type FilterValue } from '@genai/port-knowledge';
+import { textRankCap } from './sql.js';
 
 /** SQLSTATE a read function raises when this server does not hold the generation it was asked for. */
 export const notReadyCode = 'KN503';
@@ -38,28 +39,21 @@ const hitSelect = `c.id, c.text, c.doc_id, c.position, c.metadata, d.title, d.ur
 const docJoin = (alias: string) =>
   `'join kn_docs d on d.dataset = ' || ds || ' and d.generation = ' || g || ' and d.id = ${alias}.doc_id'`;
 
-/** The most matches a text search ranks: a word in every eighth chunk must not rank the whole partition. */
-export const textRankCap = 5000;
-
-/**
- * The plpgsql expression that builds a text search's candidates for the tsquery literal in `q`:
- * at most `textRankCap` matches are read, then ranked. Which of a larger set are read is the
- * index's order, not their rank.
- */
+/** A text search's ranked matches for the tsquery literal in `q`: the matches are planned uncapped, then at most `textRankCap` are read. */
 const rankedSql = (q: string) => `case when p_target = 'docs' then format(
-             'select first.id, ts_rank_cd(m.tsv, %1$s)::float8 as s from (
-                select d.id as doc, %2$s as tsv from kn_docs d
-                where d.dataset = %3$s and d.generation = %4$s and %2$s @@ %1$s and %5$s limit ${textRankCap}) m
+             'with m as materialized (select d.id as doc, %2$s as tsv from kn_docs d
+                where d.dataset = %3$s and d.generation = %4$s and %2$s @@ %1$s and %5$s)
+              select first.id, ts_rank_cd(m.tsv, %1$s)::float8 as s from (select doc, tsv from m limit ${textRankCap}) m
               cross join lateral (select c.id from kn_chunks c
                 where c.dataset = %3$s and c.generation = %4$s and c.doc_id = m.doc order by c.position limit 1) first
               order by s desc, first.id limit %6$s',
              ${q}, tsv, ds, g, where_sql, p_candidates)
            else format(
-             'select id, max(ts_rank_cd(m.tsv, %1$s))::float8 as s from (
-                select %2$s as id, x.tsv from %3$s x %4$s
-                where x.dataset = %5$s and x.generation = %6$s and x.tsv @@ %1$s and %7$s limit ${textRankCap}) m
-              group by id order by s desc, id limit %8$s',
-             ${q}, id_col, tbl, ${docJoin('x')}, ds, g, where_sql, p_candidates) end`;
+             'with m as materialized (select %2$s as id, x.tsv from %3$s x
+                where x.dataset = %4$s and x.generation = %5$s and x.tsv @@ %1$s%6$s)
+              select id, max(ts_rank_cd(m.tsv, %1$s))::float8 as s from (select id, tsv from m limit ${textRankCap}) m
+              group by id order by s desc, id limit %7$s',
+             ${q}, id_col, tbl, ds, g, doc_filter, p_candidates) end`;
 
 const createFunctions = [
   // `app.datasets` is a JSON array of the dataset ids the router allowed, set once per read transaction.
@@ -148,6 +142,7 @@ const createFunctions = [
        cfg text;
        dims integer;
        where_sql text;
+       doc_filter text;
        use_text boolean := p_mode <> 'vector';
        use_vector boolean := p_mode <> 'text' and p_vector is not null;
        match_all boolean := btrim(p_query) = '*';
@@ -167,6 +162,9 @@ const createFunctions = [
        cfg := coalesce(recipe->>'textSearchConfig', 'norwegian');
        dims := coalesce((recipe->'embedding'->>'dimensions')::integer, vector_dims(p_vector));
        where_sql := kn_filter_sql(p_filters, cfg);
+       doc_filter := case when where_sql = 'true' then '' else format(
+         ' and exists (select 1 from kn_docs d where d.dataset = %s and d.generation = %s and d.id = x.doc_id and %s)',
+         ds, g, where_sql) end;
        tbl := case p_target when 'chunks' then 'kn_chunks' else 'kn_phrases' end;
        id_col := case p_target when 'chunks' then 'x.id' else 'x.chunk_id' end;
        tsv := case
@@ -194,12 +192,10 @@ const createFunctions = [
              id_col, tbl, ${docJoin('x')}, ds, g, where_sql, id_col, p_candidates);
          end if;
        elsif use_text then
-         -- Every word must match; quoted words match as a phrase, as in a web search.
+         -- Every word must match; quoted words match as a phrase.
          q := format('%L::tsquery', websearch_to_tsquery(cfg::regconfig, p_query)::text);
          ranked := ${rankedSql('q')};
-         -- A hybrid profile's text half (mode hybrid, no vector) keeps the all-words matches only:
-         -- its vector half fills the list. A text profile has no vector half, so chunks holding
-         -- some of the words follow those holding all of them, each tier's score apart, all-words above.
+         -- A text profile, with no vector half to fill the list, adds some-words matches below the all-words ones.
          if p_mode = 'text' then
            q_any := format('%L::tsquery', replace(plainto_tsquery(cfg::regconfig, p_query)::text, ' & ', ' | '));
            ctes := ctes || format(
@@ -208,9 +204,10 @@ const createFunctions = [
                 select id, 1 + s / (1 + s) as s from t_all
                 union all
                 select id, s / (1 + s) from t_any
-                where (select count(*) from t_all) < %s and id not in (select id from t_all)) u
+                where (select count(*) from t_all) < %s and strpos(%s::text, ''!'') = 0
+                  and id not in (select id from t_all)) u
                 order by s desc, id limit %s)',
-             ranked, ${rankedSql('q_any')}, p_candidates, p_candidates);
+             ranked, ${rankedSql('q_any')}, p_candidates, q, p_candidates);
          else
            ctes := ctes || format('t as (%s)', ranked);
          end if;
