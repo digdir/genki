@@ -59,6 +59,22 @@ describe('steps', () => {
     ]);
   });
 
+  it('a colon in a path literal is sent as it is written, after an issued id', async () => {
+    const yaml = yamlOf('example/transcribe-job@1').replace(
+      'path: /jobs/{steps.start.job}/transcript',
+      'path: /jobs/{steps.start.job}:transcript',
+    );
+    expect(yaml).toContain(':transcript');
+    const { sent, outcome } = await call(parseDescriptor(yaml), audio, [
+      json({ id: 'job_x1', status: 'succeeded' }),
+      json({ id: 'job_x1', status: 'succeeded' }),
+      { type: 'text/plain', body: 'hei' },
+      json({ deleted: true }),
+    ]);
+    expect(outcome).toEqual({ result: { text: 'hei' } });
+    expect(sent[2]?.url.href).toBe('https://provider.example.test/base/jobs/job_x1:transcript');
+  });
+
   it('an answer URL is never followed: a bound value that is a URL is refused as a path', async () => {
     const yaml = yamlOf('example/transcribe-job@1').replaceAll("'^job_[a-z0-9]+$'", () => "'^.+$'");
     const { sent, outcome } = await call(parseDescriptor(yaml), audio, [
@@ -480,6 +496,19 @@ describe('what never changes: hostile descriptors are refused', () => {
         ),
       ),
     ).toMatch(/names no URL/);
+  });
+
+  it('a colon in a path does not open a kept-out path', () => {
+    expect(refused(edit().replace('path: /edits', 'path: /files:upload'))).toMatch(
+      /kept out of descriptors/,
+    );
+  });
+
+  it('reads a request path in linear time on a long adversarial string', () => {
+    const long = `/${'a:'.repeat(50_000)}!`;
+    const started = performance.now();
+    expect(refused(edit().replace('path: /edits', `path: '${long}'`))).toBeDefined();
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it('a path from input is refused at load', () => {

@@ -741,7 +741,7 @@ const dispatch = async (
         ? {}
         : { query: { ...descriptor.api.query, ...prepared.query } }),
       ...(Object.keys(prepared.headers).length ? { headers: prepared.headers } : {}),
-      body: await recordedBody(recorded.body, recorded.contentType ?? null),
+      body: (await recordedBody(recorded.body, recorded.contentType ?? null)) ?? null,
     };
     if (!response.ok) {
       const { body: errorBody, text: errorText } = await readErrorBody(response, [
