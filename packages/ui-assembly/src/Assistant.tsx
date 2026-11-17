@@ -480,13 +480,10 @@ export const AssistantView = ({
     // The catalogue keeps follow-ups to the current look.
     const followUps = a.option('chat', 'followUps') ? a.profile?.followUps : undefined;
     const disclaimer = a.option('chat', 'disclaimer');
-    // While a question is written, the next look hides the greeting and suggestions in place.
-    const typing = next && start && a.draft !== '';
     return (
       <div
         className="uia-chat"
         data-start={start || undefined}
-        data-typing={typing || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
         style={next ? { ...nextFootnotes, ...(inPanel ? {} : cardGround) } : undefined}
