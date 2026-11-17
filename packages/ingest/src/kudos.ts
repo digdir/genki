@@ -260,11 +260,13 @@ export const fillInKudosFields = (doc: KudosDocument) => ({
   concerned_years: concernedYears(doc),
 });
 
-export const displayNames = (orgs: KudosOrganisation[]) =>
+const namesOfType = (orgs: KudosOrganisation[], type: string) =>
   orgs
     .flatMap((o) => o.alternative_names ?? [])
-    .filter((n) => n.type === 'display')
+    .filter((n) => n.type === type)
     .map((n) => n.name);
+
+export const displayNames = (orgs: KudosOrganisation[]) => namesOfType(orgs, 'display');
 
 /** The nine-digit org numbers of one role's organisations, each once (ADR 0058). */
 export const orgNumbers = (orgs: KudosOrganisation[]) => [
@@ -283,6 +285,7 @@ const kudosStoredFields = [
   'title',
   'authors',
   'orgs_long',
+  'orgs_short',
   'owner_orgnr',
   'recipient_orgnr',
   'concerned_year',
@@ -302,21 +305,37 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
-/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
-export const kudosOrgNumberFields = (doc: {
-  id: string;
-  record: Record<string, unknown>;
-  fields: Record<string, unknown>;
-}): Record<string, unknown> => {
-  const owners = orgNumbers((doc.record.owners ?? []) as KudosOrganisation[]);
-  const recipients = orgNumbers((doc.record.recipients ?? []) as KudosOrganisation[]);
-  const rest = Object.fromEntries(
-    Object.entries(doc.fields).filter(([k]) => k !== 'owner_orgnr' && k !== 'recipient_orgnr'),
-  );
-  const fields: Record<string, unknown> = {
-    ...rest,
+/**
+ * The fields a KUDOS record gives about its organisations, the same for an ingest and a fill:
+ * display names of owners, recipients and publishers, their abbreviations as KUDOS writes them,
+ * and the owners' and recipients' org numbers. A list with nothing in it is left out, except
+ * `orgs_long`, which an ingest has always stored.
+ */
+export const kudosOrgFields = (record: Record<string, unknown>) => {
+  const role = (key: string) => (record[key] ?? []) as KudosOrganisation[];
+  const orgs = [...role('owners'), ...role('recipients'), ...role('publishers')];
+  const short = [...new Set(namesOfType(orgs, 'abbreviation'))];
+  const owners = orgNumbers(role('owners'));
+  const recipients = orgNumbers(role('recipients'));
+  return {
+    orgs_long: [...new Set(displayNames(orgs))],
+    ...(short.length ? { orgs_short: short } : {}),
     ...(owners.length ? { owner_orgnr: owners } : {}),
     ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+  };
+};
+
+type StoredKudos = { id: string; record: Record<string, unknown>; fields: Record<string, unknown> };
+
+/** Stored fields with some replaced, in a fresh ingest's order (ADR 0042). */
+const refilled = (
+  stored: Record<string, unknown>,
+  replaced: readonly string[],
+  next: Record<string, unknown>,
+) => {
+  const fields: Record<string, unknown> = {
+    ...Object.fromEntries(Object.entries(stored).filter(([k]) => !replaced.includes(k))),
+    ...next,
   };
   const known = kudosStoredFields.filter((k) => k in fields);
   return Object.fromEntries([
@@ -325,11 +344,34 @@ export const kudosOrgNumberFields = (doc: {
   ]);
 };
 
+/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
+export const kudosOrgNumberFields = (doc: StoredKudos): Record<string, unknown> => {
+  const { owner_orgnr, recipient_orgnr } = kudosOrgFields(doc.record);
+  return refilled(doc.fields, ['owner_orgnr', 'recipient_orgnr'], {
+    ...(owner_orgnr ? { owner_orgnr } : {}),
+    ...(recipient_orgnr ? { recipient_orgnr } : {}),
+  });
+};
+
+const orgFieldNames = ['orgs_long', 'orgs_short', 'owner_orgnr', 'recipient_orgnr'] as const;
+
+/**
+ * `kudos-links-and-abbreviations`: a stored document's organisation fields as an ingest of its
+ * record writes them now, abbreviations included, and its page on Kudos as its url (issue 651).
+ */
+export const kudosLinkAndAbbreviationFields = (
+  doc: StoredKudos,
+): { fields: Record<string, unknown>; url?: string } => {
+  const record = doc.record as KudosDocument;
+  const fields = refilled(doc.fields, orgFieldNames, kudosOrgFields(doc.record));
+  // A record without a UUID or KUDOS id has no page to name, so its url stays as it is.
+  return record.uuid || record.id ? { fields, url: kudosPublicUrl(record) } : { fields };
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
 ) => {
-  const orgs = [...(doc.owners ?? []), ...(doc.recipients ?? []), ...(doc.publishers ?? [])];
   const files = (doc.files ?? []).map(
     (f) =>
       Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'path')) as Omit<
@@ -337,13 +379,9 @@ export const prepareKudosDoc = (
         'path'
       >,
   );
-  const owners = orgNumbers(doc.owners ?? []);
-  const recipients = orgNumbers(doc.recipients ?? []);
   const enriched: Record<string, unknown> = {
     ...doc,
-    orgs_long: [...new Set(displayNames(orgs))],
-    ...(owners.length ? { owner_orgnr: owners } : {}),
-    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+    ...kudosOrgFields(doc),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,

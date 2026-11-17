@@ -82,7 +82,9 @@ const withOwners = (stored: StoredDocument) => {
     o.org_number ? [String(o.org_number)] : [],
   );
   const { type, orgs_long, ...rest } = stored.fields;
-  return { type, orgs_long, ...(owners.length ? { owner_orgnr: owners } : {}), ...rest };
+  return {
+    fields: { type, orgs_long, ...(owners.length ? { owner_orgnr: owners } : {}), ...rest },
+  };
 };
 
 const noSend = async () => undefined;
@@ -105,8 +107,8 @@ const ingest = async (name: string, generationsOf: string[], docs: ListedDocumen
 
 const docRow = async (generation: string, id: string) =>
   (
-    await admin.query<{ fields: Record<string, unknown>; fields_text: string }>(
-      `select fields, fields_text from kn_docs where generation = $1 and id = $2`,
+    await admin.query<{ fields: Record<string, unknown>; fields_text: string; url: string | null }>(
+      `select fields, fields_text, url from kn_docs where generation = $1 and id = $2`,
       [generation, id],
     )
   ).rows[0];
@@ -185,7 +187,7 @@ describe('refreshing document fields', () => {
       [name],
     );
     const fresh = await records.find(rows[0]?.number ?? '0');
-    const fields = withOwners({
+    const { fields } = withOwners({
       id: 'fresh',
       record: fresh?.record ?? {},
       fields: doc('fresh').fields,
@@ -347,5 +349,47 @@ describe('refreshing document fields', () => {
     // A run processes a record only when the generation's applied change is not its change.
     expect(owned.map((o) => o.applied === o.change)).toEqual([true, true]);
     expect(again).toEqual({ generations: 1, updated: 0, unchanged: 2, copied: 0 });
+  });
+
+  it("a fill that gives no url leaves the document's url as it was", async () => {
+    const name = 'digdir/fields-k';
+    const g = await freshGeneration(name);
+    await ingest(name, [g], [listed('m', 991825827)]);
+    await admin.query(`update kn_docs set url = 'https://kudos.dfo.no/dokument/m' where id = 'm'`);
+
+    await records.refreshFields(name, withOwners);
+
+    expect((await docRow(g, 'm'))?.url).toBe('https://kudos.dfo.no/dokument/m');
+  });
+
+  it('writes the url a fill gives beside its fields', async () => {
+    const name = 'digdir/fields-l';
+    const g = await freshGeneration(name);
+    await ingest(name, [g], [listed('n', 991825827)]);
+    const chunksBefore = await chunkRows(g, 'n');
+
+    await records.refreshFields(name, (stored) => ({
+      ...withOwners(stored),
+      url: `https://kudos.dfo.no/dokument/${stored.id}`,
+    }));
+
+    expect((await docRow(g, 'n'))?.url).toBe('https://kudos.dfo.no/dokument/n');
+    expect(await chunkRows(g, 'n')).toEqual(chunksBefore);
+  });
+
+  it('a second refresh with the same fields and url counts the document unchanged', async () => {
+    const name = 'digdir/fields-m';
+    const g = await freshGeneration(name);
+    await ingest(name, [g], [listed('o', 991825827)]);
+    const fill = (stored: StoredDocument) => ({
+      fields: stored.fields,
+      url: `https://kudos.dfo.no/dokument/${stored.id}`,
+    });
+
+    const first = await records.refreshFields(name, fill);
+    const again = await records.refreshFields(name, fill);
+
+    expect(first).toEqual({ generations: 1, updated: 1, unchanged: 0, copied: 0 });
+    expect(again).toEqual({ generations: 1, updated: 0, unchanged: 1, copied: 0 });
   });
 });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { toIndexDocument } from './index-writer.js';
-import { fillInKudosFields, kudosOrgNumberFields, prepareKudosDoc } from './kudos.js';
+import {
+  fillInKudosFields,
+  kudosLinkAndAbbreviationFields,
+  kudosOrgNumberFields,
+  prepareKudosDoc,
+} from './kudos.js';
 
 /** An allocation letter as KUDOS lists it: the ministry owns it, the agency receives it. */
 const letter = (overrides: Record<string, unknown> = {}) =>
@@ -88,5 +93,68 @@ describe('filling org numbers on a stored KUDOS document', () => {
     const fields = { orgs_long: ['Samferdselsdepartementet'], total_chunks: 1 };
 
     expect(kudosOrgNumberFields({ id: 'kudos:x', record: raw, fields })).toEqual(fields);
+  });
+});
+
+/** An organisation as KUDOS lists it, with its abbreviation when it has one. */
+const org = (orgNumber: number, display: string, abbreviation?: string) => ({
+  org_number: orgNumber,
+  alternative_names: [
+    { name: display, type: 'display' },
+    ...(abbreviation ? [{ name: abbreviation, type: 'abbreviation' }] : []),
+    { name: display.toUpperCase(), type: 'official' },
+  ],
+});
+
+describe('abbreviations and links on a KUDOS document', () => {
+  it("orgs_short holds the abbreviations of a Kudos document's owners, recipients and publishers, as KUDOS writes them, once each", () => {
+    const doc = prepareKudosDoc(
+      letter({
+        owners: [org(991825827, 'Digitaliseringsdirektoratet', 'Digdir')],
+        recipients: [
+          org(983744516, 'Folkehelseinstituttet', 'FHI'),
+          org(972417904, 'Samferdselsdepartementet'),
+        ],
+        // KUDOS lists some actors twice, under the same abbreviation.
+        publishers: [org(991825827, 'Digitaliseringsdirektoratet', 'Digdir')],
+      }),
+      1,
+    );
+
+    expect(doc.orgs_short).toEqual(['Digdir', 'FHI']);
+  });
+
+  it('ingest and the fill give a Kudos record the same org fields', () => {
+    const raw = letter({
+      owners: [org(991825827, 'Digitaliseringsdirektoratet', 'Digdir')],
+      publishers: [org(974760983, 'Direktoratet for samfunnssikkerhet og beredskap', 'DSB')],
+    });
+    const fresh = toIndexDocument('kudos:x', prepareKudosDoc(raw, 4), [], []).fields;
+    const before = Object.fromEntries(
+      Object.entries(fresh).filter(([k]) => k !== 'orgs_short' && !k.endsWith('_orgnr')),
+    );
+    // jsonb gives the keys back in its own order.
+    const stored = Object.fromEntries(Object.entries(before).reverse());
+
+    const filled = kudosLinkAndAbbreviationFields({ id: 'kudos:x', record: raw, fields: stored });
+
+    expect(Object.keys(filled.fields)).toEqual(Object.keys(fresh));
+    expect(filled.fields).toEqual(fresh);
+  });
+
+  it('a stored Kudos document has its page on Kudos as its url', () => {
+    const raw = letter();
+
+    const filled = kudosLinkAndAbbreviationFields({ id: 'kudos:x', record: raw, fields: {} });
+
+    expect(filled.url).toBe('https://kudos.dfo.no/dokument/a33bf297-afd2-4b38-992e-b23c8fec3d80');
+  });
+});
+
+describe('a stored KUDOS record without an id', () => {
+  it('gives no url when the record names neither a UUID nor a KUDOS id', () => {
+    const filled = kudosLinkAndAbbreviationFields({ id: 'kudos:x', record: {}, fields: {} });
+
+    expect(filled).not.toHaveProperty('url');
   });
 });

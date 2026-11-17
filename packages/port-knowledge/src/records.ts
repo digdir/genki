@@ -112,6 +112,13 @@ export interface StoredDocument {
   fields: Record<string, unknown>;
 }
 
+/** What a fill gives one stored document: its new fields, and its url when the fill knows it. */
+export interface FieldFill {
+  fields: Record<string, unknown>;
+  /** Written to the document's url; left out, the url stays as it is. */
+  url?: string;
+}
+
 /** What a fields-only refresh did, over every generation that holds the dataset. */
 export interface FieldRefresh {
   generations: number;
@@ -172,7 +179,7 @@ export interface DocumentRecords {
   /** New fields per document from `fill`, batch by batch, nothing embedded; see ADR 0042. */
   refreshFields(
     dataset: string,
-    fill: (document: StoredDocument) => Record<string, unknown>,
+    fill: (document: StoredDocument) => FieldFill,
     options?: { batch?: number },
   ): Promise<FieldRefresh>;
 }
