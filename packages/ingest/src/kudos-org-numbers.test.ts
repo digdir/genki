@@ -153,7 +153,11 @@ describe('abbreviations and links on a KUDOS document', () => {
 
 describe('a stored KUDOS record without an id', () => {
   it('gives no url when the record names neither a UUID nor a KUDOS id', () => {
-    const filled = kudosLinkAndAbbreviationFields({ id: 'kudos:x', record: {}, fields: {} });
+    const filled = kudosLinkAndAbbreviationFields({
+      id: 'kudos:x',
+      record: { owners: [] },
+      fields: {},
+    });
 
     expect(filled).not.toHaveProperty('url');
   });
