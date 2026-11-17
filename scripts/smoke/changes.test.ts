@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  changedPrs,
   clipDiff,
   groupsOfPath,
   inExperiment,
@@ -7,6 +8,7 @@ import {
   moreFiles,
   suspectRange,
   targetsOf,
+  type Api,
   type HistoryNode,
 } from './changes.ts';
 import { rangeText } from './report.ts';
@@ -156,5 +158,38 @@ describe('diffs for the model', () => {
 
   it('cuts a long diff and says where', () => {
     expect(clipDiff('a'.repeat(20), 10)).toBe(`${'a'.repeat(10)}\n[diff cut at 10 characters]`);
+  });
+});
+
+describe('the pull requests since the last green run', () => {
+  it('are read a few at a time, missing ones left out, in the order given', async () => {
+    let running = 0;
+    let most = 0;
+    const api: Api = async (path, init = {}) => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running--;
+      const number = Number(/pulls\/(\d+)/.exec(path)?.[1]);
+      if (number === 3) return { status: 404, body: {}, text: '' };
+      if (path.includes('/files'))
+        return { status: 200, body: [{ filename: `f${number}` }], text: '' };
+      if (path.includes('/actions/')) return { status: 200, body: { workflow_runs: [] }, text: '' };
+      if (init.accept) return { status: 200, body: undefined, text: `diff ${number}` };
+      const pull = {
+        title: `PR ${number}`,
+        body: '',
+        merged_at: '',
+        html_url: '',
+        head: { ref: 'b' },
+      };
+      return { status: 200, body: pull, text: '' };
+    };
+    const prs = await changedPrs(api, 'o/r', [1, 2, 3, 4, 5, 6, 7], { diffChars: 100, prs: 6 });
+    expect(prs.map((p) => [p.number, p.title, p.files, p.diff])).toEqual(
+      [1, 2, 4, 5, 6].map((n) => [n, `PR ${n}`, [`f${n}`], `diff ${n}`]),
+    );
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(12);
   });
 });

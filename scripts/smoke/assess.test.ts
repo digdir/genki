@@ -23,6 +23,7 @@ import {
   clip,
   costOf,
   fileNameOf,
+  inLanes,
   isTransient,
   outcomeOf,
   modelChecksRan,
@@ -689,11 +690,56 @@ describe('a model check', () => {
     expect(r).toMatchObject({ outcome: 'fail', attempts: 1 });
   });
 
+  it('never lets checks that run at once spend past the per-run budget', async () => {
+    const budget = new Budget(0.25);
+    const slow = async (): Promise<Verdict> => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { ok: true, detail: 'ok' };
+    };
+    const results = await Promise.all(
+      [1, 2, 3].map((n) =>
+        runModelCheck('cheap', `m${n}`, 0.1, slow, deps({ budget, price: undefined })),
+      ),
+    );
+    expect(results.map((r) => r.outcome)).toEqual(['pass', 'pass', 'skip']);
+    expect(results[2]).toMatchObject({ skipReason: 'budget' });
+    expect(budget.spent).toBeCloseTo(0.2);
+  });
+
   it('reports the measured cost and charges the budget at least the estimate', async () => {
     const budget = new Budget(2.5);
     const r = await runModelCheck('cheap', 'm', 0.1, attempts(passed), deps({ budget }));
     expect(r.costKr).toBeCloseTo(0.2);
     expect(budget.spent).toBeCloseTo(0.2);
+  });
+});
+
+describe('checks run a few at a time', () => {
+  it('runs at most the given number at once and keeps the results in the order given', async () => {
+    let running = 0;
+    let most = 0;
+    const task = (value: number, ms: number) => async () => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      running--;
+      return value;
+    };
+    const results = await inLanes(2, [task(1, 15), task(2, 1), task(3, 1), task(4, 5)]);
+    expect(results).toEqual([1, 2, 3, 4]);
+    expect(most).toBe(2);
+  });
+
+  it('runs one at a time with one lane, and copes with no tasks', async () => {
+    const order: number[] = [];
+    const task = (value: number) => async () => {
+      order.push(value);
+      await Promise.resolve();
+      return value;
+    };
+    expect(await inLanes(1, [task(1), task(2)])).toEqual([1, 2]);
+    expect(order).toEqual([1, 2]);
+    expect(await inLanes(3, [])).toEqual([]);
   });
 });
 

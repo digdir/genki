@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { createServer, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screenFile, sessionFor } from './browser.ts';
 import { estimateOf, playgroundVersionOf, priceOf } from './extra.ts';
 import { loadPlan } from './client.ts';
-import { finalOutcome, portalClientIdOf, reviewDecision } from './run.ts';
+import { finalOutcome, main, portalClientIdOf, reviewDecision } from './run.ts';
 
 const asked = { asked: true, prs: 2, healthy: true, runsToday: 1, maxPerDay: 3 };
 
@@ -114,4 +119,75 @@ describe('extra checks', () => {
     ).toBe(plan.prices[haiku.model]);
     expect(priceOf({ action: 'operator-read', path: '/operator/tenants' }, plan)).toBeUndefined();
   });
+});
+
+describe('the model checks of a run', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('run a few at a time and are reported in the plan’s order', async () => {
+    const plan = loadPlan();
+    let running = 0;
+    let most = 0;
+    const send = (res: ServerResponse, status: number, body: unknown) => {
+      res.writeHead(status, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(body));
+    };
+    // A fake genki-test: healthy, with the smoke service in the playground, and model runs that take a moment and
+    // are refused, so no check retries.
+    const server = createServer((req, res) => {
+      const url = req.url ?? '';
+      if (url === '/health') return send(res, 200, { status: 'ok', version: 'a'.repeat(40) });
+      if (url.endsWith('/playground/options'))
+        return send(res, 200, { services: [{ id: plan.service, latestVersion: 1 }] });
+      const modelRun =
+        req.method === 'POST' &&
+        ((url === '/v1/chat/completions' && req.headers['x-api-key']) ||
+          url.endsWith('/playground/runs'));
+      if (!modelRun) return send(res, 404, {});
+      running++;
+      most = Math.max(most, running);
+      setTimeout(() => {
+        running--;
+        send(res, 400, { error: { message: 'refused by the fake' } });
+      }, 30);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const out = mkdtempSync(join(tmpdir(), 'smoke-'));
+    for (const [name, value] of Object.entries({
+      SMOKE_API_URL: url,
+      SMOKE_PORTAL_URL: url,
+      SMOKE_CONSOLE_URL: url,
+      SMOKE_API_KEY: 'smoke-key',
+      SMOKE_EXPECT_SHA: '',
+      SMOKE_CAPPED: 'false',
+      SMOKE_FULL: 'all',
+      SMOKE_LANES: '3',
+      SMOKE_OUT: out,
+      PLAYWRIGHT_BROWSERS_PATH: join(out, 'no-browsers'),
+      GITHUB_TOKEN: '',
+      GITHUB_STEP_SUMMARY: '',
+      GITHUB_OUTPUT: '',
+    }))
+      vi.stubEnv(name, value);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const report = await main();
+      const modelRows = report.checks
+        .map((c) => c.id)
+        .filter((id) => /^(model|question|playground):/.test(id));
+      expect(modelRows).toEqual([
+        ...plan.models.flatMap((m) => [`model:${m.model}`, `model:${m.model}:stream`]),
+        ...plan.questions.map((q) => `question:${q.id}`),
+        'playground:options',
+        ...plan.models.map((m) => `playground:${m.model}`),
+      ]);
+      expect(most).toBe(3);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }, 30_000);
 });

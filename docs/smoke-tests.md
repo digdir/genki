@@ -143,6 +143,8 @@ Prices: genki's own `apps/api/config/local/prices.yaml` (Sweden Central). Claude
 
 At about three deploys a weekday (65 a month, about 45 with merged pull requests), the deterministic layer costs about 120 to 145 kr a month and the model review about 700 kr (Sonnet) or 1150 kr (Opus). The real cost of both passes, from the action's own report, is written into `assessment.json` and the job summary.
 
+Within a run, the model checks (the models, the questions and the playground runs) run six at a time, the agent runs first since they take longest, and the report lists them in the plan's order. `SMOKE_LANES` sets another number; `1` runs them one after another, as before 2026-11-17, when a gate took about 8.5 minutes. Six keep the gate's `gpt-5.4-mini` use near 100k tokens a minute, against the test deployment's 250k a minute that genki-test's users share. The per-run budget charges each check's estimate when it starts, so checks that run at once cannot pass it together.
+
 Concurrency: one `smoke` job at a time (`concurrency: smoke-genki-test`, never cancelled). The `extra` job has no concurrency group, so it can overlap with the next run's `smoke` job; both write only `smoke-*` objects. A deploy during a run is detected by the closing `/health` check and makes the run `partial`, and `extra` runs nothing if `/health` no longer reports the tested SHA. The smoke test never deploys and never blocks a deploy.
 
 Secrets:

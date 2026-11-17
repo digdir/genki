@@ -1,0 +1,154 @@
+name: images
+
+# Builds the four images once per commit on main, when it lands, so a deploy finds them ready and only reads their
+# digests. deploy.yml calls this too: for a commit whose images exist it builds nothing, and while the push run for the
+# same commit is still building, the concurrency group makes the deploy wait for it instead of building them twice.
+on:
+  push:
+    branches: [main]
+  workflow_call:
+    outputs:
+      registry:
+        value: ${{ jobs.build.outputs.registry }}
+      api:
+        value: ${{ jobs.build.outputs.api }}
+      worker:
+        value: ${{ jobs.build.outputs.worker }}
+      apps:
+        value: ${{ jobs.build.outputs.apps }}
+      docling:
+        value: ${{ jobs.build.outputs.docling }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: test
+    concurrency:
+      group: images-${{ github.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      registry: ${{ steps.registry.outputs.id }}
+      api: ${{ steps.image.outputs.api }}
+      worker: ${{ steps.image.outputs.worker }}
+      apps: ${{ steps.image.outputs.apps }}
+      docling: ${{ steps.image.outputs.docling }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: registry
+        run: |
+          server=$(az acr show --name "${{ vars.ACR_NAME }}" --query loginServer -o tsv)
+          id=$(az acr show --name "${{ vars.ACR_NAME }}" --query id -o tsv)
+          {
+            echo "server=$server"
+            echo "id=$id"
+          } >> "$GITHUB_OUTPUT"
+          az acr login --name "${{ vars.ACR_NAME }}"
+      # The images already pushed for this commit. The Docling image is tagged by the tree of docker/docling, its whole
+      # build context, so it is built again only when that changes.
+      - id: have
+        env:
+          SERVER: ${{ steps.registry.outputs.server }}
+          SHA: ${{ github.sha }}
+        run: |
+          digest() {
+            docker buildx imagetools inspect "$SERVER/$1" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty' || true
+          }
+          docling_tag="tree-$(git rev-parse HEAD:docker/docling)"
+          {
+            echo "api=$(digest "genai-api:$SHA")"
+            echo "worker=$(digest "genai-worker:$SHA")"
+            echo "apps=$(digest "genai-apps:$SHA")"
+            echo "docling_tag=$docling_tag"
+            echo "docling=$(digest "genai-docling:$docling_tag")"
+          } >> "$GITHUB_OUTPUT"
+      - if: steps.have.outputs.api == '' || steps.have.outputs.worker == '' || steps.have.outputs.apps == '' || steps.have.outputs.docling == ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+      - run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+      - id: api
+        if: steps.have.outputs.api == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: api
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-api:${{ github.sha }}
+      - id: worker
+        if: steps.have.outputs.worker == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: worker
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-worker:${{ github.sha }}
+      - id: apps
+        if: steps.have.outputs.apps == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: apps
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
+      # The Docling server (docker/docling): the parser benchmark winner's Docling and Tesseract on Debian, packages locked.
+      - id: docling
+        if: steps.have.outputs.docling == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: docker/docling
+          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-docling:${{ steps.have.outputs.docling_tag }}
+      - id: image
+        env:
+          SERVER: ${{ steps.registry.outputs.server }}
+          API_DIGEST: ${{ steps.api.outputs.digest || steps.have.outputs.api }}
+          WORKER_DIGEST: ${{ steps.worker.outputs.digest || steps.have.outputs.worker }}
+          APPS_DIGEST: ${{ steps.apps.outputs.digest || steps.have.outputs.apps }}
+          DOCLING_DIGEST: ${{ steps.docling.outputs.digest || steps.have.outputs.docling }}
+          DOCLING_TAG: ${{ steps.have.outputs.docling_tag }}
+        run: |
+          {
+            echo "api=$SERVER/genai-api@$API_DIGEST"
+            echo "worker=$SERVER/genai-worker@$WORKER_DIGEST"
+            echo "apps=$SERVER/genai-apps@$APPS_DIGEST"
+            echo "docling=$SERVER/genai-docling@$DOCLING_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+          row() {
+            platform=$(docker buildx imagetools inspect --raw "$SERVER/genai-$1@$2" |
+              jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')
+            echo "| genai-$1 | \`$2\` | \`$platform\` |"
+          }
+          {
+            echo "### Images"
+            echo
+            echo "Built from ${{ github.sha }} with \`SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH\`, genai-docling from the docker/docling tree \`${DOCLING_TAG#tree-}\`. To check them against the source, see docs/security/README.md."
+            echo
+            echo "| Image | Deployed digest | linux/amd64 image digest |"
+            echo "| --- | --- | --- |"
+            row api "$API_DIGEST"
+            row worker "$WORKER_DIGEST"
+            row apps "$APPS_DIGEST"
+            row docling "$DOCLING_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"

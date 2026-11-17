@@ -682,7 +682,31 @@ export class Budget {
   add(estimate: number, measured?: number) {
     this.spent += Math.max(estimate, measured ?? 0);
   }
+
+  /** Charges the estimate before a check starts, so checks that run at once see each other's share. */
+  reserve(estimate: number) {
+    this.spent += estimate;
+  }
+
+  /** After a reserved check: charges what it cost above its estimate. */
+  settle(estimate: number, measured?: number) {
+    this.spent += Math.max(0, (measured ?? 0) - estimate);
+  }
 }
+
+/** Runs the tasks at most `lanes` at a time, in the order given, and returns their results in that order. */
+export const inLanes = async <T>(lanes: number, tasks: (() => Promise<T>)[]): Promise<T[]> => {
+  const results: T[] = new Array<T>(tasks.length);
+  let next = 0;
+  const lane = async () => {
+    for (let index = next++; index < tasks.length; index = next++) {
+      const task = tasks[index];
+      if (task) results[index] = await task();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, lanes), tasks.length) }, lane));
+  return results;
+};
 
 export const modelChecksRan = (checks: CheckResult[]) =>
   checks.some((c) => c.tier !== 'free' && c.outcome !== 'skip');
@@ -721,10 +745,11 @@ export const runModelCheck = async (
     if (!deps.budget.allows(estimate)) blocked = 'budget';
     else if (deps.now() + delay + deps.attemptMs > deps.deadline) blocked = 'time';
     if (blocked) break;
+    deps.budget.reserve(estimate);
     if (delay) await deps.wait(delay);
     last = await attempt();
     const measured = costOf(last.tokens, deps.price);
-    deps.budget.add(estimate, measured);
+    deps.budget.settle(estimate, measured);
     cost += measured ?? 0;
     if (last.task) tasks.push(last.task);
     if (last.tokens) tokens = last.tokens;

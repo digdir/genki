@@ -102,9 +102,15 @@ jobs:
           else
             echo "version=bootstrap" >> "$GITHUB_OUTPUT"
           fi
+      # Recorded in the deploy's outputs, so the next deploy.yml run knows the infrastructure is as the template says.
+      - id: fingerprint
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: scripts/infra-state.sh "infra/env/$ENVIRONMENT.bicepparam" "$RG" true | grep '^fingerprint=' >> "$GITHUB_OUTPUT"
       - run: |
           az deployment group ${{ inputs.what-if && 'what-if' || 'create' }} \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" doclingImage="${{ steps.current.outputs.docling }}" appVersion="${{ steps.current.outputs.version }}" workerVersion="${{ steps.current.outputs.worker_version }}" apiRevisionSuffix="${{ steps.current.outputs.suffix }}" apiLiveRevision="${{ steps.current.outputs.live }}" apiPreviousRevision="${{ steps.current.outputs.previous }}" infraFingerprint="${{ steps.fingerprint.outputs.fingerprint }}"

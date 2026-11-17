@@ -8,6 +8,10 @@ on:
         type: choice
         options: [test, prod]
         default: test
+      infrastructure:
+        description: Apply the whole template, even when infra/ and its settings have not changed since the last full deploy
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -17,113 +21,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The ci workflow already ran on this commit when it landed on main: with the same checks the deploy would run, as
+  # ci.yml runs them in full without a base. Wait for that run rather than run them again; run them here only when it
+  # failed or there is none, as for a commit not on main.
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      passed: ${{ steps.ci.outputs.passed }}
+    steps:
+      - id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          state=none
+          for _ in $(seq 1 60); do
+            state=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&per_page=10" \
+              --jq '[.workflow_runs[] | select(.head_branch == "main" and .path == ".github/workflows/ci.yml")] |
+                if any(.conclusion == "success") then "success"
+                elif any(.status != "completed") then "running"
+                elif length == 0 then "none" else "failure" end')
+            [ "$state" = running ] || break
+            sleep 10
+          done
+          echo "The ci run on main for $SHA: $state"
+          echo "passed=$([ "$state" = success ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: ci
+    if: needs.ci.outputs.passed != 'true'
     uses: ./.github/workflows/ci.yml
 
+  # Pushed when the commit landed on main (images.yml); built here only when they are missing.
   build:
-    needs: check
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: test
+    uses: ./.github/workflows/images.yml
     permissions:
       contents: read
       id-token: write
-    outputs:
-      registry: ${{ steps.registry.outputs.id }}
-      api: ${{ steps.image.outputs.api }}
-      worker: ${{ steps.image.outputs.worker }}
-      apps: ${{ steps.image.outputs.apps }}
-      docling: ${{ steps.image.outputs.docling }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - id: registry
-        run: |
-          server=$(az acr show --name "${{ vars.ACR_NAME }}" --query loginServer -o tsv)
-          id=$(az acr show --name "${{ vars.ACR_NAME }}" --query id -o tsv)
-          {
-            echo "server=$server"
-            echo "id=$id"
-          } >> "$GITHUB_OUTPUT"
-          az acr login --name "${{ vars.ACR_NAME }}"
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        with:
-          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
-      - run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
-      - id: api
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          target: api
-          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ steps.registry.outputs.server }}/genai-api:${{ github.sha }}
-      - id: worker
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          target: worker
-          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ steps.registry.outputs.server }}/genai-worker:${{ github.sha }}
-      - id: apps
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          target: apps
-          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
-      # The Docling server (docker/docling): the parser benchmark winner's Docling and Tesseract on Debian, packages locked.
-      - id: docling
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: docker/docling
-          outputs: type=image,push=true,oci-mediatypes=true,rewrite-timestamp=true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ steps.registry.outputs.server }}/genai-docling:${{ github.sha }}
-      - id: image
-        env:
-          SERVER: ${{ steps.registry.outputs.server }}
-          API_DIGEST: ${{ steps.api.outputs.digest }}
-          WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
-          APPS_DIGEST: ${{ steps.apps.outputs.digest }}
-          DOCLING_DIGEST: ${{ steps.docling.outputs.digest }}
-        run: |
-          {
-            echo "api=$SERVER/genai-api@$API_DIGEST"
-            echo "worker=$SERVER/genai-worker@$WORKER_DIGEST"
-            echo "apps=$SERVER/genai-apps@$APPS_DIGEST"
-            echo "docling=$SERVER/genai-docling@$DOCLING_DIGEST"
-          } >> "$GITHUB_OUTPUT"
-          row() {
-            platform=$(docker buildx imagetools inspect --raw "$SERVER/genai-$1@$2" |
-              jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')
-            echo "| genai-$1 | \`$2\` | \`$platform\` |"
-          }
-          {
-            echo "### Images"
-            echo
-            echo "Built from ${{ github.sha }} with \`SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH\`. To check them against the source, see docs/security/README.md."
-            echo
-            echo "| Image | Deployed digest | linux/amd64 image digest |"
-            echo "| --- | --- | --- |"
-            row api "$API_DIGEST"
-            row worker "$WORKER_DIGEST"
-            row apps "$APPS_DIGEST"
-            row docling "$DOCLING_DIGEST"
-          } >> "$GITHUB_STEP_SUMMARY"
 
   candidate:
-    needs: build
+    needs: [ci, check, build]
+    if: >-
+      !cancelled() && needs.ci.result == 'success' && needs.build.result == 'success' &&
+      (needs.ci.outputs.passed == 'true' || needs.check.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: test
@@ -182,34 +127,27 @@ jobs:
         run: |
           rg="${{ vars.AZURE_RESOURCE_GROUP }}"
           placeholder=mcr.microsoft.com/k8se/quickstart:latest
-          app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
+          az containerapp list -g "$rg" -o json > apps.json
+          # field <app name suffix> <jq path>: one value of the first app whose name ends with -<suffix>, or nothing.
+          field() { jq -r --arg suffix "-$1" "first(.[] | select(.name | endswith(\$suffix)) | $2) // empty" apps.json; }
+          version_of() { field "$1" '.properties.template.containers[0].env[]? | select(.name == "APP_VERSION") | .value'; }
+          image_of() { local found; found=$(field "$1" '.properties.template.containers[0].image'); echo "${found:-$placeholder}"; }
+          app=$(field api .name)
           image=$placeholder version=bootstrap suffix="" live="" previous=""
           if [ -n "$app" ]; then
-            image=$(az containerapp show -g "$rg" -n "$app" --query 'properties.template.containers[0].image' -o tsv)
-            version=$(az containerapp show -g "$rg" -n "$app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
-            suffix=$(az containerapp show -g "$rg" -n "$app" --query 'properties.template.revisionSuffix' -o tsv)
-            live=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
-            [ -n "$live" ] || live=$(az containerapp show -g "$rg" -n "$app" --query properties.latestReadyRevisionName -o tsv)
-            previous=$(az containerapp ingress traffic show -g "$rg" -n "$app" --query "[?label=='previous'].revisionName | [0]" -o tsv)
+            image=$(image_of api)
+            version=$(version_of api)
+            suffix=$(field api .properties.template.revisionSuffix)
+            live=$(field api '.properties.configuration.ingress.traffic[]? | select(.weight == 100) | .revisionName')
+            [ -n "$live" ] || live=$(field api .properties.latestReadyRevisionName)
+            previous=$(field api '.properties.configuration.ingress.traffic[]? | select(.label == "previous") | .revisionName')
           fi
           if [ -n "$ALTINN_PDP_URL" ]; then
             image="${{ needs.build.outputs.api }}"
             version="${{ github.sha }}"
             suffix="r${{ github.run_id }}-${{ github.run_attempt }}"
           fi
-          image_of() {
-            name=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-$1')].name | [0]" -o tsv)
-            if [ -n "$name" ]; then
-              az containerapp show -g "$rg" -n "$name" --query 'properties.template.containers[0].image' -o tsv
-            else
-              echo "$placeholder"
-            fi
-          }
-          worker_app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-worker')].name | [0]" -o tsv)
-          worker_version=""
-          if [ -n "$worker_app" ]; then
-            worker_version=$(az containerapp show -g "$rg" -n "$worker_app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
-          fi
+          worker_version=$(version_of worker)
           {
             echo "app=$app"
             echo "worker_version=${worker_version:-bootstrap}"
@@ -222,6 +160,15 @@ jobs:
             echo "apps=$(image_of portal)"
             echo "docling=$(image_of docling)"
           } >> "$GITHUB_OUTPUT"
+      - id: infra
+        if: env.ALTINN_PDP_URL != ''
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          FORCE_INFRASTRUCTURE: ${{ inputs.infrastructure }}
+        run: |
+          state=$(scripts/infra-state.sh infra/env/test.bicepparam "$RG" "$FORCE_INFRASTRUCTURE")
+          echo "$state" >> "$GITHUB_OUTPUT"
+          echo "Candidate deploy applies the whole template: $(sed -n 's/^infrastructure=//p' <<< "$state")" >> "$GITHUB_STEP_SUMMARY"
       - id: deploy
         if: env.ALTINN_PDP_URL != ''
         run: |
@@ -230,6 +177,7 @@ jobs:
             --name "genki-${{ github.run_id }}-candidate" \
             --parameters infra/env/test.bicepparam \
             --parameters apiImage="${{ steps.plan.outputs.image }}" apiRevisionSuffix="${{ steps.plan.outputs.suffix }}" apiLiveRevision="${{ steps.plan.outputs.live }}" apiPreviousRevision="${{ steps.plan.outputs.previous }}" workerImage="${{ steps.plan.outputs.worker }}" appsImage="${{ steps.plan.outputs.apps }}" doclingImage="${{ steps.plan.outputs.docling }}" appVersion="${{ steps.plan.outputs.version }}" workerVersion="${{ steps.plan.outputs.worker_version }}" \
+              deployInfrastructure="${{ steps.infra.outputs.infrastructure }}" infraFingerprint="${{ steps.infra.outputs.fingerprint }}" \
             --query properties.outputs > outputs.json
           {
             echo "revision=$(jq -r .apiCandidateRevision.value outputs.json)"
@@ -238,10 +186,10 @@ jobs:
       - name: candidate health
         if: steps.deploy.outcome == 'success'
         run: |
-          for _ in $(seq 1 20); do
+          for _ in $(seq 1 60); do
             body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
-            sleep 15
+            sleep 5
           done
           echo "the candidate revision did not report ${{ github.sha }}; users keep ${{ steps.plan.outputs.live }}"; exit 1
       - name: stop unused API revisions
@@ -263,9 +211,11 @@ jobs:
             echo "ALTINN_PDP_URL is not set in the test environment, and the API refuses to start without the real Altinn decision point. The worker and the apps are deployed; the API keeps its current image."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The jobs from here on name their needs' results: `check` is skipped when ci passed on main, and a job without a
+  # status function is skipped when a job before it was, which would skip the gate.
   gate:
     needs: candidate
-    if: needs.candidate.outputs.url != ''
+    if: "!cancelled() && needs.candidate.result == 'success' && needs.candidate.outputs.url != ''"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: genki-test
@@ -353,7 +303,7 @@ jobs:
     needs: [build, candidate, gate]
     if: >-
       !cancelled() && needs.build.result == 'success' && needs.candidate.result == 'success' &&
-      (needs.gate.result == 'success' || needs.gate.result == 'skipped')
+      (needs.gate.result == 'success' || (needs.gate.result == 'skipped' && needs.candidate.outputs.url == ''))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: test
@@ -382,6 +332,7 @@ jobs:
           fi
       - id: deploy
         env:
+          FORCE_INFRASTRUCTURE: ${{ inputs.infrastructure }}
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
           PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
           DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
@@ -414,20 +365,25 @@ jobs:
           KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
           ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
         run: |
+          state=$(scripts/infra-state.sh infra/env/test.bicepparam "${{ vars.AZURE_RESOURCE_GROUP }}" "$FORCE_INFRASTRUCTURE")
+          infrastructure=$(sed -n 's/^infrastructure=//p' <<< "$state")
+          fingerprint=$(sed -n 's/^fingerprint=//p' <<< "$state")
+          echo "Users' deploy applies the whole template: $infrastructure" >> "$GITHUB_STEP_SUMMARY"
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
             --parameters infra/env/test.bicepparam \
+            --parameters deployInfrastructure="$infrastructure" infraFingerprint="$fingerprint" \
             --parameters apiImage="${{ needs.candidate.outputs.image }}" apiRevisionSuffix="${{ needs.candidate.outputs.suffix }}" apiLiveRevision="${{ steps.api.outputs.live }}" apiPreviousRevision="${{ steps.api.outputs.previous }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" doclingImage="${{ needs.build.outputs.docling }}" appVersion="${{ needs.candidate.outputs.version }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: smoke
         if: needs.candidate.outputs.revision != ''
         run: |
-          for _ in $(seq 1 20); do
+          for _ in $(seq 1 60); do
             body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
-            sleep 15
+            sleep 5
           done
           echo "health check did not report ${{ github.sha }}; roll back with the rollback workflow"; exit 1
       - name: rollback note
@@ -441,7 +397,7 @@ jobs:
 
   changelog:
     needs: deploy-test
-    if: github.ref == 'refs/heads/main'
+    if: "!cancelled() && needs.deploy-test.result == 'success' && github.ref == 'refs/heads/main'"
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -506,7 +462,9 @@ jobs:
 
   deploy-prod:
     needs: [build, deploy-test]
-    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod' && vars.PROD_READY == 'true'
+    if: >-
+      !cancelled() && needs.build.result == 'success' && needs.deploy-test.result == 'success' &&
+      github.event_name == 'workflow_dispatch' && inputs.environment == 'prod' && vars.PROD_READY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: prod
@@ -583,9 +541,9 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: smoke
         run: |
-          for _ in $(seq 1 20); do
+          for _ in $(seq 1 60); do
             body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
-            sleep 15
+            sleep 5
           done
           echo "health check did not report ${{ github.sha }}"; exit 1

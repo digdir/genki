@@ -302,16 +302,37 @@ The decision point needs, per environment, the Altinn resource, a Maskinporten c
 
 1. Run the **infra** workflow with `what-if` on, read the plan, then run it again with `what-if` off. It deploys placeholder images and creates the registry, vault and DNS zone.
 2. Set `ACR_NAME` from the run's output `registryName`, add the Key Vault secrets, and ask for the DNS delegation.
-3. Run the **deploy** workflow on `main` (`gh workflow run deploy.yml`). It runs the checks, builds the `api`, `worker` and `apps` images, pushes them and deploys them by digest. While `ALTINN_PDP_URL` is not set, it deploys the worker and the apps only: the API keeps its current image, since it refuses to start without the real Altinn decision point, and the run summary says so. Once it is set, the deploy also waits until the API's `/health` reports the commit.
+3. Run the **deploy** workflow on `main` (`gh workflow run deploy.yml`). It deploys the `api`, `worker`, `apps` and `docling` images by digest, after the checks passed (see [How a deploy stays short](#how-a-deploy-stays-short)). While `ALTINN_PDP_URL` is not set, it deploys the worker and the apps only: the API keeps its current image, since it refuses to start without the real Altinn decision point, and the run summary says so. Once it is set, the deploy also waits until the API's `/health` reports the commit.
 4. When the delegation works, set `CUSTOM_DOMAINS_STAGE=hostnames` and run infra, then `certificates` and run it again.
 
 After that, run the deploy workflow whenever `main` should go to test; merges do not deploy on their own. Infra changes ride along with the next deploy, or run the infra workflow by hand.
+
+## How a deploy stays short
+
+A deploy to test took about 39 minutes (runs on 2026-11-17): it ran the checks again, built the four images, applied the whole template twice and ran the gate's model checks one at a time. The target is five minutes or less when the commit has been on `main` a few minutes and nothing under `infra/` or its settings changed; that is an estimate from the measured steps, not yet measured on deploys. What it does now:
+
+- **Checks.** The `ci` job waits for the `ci` workflow's run on this commit's push to `main`, which runs the same checks in full, and takes its result. Only when that run failed or there is none, as for a commit not on `main`, does the deploy run `ci.yml` itself.
+- **Images.** `images.yml` builds the four images once per commit when it lands on `main` and pushes them as `genai-<image>:<commit>`. The deploy calls the same workflow, which finds them and builds nothing; while the push's run is still building, the deploy waits for it (one concurrency group per commit). The Docling image is tagged by the tree of `docker/docling` and built only when that changes. Every commit on `main` now leaves images in the test registry, not only the deployed ones.
+- **Template.** See [Deploys that skip the infrastructure](#deploys-that-skip-the-infrastructure). Applying the whole template took 7.5 minutes, nearly four of them re-applying the unchanged Postgres servers and their administrators; the container apps' own part of it took 44 seconds.
+- **Gate.** The smoke test runs its model checks six at a time ([docs/smoke-tests.md](../docs/smoke-tests.md)), and the health checks ask every five seconds.
+
+A deploy that applies the whole template still takes about 7.5 minutes more, and one whose images are not built yet waits for them (about 6.5 minutes, more when `docker/docling` changed).
+
+## Deploys that skip the infrastructure
+
+`main.bicep` takes `deployInfrastructure`. With `false` it deploys the identities and the container apps alone: the network, monitoring, registry, Key Vault, storage, both Postgres servers, the alerts and the DNS zone are left as they are, and the container apps read the registry's login server, the vault's address, the servers' host names and the storage endpoint from the resources that exist.
+
+`scripts/infra-state.sh` decides which. It hashes what a full deploy applies apart from the images and revisions: the compiled template and the environment's settings, as `az bicep build-params` resolves them, without the Bicep version. Every deploy keeps that hash in its outputs (`infraFingerprint`, and `infrastructureDeployed`). A deploy skips the infrastructure only when its hash equals the one of the last full deploy that succeeded. So a change under `infra/` or to a variable the parameter file reads applies the whole template once, in the candidate job; a full deploy that failed is applied again by the next; and a deploy from before the hash counts as full with no hash, so the first deploy after this change is full.
+
+The infra workflow's what-if now lists the alert rules as `Ignore`, not evaluated, where it listed them as `NoChange` before: it skips them since the monitoring module became conditional (checked on test on 2026-11-17; leaving their inputs out of monitoring's outputs did not change it). Everything else it lists as before. The alerts are still applied by a full deploy.
+
+To apply the whole template anyway, for example after a change by hand in the portal, run the deploy with `infrastructure` ticked (`gh workflow run deploy.yml -f infrastructure=true`) or run the infra workflow, which always applies it and records the hash. What a change by hand in Azure did is not seen by the hash: it stays until the next full deploy.
 
 ## Deploys users do not notice
 
 The API runs several revisions at once (issue 465). Each revision is labelled in the API's traffic list: `live` gets all requests, `candidate` and `previous` none. A deploy runs in three jobs:
 
-1. `candidate` starts a new API revision, `genai-test-api--r<run id>-<attempt>`, labelled `candidate` with no traffic, and waits until its `/health` at `https://genai-test-api---candidate.<environment domain>` reports the commit. The worker, the web apps and Docling keep their images, and the worker its `APP_VERSION`. It stops the API revisions that no label names any more.
+1. `candidate` applies the whole template when the infrastructure changed ([Deploys that skip the infrastructure](#deploys-that-skip-the-infrastructure)), and starts a new API revision, `genai-test-api--r<run id>-<attempt>`, labelled `candidate` with no traffic, and waits until its `/health` at `https://genai-test-api---candidate.<environment domain>` reports the commit. The worker, the web apps and Docling keep their images, and the worker its `APP_VERSION`. It stops the API revisions that no label names any more.
 2. `gate` runs the smoke test (`scripts/smoke/run.ts`) against the candidate's address, without the model review and without a browser, since the web apps still run the old version. It ignores the daily cap on smoke runs, and passes only when no check failed and at least one model check ran. A failed check stops the deploy here: users keep the `live` revision, and the `discard` job stops the candidate, so code that failed runs no schedules on the shared data. It keeps its label until the next deploy.
 3. `deploy-test` moves all traffic to the candidate, labels it `live` and the old one `previous`, deploys the new worker, web apps and Docling, and waits until `/health` reports the commit. The `smoke` workflow then tests the whole platform as before.
 
@@ -360,7 +381,7 @@ Geo-redundant backup can only be chosen when Azure creates the server. Prod gets
 
 ### Images
 
-The deploy workflow builds the images once and pushes them to the test registry. `deploy-prod` copies the exact digests that went to test into prod's registry with `az acr import` (tagged with the commit), and deploys prod from there. Prod's app identity pulls only from its own registry, so prod keeps running if test or its registry is gone. The import needs the prod deploy identity to read the test registry; it signs in with its own identity, no registry passwords.
+`images.yml` builds the images once and pushes them to the test registry. `deploy-prod` copies the exact digests that went to test into prod's registry with `az acr import` (tagged with the commit), and deploys prod from there. Prod's app identity pulls only from its own registry, so prod keeps running if test or its registry is gone. The import needs the prod deploy identity to read the test registry; it signs in with its own identity, no registry passwords.
 
 `deploy-prod` needs `build` and `deploy-test`: prod only gets a commit that test took first, including test's health check.
 
