@@ -122,7 +122,7 @@ export interface FieldFill {
 /** What a fields-only refresh did, over every generation that holds the dataset. */
 export interface FieldRefresh {
   generations: number;
-  /** Documents whose fields changed in at least one generation. */
+  /** Documents whose fields or url changed in at least one generation. */
   updated: number;
   unchanged: number;
   /** Records copied from another engine, left to the next pipeline run, which takes them over. */

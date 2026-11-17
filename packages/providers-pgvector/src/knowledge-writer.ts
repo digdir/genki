@@ -96,10 +96,7 @@ const withoutNul = (text: string) => text.replaceAll('\u0000', '');
 const jsonWithoutNul = (value: unknown) =>
   JSON.stringify(value, (_, v: unknown) => (typeof v === 'string' ? withoutNul(v) : v));
 
-/**
- * Writes a document's fields and `fields_text`, and its url when one is given, in the caller's
- * transaction; chunks stay.
- */
+/** Writes a document's fields, `fields_text` and any given url in the caller's transaction. */
 export const updateDocumentFields = (
   client: PoolClient,
   target: Pick<DocumentTarget, 'generation' | 'via'>,

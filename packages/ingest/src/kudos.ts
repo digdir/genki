@@ -305,12 +305,7 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
-/**
- * The fields a KUDOS record gives about its organisations, the same for an ingest and a fill:
- * display names of owners, recipients and publishers, their abbreviations as KUDOS writes them,
- * and the owners' and recipients' org numbers. A list with nothing in it is left out, except
- * `orgs_long`, which an ingest has always stored.
- */
+/** A KUDOS record's organisation fields, the same for an ingest and a fill. */
 export const kudosOrgFields = (record: Record<string, unknown>) => {
   const role = (key: string) => (record[key] ?? []) as KudosOrganisation[];
   const orgs = [...role('owners'), ...role('recipients'), ...role('publishers')];
@@ -355,16 +350,16 @@ export const kudosOrgNumberFields = (doc: StoredKudos): Record<string, unknown> 
 
 const orgFieldNames = ['orgs_long', 'orgs_short', 'owner_orgnr', 'recipient_orgnr'] as const;
 
-/**
- * `kudos-links-and-abbreviations`: a stored document's organisation fields as an ingest of its
- * record writes them now, abbreviations included, and its page on Kudos as its url (issue 651).
- */
+const kudosRoles = ['owners', 'recipients', 'publishers'];
+
+/** `kudos-links-and-abbreviations`: org fields as an ingest writes them, and the prod Kudos page. */
 export const kudosLinkAndAbbreviationFields = (
   doc: StoredKudos,
 ): { fields: Record<string, unknown>; url?: string } => {
   const record = doc.record as KudosDocument;
+  // A record from another source has no KUDOS organisations or page, so it stays as it is.
+  if (!kudosRoles.some((role) => Array.isArray(doc.record[role]))) return { fields: doc.fields };
   const fields = refilled(doc.fields, orgFieldNames, kudosOrgFields(doc.record));
-  // A record without a UUID or KUDOS id has no page to name, so its url stays as it is.
   return record.uuid || record.id ? { fields, url: kudosPublicUrl(record) } : { fields };
 };
 

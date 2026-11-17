@@ -158,3 +158,26 @@ describe('a stored KUDOS record without an id', () => {
     expect(filled).not.toHaveProperty('url');
   });
 });
+
+describe('the links and abbreviations fill on records that change', () => {
+  it('the fill drops an abbreviation the record no longer gives', () => {
+    const raw = letter();
+    const stored = { orgs_long: ['Samferdselsdepartementet'], orgs_short: ['OLD'] };
+
+    const filled = kudosLinkAndAbbreviationFields({ id: 'kudos:x', record: raw, fields: stored });
+
+    expect(filled.fields).not.toHaveProperty('orgs_short');
+  });
+
+  it('the fill leaves a record that is not from KUDOS as it is', () => {
+    const fields = { orgs_long: ['Etaten'], orgs_short: ['ET'], title: 'Side' };
+
+    const filled = kudosLinkAndAbbreviationFields({
+      id: 'folder:a',
+      record: { id: 'a', path: '/docs/a.md', lastmod: '2026-11-01' },
+      fields,
+    });
+
+    expect(filled).toEqual({ fields });
+  });
+});
