@@ -3154,6 +3154,7 @@ const ToolResult = z
           excerpt: z.string().optional(),
           version: z.string().optional(),
           published_at: z.string().optional(),
+          publisher: z.string().optional(),
         }),
       )
       .optional(),

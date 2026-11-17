@@ -211,6 +211,32 @@ describe('agent retrieval factory', () => {
     ]);
   });
 
+  it("a retrieved chunk carries its document's publisher, several joined with a comma", async () => {
+    const s = stub([], {
+      c1: {
+        publisher_names: [
+          'Arbeids- og inkluderingsdepartementet',
+          'Justis- og beredskapsdepartementet',
+        ],
+      },
+      c3: { docs: { publisher_names: ['Digitaliseringsdirektoratet'] } },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge });
+
+    const read = await agent.read(['c1', 'c2', 'c3'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read.map((c) => [c.chunkId, c.publisher])).toEqual([
+      ['c1', 'Arbeids- og inkluderingsdepartementet, Justis- og beredskapsdepartementet'],
+      ['c2', undefined],
+      ['c3', 'Digitaliseringsdirektoratet'],
+    ]);
+    expect(read[1]).not.toHaveProperty('publisher');
+    expect(found.chunks.find((c) => c.chunkId === 'c1')?.publisher).toBe(
+      'Arbeids- og inkluderingsdepartementet, Justis- og beredskapsdepartementet',
+    );
+  });
+
   it("carries a chunk's page, page range, PDF address and heading path into the chunks", async () => {
     const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
     const s = stub([], {

@@ -131,7 +131,9 @@ describe('abbreviations and links on a KUDOS document', () => {
     });
     const fresh = toIndexDocument('kudos:x', prepareKudosDoc(raw, 4), [], []).fields;
     const before = Object.fromEntries(
-      Object.entries(fresh).filter(([k]) => k !== 'orgs_short' && !k.endsWith('_orgnr')),
+      Object.entries(fresh).filter(
+        ([k]) => k !== 'orgs_short' && k !== 'publisher_names' && !k.endsWith('_orgnr'),
+      ),
     );
     // jsonb gives the keys back in its own order.
     const stored = Object.fromEntries(Object.entries(before).reverse());
@@ -183,5 +185,42 @@ describe('the links and abbreviations fill on records that change', () => {
     });
 
     expect(filled).toEqual({ fields });
+  });
+});
+
+describe('the publisher of a KUDOS document', () => {
+  it("publisher_names holds a Kudos document's publishers, else its owners", () => {
+    const published = prepareKudosDoc(
+      letter({
+        owners: [
+          org(983887457, 'Arbeids- og inkluderingsdepartementet'),
+          org(972417831, 'Justis- og beredskapsdepartementet'),
+        ],
+        publishers: [org(972417831, 'Justis- og beredskapsdepartementet')],
+      }),
+      1,
+    );
+    const unpublished = prepareKudosDoc(
+      letter({
+        owners: [
+          org(986252932, 'Direktoratet for forvaltning og økonomistyring'),
+          org(986252932, 'Direktoratet for forvaltning og økonomistyring'),
+        ],
+        publishers: [],
+      }),
+      1,
+    );
+
+    const unnamed = prepareKudosDoc(
+      letter({
+        owners: [org(986252932, 'Direktoratet for forvaltning og økonomistyring')],
+        publishers: [{ org_number: 972417831, alternative_names: [] }],
+      }),
+      1,
+    );
+
+    expect(published.publisher_names).toEqual(['Justis- og beredskapsdepartementet']);
+    expect(unnamed.publisher_names).toEqual(['Direktoratet for forvaltning og økonomistyring']);
+    expect(unpublished.publisher_names).toEqual(['Direktoratet for forvaltning og økonomistyring']);
   });
 });

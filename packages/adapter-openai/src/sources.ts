@@ -21,6 +21,7 @@ export interface SourceRecord {
   position?: number;
   version?: string | number;
   publishedAt?: string;
+  publisher?: string;
 }
 
 export interface OwuiSource {
@@ -36,6 +37,7 @@ export interface OwuiSource {
   markers?: string[];
   version?: string;
   published_at?: string;
+  publisher?: string;
 }
 
 export interface SourceExcerpt {
@@ -77,6 +79,7 @@ export const provenanceOf = (record: SourceRecord) => ({
     ? {}
     : { version: String(record.version) }),
   ...(record.publishedAt ? { published_at: record.publishedAt } : {}),
+  ...(record.publisher ? { publisher: record.publisher } : {}),
 });
 
 export interface CitationBundle {

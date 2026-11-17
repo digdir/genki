@@ -368,6 +368,7 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
   ...(c.position === undefined ? {} : { position: c.position }),
   ...(c.version === undefined ? {} : { version: c.version }),
   ...(c.publishedAt === undefined ? {} : { publishedAt: c.publishedAt }),
+  ...(c.publisher === undefined ? {} : { publisher: c.publisher }),
 });
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;

@@ -92,24 +92,33 @@ const kudosEntry = (
   files: [{ uuid: `${uuid}-f`, url: `https://kudos.dfo.no/${uuid}.pdf`, sha256: `${uuid}-sha` }],
 });
 
-/** The fields the ingest stores for an entry: today's, or as they were before org numbers. */
-const fieldsOf = (entry: ReturnType<typeof kudosEntry>, { before = false } = {}) => {
+/**
+ * The fields the ingest stores for an entry: today's, or as they were before org numbers and
+ * abbreviations, and with or without the publisher, which came after them.
+ */
+const fieldsOf = (
+  entry: ReturnType<typeof kudosEntry>,
+  { before = false, publisher = true } = {},
+) => {
   const fields = toIndexDocument(
     `kudos:${entry.uuid}`,
     prepareKudosDoc(fillInKudosFields(entry), 2),
     [],
     [],
   ).fields;
-  if (!before) return fields;
   return Object.fromEntries(
-    Object.entries(fields).filter(([k]) => k !== 'orgs_short' && !k.endsWith('_orgnr')),
+    Object.entries(fields).filter(
+      ([k]) =>
+        !(before && (k === 'orgs_short' || k.endsWith('_orgnr'))) &&
+        !(!publisher && k === 'publisher_names'),
+    ),
   );
 };
 
 let generations = 0;
 const store = async (
   name: string,
-  docs: { entry: ReturnType<typeof kudosEntry>; before: boolean }[],
+  docs: { entry: ReturnType<typeof kudosEntry>; before: boolean; publisher?: boolean }[],
 ) => {
   const generation = `g-fields-job-${++generations}`;
   await prepareGeneration(owner(), dataset(name), generation);
@@ -133,7 +142,7 @@ const store = async (
     },
     async () => undefined,
   );
-  for (const { entry, before } of docs) {
+  for (const { entry, before, publisher } of docs) {
     const { rows } = await admin.query<{ number: string }>(
       `select number::text from src_documents where dataset = $1 and id = $2`,
       [name, `kudos:${entry.uuid}`],
@@ -144,7 +153,7 @@ const store = async (
       document: {
         id: record.id,
         title: entry.title,
-        fields: fieldsOf(entry, { before }),
+        fields: fieldsOf(entry, { before, ...(publisher === undefined ? {} : { publisher }) }),
         chunks: [{ id: `${record.id}#0`, position: 0, text: 'Tekst', vector: [0.1, 0.2, 0.3] }],
         phrases: [],
       },
@@ -274,5 +283,33 @@ describe('the fields job', () => {
     }
 
     expect(found).toEqual(['kudos:d1']);
+  });
+
+  it('the links and abbreviations fill writes publisher_names on a stored Kudos document without embedding anything', async () => {
+    const name = 'digdir/kudos-fields-e';
+    const generation = await store(name, [
+      {
+        entry: kudosEntry('e1', 986252932, 'Direktoratet for forvaltning og økonomistyring'),
+        before: true,
+        publisher: false,
+      },
+    ]);
+    const chunks = async () =>
+      (
+        await admin.query<{ id: string; vec: string; text: string }>(
+          `select id, vec::text, text from kn_chunks where generation = $1 order by id`,
+          [generation],
+        )
+      ).rows;
+    const chunksBefore = await chunks();
+
+    await fieldsWork({ records }).handler(
+      job({ tenant: 'platform', dataset: name, fill: 'kudos-links-and-abbreviations' }),
+    );
+
+    expect((await row(generation, 'kudos:e1'))?.fields.publisher_names).toEqual([
+      'Direktoratet for forvaltning og økonomistyring',
+    ]);
+    expect(await chunks()).toEqual(chunksBefore);
   });
 });

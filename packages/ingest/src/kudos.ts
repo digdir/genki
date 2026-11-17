@@ -286,6 +286,7 @@ const kudosStoredFields = [
   'authors',
   'orgs_long',
   'orgs_short',
+  'publisher_names',
   'owner_orgnr',
   'recipient_orgnr',
   'concerned_year',
@@ -310,11 +311,15 @@ export const kudosOrgFields = (record: Record<string, unknown>) => {
   const role = (key: string) => (record[key] ?? []) as KudosOrganisation[];
   const orgs = [...role('owners'), ...role('recipients'), ...role('publishers')];
   const short = [...new Set(namesOfType(orgs, 'abbreviation'))];
+  // KUDOS names a publisher on few documents; the owners published the rest (issue 684).
+  const named = displayNames(role('publishers'));
+  const publisherNames = [...new Set(named.length ? named : displayNames(role('owners')))];
   const owners = orgNumbers(role('owners'));
   const recipients = orgNumbers(role('recipients'));
   return {
     orgs_long: [...new Set(displayNames(orgs))],
     ...(short.length ? { orgs_short: short } : {}),
+    ...(publisherNames.length ? { publisher_names: publisherNames } : {}),
     ...(owners.length ? { owner_orgnr: owners } : {}),
     ...(recipients.length ? { recipient_orgnr: recipients } : {}),
   };
@@ -348,7 +353,13 @@ export const kudosOrgNumberFields = (doc: StoredKudos): Record<string, unknown> 
   });
 };
 
-const orgFieldNames = ['orgs_long', 'orgs_short', 'owner_orgnr', 'recipient_orgnr'] as const;
+const orgFieldNames = [
+  'orgs_long',
+  'orgs_short',
+  'publisher_names',
+  'owner_orgnr',
+  'recipient_orgnr',
+] as const;
 
 const kudosRoles = ['owners', 'recipients', 'publishers'];
 

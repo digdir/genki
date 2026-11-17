@@ -162,6 +162,9 @@ export interface StoredSource {
   document_id?: string;
   excerpts: SourceExcerpt[];
   markers?: string[];
+  version?: string;
+  published_at?: string;
+  publisher?: string;
 }
 
 export interface AskConversations {
@@ -1360,6 +1363,9 @@ const storedSource = (s: OwuiSource): StoredSource => ({
   ...(s.document_id === undefined ? {} : { document_id: s.document_id }),
   excerpts: s.excerpts,
   ...(s.markers === undefined ? {} : { markers: s.markers }),
+  ...(s.version === undefined ? {} : { version: s.version }),
+  ...(s.published_at === undefined ? {} : { published_at: s.published_at }),
+  ...(s.publisher === undefined ? {} : { publisher: s.publisher }),
 });
 
 export const datasetOf = (d: ServiceDataset) => ({
@@ -1585,6 +1591,10 @@ const toolResult: JSONSchema = {
           },
           version: { type: 'string', description: 'The document version, when known.' },
           published_at: { type: 'string', description: 'The publish date, when known.' },
+          publisher: {
+            type: 'string',
+            description: 'The publishing organisation, several joined with a comma, when known.',
+          },
         },
       },
     },

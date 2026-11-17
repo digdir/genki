@@ -1132,6 +1132,21 @@ describe('sources people can open', () => {
     expect(bundle.sources[0]).toMatchObject({ version: '3', published_at: '2025-01-15' });
   });
 
+  it("an answer's source names its publisher", () => {
+    const bundle = citationBundle([
+      {
+        chunkId: 'c1',
+        text: 'Tekst',
+        url: 'https://x.no/a',
+        publisher: 'Justis- og beredskapsdepartementet',
+      },
+      { chunkId: 'c2', text: 'Tekst', url: 'https://x.no/b' },
+    ]);
+
+    expect(bundle.sources[0]).toMatchObject({ publisher: 'Justis- og beredskapsdepartementet' });
+    expect(bundle.sources[1]).not.toHaveProperty('publisher');
+  });
+
   it('leaves published_at out for a source without a publish date', () => {
     const bundle = citationBundle([{ chunkId: 'c1', text: 'Tekst', url: 'https://x.no/a' }]);
 
