@@ -190,3 +190,146 @@ describe('what the search detected in the query', () => {
     ]);
   });
 });
+
+describe('a filtered search that finds nothing', () => {
+  /** A source where every filtered search finds nothing and an unfiltered one finds c1–c5. */
+  const emptyWhenFiltered = () => {
+    const r = retrieval();
+    const fake = retrieval({
+      search: async (queries, options, signal) => {
+        const found = await r.impl.search(queries, options, signal);
+        fake.calls.push({ op: 'search', args: { queries, ...options } });
+        return options.filters?.length ? { ...found, chunks: [] } : found;
+      },
+    });
+    return fake;
+  };
+  const searchFiltered = (field: string, value: string) => ({
+    primary: {
+      loop: [
+        () =>
+          result('', [
+            call('search', {
+              queries: ['KI'],
+              filter_by: { fields: [{ field, selected_options: [value] }] },
+            }),
+          ]),
+        () => result('Ingen dokumenter.'),
+      ],
+    },
+  });
+
+  it('keeps a filter on org numbers that finds nothing, and tells the model, instead of searching without it', async () => {
+    const r = emptyWhenFiltered();
+
+    const out = await run({
+      retrieval: r.impl,
+      scripts: searchFiltered('owner_orgnr', '991825827'),
+    });
+
+    const searches = r.calls.filter((c) => c.op === 'search');
+    expect(searches).toHaveLength(1);
+    expect(searches[0]?.args).toMatchObject({
+      filters: [{ field: 'owner_orgnr', selectedOptions: ['991825827'] }],
+    });
+    const message = toolMessages(out.loops[1])[0];
+    expect(message).toContain('found 0 chunks with owner_orgnr');
+    expect(message).toContain('The filter was kept');
+    expect(message).not.toContain('retried without filters');
+  });
+
+  it('drops the other filters before the org-number filter when a search finds nothing', async () => {
+    const r = retrieval();
+    const fake = retrieval({
+      search: async (queries, options, signal) => {
+        const found = await r.impl.search(queries, options, signal);
+        fake.calls.push({ op: 'search', args: { queries, ...options } });
+        const fields = (options.filters ?? []).map((f) => f.field);
+        return fields.includes('concerned_years') ? { ...found, chunks: [] } : found;
+      },
+    });
+
+    const out = await run({
+      retrieval: fake.impl,
+      scripts: {
+        primary: {
+          loop: [
+            () =>
+              result('', [
+                call('search', {
+                  queries: ['KI'],
+                  filter_by: {
+                    fields: [
+                      { field: 'owner_orgnr', selected_options: ['991825827'] },
+                      { field: 'concerned_years', selected_options: ['2019'] },
+                    ],
+                  },
+                }),
+              ]),
+            () => result('Ferdig.'),
+          ],
+        },
+      },
+    });
+
+    const searches = fake.calls.filter((c) => c.op === 'search');
+    expect(searches).toHaveLength(2);
+    expect(searches[1]?.args).toMatchObject({
+      filters: [{ field: 'owner_orgnr', selectedOptions: ['991825827'] }],
+    });
+    const message = toolMessages(out.loops[1])[0];
+    expect(message).toContain('retried with only owner_orgnr');
+    expect(message).not.toContain('The filter was kept');
+  });
+
+  it('keeps the org-number filter when it finds nothing even without the other filters', async () => {
+    const r = emptyWhenFiltered();
+
+    const out = await run({
+      retrieval: r.impl,
+      scripts: {
+        primary: {
+          loop: [
+            () =>
+              result('', [
+                call('search', {
+                  queries: ['KI'],
+                  filter_by: {
+                    fields: [
+                      { field: 'owner_orgnr', selected_options: ['991825827'] },
+                      { field: 'concerned_years', selected_options: ['2019'] },
+                    ],
+                  },
+                }),
+              ]),
+            () => result('Ingen dokumenter.'),
+          ],
+        },
+      },
+    });
+
+    const searches = r.calls.filter((c) => c.op === 'search');
+    expect(searches).toHaveLength(2);
+    expect(searches[1]?.args).toMatchObject({
+      filters: [{ field: 'owner_orgnr', selectedOptions: ['991825827'] }],
+    });
+    const message = toolMessages(out.loops[1])[0];
+    expect(message).toContain('even without the other filters');
+    expect(message).toContain('The filter was kept');
+    expect(message).not.toContain('retried without filters');
+  });
+
+  it('still searches without a year filter that finds nothing', async () => {
+    const r = emptyWhenFiltered();
+
+    const out = await run({
+      retrieval: r.impl,
+      scripts: searchFiltered('concerned_years', '2019'),
+    });
+
+    expect(r.calls.filter((c) => c.op === 'search')).toHaveLength(2);
+    expect(toolMessages(out.loops[1])[0]).toContain(
+      'Filtered retrieval returned 0 chunks; retried without filters.',
+    );
+  });
+});
