@@ -102,6 +102,37 @@ describe('a pgvector endpoint on the knowledge server', () => {
     expect(reader.query).not.toHaveBeenCalled();
   });
 
+  it('reports a cancelled statement as a timeout', async () => {
+    const cancelled = Object.assign(new Error('canceling statement due to statement timeout'), {
+      code: '57014',
+    });
+    const query = vi.fn(async (sql: string) => {
+      if (/^(begin|commit|rollback|select set_config)/.test(sql)) return { rows: [], rowCount: 0 };
+      if (sql.includes('kn_generation')) return { rows: [{ recipe: {} }], rowCount: 1 };
+      throw cancelled;
+    });
+    const reader = { connect: vi.fn(async () => ({ query, release: () => undefined })), query };
+    const engine = pgvectorEngine({
+      pool: fakePool().pool,
+      knowledge: { reader: reader as unknown as Pool },
+    });
+    const connection = engine.adapter.connect(knowledgeEndpoint as never);
+    const routed = { ...dataset, generation: 'g-1', allowed: [dataset.id] };
+
+    const failure = await connection
+      .search(routed, [{ query: 'lønn', profile: 'content' }], signal)
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(KnowledgeError);
+    expect(failure).toMatchObject({
+      code: 'timeout',
+      message: 'reading digdir/kudos was stopped by its statement timeout',
+    });
+  });
+
   it('saving or probing a `knowledge` endpoint without a knowledge server is refused', async () => {
     const options: PgvectorEngineOptions = { pool: fakePool().pool };
     const engine = pgvectorEngine(options);

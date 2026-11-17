@@ -29,7 +29,6 @@ export const SourcesUsed = ({
   onOpenExcerpt,
   links,
   excerptLinks,
-  counted = false,
 }: {
   documents: readonly UsedDocument[];
   href?: ((target: SourceTarget) => string | undefined) | undefined;
@@ -39,15 +38,9 @@ export const SourcesUsed = ({
   links?: Map<string, HTMLElement> | undefined;
   /** Each excerpt's link, by chunk id, so the answer can send focus back to one. */
   excerptLinks?: Map<string, HTMLElement> | undefined;
-  /**
-   * The dev boards' box (dev-kilder-hoyre, dev-filter-panel): «Kilder · 3 brukt i svaret» in the
-   * bar, and the documents numbered, each a link, with no excerpt line under it.
-   */
-  counted?: boolean | undefined;
 }) => {
   const t = useT();
   if (documents.length === 0) return null;
-  const DocumentList = counted ? List.Ordered : List.Unordered;
   const keep = (map: Map<string, HTMLElement> | undefined, key: string) =>
     map &&
     ((element: HTMLAnchorElement | null) => {
@@ -55,30 +48,16 @@ export const SourcesUsed = ({
       else map.delete(key);
     });
   return (
-    <Card
-      className="uib-answer-sources-used-card"
-      // The dev boards' box is plain, its bar tinted.
-      variant={counted ? 'default' : 'tinted'}
-      data-counted={counted || undefined}
-    >
+    <Card className="uib-answer-sources-used-card" variant="tinted">
       <Details className="uib-answer-sources-used" defaultOpen>
         <Details.Summary>
-          {counted ? (
-            <span className="uib-answer-sources-used-title">
-              {t('answer.sourcesUsedLead')}
-              <span className="uib-answer-sources-used-count">
-                {t('answer.sourcesUsedCount', { count: documents.length })}
-              </span>
-            </span>
-          ) : (
-            <span className="uib-answer-sources-used-title">
-              <FileTextIcon aria-hidden className="uib-answer-sources-used-icon" />
-              {t('answer.sourcesUsed')}
-            </span>
-          )}
+          <span className="uib-answer-sources-used-title">
+            <FileTextIcon aria-hidden className="uib-answer-sources-used-icon" />
+            {t('answer.sourcesUsed')}
+          </span>
         </Details.Summary>
         <Details.Content>
-          <DocumentList className="uib-answer-sources-used-list" data-size="sm">
+          <List.Unordered className="uib-answer-sources-used-list" data-size="sm">
             {documents.map(({ key, source, name, own, excerpts }) => {
               // A file name can look exactly like a corpus title, and a list is read out of
               // context, so the name says whose it is. A link carries it in one piece: a hidden
@@ -118,7 +97,7 @@ export const SourcesUsed = ({
                       ) : null}
                     </>
                   )}
-                  {excerpts.length && !counted ? (
+                  {excerpts.length ? (
                     <Paragraph data-size="xs" className="uib-answer-sources-used-excerpts">
                       {excerpts.map(({ n, chunkId }, i) => {
                         const label = t('sources.excerptNumber', { n });
@@ -156,7 +135,7 @@ export const SourcesUsed = ({
                 </List.Item>
               );
             })}
-          </DocumentList>
+          </List.Unordered>
         </Details.Content>
       </Details>
     </Card>

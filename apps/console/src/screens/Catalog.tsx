@@ -5,6 +5,7 @@ import { useAsync } from '../hooks';
 import { EmptyState, ErrorState, Loading } from '../states';
 import type { ConfigEntry } from '../types';
 import { PageHeader } from '../ui';
+import { DatasetSearch, useSearchDrafts, type SearchDrafts } from './config/DatasetSearch';
 import { EngineSwitchSection } from './config/EngineSwitch';
 import { Pipelines } from './config/Pipelines';
 import {
@@ -74,8 +75,17 @@ const describe = (e: ConfigEntry) => {
 
 type CatalogTab = (typeof catalogTabs)[number];
 
-const PlatformRegistry = ({ api, tab }: { api: ApiClient; tab: CatalogTab }) => {
+const PlatformRegistry = ({
+  api,
+  tab,
+  drafts,
+}: {
+  api: ApiClient;
+  tab: CatalogTab;
+  drafts: SearchDrafts;
+}) => {
   const t = useT();
+  const datasetBase = (e: ConfigEntry) => `/operator/datasets/${encodeURIComponent(e.id)}`;
   return (
     <Registry
       api={api}
@@ -92,14 +102,9 @@ const PlatformRegistry = ({ api, tab }: { api: ApiClient; tab: CatalogTab }) => 
         ? {
             detail: (e: ConfigEntry) => (
               <>
-                <Pipelines
-                  api={api}
-                  base={`/operator/datasets/${encodeURIComponent(e.id)}/pipelines`}
-                />
-                <EngineSwitchSection
-                  api={api}
-                  base={`/operator/datasets/${encodeURIComponent(e.id)}`}
-                />
+                <DatasetSearch api={api} base={datasetBase(e)} entry={e} drafts={drafts} />
+                <Pipelines api={api} base={`${datasetBase(e)}/pipelines`} />
+                <EngineSwitchSection api={api} base={datasetBase(e)} />
               </>
             ),
           }
@@ -112,13 +117,16 @@ const TenantRegistry = ({
   api,
   tab,
   tenant,
+  drafts,
 }: {
   api: ApiClient;
   tab: CatalogTab;
   tenant: TenantView;
+  drafts: SearchDrafts;
 }) => {
   const t = useT();
   const base = `/tenants/${encodeURIComponent(tenant.id)}`;
+  const datasetBase = (e: ConfigEntry) => `${base}/datasets/${encodeURIComponent(localId(e))}`;
   const [kinds, retry] = useAsync(
     async (signal) => (await api.configList(`${base}/catalog`, signal)).tenantKinds ?? [],
     [api, base],
@@ -152,15 +160,14 @@ const TenantRegistry = ({
         ? {
             detail: (e: ConfigEntry) => (
               <>
-                <Pipelines
-                  api={api}
-                  base={`${base}/datasets/${encodeURIComponent(localId(e))}/pipelines`}
-                />
-                <EngineSwitchSection
-                  api={api}
-                  base={`${base}/datasets/${encodeURIComponent(localId(e))}`}
-                />
+                <DatasetSearch api={api} base={datasetBase(e)} entry={e} drafts={drafts} />
+                <Pipelines api={api} base={`${datasetBase(e)}/pipelines`} />
+                <EngineSwitchSection api={api} base={datasetBase(e)} />
               </>
+            ),
+            // A platform dataset shared with the tenant is searched through the tenant's route, by its full id.
+            readOnlyDetail: (e: ConfigEntry) => (
+              <DatasetSearch api={api} base={datasetBase(e)} entry={e} drafts={drafts} />
             ),
           }
         : {})}
@@ -172,6 +179,8 @@ export const Catalog = ({ api, tab }: { api: ApiClient; tab: string | undefined 
   const t = useT();
   const current = catalogTabs.find((t) => t.kind === tab)?.kind ?? 'model-endpoint';
   const scope = useConfigScope(api, '/catalog', current);
+  // Search forms outlive a reload of the list and a change of tab.
+  const drafts = useSearchDrafts();
   const eyebrow = scopeEyebrow(scope);
   return (
     <>
@@ -195,9 +204,9 @@ export const Catalog = ({ api, tab }: { api: ApiClient; tab: string | undefined 
         {catalogTabs.map((c) => (
           <TabsPanel key={c.kind} value={c.kind}>
             {current !== c.kind ? null : scope.view ? (
-              <TenantRegistry api={api} tab={c} tenant={scope.view} />
+              <TenantRegistry api={api} tab={c} tenant={scope.view} drafts={drafts} />
             ) : scope.tenant === undefined ? (
-              <PlatformRegistry api={api} tab={c} />
+              <PlatformRegistry api={api} tab={c} drafts={drafts} />
             ) : (
               <EmptyState title={t('catalog.chooseTenant')} />
             )}

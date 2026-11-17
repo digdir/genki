@@ -579,6 +579,7 @@ export const useAssistant = ({
 
   const [activeId, setActiveId] = useState<string>();
   const [sourceTarget, setSourceTarget] = useState<SourceTarget>();
+  const [shownFootnote, setShownFootnote] = useState<number>();
   const [answerTarget, setAnswerTarget] = useState<ConversationTarget>();
   const lastFollowed = useRef<ConversationTarget>(undefined);
   const [tool, setTool] = useState<string>();
@@ -609,6 +610,7 @@ export const useAssistant = ({
   useEffect(() => {
     reads.current += 1;
     setSourceTarget(undefined);
+    setShownFootnote(undefined);
     setAnswerTarget(undefined);
     setOpenDoc(undefined);
     setActiveId(undefined);
@@ -904,6 +906,7 @@ export const useAssistant = ({
     const id = `local-${Date.now()}`;
     reads.current += 1;
     setSourceTarget(undefined);
+    setShownFootnote(undefined);
     // A question about a document names it, in the thread and to the model, and searches only that
     // document where the collection lets a question be narrowed by its number.
     const documentId = about?.source.documentId;
@@ -1168,10 +1171,10 @@ export const useAssistant = ({
     if (chatZone === 'secondary') setRequest({ action: 'open', side: 'secondary' });
   }, [chatZone]);
 
-  /** A footnote or a document asks for Kilder: the panel opens, on the Kilder tool. */
-  const showSources = (turnId: string, target: SourceTarget) => {
+  const showSources = (turnId: string, target: SourceTarget, footnote?: number) => {
     setActiveId(turnId);
     setSourceTarget({ ...target });
+    setShownFootnote(footnote);
     setTool('sources');
     setRequest({ action: 'open', side: 'secondary' });
   };
@@ -1444,6 +1447,8 @@ export const useAssistant = ({
     answered,
     shownIndex,
     sourceTarget,
+    shownFootnote,
+    setShownFootnote,
     answerTarget,
     lastFollowed,
     showSources,
@@ -1452,6 +1457,7 @@ export const useAssistant = ({
       if (!turn) return;
       setActiveId(turn.id);
       setSourceTarget(undefined);
+      setShownFootnote(undefined);
     },
     goToUse: (citation: number) => {
       if (!active) return;

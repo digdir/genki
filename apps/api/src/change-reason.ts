@@ -14,6 +14,7 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'DELETE /api/mcp': 'run',
   'POST /a2a/:agent': 'run',
   'POST /v1/chat/completions': 'run',
+  'POST /v1/tasks/:task/cancel': 'run',
   'POST /api/tools/call/:tool': 'run',
   'POST /api/feedback': 'feedback',
   'POST /onboarding/requests': 'application',
@@ -37,6 +38,9 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'POST /tenants/:tenant/skills/:id/test-runs': 'run',
   'POST /tenants/:tenant/diagnostics/plan': 'run',
   'POST /tenants/:tenant/diagnostics/retrieve': 'run',
+  // A direct search embeds the query, so it is a model use and is closed in lockdown like a run.
+  'POST /tenants/:tenant/datasets/:id/search': 'run',
+  'POST /operator/datasets/:id/search': 'run',
   'POST /tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/proposals': 'run',
   'POST /tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/verify': 'check',
   'POST /tenants/:tenant/hooks/:id/test': 'check',

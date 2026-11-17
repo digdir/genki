@@ -24,6 +24,8 @@ export interface SourceDocument {
   excerpt?: string | undefined;
   version?: string | undefined;
   publishedAt?: string | undefined;
+  documentType?: string | undefined;
+  publisher?: string | undefined;
   /** A host's own line under the title, instead of the block's. */
   meta?: readonly string[] | undefined;
 }
