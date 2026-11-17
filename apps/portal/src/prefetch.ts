@@ -1,5 +1,6 @@
 import type { ApiClient } from './api';
 import { prefetchSignal } from './api/cache';
+import { daysThisMonth } from './usage-window';
 
 type Load = (
   api: ApiClient,
@@ -24,7 +25,7 @@ const areas: Partial<Record<string, Area>> = {
   overview: {
     list: [
       (api, tenant, _live, signal) => api.overview(tenant, signal),
-      (api, tenant, _live, signal) => api.usage(tenant, Math.max(new Date().getDate(), 1), signal),
+      (api, tenant, _live, signal) => api.usage(tenant, daysThisMonth(), signal),
       (api, tenant, _live, signal) => api.tenantEffectiveSettings(tenant, signal),
       (api, tenant, _live, signal) => api.datasets.list(tenant, signal),
     ],

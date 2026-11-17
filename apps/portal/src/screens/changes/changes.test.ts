@@ -132,4 +132,11 @@ describe('change rows', () => {
     expect(areaOf('platform.support.open')).toBe('access');
     expect(areaOf('platform.setting.set')).toBe('settings');
   });
+
+  it('files quota requests and incidents under settings, not services', () => {
+    expect(areaOf('platform.quota.request')).toBe('settings');
+    expect(areaOf('platform.quota.decide')).toBe('settings');
+    expect(areaOf('platform.incident.save')).toBe('settings');
+    expect(areaOf('platform.incident.resolve')).toBe('settings');
+  });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exampleServices, exampleTimeline, mockFetch } from '../mock';
 import { expectAccessible, failingFetch, renderAt } from '../test-utils';
 import type { Overview, UsageReport, UsageTotals } from '../types';
@@ -202,6 +202,11 @@ describe('Oversikt', () => {
     expect(screen.getByRole('heading', { name: 'Mest brukt siste 7 dager' })).toBeTruthy();
   });
 
+  const today = '2026-10-07T10:00:00Z';
+  const threeDaysAgo = '2026-10-04T10:00:00Z';
+  const onFixedDay = () => vi.useFakeTimers({ now: new Date(today), toFake: ['Date'] });
+  afterEach(() => vi.useRealTimers());
+
   const failedRun = (id: string, service: string, serviceName: string, createdAt: string) => ({
     id,
     status: 'failed',
@@ -239,7 +244,8 @@ describe('Oversikt', () => {
   };
 
   it('lists each service with runs that failed today as its own row, linked to the service and its runs today', async () => {
-    const now = new Date().toISOString();
+    onFixedDay();
+    const now = today;
     const { fetch, asked } = withFailedRuns([
       failedRun('r1', 'klarsprak', 'Klarspråk', now),
       failedRun('r2', 'rapportassistenten', 'Rapportassistenten', now),
@@ -255,14 +261,15 @@ describe('Oversikt', () => {
     );
     expect(within(attention).getByText(/2 kjøringer feilet i dag/)).toBeTruthy();
     const runs = within(attention).getByRole('link', { name: 'Se kjøringene: Klarspråk' });
-    expect(runs.getAttribute('href')).toMatch(
-      /^#\/log\/runs\?status=failed&service=klarsprak&date=\d{4}-\d{2}-\d{2}$/,
+    expect(runs.getAttribute('href')).toBe(
+      '#/log/runs?status=failed&service=klarsprak&date=2026-10-07',
     );
     expect(asked.some((u) => /limit=500/.test(u))).toBe(true);
   });
 
   it('never lists playground try runs as a service', async () => {
-    const now = new Date().toISOString();
+    onFixedDay();
+    const now = today;
     const { fetch } = withFailedRuns([
       failedRun('r1', 'platform/operation-try/1b3570db', 'platform/operation-try/1b3570db', now),
     ]);
@@ -273,7 +280,8 @@ describe('Oversikt', () => {
   });
 
   it('counts the failed runs of the last 7 days per service in Mest brukt', async () => {
-    const weekAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    onFixedDay();
+    const weekAgo = threeDaysAgo;
     const { fetch } = withFailedRuns([
       failedRun('r1', 'klarsprak', 'Klarspråk', weekAgo),
       failedRun('r2', 'klarsprak', 'Klarspråk', weekAgo),
@@ -288,7 +296,8 @@ describe('Oversikt', () => {
   });
 
   it('says the failed-run count is a lower bound when more runs failed than one page holds', async () => {
-    const weekAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    onFixedDay();
+    const weekAgo = threeDaysAgo;
     const { fetch } = withFailedRuns([failedRun('r1', 'klarsprak', 'Klarspråk', weekAgo)], 900);
     await renderAt('#/overview', fetch);
 

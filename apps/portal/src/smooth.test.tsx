@@ -239,6 +239,28 @@ describe('a smooth portal', () => {
     },
   );
 
+  it.each(['2026-11-17T23:04:00Z', '2026-11-30T23:30:00Z'])(
+    'the screen reuses the usage loaded on hover just after midnight in Oslo (%s)',
+    async (at) => {
+      vi.useFakeTimers({ now: new Date(at), toFake: ['Date'] });
+      try {
+        const api = recording();
+        await renderLiveAt('#/log', api.fetch);
+        await screen.findByRole('navigation', { name: 'Hovedmeny' });
+        await settle();
+
+        await hover('Oversikt');
+        await go('#/overview');
+        await settle();
+        await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+
+        expect(api.gets(/\/usage\?days=\d+$/)).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it.each([
     ['manage-services', true],
     ['view-usage', false],

@@ -250,7 +250,7 @@ export const Builder = ({
   live = false,
   init,
   route,
-  section,
+  section: routeSection,
   detail,
   pane: initialPane,
   openPublish,
@@ -328,6 +328,7 @@ export const Builder = ({
   );
   const lifecycle = lifecycleState.status === 'ready' ? lifecycleState.data : undefined;
   const archived = lifecycle?.state === 'archived';
+  const section = archived && !archivedSections.includes(routeSection) ? 'overview' : routeSection;
   const readOnly = !rights.has('manage-services') || archived;
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;

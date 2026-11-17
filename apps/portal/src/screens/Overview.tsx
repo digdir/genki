@@ -1,3 +1,4 @@
+import { daysThisMonth } from '../usage-window';
 import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
@@ -375,7 +376,7 @@ export const Overview = ({
   );
   const [usage, retryUsage] = useAsync(
     async (signal) =>
-      withTrialRows(withPricing(await api.usage(tenant, Math.max(now.getUTCDate(), 1), signal))),
+      withTrialRows(withPricing(await api.usage(tenant, daysThisMonth(now), signal))),
     [api, tenant, now],
     { keepPreviousFor: tenant },
   );

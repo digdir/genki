@@ -296,6 +296,36 @@ describe('an archived service', () => {
   });
 });
 
+describe('an archived service opened at an editing address', () => {
+  const archivedFetch = (): typeof fetch => {
+    const base = platform();
+    return async (input, init) =>
+      String(input).endsWith('/services/rapportassistenten/lifecycle') && !init?.method
+        ? Response.json({ state: 'archived', reason: 'Erstattet av en ny tjeneste' })
+        : base(input, init);
+  };
+
+  it.each(['settings', 'channels', 'interface', 'batch'])(
+    'shows Oversikt and no editable form at #/services/<id>/%s',
+    async (section) => {
+      const auth = mockAnsattporten(kari);
+      await auth.login();
+      window.location.hash = `#/services/rapportassistenten/${section}`;
+      render(<App auth={auth} fetch={archivedFetch()} live />);
+
+      await screen.findByText('Tjenesten er arkivert og kan bare leses.');
+      const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
+      expect(
+        within(tabs).getByRole('link', { name: 'Oversikt' }).getAttribute('aria-current'),
+      ).toBe('page');
+      const main = screen.getByRole('main');
+      expect(within(main).queryAllByRole('textbox')).toEqual([]);
+      expect(within(main).queryAllByRole('combobox')).toEqual([]);
+      expect(within(main).queryByRole('button', { name: /^Lagre/ })).toBeNull();
+    },
+  );
+});
+
 describe('Oversikt in live mode', () => {
   it('lists own datasets whose last ingestion failed or was cancelled under what needs you', async () => {
     await open('#/overview');

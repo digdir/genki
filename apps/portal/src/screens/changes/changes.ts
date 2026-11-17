@@ -172,6 +172,8 @@ const areaPrefixes: [string, ChangeArea][] = [
   ['platform.maskinporten-client.', 'access'],
   ['platform.clients.', 'access'],
   ['platform.setting.', 'settings'],
+  ['platform.quota.', 'settings'],
+  ['platform.incident.', 'settings'],
   ['platform.default.', 'settings'],
   ['platform.tracing.', 'settings'],
   ['platform.secrets.', 'settings'],
