@@ -1,4 +1,4 @@
-import { knowledgeFieldsQueue, type Job } from '@genai/jobs';
+import { knowledgeFieldsQueue, type fieldFills, type Job } from '@genai/jobs';
 import { fillInKudosFields, prepareKudosDoc, toIndexDocument } from '@genai/ingest';
 import type { DatasetConfig, DocumentRecords, ListedDocument } from '@genai/port-knowledge';
 import {
@@ -14,6 +14,8 @@ import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fieldsWork } from './knowledge-fields.js';
+
+type FieldFillName = (typeof fieldFills)[number];
 
 let container: StartedPostgreSqlContainer;
 let admin: ReturnType<typeof createPool>;
@@ -55,18 +57,31 @@ afterAll(async () => {
 
 const dataset = (id: string): DatasetConfig => ({
   id,
-  filters: { owner_orgnr: 'multiselect' },
+  filters: { owner_orgnr: 'multiselect', orgs_short: 'multiselect' },
   options: {},
   embedding: { model: 'fake/embed', dimensions: 3 },
 });
 
 /** A KUDOS listing entry, as the pipeline keeps it in `src_documents.record`. */
-const kudosEntry = (uuid: string, ownerOrgnr: number, ownerName: string) => ({
+const kudosEntry = (
+  uuid: string,
+  ownerOrgnr: number,
+  ownerName: string,
+  abbreviation?: string,
+) => ({
   uuid,
   title: `Årsrapport ${ownerName} 2025`,
   type: 'Årsrapport',
   publish_date: '2026-03-15',
-  owners: [{ org_number: ownerOrgnr, alternative_names: [{ name: ownerName, type: 'display' }] }],
+  owners: [
+    {
+      org_number: ownerOrgnr,
+      alternative_names: [
+        { name: ownerName, type: 'display' },
+        ...(abbreviation ? [{ name: abbreviation, type: 'abbreviation' }] : []),
+      ],
+    },
+  ],
   recipients: [
     {
       org_number: 972417807,
@@ -86,7 +101,9 @@ const fieldsOf = (entry: ReturnType<typeof kudosEntry>, { before = false } = {})
     [],
   ).fields;
   if (!before) return fields;
-  return Object.fromEntries(Object.entries(fields).filter(([k]) => !k.endsWith('_orgnr')));
+  return Object.fromEntries(
+    Object.entries(fields).filter(([k]) => k !== 'orgs_short' && !k.endsWith('_orgnr')),
+  );
 };
 
 let generations = 0;
@@ -136,7 +153,7 @@ const store = async (
   return generation;
 };
 
-const job = (data: Job<{ tenant: string; dataset: string; fill: 'kudos-org-numbers' }>['data']) =>
+const job = (data: Job<{ tenant: string; dataset: string; fill: FieldFillName }>['data']) =>
   ({
     id: crypto.randomUUID(),
     queue: knowledgeFieldsQueue.name,
@@ -147,8 +164,8 @@ const job = (data: Job<{ tenant: string; dataset: string; fill: 'kudos-org-numbe
 
 const row = async (generation: string, id: string) =>
   (
-    await admin.query<{ fields: Record<string, unknown>; fields_text: string }>(
-      `select fields, fields_text from kn_docs where generation = $1 and id = $2`,
+    await admin.query<{ fields: Record<string, unknown>; fields_text: string; url: string | null }>(
+      `select fields, fields_text, url from kn_docs where generation = $1 and id = $2`,
       [generation, id],
     )
   ).rows[0];
@@ -205,5 +222,57 @@ describe('the fields job', () => {
     }
 
     expect(found).toEqual(['kudos:b1']);
+  });
+
+  it("the fill writes a stored Kudos document's orgs_short and url without embedding anything", async () => {
+    const name = 'digdir/kudos-fields-c';
+    const generation = await store(name, [
+      { entry: kudosEntry('c1', 991825827, 'Digitaliseringsdirektoratet', 'Digdir'), before: true },
+    ]);
+    const chunks = async () =>
+      (
+        await admin.query<{ id: string; vec: string; text: string }>(
+          `select id, vec::text, text from kn_chunks where generation = $1 order by id`,
+          [generation],
+        )
+      ).rows;
+    const chunksBefore = await chunks();
+
+    await fieldsWork({ records }).handler(
+      job({ tenant: 'platform', dataset: name, fill: 'kudos-links-and-abbreviations' }),
+    );
+
+    const filled = await row(generation, 'kudos:c1');
+    expect(filled?.fields.orgs_short).toEqual(['Digdir']);
+    expect(filled?.url).toBe('https://kudos.dfo.no/dokument/c1');
+    expect(await chunks()).toEqual(chunksBefore);
+  });
+
+  it("an orgs_short filter matches an organisation's abbreviation", async () => {
+    const name = 'digdir/kudos-fields-d';
+    const generation = await store(name, [
+      { entry: kudosEntry('d1', 991825827, 'Digitaliseringsdirektoratet', 'Digdir'), before: true },
+      { entry: kudosEntry('d2', 983744516, 'Folkehelseinstituttet', 'FHI'), before: true },
+    ]);
+    await fieldsWork({ records }).handler(
+      job({ tenant: 'platform', dataset: name, fill: 'kudos-links-and-abbreviations' }),
+    );
+
+    const client = await admin.connect();
+    let found: string[];
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.datasets', $1, true)`, [JSON.stringify([name])]);
+      const { rows } = await client.query<{ id: string }>(
+        `select id from kn_documents($1, $2, null, $3::jsonb, 10, 0)`,
+        [name, generation, JSON.stringify([{ field: 'orgs_short', op: 'in', values: ['Digdir'] }])],
+      );
+      found = rows.map((r) => r.id);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+
+    expect(found).toEqual(['kudos:d1']);
   });
 });
