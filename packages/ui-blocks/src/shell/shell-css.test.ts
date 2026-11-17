@@ -220,6 +220,17 @@ describe('the Shell styles', () => {
     );
   });
 
+  it('draw the tools’ dropdown button pressed or open on the active surface, hover only under the pointer (dev-verktoy-3)', () => {
+    const open = css.slice(css.indexOf(".uib-shell-tools-trigger[aria-expanded='true'] {"));
+    expect(open.slice(0, open.indexOf('}'))).toContain(
+      '--dsc-button-background: var(--genai-shell-tools-tinted-active-background, var(--ds-color-surface-active));',
+    );
+    const trigger = css.slice(css.indexOf('.uib-shell-tools-trigger {'));
+    expect(trigger.slice(0, trigger.indexOf('}'))).toContain(
+      '--dsc-button-background--active: var(--genai-shell-tools-tinted-active-background, var(--ds-color-surface-active));',
+    );
+  });
+
   it('keep what a rail shows at its bottom out of the top row', () => {
     expect(css).toContain('.uib-shell[data-compact] .uib-shell-rail-foot { display: none; }');
   });

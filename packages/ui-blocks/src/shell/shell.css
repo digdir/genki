@@ -649,8 +649,8 @@
       var(--ds-color-surface-hover)
     );
     --dsc-button-background--active: var(
-      --genai-shell-tools-tinted-hover-background,
-      var(--ds-color-surface-hover)
+      --genai-shell-tools-tinted-active-background,
+      var(--ds-color-surface-active)
     );
     --dsc-button-color: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
     --dsc-button-color--hover: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
@@ -664,10 +664,15 @@
     font-weight: var(--genai-shell-tools-tinted-font-weight, var(--ds-font-weight-medium));
   }
 
+  /* Pressed or with its menu open, the active surface; hover is for the pointer only. */
   .uib-shell-tools-trigger[aria-expanded='true'] {
     --dsc-button-background: var(
-      --genai-shell-tools-tinted-hover-background,
-      var(--ds-color-surface-hover)
+      --genai-shell-tools-tinted-active-background,
+      var(--ds-color-surface-active)
+    );
+    --dsc-button-background--hover: var(
+      --genai-shell-tools-tinted-active-background,
+      var(--ds-color-surface-active)
     );
   }
 
