@@ -31,6 +31,7 @@ import {
 import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
+import type { ApiKeyView } from '../types';
 import { useRightLabels, useUserName } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
 import { NoAccess } from './NoAccess';
@@ -244,7 +245,16 @@ interface ServiceRow {
   name: string;
   tag: string;
   archived: boolean;
+  keys: number;
 }
+
+const activeKeysFor = (keys: ApiKeyView[], service: string, now: number) =>
+  keys.filter(
+    (k) =>
+      k.service === service &&
+      !k.revokedAt &&
+      (!k.expiresAt || new Date(k.expiresAt).getTime() > now),
+  ).length;
 
 const ServicesTab = ({ api, tenant, live }: Pick<ScreenProps, 'api' | 'tenant' | 'live'>) => {
   const t = useT();
@@ -255,8 +265,12 @@ const ServicesTab = ({ api, tenant, live }: Pick<ScreenProps, 'api' | 'tenant' |
         api.access(tenant, signal),
         live ? api.services(tenant, signal).then((s) => s.data) : Promise.resolve([]),
       ]);
+      const now = Date.now();
+      const keys = (id: string) => activeKeysFor(access.keys, id, now);
       const rows = new Map<string, ServiceRow>();
-      if (!live) for (const s of exampleServices) rows.set(s.id, { ...s, archived: false });
+      if (!live)
+        for (const s of exampleServices)
+          rows.set(s.id, { ...s, archived: false, keys: keys(s.id) });
       for (const s of access.services) {
         if (rows.has(s.id)) continue;
         const summary = summaries.find((x) => x.id === s.id);
@@ -266,6 +280,7 @@ const ServicesTab = ({ api, tenant, live }: Pick<ScreenProps, 'api' | 'tenant' |
           name: summary?.name ?? s.name,
           tag: archived ? t('serviceLifecycle.tagArchived') : '',
           archived,
+          keys: keys(s.id),
         });
       }
       return [...rows.values()];
@@ -284,6 +299,7 @@ const ServicesTab = ({ api, tenant, live }: Pick<ScreenProps, 'api' | 'tenant' |
       <Paragraph data-size="sm">
         {t('access.servicesLead', { right: t('rights.useServices') })}
       </Paragraph>
+      <Paragraph data-size="sm">{t('access.serviceKeysLead')}</Paragraph>
       {services.length === 0 ? (
         <EmptyState title={t('access.noServicesTitle')}>
           <Paragraph>{t('access.noServicesText')}</Paragraph>
@@ -299,6 +315,9 @@ const ServicesTab = ({ api, tenant, live }: Pick<ScreenProps, 'api' | 'tenant' |
                 <Tag data-size="sm" data-color="neutral">
                   {s.tag}
                 </Tag>
+              ) : null}
+              {s.keys > 0 ? (
+                <span className="meta">{t('access.serviceKeys', { count: s.keys })}</span>
               ) : null}
             </li>
           ))}

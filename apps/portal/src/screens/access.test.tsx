@@ -128,6 +128,37 @@ describe('Tilgang', () => {
     expectAccessible();
   });
 
+  it('counts the active API keys bound to each service, leaving out revoked and expired ones', async () => {
+    const [first] = exampleAccess.keys;
+    if (!first) throw new Error('exampleAccess has no keys');
+    const bound = (id: string, extra: Partial<typeof first> = {}) => ({
+      ...first,
+      id,
+      name: id,
+      service: 'rapportassistenten',
+      ...extra,
+    });
+    const access = {
+      ...exampleAccess,
+      keys: [
+        bound('k1'),
+        bound('k2', { expiresAt: '2999-01-01T00:00:00Z' }),
+        bound('k3', { revokedAt: '2026-06-03T09:00:00Z' }),
+        bound('k4', { expiresAt: '2020-01-01T00:00:00Z' }),
+        { ...first, id: 'k5', service: null },
+      ],
+    };
+    await renderAt(
+      '#/access/services',
+      mockFetch(undefined, undefined, undefined, undefined, { access }),
+    );
+    const list = await servicesList();
+    const row = within(list).getByRole('link', { name: 'Rapportassistenten' })
+      .parentElement as HTMLElement;
+    expect(row.textContent).toContain('2 API-nøkler er bundet til tjenesten');
+    expect(screen.getByText(/Systemer kaller en tjeneste med en API-nøkkel/)).toBeTruthy();
+  });
+
   it('shows a load error with retry instead of an Altinn warning', async () => {
     let fail = true;
     const ok = mockFetch();
