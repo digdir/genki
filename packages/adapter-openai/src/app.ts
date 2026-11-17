@@ -847,13 +847,6 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       parts: [fields?.length ? formTextPart(query) : textPart(query), ...documentParts],
     };
     let run: Run;
-    if (conversationId)
-      await options.conversations?.append(c.req.raw, conversationId, {
-        role: 'user',
-        text: query,
-        ...(Object.keys(values).length ? { input: values } : {}),
-        ...(attachments.length ? { attachments } : {}),
-      });
     try {
       run = await kernel.invoke(principal, resolved.entry.capability, input, {
         entryPoint: 'openai',
@@ -867,6 +860,20 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       const e = invokeError(error);
       return fail(c, e.code, e.message, e.status);
     }
+    if (conversationId)
+      try {
+        await options.conversations?.append(c.req.raw, conversationId, {
+          role: 'user',
+          text: query,
+          task: run.task,
+          ...(Object.keys(values).length ? { input: values } : {}),
+          ...(attachments.length ? { attachments } : {}),
+        });
+      } catch {
+        await kernel.cancel(principal, run.task).catch(() => undefined);
+        await discard();
+        return fail(c, 'internal_error', 'The question could not be stored.', 500);
+      }
 
     const id = `chatcmpl-${newId()}`;
     const created = now();

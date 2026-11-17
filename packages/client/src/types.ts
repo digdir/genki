@@ -158,6 +158,8 @@ export interface ConversationMessage {
   chunks: ConversationChunk[];
   sources?: Source[];
   markers?: AnswerMarker[];
+  task?: string;
+  runState?: 'running' | 'failed' | 'cancelled';
 }
 
 export interface ConversationPage {

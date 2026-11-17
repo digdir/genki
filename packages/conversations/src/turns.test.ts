@@ -83,6 +83,28 @@ describe('conversation turns for MCP', () => {
     });
   });
 
+  it('stores the question when the conversation cannot be titled from it', async () => {
+    const store = new InMemoryConversationStore();
+    store.update = async () => {
+      throw new Error('store unavailable');
+    };
+    const turns = conversationTurns(
+      store,
+      async () => ({ principal: key }),
+      () => 'n',
+    );
+    const opened = await turns.open(request(), { agentId: 'a' });
+    if (!opened.ok) throw new Error('not opened');
+
+    await turns.append(request(), opened.id, { role: 'user', text: 'Spørsmål', task: 'run-1' });
+
+    const owner = { tenant: '991825827', user: userKey(key) };
+    expect((await store.messages(owner, opened.id))?.at(-1)).toMatchObject({
+      role: 'user',
+      task: 'run-1',
+    });
+  });
+
   it("answers conversation_not_found for another caller's conversation", async () => {
     const store = new InMemoryConversationStore();
     const mine = conversationTurns(
