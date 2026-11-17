@@ -63,6 +63,21 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-17: text files to a step flow
+
+- `/v1/chat/completions` takes a `file` content part in the last user message, `{ "type": "file", "file": { "filename": "brev.txt", "file_data": "data:text/plain;base64,<base64>" } }`, as OpenAI clients send it. It reaches a step flow as `{{input.files.N}}`, the same media reference as audio and images, so a `call-operation@1` step can pass it to a descriptor. A service takes a type this way when it is in `spec.input.accepts` and a `call-operation@1` step of the service's flow takes it as media input; `GET /v1/models` shows those types as `_files: { accepts, max_bytes, max_count }` (10 MiB, 5 parts with audio and images together). `file_id` is not supported. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`. A file is not masked, so the step publishes only when the service's risk assessment records unmasked input of that media type, such as `text/plain` (`spec.riskConfirmation.unmaskedInput`), and the gate checks it again on every call.
+
+```sh
+jq -n --arg data "$(base64 < brev.txt | tr -d '\n')" '{
+  model: "sortering__default",
+  messages: [{ role: "user", content: [
+    { type: "text", text: "Les dokumentet" },
+    { type: "file", file: { filename: "brev.txt", file_data: ("data:text/plain;base64," + $data) } }
+  ] }]
+}' | curl -s http://localhost:8080/v1/chat/completions \
+  -H "X-API-Key: $KEY" -H 'content-type: application/json' -d @-
+```
+
 ### 2026-11-16: rotating a key keeps it within the person's rights
 
 - `POST /tenants/{tenant}/api-keys/{id}/rotate` answers `403` when the key's own scopes or its policy's scopes need a right the person rotating it lacks, as saving or attaching a policy does. The key stays as it was.

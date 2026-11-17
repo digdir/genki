@@ -54,6 +54,28 @@ export const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
     ...stepsIn(s.else ?? []),
   ]);
 
+export const stepMediaTypes = async (
+  flowRefs: readonly string[],
+  deps: Pick<DescribedStepDeps, 'descriptors' | 'flow'>,
+): Promise<string[]> => {
+  const seen = new Set<string>();
+  const types = new Set<string>();
+  const visit = async (ref: string) => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    const flow = await deps.flow(ref);
+    for (const step of stepsIn(flow?.spec.steps ?? [])) {
+      if (step.subflow) await visit(step.subflow);
+      const id = (step.params as { descriptor?: unknown } | undefined)?.descriptor;
+      if (step.block !== callOperationRef || typeof id !== 'string') continue;
+      const descriptor = deps.descriptors.get(id);
+      for (const type of descriptor ? mediaTypesOf(descriptor.input) : []) types.add(type);
+    }
+  };
+  for (const ref of flowRefs) await visit(ref);
+  return [...types];
+};
+
 export interface DescribedStepDeps {
   descriptors: DescriptorRegistry;
   governance: OperationGovernanceStore;

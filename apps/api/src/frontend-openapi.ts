@@ -139,6 +139,22 @@ const Model = z
         max_count: z.number().int(),
       })
       .optional(),
+    _media: z
+      .object({
+        accepts: z.array(z.string()),
+        max_bytes: z.number().int(),
+        max_count: z.number().int(),
+      })
+      .optional()
+      .describe('Audio and image types the service takes as `input_audio` or `image_url` parts.'),
+    _files: z
+      .object({
+        accepts: z.array(z.string()),
+        max_bytes: z.number().int(),
+        max_count: z.number().int(),
+      })
+      .optional()
+      .describe('File types a step of the service takes, sent as `file` parts.'),
     status: z.literal('paused').optional(),
     status_reason: z.string().optional(),
   })
@@ -211,7 +227,9 @@ const ChatRequest = z
     messages: z
       .array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.unknown() }))
       .optional()
-      .describe('Required unless the service has an input form and `input` is sent.'),
+      .describe(
+        'Required unless the service has an input form and `input` is sent. The last user message may be a list of parts: `text`, `input_audio` and `image_url` for the types in `_media`, and `{ "type": "file", "file": { "filename", "file_data": "data:<type>;base64,..." } }` for the types in `_files`, which reach a step flow as `{{input.files.N}}`.',
+      ),
     input: z
       .record(z.string(), z.unknown())
       .optional()
@@ -417,6 +435,7 @@ export const frontendRoutes: RouteConfig[] = [
       404: v1Error('model_not_found, agent_not_found, conversation_not_found'),
       409: v1Error('version_not_found'),
       413: v1Error('document_too_large, request_too_large'),
+      415: v1Error('unsupported_document_type'),
       503: v1Error('service_paused'),
     },
   }),

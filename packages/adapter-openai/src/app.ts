@@ -101,6 +101,7 @@ export interface ModelEntry {
   live?: boolean;
   documents?: string[];
   media?: string[];
+  files?: string[];
 }
 
 export type ResolveErrorCode =
@@ -620,6 +621,15 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
                 },
               }
             : {}),
+          ...(e.files?.length && options.documents
+            ? {
+                _files: {
+                  accepts: e.files,
+                  max_bytes: mediaLimits.maxBytes,
+                  max_count: mediaLimits.maxCount,
+                },
+              }
+            : {}),
           ...(e.status
             ? { status: e.status, ...(e.statusReason ? { status_reason: e.statusReason } : {}) }
             : {}),
@@ -878,6 +888,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     const sentMedia = readMedia(
       messages.findLast((m) => m.role === 'user')?.content,
       options.documents ? resolved.entry.media : undefined,
+      options.documents ? resolved.entry.files : undefined,
     );
     if (!Array.isArray(sentMedia))
       return fail(c, sentMedia.code, sentMedia.message, sentMedia.status);
