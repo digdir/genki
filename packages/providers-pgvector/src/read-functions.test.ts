@@ -961,6 +961,220 @@ describe('read functions on the knowledge server', () => {
   });
 });
 
+describe('text search on the knowledge server', () => {
+  const words = dataset('digdir/ord', 8, {
+    options: {
+      profiles: {
+        content: { target: 'chunks', mode: 'hybrid' },
+        mening: { target: 'chunks', mode: 'vector' },
+        metadata: { target: 'docs', mode: 'text' },
+      },
+    },
+  });
+  const wordsGeneration = 'g-20261117-ord';
+  const page = (id: string, title: string, text: string): IndexDocument => ({
+    id,
+    title,
+    fields: {},
+    chunks: [{ id: `${id}-0`, position: 0, text, metadata: {}, vector: fixtureVector(text, 8) }],
+    phrases: [],
+  });
+  const at = routed(words, wordsGeneration);
+  /** The rows the read function returns for the text half of a hybrid search: the profile without its vector. */
+  const textHalf = async (query: string) =>
+    (
+      await asReader<{ doc_id: string }>(
+        `select doc_id from kn_search($1, $2, 'chunks', 'hybrid', $3, null, null, '[]', 10, 50, 60)`,
+        [words.id, wordsGeneration, query],
+        [words.id],
+      )
+    ).map((r) => r.doc_id);
+
+  beforeAll(async () => {
+    await fill(words, wordsGeneration, [
+      page(
+        'alle',
+        'Kvinners lønn i Helsedirektoratet',
+        'Kvinners lønn i Helsedirektoratet var 826 000 i 2023',
+      ),
+      page('noen', 'Lønn i Helsedirektoratet', 'Lønn for menn i Helsedirektoratet'),
+      page('rekke', 'Lønn i Statens vegvesen', 'Lønn som kvinner fikk i vegvesenet'),
+    ]);
+  });
+
+  it('a text search whose words all appear in a chunk ranks only the chunks that hold all of them', async () => {
+    expect(await textHalf('kvinners lønn Helsedirektoratet')).toEqual(['alle']);
+    expect(await textHalf('lønn Helsedirektoratet')).toEqual(
+      expect.arrayContaining(['alle', 'noen']),
+    );
+    expect(await textHalf('lønn Helsedirektoratet')).toHaveLength(2);
+  });
+
+  it('a quoted phrase in a text search matches only the words in that order', async () => {
+    expect((await textHalf('kvinners lønn')).sort()).toEqual(['alle', 'rekke']);
+    expect(await textHalf('"kvinners lønn"')).toEqual(['alle']);
+  });
+
+  it('a hybrid search with a word no chunk holds returns the vector hits and no partial word matches', async () => {
+    const query = 'kvinners lønn tjente';
+    const [hybrid, meaning] = await connectionOf().search(
+      at,
+      [
+        { query, profile: 'content' },
+        { query, profile: 'mening' },
+      ],
+      signal,
+    );
+    expect(hybrid?.warning).toBeUndefined();
+    expect(hybrid?.hits.map((h) => h.id)).toEqual(meaning?.hits.map((h) => h.id));
+    // Each hit scores from the vector list alone: 1 / (60 + its rank there).
+    expect(hybrid?.hits.map((h) => h.score)).toEqual(meaning?.hits.map((_, i) => 1 / (60 + i + 1)));
+  });
+
+  it('a text-only search that finds too few documents with all its words adds those with some of them, after', async () => {
+    const [both] = await connectionOf().search(
+      at,
+      [{ query: 'kvinners lønn Helsedirektoratet', profile: 'metadata' }],
+      signal,
+    );
+    // Documents are searched by title: `alle` holds every word, the others some.
+    expect(both?.hits.map((h) => h.document)).toEqual(['alle', 'noen', 'rekke']);
+    expect(both?.hits[0]?.score).toBeGreaterThanOrEqual(1);
+    expect(both?.hits.slice(1).every((h) => h.score < 1)).toBe(true);
+    const [missing] = await connectionOf().search(
+      at,
+      [{ query: 'lønn Helsedirektoratet tjente', profile: 'metadata' }],
+      signal,
+    );
+    expect(missing?.hits.map((h) => h.document).sort()).toEqual(['alle', 'noen', 'rekke']);
+  });
+
+  describe('with more matches than the cap', () => {
+    const bulkGeneration = 'g-20261117-bulk';
+    const bulk = dataset('digdir/bulk', 8, {
+      options: {
+        profiles: {
+          content: { target: 'chunks', mode: 'hybrid' },
+          ord: { target: 'chunks', mode: 'text' },
+          mening: { target: 'chunks', mode: 'vector' },
+        },
+      },
+    });
+
+    beforeAll(async () => {
+      await fill(bulk, bulkGeneration, [
+        page('budsjett', 'Budsjett', 'Budsjett for tilskudd i 2024'),
+        page('lonn', 'Lønn', 'Lønn og tilskudd i 2024'),
+      ]);
+      const docs = partitionOf('kn_docs', bulkGeneration);
+      const chunks = partitionOf('kn_chunks', bulkGeneration);
+      await owner.query(
+        `insert into ${docs} (dataset, generation, id, fields, config)
+           select 'digdir/bulk', $1, 'mange-' || n, '{}', 'norwegian' from generate_series(1, 6000) n`,
+        [bulkGeneration],
+      );
+      await owner.query(
+        `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config)
+           select 'digdir/bulk', $1, 'mange-' || n, 'mange-' || n, 0, 'budsjett og regnskap ' || n, 'norwegian'
+           from generate_series(1, 6000) n`,
+        [bulkGeneration],
+      );
+      await owner.query(`analyze ${docs}`);
+      await owner.query(`analyze ${chunks}`);
+    }, 60_000);
+
+    it('a text search ranks at most 5,000 of the chunks it matches', async () => {
+      const rankedRows = async (mode: string, query: string) => {
+        const { rows } = await owner.query<{ sql: string }>(
+          `select kn_search_sql($1, $2, 'chunks', $3, $4, null, null, '[]', 10, 50, 60) as sql`,
+          [bulk.id, bulkGeneration, mode, query],
+        );
+        const { rows: plan } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+          `explain (analyze, format json) ${rows[0]?.sql}`,
+        );
+        const read: number[] = [];
+        const walk = (node: PlanNode) => {
+          // The rows ranked: ts_rank_cd runs in the aggregate or sort that orders the matches.
+          if (/Aggregate|Sort/.test(node['Node Type'])) read.push(node['Actual Rows']);
+          node.Plans?.forEach(walk);
+        };
+        const [explained] = plan;
+        if (explained) walk(explained['QUERY PLAN'][0].Plan);
+        return read;
+      };
+      // All words, as a hybrid search's text half runs it, and the fallback to some of them.
+      for (const [mode, query] of [
+        ['hybrid', 'budsjett regnskap'],
+        ['text', 'budsjett tjente'],
+      ] as const) {
+        const read = await rankedRows(mode, query);
+        expect(read.length).toBeGreaterThan(0);
+        expect(Math.max(...read)).toBeLessThanOrEqual(5000);
+      }
+    });
+
+    it('a hybrid search whose text half runs past its limit returns the vector hits with a warning', async () => {
+      const slow = pgvectorEngine({
+        pool: primary.admin,
+        knowledge: api.pools,
+        embedder: fixtureEmbedder,
+        textSearchMs: 1,
+      });
+      const connection = connectionOf(slow);
+      const [hybrid, meaning] = await connection.search(
+        routed(bulk, bulkGeneration),
+        [
+          { query: 'budsjett regnskap', profile: 'content' },
+          { query: 'budsjett regnskap', profile: 'mening' },
+        ],
+        signal,
+      );
+      expect(hybrid?.warning).toMatch(
+        /^text search took longer than .* s; these hits come from vector search only$/,
+      );
+      expect(hybrid?.hits.map((h) => h.id)).toEqual(meaning?.hits.map((h) => h.id));
+      expect(hybrid?.hits.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('a hybrid search whose vector half fails returns the text hits with a warning', async () => {
+    const broken = readEngine(api.pools, () => ({
+      embed: async (texts) => texts.map(() => Array.from({ length: 8 }, () => Number.NaN)),
+    }));
+    const [hybrid] = await connectionOf(broken).search(
+      at,
+      [{ query: 'kvinners lønn Helsedirektoratet', profile: 'content' }],
+      signal,
+    );
+    expect(hybrid?.warning).toMatch(
+      /^vector search failed: .*; these hits come from text search only$/,
+    );
+    expect(hybrid?.hits.map((h) => h.document)).toEqual(['alle']);
+  });
+
+  it('a hybrid search ranks its hits by RRF of the text and vector ranks', async () => {
+    const query = 'lønn i Helsedirektoratet';
+    const [hybrid] = await connectionOf().search(at, [{ query, profile: 'content' }], signal);
+    // The same search as one statement, merged by the read function's SQL.
+    const sql = await asReader<{ id: string; score: number }>(
+      `select id, score from kn_search($1, $2, 'chunks', 'hybrid', $3, $4::halfvec, null, '[]', 10, 50, 60)`,
+      [words.id, wordsGeneration, query, JSON.stringify(fixtureVector(query, 8))],
+      [words.id],
+    );
+    expect(hybrid?.hits.length).toBe(3);
+    expect(hybrid?.hits.map((h) => h.id)).toEqual(sql.map((r) => r.id));
+    hybrid?.hits.forEach((h, i) => expect(h.score).toBeCloseTo(sql[i]?.score ?? Number.NaN, 12));
+  });
+});
+
+interface PlanNode {
+  'Node Type': string;
+  'Relation Name'?: string;
+  'Actual Rows': number;
+  'Actual Loops': number;
+  Plans?: PlanNode[];
+}
+
 let seeded = 0;
 const generationFor = (name: string) => {
   seeded += 1;
