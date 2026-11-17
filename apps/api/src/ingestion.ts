@@ -190,6 +190,12 @@ export interface Execution {
   /** The generation a run of an engine switch writes into, and that switch (ADR 0025). */
   generation?: string;
   engineSwitch?: string;
+  /**
+   * A replacement run, by the run that sent it (ADR 0042, "Conversion"): it converts text-layer
+   * files again for weeks of nights, so it holds nothing a person waits on, and in lockdown its
+   * admission lasts until its files are converted.
+   */
+  replaces?: string;
 }
 
 export type JobRunResult =
@@ -479,13 +485,17 @@ export class IngestionService {
     await drop(input);
   }
 
-  /** The dataset's queued, running or waiting runs, deleted pipelines' included. */
+  /**
+   * The dataset's queued, running or waiting runs, deleted pipelines' included. A replacement run
+   * is left out: it converts in the background for weeks, and a delete or a field refresh does not
+   * wait for it.
+   */
   async openRuns(scope: string, dataset: string) {
     const open = new Set(['queued', 'running', 'waiting']);
     const runs = this.running(dataset).map((r) => r.id);
     for (const pipeline of await this.pipelineIdsEver(scope, dataset))
       for (const run of await this.executions(dataset, pipeline))
-        if (open.has(run.status)) runs.push(run.id);
+        if (open.has(run.status) && !run.replaces) runs.push(run.id);
     return [...new Set(runs)];
   }
 
@@ -968,6 +978,7 @@ export class IngestionService {
   admission(run: Execution): Execution {
     return this.options.admits &&
       run.admittedAt &&
+      !run.replaces &&
       !run.cancelRequestedAt &&
       (run.status === 'queued' || run.status === 'running')
       ? { ...run, admissionRunsOutAt: admissionRunsOutAt(run.admittedAt) }

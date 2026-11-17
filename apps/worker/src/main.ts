@@ -187,11 +187,8 @@ const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : und
 const indexConcurrency = indexConcurrencyOf(process.env);
 const convertConcurrency = convertConcurrencyOf(process.env);
 // Docling, when DOCLING_URL names a server (ADR 0042, issue 477): convert jobs ask it first, and the
-// text layer reads what it refuses. Without it, the text layer converts.
-if (process.env.DOCLING_URL && !process.env.DOCLING_API_KEY) {
-  log('refusing to start', { problems: ['DOCLING_URL is set without DOCLING_API_KEY'] });
-  process.exit(1);
-}
+// text layer reads what it refuses. Without it, the text layer converts. A URL without its key
+// stops the worker at start (`workerBootProblems`).
 const docling = process.env.DOCLING_URL
   ? doclingConverter({
       url: process.env.DOCLING_URL,
@@ -1011,6 +1008,7 @@ const sendReplacement =
         conversions: knowledgeConversionsOf(knowledgeWriter),
         runs: knowledgeRunRecords,
         knowledge: { send: (queue, data, options) => openedKnowledge().send(queue, data, options) },
+        lockdown,
       })
     : undefined;
 let reconciling = false;

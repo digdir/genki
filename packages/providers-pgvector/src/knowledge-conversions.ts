@@ -274,13 +274,13 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
     return rows.map((r) => r.key);
   },
 
-  replaceable: async (dataset, accepted, after, limit) => {
+  replaceable: async (dataset, pipeline, accepted, after, limit) => {
     const { rows } = await writer.query<{ record: string; name: string; sha256: string }>(
       `with files as (
          select d.number, f.file as name, f.sha256
            from src_documents d
            join src_files f on f.dataset = d.dataset and f.document = d.id
-          where d.dataset = $1 and d.number > $2::bigint
+          where d.dataset = $1 and d.number > $2::bigint and $5 = any(d.owners)
             and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))
             and f.converts and f.sha256 is not null
             and exists (
@@ -298,7 +298,7 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
        select f.number::text as record, f.name, f.sha256
          from files f join records r using (number)
         order by f.number, f.name`,
-      [dataset, after, acceptedJson(accepted), limit],
+      [dataset, after, acceptedJson(accepted), limit, pipeline],
     );
     const byRecord = new Map<string, { name: string; sha256: string }[]>();
     for (const row of rows)
@@ -307,5 +307,17 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
         { name: row.name, sha256: row.sha256 },
       ]);
     return [...byRecord].map(([record, files]) => ({ record, files }));
+  },
+
+  holding: async (dataset, pipeline, sha256) => {
+    const { rows } = await writer.query<{ record: string }>(
+      `select distinct d.number::text as record
+         from src_documents d
+         join src_files f on f.dataset = d.dataset and f.document = d.id
+        where d.dataset = $1 and $2 = any(d.owners) and f.sha256 = $3
+          and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))`,
+      [dataset, pipeline, sha256],
+    );
+    return rows.map((r) => r.record);
   },
 });

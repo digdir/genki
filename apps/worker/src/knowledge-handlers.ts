@@ -58,6 +58,7 @@ import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
 import {
+  admissionRefusal,
   admittedConversion,
   admittedWork,
   type AdmissionDeps,
@@ -296,6 +297,9 @@ const derivationOf = (converter: string) =>
   converter === textLayer.name ? textLayerDerivation : { name: `${converter}-pages`, version: 1 };
 
 type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
+
+/** The converter a convert job's data names: Docling, or the text layer when it names none. */
+const converterOf = (data: ConvertData) => ('converter' in data ? data.converter : undefined);
 type ConvertJob = KnowledgeJob<ConvertData> & {
   sender?: IngestionExecution;
   /** The open, admitted runs the conversion is for: its sender and the runs waiting on it. */
@@ -382,7 +386,7 @@ export const knowledgeWork = (
             dataset: waiter.dataset,
             record: waiter.record,
             tenants: waiter.tenant,
-            converter: converter === doclingIdentity.name ? 'docling' : 'text-layer',
+            ...(converter === doclingIdentity.name ? { converter: 'docling' as const } : {}),
           },
           {
             key,
@@ -605,7 +609,7 @@ export const knowledgeWork = (
     const window = deps.heavy.window();
     if (inNightWindow(window, now)) return false;
     await deps.knowledge.sendAgain(convertQueue, job, {
-      key: conversionKey(conversionTarget(job.data.file, job.data.converter)),
+      key: conversionKey(conversionTarget(job.data.file, converterOf(job.data))),
       startAfter: nextNightWindowStart(window, now),
       priority: convertPriority.replacement,
     });
@@ -625,9 +629,9 @@ export const knowledgeWork = (
     {
       ...deps.admission,
       waiting: async (data) =>
-        ((await deps.conversions?.waiting(conversionTarget(data.file, data.converter))) ?? []).map(
-          (w) => w.run,
-        ),
+        (
+          (await deps.conversions?.waiting(conversionTarget(data.file, converterOf(data)))) ?? []
+        ).map((w) => w.run),
     },
   );
 
@@ -645,7 +649,7 @@ export const knowledgeWork = (
       const waiter = sender
         ? { dataset: job.data.dataset, record: job.data.record }
         : (
-            await deps.conversions?.waiting(conversionTarget(job.data.file, job.data.converter))
+            await deps.conversions?.waiting(conversionTarget(job.data.file, converterOf(job.data)))
           )?.find((w) => w.run === run.id);
       if (!waiter) throw new Error(`no waiting record of run ${run.id} names the file`);
       const record = await deps.records.find(waiter.record);
@@ -660,7 +664,7 @@ export const knowledgeWork = (
   }
 
   /** The index job of a record whose wait a stored conversion ended. */
-  const sendIndex = (waiter: ConversionWaiter, transaction: RecordTransaction) =>
+  const sendIndex = (waiter: ConversionWaiter, transaction?: RecordTransaction) =>
     deps.knowledge.send(
       knowledgeIndexQueue,
       {
@@ -669,7 +673,10 @@ export const knowledgeWork = (
         generation: waiter.generation,
         record: waiter.record,
       },
-      { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
+      {
+        key: knowledgeKeys.index(waiter.generation, waiter.record),
+        ...(transaction ? { transaction } : {}),
+      },
     );
 
   /**
@@ -703,12 +710,12 @@ export const knowledgeWork = (
     deps.bound?.();
     const conversions = deps.conversions;
     // Stored under the key its job and waits name, so the conversion always ends those waits.
-    const key = conversionTarget(job.data.file, job.data.converter);
+    const key = conversionTarget(job.data.file, converterOf(job.data));
     const converter = key.converter === doclingIdentity.name ? deps.docling : deps.converter;
     if (!conversions || !converter)
       throw new Error(`this worker keeps no stored conversions with ${key.converter}`);
     if (await cancelled()) return;
-    let stored: { pages: string[]; output?: Uint8Array; failure?: string };
+    let stored: { pages: string[]; output?: Uint8Array; outputPath?: string; failure?: string };
     // A conversion stored by an earlier try is not made again: only its waits are ended. A file
     // stored as unreachable is fetched again, by every try. Only this version and settings count:
     // a seeded Docling conversion is another's.
@@ -717,7 +724,12 @@ export const knowledgeWork = (
     ]);
     const kept = found && conversionKey(found) === conversionKey(key) ? found : undefined;
     if (kept && kept.failure !== 'unreachable')
-      stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
+      stored = {
+        pages: kept.pages,
+        // Kept with its Blob path, so a later try never stores the conversion without it.
+        ...(kept.outputPath ? { outputPath: kept.outputPath } : {}),
+        ...(kept.failure ? { failure: kept.failure } : {}),
+      };
     else {
       let file: DocumentFile | undefined;
       try {
@@ -747,16 +759,32 @@ export const knowledgeWork = (
       stored.output && deps.nativeOutputs
         ? await deps.nativeOutputs.put(key, stored.output, stored.pages.length)
         : undefined;
-    const { busy } = await conversions.store(
+    const outputPath = output?.path ?? stored.outputPath;
+    const { sent, busy } = await conversions.store(
       {
         ...key,
         derivation: derivationOf(key.converter),
         pages: stored.pages,
-        ...(output ? { outputPath: output.path } : {}),
+        ...(outputPath ? { outputPath } : {}),
         ...(stored.failure ? { failure: stored.failure } : {}),
       },
       sendIndex,
     );
+    // A replacement's new pages reach every document of its pipeline that holds the file, also
+    // one written again meanwhile, which ended its wait (ADR 0042, "Conversion").
+    if (run.replaces && stored.pages.length > 0) {
+      const { generation } = await datasetOf(deps, run, job.signal);
+      const indexed = new Set([...sent, ...busy].map((w) => w.record));
+      for (const record of await conversions.holding(run.dataset, run.pipeline, job.data.file))
+        if (!indexed.has(record))
+          await sendIndex({
+            dataset: run.dataset,
+            record,
+            generation,
+            run: run.id,
+            tenant: executionScope(run.dataset),
+          });
+    }
     if (busy.length > 0)
       throw new IndexJobBusy(
         `${busy.length} record(s) had an index job still queued or running; tried again`,
@@ -779,7 +807,13 @@ export const knowledgeWork = (
       let after = '0';
       for (;;) {
         if (await cancelled()) return;
-        const page = await conversions.replaceable(run.dataset, acceptedConverters, after, 500);
+        const page = await conversions.replaceable(
+          run.dataset,
+          run.pipeline,
+          acceptedConverters,
+          after,
+          500,
+        );
         const last = page.at(-1);
         if (!last) return;
         for (const { record, files } of page) {
@@ -842,6 +876,8 @@ export interface ReplacementDeps {
   };
   /** The knowledge server's queue, where the replacement run's first job goes. */
   knowledge: Pick<JobQueue, 'send'>;
+  /** In lockdown, only a run whose admission still holds as it ends hands it on (ADR 0033). */
+  lockdown: boolean;
   now?: () => Date;
 }
 
@@ -854,9 +890,17 @@ export const replacementRuns =
   (deps: ReplacementDeps) =>
   async (ended: IngestionExecution): Promise<IngestionExecution | undefined> => {
     if (ended.replaces || ended.status === 'cancelled' || ended.pipeline === copyOwner) return;
-    const left = await deps.conversions.replaceable(ended.dataset, acceptedConverters, '0', 1);
+    const now = deps.now?.() ?? new Date();
+    if (deps.lockdown && admissionRefusal(ended, now, true)) return;
+    const left = await deps.conversions.replaceable(
+      ended.dataset,
+      ended.pipeline,
+      acceptedConverters,
+      '0',
+      1,
+    );
     if (left.length === 0) return;
-    const at = (deps.now?.() ?? new Date()).toISOString();
+    const at = now.toISOString();
     const started = await deps.runs.startReplacement(ended, randomUUID(), at);
     if (!started) return;
     await deps.knowledge.send(

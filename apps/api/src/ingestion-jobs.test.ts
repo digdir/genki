@@ -14,6 +14,7 @@ import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { InMemoryConfigEntryStore } from './config-store.js';
+import { publicDatasetState } from './dataset-status.js';
 import {
   IngestionService,
   type ExecutionStore,
@@ -193,6 +194,49 @@ describe('ingestion runs as jobs', () => {
     expect(await ingestJobs(next.value.id)).toHaveLength(1);
     // One replacement run per pipeline at a time.
     await expect(replacement(crypto.randomUUID())).rejects.toThrow(/duplicate key/);
+  });
+
+  it("a replacement run holds no field refresh or delete, and is not its pipeline's latest run", async () => {
+    const { save, start, service, dataset } = boot({ admits: () => true });
+    const pipeline = await save();
+    const first = await start(pipeline);
+    if (!first.ok) throw new Error(JSON.stringify(first.errors));
+    await db.pool.query(
+      `update ingestion_executions set status = 'succeeded', ended_at = $2 where id = $1`,
+      [first.value.id, new Date().toISOString()],
+    );
+    const id = crypto.randomUUID();
+    await db.pool.query(
+      `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
+         status, started_by, started_at, runs_as_jobs, admitted_at, replaces)
+       values ($1, $2, $3, 'kudos', 1, 'index-writer', 'running', 'replacement', $4, true, $4, $5)`,
+      [id, tenant, dataset, new Date(Date.now() + 1000).toISOString(), first.value.id],
+    );
+
+    expect(await service.openRuns(tenant, dataset)).toEqual([]);
+    expect(await publicDatasetState(service, tenant, dataset)).toBe('ready');
+    const replacement = (await service.executions(dataset, 'kudos')).find((r) => r.id === id);
+    expect(replacement && service.admission(replacement).admissionRunsOutAt).toBeUndefined();
+  });
+
+  it('the release before replacement runs still starts beside a running one', async () => {
+    const { save, start } = boot();
+    const pipeline = await save();
+    const first = await start(pipeline);
+    if (!first.ok) throw new Error(JSON.stringify(first.errors));
+    await db.pool.query(
+      `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
+         status, started_by, started_at, runs_as_jobs, replaces)
+       values ($1, $2, $3, 'kudos', 1, 'index-writer', 'running', 'replacement',
+               '2026-11-17T00:00:00Z', true, $4)`,
+      [crypto.randomUUID(), tenant, pipeline.dataset, first.value.id],
+    );
+
+    // What its migration runs at every start: a no-op on the index this release keeps under its name.
+    await expect(
+      db.pool.query(`create unique index if not exists ingestion_executions_one_open
+         on ingestion_executions (dataset, pipeline) where status = 'running' and runs_as_jobs`),
+    ).resolves.toBeDefined();
   });
 
   it('a start or an approval while a run is queued is refused', async () => {

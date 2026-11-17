@@ -34,19 +34,22 @@ const fieldsPayload = z.strictObject({ tenant, dataset: id, fill: z.enum(fieldFi
  * waiting on it, comma-separated and starting with its own, so the job's dead letter is shown to
  * each (ADR 0042, "Jobs"). Job data keeps 128 characters a value, so the list holds 12.
  */
-const convertPayload = z.strictObject({
+const convertFields = {
   run: id,
   tenant,
   file: sha256,
   dataset: id,
   record: id,
   tenants: z.string().regex(/^(\d{9}|platform)(,(\d{9}|platform))*$/, 'organisation numbers'),
-  /**
-   * Docling when the worker has a Docling server, else the text layer (issue 477); a job sent
-   * before it was named converts with the text layer.
-   */
-  converter: z.enum(['docling', 'text-layer']).default('text-layer'),
-});
+};
+/**
+ * A text-layer job names no converter, as before issue 477, so a worker of the release before reads
+ * it; a Docling job names Docling.
+ */
+const convertPayload = z.union([
+  z.strictObject(convertFields),
+  z.strictObject({ ...convertFields, converter: z.literal('docling') }),
+]);
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
 /**
  * A `vacuum` or `index` build that ends an ingestion run names the run, which stays open until the

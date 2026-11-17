@@ -1856,13 +1856,14 @@ const conversionRows = async (sha256: string) =>
   ).rows;
 
 /** The replacement run a run sends as it ends, when its dataset still has text-layer files. */
-const replace = async (s: Scenario, run: string) => {
+const replace = async (s: Scenario, run: string, options: { lockdown?: boolean } = {}) => {
   const ended = await runRecords.find(run);
   if (!ended) throw new Error(`run ${run} is gone`);
   const replacement = await replacementRuns({
     conversions,
     runs: runRecords,
     knowledge: s.knowledge,
+    lockdown: options.lockdown ?? false,
   })(ended);
   if (replacement) runOwners.set(replacement.id, s);
   return replacement;
@@ -2222,17 +2223,22 @@ describe('replacement runs', () => {
     const s = await scenario({ docling, lockdown: true, now: () => night });
     await s.file('rapport.pdf', reportOf('lockdown-replacement'));
     const run = await fill(s);
-    // The fill was admitted 30 hours ago: past 24 hours, which ends a run's admission in lockdown.
+    // The fill was admitted 20 hours ago, so its admission still held when it ended.
     await platform.pool.query(`update ingestion_executions set admitted_at = $2 where id = $1`, [
       run,
-      new Date(Date.now() - 30 * 3_600_000).toISOString(),
+      new Date(Date.now() - 20 * 3_600_000).toISOString(),
     ]);
 
     docling.current = doclingFor(server.url);
-    const replacement = await replace(s, run);
+    const replacement = await replace(s, run, { lockdown: true });
+    expect(replacement?.admittedAt).toBe((await runRecords.find(run))?.admittedAt);
+    // Nights later, past the 24 hours that end any other run's admission in lockdown.
+    await platform.pool.query(`update ingestion_executions set admitted_at = $2 where id = $1`, [
+      replacement?.id,
+      new Date(Date.now() - 30 * 3_600_000).toISOString(),
+    ]);
     await drain(s);
 
-    expect(replacement?.admittedAt).toBe((await runRecords.find(run))?.admittedAt);
     expect(server.requests()).toBe(1);
     expect((await chunks(s.generation)).map((c) => c.text).join(' ')).toContain(
       'Lest etter en dag.',
@@ -2268,5 +2274,225 @@ describe('replacement runs', () => {
       .filter((j) => j.queue === 'knowledge.convert' && j.data.run === replacement?.id)
       .map((j) => j.data.file);
     expect(files).toEqual([await sha(kept)]);
+  }, 60_000);
+  it('in lockdown, a run whose admission ran out sends no replacement run', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Ikke sendt.']));
+    const s = await scenario({ docling, lockdown: true, now: () => night });
+    await s.file('rapport.pdf', reportOf('lockdown-ran-out'));
+    const run = await fill(s);
+    await platform.pool.query(`update ingestion_executions set admitted_at = $2 where id = $1`, [
+      run,
+      new Date(Date.now() - 30 * 3_600_000).toISOString(),
+    ]);
+
+    docling.current = doclingFor(server.url);
+
+    expect(await replace(s, run, { lockdown: true })).toBeUndefined();
+  }, 60_000);
+
+  it('only an ended, admitted run that is not a replacement run starts one', async () => {
+    await clearConvertJobs();
+    const s = await scenario({ now: () => noon });
+    await s.file('rapport.pdf', reportOf('guards'));
+    const running = await startRun(s);
+    const sender = await runRecords.find(running);
+    if (!sender) throw new Error('no run');
+    const at = new Date().toISOString();
+    expect(await runRecords.startReplacement(sender, crypto.randomUUID(), at)).toBeUndefined();
+
+    await endRun(running);
+    await platform.pool.query(`update ingestion_executions set admitted_at = null where id = $1`, [
+      running,
+    ]);
+    const unadmitted = await runRecords.find(running);
+    expect(
+      await runRecords.startReplacement(unadmitted ?? sender, crypto.randomUUID(), at),
+    ).toBeUndefined();
+
+    const admitted = await fill(s);
+    const ended = await runRecords.find(admitted);
+    const replacement = await runRecords.startReplacement(ended ?? sender, crypto.randomUUID(), at);
+    expect(replacement?.replaces).toBe(admitted);
+    await platform.pool.query(
+      `update ingestion_executions set status = 'succeeded' where id = $1`,
+      [replacement?.id],
+    );
+    const ofReplacement = await runRecords.find(replacement?.id ?? '');
+    expect(
+      await runRecords.startReplacement(ofReplacement ?? sender, crypto.randomUUID(), at),
+    ).toBeUndefined();
+  }, 60_000);
+
+  it('a queued run starts while a replacement run of its pipeline runs', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Ved siden av.']));
+    const s = await scenario({ docling, now: () => noon });
+    await s.file('rapport.pdf', reportOf('queued-beside'));
+    const run = await fill(s);
+    docling.current = doclingFor(server.url);
+    expect(await replace(s, run)).toBeDefined();
+    const queued = crypto.randomUUID();
+    await platform.pool.query(
+      `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
+         status, started_by, started_at, runs_as_jobs, admitted_at)
+       values ($1, $2, $3, 'docs', 1, 'index-writer', 'queued', 'test', $4, true, $4)`,
+      [queued, s.tenant, s.dataset.id, new Date().toISOString()],
+    );
+
+    // Records whose ingest sender answers, so the started run keeps its job.
+    const sending = new PostgresJobRunRecords(
+      workerStores.runtimePool,
+      ingestSender({ send: async () => 'job' }),
+    );
+    const started = await sending.startQueued(
+      { dataset: s.dataset.id, pipeline: 'docs' },
+      new Date().toISOString(),
+      { expiredError: 'expired' },
+    );
+
+    expect(started?.id).toBe(queued);
+  }, 60_000);
+
+  it('a file Docling refuses keeps its text layer and is not read with it again', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => recordedAnswer('failure-corrupt'));
+    const s = await scenario({ docling, now: () => night });
+    const report = reportOf('refused-after-fill');
+    await s.file('rapport.pdf', report);
+    const run = await fill(s);
+    expect(s.converted).toEqual(['rapport.pdf']);
+
+    docling.current = doclingFor(server.url);
+    await replace(s, run);
+    await drain(s);
+
+    expect(server.requests()).toBe(1);
+    expect(s.converted).toEqual(['rapport.pdf']);
+    expect((await conversionRows(await sha(report))).map((r) => [r.converter, r.failure])).toEqual([
+      ['docling', 'conversion_failed'],
+      ['text-layer', null],
+    ]);
+  }, 60_000);
+
+  it("a convert job tried again keeps the native output's Blob path", async () => {
+    await clearConvertJobs();
+    const container = new InMemoryNativeOutputContainer();
+    const server = await doclingServer(() => doclingRead(['To forsøk.']));
+    const s = await scenario({
+      docling: { current: doclingFor(server.url) },
+      nativeOutputs: nativeOutputStore(container),
+    });
+    const pdf = pdfBytes([['Prøvd to ganger.']]);
+    await s.file('to.pdf', pdf);
+    const { sent } = await ingest(s);
+    const convert = handler(s.work.knowledge, 'knowledge.convert');
+    const data = sent.find((j) => j.queue === 'knowledge.convert')?.data ?? {};
+    await convert(job('knowledge.convert', data));
+    const path = (await stored(await sha(pdf))).find((r) => r.converter === 'docling')?.output_path;
+    expect(path).toMatch(/\/docling\/2\.146\.0\//);
+
+    await convert(job('knowledge.convert', data));
+
+    expect((await stored(await sha(pdf))).find((r) => r.converter === 'docling')?.output_path).toBe(
+      path,
+    );
+    expect(server.requests()).toBe(1);
+  }, 60_000);
+
+  it('a record written again while it waits on a replacement run reads Docling once that converts', async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Docling etter ny skriving.']));
+    const s = await scenario({ docling, now: () => night });
+    await s.file('rapport.pdf', reportOf('rewritten'));
+    const run = await fill(s);
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+    const [convert] = s.sent.filter(
+      (j) => j.queue === 'knowledge.convert' && j.data.run === replacement?.id,
+    );
+
+    // The daily run writes the record again, which ends its waits, and reads the text layer.
+    await s.file('rapport.pdf', reportOf('rewritten'));
+    await admin.query(`update src_documents set metadata_hash = 'changed' where dataset = $1`, [
+      s.dataset.id,
+    ]);
+    const daily = await ingest(s);
+    for (const sent of daily.sent)
+      await handler(s.work.knowledge, sent.queue)(job(sent.queue, sent.data));
+    await admin.query(
+      `delete from pgboss.job where name = 'knowledge.index' and data ->> 'run' = $1`,
+      [daily.run],
+    );
+    expect((await chunks(s.generation)).map((c) => c.text).join(' ')).not.toContain('Docling');
+    const before = s.sent.length;
+    await handler(
+      s.work.knowledge,
+      'knowledge.convert',
+    )(job('knowledge.convert', convert?.data ?? {}));
+    // Only what the conversion sent: `drain` would also replay the replacement's first job.
+    for (const sent of s.sent.slice(before))
+      await handler(s.work.knowledge, sent.queue)(job(sent.queue, sent.data));
+
+    expect((await chunks(s.generation)).map((c) => c.text).join(' ')).toContain(
+      'Docling etter ny skriving.',
+    );
+  }, 60_000);
+
+  it("a replacement run converts only its own pipeline's records", async () => {
+    await clearConvertJobs();
+    const docling: { current?: DocumentConverter } = {};
+    const server = await doclingServer(() => doclingRead(['Egen pipeline.']));
+    const s = await scenario({ docling, now: () => noon });
+    const own = reportOf('own-pipeline');
+    const other = reportOf('other-pipeline');
+    await s.file('egen.pdf', own);
+    await s.file('annen.pdf', other);
+    const run = await fill(s);
+    await admin.query(
+      `update src_documents d set owners = array['annen']
+         from src_files f
+        where f.dataset = d.dataset and f.document = d.id and d.dataset = $1 and f.sha256 = $2`,
+      [s.dataset.id, await sha(other)],
+    );
+
+    docling.current = doclingFor(server.url);
+    const replacement = await replace(s, run);
+    const [replaceJob] = s.sent.filter((j) => j.queue === 'knowledge.replace');
+    await handler(
+      s.work.knowledge,
+      'knowledge.replace',
+    )(job('knowledge.replace', replaceJob?.data ?? {}));
+
+    const files = s.sent
+      .filter((j) => j.queue === 'knowledge.convert' && j.data.run === replacement?.id)
+      .map((j) => j.data.file);
+    expect(files).toEqual([await sha(own)]);
+  }, 60_000);
+
+  it('a text-layer convert job sends the data the release before Docling reads', async () => {
+    await clearConvertJobs();
+    const s = await scenario();
+    await s.file('rapport.pdf', reportOf('old-payload'));
+    const { sent } = await ingest(s);
+
+    const convert = sent.find((j) => j.queue === 'knowledge.convert');
+    expect(Object.keys(convert?.data ?? {}).sort()).toEqual([
+      'dataset',
+      'file',
+      'record',
+      'run',
+      'tenant',
+      'tenants',
+    ]);
   }, 60_000);
 });

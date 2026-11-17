@@ -941,8 +941,15 @@ const migrations: string[] = [
   // A replacement run converts its sender's text-layer files again with Docling (ADR 0042,
   // "Conversion"). It is not its pipeline's open run, and a pipeline has one at a time.
   `alter table ingestion_executions add column if not exists replaces text`,
-  `drop index if exists ingestion_executions_one_open`,
-  `create unique index if not exists ingestion_executions_one_open_run
+  // Under its old name, so a release before this one, whose migration creates the name if it does
+  // not exist, still starts beside a running replacement run.
+  `do $$ begin
+     if exists (select from pg_indexes where indexname = 'ingestion_executions_one_open'
+                  and indexdef not like '%replaces%') then
+       drop index ingestion_executions_one_open;
+     end if;
+   end $$`,
+  `create unique index if not exists ingestion_executions_one_open
      on ingestion_executions (dataset, pipeline)
      where status = 'running' and runs_as_jobs and replaces is null`,
   `create unique index if not exists ingestion_executions_one_replacement

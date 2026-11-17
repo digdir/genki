@@ -171,15 +171,21 @@ export interface StoredConversions {
   /** Every convert key some record waits on. */
   waitedKeys(): Promise<string[]>;
   /**
-   * A dataset's records after record number `after`, at most `limit`, whose files have a
+   * A pipeline's records in a dataset after record number `after`, at most `limit`, whose files have a
    * conversion with pages only from accepted converters that are replaced, and no conversion from
    * a kept one, refusals included: what a replacement run converts again (ADR 0042, "Conversion").
    * Only stored records and those skipped as `no_text`, in record order.
    */
   replaceable(
     dataset: string,
+    pipeline: string,
     accepted: readonly AcceptedConverter[],
     after: string,
     limit: number,
   ): Promise<{ record: string; files: { name: string; sha256: string }[] }[]>;
+  /**
+   * The records of a pipeline in a dataset, stored or skipped as `no_text`, that hold a file: the
+   * documents a replacement's new conversion is indexed for, waiting or not.
+   */
+  holding(dataset: string, pipeline: string, sha256: string): Promise<string[]>;
 }

@@ -100,7 +100,6 @@ describe('the knowledge job queues', () => {
         dataset: 'kudos',
         record: '1',
         tenants: ORG,
-        converter: 'text-layer',
       },
       { key, priority: convertPriority.run },
     );
@@ -113,7 +112,6 @@ describe('the knowledge job queues', () => {
         dataset: 'kudos',
         record: '1',
         tenants: ORG,
-        converter: 'text-layer',
       },
       { key, priority: convertPriority.upload },
     );
@@ -128,7 +126,6 @@ describe('the knowledge job queues', () => {
         dataset: 'kudos',
         record: '2',
         tenants: ORG,
-        converter: 'text-layer',
       },
       { key: knowledgeKeys.convert({ ...file, sha256: 'b'.repeat(64) }) },
     );
