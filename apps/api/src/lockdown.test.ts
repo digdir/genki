@@ -932,6 +932,19 @@ describe('lockdown', () => {
     expect(conversations.status).toBe(200);
   });
 
+  it('lets a service-group member stop a run it started through /v1', async () => {
+    const { chat, send } = await boot(true);
+    await registerServiceClient(send);
+    const ran = await chat('employee');
+
+    const stopped = await send(`/v1/tasks/${ran.headers.get('genai-task')}/cancel`, 'employee', {
+      body: {},
+    });
+
+    expect(stopped.status).toBe(409);
+    expect(await json(stopped)).toMatchObject({ error: { code: 'run_finished' } });
+  });
+
   it('refuses a service-group member every other service, write, build, publish, ingestion, key and operator route', async () => {
     const { chat, dataset, execute, ingestion, model, send } = await boot(true);
     await registerServiceClient(send);
