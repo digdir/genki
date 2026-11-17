@@ -474,6 +474,11 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
       if (!found) return req.notFound();
       const { approve } = req.body<{ approve?: boolean }>();
       found.status = approve ? 'approved' : 'rejected';
+      found.decision = {
+        approved: approve === true,
+        at: new Date().toISOString(),
+        reason: req.reason ?? '',
+      };
       const service = parts[1] ?? '';
       const current = drafts.get(service);
       const base =

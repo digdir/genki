@@ -1,13 +1,18 @@
 import { Heading } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
-import { blockPath, type BlockKind, type BlockUser } from '../api/building-blocks';
+import { blockPath, type BlockKind } from '../api/building-blocks';
 import { Crumbs } from '../components/Crumbs';
 import { publisherOptions } from '../data/building-blocks';
 import { navigate, useAsync, type Route } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
-import { BlockDetail } from './buildingblocks/BlockDetail';
+import {
+  BlockDetail,
+  blockTabs,
+  type BlockTab,
+  type ServiceRuns,
+} from './buildingblocks/BlockDetail';
 import { BlockList, listKinds, type ListFilters, type ListTab } from './buildingblocks/BlockList';
 import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
@@ -101,8 +106,14 @@ const DetailPage = ({
   tenantName,
   kind,
   id,
+  tab,
   onChanged,
-}: ScreenProps & { kind: BlockKind; id: string; onChanged: (flash: Flash) => void }) => {
+}: ScreenProps & {
+  kind: BlockKind;
+  id: string;
+  tab: BlockTab;
+  onChanged: (flash: Flash) => void;
+}) => {
   const t = useT();
   const [version, setVersion] = useState(0);
   const [state, retry] = useAsync(
@@ -113,8 +124,14 @@ const DetailPage = ({
         settled(api.buildingBlocks.versions(tenant, block, signal)),
         api
           .overview(tenant, signal)
-          .then((o): BlockUser[] => o.services.map((s) => ({ id: s.id, name: s.name })))
-          .catch((): BlockUser[] => []),
+          .then((o): ServiceRuns[] =>
+            o.services.map((s) => ({
+              id: s.id,
+              name: s.name,
+              ...(s.runsThisWeek === undefined ? {} : { runsThisWeek: s.runsThisWeek }),
+            })),
+          )
+          .catch((): ServiceRuns[] => []),
       ]);
       return { item, versions, services };
     },
@@ -140,6 +157,7 @@ const DetailPage = ({
       item={state.data.item}
       services={state.data.services}
       versions={state.data.versions}
+      tab={tab}
       onRetry={retry}
       onChanged={(flash) => {
         onChanged(flash);
@@ -151,7 +169,7 @@ const DetailPage = ({
 
 export const BuildingBlocks = (props: ScreenProps) => {
   const { route } = props;
-  const [, kind, id] = route.segments;
+  const [, kind, id, view] = route.segments;
   const fromRoute = filtersOf(route);
   const [typed, setTyped] = useState(fromRoute);
   const filters = { ...typed, tab: fromRoute.tab };
@@ -197,7 +215,13 @@ export const BuildingBlocks = (props: ScreenProps) => {
     page = <ConnectorsPage {...props} version={version} onFlash={(next) => show(next)} />;
   else if (kind && id)
     page = (
-      <DetailPage {...props} kind={kind as BlockKind} id={id} onChanged={(next) => show(next)} />
+      <DetailPage
+        {...props}
+        kind={kind as BlockKind}
+        id={id}
+        tab={blockTabs[view ?? ''] ?? 'about'}
+        onChanged={(next) => show(next)}
+      />
     );
   else
     page = (

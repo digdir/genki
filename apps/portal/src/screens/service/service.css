@@ -215,3 +215,21 @@
 .archived-banner-text strong {
   font-weight: 600;
 }
+
+.service-banner-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.service-attention {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--ds-color-danger-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+}

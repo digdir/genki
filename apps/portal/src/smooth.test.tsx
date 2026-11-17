@@ -193,20 +193,22 @@ describe('a smooth portal', () => {
     await renderAt('#/overview', api.fetch);
     await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
     await settle();
-    expect(api.gets(/\/tasks$/)).toBe(0);
+    expect(api.gets(logRuns)).toBe(0);
 
     const nav = screen.getByRole('navigation', { name: 'Hovedmeny' });
     fireEvent.pointerOver(within(nav).getByRole('link', { name: 'Logg' }));
     await settle();
     await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
 
-    expect(api.gets(/\/tasks$/)).toBe(1);
+    expect(api.gets(logRuns)).toBe(1);
     await go('#/log');
     await screen.findByRole('heading', { level: 1, name: 'Logg' });
     await settle();
-    expect(api.gets(/\/tasks$/)).toBe(1);
+    expect(api.gets(logRuns)).toBe(1);
   });
 
+  const logRuns = /\/tasks\?from=[^&]+&to=[^&]+$/;
+  const logTestRuns = /\/tasks\?from=[^&]+&to=[^&]+&origin=playground$/;
   const prefetched: [string, string, string, RegExp[]][] = [
     [
       'Oversikt',
@@ -216,7 +218,7 @@ describe('a smooth portal', () => {
     ],
     ['Datasett', '#/developer', '#/datasets', [/\/datasets$/, /\/catalog\?kind=dataset$/]],
     ['Innstillinger', '#/developer', '#/settings', [/\/settings$/, /\/settings\/effective$/]],
-    ['Logg', '#/developer', '#/log', [/\/tasks$/, /\/services$/]],
+    ['Logg', '#/developer', '#/log', [logRuns, logTestRuns, /\/services$/]],
   ];
 
   it.each(prefetched)(

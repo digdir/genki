@@ -33,7 +33,7 @@ import { problemTitle, type SetFlash } from './shared';
 
 const pollMs = 2000;
 
-const versionText = (t: T, v: RunVersion) =>
+export const versionText = (t: T, v: RunVersion) =>
   v === 'draft'
     ? t('quality.versionDraft')
     : v === 'published'
@@ -73,7 +73,7 @@ const costText = (t: T, f: Format, r: EvalRun) =>
     ? formatKroner(r.cost, f, t)
     : t(r.status === 'interrupted' ? 'quality.costUnknown' : 'quality.notPricedLower');
 
-const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
+export const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
 
 const leftText = (t: T, endsAt: string) => {
   const minutes = Math.ceil((Date.parse(endsAt) - Date.now()) / 60_000);
@@ -109,7 +109,7 @@ const metricKeys: Record<string, PlainKey> = {
   'answer-pattern': 'quality.metricAnswerPattern',
 };
 
-const metricLabel = (t: T, metric: string) => {
+export const metricLabel = (t: T, metric: string) => {
   const key = metricKeys[metric];
   return key ? t(key) : metric;
 };
@@ -368,7 +368,7 @@ const perCaseFromRuns = (runs: EvalRun[]) => {
   return cases > 0 ? priced.reduce((n, r) => n + (r.cost ?? 0), 0) / cases : undefined;
 };
 
-const RunEstimate = ({
+export const RunEstimate = ({
   api,
   tenant,
   serviceId,
@@ -525,6 +525,7 @@ export const RunHistory = ({
   marked,
   onClearMarks,
   setFlash,
+  openRun,
 }: {
   api: ApiClient;
   tenant: string;
@@ -534,6 +535,7 @@ export const RunHistory = ({
   marked: string[];
   onClearMarks: () => void;
   setFlash: SetFlash;
+  openRun?: string;
 }) => {
   const { t, f, dateTime } = usePortalFormat();
   const canManage = useRights().has('manage-services');
@@ -568,7 +570,7 @@ export const RunHistory = ({
   const judged = (plan?.judges.length ?? 0) > 0;
   const refusedText = trace ? sendingRefusal(t, plan, judgeNames) : undefined;
   const [startedId, setStartedId] = useState<string>();
-  const [open, setOpen] = useState<string>();
+  const [open, setOpen] = useState<string | undefined>(openRun);
   const [state, retry] = useAsync(
     (signal) => api.quality.runs(tenant, serviceId, signal),
     [api, tenant, serviceId, round],

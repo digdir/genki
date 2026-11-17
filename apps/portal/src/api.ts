@@ -728,6 +728,8 @@ export const createApiClient = ({
         service?: string;
         environment?: string;
         from?: string;
+        to?: string;
+        origin?: 'playground';
         limit?: number;
       },
       signal?: AbortSignal,
@@ -737,6 +739,8 @@ export const createApiClient = ({
       if (filter.service) query.set('service', filter.service);
       if (filter.environment) query.set('environment', filter.environment);
       if (filter.from) query.set('from', filter.from);
+      if (filter.to) query.set('to', filter.to);
+      if (filter.origin) query.set('origin', filter.origin);
       if (filter.limit) query.set('limit', String(filter.limit));
       const suffix = query.size > 0 ? `?${query.toString()}` : '';
       return get<{ data: TaskRow[]; total: number }>(

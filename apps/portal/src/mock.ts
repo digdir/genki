@@ -46,7 +46,7 @@ import type {
   TaskRow,
   UsageReport,
 } from './types';
-import { logTasks, logTimelines, playgroundTimeline } from './data/log';
+import { logTasks, logTimelines, playgroundTasks, playgroundTimeline } from './data/log';
 import { exampleQualityFeedback, exampleQualityRuns, exampleQualityTestSets } from './data/quality';
 
 export const exampleOrganisations: Organisation[] = [
@@ -502,6 +502,7 @@ export interface MockExtras {
   chatReply?: string;
   stepFlows?: DefinitionWithHistory[];
   tasks?: TaskRow[];
+  playgroundTasks?: TaskRow[];
   usage?: UsageReport;
   shared?: SharedService[];
   access?: AccessView;
@@ -763,7 +764,11 @@ export const mockFetch = (
   const capabilities = extras.capabilities ?? exampleCapabilities;
   const chatReply = extras.chatReply ?? exampleChatReply;
   const taskRows = extras.tasks ?? exampleTasks;
-  const lifecycles = new Map<string, { state: string; reason: string }>();
+  const trialRows = extras.playgroundTasks ?? playgroundTasks;
+  const lifecycles = new Map<
+    string,
+    { state: string; reason?: string; by?: string; at?: string }
+  >();
   const usageReport = extras.usage ?? exampleUsage;
   const shared = extras.shared ?? exampleShared;
   let access = structuredClone(extras.access ?? exampleAccess);
@@ -1032,7 +1037,17 @@ export const mockFetch = (
       if (init?.method === 'PUT') {
         if (needsReason()) return missingReason();
         const { state } = JSON.parse(String(init.body)) as { state: string };
-        lifecycles.set(id, { state, reason: reasonOf(init) ?? '' });
+        lifecycles.set(
+          id,
+          state === 'active'
+            ? { state }
+            : {
+                state,
+                reason: reasonOf(init) ?? '',
+                by: 'employee:ansattporten:kari',
+                at: new Date().toISOString(),
+              },
+        );
       }
       return json(lifecycles.get(id) ?? { state: 'active' });
     }
@@ -1065,7 +1080,9 @@ export const mockFetch = (
       });
     const taskOne = /^\/tenants\/[^/]+\/tasks\/([^/]+)$/.exec(path);
     if (taskOne) {
-      const found = taskRows.find((t) => t.id === decodeURIComponent(taskOne[1] ?? ''));
+      const found = [...taskRows, ...trialRows].find(
+        (t) => t.id === decodeURIComponent(taskOne[1] ?? ''),
+      );
       return found ? json(found) : notFound();
     }
     const portal = /^\/tenants\/([^/]+)\/(overview|access|usage|tasks|integrations)$/.exec(path);
@@ -1114,13 +1131,19 @@ export const mockFetch = (
       const status = url.searchParams.get('status');
       const wanted = url.searchParams.get('service');
       const environment = url.searchParams.get('environment');
-      const data = taskRows.filter(
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const limit = Number(url.searchParams.get('limit') ?? 100) || 100;
+      const rows = url.searchParams.get('origin') === 'playground' ? trialRows : taskRows;
+      const matching = rows.filter(
         (t) =>
           (!status || t.status === status) &&
           (!wanted || t.service === wanted) &&
-          (!environment || t.environment === environment),
+          (!environment || t.environment === environment) &&
+          (!from || t.createdAt >= from) &&
+          (!to || t.createdAt <= to),
       );
-      return json({ data, total: data.length });
+      return json({ data: matching.slice(0, limit), total: matching.length });
     }
     if (/^\/tenants\/[^/]+\/api-keys$/.test(path) && init?.method === 'POST') {
       if (needsReason()) return missingReason();

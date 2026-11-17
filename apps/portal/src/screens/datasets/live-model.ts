@@ -85,7 +85,20 @@ export const datasetStatus = (
   if (last.status === 'running') return 'Innlesing pågår';
   if (last.status === 'failed') return 'Feilet';
   if (last.status === 'cancelled') return 'Delvis lest inn';
-  return 'Klar';
+  return last.skipped > 0 ? 'Delvis lest inn' : 'Klar';
+};
+
+export const needsSource = (view: Pick<DatasetView, 'source' | 'state'>) =>
+  view.state === 'needs-pipeline' || view.source === 'none';
+
+const noteOf = (t: T, view: DatasetView) => {
+  const last = view.lastExecution;
+  if (view.state !== 'external' && !last && needsSource(view)) return t('datasets.sourceNone');
+  if (last?.status === 'failed') return t('datasets.noteFailed');
+  if (last?.status === 'cancelled') return t('datasets.noteCancelled');
+  if (last?.status === 'succeeded' && last.skipped > 0)
+    return t('datasets.noteSkipped', { count: last.skipped });
+  return undefined;
 };
 
 export const executionStatus = (
@@ -123,21 +136,37 @@ export const sharedSourceText = (
       ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
       : t(sourceText[view.source]);
 
-export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => ({
-  id: view.fullId,
-  name: view.name,
-  description: view.description ?? '',
-  status: datasetStatus(view),
-  shared: view.editable === false,
-  sourceText: sharedSourceText(t, view),
-  docsText: countText(t, f, view.documents),
-  lastText:
-    view.state === 'external'
-      ? t('datasets.lastExternal')
-      : view.lastExecution
-        ? f.dateTime(view.lastExecution.startedAt)
-        : t('datasets.notYet'),
-});
+export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => {
+  const shared = view.editable === false;
+  const source =
+    view.state === 'external' ? externalSourceText(t, view) : t(sourceText[view.source]);
+  const note = noteOf(t, view);
+  const status = datasetStatus(view);
+  return {
+    id: view.fullId,
+    name: view.name,
+    description: view.description ?? '',
+    status,
+    shared,
+    sourceText: source,
+    subText: t('datasets.subLine', {
+      source,
+      owner: t(shared ? 'datasets.filterShared' : 'datasets.filterOwn'),
+    }),
+    docsText: countText(t, f, view.documents),
+    lastText:
+      view.state === 'external'
+        ? t('datasets.lastExternal')
+        : view.lastExecution
+          ? f.dateTime(view.lastExecution.startedAt)
+          : t('datasets.notYet'),
+    ...(note ? { note } : {}),
+    ...(view.state !== 'external' && !view.lastExecution && needsSource(view)
+      ? { needsSource: true }
+      : {}),
+    ...(status === 'Feilet' && !shared ? { canRetry: true } : {}),
+  };
+};
 
 export const slugify = (name: string) =>
   name
