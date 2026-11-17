@@ -1,6 +1,7 @@
 // What changed since the last green smoke run, and which check groups that touches.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { inLanes } from './assess.ts';
 
 export const statusContext = 'smoke/genki-test';
 export const experimentStart = '2026-11-09T00:00:00Z';
@@ -236,28 +237,34 @@ export const changedPrs = async (
   numbers: number[],
   limits: { diffChars: number; prs: number },
 ): Promise<ChangedPr[]> => {
-  const out: ChangedPr[] = [];
-  for (const number of numbers.slice(0, limits.prs)) {
-    const found = await api(`/repos/${repo}/pulls/${number}`, { allow: [404] });
-    if (found.status === 404) continue;
-    const pull = found.body as PullResponse;
-    const files = (await api(`/repos/${repo}/pulls/${number}/files?per_page=100`)).body as {
-      filename: string;
-    }[];
-    const diff = await api(`/repos/${repo}/pulls/${number}`, {
-      accept: 'application/vnd.github.diff',
-      allow: [406],
-    });
-    out.push({
-      number,
-      title: pull.title,
-      body: pull.body ?? '',
-      mergedAt: pull.merged_at ?? '',
-      url: pull.html_url,
-      files: [...files.map((f) => f.filename), ...(files.length >= 100 ? [moreFiles] : [])],
-      diff: clipDiff(diff.status === 200 ? diff.text : '', limits.diffChars),
-      aiReviewed: await reviewedByAi(api, repo, pull.head.ref),
-    });
-  }
-  return out;
+  // Four at a time, each with its calls at once: one after another, 8 pull requests took 25 s of the gate.
+  const read = await inLanes(
+    4,
+    numbers.slice(0, limits.prs).map((number) => async (): Promise<ChangedPr | undefined> => {
+      const found = await api(`/repos/${repo}/pulls/${number}`, { allow: [404] });
+      if (found.status === 404) return undefined;
+      const pull = found.body as PullResponse;
+      const [files, diff, aiReviewed] = await Promise.all([
+        api(`/repos/${repo}/pulls/${number}/files?per_page=100`).then(
+          (r) => r.body as { filename: string }[],
+        ),
+        api(`/repos/${repo}/pulls/${number}`, {
+          accept: 'application/vnd.github.diff',
+          allow: [406],
+        }),
+        reviewedByAi(api, repo, pull.head.ref),
+      ]);
+      return {
+        number,
+        title: pull.title,
+        body: pull.body ?? '',
+        mergedAt: pull.merged_at ?? '',
+        url: pull.html_url,
+        files: [...files.map((f) => f.filename), ...(files.length >= 100 ? [moreFiles] : [])],
+        diff: clipDiff(diff.status === 200 ? diff.text : '', limits.diffChars),
+        aiReviewed,
+      };
+    }),
+  );
+  return read.filter((pr): pr is ChangedPr => pr !== undefined);
 };

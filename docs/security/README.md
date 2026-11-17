@@ -144,11 +144,11 @@ Input from people, systems, tools and documents is checked against what is allow
 
 ## Checking an image against the source
 
-The deploy workflow builds the images reproducibly: with `SOURCE_DATE_EPOCH` set to the commit time, file timestamps rewritten to it, no build cache and a pinned BuildKit. Anyone can rebuild a deployed commit and get the same image digest. The Docling server's image (`docker/docling`) is the exception: only its Python packages are locked. Its Debian packages come from the live mirrors (the build checks Tesseract's version and Norwegian data) and its layout model from the model's latest revision, so a rebuild need not give the same image.
+The images workflow (`images.yml`) builds the images reproducibly when a commit lands on `main`: with `SOURCE_DATE_EPOCH` set to the commit time, file timestamps rewritten to it, no build cache and a pinned BuildKit. It signs a build attestation for each image it builds ([artifact attestations](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)). The deploy workflow reuses `genai-<image>:<commit>` from the test registry only when `gh attestation verify` shows it was built by `images.yml` on `main` from that commit; otherwise it builds the image again. So an image pushed or replaced under that tag by someone else is not deployed. The Docling image's attestation is checked for `images.yml` on `main` but not for a commit, since its tag spans commits: someone who may push to the test registry could put an older Docling image built by that workflow under the current tag. Anyone can rebuild a deployed commit and get the same image digest. The Docling server's image (`docker/docling`) is the exception: only its Python packages are locked. Its Debian packages come from the live mirrors (the build checks Tesseract's version and Norwegian data) and its layout model from the model's latest revision, so a rebuild need not give the same image. It is built when the tree of `docker/docling` changes and at least weekly, and tagged with that tree's hash and the week.
 
 Compare the linux/amd64 image digest, not the digest the container apps run. That one names an index that also holds the provenance and SBOM attestations, which record the workflow run and differ on every build.
 
-**The deployed digest.** The summary of the deploy run lists each image's linux/amd64 digest. With access to Azure, read it from the running app (prod: `rg-genai-prod`, `genai-prod-api`):
+**The deployed digest.** The summary of the deploy run, and of the images run on the commit's push, lists each image's linux/amd64 digest and whether that run built it or reused it. With access to Azure, read it from the running app (prod: `rg-genai-prod`, `genai-prod-api`):
 
 ```sh
 image=$(az containerapp show -g rg-genai-test -n genai-test-api --query 'properties.template.containers[0].image' -o tsv)
@@ -166,7 +166,7 @@ umask 022
 git clone https://github.com/digdir/genki.git genki-check && cd genki-check
 git checkout <commit>
 docker buildx create --name repro --driver docker-container \
-  --driver-opt "image=$(grep -o -m1 'moby/buildkit:[^ ]*' .github/workflows/deploy.yml)"
+  --driver-opt "image=$(grep -h -o -m1 'moby/buildkit:[^ ]*' .github/workflows/images.yml .github/workflows/deploy.yml 2>/dev/null | head -1)"
 for target in api worker apps; do
   docker buildx build --builder repro --no-cache --platform linux/amd64 --target "$target" \
     --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" --provenance=false --sbom=false \

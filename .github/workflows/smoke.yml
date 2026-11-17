@@ -67,6 +67,7 @@ jobs:
           SMOKE_REVIEW: ${{ github.event_name == 'workflow_dispatch' && inputs.review == false && 'false' || 'true' }}
           SMOKE_MAX_RUNS_PER_DAY: ${{ vars.SMOKE_MAX_RUNS_PER_DAY }}
           SMOKE_REVIEW_MAX_PER_DAY: ${{ vars.SMOKE_REVIEW_MAX_PER_DAY }}
+          SMOKE_LANES: ${{ vars.SMOKE_LANES }}
           SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
           SMOKE_PORTAL_URL: ${{ vars.SMOKE_PORTAL_URL }}
           SMOKE_CONSOLE_URL: ${{ vars.SMOKE_CONSOLE_URL }}
