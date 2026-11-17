@@ -2,7 +2,7 @@
 
 Status: proposed, 2026-11-11 (partly built: the layout, its catalogue, rules and templates, and `@genai/ui-assembly`; a block in both its zones, 2026-11-13; the host's headers, 2026-11-13; the look a layout setting, and a template's options, 2026-11-13; the profile as data in the layout, 2026-11-14; the portal's try view draws it, 2026-11-14; a question the host refuses taken back, 2026-11-14; a document's file from the host, in beta, 2026-11-16; the opened excerpt's file asked for and the PDF opened at its page, 2026-11-16)
 
-Left: where a layout is stored, such as a frontend part of the service definition; texts in more than one language; and suggestions from the service's example questions, which `/v1/models` does not carry. Each needs its own change.
+Left: where a layout is stored, which ADR 0056 proposes as `spec.interface` in the service definition; texts in more than one language; and suggestions from the service's example questions, which `/v1/models` does not carry. Each needs its own change.
 
 ## Context
 
