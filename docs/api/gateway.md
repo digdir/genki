@@ -8,15 +8,15 @@ genki is the client here. Nothing on this page is a route genki serves.
 
 All routes are under one base URL that genki configures, such as `https://gateway-api.example.no/v1`. It is not the base URL genki sends model calls to: the gateway's OpenAI-compatible `/v1/models` lists models for callers, and this one lists models with prices for genki. They may share a host only if the paths do not collide.
 
-| Route                                                 | Scope         | What it does                                                          |
-| ----------------------------------------------------- | ------------- | --------------------------------------------------------------------- |
-| `GET /v1/models`                                      | `models:read` | The served models, with prices, residency and capabilities            |
-| `GET /v1/usage?from&to&bucket&groupBy&subject&cursor` | `usage:read`  | Usage per hour or day, at the cost each call had                      |
-| `POST /v1/keys`                                       | `keys:write`  | Makes a key for a subject. The secret is in this answer only          |
-| `GET /v1/keys?subject&cursor`                         | `keys:read`   | The keys within the client's scope, or one subject's, with budget use |
-| `GET /v1/keys/{id}`                                   | `keys:read`   | One key                                                               |
-| `PATCH /v1/keys/{id}`                                 | `keys:write`  | Changes the name, labels, models, limits or subject                   |
-| `DELETE /v1/keys/{id}`                                | `keys:write`  | Revokes the key                                                       |
+| Route                         | Scope         | What it does                                                          |
+| ----------------------------- | ------------- | --------------------------------------------------------------------- |
+| `GET /v1/models`              | `models:read` | The served models, with prices, residency and capabilities            |
+| `POST /usage`                 | Usage role    | Usage per bucket of an hour or more, at the cost each call had        |
+| `POST /v1/keys`               | `keys:write`  | Makes a key for a subject. The secret is in this answer only          |
+| `GET /v1/keys?subject&cursor` | `keys:read`   | The keys within the client's scope, or one subject's, with budget use |
+| `GET /v1/keys/{id}`           | `keys:read`   | One key                                                               |
+| `PATCH /v1/keys/{id}`         | `keys:write`  | Changes the name, labels, models, limits or subject                   |
+| `DELETE /v1/keys/{id}`        | `keys:write`  | Revokes the key                                                       |
 
 Step 1 (usage) needs `models:read` and `usage:read`. Step 3 (keys) adds `keys:read` and `keys:write`. genki asks for no more than the step it runs.
 
@@ -129,47 +129,71 @@ A subject is whom keys and usage belong to, written `<kind>:<id>`. In JSON it is
 
 ## Usage
 
-`GET /v1/usage?from=2026-10-12T00:00:00Z&to=2026-10-13T00:00:00Z&bucket=hour&groupBy=model,subject&subject=org:991825827`
-
-| Parameter | Required                                      | What it takes                                                                               |
-| --------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `from`    | Yes                                           | The start, on a bucket boundary in UTC                                                      |
-| `to`      | Yes                                           | The end, not included, on a bucket boundary. At most 31 days of `hour` or 400 days of `day` |
-| `bucket`  | Yes                                           | `hour` or `day`                                                                             |
-| `groupBy` | No                                            | Any of `model` and `provider`, and either `subject` (the call's owner) or one subject kind  |
-| `subject` | No                                            | `<kind>:<id>`, matched against the chain                                                    |
-| `org`     | With `team`, `service` or `user` in `subject` | The organisation number the subject belongs to, since two organisations may use the same id |
-| `cursor`  | No                                            | `next` from the page before                                                                 |
+The usage route is the gateway's own contract, not the draft above: `POST {base}/usage`, where `{base}` is the gateway's address without `/v1` (model calls go to `{base}/v1`). It takes a bearer token for genki's app (see Authentication) with the gateway's usage role, and a JSON body:
 
 ```json
 {
-  "from": "2026-10-12T00:00:00Z",
-  "to": "2026-10-13T00:00:00Z",
-  "bucket": "hour",
-  "data": [
-    {
-      "start": "2026-10-12T09:00:00Z",
-      "closed": true,
-      "model": "gpt-6.1-sol",
-      "subject": { "kind": "service", "id": "kunnskapsassistenten", "org": "991825827" },
-      "inputTokens": 120000,
-      "outputTokens": 30000,
-      "cachedInputTokens": 40000,
-      "cacheWriteTokens": 0,
-      "requests": 412,
-      "unpricedRequests": 0,
-      "cost": { "currency": "USD", "micros": 857000 }
-    }
+  "timeRange": { "from": "2026-11-01T00:00:00Z", "to": "2026-11-02T00:00:00Z" },
+  "bucketSeconds": 3600,
+  "groupBy": [
+    { "field": "requestModel" },
+    { "field": "attributes", "key": "usage.org" },
+    { "field": "attributes", "key": "usage.client" }
   ],
-  "next": null
+  "filters": { "httpStatus": [200], "attributes": { "usage.org": "991825827" } }
 }
 ```
 
-- **The owner.** With `groupBy=subject`, `subject` is the key's own subject when the call was made, or `genki:<tenant>` for genki's own calls. A key with no subject gives a row without `subject`.
-- **Tokens.** `inputTokens` includes `cachedInputTokens` and `cacheWriteTokens`.
-- **Cost** is what the gateway charged each call, at the rates and tier that applied to that call. Only the gateway knows a call's context size, so its cost is the one genki shows. `unpricedRequests` counts calls it could not price; their cost is not in `cost`. All rows in one answer have the same currency.
-- **Buckets.** A call belongs to the bucket it started in. A bucket is `closed` once its end plus the longest a call may run has passed. A closed bucket never changes: not its rows' figures, and no row is added to it or removed. A group with no calls has no row.
-- **Order.** Rows come by `start`, then by group, in the same order on every request.
+- `bucketSeconds` is at least 3600, and the range is between 1 hour and 31 days.
+- `groupBy` takes `provider`, `requestModel` and `responseModel`, and the attributes `usage.org` and `usage.client`. `filters` takes `httpStatus` and the same attributes.
+- `usage.org` is the organisation a call counts on: for genki's calls the `genki-tenant` header (see Per-call headers). `usage.client` is the app that made the call.
+- `from` and `to` are whole hours: bucket starts count from `from`. genki rounds a window out to whole hours before it asks.
+
+The answer, as the gateway sent it for one call (`packages/providers-ai-gateway/src/fixtures/usage-answer.json`):
+
+```json
+{
+  "timeRange": { "from": "2026-11-17T10:00:00Z", "to": "2026-11-17T12:00:00Z" },
+  "bucketSeconds": 3600,
+  "buckets": [
+    {
+      "start": "2026-11-17T11:00:00Z",
+      "group": {
+        "requestModel": "aivar:borealis",
+        "usage.client": "genki",
+        "usage.org": "991825827"
+      },
+      "requests": 1,
+      "totalTokens": 19,
+      "cost": 0.0000042,
+      "inputTokens": 16,
+      "outputTokens": 3,
+      "errors": 0,
+      "durationMs": 417,
+      "ttftRequests": 0,
+      "ttftMs": 0.0,
+      "maxTtftMs": 0.0,
+      "generationTokens": 0,
+      "generationMs": 0.0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    }
+  ],
+  "groups": [
+    { "group": { "...": "as above" }, "requests": 1, "...": "the same figures for the whole range" }
+  ]
+}
+```
+
+- The top level holds only `timeRange`, `bucketSeconds`, `buckets` and `groups`. The figures are flat on each bucket and group; there is no totals object.
+- `buckets` has one entry per hour and group, only for buckets with calls. `groups` has the sum per group for the whole range.
+- `group` has the fields grouped by: `requestModel`, `responseModel`, `provider`, and the attributes by their key (`usage.org`, `usage.client`). A value is a string, or `null` when the call lacked the attribute. genki reads `null` as absent, so such a row has no organisation.
+- `cost` is in US dollars. It is 0 for aivar and Sigma2 models, and calls to genki's own Foundry are not in it. genki stores it in whole micro-dollars per bucket.
+- `inputTokens` already includes `cacheReadTokens` and `cacheWriteTokens`, and `outputTokens` includes `reasoningTokens`. genki takes `totalTokens` as sent and adds no token fields together. It stores `cacheReadTokens` as `cachedInputTokens` and `cacheWriteTokens` as is, both as part of the input.
+- `ttft*` and `generation*` are 0 for calls that were not streamed. `errors` is always 0, since genki filters on `httpStatus` `[200]`. genki ignores these and any other field it does not read.
+- `401`: the token is not from the gateway's tenant or has the wrong audience. `403`: a role is missing or the request breaks the rules above. genki reports both in its own words, never with the token or the gateway's answer.
+- The token can read every organisation's usage. genki therefore never lets a request choose the organisation: see Subject to organisation below.
 
 ## Keys
 
@@ -245,18 +269,53 @@ Answers `201` with the key and its secret, once:
 
 ## Per-call headers (step 4)
 
-Only when a genki model endpoint points at the gateway, with genki's key, genki sends two headers on every model call. In genki the model gate of ADR 0047 (proposed) adds them from the call's context, so no adapter or strategy can leave them out or set them.
+A model connection is a gateway connection when the operator marks it with `gateway: true` (in the console, "This is the AI gateway"). Only the operator sets the mark, and only on a platform model connection; a tenant connection with it is refused. genki never guesses it from the host.
 
-| Header         | Value                                            |
-| -------------- | ------------------------------------------------ |
-| `genki-tenant` | The tenant's organisation number, 9 digits       |
-| `genki-task`   | The genki task the call belongs to, an opaque id |
+On every chat, streamed chat, embedding and rerank call through a gateway connection, the model gate adds `genki-tenant` from the call's context, so no adapter or strategy can leave it out or set it.
 
-- The gateway records the call under `genki:<tenant>` (see Subjects) and keeps `genki-task` on it.
-- On a key whose consumer is `genki`, a call without `genki-tenant`, with one that is not 9 digits, or with an organisation outside genki's scope, is refused with `400` or `403` before any model is called. genki treats both as a refusal by the gateway.
-- On any other key the gateway ignores both headers.
-- The gateway removes every `genki-*` header before it forwards a call to a model provider.
-- The values are keys, not content: no title, prompt or person is in them.
+| Header         | Value                                                 |
+| -------------- | ----------------------------------------------------- |
+| `genki-tenant` | The organisation number of the tenant the call is for |
+
+- The gateway counts the call on that organisation as `usage.org`, with `usage.client` set to genki's app.
+- genki sends it only when the tenant is an organisation number of 9 digits, and removes any other value. It never sends it to a connection without the mark.
+- `genki-task`, the task a call belongs to, is not sent yet.
+- The value is a key, not content: no title, prompt or person is in it.
+
+## Operator steps for genki-test
+
+Usage, on the API and the worker:
+
+| Variable                      | Value                                                |
+| ----------------------------- | ---------------------------------------------------- |
+| `GATEWAY_USAGE_URL`           | `https://api.aivar.no`, without `/v1`                |
+| `GATEWAY_USAGE_APP_CLIENT_ID` | The client id of genki's multi-tenant app            |
+| `GATEWAY_USAGE_APP_TENANT`    | The id of the gateway's Entra tenant                 |
+| `GATEWAY_USAGE_APP_SCOPE`     | The gateway's scope, `api://<gateway app>/.default`  |
+| `GATEWAY_USAGE_SINCE`         | `2026-11-01T00:00:00Z`, or the day genki-test starts |
+| `GATEWAY_USAGE_GENKI_CLIENT`  | Only if genki's `usage.client` is not `genki`        |
+
+Leave `GATEWAY_USAGE_CREDENTIAL` empty. Both processes refuse to start with it and the app set.
+
+The free models, as a model connection the operator adds in the console (Models, New connection) or with `POST /operator/model-endpoints`:
+
+```yaml
+id: ai-gateway
+baseURL: https://api.aivar.no/v1
+auth:
+  kind: federated-app
+  clientId: <genki's app>
+  tenant: <the gateway's tenant>
+  scope: api://<gateway app>/.default
+families: { openai: '' }
+gateway: true
+discovery:
+  - source: openai-models
+    include: ['sigma2:*', 'aivar:borealis*']
+    apis: { chat: openai/chat-completions@1 }
+```
+
+Then refresh the models, confirm the `sigma2:*` and Borealis candidates with their residency and capabilities, and register the processor record for the connection. A call on one of them sends `genki-tenant`, and the next hourly poll shows it under the tenant's usage.
 
 ## What the aivar lab does not do yet
 
@@ -318,8 +377,8 @@ export interface UsageSource {
 }
 ```
 
-- `packages/providers-ai-gateway` implements `UsageSource` over this contract with `groupBy=model,subject`. It calls through the egress-guarded fetch, resolves its credential from `secret://`, and sets its own header and body timeouts (ADR 0041).
-- `memoryUsageSource` in `port-usage` is a fake that keeps the rules on this page: the chain, genki attribution and closed buckets. The suite `usage@1` runs against the fake, against the provider over HTTP with the fake behind it, and against the aivar API with `GATEWAY=fake`.
+- `packages/providers-ai-gateway` implements `UsageSource` over `POST {base}/usage`, grouped by `requestModel`, `usage.org` and `usage.client` and filtered on `httpStatus` 200. It rounds the window out to whole hours, splits a range longer than 31 days, asks for buckets of an hour or a day, and adds up buckets that land on the same model and organisation. A bucket counts as closed 20 minutes after its end. It calls through the egress-guarded fetch, resolves its credential from `secret://` or signs in as the app, and sets its own header and body timeouts (ADR 0041).
+- `memoryUsageSource` in `port-usage` is a fake that answers `POST /usage` by the gateway's rules and in its shape: flat buckets per hour and group and the sum per group, empty buckets left out, `null` for a grouped attribute the call lacked, the attribute and status filters, and `403` for a bucket under an hour or a range outside 1 hour to 31 days. The suite `usage@2` runs against the fake and against the provider over HTTP with the fake behind it.
 - genki's own source is an adapter in `apps/api` over the `kernel.usage` events, giving rows per day and model with `cost: { currency: "NOK", micros: costMicroNok }`. Both sources therefore meet in one row type, and one function in `port-usage`, `combine`, sums them and applies the counting rule below.
 
 ### The poll job
@@ -339,7 +398,9 @@ export interface UsageSource {
 | `genki:<n>`               | `n`           |
 | `apiKey`, or no subject   | None          |
 
+- From the gateway's usage route, a row with `usage.org` gets `org:<n>`, or `genki:<n>` when `usage.client` is genki's own app (`GATEWAY_USAGE_GENKI_CLIENT`, by default `genki`). A row without a valid `usage.org` has no subject.
 - The organisation must be a tenant in `tenants`. The row then gets that tenant, and row-level security keeps it in that tenant (ADR 0022).
+- **The per-organisation filter.** The poll reads every organisation's usage in one request, since the token can. No request reads the gateway. `GET /tenants/{tenant}/usage` reads only the rows of the tenant the `view-usage` check passed for, never an organisation from the query or body; `GET /operator/usage` and `GET /operator/usage/unassigned` are for operators only. The test `shows a tenant only its own organisation's gateway usage, whatever tenant or organisation the request names` holds it.
 - A row with no organisation, or one that is not a tenant, goes to `usage_unassigned`, which only operators read. Rows there mean a key without a subject or a scope that does not match genki's tenants.
 - The subject is kept as it came. Tying `service:<id>` to a genki service waits for keys made in genki (step 3).
 
@@ -356,9 +417,9 @@ ADR 0038 leaves open whether `costMicroNok` gets a sibling with currency and rat
 
 ### No double counting
 
-The rule, in `combine`: a gateway row under `genki:<tenant>` counts only for a model whose genki endpoint runs through the gateway, and then genki's own cost for that model in that tenant and hour is left out while its tokens and task link stay. In step 1 no endpoint runs through the gateway, so `genki:*` rows are stored and never counted.
+The rule, in `combine`: a gateway row under `genki:<tenant>` counts only for a model on a connection marked `gateway: true`, and then genki's own cost for that model in that tenant is left out while its tokens and task link stay. A `genki:*` row for any other model is stored and never counted. The gateway names a model by the deployment genki sent, and genki by its own model id, so the rule matches each side by its own name.
 
-The test, `a call is counted once whether genki or the gateway measured it`, puts three calls for one tenant in the fake gateway and genki's events: a call on the tenant's own gateway key, a call genki measured itself, and a call through genki's gateway key with `genki-tenant` set, which genki also measured. It runs the poll, then asserts that the tenant's totals equal the three calls' tokens and cost once each. A second case marks the endpoint as running through the gateway and asserts the same tokens, with the third call's cost from the gateway. `usage@1` adds that a filter on the organisation of genki's key does not hold genki's calls, and a worker test that a second poll, and a poll after an open bucket closes, leaves the stored rows equal to the fake's.
+The test, `a call is counted once whether genki or the gateway measured it`, puts three calls for one tenant in the fake gateway and genki's events: a call from the tenant's own app, a call genki measured itself, and a call from genki's app with `genki-tenant` set, which genki also measured. It runs the poll, then asserts that the tenant's totals equal the three calls' tokens and cost once each. A second case marks the endpoint as running through the gateway and asserts the same tokens, with the third call's cost from the gateway. `usage@2` adds that a genki call counts on the organisation in `genki-tenant`, and a worker test that a second poll, and a poll after an open bucket closes, leaves the stored rows equal to the fake's.
 
 ### Routes and screens
 
@@ -369,12 +430,12 @@ The test, `a call is counted once whether genki or the gateway measured it`, put
 
 ### What step 1 built, and where it differs
 
-- **Packages.** `packages/port-usage` holds the types, `UsageGateway` (the contract's `GET /v1/usage`) next to `UsageSource`, the fake `memoryUsageSource`, `combine`, the poll (`pollUsage`) and the suite `usage@1` (`@genai/port-usage/contract`). `@genai/port-usage/testing` serves any `UsageGateway` over HTTP behind a client key. `packages/providers-ai-gateway` is the HTTP client. The suite runs against the fake and against the provider with the fake behind HTTP; the aivar API with `GATEWAY=fake` (clients `dev-genki` and `dev-portal`) is not wired into it yet.
-- **The suite is written against `UsageGateway`, not `UsageSource`,** since its rules on subject filters, `org` and paging need the full query. `UsageSource` is the gateway with `groupBy=model,subject`.
-- **Settings.** The API and the worker read `GATEWAY_USAGE_URL` (the base URL), `GATEWAY_USAGE_CREDENTIAL` (a `secret://` reference) or, to sign in as the federated app, `GATEWAY_USAGE_APP_CLIENT_ID`, `GATEWAY_USAGE_APP_TENANT` and `GATEWAY_USAGE_APP_SCOPE` instead, `GATEWAY_USAGE_SINCE` (the first run's start, default 2026-11-01) and `GATEWAY_USAGE_TIMEOUT_MS` (default 60 seconds, for the whole answer). With neither of the first two set, nothing is polled and no route reads `usage_buckets`. One set without the other, or a credential that is not a `secret://` reference, stops both from starting.
+- **Packages.** `packages/port-usage` holds the types, `UsageGateway` (the gateway's `POST /usage`) next to `UsageSource`, `gatewayUsageSource` that maps one to the other, the fake `memoryUsageSource`, `combine`, the poll (`pollUsage`) and the suite `usage@2` (`@genai/port-usage/contract`). `@genai/port-usage/testing` serves any `UsageGateway` over HTTP behind a bearer token. `packages/providers-ai-gateway` is the HTTP client. The suite runs against the fake and against the provider with the fake behind HTTP.
+- **The suite is written against `UsageGateway`, not `UsageSource`,** since its rules on filters, grouping and ranges need the full request.
+- **Settings.** The API and the worker read `GATEWAY_USAGE_URL` (the base URL), `GATEWAY_USAGE_CREDENTIAL` (a `secret://` reference) or, to sign in as the federated app, `GATEWAY_USAGE_APP_CLIENT_ID`, `GATEWAY_USAGE_APP_TENANT` and `GATEWAY_USAGE_APP_SCOPE` instead, `GATEWAY_USAGE_GENKI_CLIENT` (the `usage.client` of genki's model calls, by default `genki`), `GATEWAY_USAGE_SINCE` (the first run's start, default 2026-11-01) and `GATEWAY_USAGE_TIMEOUT_MS` (default 60 seconds, for the whole answer). With neither of the first two set, nothing is polled and no route reads `usage_buckets`. One set without the other, or a credential that is not a `secret://` reference, stops both from starting.
 - **The queue.** `usage-gateway-poll` in `packages/jobs/src/usage-queues.ts`: policy `singleton`, scheduled per source with the source id as key, expiry 30 minutes, heartbeat 1 minute, 2 retries from 5 minutes with backoff, and a dead-letter queue. A `429`, `502`, `503` or `504` ends the job without error and the next hourly run fills the gap. Any other failure, `401` and `403` among them, fails the job, so it ends in the dead-letter queue that operators see.
 - **Empty hours.** A group with no calls has no row, so an hour without rows says nothing about whether it is closed. The poll counts such an hour as closed when a later hour in the same answer has closed rows, or 20 minutes after its end, the job's settle time. `closedThrough` then moves past it. The contract should say how long a gateway may take to close a bucket.
 - **Tables.** `usage_buckets` has a tenant column and row-level security per ADR 0022; the API reads its own tenant's rows and, for `GET /operator/usage`, every listed tenant's rows in one call through `platform_usage_buckets`. `usage_unassigned` has no policy for the API's role and no grant, and is read only through `platform_usage_unassigned`, also offered as `GET /operator/usage/unassigned`. The worker writes both through `store_usage_bucket` under platform access. `usage_marks` and `currency_rates` are platform tables without a tenant. A row's tenant is fixed when it is stored; a closed row stored as unassigned stays there if its organisation later becomes a tenant.
 - **Rates.** `currency_rates` is filled through `PostgresUsageBuckets.putRates`; fetching Norges Bank's daily rates is not built. A row with no rate for its day or before counts as unpriced in kroner. `bySubject` gives the latest rate used and its day, since a window over several days uses several rates.
-- **Counting.** `combine` applies the rule to gateway rows. genki's own usage stays the per-task tally the routes already make, and `genkiCostCounts` removes genki's measured cost for a model that runs through the gateway; the same rule, one function each side. Which models run through the gateway is `throughGateway` on the portal routes, empty in step 1; it is per model, not per hour.
+- **Counting.** `combine` applies the rule to gateway rows. genki's own usage stays the per-task tally the routes already make, and `genkiCostCounts` removes genki's measured cost for a model that runs through the gateway; the same rule, one function each side. Which models run through the gateway follows from the model connections marked `gateway: true`: `throughGatewayConnections` turns the current models into the rule on each usage request (`countingRule` on the portal routes). It is per model, not per hour, and a view of one project or environment, which reads no gateway rows, keeps genki's own cost. The test `counts the gateway's charge for a call through a marked connection and genki's own measure for an unmarked one, each once` holds it.
 - **Screens.** `daily[].byModel` and `daily[].byService` stay genki's own, so the usage chart is unchanged. The usage screen adds a section, shown only when `bySource` is present, with the share per source and the model rows with their source.

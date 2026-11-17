@@ -148,7 +148,9 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     const routes = new Map<string, Route>();
     for (const model of result.catalog.embedders) {
       const credential = credentials.get(model.endpoint) as Credential;
-      const fetch = this.#gate.egress(model.endpoint);
+      const fetch = this.#gate.egress(model.endpoint, {
+        tenantHeader: result.catalog.connections[model.endpoint]?.gateway === true,
+      });
       const adapter = options.adapters.find((a) => a.api.id === model.api);
       const key = `${model.endpoint}\u0000${model.api}`;
       if (adapter && !connections.has(key))

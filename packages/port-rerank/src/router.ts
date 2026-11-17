@@ -114,7 +114,7 @@ export class RerankRouter implements PortProvider<RerankPort> {
           ),
           options: adapter.endpointOptions.parse({}),
           timeoutMs: options.timeoutMs ?? 10_000,
-          fetch: this.#gate.egress(m.endpoint),
+          fetch: this.#gate.egress(m.endpoint, { tenantHeader: m.gateway }),
         }),
       });
     }

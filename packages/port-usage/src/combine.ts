@@ -4,10 +4,30 @@ export const genkiSource = 'genki';
 
 export interface CountingRule {
   throughGateway(model: string): boolean;
+  gatewayModel?(requestModel: string): boolean;
 }
 
 /** Step 1: no genki endpoint runs through the gateway. */
 export const directOnly: CountingRule = { throughGateway: () => false };
+
+export interface ConnectedModel {
+  id: string;
+  endpoint: string;
+  deployment: string;
+}
+
+export const throughGatewayConnections = (
+  models: readonly ConnectedModel[],
+  isGateway: (endpoint: string) => boolean,
+): CountingRule => {
+  const routedModels = models.filter((m) => isGateway(m.endpoint));
+  const ids = new Set(routedModels.map((m) => m.id));
+  const requested = new Set(routedModels.map((m) => m.deployment));
+  return {
+    throughGateway: (model) => ids.has(model),
+    gatewayModel: (model) => requested.has(model),
+  };
+};
 
 const routed = (model: string | undefined, rule: CountingRule) =>
   model !== undefined && rule.throughGateway(model);
@@ -27,7 +47,7 @@ export const combine = (rows: readonly UsageRow[], rule: CountingRule = directOn
         ? [row]
         : [{ ...row, unpricedRequests: 0, cost: { currency: row.cost.currency, micros: 0 } }];
     if (!isGenkiCallInGateway(row)) return [row];
-    if (!routed(row.model, rule)) return [];
+    if (!routed(row.model, { throughGateway: rule.gatewayModel ?? rule.throughGateway })) return [];
     return [
       {
         ...row,

@@ -102,6 +102,8 @@ export const endpointProblems = (
       if (Object.hasOwn(keys, name))
         errors.push({ path: `keys.${name}`, message: 'a name is a setting or a key, not both' });
   }
+  if (body.gateway !== undefined && typeof body.gateway !== 'boolean')
+    errors.push({ path: 'gateway', message: 'gateway must be true or false' });
   const auth = record(body.auth);
   if (auth.kind === 'federated-app') {
     for (const field of ['clientId', 'tenant'] as const)
@@ -188,6 +190,7 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
         ...(Array.isArray(input.allowedHosts) ? { allowedHosts: input.allowedHosts } : {}),
         ...(input.settings !== undefined ? { settings: input.settings } : {}),
         ...(input.keys !== undefined ? { keys: input.keys } : {}),
+        ...(input.gateway === true ? { gateway: true } : {}),
       };
     };
 
@@ -253,6 +256,9 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
             ? { settings: endpoint.spec.settings }
             : {}),
           ...(input.keys === undefined && endpoint.spec.keys ? { keys: endpoint.spec.keys } : {}),
+          ...(input.gateway === undefined && endpoint.spec.gateway === true
+            ? { gateway: true }
+            : {}),
           ...(endpoint.spec.sharing ? { sharing: endpoint.spec.sharing } : {}),
         },
       });

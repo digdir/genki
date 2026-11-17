@@ -63,6 +63,9 @@ export const endpoints = {
   federatedApp: "genki's own identity (federated app)",
   federatedAppDescription:
     'genki signs in with its managed identity through a multi-tenant app. No secret is stored.',
+  gateway: 'This is the AI gateway',
+  gatewayDescription:
+    'Every model call sends genki-tenant with the organisation number of the tenant the call is for, so the gateway counts the usage on the right organisation.',
   appClientId: 'App client ID',
   appClientIdDescription: 'The client ID of the multi-tenant app.',
   resourceTenant: 'Resource tenant',

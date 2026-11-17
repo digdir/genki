@@ -275,7 +275,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
           credential,
           maxRetries: this.options.maxRetries ?? 3,
           timeoutMs: this.options.timeoutMs ?? 120_000,
-          fetch: this.#gate.egress(name),
+          fetch: this.#gate.egress(name, { tenantHeader: endpoint.gateway === true }),
         });
         for (const api of served) byApi.set(api.id, connection);
       }
@@ -289,7 +289,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
   #described(connection: string, family: string) {
     const endpoint = this.#catalog.endpoints[connection] as CatalogEndpoint;
     const baseURL = familyURL(endpoint, endpoint.families[family] ?? '');
-    const own = this.#gate.egress(connection);
+    const own = this.#gate.egress(connection, { tenantHeader: endpoint.gateway === true });
     const hosts = endpoint.allowedHosts ?? [];
     const foreign = hosts.length > 0 ? this.options.foreignFetch?.(hosts) : undefined;
     const ownHost = new URL(baseURL).host;

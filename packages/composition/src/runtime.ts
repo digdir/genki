@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   unitPricesFor,
   type PriceSpec,
@@ -32,6 +33,7 @@ import {
   CapabilityRegistry,
   checkCapability,
   createGate,
+  type CallScope,
   createKernel,
   InMemoryProviderObjects,
   type Capability as KernelCapability,
@@ -189,6 +191,11 @@ import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js'
 import { answerLanguageFor, houseStyleFor, withSettings } from './settings-runtime.js';
 import type { TenantSecretVault } from './tenant-secrets.js';
 import { userPreferenceReader } from './user-preferences.js';
+
+const tenantCallScope = (): CallScope => {
+  const tenants = new AsyncLocalStorage<string>();
+  return { run: (tenant, send) => tenants.run(tenant, send), tenant: () => tenants.getStore() };
+};
 
 export const defaultServiceLimits = { deadlineMs: 300_000, budget: { inputTokens: 2_000_000 } };
 
@@ -477,6 +484,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const blobStore = input.blobStore ?? new InMemoryBlobStore();
   const gate = createGate({
     tier: environmentTier,
+    callScope: tenantCallScope(),
     media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
     mediaInput: blobMediaInput(blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),

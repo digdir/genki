@@ -687,6 +687,10 @@ const ModelEndpointFields = {
         'Named extra keys, each a platform secret reference; only a descriptor module reaches them, as connection.<name>, and no request carries them; at most 4, only the operator sets them, and a change is audited',
       example: { signing: 'secret://platform/provider-signing-key' },
     }),
+  gateway: z.boolean().optional().openapi({
+    description:
+      'The connection is the AI gateway: every model call sends genki-tenant with the tenant organisation number; only the operator sets it',
+  }),
 };
 const ModelEndpointInput = z
   .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })
