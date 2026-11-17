@@ -60,6 +60,7 @@ export const RunsTab = ({
   onChange,
   initialStatus = '',
   initialService = '',
+  initialDate = '',
 }: {
   api: ApiClient;
   tenant: string;
@@ -70,10 +71,16 @@ export const RunsTab = ({
   onChange: (entry: ChangeEntry) => void;
   initialStatus?: TaskStatus | '';
   initialService?: string;
+  initialDate?: string;
 }) => {
   const t = useT();
   const f = useFormat();
-  const initial: Filters = { ...empty, status: initialStatus, service: initialService };
+  const initial: Filters = {
+    ...empty,
+    status: initialStatus,
+    service: initialService,
+    date: initialDate,
+  };
   const [form, setForm] = useState<Filters>(initial);
   const [applied, setApplied] = useState<Filters & { n: number }>({ ...initial, n: 0 });
   const [overrides, setOverrides] = useState<Record<string, TaskStatus>>({});

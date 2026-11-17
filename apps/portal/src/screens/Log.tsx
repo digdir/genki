@@ -21,13 +21,15 @@ const statuses: readonly TaskStatus[] = [
 
 export const Log = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
-  const [, path, item] = route.segments;
-  const runId = path ?? route.query.get('oppgave') ?? undefined;
-  const tab = route.query.get('tab') === 'changes' ? 'changes' : 'runs';
+  const [, first, second, third] = route.segments;
+  const tab = first === 'changes' || route.query.get('tab') === 'changes' ? 'changes' : 'runs';
+  const [path, item] = first === 'runs' ? [second, third] : [first, second];
+  const runId = tab === 'changes' ? undefined : (path ?? route.query.get('oppgave') ?? undefined);
   const [changes, setChanges] = useState<ChangeEntry[]>(live ? [] : exampleChanges);
   const canReveal = useRights().has('manage-services');
   const status = statuses.find((s) => s === route.query.get('status'));
   const service = route.query.get('service') ?? '';
+  const date = /^\d{4}-\d{2}-\d{2}$/.exec(route.query.get('date') ?? '')?.[0];
   const itemIndex = item && /^\d+$/.test(item) ? Number(item) : undefined;
 
   return (
@@ -41,7 +43,7 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
       <Tabs
         value={tab}
         onChange={(value) =>
-          navigate(value === 'changes' ? '/log?tab=changes' : runId ? `/log/${runId}` : '/log')
+          navigate(value === 'changes' ? '/log/changes' : runId ? `/log/${runId}` : '/log')
         }
       >
         <Tabs.List aria-label={t('log.title')}>
@@ -59,13 +61,12 @@ export const Log = ({ api, tenant, route, live }: ScreenProps) => {
             onChange={(entry) => setChanges((c) => [entry, ...c])}
             {...(status ? { initialStatus: status } : {})}
             {...(service ? { initialService: service } : {})}
+            {...(date ? { initialDate: date } : {})}
           />
         </Tabs.Panel>
         <Tabs.Panel value="changes">
           {tab === 'changes' && live ? (
-            <div className="card">
-              <LiveChanges api={api} tenant={tenant} limit={200} />
-            </div>
+            <LiveChanges api={api} tenant={tenant} limit={200} filters />
           ) : tab === 'changes' ? (
             <ChangesTab changes={changes} />
           ) : null}

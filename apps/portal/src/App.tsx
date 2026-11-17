@@ -4,6 +4,7 @@ import { LocaleProvider, storedPreference, useFormat, useLocale } from '@genai/i
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
 import { appTitle } from './app-title';
+import { organisationName } from './data/organisations';
 import type { AuthClient } from './auth';
 import { navigate, parseRoute, useDelayed, useRoute } from './hooks';
 import { prefetchOnIntent, prefetchPath } from './prefetch';
@@ -335,7 +336,7 @@ const Portal = ({
           <Page
             api={api}
             tenant={organisation.orgNumber}
-            tenantName={organisation.name}
+            tenantName={organisationName(organisation, t)}
             route={effective}
             live={live}
             onFailingIngests={reportFailing}

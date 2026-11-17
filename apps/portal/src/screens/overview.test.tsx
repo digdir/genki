@@ -202,48 +202,159 @@ describe('Oversikt', () => {
     expect(screen.getByRole('heading', { name: 'Mest brukt siste 7 dager' })).toBeTruthy();
   });
 
-  it('names the services whose runs failed in the last day and links each to its failed runs', async () => {
-    const failed = (id: string, service: string, serviceName: string) => ({
-      id,
-      status: 'failed',
-      service,
-      serviceName,
-      capability: service,
-      version: 1,
-      environment: null,
-      createdAt: new Date().toISOString(),
-      endedAt: null,
-    });
+  const failedRun = (id: string, service: string, serviceName: string, createdAt: string) => ({
+    id,
+    status: 'failed',
+    service,
+    serviceName,
+    capability: service,
+    version: 1,
+    environment: null,
+    createdAt,
+    endedAt: null,
+  });
+
+  const withFailedRuns = (rows: ReturnType<typeof failedRun>[], total = rows.length) => {
     const asked: string[] = [];
     const base = replacing(
       /\/overview$/,
-      { ...calm, review: { pendingToolChanges: 0, failedTasksLastDay: 3 } },
+      {
+        ...calm,
+        services: [
+          ...calm.services,
+          { id: 'klarsprak', name: 'Klarspråk', latestVersion: 2, runsThisWeek: 8 },
+        ],
+      },
       withUsage(normalUsage, noFailedDatasets),
     );
-    await renderAt('#/overview', async (input, init) => {
+    const fetch: typeof globalThis.fetch = async (input, init) => {
       const url = String(input);
-      if (/\/tasks\?/.test(url)) {
+      if (/\/tasks\?/.test(url) && url.includes('status=failed')) {
         asked.push(url);
-        if (url.includes('status=failed') && url.includes('from='))
-          return Response.json({
-            data: [
-              failed('r1', 'klarsprak', 'Klarspråk'),
-              failed('r2', 'postsortering', 'Postsortering'),
-              failed('r3', 'klarsprak', 'Klarspråk'),
-            ],
-            total: 3,
-          });
+        return Response.json({ data: rows, total });
       }
       return base(input, init);
-    });
+    };
+    return { fetch, asked };
+  };
 
-    const link = await screen.findByRole('link', { name: '2 feilede kjøringer i Klarspråk' });
-    expect(link.getAttribute('href')).toBe('#/log?status=failed&service=klarsprak');
+  it('lists each service with runs that failed today as its own row, linked to the service and its runs today', async () => {
+    const now = new Date().toISOString();
+    const { fetch, asked } = withFailedRuns([
+      failedRun('r1', 'klarsprak', 'Klarspråk', now),
+      failedRun('r2', 'rapportassistenten', 'Rapportassistenten', now),
+      failedRun('r3', 'klarsprak', 'Klarspråk', now),
+    ]);
+    await renderAt('#/overview', fetch);
+
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    const rows = await within(attention).findAllByText('Feil i dag');
+    expect(rows).toHaveLength(2);
+    expect(within(attention).getByRole('link', { name: 'Klarspråk' }).getAttribute('href')).toBe(
+      '#/services/klarsprak',
+    );
+    expect(within(attention).getByText(/2 kjøringer feilet i dag/)).toBeTruthy();
+    const runs = within(attention).getByRole('link', { name: 'Se kjøringene: Klarspråk' });
+    expect(runs.getAttribute('href')).toMatch(
+      /^#\/log\/runs\?status=failed&service=klarsprak&date=\d{4}-\d{2}-\d{2}$/,
+    );
+    expect(asked.some((u) => /limit=500/.test(u))).toBe(true);
+  });
+
+  it('never lists playground try runs as a service', async () => {
+    const now = new Date().toISOString();
+    const { fetch } = withFailedRuns([
+      failedRun('r1', 'platform/operation-try/1b3570db', 'platform/operation-try/1b3570db', now),
+    ]);
+    await renderAt('#/overview', fetch);
+
+    expect(await screen.findByText(/Ingenting trenger deg nå/)).toBeTruthy();
+    expect(screen.queryByText(/operation-try/)).toBeNull();
+  });
+
+  it('counts the failed runs of the last 7 days per service in Mest brukt', async () => {
+    const weekAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    const { fetch } = withFailedRuns([
+      failedRun('r1', 'klarsprak', 'Klarspråk', weekAgo),
+      failedRun('r2', 'klarsprak', 'Klarspråk', weekAgo),
+    ]);
+    await renderAt('#/overview', fetch);
+
+    const top = await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
+    expect(within(top).getByRole('columnheader', { name: 'Feil' })).toBeTruthy();
+    const row = within(top).getByRole('link', { name: 'Klarspråk' }).closest('tr') as HTMLElement;
+    await waitFor(() => expect(row.lastElementChild?.textContent).toBe('2'));
+    expect(screen.queryByText('Feil i dag')).toBeNull();
+  });
+
+  it('says the failed-run count is a lower bound when more runs failed than one page holds', async () => {
+    const weekAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    const { fetch } = withFailedRuns([failedRun('r1', 'klarsprak', 'Klarspråk', weekAgo)], 900);
+    await renderAt('#/overview', fetch);
+
+    expect(await screen.findByText('minst 1')).toBeTruthy();
+  });
+
+  it('says the runs could not be checked instead of that nothing failed', async () => {
+    await renderAt(
+      '#/overview',
+      failingFetch(/\/tasks\?status=failed/, 503, withUsage(normalUsage, noFailedDatasets)),
+    );
+
+    expect(await screen.findByText(/Vi fikk ikke sjekket kjøringene/)).toBeTruthy();
+    expect(screen.queryByText(/Ingenting trenger deg nå/)).toBeNull();
+  });
+
+  it('shows a partly read ingestion with how many documents failed and a link to the files', async () => {
+    await renderAt('#/overview', withUsage(normalUsage));
+
+    const attention = await screen.findByRole('region', { name: 'Trenger deg nå' });
+    expect(await within(attention).findByText('Delvis')).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: '1 feilet kjøring i Postsortering' }).getAttribute('href'),
-    ).toBe('#/log?status=failed&service=postsortering');
-    expect(screen.getByText(/3 kjøringer feilet det siste døgnet/)).toBeTruthy();
-    expect(asked.some((u) => /status=failed/.test(u) && /limit=500/.test(u))).toBe(true);
+      within(attention).getByText(
+        /2 av 8 dokumenter kunne ikke leses. Tjenestene bruker de 6 andre./,
+      ),
+    ).toBeTruthy();
+    expect(
+      within(attention)
+        .getByRole('link', { name: 'Se filene: Veiledere og rundskriv' })
+        .getAttribute('href'),
+    ).toBe('#/datasets/veiledere/ingestions');
+  });
+
+  it('colours the usage bar amber from 80 percent of the quota', async () => {
+    await renderAt(
+      '#/overview',
+      replacing(
+        /\/settings\/effective$/,
+        quotaSetting(10_000_000),
+        withUsage(report({ rapportassistenten: 8_500_000 })),
+      ),
+    );
+
+    const bar = await screen.findByRole('progressbar', { name: 'Brukt av månedens kvote' });
+    expect(bar.firstElementChild?.className).toBe('quota-fill high');
+  });
+
+  it('shows the Utkast and På pause tags in Mest brukt', async () => {
+    await renderAt(
+      '#/overview',
+      replacing(
+        /\/overview$/,
+        {
+          ...calm,
+          services: [
+            { id: 'a', name: 'Vedtaksutkast', latestVersion: null, runsThisWeek: 3 },
+            { id: 'b', name: 'Nettsider', latestVersion: 2, status: 'paused', runsThisWeek: 0 },
+          ],
+        },
+        withUsage(normalUsage, noFailedDatasets),
+      ),
+    );
+
+    const top = await screen.findByRole('region', { name: 'Mest brukt siste 7 dager' });
+    expect(within(top).getByText('Utkast')).toBeTruthy();
+    expect(within(top).getByText('På pause')).toBeTruthy();
   });
 
   it('opens Logg filtered on the service and status named in the address', async () => {

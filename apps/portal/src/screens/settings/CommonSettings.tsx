@@ -242,7 +242,7 @@ export const CommonSettings = ({
         {savedAt ? (
           <Alert data-color="success" data-size="sm">
             {t('settings.commonSaved', { time: f.time(savedAt) })}{' '}
-            <a href="#/log?tab=changes">{t('settings.commonSeeLog')}</a>
+            <a href="#/log/changes">{t('settings.commonSeeLog')}</a>
           </Alert>
         ) : null}
       </div>

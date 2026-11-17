@@ -11,6 +11,7 @@ import { useRights } from '../../Shell';
 import { problemText } from '../service/ServiceKeys';
 import type { ItemStatus } from '../../data/integrations';
 import { ItemList, type ItemRowData } from './ItemList';
+import { httpStatusOf } from '../../format';
 
 type Flash = (text: string, color?: 'success' | 'info' | 'danger') => void;
 
@@ -106,7 +107,22 @@ export const Triggers = ({
   const [pausing, setPausing] = useState<TriggerView>();
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
-  const runs = useRuns(api, tenant, open);
+  const [runState, retryRuns] = useAsync(
+    async (signal) => {
+      if (!open) return { id: open, runs: [] };
+      try {
+        return { id: open, runs: await api.triggers.runs(tenant, open, signal) };
+      } catch (error) {
+        if (signal.aborted) throw error;
+        return { id: open, error };
+      }
+    },
+    [api, tenant, open],
+  );
+  const current =
+    runState.status === 'ready' && runState.data.id === open ? runState.data : undefined;
+  const runs = current && 'runs' in current ? current.runs : undefined;
+  const runsFailed = current && 'error' in current ? (current.error ?? true) : undefined;
 
   const togglePause = async () => {
     if (!pausing) return;
@@ -162,20 +178,32 @@ export const Triggers = ({
           : undefined;
     const paused = tr.status === 'paused';
     const loaded = open === tr.id ? runs : undefined;
+    const unreadable = open === tr.id ? runsFailed : undefined;
+    const shownError: ItemRowData['error'] = unreadable
+      ? {
+          what: t('integTriggers.runsFailed'),
+          why: t('integTriggers.runsFailedWhy'),
+          code: httpStatusOf(unreadable instanceof Error ? unreadable.message : '').trim(),
+          color: 'danger',
+          actions: [{ label: t('common.tryAgain'), variant: 'secondary', onClick: retryRuns }],
+        }
+      : error;
     return {
       id: tr.id,
       name: triggerName(tr, t, f),
       status: statusIds[tr.status],
       sub: t('integrations.triggerSub', { kind: t(kindKeys[tr.kind]), service: tr.serviceName }),
       metaLabel: t('integrations.lastEvent'),
-      meta: `${
-        last
-          ? t(last.outcome === 'failed' ? 'integTriggers.lastFailed' : 'integTriggers.lastAt', {
-              at: f.dateTime(last.at, 'medium'),
-            })
-          : t('integrations.noneYet')
-      } · ${countText(tr, t, f)}`,
-      ...(error ? { error } : {}),
+      meta: unreadable
+        ? t('integTriggers.runsUnknown')
+        : `${
+            last
+              ? t(last.outcome === 'failed' ? 'integTriggers.lastFailed' : 'integTriggers.lastAt', {
+                  at: f.dateTime(last.at, 'medium'),
+                })
+              : t('integrations.noneYet')
+          } · ${countText(tr, t, f)}`,
+      ...(shownError ? { error: shownError } : {}),
       rows: [
         { k: t('integrations.rowType'), v: t(kindKeys[tr.kind]) },
         { k: t('integrations.rowSource'), v: sourceOf(tr, t) },
@@ -275,12 +303,4 @@ export const Triggers = ({
       ) : null}
     </div>
   );
-};
-
-const useRuns = (api: ApiClient, tenant: string, id: string | undefined) => {
-  const [state] = useAsync(
-    async (signal) => (id ? api.triggers.runs(tenant, id, signal) : []),
-    [api, tenant, id],
-  );
-  return state.status === 'ready' ? state.data : undefined;
 };

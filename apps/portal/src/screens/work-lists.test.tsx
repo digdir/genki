@@ -272,6 +272,30 @@ describe('pausing and archiving from the service page', () => {
   });
 });
 
+describe('an archived service', () => {
+  it('reads as archived only, with a read-only banner, the read-only tabs and no publishing', async () => {
+    await open('#/services/rapportassistenten');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Arkiver' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), {
+      target: { value: 'Erstattet av en ny tjeneste' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Arkiver' }));
+
+    expect(await screen.findByText('Tjenesten er arkivert og kan bare leses.')).toBeTruthy();
+    const header = screen.getByRole('banner');
+    expect(within(header).getByText('Arkivert')).toBeTruthy();
+    expect(within(header).queryByText('I bruk')).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
+    const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
+    expect(within(tabs).queryByRole('link', { name: 'Oppsett' })).toBeNull();
+    expect(within(tabs).getByRole('link', { name: 'Versjoner' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
+  });
+});
+
 describe('Oversikt in live mode', () => {
   it('lists own datasets whose last ingestion failed or was cancelled under what needs you', async () => {
     await open('#/overview');

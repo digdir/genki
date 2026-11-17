@@ -90,7 +90,9 @@ export const serviceUi = {
     resume: 'Resume',
     archive: 'Archive',
     restore: 'Restore',
-    tagPaused: 'Paused',
+    archivedTitle: 'The service is archived and is read-only.',
+    archivedAt: 'Archived {date}.',
+    archivedText: 'It does not answer, and nobody can change it.',
     tagArchived: 'Archived',
     pauseTitle: 'Pause {name}',
     pauseInfo:
