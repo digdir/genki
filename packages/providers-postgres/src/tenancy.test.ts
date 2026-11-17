@@ -136,6 +136,14 @@ describe('postgres conversations', () => {
     expect((await conversations.messages(kari, created.id))?.at(-1)?.task).toBe('task-7');
   });
 
+  it('keeps the run that answers a question with the message', async () => {
+    const conversations = store();
+    const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });
+    await conversations.append(kari, created.id, { role: 'user', text: 'Hva?', task: 'task-8' });
+
+    expect((await conversations.messages(kari, created.id))?.at(-1)?.task).toBe('task-8');
+  });
+
   it('keeps an answer whose run was cancelled marked stopped, and no other answer', async () => {
     const conversations = store();
     const created = await conversations.create(kari, { agentId: AGENT, userId: 'kari' });

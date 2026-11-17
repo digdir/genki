@@ -332,12 +332,23 @@ const StoredMessage = z
       .describe(
         'Assistant messages from a service that cites excerpts: the markers as the answer gave them, so `[N]` resolves to one excerpt (ADR 0052). Messages stored before markers were kept have none.',
       ),
-    task: z.string().optional().describe('Assistant messages: the task id to send as feedback.'),
+    task: z
+      .string()
+      .optional()
+      .describe(
+        'Assistant messages: the task id to send as feedback. User messages: the run that answers it.',
+      ),
     stopped: z
       .literal(true)
       .optional()
       .describe(
         'Assistant messages whose run was cancelled: `text` is what the run had made by then, without sources. A stopped answer is left out of the history later questions get.',
+      ),
+    runState: z
+      .enum(['running', 'failed', 'cancelled'])
+      .optional()
+      .describe(
+        "The last question on the active branch, with no answer stored after it: `running` while its run goes on, or completed with its answer on the way to the store, until the service's deadline; `failed` when no answer will come; `cancelled` when the run was cancelled. Only for the key or signed-in person that asked.",
       ),
     attachments: z.array(z.string()).optional(),
     input: z.record(z.string(), z.unknown()).optional().describe('User messages: the form values.'),

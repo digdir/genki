@@ -557,9 +557,9 @@
                 block's <code>onFetchAgain</code>: it reads the thread again in place and asks
                 nothing. A read that fails leaves the thread as it was, unless the thread is gone.
                 Older, read again after that, or a question whose answer failed on this page, it
-                says the question got no answer, with «Generer på nytt». genki says nothing of
-                whether a run is still going on any route the assembly uses, so the time asked is
-                all it has to go by, and the thread is read again only when the reader asks.
+                says the question got no answer, with «Generer på nytt». The assembly does not read
+                genki's <code>runState</code> on the question yet, so the time asked is all it goes
+                by, and the thread is read again only when the reader asks.
               </li>
               <li>
                 An assistant that goes stops every answer still coming, in the threads left too, and

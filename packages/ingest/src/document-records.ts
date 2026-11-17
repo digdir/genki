@@ -304,8 +304,10 @@ const writeRecord = async (
   }
   const prepared = await prepareDocument(document, options.chunking, 'pipeline');
   // Each chunk names its file and pages, and takes its id from them (ADR 0042, "Identity and chunks").
+  const indexed = toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases);
+  // The listed url stands when the stored fields name none, as Kudos's page does (issue 651).
   const doc = placeChunks(
-    toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases),
+    indexed.url || !document.url ? indexed : { ...indexed, url: document.url },
     listedNames(document, record),
   );
   const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;

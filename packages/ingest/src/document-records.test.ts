@@ -308,3 +308,54 @@ describe('ingestListing', () => {
     expect(plan?.writes).toEqual([{ kind: 'seen', id: 'a' }]);
   });
 });
+
+describe('the index job', () => {
+  it("a document's listed url is written when its stored fields have none", async () => {
+    const written: { url?: string }[] = [];
+    const record = {
+      number: '5',
+      dataset: 'digdir/kudos',
+      id: 'kudos:a',
+      record: { uuid: 'a' },
+      state: null,
+      change: 1,
+      gone: 0,
+    };
+    const records = {
+      find: async () => record,
+      replace: async (_r: unknown, _g: string, result: { document?: { url?: string } }) => {
+        if (result.document) written.push(result.document);
+        return true;
+      },
+      fail: async () => undefined,
+      writable: async () => true,
+    } as unknown as DocumentRecords;
+
+    await indexRecord({
+      records,
+      listing: {
+        deletes: 'listed',
+        load: async () => ({
+          key: 'kudos:a',
+          docNum: 'kudos:a',
+          texts: ['# A\n\nInnhold.'],
+          url: 'https://kudos.dfo.no/dokument/a',
+          stored: () => ({ id: 'kudos:a', title: 'A', orgs_long: ['Etaten'] }),
+          storedChunks: (chunks) => chunks.map((c) => ({ ...c })),
+        }),
+      },
+      dataset: 'digdir/kudos',
+      run: 'run-1',
+      record: '5',
+      generation: 'g-1',
+      chunking: {
+        strategy: { kind: 'header-based' },
+        minimumLength: 1,
+        maximumLength: 4000,
+        metadataStyle: 'pr',
+      },
+    });
+
+    expect(written.map((d) => d.url)).toEqual(['https://kudos.dfo.no/dokument/a']);
+  });
+});

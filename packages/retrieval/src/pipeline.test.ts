@@ -158,6 +158,7 @@ const knowledgeStub = (script: Script, options: StubOptions = {}) => {
             orgs_short: 'multiselect',
             title: 'text',
             type: 'multiselect',
+            owner_orgnr: 'multiselect',
           },
         },
       ],
@@ -290,6 +291,35 @@ describe('retrieval pipeline', () => {
     expect(filtersOf(at(at(k.batches, 1), 0))).toEqual({ orgs_short: ['NAV'] });
     expect(result.trace.expansion.autoFilterFallback).toBe(true);
     expect(result.chunks.map((c) => c.id)).toEqual(['c4']);
+  });
+
+  it("keeps the model's owner_orgnr filter when the auto-filter finds nothing", async () => {
+    const k = knowledgeStub((r) => ('type' in filtersOf(r) ? [] : ['c4']));
+
+    const result = await retrieve({
+      knowledge: k.port,
+      queries: ['tildelingsbrev'],
+      filters: { owner_orgnr: ['991825827'] },
+      facetCache: new FacetCache(),
+      config: {
+        strategies: [{ name: 'content', profiles: ['content'] }],
+        autoFilter: {
+          rules: [
+            {
+              type: 'shape-pattern',
+              field: 'type',
+              patterns: [{ value: 'Tildelingsbrev', regex: '(?i)tildelingsbrev' }],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result.trace.expansion.autoFilterFallback).toBe(true);
+    expect(k.batches.flat().map(filtersOf)).toEqual([
+      { owner_orgnr: ['991825827'], type: ['Tildelingsbrev'] },
+      { owner_orgnr: ['991825827'] },
+    ]);
   });
 
   it('caches facet values per dataset for the configured time', async () => {

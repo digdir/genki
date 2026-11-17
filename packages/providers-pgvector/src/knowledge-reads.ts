@@ -13,6 +13,7 @@ import {
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
 import { filterRows, notReadyCode } from './read-functions.js';
+import { candidatesFor, type SearchOne } from './hybrid.js';
 import type { Profile } from './sql.js';
 
 interface HitRow {
@@ -63,11 +64,7 @@ export interface KnowledgeReadOptions<D> {
     dataset: DatasetConfig<D>,
     requests: SearchRequest[],
     signal: AbortSignal,
-    one: (
-      p: Profile,
-      request: SearchRequest,
-      vector: number[] | undefined,
-    ) => Promise<SearchResult>,
+    one: SearchOne,
   ): Promise<SearchResult[]>;
 }
 
@@ -156,6 +153,7 @@ export const knowledgeReads = <D>(
     allowed: string[],
     vectors: boolean,
     run: (client: PoolClient) => Promise<T>,
+    timeoutMs: number,
   ) => {
     const client = await pool.connect();
     let broken: unknown;
@@ -163,7 +161,7 @@ export const knowledgeReads = <D>(
       await client.query('begin transaction read only');
       await client.query(
         `select set_config('statement_timeout', $1, true), set_config('app.datasets', $2, true)${vectors ? `, set_config('hnsw.iterative_scan', 'relaxed_order', true)` : ''}`,
-        [String(Math.max(1, Math.trunc(options.timeoutMs))), JSON.stringify(allowed)],
+        [String(Math.max(1, Math.trunc(timeoutMs))), JSON.stringify(allowed)],
       );
       const result = await run(client);
       await client.query('commit');
@@ -193,6 +191,7 @@ export const knowledgeReads = <D>(
     empty: T,
     run: (client: PoolClient, generation: string) => Promise<T>,
     vectors = false,
+    timeoutMs = options.timeoutMs,
   ): Promise<T> => {
     failIfAborted(signal);
     const allowed = dataset.allowed;
@@ -206,7 +205,7 @@ export const knowledgeReads = <D>(
     const go = (client: PoolClient) => run(client, generation);
     if (read && Date.now() >= readSkippedUntil) {
       try {
-        return await attempt(read, allowed, vectors, go);
+        return await attempt(read, allowed, vectors, go, timeoutMs);
       } catch (error) {
         failIfAborted(signal);
         if (unreachable(error)) readSkippedUntil = Date.now() + skipReadMs;
@@ -214,7 +213,7 @@ export const knowledgeReads = <D>(
       }
     }
     try {
-      return await attempt(primary, allowed, vectors, go);
+      return await attempt(primary, allowed, vectors, go, timeoutMs);
     } catch (error) {
       failIfAborted(signal);
       if (isNotReady(error)) return empty;
@@ -245,6 +244,7 @@ export const knowledgeReads = <D>(
     sql: string,
     values: (g: string) => unknown[],
     vectors = false,
+    timeoutMs = options.timeoutMs,
   ): Promise<R[]> => {
     const answer = await reading(
       dataset,
@@ -263,6 +263,7 @@ export const knowledgeReads = <D>(
         return { rows, version: version == null ? undefined : Number(version) };
       },
       vectors,
+      timeoutMs,
     );
     if (answer?.version !== undefined) answered.set(dataset, answer.version);
     return answer?.rows ?? [];
@@ -287,8 +288,8 @@ export const knowledgeReads = <D>(
         ...dataset,
         ...(built.embedding ? { embedding: built.embedding } : {}),
       };
-      return options.searchBatch(asBuilt, requests, signal, async (p, request, vector) => {
-        const limit = request.limit ?? 10;
+      return options.searchBatch(asBuilt, requests, signal, async (p, request, vector, half) => {
+        const limit = half?.candidates ?? request.limit ?? 10;
         const rows = await versioned<HitRow>(
           dataset,
           signal,
@@ -303,10 +304,11 @@ export const knowledgeReads = <D>(
             p.fields ?? null,
             JSON.stringify(filterRows(dataset, request.filters)),
             limit,
-            Math.max(limit * 4, 50),
+            half?.candidates ?? candidatesFor(limit),
             options.rrfK(dataset),
           ],
           vector !== undefined,
+          Math.min(options.timeoutMs, half?.timeoutMs ?? options.timeoutMs),
         );
         return { hits: hits(rows), found: rows[0]?.total ?? 0 };
       });
