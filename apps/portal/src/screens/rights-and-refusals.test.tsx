@@ -311,7 +311,7 @@ describe('an organisation Digdir has not registered', () => {
     expect(await screen.findByRole('heading', { name: 'Godkjent: logg inn på nytt' })).toBeTruthy();
     expect(screen.getByText(/Digdir godkjente forespørselen 8\. oktober 2026\./)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Logg inn på nytt' }));
-    expect(await screen.findByRole('button', { name: 'Logg inn' })).toBeTruthy();
+    expect((await screen.findAllByRole('button', { name: 'Logg inn' })).length).toBeGreaterThan(0);
   });
 
   it('shows the reason when Digdir refuses and lets the requester try again', async () => {

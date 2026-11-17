@@ -21,7 +21,7 @@ describe('the organisation in the header', () => {
     });
     render(<App auth={single} fetch={mockFetch()} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     expect(await screen.findByText('Digitaliseringsdirektoratet')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Bytt virksomhet/ })).toBeNull();
@@ -29,7 +29,7 @@ describe('the organisation in the header', () => {
 
   it('opens the switcher when the person can act for several organisations', async () => {
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     fireEvent.click(
       await screen.findByRole('button', {
@@ -53,7 +53,7 @@ describe('the organisation in the header', () => {
       observer.observe(document.body, { childList: true, subtree: true });
     });
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
     await clicked;
 
     expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
@@ -64,7 +64,7 @@ describe('login from the start page', () => {
   it('opens the portal on Oversikt after logging in', async () => {
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
     expect(
@@ -82,7 +82,7 @@ describe('login from the start page', () => {
     };
     render(<App auth={failing} fetch={mockFetch()} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/Innloggingen mislyktes/);
   });
