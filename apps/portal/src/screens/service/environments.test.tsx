@@ -342,8 +342,8 @@ describe('service environments in the portal', () => {
 
   it('filters the run log by environment only once a service is chosen', async () => {
     const { api, calls } = platform({
-      [`GET /tenants/${tenant}/overview`]: () => ({
-        services: [{ id: 'klarsprak', name: 'Klarspråk' }],
+      [`GET /tenants/${tenant}/services`]: () => ({
+        data: [{ id: 'klarsprak', name: 'Klarspråk' }],
       }),
       [`GET /tenants/${tenant}/tasks`]: () => ({ data: [], total: 0 }),
       [`GET ${environmentsPath}`]: staged,
