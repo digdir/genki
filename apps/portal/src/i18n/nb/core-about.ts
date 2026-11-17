@@ -1,7 +1,6 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const about = defineNamespace({
-  previewSwitch: 'Ny startside (forhåndsvisning)',
   navLabel: 'Om Genki',
   navTargetPicture: 'Målbilde',
   navBlocks: 'Byggeklosser',

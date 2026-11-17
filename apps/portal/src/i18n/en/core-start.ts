@@ -44,35 +44,8 @@ export const dataHandling = {
 } satisfies Translation<typeof dataHandlingSource>;
 
 export const start = {
-  navOnPage: 'On this page',
-  navShared: 'Shared services',
-  navExamples: 'Examples',
-  navPrice: 'Price and terms',
-  navData: 'Data',
-  navGetStarted: 'Get started',
-  navDocs: 'Documentation',
   login: 'Sign in',
   loginFailed: 'Sign-in failed. Try again.',
-  heroTitle: 'Generative AI for public organisations, run by Digdir',
-  heroLead:
-    'Build services that answer with sources, extract information from documents, write drafts and summarise. You decide what the services do. Digdir runs the platform, chooses which models are approved and builds in protection for personal data.',
-  readDocs: 'Read the documentation',
-  factWhoTitle: 'Who it is for',
-  factWho: 'State and municipal organisations. You sign in with Ansattporten.',
-  factWhereTitle: 'Where data is processed',
-  factCostTitle: 'What it costs',
-  factCost: 'You pay for what you use, measured in tokens. <link>See prices</link>',
-  whatHeading: 'What the platform does',
-  what1Title: 'You build your own services',
-  what1Body:
-    'Describe the job in your own words, and an assistant helps you set it up. A service can be started from a chat, from a case system, when a document arrives, on a schedule or as a batch job.',
-  what2Title: 'Shared services are ready from day one',
-  what2Body:
-    'Plain language, Nynorsk, summaries, anonymisation, transcription and extraction of information. Use them as they are, or as building blocks in your own services.',
-  what3Title: 'Protection is built in',
-  what3Body:
-    'Each service gets a risk level under the AI Act. Filtering of personal data, requirements for sources and approval by a person follow from the risk level. Every run is logged, so you can see how an answer came about.',
-  sharedHeading: 'Shared services',
   sharedSub: 'Digdir runs and tests these. All agencies can use them as soon as they have access.',
   shared1Title: 'Plain language',
   shared1Body: 'Rewrites text so it is easier to understand, without changing the content.',
@@ -95,7 +68,6 @@ export const start = {
   shared6Body:
     'Reads documents and fills in the fields you define, such as names, amounts and dates.',
   shared6Example: 'Used, for example, on applications and invoices.',
-  examplesHeading: 'Three examples',
   examplesSub: 'Imagined services in an imagined agency, Testetaten, to show what is possible.',
   ex1Job: 'Answers',
   ex1Trigger: 'Chat',
@@ -137,12 +109,6 @@ export const start = {
     'The agency is the controller for the content of its own services. Digdir is the processor.',
   term3: 'The agency assesses the risk level of each service under the AI Act.',
   term4: "Digdir gives at least 60 days' notice before a model is phased out.",
-  howDataLink: 'How data is handled',
-  dataNotAdopted:
-    'The guidelines have not been adopted yet. Text marked "Not decided" is placeholder text.',
-  dataReadMore: 'Read more about how data is handled',
-  getStartedHeading: 'Get started',
-  getStartedLead: 'We have not set how long approval takes.',
   step1Title: 'Request access',
   step1Body:
     'Sign in with Ansattporten, the sign-in for employees in public agencies, and choose your agency. Fill in the request and confirm that you have read the draft terms and data processing agreement.',
@@ -155,16 +121,6 @@ export const start = {
   step4Title: 'Build the first service',
   step4Body:
     'Try a shared service, or describe the job and let the assistant help you. Give colleagues access in Altinn when the service is ready.',
-  sendRequest: 'Send request',
-  docsHeading: 'Documentation',
-  doc1Title: 'Introduction for managers',
-  doc1Body: 'What the platform can be used for, and what the organisation must decide.',
-  doc2Title: 'Guide to risk assessment',
-  doc2Body: 'How to choose a risk level under the AI Act.',
-  doc3Title: 'For developers',
-  doc3Body: 'API, MCP and OpenAI-compatible endpoint, with examples.',
-  doc4Title: 'Service status',
-  doc4Body: 'Planned maintenance and ongoing incidents.',
   operatedBy: 'Operated by the Norwegian Digitalisation Agency',
   footer: 'Footer',
   privacy: 'Privacy statement',
