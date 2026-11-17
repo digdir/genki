@@ -8,7 +8,7 @@ import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
 import { acceptDecodedIds } from './decoded-ids.js';
-import { registerDefinitionRoutes } from './definitions.js';
+import { registerDefinitionRoutes, type DefinitionsApiOptions } from './definitions.js';
 import {
   apiNotFoundBody,
   gzipResponses,
@@ -64,6 +64,7 @@ export type PlatformOptions = Authentication & {
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  unmaskedInput?: DefinitionsApiOptions['unmaskedInput'];
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
@@ -167,6 +168,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       admin,
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
+      ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
     });

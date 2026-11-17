@@ -4,11 +4,12 @@ import { modelFor } from '../../data/services';
 import type { ServiceDefinition } from '../../data/service-definition';
 import { channelOn, datasetsOf, type ChannelKey } from '../../data/service-form';
 import { strategyFor } from '../../data/strategies';
-import { notPriced, statusOf } from '../../format';
+import { actorLabel, formatDateTime, notPriced, statusOf } from '../../format';
+import { mediaKind } from '../../data/unmasked-input';
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
-import type { TaskRow, UsageTotals } from '../../types';
+import type { PublishedDefinition, TaskRow, UsageTotals } from '../../types';
 import type { VersionItem } from '../services/VersionsTab';
 import { servicePath } from './sections';
 
@@ -44,12 +45,14 @@ export const OverviewSection = ({
   id,
   definition: d,
   versions,
+  published,
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   definition: ServiceDefinition;
   versions: VersionItem[];
+  published?: PublishedDefinition;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -83,6 +86,15 @@ export const OverviewSection = ({
   const riskKey = riskKeys[d.spec.riskClass ?? ''];
   const risk = riskKey ? t(riskKey) : t('serviceOverview.riskUnset');
   const channels = channelsOf(t, d);
+  const consent = (published?.definition as ServiceDefinition | undefined)?.spec?.riskConfirmation;
+  const consentBy =
+    consent?.by && published
+      ? actorLabel(
+          consent.by,
+          t,
+          consent.by === published.publishedBy ? published.publishedByName : undefined,
+        )
+      : undefined;
   const current = versions.find((v) => v.state === 'I bruk') ?? versions[0];
   const link = (section: Parameters<typeof servicePath>[1], rest = '') =>
     `#${servicePath(id, section, rest)}`;
@@ -126,6 +138,32 @@ export const OverviewSection = ({
           </dd>
           <dt>{t('serviceOverview.risk')}</dt>
           <dd>{risk}</dd>
+          {consent?.unmaskedInput?.length ? (
+            <>
+              <dt>{t('unmaskedInput.overviewLabel')}</dt>
+              <dd>
+                <ul className="plain-list">
+                  {consent.unmaskedInput.map((u) => (
+                    <li key={u.mediaType}>
+                      {t('unmaskedInput.overviewLine', {
+                        kind: mediaKind(t, u.mediaType),
+                        mediaType: u.mediaType,
+                        reason: u.reason,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+                {consentBy ? (
+                  <span className="meta">
+                    {t('unmaskedInput.overviewBy', {
+                      who: consentBy,
+                      when: consent.at ? formatDateTime(consent.at, f) : '',
+                    })}
+                  </span>
+                ) : null}
+              </dd>
+            </>
+          ) : null}
           <dt>{t('serviceOverview.channels')}</dt>
           <dd>
             <Link href={link('channels')}>

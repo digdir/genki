@@ -259,9 +259,20 @@ export interface CapabilityModel {
   _mode?: string;
 }
 
+export interface UnmaskedInputUse {
+  flow: string;
+  step: string;
+  stepName?: string;
+  descriptor: string;
+  operation: string;
+  mediaType: string;
+  consent?: { mediaType: string; reason: string };
+}
+
 export interface ValidationResult {
   valid: boolean;
   errors: { path: string; message: string }[];
+  unmaskedInput?: UnmaskedInputUse[];
 }
 
 export interface UsageTotals {

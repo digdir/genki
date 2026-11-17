@@ -4,7 +4,7 @@ import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import { descriptorRegistry, loadDescriptors, parseDescriptor } from '@genai/operations';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
-import { bootPlatform, digdir } from './testkit.js';
+import { bootPlatform, digdir, other } from './testkit.js';
 
 const classifyYaml = (status: 'review' | 'described') => `
 id: example/classify@1
@@ -110,6 +110,13 @@ const people: Record<string, Principal> = {
     subject: 'kari',
     tenant: digdir,
     authorizedFor: [{ org: digdir }],
+  },
+  utenfor: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'utenfor',
+    tenant: other,
+    authorizedFor: [{ org: other }],
   },
 };
 
@@ -720,6 +727,62 @@ describe('processor records', () => {
       expect(messages(await publishAudio(booted))).toMatch(
         /takes audio\/\* input, which cannot be masked/,
       );
+    });
+
+    it('the validate route lists exactly the unmasked input that publishing refuses without consent', async () => {
+      const booted = await ready();
+      const refused = messages(await publishAudio(booted));
+      const unconsented = {
+        ...service,
+        spec: { ...service.spec, input: { accepts: ['audio/wav'] } },
+      };
+      const listed = async (definition: unknown) =>
+        (
+          (await (
+            await booted.send('/definitions/validate', 'kari', { body: { definition } })
+          ).json()) as { unmaskedInput?: { mediaType: string; consent?: unknown }[] }
+        ).unmaskedInput ?? [];
+      const before = await listed(unconsented);
+      expect(before).toEqual([
+        {
+          flow: 'sortering@1',
+          step: 'sorter',
+          stepName: 'Sorter henvendelsen',
+          descriptor: 'example/describe-audio@1',
+          operation: 'describe-audio',
+          mediaType: 'audio/*',
+        },
+      ]);
+      expect(refused).toEqual(
+        before
+          .map(
+            (u) =>
+              `step ${u.step} in sortering@1: example/describe-audio@1 takes ${u.mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${u.mediaType} with a reason`,
+          )
+          .join('\n'),
+      );
+      const consented = {
+        ...unconsented,
+        spec: { ...unconsented.spec, riskConfirmation: audioConsent },
+      };
+      expect(await listed(consented)).toEqual([
+        { ...before[0], consent: audioConsent.unmaskedInput[0] },
+      ]);
+      expect(
+        messages(await booted.platform.definitions.publish(consented, 'test', 'test')),
+      ).toEqual([]);
+    });
+
+    it('the validate route does not list unmasked input to someone outside the tenant', async () => {
+      const booted = await ready();
+      await publishAudio(booted);
+      const response = await booted.send('/definitions/validate', 'utenfor', {
+        body: {
+          definition: { ...service, spec: { ...service.spec, input: { accepts: ['audio/wav'] } } },
+        },
+      });
+      expect(response.status).toBe(403);
+      expect(JSON.stringify(await response.json())).not.toContain('audio');
     });
 
     it('is refused when the service does not accept its media type', async () => {
