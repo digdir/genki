@@ -93,7 +93,7 @@ ContainerAppConsoleLogs
 
 ### Prove each alert in test
 
-Do this once after the first deploy with alerts, with `ALERT_EMAILS` set, and note the time each email arrives. The resource group is `rg-genki-test-weu`. An infra or deploy run puts every rule and the availability test back as the template says.
+Do this once after the first deploy with alerts, with `ALERT_EMAILS` set, and note the time each email arrives. The resource group is `rg-genki-test-weu`. An infra run, or a deploy that applies the whole template, puts every rule and the availability test back as the template says; a deploy that skips the infrastructure leaves them as they are.
 
 The log alerts are proved by writing the line they look for to the container's own log, which reaches Log Analytics as any other line does. Open a shell in the API container:
 

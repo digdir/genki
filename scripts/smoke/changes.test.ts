@@ -162,14 +162,13 @@ describe('diffs for the model', () => {
 });
 
 describe('the pull requests since the last green run', () => {
-  it('are read a few at a time, missing ones left out, in the order given', async () => {
-    let running = 0;
-    let most = 0;
+  const fake = () => {
+    const seen = { running: 0, most: 0 };
     const api: Api = async (path, init = {}) => {
-      running++;
-      most = Math.max(most, running);
+      seen.running++;
+      seen.most = Math.max(seen.most, seen.running);
       await new Promise((resolve) => setTimeout(resolve, 5));
-      running--;
+      seen.running--;
       const number = Number(/pulls\/(\d+)/.exec(path)?.[1]);
       if (number === 3) return { status: 404, body: {}, text: '' };
       if (path.includes('/files'))
@@ -185,11 +184,22 @@ describe('the pull requests since the last green run', () => {
       };
       return { status: 200, body: pull, text: '' };
     };
-    const prs = await changedPrs(api, 'o/r', [1, 2, 3, 4, 5, 6, 7], { diffChars: 100, prs: 6 });
+    return { api, seen };
+  };
+  const limits = { diffChars: 100, prs: 6 };
+
+  it('are read a few at a time', async () => {
+    const { api, seen } = fake();
+    await changedPrs(api, 'o/r', [1, 2, 3, 4, 5, 6, 7], limits);
+    expect(seen.most).toBeGreaterThan(1);
+    expect(seen.most).toBeLessThanOrEqual(12);
+  });
+
+  it('are listed in the order given, without the ones that are gone', async () => {
+    const { api } = fake();
+    const prs = await changedPrs(api, 'o/r', [1, 2, 3, 4, 5, 6, 7], limits);
     expect(prs.map((p) => [p.number, p.title, p.files, p.diff])).toEqual(
       [1, 2, 4, 5, 6].map((n) => [n, `PR ${n}`, [`f${n}`], `diff ${n}`]),
     );
-    expect(most).toBeGreaterThan(1);
-    expect(most).toBeLessThanOrEqual(12);
   });
 });

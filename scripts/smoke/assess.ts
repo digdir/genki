@@ -679,10 +679,6 @@ export class Budget {
     return this.spent + estimate <= this.max;
   }
 
-  add(estimate: number, measured?: number) {
-    this.spent += Math.max(estimate, measured ?? 0);
-  }
-
   /** Charges the estimate before a check starts, so checks that run at once see each other's share. */
   reserve(estimate: number) {
     this.spent += estimate;

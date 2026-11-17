@@ -171,10 +171,7 @@ var storageName = take('${namePrefix}${environmentName}data${suffix}', 24)
 var infra = deployInfrastructure
 var platformDatabase = 'genai'
 
-// What the container apps read from the infrastructure when it is not deployed (deployInfrastructure false). Each read
-// of these, and of an infrastructure module's outputs, sits behind `infra ?`: Azure evaluates the references of a
-// module it does not deploy too (see the knowledge server below), and a full deploy must not read a resource it is
-// about to make.
+// Read only behind `infra ?`, as is every infrastructure module's output (infra/README.md, "Deploys that skip the infrastructure").
 resource existingRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: registryName
 }

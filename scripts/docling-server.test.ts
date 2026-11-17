@@ -84,7 +84,7 @@ describe('the Docling server image', () => {
 describe('the deploy and infra workflows', () => {
   const deploy = workflow('deploy.yml');
 
-  it('builds the Docling image only when docker/docling changes, and copies it to prod by digest', () => {
+  it('builds the Docling image when docker/docling changes, and at least weekly', () => {
     const images = workflow('images.yml');
     const steps = images.jobs.build?.steps ?? [];
     const build = steps.find((s) => s.id === 'docling');
@@ -94,9 +94,14 @@ describe('the deploy and infra workflows', () => {
     expect(build?.if).toBe("steps.have.outputs.docling == ''");
     expect(build?.with?.tags).toContain(':${{ steps.have.outputs.docling_tag }}');
     expect(steps.find((s) => s.id === 'have')?.run).toContain(
-      'docling_tag="tree-$(git rev-parse HEAD:docker/docling)"',
+      'docling_tag="tree-$(git rev-parse HEAD:docker/docling)-$(date -u +%G-W%V)"',
     );
-    expect(images.jobs.build?.outputs?.docling).toBe('${{ steps.image.outputs.docling }}');
+  });
+
+  it('deploys the Docling image by digest, and copies the same digest to prod', () => {
+    expect(workflow('images.yml').jobs.build?.outputs?.docling).toBe(
+      '${{ steps.image.outputs.docling }}',
+    );
     expect(deploy.jobs.build?.uses).toBe('./.github/workflows/images.yml');
     const prodImport = deploy.jobs['deploy-prod']?.steps?.find((s) => s.id === 'image');
     expect(prodImport?.run).toContain(

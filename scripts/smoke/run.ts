@@ -67,8 +67,7 @@ import { renderTable } from './report.ts';
 import { toolboxOf } from './review.ts';
 
 const retryDelay = 20_000;
-// Model checks at once: six keep a gate to about two minutes and its gpt-5.4-mini use near 100k tokens a minute,
-// well under the test deployment's 250k a minute that genki-test's users share.
+// Model checks at once (docs/smoke-tests.md); an estimate, not yet measured on a gate.
 const lanes = 6;
 const modelChecksMs = 14 * 60_000;
 const maxDiffChars = 40_000;
@@ -418,8 +417,7 @@ export const main = async () => {
       return result;
     };
 
-    // The model checks are independent runs, so they run a few at a time (SMOKE_LANES), the longest first, and their
-    // rows are added in the plan's order. Each entry gives its rows and the run whose timeline to read.
+    // Model checks run a few at a time, longest first; rows are added in the plan's order.
     interface Ran {
       rows: CheckResult[];
       timeline?: Timeline;
@@ -723,10 +721,10 @@ export const main = async () => {
             assessScreen(await browser.visit('portal', path, { token: 'key', locale: 'en' }), plan),
           );
       const playgroundScreen = 'screen:portal/playground-run';
-      if (!tiers.includes('core')) notRun('playground', 'core', playgroundScreen);
+      if (!tiers.includes('core')) checks.push(notRun('playground', 'core', playgroundScreen));
       else if (needsGrant('playground', 'core', playgroundScreen) && browser) {
         const b = browser;
-        await modelCheck(
+        const screen = await modelCheck(
           'playground',
           'core',
           playgroundScreen,
@@ -741,6 +739,7 @@ export const main = async () => {
               plan,
             ),
         );
+        checks.push(screen);
       }
     } else
       for (const app of ['portal', 'console'] as const)

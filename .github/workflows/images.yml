@@ -1,8 +1,6 @@
 name: images
 
-# Builds the four images once per commit on main, when it lands, so a deploy finds them ready and only reads their
-# digests. deploy.yml calls this too: for a commit whose images exist it builds nothing, and while the push run for the
-# same commit is still building, the concurrency group makes the deploy wait for it instead of building them twice.
+# Builds and attests the images when a commit lands on main; deploy.yml calls it to reuse them (infra/README.md).
 on:
   push:
     branches: [main]
@@ -27,12 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: test
-    concurrency:
-      group: images-${{ github.sha }}
-      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
+      attestations: write
     outputs:
       registry: ${{ steps.registry.outputs.id }}
       api: ${{ steps.image.outputs.api }}
@@ -57,23 +53,40 @@ jobs:
             echo "id=$id"
           } >> "$GITHUB_OUTPUT"
           az acr login --name "${{ vars.ACR_NAME }}"
-      # The images already pushed for this commit. The Docling image is tagged by the tree of docker/docling, its whole
-      # build context, so it is built again only when that changes.
+      # Reuses an image only when its signed build attestation is from this workflow on main; else it is built again.
       - id: have
         env:
           SERVER: ${{ steps.registry.outputs.server }}
           SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           digest() {
             docker buildx imagetools inspect "$SERVER/$1" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty' || true
           }
-          docling_tag="tree-$(git rev-parse HEAD:docker/docling)"
+          attested() {
+            gh attestation verify "oci://$SERVER/$1" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/images.yml" \
+              --source-ref refs/heads/main --deny-self-hosted-runners "${@:2}" > /dev/null 2>&1
+          }
+          reuse() {
+            reused=""
+            found=$(digest "$1")
+            if [ -n "$found" ] && attested "${1%%:*}@$found" "${@:2}"; then reused=$found
+            elif [ -n "$found" ]; then echo "::warning::$1 has no build attestation from images.yml on main, so it is built again."
+            fi
+          }
+          # Docling's Debian packages come from live mirrors: the week in its tag rebuilds it weekly.
+          docling_tag="tree-$(git rev-parse HEAD:docker/docling)-$(date -u +%G-W%V)"
+          reuse "genai-api:$SHA" --source-digest "$SHA" && api=$reused
+          reuse "genai-worker:$SHA" --source-digest "$SHA" && worker=$reused
+          reuse "genai-apps:$SHA" --source-digest "$SHA" && apps=$reused
+          reuse "genai-docling:$docling_tag" && docling=$reused
           {
-            echo "api=$(digest "genai-api:$SHA")"
-            echo "worker=$(digest "genai-worker:$SHA")"
-            echo "apps=$(digest "genai-apps:$SHA")"
+            echo "api=$api"
+            echo "worker=$worker"
+            echo "apps=$apps"
             echo "docling_tag=$docling_tag"
-            echo "docling=$(digest "genai-docling:$docling_tag")"
+            echo "docling=$docling"
           } >> "$GITHUB_OUTPUT"
       - if: steps.have.outputs.api == '' || steps.have.outputs.worker == '' || steps.have.outputs.apps == '' || steps.have.outputs.docling == ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -90,6 +103,11 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-api:${{ github.sha }}
+      - if: steps.api.outputs.digest != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.registry.outputs.server }}/genai-api
+          subject-digest: ${{ steps.api.outputs.digest }}
       - id: worker
         if: steps.have.outputs.worker == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -100,6 +118,11 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-worker:${{ github.sha }}
+      - if: steps.worker.outputs.digest != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.registry.outputs.server }}/genai-worker
+          subject-digest: ${{ steps.worker.outputs.digest }}
       - id: apps
         if: steps.have.outputs.apps == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -110,6 +133,11 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
+      - if: steps.apps.outputs.digest != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.registry.outputs.server }}/genai-apps
+          subject-digest: ${{ steps.apps.outputs.digest }}
       # The Docling server (docker/docling): the parser benchmark winner's Docling and Tesseract on Debian, packages locked.
       - id: docling
         if: steps.have.outputs.docling == ''
@@ -120,6 +148,11 @@ jobs:
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-docling:${{ steps.have.outputs.docling_tag }}
+      - if: steps.docling.outputs.digest != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.registry.outputs.server }}/genai-docling
+          subject-digest: ${{ steps.docling.outputs.digest }}
       - id: image
         env:
           SERVER: ${{ steps.registry.outputs.server }}
@@ -127,6 +160,10 @@ jobs:
           WORKER_DIGEST: ${{ steps.worker.outputs.digest || steps.have.outputs.worker }}
           APPS_DIGEST: ${{ steps.apps.outputs.digest || steps.have.outputs.apps }}
           DOCLING_DIGEST: ${{ steps.docling.outputs.digest || steps.have.outputs.docling }}
+          API_BUILT: ${{ steps.api.outputs.digest != '' }}
+          WORKER_BUILT: ${{ steps.worker.outputs.digest != '' }}
+          APPS_BUILT: ${{ steps.apps.outputs.digest != '' }}
+          DOCLING_BUILT: ${{ steps.docling.outputs.digest != '' }}
           DOCLING_TAG: ${{ steps.have.outputs.docling_tag }}
         run: |
           {
@@ -138,17 +175,18 @@ jobs:
           row() {
             platform=$(docker buildx imagetools inspect --raw "$SERVER/genai-$1@$2" |
               jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')
-            echo "| genai-$1 | \`$2\` | \`$platform\` |"
+            from=$([ "$3" = true ] && echo "built in this run" || echo "reused, attestation verified")
+            echo "| genai-$1 | \`$2\` | \`$platform\` | $from |"
           }
           {
             echo "### Images"
             echo
-            echo "Built from ${{ github.sha }} with \`SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH\`, genai-docling from the docker/docling tree \`${DOCLING_TAG#tree-}\`. To check them against the source, see docs/security/README.md."
+            echo "For ${{ github.sha }}; this run built with \`SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH\`, and genai-docling is tagged \`$DOCLING_TAG\`. To check them against the source, see docs/security/README.md."
             echo
-            echo "| Image | Deployed digest | linux/amd64 image digest |"
-            echo "| --- | --- | --- |"
-            row api "$API_DIGEST"
-            row worker "$WORKER_DIGEST"
-            row apps "$APPS_DIGEST"
-            row docling "$DOCLING_DIGEST"
+            echo "| Image | Deployed digest | linux/amd64 image digest | Source |"
+            echo "| --- | --- | --- | --- |"
+            row api "$API_DIGEST" "$API_BUILT"
+            row worker "$WORKER_DIGEST" "$WORKER_BUILT"
+            row apps "$APPS_DIGEST" "$APPS_BUILT"
+            row docling "$DOCLING_DIGEST" "$DOCLING_BUILT"
           } >> "$GITHUB_STEP_SUMMARY"
