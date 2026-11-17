@@ -20,6 +20,7 @@ import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
 import { SupportAccess } from './screens/SupportAccess';
 import { StateRegister } from './screens/StateRegister';
+import { Demos } from './screens/Demos';
 import { TenantServices } from './screens/TenantServices';
 import { Tenants } from './screens/Tenants';
 import { SearchEngines } from './screens/SearchEngines';
@@ -283,6 +284,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       <BuildingBlocks api={api} initial={params.get('block') ?? undefined} live={live} />
     ),
     '/shared-services': () => <SharedServices api={api} />,
+    '/demos': () => <Demos api={api} demo={params.get('demo') ?? undefined} />,
     '/settings': () => <Settings api={api} />,
     '/quality': () => <Quality api={api} />,
     '/search-engines': () => <SearchEngines api={api} />,

@@ -274,6 +274,7 @@ import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { stateRegisterModule } from './state-register.js';
+import { demosModule } from './demo-routes.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -360,6 +361,7 @@ export const platformModules: PlatformModuleFactory[] = [
   engineSwitchesModule,
   knowledgeEndpointsModule,
   stateRegisterModule,
+  demosModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
@@ -477,6 +479,7 @@ export interface PlatformInput {
   platformTenant?: string;
   /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
   appVersion?: string;
+  demoRecorderKeyDigest?: string;
   /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
   tracing?: TracingOptions;
   /** Every trace sent to a tenant's sink, until its delete is confirmed. */
@@ -2024,6 +2027,7 @@ export const createPlatform = async (input: PlatformInput) => {
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    ...(input.demoRecorderKeyDigest ? { demoRecorderKeyDigest: input.demoRecorderKeyDigest } : {}),
     tenantSecrets,
     traceSinks,
     sinkLabels: sinkLabelService,
