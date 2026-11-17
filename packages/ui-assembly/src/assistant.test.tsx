@@ -1180,6 +1180,14 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(tab.querySelector('svg')?.innerHTML).toBe(drawn?.innerHTML);
   });
 
+  it('draws the reader’s question in neutral grey, not the accent’s tint', async () => {
+    drawNext();
+    await ask();
+    const question = document.querySelector('.uib-conversation-question');
+    expect(question?.getAttribute('data-variant')).toBe('tinted');
+    expect(question?.getAttribute('data-color')).toBe('neutral');
+  });
+
   it('draws the answer with no name over it (dev-kilder-hoyre)', async () => {
     drawNext();
     await ask();
@@ -1661,6 +1669,9 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(false);
     expect(document.querySelector('.uib-conversation-label')).toBeNull();
     expect(document.querySelector('.uia-chat')?.getAttribute('style')).toBeNull();
+    expect(document.querySelector('.uib-conversation-question')?.hasAttribute('data-color')).toBe(
+      false,
+    );
   });
 });
 

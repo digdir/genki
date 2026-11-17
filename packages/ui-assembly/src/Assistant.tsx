@@ -454,8 +454,11 @@ export const AssistantView = ({
           onFetchAgain={a.fetchAgain}
           assistantName={name}
           answerColor="neutral"
-          // The next look's answer has no card and no name over it (dev-kilder-hoyre).
-          {...(next ? { answerVariant: 'plain' as const, answerLabel: false } : {})}
+          // The next look's answer has no card and no name over it (dev-kilder-hoyre), and the
+          // reader's question is a neutral grey, not the accent's tint.
+          {...(next
+            ? { answerVariant: 'plain' as const, answerLabel: false, questionColor: 'neutral' }
+            : {})}
           // The next look names the thread once, in the main card's `h1`.
           {...(a.named && !next ? { title: a.named, titleRepeatsQuestion: a.repeatsQuestion } : {})}
           target={a.answerTarget}
