@@ -3937,7 +3937,7 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Kopier kildeliste' }));
     });
-    expect(clipboard).toEqual(['- [1] *Tildelingsbrev 2022*. (u.å.).']);
+    expect(clipboard).toEqual(['- [1] *Tildelingsbrev 2022*.']);
     expect(screen.getByRole('button', { name: 'Kopiert' })).toBeTruthy();
   });
 

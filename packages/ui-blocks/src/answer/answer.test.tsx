@@ -970,7 +970,8 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
   const dated: SourceDocument[] = [
     {
       ...nkom,
-      version: '2. utgave',
+      documentType: 'Årsrapport',
+      publisher: 'Nasjonal kommunikasjonsmyndighet',
       publishedAt: '2022-03-01',
       excerpts: nkom.excerpts.map((e, i) => ({ ...e, page: [12, 13, 27][i] })),
     },
@@ -997,8 +998,8 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
     drawList();
     // [1] and [4] cite the letter, [2] and [3] the report.
     expect(rows()).toEqual([
-      'Fotnoter 1, 4Tildelingsbrev Nkom 2022. (u.å.).',
-      'Fotnoter 2, 3Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2. utgave). (2022). s. 12–13. https://kudos.dfo.no/dokument/2021',
+      'Fotnoter 1, 4Tildelingsbrev Nkom 2022.',
+      'Fotnoter 2, 3Årsrapport, 2022, Årsrapport Nasjonal kommunikasjonsmyndighet 2021. Nasjonal kommunikasjonsmyndighet. Side 12–13. https://kudos.dfo.no/dokument/2021',
     ]);
   });
 
@@ -1030,8 +1031,8 @@ describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
       });
       expect(onCopyReferences).toHaveBeenCalledWith(
         [
-          '- [1, 4] *Tildelingsbrev Nkom 2022*. (u.å.).',
-          '- [2, 3] *Årsrapport Nasjonal kommunikasjonsmyndighet 2021* (2. utgave). (2022). s. 12–13. <https://kudos.dfo.no/dokument/2021>',
+          '- [1, 4] *Tildelingsbrev Nkom 2022*.',
+          '- [2, 3] Årsrapport, 2022, *Årsrapport Nasjonal kommunikasjonsmyndighet 2021*. Nasjonal kommunikasjonsmyndighet. Side 12–13. <https://kudos.dfo.no/dokument/2021>',
         ].join('\n'),
       );
       expect(button.textContent).toBe('Kopiert');
@@ -1113,8 +1114,8 @@ describe('marks per document until a service cites excerpts, `documentFootnotes`
         .getAllByRole('listitem')
         .map((row) => row.textContent),
     ).toEqual([
-      'Fotnote 1Tildelingsbrev Nkom 2022. (u.å.).',
-      'Fotnote 2Årsrapport Nasjonal kommunikasjonsmyndighet 2021. (u.å.). https://kudos.dfo.no/dokument/2021',
+      'Fotnote 1Tildelingsbrev Nkom 2022.',
+      'Fotnote 2Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021',
     ]);
   });
 

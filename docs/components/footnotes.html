@@ -193,18 +193,21 @@
                 opens it. Each cited document once, with every footnote that leads to it in front,
                 «2, 5, 6», by the numbers the footnotes are drawn with, and sorted by the first. The
                 footnotes are a column as wide as the longest, up to <code>--ds-size-22</code>,
-                where they wrap. Then the reference in APA 7's form for a work without an author,
-                since the contract names no publisher: <em>Tittel</em>
-                (versjon). (År). s. 12–13, 27. The pages are those of the cited excerpts, in runs,
-                and the address is a link only when it is a web address. It leads nowhere in
-                Sources; the footnotes in the text do.
+                where they wrap. Then the reference: document type, year, <em>title</em>. Publisher.
+                Side 12–13, 27. Address. The type and the publisher are a source's
+                <code>documentType</code> and <code>publisher</code>, which a host sets: genki's
+                <code>sources[]</code> sends neither yet, nor an excerpt's page, so against genki a
+                row reads «2022, <em>Tittel</em>. Address». A part the source lacks is left out. The
+                pages are those of the cited excerpts, in runs, and the address is a link only when
+                it is a web address. It leads nowhere in Sources; the footnotes in the text do.
               </li>
               <li>
                 <code>onCopyReferences</code>: shows «Kopier kildeliste» under the Kildeliste. The
                 app gets the list as Markdown, one bullet per document,
-                <code>- [2, 5, 6] *Tittel*. (2022). s. 12–13, 27. &lt;URL&gt;</code>, with no
-                heading, and puts it on the clipboard. When the promise it returns resolves, the
-                button says «Kopiert» for 2.5 seconds.
+                <code
+                  >- [2, 5, 6] Årsrapport, 2022, *Tittel*. Nkom. Side 12–13, 27. &lt;URL&gt;</code
+                >, with no heading, and puts it on the clipboard. When the promise it returns
+                resolves, the button says «Kopiert» for 2.5 seconds.
               </li>
               <li>
                 <code>highlight</code>: search matches to mark in the text, as the conversation's

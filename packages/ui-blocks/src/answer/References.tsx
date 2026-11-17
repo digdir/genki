@@ -9,7 +9,8 @@ export const REFERENCES_COPIED_MS = 2500;
 
 /**
  * The Kildeliste under an answer (dev-kildeliste): closed until the reader opens it, one row per
- * document with the footnotes that cite it in a column in front, and its reference in APA 7.
+ * document with the footnotes that cite it in a column in front, and its reference: the document
+ * type, the year, the title, the publisher, the pages and the address, each where the source has it.
  * Its one job is to be copied: «Kopier kildeliste» hands the app the list as Markdown, and says
  * «Kopiert» once the app has put it on the clipboard. It leads nowhere in Sources; the footnotes
  * in the text do.
@@ -46,8 +47,7 @@ export const References = ({
         <Details.Content>
           <ul className="uib-answer-references-list" aria-label={t('answer.references')}>
             {list.map((reference) => {
-              const { year, pages } = referenceParts(reference, t.locale);
-              const title = reference.title || t('sources.untitled');
+              const { lead, title, publisher, pages } = referenceParts(reference, t.locale);
               return (
                 <li key={reference.key} className="uib-answer-references-row">
                   <span className="uib-answer-references-footnotes">
@@ -59,8 +59,8 @@ export const References = ({
                     {reference.footnotes.join(', ')}
                   </span>
                   <span className="uib-answer-references-reference">
-                    <em>{title}</em>
-                    {reference.version ? ` (${reference.version})` : ''}. ({year}).
+                    {lead.map((part) => `${part}, `).join('')}
+                    <em>{title}</em>.{publisher ? ` ${publisher}.` : ''}
                     {pages ? ` ${pages}.` : ''}
                     {reference.url ? (
                       <>

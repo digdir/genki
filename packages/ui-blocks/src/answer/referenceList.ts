@@ -9,10 +9,13 @@ export interface Reference {
   key: string;
   /** Every footnote in the answer that leads to it, as drawn: «2, 5, 6». */
   footnotes: readonly number[];
+  /** What kind of document it is, «Årsrapport». */
+  documentType?: string | undefined;
   title: string;
   /** The year it was published, from `publishedAt`. */
   year?: number | undefined;
-  version?: string | undefined;
+  /** The organisation that published it. */
+  publisher?: string | undefined;
   /** The pages of its cited excerpts, in order, each once. */
   pages: readonly number[];
   /** Its address, only when it is a web address: a link from untrusted data goes nowhere else. */
@@ -73,9 +76,10 @@ export const references = (
       {
         key,
         footnotes,
+        documentType: source.documentType?.trim() || undefined,
         title: source.title.trim(),
         year: yearOf(source.publishedAt),
-        version: source.version?.trim() || undefined,
+        publisher: source.publisher?.trim() || undefined,
         pages,
         url: url && webAddress.test(url) ? url : undefined,
       },
@@ -96,11 +100,19 @@ export const pageRanges = (pages: readonly number[]) => {
   return runs.map(([from, to]) => (from === to ? `${from}` : `${from}–${to}`)).join(', ');
 };
 
-/** What a reference says after its title, in parts: the year, the pages. */
+/**
+ * A reference in its parts, in the order it is read: «Årsrapport, 2022, *Årsrapport 2021*.
+ * Nasjonal kommunikasjonsmyndighet. Side 12–13, 27. URL». A part the source lacks is left out.
+ */
 export const referenceParts = (reference: Reference, locale: Locale) => {
   const t = translator(locale);
   return {
-    year: reference.year === undefined ? t('answer.referenceNoYear') : String(reference.year),
+    /** Before the title, each followed by a comma: the document type and the year. */
+    lead: [reference.documentType, reference.year?.toString()].filter(
+      (part): part is string => !!part,
+    ),
+    title: reference.title || t('sources.untitled'),
+    publisher: reference.publisher,
     pages: reference.pages.length
       ? t('answer.referencePages', {
           count: reference.pages.length,
@@ -110,24 +122,24 @@ export const referenceParts = (reference: Reference, locale: Locale) => {
   };
 };
 
-// Markdown's own characters in a title, so a title is its words and never a link or emphasis.
+// Markdown's own characters in a text, so it is its words and never a link or emphasis.
 const escaped = (text: string) => text.replace(/[\\`*_[\]<>#|~]/g, (c) => `\\${c}`);
 
 /**
  * What «Kopier kildeliste» puts on the clipboard (rd-kildeliste-md): one bullet per document, in
- * the list's order, its footnotes in brackets, then the reference in APA 7's form for a work
- * without an author, since the contract names none: *Tittel* (versjon). (År). s. 12–13. <URL>
+ * the list's order, its footnotes in brackets, then the reference as the list shows it, the title
+ * in italics and the address in angle brackets so it is a link:
+ * `- [2, 5, 6] Årsrapport, 2022, *Årsrapport 2021*. Nkom. Side 12–13, 27. <URL>`.
  * No heading, so the reader can put the list under their own.
  */
 export const referencesMarkdown = (list: readonly Reference[], locale: Locale) =>
   list
     .map((reference) => {
-      const { year, pages } = referenceParts(reference, locale);
-      const title = reference.title || translator(locale)('sources.untitled');
+      const { lead, title, publisher, pages } = referenceParts(reference, locale);
       return [
         reference.footnotes.length ? `- [${reference.footnotes.join(', ')}]` : '-',
-        `*${escaped(title)}*${reference.version ? ` (${escaped(reference.version)})` : ''}.`,
-        `(${year}).`,
+        `${lead.map((part) => `${escaped(part)}, `).join('')}*${escaped(title)}*.`,
+        publisher ? `${escaped(publisher)}.` : undefined,
         pages ? `${pages}.` : undefined,
         reference.url ? `<${reference.url}>` : undefined,
       ]

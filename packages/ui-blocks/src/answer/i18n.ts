@@ -59,8 +59,7 @@ export const nbAnswer = defineNamespace({
   // The Kildeliste under the answer (dev-kildeliste).
   references: 'Kildeliste',
   referenceFootnotes: { one: 'Fotnote', other: 'Fotnoter' },
-  referencePages: { one: 's. {pages}', other: 's. {pages}' },
-  referenceNoYear: 'u.å.',
+  referencePages: { one: 'Side {pages}', other: 'Side {pages}' },
   copyReferences: 'Kopier kildeliste',
   referencesCopied: 'Kopiert',
 });
@@ -125,8 +124,7 @@ export const enAnswer = {
   copyPart: '{title}, “{part}”',
   references: 'Reference list',
   referenceFootnotes: { one: 'Footnote', other: 'Footnotes' },
-  referencePages: { one: 'p. {pages}', other: 'pp. {pages}' },
-  referenceNoYear: 'n.d.',
+  referencePages: { one: 'Page {pages}', other: 'Pages {pages}' },
   copyReferences: 'Copy reference list',
   referencesCopied: 'Copied',
 } satisfies Translation<typeof nbAnswer>;

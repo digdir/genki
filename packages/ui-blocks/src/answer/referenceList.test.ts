@@ -5,6 +5,8 @@ import { pageRanges, references, referencesMarkdown } from './referenceList.js';
 
 const report = (year: number, pages: number[]): SourceDocument => ({
   title: `Årsrapport ${year - 1}`,
+  documentType: 'Årsrapport',
+  publisher: 'Nasjonal kommunikasjonsmyndighet',
   documentId: `nkom-${year}`,
   url: `https://www.nkom.no/arsrapport-${year - 1}`,
   publishedAt: `${year}-03-01`,
@@ -45,22 +47,39 @@ describe('the Kildeliste', () => {
     ]);
   });
 
-  it('copies as the Markdown in rd-kildeliste-md, with the title first, as APA 7 has it without an author', () => {
+  it('copies each document as type, year, title, publisher, pages and address, with its footnotes in brackets', () => {
     const list = references(sources, pairing, { numberEachFootnote: true });
     expect(referencesMarkdown(list, 'nb')).toBe(
       [
-        '- [1] *Årsrapport 2020*. (2021). s. 9. <https://www.nkom.no/arsrapport-2020>',
-        '- [2, 5, 6] *Årsrapport 2021*. (2022). s. 12–13, 27. <https://www.nkom.no/arsrapport-2021>',
-        '- [3, 7] *Årsrapport 2022*. (2023). s. 11, 13. <https://www.nkom.no/arsrapport-2022>',
-        '- [4] *Årsrapport 2023*. (2024). s. 10. <https://www.nkom.no/arsrapport-2023>',
+        '- [1] Årsrapport, 2021, *Årsrapport 2020*. Nasjonal kommunikasjonsmyndighet. Side 9. <https://www.nkom.no/arsrapport-2020>',
+        '- [2, 5, 6] Årsrapport, 2022, *Årsrapport 2021*. Nasjonal kommunikasjonsmyndighet. Side 12–13, 27. <https://www.nkom.no/arsrapport-2021>',
+        '- [3, 7] Årsrapport, 2023, *Årsrapport 2022*. Nasjonal kommunikasjonsmyndighet. Side 11, 13. <https://www.nkom.no/arsrapport-2022>',
+        '- [4] Årsrapport, 2024, *Årsrapport 2023*. Nasjonal kommunikasjonsmyndighet. Side 10. <https://www.nkom.no/arsrapport-2023>',
       ].join('\n'),
     );
   });
 
-  it('says «u.å.» without a year, «pp.» in English, and gives the version after the title', () => {
-    const one: SourceDocument = {
+  it('leaves out each part the source lacks, as genki’s sources lack type, publisher and pages', () => {
+    const bare: SourceDocument = {
       title: 'Veileder',
-      version: '2.1',
+      publishedAt: '2024-05-01',
+      excerpts: [{ chunkId: 'a', text: 'A' }],
+    };
+    const list = references(
+      [bare],
+      readFootnotes('A [1]', [bare], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    expect(referencesMarkdown(list, 'nb')).toBe('- [1] 2024, *Veileder*.');
+    const undated = references(
+      [{ ...bare, publishedAt: undefined }],
+      readFootnotes('A [1]', [bare], [{ marker: '1', chunkId: 'a' }]).pairing,
+    );
+    expect(referencesMarkdown(undated, 'nb')).toBe('- [1] *Veileder*.');
+  });
+
+  it('says «Pages» in English for more than one page', () => {
+    const one: SourceDocument = {
+      title: 'Guide',
       excerpts: [
         { chunkId: 'a', text: 'A', page: 4 },
         { chunkId: 'b', text: 'B', page: 5 },
@@ -71,13 +90,13 @@ describe('the Kildeliste', () => {
       { marker: '2', chunkId: 'b' },
     ];
     const list = references([one], readFootnotes('A [1] B [2]', [one], marked).pairing);
-    expect(referencesMarkdown(list, 'nb')).toBe('- [1, 2] *Veileder* (2.1). (u.å.). s. 4–5.');
-    expect(referencesMarkdown(list, 'en')).toBe('- [1, 2] *Veileder* (2.1). (n.d.). pp. 4–5.');
+    expect(referencesMarkdown(list, 'en')).toBe('- [1, 2] *Guide*. Pages 4–5.');
   });
 
-  it('keeps a title’s Markdown characters as words, and copies no address that is not a web address', () => {
+  it('keeps Markdown characters as words, and copies no address that is not a web address', () => {
     const odd: SourceDocument = {
       title: 'Rapport *utkast* [1]',
+      publisher: 'A_B',
       url: 'javascript:alert(1)',
       excerpts: [{ chunkId: 'a', text: 'A' }],
     };
@@ -87,7 +106,7 @@ describe('the Kildeliste', () => {
     );
     expect(list[0]?.url).toBeUndefined();
     expect(referencesMarkdown(list, 'nb')).toBe(
-      String.raw`- [1] *Rapport \*utkast\* \[1\]*. (u.å.).`,
+      String.raw`- [1] *Rapport \*utkast\* \[1\]*. A\_B.`,
     );
   });
 
