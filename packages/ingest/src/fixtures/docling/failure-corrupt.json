@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "body": {
+    "document": {
+      "filename": "corrupt.pdf",
+      "md_content": null,
+      "json_content": null,
+      "html_content": null,
+      "text_content": null,
+      "doctags_content": null,
+      "doclang_content": null
+    },
+    "status": "failure",
+    "errors": [
+      {
+        "component_type": "user_input",
+        "module_name": "",
+        "error_message": "docling-parse could not load document ab59aac064fa44b0632c7d9497917cb20e86628b7bd858cfffbbd81c473b8529: Failed to load document with key key=ab59aac064fa44b0632c7d9497917cb20e86628b7bd858cfffbbd81c473b8529: parsing of key=ab59aac064fa44b0632c7d9497917cb20e86628b7bd858cfffbbd81c473b8529 from bytesio: root of pages tree has no /Kids array",
+        "category": "backend_failure",
+        "page_no": null
+      }
+    ],
+    "processing_time": 0.0033647550008026883,
+    "timings": {},
+    "confidence": null
+  }
+}

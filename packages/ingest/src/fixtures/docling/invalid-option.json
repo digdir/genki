@@ -1,0 +1,15 @@
+{
+  "status": 422,
+  "body": {
+    "detail": [
+      {
+        "type": "enum",
+        "loc": [
+          "body",
+          "table_mode"
+        ],
+        "msg": "Input should be 'fast' or 'accurate'"
+      }
+    ]
+  }
+}

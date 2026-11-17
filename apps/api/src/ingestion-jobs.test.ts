@@ -165,6 +165,36 @@ describe('ingestion runs as jobs', () => {
     await expect(insert(crypto.randomUUID(), 'running')).rejects.toThrow(/duplicate key/);
   });
 
+  it("a replacement run is not its pipeline's open run", async () => {
+    const { save, start } = boot();
+    const pipeline = await save();
+    const first = await start(pipeline);
+    if (!first.ok) throw new Error(JSON.stringify(first.errors));
+    await db.pool.query(
+      `update ingestion_executions set status = 'succeeded', ended_at = $2 where id = $1`,
+      [first.value.id, new Date().toISOString()],
+    );
+    // The ended run's ingest job is done, which frees the pipeline's ingest key.
+    await db.pool.query(`delete from pgboss.job where data ->> 'run' = $1`, [first.value.id]);
+    const replacement = (id: string) =>
+      db.pool.query(
+        `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
+           status, started_by, started_at, runs_as_jobs, replaces)
+         values ($1, $2, $3, 'kudos', 1, 'index-writer', 'running', 'replacement',
+                 '2026-11-17T00:00:00Z', true, $4)`,
+        [id, tenant, pipeline.dataset, first.value.id],
+      );
+    await replacement(crypto.randomUUID());
+
+    // The next run starts at once, beside the replacement run.
+    const next = await start(pipeline);
+    if (!next.ok) throw new Error(JSON.stringify(next.errors));
+    expect(next.value.status).toBe('running');
+    expect(await ingestJobs(next.value.id)).toHaveLength(1);
+    // One replacement run per pipeline at a time.
+    await expect(replacement(crypto.randomUUID())).rejects.toThrow(/duplicate key/);
+  });
+
   it('a start or an approval while a run is queued is refused', async () => {
     const clock = { now: new Date('2026-10-07T10:00:00Z') };
     const { save, start, service } = boot({ clock });

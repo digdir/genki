@@ -45,6 +45,12 @@ export interface IngestionExecution {
   generation?: string;
   /** The engine switch that started the run, which no hold of that switch stops. Only the API sets it. */
   engineSwitch?: string;
+  /**
+   * The run that sent this replacement run (ADR 0042, "Conversion"): it converts that run's
+   * text-layer files again with Docling, is not its pipeline's open run, and carries the sender's
+   * admission until its files are converted.
+   */
+  replaces?: string;
 }
 
 export interface Row {
@@ -66,6 +72,7 @@ export interface Row {
   cancelled_by?: string | null;
   generation?: string | null;
   engine_switch?: string | null;
+  replaces?: string | null;
 }
 
 export const executionScope = (dataset: string) => /^(\d{9})\//.exec(dataset)?.[1] ?? 'platform';
@@ -88,6 +95,7 @@ export const toExecution = (row: Row): IngestionExecution => ({
   ...(row.cancelled_by ? { cancelledBy: row.cancelled_by } : {}),
   ...(row.generation ? { generation: row.generation } : {}),
   ...(row.engine_switch ? { engineSwitch: row.engine_switch } : {}),
+  ...(row.replaces ? { replaces: row.replaces } : {}),
 });
 
 export class PostgresIngestionExecutions {

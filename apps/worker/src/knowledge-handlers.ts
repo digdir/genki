@@ -1,7 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import {
   chunkingOf,
+  ConversionRefused,
   copyOwner,
+  doclingIdentity,
   FileUnreachable,
   indexRecord,
   ingestListing,
@@ -14,6 +17,7 @@ import {
   EmbeddingPauses,
   type ChunkDocumentConfig,
   type CopyListing,
+  type DocumentFile,
   type DocumentRecords,
   type KnowledgeListingScope,
   type Listing,
@@ -24,11 +28,14 @@ import {
   convertPriority,
   defaultMarkerTimeoutMs,
   heavyWorkStart,
+  inNightWindow,
   knowledgeConvertQueue,
   knowledgeFillQueue,
   knowledgeIndexQueue,
   knowledgeIngestQueue,
   knowledgeKeys,
+  knowledgeReplaceQueue,
+  nextNightWindowStart,
   type JobQueue,
   type QueueDefinition,
   type QueueWork,
@@ -70,8 +77,13 @@ export interface KnowledgeHandlerDeps {
    * Without them, index jobs convert as they load.
    */
   conversions?: StoredConversions;
-  /** The converter convert jobs run: the text layer while no Docling host is configured. */
+  /** The converter convert jobs run without Docling, and after Docling refuses a file: the text layer. */
   converter?: DocumentConverter;
+  /**
+   * Docling, when `DOCLING_URL` names a server (issue 477): every convert job asks it first, and a
+   * file it refuses, a file that is not a PDF among them, goes to the text layer in the same job.
+   */
+  docling?: DocumentConverter;
   /**
    * The Blob container for converters' native output (#473), keyed by file sha256; the text layer
    * has none, so nothing is written there until Docling.
@@ -232,6 +244,21 @@ export const indexConcurrencyOf = (env: NodeJS.ProcessEnv): number => {
 };
 
 /**
+ * `KNOWLEDGE_CONVERT_CONCURRENCY` (2 when unset): convert jobs this worker works at once. The
+ * template sets it to the Docling server's replicas, which convert one file each (issue 477).
+ */
+export const convertConcurrencyOf = (env: NodeJS.ProcessEnv): number => {
+  const raw = env.KNOWLEDGE_CONVERT_CONCURRENCY;
+  if (raw === undefined) return 2;
+  const value = Number(raw);
+  if (raw.trim() === '' || !Number.isInteger(value) || value < 1 || value > 8)
+    throw new Error(
+      `KNOWLEDGE_CONVERT_CONCURRENCY must be a whole number from 1 to 8, not "${raw}"`,
+    );
+  return value;
+};
+
+/**
  * The worker's handlers of `knowledge.ingest` (platform server), `knowledge.index` (knowledge
  * server) and `knowledge.fill` (knowledge server, worked only in the night window), each behind the
  * run's admission (ADR 0042, "Jobs"). Job data names a document only by its record's number.
@@ -246,20 +273,34 @@ export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * con
 /** The convert queue as the handlers send to it; its expiry is set where the queues are installed. */
 const convertQueue = knowledgeConvertQueue(defaultMarkerTimeoutMs);
 
-/** What a convert job converts with: the text layer while no Docling host is configured (#477). */
-const conversionTarget = (sha256: string): ConversionTarget => ({
-  sha256,
-  converter: textLayer.name,
-  version: textLayer.version,
-  settings: textLayer.settings,
-});
+/** A convert job's converter by the name its data gives: Docling, else the text layer (issue 477). */
+const identityOf = (converter: string | undefined) =>
+  converter === doclingIdentity.name ? doclingIdentity : textLayer;
+
+/** What a convert job converts with, and the key its waits and its conversion are stored under. */
+const conversionTarget = (sha256: string, converter?: string): ConversionTarget => {
+  const identity = identityOf(converter);
+  return {
+    sha256,
+    converter: identity.name,
+    version: identity.version,
+    settings: identity.settings,
+  };
+};
+
+/** The text layer as an accepted converter, to find a file's own text-layer conversion. */
+const textLayerOnly = [{ converter: textLayer.name, derivation: textLayerDerivation, kept: false }];
 
 /** How a converter's pages are derived from its output: `text-layer` 1 for the text layer. */
 const derivationOf = (converter: string) =>
   converter === textLayer.name ? textLayerDerivation : { name: `${converter}-pages`, version: 1 };
 
 type ConvertData = typeof convertQueue extends QueueDefinition<infer T> ? T : never;
-type ConvertJob = KnowledgeJob<ConvertData> & { sender?: IngestionExecution };
+type ConvertJob = KnowledgeJob<ConvertData> & {
+  sender?: IngestionExecution;
+  /** The open, admitted runs the conversion is for: its sender and the runs waiting on it. */
+  running: IngestionExecution[];
+};
 
 /** Converter errors about the file itself, and the failure each is stored as (ADR 0042). */
 const fileRefusals: Readonly<
@@ -277,10 +318,12 @@ const fileRefusals: Readonly<
  * error, from a bug, a host that timed out or answered with a status, or a Word file the
  * converter could not read, is not stored: its job is tried again and then dead-lettered.
  */
-const refusalOf = (error: unknown) =>
-  error instanceof Error && Object.hasOwn(fileRefusals, error.name)
+const refusalOf = (error: unknown) => {
+  if (error instanceof ConversionRefused && error.reason !== 'unreachable') return error.reason;
+  return error instanceof Error && Object.hasOwn(fileRefusals, error.name)
     ? fileRefusals[error.name]
     : undefined;
+};
 
 /** Why a convert job's fetch cannot have the file (issue 597); other fetch errors are retried. */
 const fetchRefusalOf = (error: unknown) =>
@@ -308,18 +351,23 @@ export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
   const pauses = new EmbeddingPauses();
+  /** The converter new convert jobs ask: Docling when the worker has a server, else the text layer. */
+  const converterNow = () => (deps.docling ? doclingIdentity.name : textLayer.name);
   /**
    * Makes a record wait on a file's conversion and sends its convert job, or, when the job is
    * already waiting or running, adds the record's organisation to it (ADR 0042, "Jobs"). False
-   * when the conversion is already stored.
+   * when the conversion is already stored. A replacement run sends at its own priority, to start
+   * in the night window.
    */
   const waitOn = (
     conversions: StoredConversions,
     sha256: string,
     waiter: ConversionWaiter,
     transaction?: RecordTransaction,
+    timing: { priority: number; startAfter?: Date } = { priority: convertPriority.run },
   ) => {
-    const target = conversionTarget(sha256);
+    const converter = converterNow();
+    const target = conversionTarget(sha256, converter);
     const key = conversionKey(target);
     return conversions.wait(
       target,
@@ -334,8 +382,14 @@ export const knowledgeWork = (
             dataset: waiter.dataset,
             record: waiter.record,
             tenants: waiter.tenant,
+            converter: converter === doclingIdentity.name ? 'docling' : 'text-layer',
           },
-          { key, priority: convertPriority.run, transaction: tx },
+          {
+            key,
+            priority: timing.priority,
+            ...(timing.startAfter ? { startAfter: timing.startAfter } : {}),
+            transaction: tx,
+          },
         );
         if (sent === null)
           await deps.knowledge.serveAlso?.(convertQueue, key, waiter.tenant, { transaction: tx });
@@ -541,10 +595,28 @@ export const knowledgeWork = (
     );
   };
 
+  /**
+   * A conversion only replacement runs wait on, taken outside the night window, is sent again for
+   * the window's next start and converts nothing now (ADR 0042, "Conversion").
+   */
+  const outsideWindow = async ({ job, running }: ConvertJob) => {
+    if (running.some((r) => !r.replaces)) return false;
+    const now = deps.heavy.now?.() ?? new Date();
+    const window = deps.heavy.window();
+    if (inNightWindow(window, now)) return false;
+    await deps.knowledge.sendAgain(convertQueue, job, {
+      key: conversionKey(conversionTarget(job.data.file, job.data.converter)),
+      startAfter: nextNightWindowStart(window, now),
+      priority: convertPriority.replacement,
+    });
+    return true;
+  };
+
   const convert = admittedConversion(
     convertQueue,
     async (input) => {
       try {
+        if (await outsideWindow(input)) return;
         await convertFile(input);
       } catch (error) {
         throw convertError(input.job.data.record, error);
@@ -553,7 +625,9 @@ export const knowledgeWork = (
     {
       ...deps.admission,
       waiting: async (data) =>
-        ((await deps.conversions?.waiting(conversionTarget(data.file))) ?? []).map((w) => w.run),
+        ((await deps.conversions?.waiting(conversionTarget(data.file, data.converter))) ?? []).map(
+          (w) => w.run,
+        ),
     },
   );
 
@@ -570,9 +644,9 @@ export const knowledgeWork = (
     try {
       const waiter = sender
         ? { dataset: job.data.dataset, record: job.data.record }
-        : (await deps.conversions?.waiting(conversionTarget(job.data.file)))?.find(
-            (w) => w.run === run.id,
-          );
+        : (
+            await deps.conversions?.waiting(conversionTarget(job.data.file, job.data.converter))
+          )?.find((w) => w.run === run.id);
       if (!waiter) throw new Error(`no waiting record of run ${run.id} names the file`);
       const record = await deps.records.find(waiter.record);
       if (!record || record.dataset !== waiter.dataset)
@@ -598,24 +672,56 @@ export const knowledgeWork = (
       { key: knowledgeKeys.index(waiter.generation, waiter.record), transaction },
     );
 
+  /**
+   * After Docling refused a file, the same job reads it with the text layer, unless the file has a
+   * text-layer conversion already (issue 477): stored before the refusal, so the refusal's end of
+   * the waits sends index jobs that read it.
+   */
+  async function textLayerAfterRefusal(
+    conversions: StoredConversions,
+    file: DocumentFile,
+    sha256: string,
+  ) {
+    if (!deps.converter || (await conversions.find(sha256, textLayerOnly))) return;
+    let pages: string[];
+    try {
+      const conversion = await deps.converter.convert(file);
+      if (conversion.converter.name !== textLayer.name) return;
+      pages = conversion.pages;
+    } catch (error) {
+      // The text layer refuses it too: the Docling refusal is what documents skip it with.
+      if (refusalOf(error)) return;
+      throw error;
+    }
+    await conversions.store(
+      { ...conversionTarget(sha256, textLayer.name), derivation: textLayerDerivation, pages },
+      sendIndex,
+    );
+  }
+
   async function convertFile({ job, run, sender, cancelled }: ConvertJob) {
     deps.bound?.();
-    const { conversions, converter } = deps;
-    if (!conversions || !converter) throw new Error('this worker keeps no stored conversions');
-    if (await cancelled()) return;
+    const conversions = deps.conversions;
     // Stored under the key its job and waits name, so the conversion always ends those waits.
-    const key = conversionTarget(job.data.file);
+    const key = conversionTarget(job.data.file, job.data.converter);
+    const converter = key.converter === doclingIdentity.name ? deps.docling : deps.converter;
+    if (!conversions || !converter)
+      throw new Error(`this worker keeps no stored conversions with ${key.converter}`);
+    if (await cancelled()) return;
     let stored: { pages: string[]; output?: Uint8Array; failure?: string };
     // A conversion stored by an earlier try is not made again: only its waits are ended. A file
-    // stored as unreachable is fetched again, by every try.
-    const kept = await conversions.find(job.data.file, [
+    // stored as unreachable is fetched again, by every try. Only this version and settings count:
+    // a seeded Docling conversion is another's.
+    const found = await conversions.find(job.data.file, [
       { converter: key.converter, derivation: derivationOf(key.converter), kept: false },
     ]);
+    const kept = found && conversionKey(found) === conversionKey(key) ? found : undefined;
     if (kept && kept.failure !== 'unreachable')
       stored = { pages: kept.pages, ...(kept.failure ? { failure: kept.failure } : {}) };
-    else
+    else {
+      let file: DocumentFile | undefined;
       try {
-        const file = await fetchFile(job, run, sender);
+        file = await fetchFile(job, run, sender);
         const conversion = await converter.convert(file);
         const made = conversion.converter;
         if (made.name !== key.converter || made.version !== key.version)
@@ -630,9 +736,12 @@ export const knowledgeWork = (
         const failure =
           error instanceof FetchFailed ? fetchRefusalOf(error.cause) : refusalOf(error);
         if (!failure) throw error instanceof FetchFailed ? error.cause : error;
+        if (file && key.converter === doclingIdentity.name)
+          await textLayerAfterRefusal(conversions, file, job.data.file);
         // A refusal is stored with no pages, which ends the waits: documents skip the file.
         stored = { pages: [], failure };
       }
+    }
     // The native output goes to Blob first, so a stored conversion never names a missing path.
     const output =
       stored.output && deps.nativeOutputs
@@ -654,12 +763,54 @@ export const knowledgeWork = (
       );
   }
 
+  /**
+   * A replacement run's first step (ADR 0042, "Conversion"): every record of its dataset whose
+   * files have only a text-layer conversion waits on Docling, with its convert jobs sent for the
+   * night window at the lowest priority. Records are read in pages of 500, by record number.
+   */
+  const replace = admittedWork(
+    knowledgeReplaceQueue,
+    async ({ job, run, cancelled }) => {
+      deps.bound?.();
+      const conversions = deps.conversions;
+      if (!conversions || !deps.docling) return;
+      const { generation } = await datasetOf(deps, run, job.signal);
+      const startAfter = heavyWorkStart(deps.heavy.window(), deps.heavy.now?.() ?? new Date());
+      let after = '0';
+      for (;;) {
+        if (await cancelled()) return;
+        const page = await conversions.replaceable(run.dataset, acceptedConverters, after, 500);
+        const last = page.at(-1);
+        if (!last) return;
+        for (const { record, files } of page) {
+          const waiter = {
+            dataset: run.dataset,
+            record,
+            generation,
+            run: run.id,
+            tenant: job.data.tenant,
+          };
+          for (const file of files)
+            await waitOn(conversions, file.sha256, waiter, undefined, {
+              priority: convertPriority.replacement,
+              startAfter,
+            });
+        }
+        after = last.record;
+      }
+    },
+    deps.admission,
+  );
+
   return {
     platform: [ingest as QueueWork],
     knowledge: [
       { ...documentWork(knowledgeIndexQueue), options: documentOptions } as QueueWork,
       ...(deps.conversions
-        ? [{ ...convert, options: { concurrency: deps.convertConcurrency ?? 2 } } as QueueWork]
+        ? [
+            { ...convert, options: { concurrency: deps.convertConcurrency ?? 2 } } as QueueWork,
+            replace as QueueWork,
+          ]
         : []),
       ...(deps.conversions && deps.nativeOutputs?.files && deps.nativeOutputs.read
         ? [
@@ -678,3 +829,40 @@ export const knowledgeWork = (
     heavy: [{ ...documentWork(knowledgeFillQueue), options: documentOptions } as QueueWork],
   };
 };
+
+export interface ReplacementDeps {
+  conversions: Pick<StoredConversions, 'replaceable'>;
+  /** The platform server's run records, as the worker starts a replacement run there. */
+  runs: {
+    startReplacement(
+      sender: IngestionExecution,
+      id: string,
+      at: string,
+    ): Promise<IngestionExecution | undefined>;
+  };
+  /** The knowledge server's queue, where the replacement run's first job goes. */
+  knowledge: Pick<JobQueue, 'send'>;
+  now?: () => Date;
+}
+
+/**
+ * Sends the replacement run of a run that ended with text-layer files (ADR 0042, "Conversion"),
+ * when the worker has a Docling server: one at a time per pipeline, with the sender's admission.
+ * A cancelled run, a copy, and a replacement run itself send none.
+ */
+export const replacementRuns =
+  (deps: ReplacementDeps) =>
+  async (ended: IngestionExecution): Promise<IngestionExecution | undefined> => {
+    if (ended.replaces || ended.status === 'cancelled' || ended.pipeline === copyOwner) return;
+    const left = await deps.conversions.replaceable(ended.dataset, acceptedConverters, '0', 1);
+    if (left.length === 0) return;
+    const at = (deps.now?.() ?? new Date()).toISOString();
+    const started = await deps.runs.startReplacement(ended, randomUUID(), at);
+    if (!started) return;
+    await deps.knowledge.send(
+      knowledgeReplaceQueue,
+      { run: started.id, tenant: executionScope(started.dataset) },
+      { key: started.id },
+    );
+    return started;
+  };

@@ -69,6 +69,7 @@ import {
 import {
   copyListing,
   copyOwner,
+  doclingConverter,
   knowledgeListingOf,
   kudosClient,
   kudosProd,
@@ -126,7 +127,13 @@ import {
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
 import { fieldsWork } from './knowledge-fields.js';
-import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
+import {
+  convertConcurrencyOf,
+  indexConcurrencyOf,
+  knowledgePoolSizeOf,
+  knowledgeWork,
+  replacementRuns,
+} from './knowledge-handlers.js';
 import { conversionRunJobs, openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
@@ -178,6 +185,20 @@ log('storage', { kind: db ? 'postgres' : 'memory' });
 const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
 // Read at start, so a bad value stops the worker before it takes a job.
 const indexConcurrency = indexConcurrencyOf(process.env);
+const convertConcurrency = convertConcurrencyOf(process.env);
+// Docling, when DOCLING_URL names a server (ADR 0042, issue 477): convert jobs ask it first, and the
+// text layer reads what it refuses. Without it, the text layer converts.
+if (process.env.DOCLING_URL && !process.env.DOCLING_API_KEY) {
+  log('refusing to start', { problems: ['DOCLING_URL is set without DOCLING_API_KEY'] });
+  process.exit(1);
+}
+const docling = process.env.DOCLING_URL
+  ? doclingConverter({
+      url: process.env.DOCLING_URL,
+      credential: { kind: 'api-key', key: async () => process.env.DOCLING_API_KEY ?? '' },
+    })
+  : undefined;
+log('document converter', { converter: docling ? 'docling' : 'text-layer', convertConcurrency });
 const knowledgeServer = knowledgeSource
   ? openKnowledgePools({ ...knowledgeSource, max: knowledgePoolSizeOf(indexConcurrency) }, 'worker')
   : undefined;
@@ -360,7 +381,8 @@ const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
       queue: {
         send: (queue, data, options) => openedKnowledge().send(queue, data, options),
         work: (queue, handler, options) => openedKnowledge().work(queue, handler, options),
-        retime: (queues, startAfter) => openedKnowledge().retime(queues, startAfter),
+        retime: (queues, startAfter, options) =>
+          openedKnowledge().retime(queues, startAfter, options),
         schedule: (queue, cron, data, options) =>
           openedKnowledge().schedule(queue, cron, data, options),
       },
@@ -406,8 +428,10 @@ const knowledgeHandlers =
           serveAlso: (queue, key, tenant, options) =>
             openedKnowledge().serveAlso?.(queue, key, tenant, options) ?? Promise.resolve(),
         },
-        // Stored conversions with the text layer, while no Docling host is configured (ADR 0042).
+        // Stored conversions, with Docling when the worker has a server (ADR 0042).
         conversions: knowledgeConversionsOf(knowledgeWriter),
+        convertConcurrency,
+        ...(docling ? { docling } : {}),
         // A PDF page the text layer cannot read is left empty and logged; the rest of the file is kept.
         converter: createLocalConverter({
           onUnreadablePage: (page) => log('a PDF page could not be read', { ...page }),
@@ -981,6 +1005,14 @@ const providerObjectSweep = db
 const knowledgeRunsLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
   : undefined;
+const sendReplacement =
+  docling && knowledgeWriter && knowledgeRunRecords
+    ? replacementRuns({
+        conversions: knowledgeConversionsOf(knowledgeWriter),
+        runs: knowledgeRunRecords,
+        knowledge: { send: (queue, data, options) => openedKnowledge().send(queue, data, options) },
+      })
+    : undefined;
 let reconciling = false;
 const reconcileKnowledge = async () => {
   // A pass may wait minutes for a VACUUM's lock; the next tick does not start a second one.
@@ -1018,6 +1050,19 @@ const reconcilePass = async (
       return spec?.maxDocumentFailures ?? 10;
     },
   });
+  // A run that ended with text-layer files sends its replacement run, once Docling runs (issue 477).
+  if (sendReplacement)
+    for (const ended of pass.ended)
+      try {
+        const replacement = await sendReplacement(ended);
+        if (replacement)
+          log('knowledge replacement run', { run: replacement.id, sender: ended.id });
+      } catch (error) {
+        log('a replacement run could not be sent', {
+          sender: ended.id,
+          error: error instanceof Error ? error.name : typeof error,
+        });
+      }
   if (pass.sentBack + pass.ended.length + pass.started.length + pass.dropped > 0)
     log('knowledge runs reconciled', {
       sentBack: pass.sentBack,

@@ -27,3 +27,4 @@ export * from './throttled-embedder.js';
 export * from './chunk-places.js';
 export * from './stored-converter.js';
 export * from './docling-pages.js';
+export * from './docling.js';

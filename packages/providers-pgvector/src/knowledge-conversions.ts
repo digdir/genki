@@ -30,6 +30,7 @@ const acceptedJson = (accepted: readonly AcceptedConverter[]) =>
       converter: a.converter,
       derivation: a.derivation.name,
       derivation_version: a.derivation.version,
+      kept: a.kept,
     })),
   );
 
@@ -68,7 +69,8 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
            on a.converter = c.converter and a.derivation = c.derivation
           and a.derivation_version = c.derivation_version
         where c.sha256 = $1
-        order by a.rank, c.created_at desc
+        -- Pages before refusals, then the accepted order, then the newest.
+        order by c.failure is not null, a.rank, c.created_at desc
         limit 1`,
       [sha256, acceptedJson(accepted)],
     );
@@ -270,5 +272,40 @@ export const knowledgeConversionsOf = (writer: Pool): StoredConversions => ({
       `select distinct key from src_conversion_waits order by key`,
     );
     return rows.map((r) => r.key);
+  },
+
+  replaceable: async (dataset, accepted, after, limit) => {
+    const { rows } = await writer.query<{ record: string; name: string; sha256: string }>(
+      `with files as (
+         select d.number, f.file as name, f.sha256
+           from src_documents d
+           join src_files f on f.dataset = d.dataset and f.document = d.id
+          where d.dataset = $1 and d.number > $2::bigint
+            and (d.state = 'stored' or (d.state = 'skipped' and d.reason = 'no_text'))
+            and f.converts and f.sha256 is not null
+            and exists (
+              select 1 from src_conversions c
+                join jsonb_to_recordset($3::jsonb) as a(converter text, kept boolean)
+                  on a.converter = c.converter
+               where c.sha256 = f.sha256 and c.failure is null and not a.kept)
+            and not exists (
+              select 1 from src_conversions c
+                join jsonb_to_recordset($3::jsonb) as a(converter text, kept boolean)
+                  on a.converter = c.converter
+               where c.sha256 = f.sha256 and a.kept)
+       ),
+       records as (select distinct number from files order by number limit $4)
+       select f.number::text as record, f.name, f.sha256
+         from files f join records r using (number)
+        order by f.number, f.name`,
+      [dataset, after, acceptedJson(accepted), limit],
+    );
+    const byRecord = new Map<string, { name: string; sha256: string }[]>();
+    for (const row of rows)
+      byRecord.set(row.record, [
+        ...(byRecord.get(row.record) ?? []),
+        { name: row.name, sha256: row.sha256 },
+      ]);
+    return [...byRecord].map(([record, files]) => ({ record, files }));
   },
 });

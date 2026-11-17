@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "body": {
+    "document": {
+      "filename": "notpdf.pdf",
+      "md_content": null,
+      "json_content": null,
+      "html_content": null,
+      "text_content": null,
+      "doctags_content": null,
+      "doclang_content": null
+    },
+    "status": "failure",
+    "errors": [
+      {
+        "component_type": "user_input",
+        "module_name": "",
+        "error_message": "docling-parse could not load document 3bb9245616dd781f0e99fe3f6270d0f42cf004283c8b57f15aa4d6842728ebf7: Failed to load document with key key=3bb9245616dd781f0e99fe3f6270d0f42cf004283c8b57f15aa4d6842728ebf7: parsing of key=3bb9245616dd781f0e99fe3f6270d0f42cf004283c8b57f15aa4d6842728ebf7 from bytesio: unable to find trailer dictionary while recovering damaged file",
+        "category": "backend_failure",
+        "page_no": null
+      }
+    ],
+    "processing_time": 0.0020041280004079454,
+    "timings": {},
+    "confidence": null
+  }
+}

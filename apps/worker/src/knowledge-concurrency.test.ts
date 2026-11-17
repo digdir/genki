@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  convertConcurrencyOf,
   indexConcurrencyOf,
   knowledgePoolSizeOf,
   knowledgeWork,
@@ -24,6 +25,16 @@ describe('how many documents the worker writes at once', () => {
     for (const value of ['0', '33', '2.5', 'many', ''])
       expect(() => indexConcurrencyOf({ KNOWLEDGE_INDEX_CONCURRENCY: value })).toThrow(
         /KNOWLEDGE_INDEX_CONCURRENCY/,
+      );
+  });
+
+  it('KNOWLEDGE_CONVERT_CONCURRENCY must be a whole number from 1 to 8', () => {
+    expect(convertConcurrencyOf({})).toBe(2);
+    expect(convertConcurrencyOf({ KNOWLEDGE_CONVERT_CONCURRENCY: '1' })).toBe(1);
+    expect(convertConcurrencyOf({ KNOWLEDGE_CONVERT_CONCURRENCY: '8' })).toBe(8);
+    for (const value of ['0', '9', '2.5', 'many', ''])
+      expect(() => convertConcurrencyOf({ KNOWLEDGE_CONVERT_CONCURRENCY: value })).toThrow(
+        /KNOWLEDGE_CONVERT_CONCURRENCY/,
       );
   });
 

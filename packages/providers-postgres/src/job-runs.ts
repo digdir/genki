@@ -82,7 +82,8 @@ export class PostgresJobRuns {
       return await withTenant(this.pool, scope, async (client) => {
         const { rows: open } = await client.query<{ status: string }>(
           `select status from ingestion_executions
-            where dataset = $1 and pipeline = $2 and runs_as_jobs and status in ('queued', 'running')`,
+            where dataset = $1 and pipeline = $2 and runs_as_jobs and status in ('queued', 'running')
+              and replaces is null`,
           [input.dataset, input.pipeline],
         );
         if (open.some((row) => row.status === 'queued'))
@@ -370,6 +371,26 @@ export class PostgresJobRunRecords {
       const started = await this.#startQueued(client, ended, at, rules);
       return { ended, ...(started ? { started } : {}) };
     });
+  }
+
+  /**
+   * Starts the replacement run of a run that ended with text-layer files (ADR 0042, "Conversion"),
+   * with its sender's admission. Nothing when the pipeline has one running already, or the sender
+   * is not an ended, admitted run of its own.
+   */
+  async startReplacement(
+    sender: IngestionExecution,
+    id: string,
+    at: string,
+  ): Promise<IngestionExecution | undefined> {
+    const { rows } = await this.#platform('knowledge-run-replacement', (client) =>
+      client.query<Row>('select * from start_replacement_job_ingestion_execution($1, $2, $3)', [
+        sender.id,
+        id,
+        at,
+      ]),
+    );
+    return rows[0] && toExecution(rows[0]);
   }
 
   /** Starts a pipeline's queued run when it has no open run, in case the run before did not. */

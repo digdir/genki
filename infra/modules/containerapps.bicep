@@ -338,7 +338,7 @@ resource docling 'Microsoft.App/containerApps@2025-02-02-preview' = {
             { name: 'DOCLING_SERVE_ENG_LOC_NUM_WORKERS', value: '1' }
             { name: 'DOCLING_NUM_THREADS', value: '4' }
             { name: 'OMP_NUM_THREADS', value: '4' }
-            { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '3600' }
+            { name: 'DOCLING_SERVE_MAX_SYNC_WAIT', value: '21600' }
             { name: 'DOCLING_SERVE_SINGLE_USE_RESULTS', value: 'true' }
             { name: 'DOCLING_SERVE_RESULT_REMOVAL_DELAY', value: '1' }
             { name: 'DOCLING_SERVE_SCRATCH_PATH', value: '/tmp/docling' }
@@ -373,6 +373,8 @@ var doclingUrl = 'http://${docling.properties.configuration.ingress.fqdn}:5001'
 var doclingEnv = [
   { name: 'DOCLING_URL', value: doclingUrl }
   { name: 'DOCLING_API_KEY', secretRef: doclingKeySecret.name }
+  // One conversion a replica, so the worker converts as many files at once as the server has replicas.
+  { name: 'KNOWLEDGE_CONVERT_CONCURRENCY', value: string(doclingMaxReplicas) }
 ]
 
 // The principals job (ADR 0042): run by hand, inside the environment's network, the only place the
