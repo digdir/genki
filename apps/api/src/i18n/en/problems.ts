@@ -102,6 +102,7 @@ export const problems = {
   datasetSearchNeedsRight: 'You need the right «Manage services» or «Manage datasets»',
   datasetSearchNoProfile: 'The dataset {dataset} has no search profile «{profile}»',
   datasetSearchRefused: 'The search was not let through',
+  datasetSearchPeopleOnly: 'Only people can search a dataset directly',
   datasetSearchBlocked: '{dataset} cannot be used by the organisation',
   diagnosticsServiceNotFound: 'Service not found',
   diagnosticsServiceNoDataset: 'The service has no dataset',

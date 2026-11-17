@@ -1822,7 +1822,7 @@ const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
       ...(isTenant(base)
         ? {
             403: either(
-              "Missing both manage-services and manage-datasets, the tenant's block policy does not allow the dataset, or the kernel refused the search",
+              "An API key, missing both manage-services and manage-datasets, the tenant's block policy does not allow the dataset, or the kernel refused the search",
             ),
           }
         : {}),

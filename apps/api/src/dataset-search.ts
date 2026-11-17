@@ -112,6 +112,9 @@ const codeOf = (error: unknown) =>
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+/** Only people search a dataset directly; API keys are not in this route (#678). */
+const searchers = new Set<Principal['kind']>(['employee', 'operator']);
+
 /** The scope with which the kernel's invoke policy admits a platform system principal. */
 const systemScope = 'legacy:query';
 
@@ -234,6 +237,9 @@ export const mountDatasetSearch = <E extends Env, S extends Schema, B extends st
   app.post('/tenants/:tenant/datasets/:id/search', async (c) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, t('problems.notSignedIn'));
+    // An API key's dataset grants are checked by the kernel, which this route's system principal skips.
+    if (!searchers.has(principal.kind))
+      return problem(c, 403, t('problems.datasetSearchPeopleOnly'));
     const tenant = c.req.param('tenant') ?? '';
     const entered = enterTenant(c, deps.access, principal, tenant);
     if ('response' in entered) return entered.response;

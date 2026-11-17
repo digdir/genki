@@ -161,6 +161,32 @@ describe('searching a dataset in the console', () => {
     expect(within(alert).getByRole('listitem').textContent).toBe('search timed out after 15000 ms');
   });
 
+  it("shows a kernel refusal's reason, not as an engine message", async () => {
+    at('/catalog?tab=dataset');
+    const { api } = platform(
+      platformRoutes(() => [
+        403,
+        {
+          type: 'about:blank',
+          title: 'Søket ble ikke sluppet gjennom',
+          status: 403,
+          errors: [{ path: 'kernel', message: 'the authorization service is unavailable' }],
+        },
+      ]),
+    );
+    render(<Catalog api={api} tab="dataset" />);
+
+    const panel = await openKudos();
+    searchFor(panel, 'tilskudd');
+
+    const alert = await within(panel).findByRole('alert');
+    expect(alert.textContent).toContain('Søket ble stoppet før det nådde søkemotoren.');
+    expect(within(alert).getByRole('listitem').textContent).toBe(
+      'the authorization service is unavailable',
+    );
+    expect(alert.textContent).not.toContain('Melding fra søkemotoren');
+  });
+
   it('keeps the chosen filter when the dataset list reloads', async () => {
     at('/catalog?tab=dataset');
     const { api, calls } = platform(platformRoutes(() => [200, answer([hit])]));

@@ -102,7 +102,7 @@ const shown = (value: unknown) => (typeof value === 'string' ? value : JSON.stri
 
 type Outcome =
   | { kind: 'answer'; answer: DatasetSearchAnswer }
-  | { kind: 'failed'; message: string; details: string[] };
+  | { kind: 'failed'; message: string; details: string[]; fromEngine?: true };
 
 interface SearchProblem extends Problem {
   policy?: { rule?: string; ownedBy?: string };
@@ -117,7 +117,12 @@ const failureOf = (error: unknown, t: T): Outcome & { kind: 'failed' } => {
   const messages = (problem?.errors ?? []).map((e) => e.message);
   switch (error.status) {
     case 504:
-      return { kind: 'failed', message: t('datasetSearch.timedOut'), details: messages };
+      return {
+        kind: 'failed',
+        message: t('datasetSearch.timedOut'),
+        details: messages,
+        fromEngine: true,
+      };
     case 422:
       return {
         kind: 'failed',
@@ -127,6 +132,8 @@ const failureOf = (error: unknown, t: T): Outcome & { kind: 'failed' } => {
         ),
       };
     case 403:
+      if (problem?.errors?.some((e) => e.path === 'kernel'))
+        return { kind: 'failed', message: t('datasetSearch.kernelRefused'), details: messages };
       return problem?.policy
         ? {
             kind: 'failed',
@@ -146,7 +153,12 @@ const failureOf = (error: unknown, t: T): Outcome & { kind: 'failed' } => {
     case 404:
       return { kind: 'failed', message: t('datasetSearch.notFound'), details: [] };
     case 502:
-      return { kind: 'failed', message: t('datasetSearch.engineFailed'), details: messages };
+      return {
+        kind: 'failed',
+        message: t('datasetSearch.engineFailed'),
+        details: messages,
+        fromEngine: true,
+      };
     default:
       return { kind: 'failed', message: t('datasetSearch.failed'), details: [] };
   }
@@ -397,7 +409,7 @@ export const DatasetSearch = ({
       {outcome?.kind === 'failed' ? (
         <Alert data-color="danger" data-size="sm" role="alert">
           <Paragraph data-size="sm">{outcome.message}</Paragraph>
-          {outcome.details.length ? (
+          {outcome.fromEngine && outcome.details.length ? (
             <Paragraph data-size="sm">{t('datasetSearch.engineDetails')}</Paragraph>
           ) : null}
           {outcome.details.length ? (

@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
+import { configuredCredentialScope, lockdownUserScope } from '@genai/composition';
+import { LEGACY_KEY_ISSUER } from '@genai/identity';
 import { envSecrets, KernelError } from '@genai/kernel';
 import {
   KnowledgeError,
@@ -40,6 +42,20 @@ const people: Record<string, Principal> = {
   },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
+  nokkel: {
+    kind: 'agency-system',
+    issuer: 'test',
+    subject: 'key-1',
+    tenant: digdir,
+    scopes: ['legacy:admin'],
+  },
+  admitted: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'admitted',
+    tenant: digdir,
+    scopes: [lockdownUserScope],
+  },
 };
 
 const item = (id: string, scope: string, spec: Record<string, unknown> = {}): CatalogItem => ({
@@ -405,6 +421,18 @@ describe('searching a dataset directly', () => {
     expect(await response.json()).toMatchObject({ dataset: 'digdir/kun-nav' });
   });
 
+  it('gives the search task model admission in lockdown only when the person may use models', async () => {
+    const { search, tracked } = await boot();
+
+    await search(tenantPath('filer'), 'admitted', { query: 'tilskudd' });
+    await search(tenantPath('filer'), 'kari', { query: 'tilskudd' });
+
+    expect(tracked.map((t) => t.principal.scopes?.includes(configuredCredentialScope))).toEqual([
+      true,
+      false,
+    ]);
+  });
+
   it("searches with the same limits and timeout as a service's search", async () => {
     const { search, knowledge, connects } = await boot({ timeoutMs: 7_000 });
     const request = { query: 'tilskudd', filters: { kategori: 'Veiledning' }, limit: 2 };
@@ -498,34 +526,37 @@ describe('searching a dataset directly', () => {
 });
 
 describe('the dataset search on the platform', () => {
+  const closedPort = {
+    endpoints: {
+      search: {
+        engine: 'typesense',
+        baseURL: 'http://127.0.0.1:9',
+        auth: { kind: 'api-key', secret: 'secret://env/search-key' },
+      },
+    },
+    datasets: [
+      {
+        id: 'digdir/kudos',
+        endpoint: 'search',
+        residency: 'norway',
+        options: {
+          collections: { docs: 'docs', chunks: 'chunks' },
+          profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
+        },
+      },
+    ],
+  };
   const platformPeople: Record<string, Principal> = {
     kari: people.kari as Principal,
     drift: people.drift as Principal,
   };
 
   it('reaches the search engine for an operator and for a dataset manager without use-services', async () => {
-    const closedPort = {
-      endpoints: {
-        search: {
-          engine: 'typesense',
-          baseURL: 'http://127.0.0.1:9',
-          auth: { kind: 'api-key', secret: 'secret://env/search-key' },
-        },
-      },
-      datasets: [
-        {
-          id: 'digdir/kudos',
-          endpoint: 'search',
-          residency: 'norway',
-          options: {
-            collections: { docs: 'docs', chunks: 'chunks' },
-            profiles: { content: { collection: 'chunks', queryBy: ['text'], textField: 'text' } },
-          },
-        },
-      ],
-    };
     const { send } = await bootPlatform({
-      people: { ...platformPeople, ingrid: people.ingrid as Principal },
+      people: {
+        ...platformPeople,
+        ingrid: people.ingrid as Principal,
+      },
       knowledge: closedPort,
     });
     const body = { query: 'tilskudd' };
@@ -540,6 +571,27 @@ describe('the dataset search on the platform', () => {
       expect(answer.status).toBe(502);
       expect(await answer.json()).toMatchObject({ errors: [{ path: 'knowledge' }] });
     }
+  });
+
+  it('refuses an API key on both routes, since only people search a dataset directly', async () => {
+    const { send } = await bootPlatform({
+      people: {
+        key: {
+          kind: 'agency-system',
+          issuer: LEGACY_KEY_ISSUER,
+          subject: 'key-1',
+          tenant: digdir,
+          scopes: ['legacy:admin'],
+        },
+      },
+      knowledge: closedPort,
+    });
+    const body = { query: 'tilskudd' };
+
+    const tenant = await send(tenantPath('digdir/kudos'), 'key', { body });
+    const operator = await send(operatorPath('digdir/kudos'), 'key', { body });
+
+    expect([tenant.status, operator.status]).toEqual([403, 403]);
   });
 
   it('mounts both routes on the platform', async () => {

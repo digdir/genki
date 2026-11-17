@@ -41,6 +41,7 @@ export const datasetSearch = {
   untitled: 'Untitled',
   fields: 'Fields',
   engineDetails: 'Message from the search engine, in English:',
+  kernelRefused: 'The search was stopped before it reached the search engine.',
   timedOut: 'The search took longer than the limit.',
   invalid: 'The search was refused:',
   blocked: 'The dataset cannot be used: {rule} ({owner})',
