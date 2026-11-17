@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Principal } from '@genai/contracts';
-import { createKernel, type Capability, type Kernel, type Strategy } from '@genai/kernel';
+import {
+  createKernel,
+  KernelError,
+  type Capability,
+  type Kernel,
+  type Strategy,
+} from '@genai/kernel';
 import {
   createMcpApp,
   progressTracker,
@@ -1321,6 +1327,30 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
     expect(body.result.isError).toBe(true);
     expect(turns).toEqual([]);
     expect(discarded).toEqual(['stored-5']);
+  });
+
+  it('stores no user turn when the kernel refuses the call at the monthly token quota', async () => {
+    const turns: string[] = [];
+    const base = setup().kernel;
+    const { app } = setup({
+      kernel: {
+        ...base,
+        invoke: async () => {
+          throw new KernelError('quota_exhausted', 'the monthly token quota is used up');
+        },
+      },
+      conversations: {
+        open: async () => ({ ok: true, id: 'c', history: [] }),
+        append: async (_r, _id, turn) => {
+          turns.push(turn.role);
+        },
+      },
+    });
+
+    const res = await call(app, KA, { query: 'hei' });
+
+    expect(res.status).toBe(429);
+    expect(turns).toEqual([]);
   });
 
   it('answers the conversation store refusal as a tool error without running the service', async () => {

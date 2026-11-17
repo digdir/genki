@@ -85,3 +85,7 @@ export const limited = (store: BlobStore, limits: BlobLimits): BlobStore => ({
   list: (tenant, prefix) => store.list(tenant, prefix),
   delete: (key) => store.delete(key),
 });
+
+/** Code-point order, the same on every machine: a locale would sort `aa` after `b` in Norwegian. */
+export const byPath = (a: { path: string }, b: { path: string }) =>
+  a.path < b.path ? -1 : a.path > b.path ? 1 : 0;

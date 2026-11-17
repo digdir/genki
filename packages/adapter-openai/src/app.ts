@@ -16,7 +16,13 @@ import {
   type Part,
   type Principal,
 } from '@genai/contracts';
-import { KernelError, mediaAttachments, type Kernel, type Run } from '@genai/kernel';
+import {
+  KernelError,
+  mediaAttachments,
+  quotaExhaustedProblem,
+  type Kernel,
+  type Run,
+} from '@genai/kernel';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
@@ -528,6 +534,16 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
   const fail = (c: Context, code: string, message: string, status: number) =>
     c.json(errorBody(code, message, status), status as 400);
 
+  const quotaRefused = (c: Context, error: unknown) => {
+    const spent = quotaExhaustedProblem(error, options.now?.());
+    if (!spent) return undefined;
+    const { retryAfterSeconds, ...problem } = spent;
+    return c.json(problem, 429, {
+      ...problemHeaders,
+      'retry-after': String(retryAfterSeconds),
+    });
+  };
+
   app.get('/v1/models', async (c) => {
     try {
       const created = now();
@@ -659,6 +675,8 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       run.result.catch(() => undefined);
       return c.json({ task: run.task }, 200, { 'genai-session': run.task });
     } catch (error) {
+      const refused = quotaRefused(c, error);
+      if (refused) return refused;
       const e = invokeError(error);
       return fail(c, e.code, e.message, e.status);
     }
@@ -837,6 +855,8 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       });
     } catch (error) {
       await discard();
+      const refused = quotaRefused(c, error);
+      if (refused) return refused;
       const e = invokeError(error);
       return fail(c, e.code, e.message, e.status);
     }
@@ -1190,6 +1210,8 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
           },
         );
       } catch (error) {
+        const refused = quotaRefused(c, error);
+        if (refused) return refused;
         const e = invokeError(error);
         return toolError(e.code, e.message);
       }

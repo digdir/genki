@@ -13,6 +13,7 @@ import { InMemoryExecutionStore, InMemoryIngestionBackend, IngestionService } fr
 import {
   configuredCredentialScope,
   entraNotTrustedType,
+  lockdownServiceScope,
   lockdownUserScope,
   lockedEnvironmentType,
   mayUseModels,
@@ -48,6 +49,26 @@ const principals: Record<string, Principal> = {
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
     scopes: [lockdownUserScope],
+  },
+  employee: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'employee-subject',
+    assurance: 'entraid',
+    tenant: digdir,
+    client: 'ka-web',
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+    scopes: [lockdownServiceScope],
+    confinedTo: { tenant: digdir, service: 'klarsprak', client: 'ka-web' },
+  },
+  unconfinedEmployee: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'employee-subject',
+    assurance: 'entraid',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services'] }],
+    scopes: [lockdownServiceScope],
   },
 };
 const operators = operatorDirectory({});
@@ -878,6 +899,98 @@ describe('lockdown', () => {
         { orgNumber: digdir, name: expect.any(String), rights: [...PLATFORM_RIGHTS] },
       ],
     });
+  });
+
+  const registerServiceClient = async (send: Awaited<ReturnType<typeof boot>>['send']) => {
+    const saved = await send(`/tenants/${digdir}/clients/ka-web`, 'entra', {
+      method: 'PUT',
+      body: {
+        metadata: { name: 'Kunnskapsassistenten' },
+        spec: {
+          service: 'klarsprak',
+          kind: 'browser',
+          url: 'https://ka.example',
+          channels: ['openai', 'mcp', 'conversations', 'feedback'],
+          allowedOrigins: ['https://ka.example'],
+          oidc: { clientId: 'ka-web', redirectUris: ['https://ka.example/auth/callback'] },
+        },
+      },
+      reason,
+    });
+    expect(saved.status).toBe(200);
+  };
+
+  it('lets a service-group member invoke the published service its client is registered for', async () => {
+    const { chat, model, send } = await boot(true);
+    await registerServiceClient(send);
+
+    const ran = await chat('employee');
+    const conversations = await send('/api/conversations', 'employee');
+
+    expect(ran.status).toBe(200);
+    expect(model.seen.length).toBeGreaterThan(0);
+    expect(conversations.status).toBe(200);
+  });
+
+  it('refuses a service-group member every other service, write, build, publish, ingestion, key and operator route', async () => {
+    const { chat, dataset, execute, ingestion, model, send } = await boot(true);
+    await registerServiceClient(send);
+    await dataset();
+    const writes: [string, string, unknown][] = [
+      ['POST', `/tenants/${digdir}/definitions`, testService('ny')],
+      ['PUT', `/tenants/${digdir}/services/klarsprak/draft`, {}],
+      ['PUT', `/tenants/${digdir}/services/klarsprak/lifecycle`, { state: 'paused' }],
+      ['PUT', `/tenants/${digdir}/clients/ka-web`, {}],
+      ['POST', `/tenants/${digdir}/services/klarsprak/api-keys`, { name: 'Nøkkel' }],
+      ['POST', `/tenants/${digdir}/playground/runs`, {}],
+      ['POST', `/tenants/${digdir}/definitions/test-run`, {}],
+      ['POST', `/tenants/${digdir}/services/klarsprak/eval-runs`, {}],
+      ['POST', `/tenants/${digdir}/services/klarsprak/assistant/turns`, {}],
+      ['POST', `/tenants/${digdir}/datasets`, { id: 'mer' }],
+      ['PUT', `/tenants/${digdir}/me/preferences`, {}],
+      ['POST', '/operator/quality/matrix/runs', {}],
+    ];
+    const reads = [
+      `/tenants/${digdir}/definitions`,
+      `/tenants/${digdir}/api-keys`,
+      '/operator/tenants',
+      '/operator/operations',
+    ];
+    const seen = model.seen.length;
+
+    const other = await chat('employee', 'annen');
+    const ingested = await execute('employee');
+    const written = await Promise.all(
+      writes.map(([method, path, body]) => send(path, 'employee', { method, body, reason })),
+    );
+    const read = await Promise.all(reads.map((path) => send(path, 'employee')));
+
+    expect(other.status).toBeGreaterThanOrEqual(400);
+    expect(ingested.status).toBeGreaterThanOrEqual(400);
+    for (const res of [...written, ...read]) expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(model.seen.length).toBe(seen);
+    expect(ingestion.jobs).toEqual([]);
+  });
+
+  it('gives a service-group scope without a confining client no models and no changes', async () => {
+    const { chat, dataset, execute, send } = await boot(true);
+    await dataset();
+
+    const ran = await chat('unconfinedEmployee');
+    const ingested = await execute('unconfinedEmployee');
+    const changed = await send(
+      `/tenants/${digdir}/services/klarsprak/api-keys`,
+      'unconfinedEmployee',
+      {
+        body: { name: 'Nøkkel' },
+        reason,
+      },
+    );
+
+    for (const res of [ran, ingested, changed]) {
+      expect(res.status).toBe(403);
+      expect(await json(res)).toMatchObject({ type: lockedEnvironmentType });
+    }
   });
 
   it('lets people run services when lockdown is off', async () => {

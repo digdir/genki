@@ -267,6 +267,7 @@ export const qualityArea = {
     runsLoading: 'Henter kjøringer',
     notRunYet: 'Testsettet er ikke kjørt ennå.',
     started: 'Startet',
+    duration: 'Varighet',
     version: 'Versjon',
     status: 'Status',
     score: 'Poeng',

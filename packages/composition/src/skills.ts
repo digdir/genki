@@ -36,9 +36,7 @@ export const skillResolver = (deps: {
       })
       .map((e) => e.scope);
 
-  const resolveSkill = async (tenant: string, id: string, version: number) => {
-    const own = await deps.definitions.get('Skill', tenant, id, version);
-    if (own) return { owner: tenant, definition: own.definition as SkillDefinition };
+  const resolveShared = async (tenant: string, id: string, version: number) => {
     for (const owner of await sharedOwners(id, version, tenant)) {
       const found = await deps.definitions.get('Skill', owner, id, version);
       if (found) return { owner, definition: found.definition as SkillDefinition };
@@ -46,14 +44,20 @@ export const skillResolver = (deps: {
     return undefined;
   };
 
-  return { toRuntime, resolveSkill };
+  const resolveSkill = async (tenant: string, id: string, version: number) => {
+    const own = await deps.definitions.get('Skill', tenant, id, version);
+    if (own) return { owner: tenant, definition: own.definition as SkillDefinition };
+    return resolveShared(tenant, id, version);
+  };
+
+  return { toRuntime, resolveSkill, resolveShared };
 };
 
 export type SkillResolver = ReturnType<typeof skillResolver>;
 
 export const skillDecorator =
   (
-    resolver: SkillResolver,
+    resolver: Pick<SkillResolver, 'resolveSkill' | 'toRuntime'>,
     draftFor?: (tenant: string, service: string) => RuntimeSkill | undefined,
   ) =>
   async (

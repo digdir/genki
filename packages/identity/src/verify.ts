@@ -11,6 +11,7 @@ import {
 import {
   fromOrgNo,
   INTERNAL_GRANT_PREFIX,
+  lockdownServiceScope,
   lockdownUserScope,
   trustedEntraScope,
   type AltinnResourceDetail,
@@ -53,7 +54,9 @@ export interface ClientRegistry {
 export interface TrustedEntra {
   groups: readonly string[];
   userGroups?: readonly string[];
+  serviceGroups?: readonly string[];
   clientIds: readonly string[];
+  serviceClientIds?: readonly string[];
   emailDomain?: string;
   tenant: string;
   resource: string;
@@ -150,6 +153,12 @@ const orgNamesOf = (parties: { org: string; name: string | undefined }[]) => {
   return Object.keys(names).length > 0 ? { orgNames: names } : {};
 };
 
+const scopeOf = {
+  operator: trustedEntraScope,
+  user: lockdownUserScope,
+  service: lockdownServiceScope,
+} as const;
+
 const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
@@ -164,11 +173,21 @@ const trustedEntraLogin = (
   const member = (groups: readonly string[]) => groups.some((g) => claimed.has(g.toLowerCase()));
   const operatorLogin = member(trusted.groups);
   const userLogin = !operatorLogin && member(trusted.userGroups ?? []);
-  const allowedClient =
-    typeof payload.client_id === 'string' && trusted.clientIds.includes(payload.client_id);
-  if (userLogin ? registered || !allowedClient : !registered && !allowedClient)
+  const serviceLogin = !operatorLogin && member(trusted.serviceGroups ?? []);
+  const clientId = typeof payload.client_id === 'string' ? payload.client_id : undefined;
+  const platformClient = clientId !== undefined && trusted.clientIds.includes(clientId);
+  const serviceClient =
+    registered && clientId !== undefined && (trusted.serviceClientIds ?? []).includes(clientId);
+  const grantOf = (): keyof typeof scopeOf | undefined => {
+    if (operatorLogin) return registered || platformClient ? 'operator' : undefined;
+    if (userLogin && !registered && platformClient) return 'user';
+    if (serviceLogin && serviceClient) return 'service';
+    return undefined;
+  };
+  const grant = grantOf();
+  if (!grant && (operatorLogin || userLogin || serviceLogin))
     throw new AuthenticationError('entra_not_trusted', 'the login comes from an untrusted client');
-  if (!operatorLogin && !userLogin)
+  if (!grant)
     throw new AuthenticationError('entra_not_trusted', 'the login is in no trusted Entra group');
   const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
   if (trusted.emailDomain && !email.endsWith(`@${trusted.emailDomain.toLowerCase()}`))
@@ -182,9 +201,13 @@ const trustedEntraLogin = (
       assurance: 'entraid',
       tenant: trusted.tenant,
       authorizedFor: [
-        { org: trusted.tenant, resource: trusted.resource, actions: [...PLATFORM_RIGHTS] },
+        {
+          org: trusted.tenant,
+          resource: trusted.resource,
+          actions: grant === 'service' ? ['use-services'] : [...PLATFORM_RIGHTS],
+        },
       ],
-      scopes: [userLogin ? lockdownUserScope : trustedEntraScope],
+      scopes: [scopeOf[grant]],
       ...expiresAt(payload),
     },
   };

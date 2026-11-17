@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import ts from 'typescript';
 
 export const repoRoot = join(import.meta.dirname, '..');
@@ -64,7 +64,7 @@ export const scannedFiles = (root = repoRoot) =>
         .filter((src) => statSync(src, { throwIfNoEntry: false })?.isDirectory()),
     )
     .flatMap((src) => sourceFiles(src))
-    .map((full) => relative(root, full))
+    .map((full) => relative(root, full).split(sep).join('/'))
     .filter((path) => !skippedFile(path))
     .sort();
 

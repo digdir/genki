@@ -30,7 +30,7 @@ import type {
 } from '../../../api/playground';
 import { withDraftService } from '../../../components/playground/PlaygroundPanel';
 import type { Problem } from '../../../types';
-import { initialSetup } from '../../../data/playground';
+import { initialSetup, sourcePageLink } from '../../../data/playground';
 import { loadDatasetFilters } from './datasetFilters';
 import {
   draftServiceOf,
@@ -97,10 +97,18 @@ export const sourcesOf = (sources: readonly PlaygroundSource[]): Source[] => {
       ...(source.document ? { documentId: source.document } : {}),
       excerpts: [],
     };
+    const heading = source.headers?.length ? source.headers.join(' › ') : undefined;
+    const pageLink = sourcePageLink(source);
     found.excerpts.push({
       chunkId: source.chunkId,
       text: source.text ?? source.excerpt ?? '',
       ...(source.position !== undefined ? { position: source.position } : {}),
+      ...(heading ? { heading } : {}),
+      ...(source.page !== undefined ? { page: source.page } : {}),
+      ...(source.page !== undefined && source.pageEnd !== undefined && source.pageEnd > source.page
+        ? { pageEnd: source.pageEnd }
+        : {}),
+      ...(pageLink ? { url: pageLink } : {}),
     });
     documents.set(key, found);
   });

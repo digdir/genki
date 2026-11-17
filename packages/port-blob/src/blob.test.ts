@@ -92,26 +92,30 @@ describe.each(stores)('%s blob store', (_name, make) => {
 });
 
 describe('file system listing', () => {
-  it('a blob listing that cannot read its folder fails instead of listing nothing', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'blob-list-'));
-    dirs.push(dir);
-    const store = new FileSystemBlobStore(dir);
-    await store.put(
-      { tenant, path: 'datasets/docs/uploads/a.md' },
-      encoder.encode('a'),
-      'text/markdown',
-    );
-    expect(await store.list(tenant, 'datasets/docs/uploads/')).toHaveLength(1);
-    expect(await store.list(tenant, 'datasets/none/')).toEqual([]);
-    const { chmod } = await import('node:fs/promises');
-    const folder = join(dir, tenant, 'meta', 'datasets', 'docs');
-    await chmod(folder, 0o000);
-    try {
-      await expect(store.list(tenant, 'datasets/docs/uploads/')).rejects.toThrow();
-    } finally {
-      await chmod(folder, 0o755);
-    }
-  });
+  // chmod cannot make a folder unreadable on Windows, so the failure cannot be provoked there.
+  it.skipIf(process.platform === 'win32')(
+    'a blob listing that cannot read its folder fails instead of listing nothing',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'blob-list-'));
+      dirs.push(dir);
+      const store = new FileSystemBlobStore(dir);
+      await store.put(
+        { tenant, path: 'datasets/docs/uploads/a.md' },
+        encoder.encode('a'),
+        'text/markdown',
+      );
+      expect(await store.list(tenant, 'datasets/docs/uploads/')).toHaveLength(1);
+      expect(await store.list(tenant, 'datasets/none/')).toEqual([]);
+      const { chmod } = await import('node:fs/promises');
+      const folder = join(dir, tenant, 'meta', 'datasets', 'docs');
+      await chmod(folder, 0o000);
+      try {
+        await expect(store.list(tenant, 'datasets/docs/uploads/')).rejects.toThrow();
+      } finally {
+        await chmod(folder, 0o755);
+      }
+    },
+  );
 });
 
 describe('limits', () => {

@@ -672,6 +672,29 @@ describe('the whole document from the host', () => {
     expect(screen.getByRole('link', { name: /^Åpne dokumentet \(PDF\)/ })).toBeTruthy();
   });
 
+  it("opens the PDF at the shown excerpt's page when the host's file is that excerpt's, framed or linked", () => {
+    const own = {
+      status: 'ready' as const,
+      file: { ...pdf, source: 'https://kudos.dfo.no/dokument/2021' },
+    };
+    const target = { documentId: 'kudos::2021', chunkId: 'kudos::2021-2' };
+    const { unmount } = draw({ file: own, target });
+    expect(frameOf()?.getAttribute('src')).toBe('/api/files/2021#page=12');
+    unmount();
+    // Another file, or one the host does not name, stays at its start.
+    for (const file of [pdf, { ...pdf, source: 'https://kudos.dfo.no/dokument/vedlegg' }]) {
+      const other = draw({ file: { status: 'ready', file }, target });
+      expect(frameOf()?.getAttribute('src')).toBe('/api/files/2021');
+      other.unmount();
+    }
+    viewer(true);
+    smallScreen();
+    draw({ file: own, target });
+    expect(
+      screen.getByRole('link', { name: /^Åpne dokumentet \(PDF\)/ }).getAttribute('href'),
+    ).toBe('/api/files/2021#page=12');
+  });
+
   it('shows the excerpts as before, and says so, when the host has no file for the document', () => {
     draw({ file: { status: 'none' } });
     expect(screen.getByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();

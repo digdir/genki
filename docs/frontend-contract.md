@@ -291,7 +291,7 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
   "url": "https://kudos.dfo.no/dokument/d1",
   "document_id": "d1",
   "excerpts": [
-    { "chunk_id": "c1", "text": "…", "position": 0, "heading": "1 Innledning" },
+    { "chunk_id": "c1", "text": "…", "position": 0, "heading": "1 Innledning", "page": 3 },
     { "chunk_id": "c7", "text": "…", "position": 4, "heading": "3 Styringsparametere › 3.2 Mål" }
   ]
 }
@@ -299,7 +299,9 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 
 - `url` is present only when the platform's public link rule gives an http or https link people can open. Never build a link from `document_id`.
 - `excerpts` holds every retrieved chunk of that document, so a frontend never fetches passage text itself. Per-chunk ids are `excerpts[].chunk_id`.
-- `excerpts[].heading` is that excerpt's own heading path, as plain text with levels joined by `›`; its last level is the excerpt's section. It is present only when the index gives the chunk a heading. The converter's page anchors and its `<u>` and `<sup>` tags are left out, a link to a page keeps only its words, a footnote number is raised (`¹`), and a level with nothing else is left out. Headings stored with a turn before that rule can still carry the markup. `metadata[0].name` stays the first excerpt's path under the document title, in plain text too. Excerpts carry no page number.
+- `excerpts[].heading` is that excerpt's own heading path, as plain text with levels joined by `›`; its last level is the excerpt's section. It is present only when the index gives the chunk a heading. The converter's page anchors and its `<u>` and `<sup>` tags are left out, a link to a page keeps only its words, a footnote number is raised (`¹`), and a level with nothing else is left out. Headings stored with a turn before that rule can still carry the markup. `metadata[0].name` stays the first excerpt's path under the document title, in plain text too.
+- `excerpts[].page` is the page of its file the excerpt starts on, and `page_end` the page it ends on when that is a later one. They are present only when the index gives the chunk a page, as the knowledge database does for chunks made from stored conversions; answers stored before pages were kept have none.
+- `excerpts[].url` is the excerpt's PDF opened at its page, `…#page=N`, from the address the document's own record gives that file. It is present only for an http or https PDF, never built from text in the chunk. The source's `url` stays the document's page.
 - Existing fields (`source`, `document`, `metadata`, `excerpt`) are kept for OpenAI and Open WebUI clients. Note that `document` there is still the list of passage texts, which is why the document id is `document_id`. The top-level `citations` lists only links people can open, so it does not line up with `sources`; resolve `[N]` by `index`, never by position in `citations`.
 - An answer without citations still lists up to 10 retrieved sources, one per document, without `index`.
 - **When the service cites excerpts** (strategy config `citeBy: excerpt`, ADR 0052), each `[N]` leads to one excerpt, and several markers can lead to the same document. The top-level `markers` lists every marker in the answer in order, as `{ marker, chunk_id, document }`, with `marker` written as in the text without brackets. Resolve `[N]` by `markers`, then show the excerpt with that `chunk_id`. A source's `markers` lists the markers that cite its document, each excerpt's `markers` the ones that cite that excerpt, and `index` is the document's lowest marker. Number the markers for the reader as you like. MCP returns the same list as `structuredContent.markers`.
@@ -420,7 +422,7 @@ When the service cites excerpts, the answer and the `sources` event carry `marke
 
 `platform.conversations.get(id)` reads each stored message's `sources` into the same shape as an answer's, and its `markers` when the stored turn carries them.
 
-An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` sends it when the index gives the chunk a heading (see Citations and sources).
+An excerpt carries `heading`, its own section path, when the response gives it one. `/v1` sends it when the index gives the chunk a heading (see Citations and sources). It carries `page`, `pageEnd` and `url` (its PDF at `#page=N`, http or https only) when the response gives them.
 
 ## Without the client (curl)
 

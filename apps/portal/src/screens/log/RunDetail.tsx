@@ -230,7 +230,7 @@ export const RunDetail = ({
             l: t('logRun.totalTime'),
             v:
               status === 'running'
-                ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f) })
+                ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
                 : t('logRun.batchDuration', { hours: 1, minutes: 58 }),
           },
           {
@@ -253,8 +253,8 @@ export const RunDetail = ({
               decision && extras?.afterApproval
                 ? extras.afterApproval.totalTime
                 : run.status === 'running' || run.status === 'interrupted'
-                  ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f) })
-                  : formatDuration(run.durationSeconds, f),
+                  ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f, t) })
+                  : formatDuration(run.durationSeconds, f, t),
           },
           ...(usageShown
             ? [

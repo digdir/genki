@@ -231,15 +231,18 @@
               </li>
               <li>
                 A document's whole file, in beta: the profile's <code>documentFile</code>, a host's
-                function from a document's number and an abort signal to
-                <code>{ url, mediaType }</code>, or <code>undefined</code> for none. The assembly
-                calls it when a document opens in Dokumentvisning and the block's
-                <code>file</code> option is on, once per document, aborts it when another opens or
-                the view closes, drops a result that comes after, and hands the view the status:
-                being found, found, none or failed. Without it, as in the portal's preview, or with
-                the option off, the view shows the excerpts and asks nothing. It is provisional
-                until genki offers a route for a document's file, and may change then; where the
-                file comes from stays the host's.
+                function from a document's number, an abort signal and, when the opened excerpt has
+                a page and a link to it, <code>{ file }</code>, that excerpt's
+                <code>url</code> before <code>#page=N</code>, to
+                <code>{ url, mediaType, source? }</code>, or <code>undefined</code> for none. A host
+                that serves the excerpt's own file says so in <code>source</code>, and the view
+                opens it at the excerpt's page. The assembly calls it when a document opens in
+                Dokumentvisning and the block's <code>file</code> option is on, once per document
+                and file, aborts it when another opens or the view closes, drops a result that comes
+                after, and hands the view the status: being found, found, none or failed. Without
+                it, as in the portal's preview, or with the option off, the view shows the excerpts
+                and asks nothing. It is provisional until genki offers a route for a document's
+                file, and may change then; where the file comes from stays the host's.
               </li>
               <li>
                 <code>profile</code>: what genki does not say. The assistant's name, suggestions,

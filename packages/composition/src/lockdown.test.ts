@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import {
   configuredCredentialScope,
+  lockdownServiceScope,
   lockdownUserScope,
   isAdmittedEntraLogin,
   isTrustedEntraLogin,
+  mayInvokeServices,
   mayUseModels,
   readOnlyInLockdown,
   trustedEntraFrom,
@@ -77,6 +79,44 @@ describe('Entra logins in lockdown', () => {
       resource,
     });
     expect(trustedEntraFrom({ LOCKDOWN_USER_GROUPS: userGroup }, '1', resource)).toBeUndefined();
+  });
+
+  it('reads LOCKDOWN_SERVICE_GROUPS with their own client list, also without other groups', () => {
+    const serviceGroup = '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d';
+    const locked = { GENAI_LOCKDOWN: 'true', LOCKDOWN_SERVICE_CLIENT_IDS: ' ka-web ' };
+
+    expect(
+      trustedEntraFrom({ ...locked, LOCKDOWN_SERVICE_GROUPS: serviceGroup }, '1', resource),
+    ).toEqual({
+      groups: [],
+      serviceGroups: [serviceGroup],
+      serviceClientIds: ['ka-web'],
+      clientIds: [],
+      tenant: '1',
+      resource,
+    });
+    expect(
+      trustedEntraFrom({ LOCKDOWN_SERVICE_GROUPS: serviceGroup }, '1', resource),
+    ).toBeUndefined();
+  });
+
+  it('lets a service-group login invoke its service but nothing else that needs admission', () => {
+    const unconfined: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'ansatt',
+      scopes: [lockdownServiceScope],
+    };
+    const service: Principal = {
+      ...unconfined,
+      confinedTo: { tenant: '1', service: 'ka', client: 'ka-web' },
+    };
+    const key: Principal = { ...service, kind: 'agency-system' };
+
+    expect([service, unconfined, key].map(mayInvokeServices)).toEqual([true, false, false]);
+    expect(mayUseModels(service)).toBe(false);
+    expect(isAdmittedEntraLogin(service)).toBe(false);
+    expect(readOnlyInLockdown(service)).toBe(true);
   });
 
   it('admits a lockdown user like a trusted Entra login, but only as a person', () => {

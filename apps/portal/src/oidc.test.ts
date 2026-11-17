@@ -212,6 +212,34 @@ describe('login through Ansattporten', () => {
     expect((await client.refresh())?.token).toBe(renewedToken);
   });
 
+  it('renews without a refresh token by a silent prompt=none authorization', async () => {
+    refreshable = 'none';
+    const authorized: URL[] = [];
+    const { client, navigated, returnFromAnsattporten } = setup({
+      silent: async (url) => {
+        const sent = new URL(url);
+        authorized.push(sent);
+        return new URL(
+          `http://localhost:5175/callback?code=silent&state=${sent.searchParams.get('state')}&iss=${issuer}`,
+        );
+      },
+    });
+    void client.login();
+    await vi.waitFor(() => expect(navigated).toHaveLength(1));
+    returnFromAnsattporten({ code: 'abc' });
+    await client.login();
+
+    issued = { access_token: renewedToken, token_type: 'Bearer' };
+    const renewed = await client.refresh().finally(() => {
+      issued = undefined;
+    });
+
+    expect(authorized[0]?.searchParams.get('prompt')).toBe('none');
+    expect(authorized[0]?.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(renewed?.token).toBe(renewedToken);
+    expect(client.current()?.token).toBe(renewedToken);
+  });
+
   it('keeps the session until it expires when the refresh token is refused', async () => {
     refreshable = 'none';
     const { client, navigated, returnFromAnsattporten } = setup();

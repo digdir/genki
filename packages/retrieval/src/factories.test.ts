@@ -211,6 +211,32 @@ describe('agent retrieval factory', () => {
     ]);
   });
 
+  it("carries a chunk's page, page range, PDF address and heading path into the chunks", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const s = stub([], {
+      c1: { page: 12, pageEnd: 13, fileUrl: pdf, headingPath: ['3 Funn', '3.1 Kommunene'] },
+      c3: { page: 4, docs: { page: 99, fileUrl: 'https://example.org/annen.pdf' } },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const read = await agent.read(['c1', 'c2', 'c3'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read.map((c) => [c.chunkId, c.page, c.pageEnd, c.fileUrl, c.headers])).toEqual([
+      ['c1', 12, 13, pdf, ['3 Funn', '3.1 Kommunene']],
+      // Without a heading path the headers still come from the metadata string.
+      ['c2', undefined, undefined, undefined, ['Ansatte', 'Årsverk']],
+      // Only the chunk's own fields count, never a page a nested document field holds.
+      ['c3', 4, undefined, undefined, ['Ansatte', 'Årsverk']],
+    ]);
+    expect(found.chunks.find((c) => c.chunkId === 'c1')).toMatchObject({
+      page: 12,
+      pageEnd: 13,
+      fileUrl: pdf,
+      headers: ['3 Funn', '3.1 Kommunene'],
+    });
+  });
+
   it('never gives the ingestion date as the publish date of an undated chunk', async () => {
     const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
     const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
@@ -241,6 +267,73 @@ describe('agent retrieval factory', () => {
       ],
     });
     expect(await agent.facets(['secret'], 2, signal)).toEqual({});
+  });
+
+  const counted = () => {
+    const rows = [
+      { orgs_short: 'Digdir', concerned_years: '2022' },
+      { orgs_short: 'Digdir', concerned_years: '2023' },
+      { orgs_short: 'NAV', concerned_years: '2022' },
+      { orgs_short: 'NAV', concerned_years: '2024' },
+      { orgs_short: 'NAV', concerned_years: '2024' },
+    ];
+    const port: KnowledgePort = {
+      info: () => ({
+        id: 'kudos',
+        residency: 'norway',
+        filters: { orgs_short: 'multiselect', concerned_years: 'multiselect' },
+        profiles: ['content'],
+      }),
+      search: async () => ({ hits: [] }),
+      searchMany: async (requests) => requests.map(() => ({ hits: [] })),
+      fetch: async () => [],
+      range: async () => [],
+      facets: async (fields, filters = {}) => {
+        const kept = rows.filter((row) =>
+          Object.entries(filters).every(
+            ([f, v]) => Array.isArray(v) && v.map(String).includes(row[f as keyof typeof row]),
+          ),
+        );
+        return Object.fromEntries(
+          fields.map((f) => {
+            const counts = new Map<string, number>();
+            for (const row of kept) {
+              const value = row[f as keyof typeof row];
+              counts.set(value, (counts.get(value) ?? 0) + 1);
+            }
+            return [f, [...counts].map(([value, count]) => ({ value, count }))];
+          }),
+        );
+      },
+    };
+    return port;
+  };
+
+  it('inspect_filters never counts or names values outside the service fixed filter', async () => {
+    const agent = createAgentRetrieval({
+      knowledge: counted(),
+      filters: { orgs_short: ['Digdir'] },
+    });
+
+    expect(await agent.facets(['orgs_short', 'concerned_years'], 10, signal)).toEqual({
+      orgs_short: [{ value: 'Digdir', count: 2 }],
+      concerned_years: [
+        { value: '2022', count: 1 },
+        { value: '2023', count: 1 },
+      ],
+    });
+  });
+
+  it('inspect_filters counts within every field of the service filter', async () => {
+    const agent = createAgentRetrieval({
+      knowledge: counted(),
+      filters: { orgs_short: ['NAV'], concerned_years: ['2024'] },
+    });
+
+    expect(await agent.facets(['orgs_short', 'concerned_years'], 10, signal)).toEqual({
+      orgs_short: [{ value: 'NAV', count: 2 }],
+      concerned_years: [{ value: '2024', count: 2 }],
+    });
   });
 
   it('reranks read chunks in the reranker order with headers it saw earlier, and leaves them alone without a reranker', async () => {

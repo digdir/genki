@@ -1,10 +1,10 @@
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { resolveLocale } from '@genai/i18n';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
 import { useT } from './i18n';
 import { LoginError, operatorRole, type AuthClient } from './auth';
-import { splitRoute, useHashRoute } from './hooks';
+import { navigate, splitRoute, useHashRoute } from './hooks';
 import { Audit } from './screens/Audit';
 import { Catalog } from './screens/Catalog';
 import { BuildingBlocks } from './screens/BuildingBlocks';
@@ -16,7 +16,6 @@ import { PlatformDefaults } from './screens/PlatformDefaults';
 import { Policies } from './screens/Policies';
 import { pendingCount, Queue } from './screens/Queue';
 import { Quality } from './screens/Quality';
-import { QualityMatrix } from './screens/QualityMatrix';
 import { Settings } from './screens/Settings';
 import { SharedServices } from './screens/SharedServices';
 import { SupportAccess } from './screens/SupportAccess';
@@ -29,11 +28,29 @@ import { Tracing } from './screens/Tracing';
 import { allPages, Shell, type NavBadges } from './Shell';
 import { EmptyState, Loading } from './states';
 import { SupportProvider } from './support';
+import { useSessionRenewal } from './session-renewal';
+import {
+  forgetUnsavedInput,
+  pendingInputHash,
+  restoreUnsavedInput,
+  saveUnsavedInput,
+} from './unsaved-input';
 
 const apisTab = { tab: 'apis' };
 
 const Atlas = lazy(() => import('./screens/Atlas').then((m) => ({ default: m.Atlas })));
+const QualityMatrix = lazy(() =>
+  import('./screens/QualityMatrix').then((m) => ({ default: m.QualityMatrix })),
+);
 import type { OperatorSession } from './types';
+
+const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+  }
+};
 
 interface Props {
   auth: AuthClient;
@@ -58,14 +75,30 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   const [decided, setDecided] = useState(0);
   const [expired, setExpired] = useState(false);
   const hash = useHashRoute();
+  const endSession = useCallback(() => {
+    saveUnsavedInput(inputStore());
+    auth.expire();
+    setExpired(true);
+    setSession(undefined);
+  }, [auth]);
   const api = useMemo(() => {
+    const retry = (input: RequestInfo | URL, init: RequestInit | undefined, token: string) => {
+      const headers = new Headers(init?.headers);
+      headers.set('authorization', `Bearer ${token}`);
+      return send(input, { ...init, headers });
+    };
     const watched: typeof fetch = async (input, init) => {
       const response = await send(input, init);
-      if (response.status === 401 && auth.current()) {
-        auth.expire();
-        setExpired(true);
-        setSession(undefined);
+      const before = auth.current();
+      if (response.status !== 401 || !before) return response;
+      const sent = new Headers(init?.headers).get('authorization');
+      const renewed = sent === `Bearer ${before.token}` ? await auth.renew?.() : before;
+      if (renewed) {
+        if (renewed !== before) setSession(renewed);
+        const retried = await retry(input, init, renewed.token);
+        if (retried.status !== 401) return retried;
       }
+      endSession();
       return response;
     };
     return createApiClient({
@@ -76,8 +109,19 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
       locale: () => resolveLocale(document.documentElement.lang),
       settingsGrid: !live,
     });
-  }, [auth, send, baseUrl, live]);
+  }, [auth, send, baseUrl, live, endSession]);
   const authorized = Boolean(session?.roles.includes(operatorRole));
+  const token = session?.token;
+  useSessionRenewal(auth, token, setSession, endSession);
+
+  useEffect(() => {
+    if (!token) return;
+    const store = inputStore();
+    const saved = pendingInputHash(store);
+    if (saved === undefined) return;
+    if (saved && saved !== window.location.hash) navigate(saved.replace(/^#/, ''));
+    return restoreUnsavedInput(store);
+  }, [token]);
 
   useEffect(() => {
     if (!completing || !auth.completeLogin) return;
@@ -138,6 +182,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
   };
 
   const logout = () => {
+    forgetUnsavedInput(inputStore());
     void auth.logout().then(() => setSession(undefined));
   };
 
@@ -243,7 +288,9 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/search-engines': () => <SearchEngines api={api} />,
     '/state-register': () => <StateRegister api={api} />,
     '/quality-matrix': () => (
-      <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
+      <Suspense fallback={null}>
+        <QualityMatrix api={api} tab={params.get('tab') ?? 'matrix'} live={live} />
+      </Suspense>
     ),
     '/tracing': () => <Tracing api={api} live={live} />,
     '/operations': () => <Operations api={api} />,
