@@ -10,6 +10,9 @@ import { localDevLogin, mockAnsattporten } from './auth';
 import { setting } from './runtime-config';
 import { ansattporten, organisationsFromApi } from './oidc';
 import { isSilentCallback, silentFrame } from './silent-frame';
+import { applyTheme, storedTheme } from './theme';
+
+applyTheme(storedTheme());
 
 const reloadedFor = 'genki:reloaded-for';
 window.addEventListener('vite:preloadError', (event) => {

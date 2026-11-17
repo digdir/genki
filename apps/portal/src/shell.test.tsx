@@ -209,21 +209,59 @@ describe('shell', () => {
     expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
   });
 
-  it('lists the profile menu in design order and closes it with Escape', async () => {
+  it('Profil lists each right with what it allows, and saves the theme choice in the browser', async () => {
+    await renderAt('#/profile');
+
+    const rights = await screen.findByRole('region', { name: 'Rettighetene dine' });
+    expect(
+      within(rights).getByText(
+        'Stille spørsmål og få svar i tjenestene virksomheten har tatt i bruk.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Mørkt' }));
+    expect(document.documentElement.getAttribute('data-color-scheme')).toBe('dark');
+    expect(window.localStorage.getItem('genai.theme')).toBe('dark');
+    expect(screen.getByText('Lagret i denne nettleseren')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Følg systemet' }));
+    expect(document.documentElement.getAttribute('data-color-scheme')).toBe('auto');
+  });
+
+  it('lists the user menu in design order and closes it with Escape, back on its button', async () => {
     await renderAt('#/overview');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
-    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+    const button = screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' });
+    fireEvent.click(button);
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
     expect(
       within(menu)
-        .getAllByRole('link')
-        .map((a) => a.firstChild?.textContent),
-    ).toEqual(['Kom i gang', 'Profil', 'Kontakt Digdir', 'Databehandling']);
-    expect(within(menu).queryByRole('button', { name: 'Om tjenesten' })).toBeNull();
-    expect(within(menu).getByRole('button', { name: 'Logg ut' })).toBeTruthy();
+        .getAllByRole('menuitem')
+        .map((a) => a.textContent),
+    ).toEqual(['Profil', 'Kom i gang', 'Databehandling', 'Kontakt Digdir', 'Logg ut']);
+    expect(document.activeElement?.textContent).toBe('Profil');
 
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: 'Brukermeny' })).toBeNull();
+    expect(screen.queryByRole('menu', { name: 'Brukermeny' })).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('moves through the user menu with the arrow keys, Home and End', async () => {
+    await renderAt('#/overview');
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }), {
+      key: 'ArrowDown',
+    });
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+    expect(document.activeElement?.textContent).toBe('Profil');
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement?.textContent).toBe('Kom i gang');
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement?.textContent).toBe('Logg ut');
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement?.textContent).toBe('Profil');
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(document.activeElement?.textContent).toBe('Logg ut');
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(document.activeElement?.textContent).toBe('Profil');
   });
 
   it('switching agency on a page other than Oversikt goes to Oversikt with ?org=', async () => {
@@ -276,11 +314,11 @@ describe('shell', () => {
     expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
-    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+    const menu = screen.getByRole('menu', { name: 'Brukermeny' });
     fireEvent.mouseDown(within(menu).getByText('Profil'));
-    expect(screen.getByRole('dialog', { name: 'Brukermeny' })).toBeTruthy();
+    expect(screen.getByRole('menu', { name: 'Brukermeny' })).toBeTruthy();
     fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole('dialog', { name: 'Brukermeny' })).toBeNull();
+    expect(screen.queryByRole('menu', { name: 'Brukermeny' })).toBeNull();
   });
 
   it.each([
@@ -324,7 +362,7 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/onboarding', /Slik henger sidene sammen/],
+    ['/onboarding', /Fra ingenting til en tjeneste kollegene dine kan bruke/],
     ['/contact', /ikke et eget kontaktpunkt for brukerstøtte ennå/],
   ])(
     'gives the footer page %s honest content instead of the not designed placeholder',
@@ -366,8 +404,8 @@ describe('login through Ansattporten in live mode', () => {
     expect(await screen.findByText('Testdepartementet')).toBeTruthy();
     go('#/profile');
     const menu = screen.getByRole('main');
-    expect(await within(menu).findByText('Lese')).toBeTruthy();
-    expect(within(menu).getByText('Skrive')).toBeTruthy();
+    expect(await within(menu).findByText('Testdepartementet (org.nr. 405 003 309)')).toBeTruthy();
+    expect(within(menu).getByText('Administrere tjenester')).toBeTruthy();
   });
 
   it('shows only the finer Altinn rights in the user menu when the token also has read and write', async () => {
@@ -400,7 +438,7 @@ describe('login through Ansattporten in live mode', () => {
     const menu = await screen.findByRole('main');
     expect(
       within(menu)
-        .getAllByText(/./, { selector: '.ds-tag' })
+        .getAllByText(/./, { selector: '.profile-right' })
         .map((t) => t.textContent),
     ).toEqual([
       'Bruke tjenester',
@@ -416,10 +454,10 @@ describe('login through Ansattporten in live mode', () => {
     await screen.findByRole('button', { name: 'Ingrid Berg, åpne brukermeny' });
 
     await waitFor(() => {
-      if (!screen.queryByRole('dialog', { name: 'Brukermeny' }))
+      if (!screen.queryByRole('menu', { name: 'Brukermeny' }))
         fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
-      const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
-      fireEvent.click(within(menu).getByRole('button', { name: 'Logg ut' }));
+      const menu = screen.getByRole('menu', { name: 'Brukermeny' });
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Logg ut' }));
     });
 
     expect((await screen.findAllByRole('button', { name: 'Logg inn' })).length).toBeGreaterThan(0);

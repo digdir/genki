@@ -1,22 +1,32 @@
 import { Heading, Tabs } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { exampleChanges, type ChangeEntry } from '../data/log';
-import { profileFor } from '../data/organisations';
 import { navigate } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
+import { useRights } from '../Shell';
+import type { TaskStatus } from '../types';
 import { ChangesTab } from './log/ChangesTab';
 import { RunsTab } from './log/RunsTab';
 import { LiveChanges } from './changes/LiveChanges';
 import './log.css';
 
-export const Log = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
+const statuses: readonly TaskStatus[] = [
+  'running',
+  'interrupted',
+  'completed',
+  'failed',
+  'cancelled',
+];
+
+export const Log = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
   const [, path, item] = route.segments;
   const runId = path ?? route.query.get('oppgave') ?? undefined;
   const tab = route.query.get('tab') === 'changes' ? 'changes' : 'runs';
   const [changes, setChanges] = useState<ChangeEntry[]>(live ? [] : exampleChanges);
-  const canReveal = profileFor(tenant, tenantName).rights.includes('Administrere tjenester');
+  const canReveal = useRights().has('manage-services');
+  const status = statuses.find((s) => s === route.query.get('status'));
   const itemIndex = item && /^\d+$/.test(item) ? Number(item) : undefined;
 
   return (
@@ -38,17 +48,16 @@ export const Log = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
           <Tabs.Tab value="changes">{t('log.tabChanges')}</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="runs">
-          {tab === 'runs' ? (
-            <RunsTab
-              api={api}
-              tenant={tenant}
-              runId={runId}
-              itemIndex={itemIndex}
-              canReveal={canReveal}
-              live={live}
-              onChange={(entry) => setChanges((c) => [entry, ...c])}
-            />
-          ) : null}
+          <RunsTab
+            api={api}
+            tenant={tenant}
+            runId={runId}
+            itemIndex={itemIndex}
+            canReveal={canReveal}
+            live={live}
+            onChange={(entry) => setChanges((c) => [entry, ...c])}
+            {...(status ? { initialStatus: status } : {})}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="changes">
           {tab === 'changes' && live ? (

@@ -55,6 +55,26 @@ const expectLockedWithReason = (button: HTMLElement) => {
 };
 
 describe('buttons the person has no right for', () => {
+  it('the empty Statistikk names the right instead of offering a service to someone without it', async () => {
+    const empty: UsageReport = {
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-10-06T10:00:00.000Z',
+      priced: true,
+      totals: { inputTokens: 0, outputTokens: 0, requests: 0, costMicroNok: 0 },
+      daily: [],
+      byService: [],
+      byModel: [],
+    };
+    await renderAs(
+      '#/statistics',
+      useOnly,
+      mockFetch(undefined, undefined, undefined, undefined, { usage: empty }),
+    );
+
+    expect(await screen.findByText(reason)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
+  });
+
   it('API key buttons are disabled with the missing right next to them', async () => {
     const calls = await renderAs('#/integrations?tab=keys', useOnly);
     const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });

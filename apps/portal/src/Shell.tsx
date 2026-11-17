@@ -23,6 +23,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  type KeyboardEvent,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -205,11 +206,29 @@ const isActive = (path: string, item: NavItem) => {
 };
 
 const userMenuLinks: readonly (readonly [string, PlainKey])[] = [
-  ['#/onboarding', 'shell.menuOnboarding'],
   ['#/profile', 'shell.menuProfile'],
-  ['#/contact', 'shell.contact'],
+  ['#/onboarding', 'shell.menuOnboarding'],
   ['#/data-handling', 'shell.menuDataHandling'],
+  ['#/contact', 'shell.contact'],
 ];
+
+const moveFocus = (event: KeyboardEvent<HTMLElement>) => {
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const target =
+    event.key === 'ArrowDown'
+      ? items[(at + 1) % items.length]
+      : event.key === 'ArrowUp'
+        ? items[(at - 1 + items.length) % items.length]
+        : event.key === 'Home'
+          ? items[0]
+          : event.key === 'End'
+            ? items[items.length - 1]
+            : undefined;
+  if (!target) return;
+  event.preventDefault();
+  target.focus();
+};
 
 const readableUnregistered = [
   '/api-reference',
@@ -334,12 +353,28 @@ export const Shell = ({
   const [open, setOpen] = useState<'org' | 'user' | 'menu' | undefined>();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const closeAll = useCallback(() => setOpen(undefined), []);
+  const userButton = useRef<HTMLButtonElement>(null);
+  const orgButton = useRef<HTMLButtonElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const openNow = useRef(open);
+  openNow.current = open;
+  const closeToButton = useCallback(() => {
+    const was = openNow.current;
+    setOpen(undefined);
+    (was === 'user' ? userButton : was === 'org' ? orgButton : undefined)?.current?.focus();
+  }, []);
   const toggleCollapsed = () =>
     setCollapsed((c) => {
       storeCollapsed(!c);
       return !c;
     });
-  useEscape(open !== undefined, closeAll);
+  useEscape(open !== undefined, closeToButton);
+  useEffect(() => {
+    if (open === 'user')
+      userMenuRef.current
+        ?.querySelector<HTMLElement>('[role="menuitem"]')
+        ?.focus({ preventScroll: true });
+  }, [open]);
   useEffect(() => {
     if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
   }, [narrow]);
@@ -409,12 +444,19 @@ export const Shell = ({
   const userMenu = (
     <div className={userInSidebar ? 'popover-anchor sidebar-user' : 'popover-anchor'}>
       <Button
+        ref={userButton}
         variant="tertiary"
         data-size="sm"
         aria-expanded={open === 'user'}
-        aria-haspopup="true"
+        aria-haspopup="menu"
+        aria-controls={open === 'user' ? 'user-menu' : undefined}
         aria-label={t('shell.userMenuButton', { name: session.name })}
         onClick={(e) => toggle('user', e.currentTarget)}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+          e.preventDefault();
+          if (open !== 'user') toggle('user', e.currentTarget);
+        }}
       >
         <Avatar data-size="sm" aria-hidden="true">
           {initials(session.name)}
@@ -423,26 +465,38 @@ export const Shell = ({
       </Button>
       {open === 'user' ? (
         <div
-          role="dialog"
+          id="user-menu"
+          ref={userMenuRef}
+          role="menu"
           aria-label={t('shell.userMenu')}
           className="popover user-menu"
           style={userInSidebar ? above : undefined}
+          onKeyDown={(e) => {
+            if (e.key === 'Tab') closeAll();
+            else moveFocus(e);
+          }}
         >
-          <div className="popover-head">
+          <div className="popover-head" role="presentation">
             <span className="popover-title">{session.name}</span>
             <span className="meta">{t('shell.actingFor', { name: organisation.name, orgNr })}</span>
           </div>
-          <ul className="user-menu-list">
+          <ul className="user-menu-list" role="presentation">
             {userMenuLinks.map(([href, label]) => (
-              <li key={href}>
-                <a href={href} onClick={closeAll}>
+              <li key={href} role="presentation">
+                <a href={href} role="menuitem" tabIndex={-1} onClick={closeAll}>
                   {t(label)}
                 </a>
               </li>
             ))}
           </ul>
           <Divider />
-          <Button variant="secondary" data-size="sm" onClick={onLogout}>
+          <Button
+            role="menuitem"
+            tabIndex={-1}
+            variant="secondary"
+            data-size="sm"
+            onClick={onLogout}
+          >
             {t('shell.logout')}
           </Button>
         </div>
@@ -455,6 +509,7 @@ export const Shell = ({
     <div className={userInSidebar ? 'popover-anchor sidebar-org' : 'popover-anchor'}>
       {multi ? (
         <Button
+          ref={orgButton}
           variant="secondary"
           data-size="sm"
           aria-expanded={open === 'org'}

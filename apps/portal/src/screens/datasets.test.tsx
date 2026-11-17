@@ -84,8 +84,9 @@ describe('Datasett: delte datasett lest inn utenfor plattformen', () => {
   it('does not tell the overview there are no datasets when only shared ones exist', async () => {
     await renderLive('#/overview');
     await screen.findByRole('heading', { level: 1, name: 'Oversikt' });
-    expect(await screen.findByText('Alt er i orden')).toBeTruthy();
-    expect(screen.queryByText('Ingen datasett ennå')).toBeNull();
+    await screen.findByRole('region', { name: 'Trenger deg nå' });
+    await waitFor(() => expect(screen.queryByLabelText('Sjekker hva som trenger deg')).toBeNull());
+    expect(screen.queryByText(/Vi fikk ikke sjekket datasettene/)).toBeNull();
   });
 });
 

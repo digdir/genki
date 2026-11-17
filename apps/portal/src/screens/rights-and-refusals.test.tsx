@@ -56,7 +56,7 @@ describe('refusals from the API', () => {
     );
     await renderAs('#/overview', fetch);
 
-    const tile = (await screen.findByRole('heading', { name: /^Forbruk i/ })).closest(
+    const tile = (await screen.findByRole('heading', { name: /^Bruk i/ })).closest(
       'section',
     ) as HTMLElement;
     expect(
@@ -150,11 +150,13 @@ describe('rights in the UI', () => {
     );
     await renderAs('#/overview', empty, useOnly);
 
-    const start = await screen.findByRole('region', { name: 'Kom i gang' });
-    expect(within(start).queryByRole('link', { name: 'Legg til datasett' })).toBeNull();
-    expect(within(start).queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
-    expect(within(start).getByText('Du trenger rettigheten «Administrere datasett».')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Lag en tjeneste' })).toBeNull();
+    const start = await screen.findByRole('region', { name: /^Kom i gang med/ });
+    expect(
+      await within(start).findByText('Du trenger rettigheten «Administrere datasett».'),
+    ).toBeTruthy();
+    expect(within(start).queryByRole('link', { name: 'Nytt datasett' })).toBeNull();
+    expect(within(start).queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
     cleanup();
 
     await renderAs('#/services', mockFetch(), useOnly);

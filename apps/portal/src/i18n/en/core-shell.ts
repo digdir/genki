@@ -3,6 +3,8 @@ import type {
   app as appSource,
   devTools as devToolsSource,
   shell as shellSource,
+  profile as profileSource,
+  notFound as notFoundSource,
 } from '../nb/core-shell';
 
 export const shell = {
@@ -60,24 +62,6 @@ export const shell = {
 } satisfies Translation<typeof shellSource>;
 
 export const app = {
-  notFound: 'Page not found',
-  notDrawn: 'This page has not been designed yet. Go back to <link>Overview</link>.',
-  guideIntro:
-    'In the portal, your organisation sets up AI services and keeps an eye on them. This is how the pages fit together.',
-  guideStartTitle: 'Get started',
-  guideStart:
-    '<overview>Overview</overview> shows the services, datasets and ingests of the organisation you act for. You switch organisation at the top of the page.',
-  guideBuildTitle: 'Set up a service',
-  guideBuild:
-    'Create and publish services under <services>Services</services>, add knowledge under <datasets>Datasets</datasets>, and reuse parts from <blocks>Building blocks</blocks>. Services Digdir shares with everyone are under <shared>Shared services</shared>.',
-  guideTryTitle: 'Try it and put it to use',
-  guideTry:
-    'Try a service in the <playground>Playground</playground>. Call it from your own system with the examples in <code>Call a service from code</code> and the endpoints in the <api>API reference</api>.',
-  guideFollowTitle: 'Follow up and control',
-  guideFollow:
-    'See use and cost in <usage>Statistics</usage>, runs in the <log>Log</log>, who has access in <access>Access</access>, and defaults for the organisation in <settings>Settings</settings>.',
-  guideRights:
-    'What you can do depends on the rights your organisation has given you in Altinn. You see them on your Profile.',
   statusIntro: 'This page asks the platform API whether it answers.',
   statusChecking: 'Checking the API',
   statusApi: 'API',
@@ -146,3 +130,31 @@ export const devTools = {
   statusLockdownOn: 'Yes, only some people can change things now',
   statusLockdownOff: 'No',
 } satisfies Translation<typeof devToolsSource>;
+
+export const profile = {
+  name: 'Name',
+  actingFor: 'Acting for',
+  organisation: '{name} (org. no. {orgNr})',
+  noRights: 'You have no rights in {name} yet.',
+  useServicesLine: 'Ask questions and get answers in the services your organisation uses.',
+  manageServicesLine: 'Build, change and publish services, and see what has changed.',
+  manageDatasetsLine: 'Add sources, upload files and ingest again.',
+  registerBuildingBlocksLine:
+    'Register tools, models and other building blocks for the organisation.',
+  viewUsageLine: 'See quota, usage and estimated cost under Statistics.',
+  language: 'Language',
+  theme: 'Theme',
+  themeLegend: 'How the portal looks',
+  themeLight: 'Light',
+  themeDark: 'Dark',
+  themeAuto: 'Follow the system',
+  savedHere: 'Saved in this browser',
+  notStored: 'The choice lasts until you close the page. The browser does not let us store it.',
+} satisfies Translation<typeof profileSource>;
+
+export const notFound = {
+  title: 'Page not found',
+  text: 'The address "{path}" does not exist, or the page has moved.',
+  goTo: 'Go to {area}',
+  goToOverview: 'Go to Overview',
+} satisfies Translation<typeof notFoundSource>;

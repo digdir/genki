@@ -55,24 +55,6 @@ export const shell = defineNamespace({
 });
 
 export const app = defineNamespace({
-  notFound: 'Fant ikke siden',
-  notDrawn: 'Denne siden er ikke tegnet ennå. Gå tilbake til <link>Oversikt</link>.',
-  guideIntro:
-    'I portalen setter virksomheten din opp KI-tjenester og følger med på dem. Slik henger sidene sammen.',
-  guideStartTitle: 'Kom i gang',
-  guideStart:
-    '<overview>Oversikt</overview> viser tjenestene, datasettene og innlesingene til virksomheten du handler for. Du bytter virksomhet øverst på siden.',
-  guideBuildTitle: 'Sett opp en tjeneste',
-  guideBuild:
-    'Lag og publiser tjenester under <services>Tjenester</services>, legg inn kunnskap under <datasets>Datasett</datasets>, og gjenbruk deler fra <blocks>Byggeklosser</blocks>. Tjenester som Digdir deler med alle, finner du under <shared>Fellestjenester</shared>.',
-  guideTryTitle: 'Prøv og ta i bruk',
-  guideTry:
-    'Prøv en tjeneste i <playground>Prøveområdet</playground>. Kall den fra eget system med eksemplene i <code>Kall en tjeneste fra kode</code> og endepunktene i <api>API-referansen</api>.',
-  guideFollowTitle: 'Følg med og styr',
-  guideFollow:
-    'Se bruk og kostnad i <usage>Statistikk</usage>, kjøringer i <log>Logg</log>, hvem som har tilgang i <access>Tilgang</access>, og standardvalg for virksomheten i <settings>Innstillinger</settings>.',
-  guideRights:
-    'Hva du kan gjøre, avhenger av rettighetene virksomheten din har gitt deg i Altinn. Du ser dem under Profil.',
   statusIntro: 'Siden spør plattformens API om det svarer.',
   statusChecking: 'Sjekker API-et',
   statusApi: 'API',
@@ -140,4 +122,32 @@ export const devTools = defineNamespace({
   statusLockdown: 'Låst miljø',
   statusLockdownOn: 'Ja, bare noen kan endre noe nå',
   statusLockdownOff: 'Nei',
+});
+
+export const profile = defineNamespace({
+  name: 'Navn',
+  actingFor: 'Handler for',
+  organisation: '{name} (org.nr. {orgNr})',
+  noRights: 'Du har ingen rettigheter i {name} ennå.',
+  useServicesLine: 'Stille spørsmål og få svar i tjenestene virksomheten har tatt i bruk.',
+  manageServicesLine: 'Lage, endre og publisere tjenester, og se hva som er endret.',
+  manageDatasetsLine: 'Legge til kilder, laste opp filer og lese inn på nytt.',
+  registerBuildingBlocksLine:
+    'Registrere verktøy, modeller og andre byggeklosser for virksomheten.',
+  viewUsageLine: 'Se kvote, bruk og anslått kostnad under Statistikk.',
+  language: 'Språk',
+  theme: 'Tema',
+  themeLegend: 'Hvordan portalen ser ut',
+  themeLight: 'Lyst',
+  themeDark: 'Mørkt',
+  themeAuto: 'Følg systemet',
+  savedHere: 'Lagret i denne nettleseren',
+  notStored: 'Valget gjelder til du lukker siden. Nettleseren lar oss ikke lagre det.',
+});
+
+export const notFound = defineNamespace({
+  title: 'Fant ikke siden',
+  text: 'Adressen «{path}» finnes ikke, eller siden er flyttet.',
+  goTo: 'Gå til {area}',
+  goToOverview: 'Gå til Oversikt',
 });
