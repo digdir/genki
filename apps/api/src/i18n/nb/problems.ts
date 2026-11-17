@@ -98,6 +98,11 @@ export const problems = defineNamespace({
   diagnosticsDatasetNotFound: 'Fant ikke datasettet',
   diagnosticsSearchInvalid: 'Søket kan ikke kjøres',
   diagnosticsSearchFailed: 'Søket feilet',
+  datasetSearchTimedOut: 'Søket tok for lang tid',
+  datasetSearchNeedsRight:
+    'Du trenger rettigheten «Administrere tjenester» eller «Administrere datasett»',
+  datasetSearchNoProfile: 'Datasettet {dataset} har ingen søkeprofil «{profile}»',
+  datasetSearchBlocked: '{dataset} kan ikke brukes hos virksomheten',
   diagnosticsServiceNotFound: 'Fant ikke tjenesten',
   diagnosticsServiceNoDataset: 'Tjenesten har ikke noe datasett',
   diagnosticsServiceSearchesNoDataset: 'tjenesten søker ikke i noe datasett',

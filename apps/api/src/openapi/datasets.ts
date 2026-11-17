@@ -1770,6 +1770,85 @@ const deleteRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
   }),
 );
 
+const SearchHit = z
+  .object({
+    id: z.string().describe('The chunk id'),
+    document: z.string().optional(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    position: z.number().int().optional().describe("The chunk's place in its document, from 0"),
+    page: z
+      .number()
+      .int()
+      .optional()
+      .describe('The first page the chunk is on, when the engine keeps pages'),
+    pageEnd: z.number().int().optional().describe('The last page, when it differs from page'),
+    score: z.number(),
+    text: z.string().describe("The chunk's text"),
+    fields: z.record(z.string(), z.unknown()).describe("The document's and chunk's fields"),
+  })
+  .openapi('DatasetSearchHit');
+
+const DatasetSearchAnswer = z
+  .object({
+    dataset: z.string().describe('The dataset searched, aliases resolved'),
+    profile: z.string().describe('The search profile used'),
+    filters: z.record(z.string(), z.unknown()).describe('The filters applied, as sent'),
+    limit: z.number().int(),
+    found: z.number().int().optional().describe('How many matched, when the engine counts'),
+    warning: z.string().optional(),
+    tookMs: z.number().int().describe('How long the search took'),
+    hits: z.array(SearchHit).describe('In rank order; empty when a filter matches nothing'),
+  })
+  .openapi('DatasetSearchAnswer');
+
+const searchRoutes: RouteConfig[] = [tenantBase, operatorBase].map((base) =>
+  createRoute({
+    method: 'post',
+    path: `${base.path}/datasets/{id}/search`,
+    summary: isTenant(base)
+      ? "Search a dataset in the tenant's catalogue as a service run searches it, without a model call (needs manage-services or manage-datasets; not audited)"
+      : 'Search a platform dataset as a service run searches it, without a model call (operators; not audited)',
+    description:
+      "One query through the dataset's knowledge port: the same filter checks, limit cap and timeout as a service's search. A filter that matches nothing answers no hits and is never retried without the filter. The query embeds for a vector search, so the route is closed in lockdown. The query is not logged.",
+    request: {
+      params: z.object({ ...base.params, id: param('digdir/kudos') }),
+      body: body(
+        z.object({
+          query: z.string().min(1).max(2000),
+          filters: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .openapi({ example: { owner_orgnr: ['991825827'] } })
+            .describe("Filters in the shape a run takes, on the dataset's declared fields"),
+          profile: z
+            .string()
+            .optional()
+            .describe("One of the dataset's search profiles; default its first"),
+          limit: z.number().int().min(1).max(100).optional().describe('Default 10'),
+        }),
+      ),
+    },
+    responses: {
+      200: json(DatasetSearchAnswer, 'The hits and what was searched'),
+      ...guarded(base),
+      ...(isTenant(base)
+        ? {
+            403: either(
+              "Missing both manage-services and manage-datasets, or the tenant's block policy does not allow the dataset",
+            ),
+          }
+        : {}),
+      422: either(
+        'A filter on a field the dataset does not declare or of the wrong type, an unknown profile, or a bad body',
+      ),
+      429: either("The organisation's monthly token quota is used up"),
+      502: either('The search engine failed'),
+      504: either('The search took longer than the endpoint allows'),
+    },
+  }),
+);
+
 export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   config: [
     ...catalogRoutes(operatorBase),
@@ -1786,6 +1865,7 @@ export const datasetRouteGroups: Record<string, RouteConfig[]> = {
   'engine-switches': [...engineRoutes(tenantBase), ...engineRoutes(operatorBase)],
   'dataset-uploads': uploadRoutes,
   'dataset-delete': deleteRoutes,
+  'dataset-search': searchRoutes,
   'dataset-enrichment': enrichmentRoutes,
   'operator-models': operatorModelRoutes,
   'operator-catalog': operatorCatalogRoutes,

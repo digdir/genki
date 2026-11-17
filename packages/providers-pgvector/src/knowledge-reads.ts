@@ -181,10 +181,18 @@ export const knowledgeReads = <D>(
   const skipReadMs = 30_000;
   let readSkippedUntil = 0;
 
-  const refused = (error: unknown, dataset: DatasetConfig<D>) =>
-    (error as { code?: string }).code === '42501'
-      ? new KnowledgeError('forbidden', `dataset ${dataset.id} is not allowed`)
-      : error;
+  const refused = (error: unknown, dataset: DatasetConfig<D>) => {
+    const code = (error as { code?: string }).code;
+    if (code === '42501')
+      return new KnowledgeError('forbidden', `dataset ${dataset.id} is not allowed`);
+    // 57014 is query_canceled: the statement_timeout set above stopped the read.
+    if (code === '57014')
+      return new KnowledgeError(
+        'timeout',
+        `reading ${dataset.id} took longer than ${options.timeoutMs} ms`,
+      );
+    return error;
+  };
 
   /** Read pool first; a server without the generation or one that does not answer sends the read to the primary, whose answer is final. */
   const reading = async <T>(

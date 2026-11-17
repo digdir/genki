@@ -440,7 +440,7 @@ const policyFrom = (
   link: rule?.match.residency ? '#/settings' : link,
 });
 
-const verdict = (
+export const verdict = (
   policy: BlockPolicy,
   kind: BlockKind,
   id: string,
