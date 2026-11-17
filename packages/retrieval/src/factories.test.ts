@@ -211,6 +211,32 @@ describe('agent retrieval factory', () => {
     ]);
   });
 
+  it("carries a chunk's page, page range, PDF address and heading path into the chunks", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const s = stub([], {
+      c1: { page: 12, pageEnd: 13, fileUrl: pdf, headingPath: ['3 Funn', '3.1 Kommunene'] },
+      c3: { page: 4, docs: { page: 99, fileUrl: 'https://example.org/annen.pdf' } },
+    });
+    const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });
+
+    const read = await agent.read(['c1', 'c2', 'c3'], signal);
+    const found = await agent.search(['årsverk'], {}, signal);
+
+    expect(read.map((c) => [c.chunkId, c.page, c.pageEnd, c.fileUrl, c.headers])).toEqual([
+      ['c1', 12, 13, pdf, ['3 Funn', '3.1 Kommunene']],
+      // Without a heading path the headers still come from the metadata string.
+      ['c2', undefined, undefined, undefined, ['Ansatte', 'Årsverk']],
+      // Only the chunk's own fields count, never a page a nested document field holds.
+      ['c3', 4, undefined, undefined, ['Ansatte', 'Årsverk']],
+    ]);
+    expect(found.chunks.find((c) => c.chunkId === 'c1')).toMatchObject({
+      page: 12,
+      pageEnd: 13,
+      fileUrl: pdf,
+      headers: ['3 Funn', '3.1 Kommunene'],
+    });
+  });
+
   it('never gives the ingestion date as the publish date of an undated chunk', async () => {
     const s = stub([], { c1: { ingested_at: '2026-10-01T08:00:00.000Z' } });
     const agent = createAgentRetrieval({ knowledge: s.knowledge, config: metadataOnly });

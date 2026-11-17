@@ -67,6 +67,7 @@ export const errorCodes = {
   contentType: -32005,
   extendedCardNotConfigured: -32007,
   versionNotSupported: -32009,
+  quotaExhausted: -32029,
 } as const;
 
 export type JsonRpcId = string | number | null;

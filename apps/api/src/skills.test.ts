@@ -150,7 +150,8 @@ const boot = async (fieldOutput: Record<string, unknown> = { dato: '2026-10-07' 
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
-    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    definitions: (plugins, sharedSkill) =>
+      new InMemoryDefinitionStore(plugins, undefined, sharedSkill),
     blobStore: blobs,
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {
@@ -732,6 +733,84 @@ describe('skills', () => {
     expect(unapproved.map((r) => r.status)).toEqual([404, 404]);
     expect(copiedUnapproved.status).toBe(404);
     expect(copied.body).toMatchObject({ draft: { copiedFrom: { version: 2 } } });
+  });
+
+  const shareUnapprovedVersion = async () => {
+    const booted = await boot();
+    const { platform, send } = booted;
+    await createAndTest(send);
+    await send('POST', `${base}/klarsprak/publish`, 'kari', {}, reason);
+    await send('POST', `${base}/klarsprak/share`, 'kari', { confirm: true }, reason);
+    await send(
+      'POST',
+      `/operator/skills/shares/${tenant}-klarsprak/decision`,
+      'operator',
+      { approve: true },
+      { 'change-reason': 'Godkjent for felles katalog' },
+    );
+    platform.plugins.tools.set('hemmelig_saksregister@1', z.record(z.string(), z.unknown()));
+    const second = await platform.definitions.publish(
+      {
+        apiVersion: 'genai/v1',
+        kind: 'Skill',
+        metadata: { tenant, id: 'klarsprak', name: 'Klarspråk' },
+        spec: { ...skill().spec, tools: ['hemmelig_saksregister@1'] },
+      },
+      'kari',
+      'test',
+    );
+    expect(second).toMatchObject({ ok: true, version: { version: 2 } });
+    return booted;
+  };
+  const serviceOf = (owner: string, skills: string[]) => {
+    const definition = service(skills);
+    return { ...definition, metadata: { ...definition.metadata, tenant: owner } };
+  };
+
+  it("publishing cannot use another organisation's shared skill at a version it has not approved", async () => {
+    const { platform } = await shareUnapprovedVersion();
+
+    const unapproved = await platform.definitions.publish(
+      serviceOf(other, ['klarsprak@2']),
+      'kari',
+      'test',
+    );
+    const approved = await platform.definitions.publish(
+      serviceOf(other, ['klarsprak@1']),
+      'kari',
+      'test',
+    );
+
+    expect(!unapproved.ok && unapproved.errors).toEqual([
+      { path: 'spec.skills[0]', message: 'no published skill klarsprak@2' },
+    ]);
+    expect(approved.ok).toBe(true);
+  });
+
+  it("a publish error names no tools of another organisation's unapproved skill version", async () => {
+    const { platform } = await shareUnapprovedVersion();
+
+    const refused = await platform.definitions.publish(
+      serviceOf(other, ['klarsprak@2']),
+      'kari',
+      'test',
+    );
+
+    expect(JSON.stringify(refused)).not.toContain('hemmelig_saksregister');
+  });
+
+  it("publishing finds the owner's own skill at a version that is not shared", async () => {
+    const { platform } = await shareUnapprovedVersion();
+
+    const own = await platform.definitions.publish(service(['klarsprak@2']), 'kari', 'test');
+
+    expect(!own.ok && own.errors).toEqual([
+      {
+        path: 'spec.skills[0]',
+        message:
+          'skill klarsprak@2 uses the tool hemmelig_saksregister@1, which the service does not have in spec.tools',
+      },
+    ]);
   });
 
   it('a skill shared after Digdir approves it can be listed and copied by another tenant', async () => {

@@ -107,7 +107,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   onChange(topic: ChangeTopic, listener: () => void | Promise<void>): () => void;
   ingestSources?: IngestSourceConfig;
   vault?: {
-    set(tenant: string, name: string, value: string): Promise<string>;
+    set(tenant: string, name: string, value: string, hosts?: readonly string[]): Promise<string>;
     delete(tenant: string, name: string): Promise<void>;
   };
   defaultEmbedding?: { model: string; dimensions: number; residency: Residency };

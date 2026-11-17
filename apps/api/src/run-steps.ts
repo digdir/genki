@@ -201,6 +201,7 @@ const toolTitles: Record<string, [string, ApiKey]> = {
   rerank_results: ['tool', 'steps.toolRerank'],
   generate_response: ['model', 'steps.toolGenerate'],
   inspect_filters: ['tool', 'steps.toolInspect'],
+  source_facts: ['tool', 'steps.toolSourceFacts'],
   use_skill: ['tool', 'steps.toolSkill'],
 };
 

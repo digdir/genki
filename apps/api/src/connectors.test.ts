@@ -566,6 +566,74 @@ describe('a connector mapping approved from the builder assistant', () => {
     expect(another.status).toBe(403);
   });
 
+  it("saving a database pipeline that changes the connector's host needs manage-services", async () => {
+    const { call, propose } = await boot();
+    const proposal = await propose('Saker for vertsbytte');
+    await call(`/tenants/${digdir}/proposals/${proposal.id}/approve`, 'kari', {
+      body: { reason, connection: { ...login, tls: false } },
+    });
+    const id = (
+      await json<{ data: ConnectorView[] }>(await call(`/tenants/${digdir}/connectors`, 'kari'))
+    ).data[0]?.id;
+    const { dataset } = await settled(call, id ?? '');
+    const pipeline = `/tenants/${digdir}/datasets/${dataset}/pipelines/kobling`;
+    const saved = await json<{ spec: { source: { connection: Record<string, unknown> } } }>(
+      await call(pipeline, 'kari'),
+    );
+    const moved = {
+      ...saved.spec,
+      source: {
+        ...saved.spec.source,
+        connection: { ...saved.spec.source.connection, host: 'localhost' },
+      },
+    };
+
+    expect((await call(pipeline, 'ingrid', { method: 'PUT', body: moved })).status).toBe(403);
+    expect((await call(pipeline, 'ingrid', { method: 'PUT', body: saved.spec })).status).toBe(200);
+  });
+
+  it('a database pipeline does not send the connector password to a host it is not bound to', async () => {
+    const { call, propose } = await boot();
+    const proposal = await propose('Saker for binding');
+    await call(`/tenants/${digdir}/proposals/${proposal.id}/approve`, 'kari', {
+      body: { reason, connection: { ...login, tls: false } },
+    });
+    const id = (
+      await json<{ data: ConnectorView[] }>(await call(`/tenants/${digdir}/connectors`, 'kari'))
+    ).data[0]?.id;
+    const { dataset } = await settled(call, id ?? '');
+    const pipeline = `/tenants/${digdir}/datasets/${dataset}/pipelines/kobling`;
+    const saved = await json<{ spec: { source: { connection: Record<string, unknown> } } }>(
+      await call(pipeline, 'kari'),
+    );
+    const moved = await call(pipeline, 'kari', {
+      method: 'PUT',
+      body: {
+        ...saved.spec,
+        source: {
+          ...saved.spec.source,
+          connection: { ...saved.spec.source.connection, host: 'localhost' },
+        },
+      },
+    });
+    expect(moved.status).toBe(200);
+    expect((await call(`${pipeline}/execute`, 'kari', { body: {} })).status).toBe(202);
+    let run: { status: string; error?: string } | undefined;
+    for (let i = 0; i < 300; i++) {
+      run = (
+        await json<{ data: { status: string; error?: string }[] }>(
+          await call(`${pipeline}/executions`, 'kari'),
+        )
+      ).data[0];
+      if (run && run.status !== 'running') break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(run).toMatchObject({
+      status: 'failed',
+      error: 'the database password is not set for localhost',
+    });
+  });
+
   it('keeps tenants apart and needs the right to sync', async () => {
     const { call, propose } = await boot();
     const proposal = await propose('Saker for innsyn');

@@ -31,8 +31,8 @@ export const readHelpers = [
 ] as const;
 
 const definer = `language plpgsql stable security definer set search_path = pg_catalog, public`;
-const hitColumns = `id text, text text, doc_id text, "position" integer, metadata jsonb, title text, url text, fields jsonb, score double precision, total integer, data_version bigint`;
-const hitSelect = `c.id, c.text, c.doc_id, c.position, c.metadata, d.title, d.url, d.fields`;
+const hitColumns = `id text, text text, doc_id text, "position" integer, metadata jsonb, title text, url text, fields jsonb, page_from integer, page_to integer, file text, file_sha256 text, heading_path text[], score double precision, total integer, data_version bigint`;
+const hitSelect = `c.id, c.text, c.doc_id, c.position, c.metadata, d.title, d.url, d.fields, c.page_from, c.page_to, c.file, c.file_sha256, c.heading_path`;
 
 /** The generation's partition is named by literals, so the planner reads that partition only. */
 const docJoin = (alias: string) =>
@@ -281,13 +281,18 @@ const createFunctions = [
            order by c.n',
          p_ids, p_id_hashes, ds, g, ds, g, ds, ds);
      end $$`,
-  // Return types gained data_version, which create or replace cannot change.
+  // Return types gained data_version, and the hits their chunk's page, file and heading path,
+  // which create or replace cannot change: a hit function whose columns are not this release's,
+  // older or newer (after a rollback), is dropped and created again in the migration's transaction.
   `do $$ declare f regprocedure;
    begin
      for f in select p.oid::regprocedure from pg_proc p
                 where p.pronamespace = 'public'::regnamespace
                   and p.proname in ('kn_search', 'kn_fetch', 'kn_range', 'kn_facets', 'kn_documents', 'kn_resolve_citation')
-                  and not ('data_version' = any(coalesce(p.proargnames, '{}'))) loop
+                  and (not ('data_version' = any(coalesce(p.proargnames, '{}')))
+                       or (p.proname in ('kn_search', 'kn_fetch', 'kn_range')
+                           and replace(pg_get_function_result(p.oid), '"', '')
+                               <> 'TABLE(${hitColumns.replaceAll('"', '')})')) loop
        execute format('drop function %s', f);
      end loop;
    end $$`,

@@ -116,6 +116,7 @@ export const problems = {
   keyPolicyNoKey: 'The key was not found',
   keyPolicyBoundKey: 'A key bound to one service cannot have an access policy',
   keyPolicyBeyondRights: 'The policy gives more than you may grant. You lack the right {right}',
+  keyBeyondRights: 'The key gives more than you may grant. You lack the right {right}',
   taskExportNotFound: 'The run was not found',
   taskExportNotRecorded: 'The export could not be recorded in the audit log, so it was stopped',
   uploadTooManyFiles: 'Send at most {count} files per request.',

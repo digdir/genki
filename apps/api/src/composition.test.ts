@@ -257,6 +257,9 @@ const modelReply = (body: Record<string, unknown>) => {
       : { status: 200, json: toolCall(name, args) };
   if (body.tools) {
     const toolTurns = messages.filter((m) => m.role === 'tool').length;
+    const offered = (body.tools as { function: { name: string } }[]).map((t) => t.function.name);
+    if (offered.includes('source_facts'))
+      return toolTurns === 0 ? tool('source_facts', { newest: 3 }) : text('Kudos har dette.');
     if (toolTurns === 0) return tool('search', { queries: ['tildelingsbrev Digdir 2025'] });
     if (toolTurns === 1) return tool('read_chunks', { chunk_ids: ['c1', 'c2'] });
     return text(answer);
@@ -488,6 +491,46 @@ describe('the composed platform', () => {
       expect(f).toContain('type:=[`ZZZ_fast_type`]');
       expect(f).toContain('type:=[`Tildelingsbrev`]');
     }
+  });
+
+  it("answers from the source facts tool within the service's fixed filter, never reading the source outside it", async () => {
+    const { platform, app, search, model } = await boot();
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const fixed = { fields: [{ field: 'type', 'selected-options': ['ZZZ_fast_type'] }] };
+    const published = await platform.definitions.publish(
+      {
+        ...service,
+        metadata: { ...service.metadata, id: 'kudos-source-facts' },
+        spec: {
+          ...service.spec,
+          variants: [{ id: 'default', filters: fixed }],
+          tools: ['source-facts@1'],
+        },
+      },
+      'test',
+      'test',
+    );
+    expect(published.ok).toBe(true);
+    search.seen.length = 0;
+
+    const res = await mcp(app, 'tools/call', {
+      name: 'kudos-source-facts__default',
+      arguments: { query: 'Hvilke nyeste dokumenter har du hentet inn fra Kudos?' },
+    });
+
+    expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+    const reads = search.seen.flatMap(
+      (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
+    );
+    expect(reads.length).toBeGreaterThan(0);
+    for (const read of reads) expect(String(read.filter_by)).toContain('type:=[`ZZZ_fast_type`]');
+    const facts = model.seen
+      .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+      .find((m) => m.role === 'tool');
+    expect(facts?.content).toContain('"source": "Kudos"');
   });
 
   it('refuses at publish a variant filter on a field none of its datasets declares', async () => {

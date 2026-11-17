@@ -290,7 +290,10 @@ export interface KudosAccess {
 
 export interface DatabaseAccess {
   reader: RowReader;
-  secrets: { resolve(ref: string): Promise<string | undefined> };
+  secrets: {
+    resolve(ref: string): Promise<string | undefined>;
+    hostsFor?(ref: string): Promise<readonly string[] | undefined>;
+  };
   privateNetworks?: (tenant: string) => Promise<string[]>;
   network?: (
     host: string,
@@ -321,6 +324,10 @@ export interface IngestSourceOptions {
 
 export const tenantSecretPrefix = (tenant: string) => `secret://tenant/${tenant}/`;
 
+const hostOf = (bound: string) =>
+  bound.includes('://') && URL.canParse(bound) ? new URL(bound).hostname : bound;
+const boundTo = (bound: string, host: string) => hostOf(bound).toLowerCase() === host.toLowerCase();
+
 export const resolvedConnection = async (
   access: DatabaseAccess,
   source: DatabaseSpec,
@@ -329,6 +336,9 @@ export const resolvedConnection = async (
   const { password, ...connection } = source.connection;
   if (!password.startsWith(tenantSecretPrefix(tenant)))
     throw new Error('the database password must be a secret of the tenant that owns the dataset');
+  const hosts = (await access.secrets.hostsFor?.(password)) ?? [];
+  if (hosts.length > 0 && !hosts.some((bound) => boundTo(bound, connection.host)))
+    throw new Error(`the database password is not set for ${connection.host}`);
   const value = await access.secrets.resolve(password);
   if (!value) throw new Error('the database password is not in the vault');
   const privateNetworks = (await access.privateNetworks?.(tenant)) ?? [];

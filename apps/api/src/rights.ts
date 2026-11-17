@@ -76,11 +76,19 @@ const subscriptionRight = (input: ActionInput): Right =>
 const toolRegistration = { anyOf: ['register-building-blocks', 'manage-services'] } as const;
 const objectOf = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+const connectionDefaults: Record<string, unknown> = { port: 5432, tls: true };
+const connectionFields = ['password', 'host', 'port', 'database', 'user', 'tls'] as const;
 const borrowsTenantSecret = (input: ActionInput) => {
   const source = objectOf(objectOf(input.spec).source);
   if (source.kind !== 'database') return false;
-  const password = objectOf(source.connection).password;
-  return typeof password !== 'string' || password !== input.connectorSecret;
+  const given = objectOf(source.connection);
+  const connector = objectOf(input.connector);
+  if (typeof given.password !== 'string') return true;
+  return connectionFields.some(
+    (field) =>
+      (given[field] ?? connectionDefaults[field]) !==
+      (connector[field] ?? connectionDefaults[field]),
+  );
 };
 const pipelineSave = (input: ActionInput): ActionRequirement =>
   borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';

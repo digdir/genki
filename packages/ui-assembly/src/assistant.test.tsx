@@ -2718,6 +2718,100 @@ describe('the whole document in Dokumentvisning, from the host', () => {
     await waitFor(() => expect(frame()).toBeTruthy());
     expect(documentFile).toHaveBeenCalledTimes(1);
   });
+
+  describe("at the excerpt's page", () => {
+    const main = 'https://kudos.dfo.no/dokument/42/filer/hoved.pdf';
+    const attachment = 'https://kudos.dfo.no/dokument/42/filer/vedlegg.pdf';
+    // One document, cited at page 12 and page 20 of its main PDF, and at page 3 of an attachment.
+    const paged = () => {
+      const { api } = fakeApi();
+      api.loadThread = vi.fn(async () => ({
+        title: 'En gammel tråd',
+        turns: [
+          {
+            id: 'm1',
+            question: 'Hva er fast?',
+            askedAt: 1,
+            answer: {
+              text: 'Fast [1], hvert år [2], i vedlegget [3].',
+              status: 'complete' as const,
+              sources: [
+                {
+                  ...source,
+                  excerpts: [
+                    { chunkId: 'c1', text: 'Fast.', page: 12, url: `${main}#page=12` },
+                    { chunkId: 'c3', text: 'Hvert år.', page: 20, url: `${main}#page=20` },
+                    { chunkId: 'c4', text: 'Vedlegget.', page: 3, url: `${attachment}#page=3` },
+                  ],
+                },
+              ],
+              markers: [
+                { marker: '1', chunkId: 'c1', documentId: '42' },
+                { marker: '2', chunkId: 'c3', documentId: '42' },
+                { marker: '3', chunkId: 'c4', documentId: '42' },
+              ],
+              created: 2,
+            },
+          },
+        ],
+      }));
+      return api;
+    };
+    // The host's own address for a file of the document, as kunnskapsassistenten's server gives it.
+    const served = (file: string | undefined, source = file) => ({
+      url: `/files/42?file=${encodeURIComponent(file ?? 'first')}`,
+      mediaType: 'application/pdf',
+      ...(source ? { source } : {}),
+    });
+
+    it('the assembly asks the host for the file of the excerpt it opens', async () => {
+      const documentFile = vi.fn(async (_id: string, _s: AbortSignal, at?: { file?: string }) =>
+        served(at?.file),
+      );
+      await open(documentFile, withView(), paged());
+      await waitFor(() => expect(frame()).toBeTruthy());
+      expect(documentFile.mock.calls.map(([id, , at]) => [id, at])).toEqual([
+        ['42', { file: main }],
+      ]);
+    });
+
+    it("the document view frames the excerpt's own file at its page", async () => {
+      await open(async (_id, _s, at) => served(at?.file), withView(), paged());
+      await waitFor(() =>
+        expect(frame()?.getAttribute('src')).toBe(
+          `/files/42?file=${encodeURIComponent(main)}#page=12`,
+        ),
+      );
+    });
+
+    it("the document view keeps the frame at its start when the host's file is not the excerpt's", async () => {
+      // A host that serves the document's first PDF whatever it is asked, and says so or not.
+      for (const said of [attachment, undefined]) {
+        cleanup();
+        await open(async () => served(undefined, said), withView(), paged());
+        await waitFor(() => expect(frame()?.getAttribute('src')).toBe('/files/42?file=first'));
+      }
+    });
+
+    it('a footnote to another page in the same file opens the frame at that page', async () => {
+      const documentFile = vi.fn(async (_id: string, _s: AbortSignal, at?: { file?: string }) =>
+        served(at?.file),
+      );
+      await open(documentFile, withView(), paged());
+      await waitFor(() => expect(frame()?.getAttribute('src')).toMatch(/#page=12$/));
+      fireEvent.click(footnotes()[1] as HTMLElement);
+      await waitFor(() => expect(frame()?.getAttribute('src')).toMatch(/#page=20$/));
+      expect(documentFile).toHaveBeenCalledTimes(1);
+      // The attachment is another file: asked for, and framed at its own page.
+      fireEvent.click(footnotes()[2] as HTMLElement);
+      await waitFor(() =>
+        expect(frame()?.getAttribute('src')).toBe(
+          `/files/42?file=${encodeURIComponent(attachment)}#page=3`,
+        ),
+      );
+      expect(documentFile.mock.calls.map(([, , at]) => at?.file)).toEqual([main, attachment]);
+    });
+  });
 });
 
 describe('asking, whatever genki has said of the service', () => {
