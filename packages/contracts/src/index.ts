@@ -42,6 +42,7 @@ export interface Principal {
   issuer: string;
   subject: string;
   name?: string;
+  email?: string;
   tenant?: string;
   client?: string;
   assurance?: Assurance;

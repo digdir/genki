@@ -628,6 +628,12 @@ export const routeErrors = defineNamespace({
   noAgentsAvailable: 'Ingen agenter er tilgjengelige',
   conversationNotFound: 'Fant ikke samtalen',
   unknownResidency: 'ukjent dataplassering {residency}',
+  runNotStoppable: 'bare en kjøring som ble startet gjennom et API kan stoppes her',
+  runFinished: 'kjøringen er allerede ferdig',
+  incidentResolved: 'hendelsen er allerede løst',
+  quotaRequestPending: 'en forespørsel om kvote venter allerede på en avgjørelse',
+  quotaRequestApproved: 'forespørselen om kvote er allerede godkjent',
+  quotaRequestRejected: 'forespørselen om kvote er allerede avslått',
 });
 
 export const demoErrors = defineNamespace({

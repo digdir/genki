@@ -103,6 +103,12 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     expect(unnamed.principal.name).toBe('Kari.Tester@Digdir.example');
   });
 
+  it('keeps the email claim of a trusted Entra login, in lower case', async () => {
+    const { principal } = await verifier().verify(await sign(entraClaims()));
+
+    expect(principal.email).toBe('kari.tester@digdir.example');
+  });
+
   it('matches group ids without regard to case', async () => {
     const token = await sign(entraClaims({ groups: [TRUSTED_GROUP.toUpperCase()] }));
 

@@ -455,6 +455,64 @@ describe('the integrated platform', () => {
     expect(headers.at(-1)).toBe('Bearer tool-token');
   });
 
+  it('keeps the last failed sync of a tool connection, with its error, until a sync succeeds', async () => {
+    const { platform, app } = await boot();
+    let failing = true;
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => (raw += c.toString()));
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}') as Record<string, unknown>;
+        if (failing) {
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+        const reply = (result: unknown) => {
+          res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 's1' });
+          res.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+        };
+        if (body.method === 'initialize')
+          return reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} } });
+        if (body.method === 'tools/list') return reply({ tools: [] });
+        res.writeHead(202);
+        res.end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    await platform.connections.save({
+      connection: {
+        id: 'saker',
+        tenant,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+      },
+      tools: [],
+      pending: [],
+    } as Parameters<typeof platform.connections.save>[0]);
+    const sync = () =>
+      app.request(`/tenants/${tenant}/tool-connections/saker/sync`, {
+        method: 'POST',
+        headers: as('kari', { 'change-reason': 'test av endringen' }),
+      });
+    const lastSync = async () =>
+      (
+        (await (
+          await app.request(`/tenants/${tenant}/tool-connections`, { headers: as('kari') })
+        ).json()) as { data: { lastSync?: { ok: boolean; error?: string } }[] }
+      ).data[0]?.lastSync;
+
+    expect((await sync()).status).toBe(400);
+    expect(await lastSync()).toMatchObject({ ok: false, error: expect.any(String) });
+    failing = false;
+    expect((await sync()).status).toBe(200);
+    expect(await lastSync()).toEqual({ at: expect.any(String), ok: true });
+  });
+
   it('records feedback on an answer through the KA-compatible route', async () => {
     const { platform, app } = await boot();
     await platform.definitions.publish(singleCall('enkel'), 'test', 'test');

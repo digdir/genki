@@ -191,6 +191,7 @@ export interface PortalRouteDeps {
     tenant: string,
   ): Promise<{ at: string; dataset: string; model: string; usage: Usage }[]>;
   projectTasks?(tenant: string): Promise<{ task: string; project: string; name: string }[]>;
+  quota?(tenant: string): Promise<{ usedTokens: number; monthlyTokens: number }>;
   serviceHealth?(tenant: string, service: string): Promise<ServiceHealth | undefined>;
   lifecycle?(tenant: string, service: string): Promise<LifecycleView>;
   names?: { namesOf(actors: string[]): Promise<Map<string, string>> };
@@ -205,6 +206,25 @@ export interface PortalRouteDeps {
   newKey?(): string;
   newId?(): string;
 }
+
+export const quotaAlertPercent = 80;
+
+export const quotaView = ({
+  usedTokens,
+  monthlyTokens,
+}: {
+  usedTokens: number;
+  monthlyTokens: number;
+}) => {
+  const usedPercent = Math.round((usedTokens / monthlyTokens) * 1000) / 10;
+  return {
+    usedTokens,
+    monthlyTokens,
+    usedPercent,
+    alertPercent: quotaAlertPercent,
+    alert: usedTokens * 100 >= quotaAlertPercent * monthlyTokens,
+  };
+};
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator' || principal.tenant === tenant;
@@ -1016,9 +1036,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     }
     let testing = empty();
     const byOrigin = new Map<string, Tally>();
+    const dailyTesting = new Map<string, Tally>();
+    const dailyIngestion = new Map<string, Tally>();
     for (const t of testRuns) {
       const { tally, models } = taskTally(t, usage.get(t.id));
       testing = add(testing, tally);
+      bump(dailyTesting, day(t.createdAt), tally);
       totals = add(totals, tally);
       bump(daily, day(t.createdAt), tally);
       bump(byOrigin, originOf(t.service.capability.id), tally);
@@ -1034,6 +1057,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       if (!within(run.at)) continue;
       const tally = tallyOf(run.usage, deps.prices?.[run.model]);
       ingestion = add(ingestion, tally);
+      bump(dailyIngestion, day(run.at), tally);
       totals = add(totals, tally);
       bump(daily, day(run.at), tally);
       bump(byModel, run.model, tally);
@@ -1101,6 +1125,8 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         },
         byService: views(dailyService.get(d), (s) => runs.get(`day|${d}|${s}`) ?? 0),
         byModel: views(dailyModel.get(d)),
+        testing: usageView(dailyTesting.get(d) ?? empty()),
+        ingestion: usageView(dailyIngestion.get(d) ?? empty()),
       });
     }
     const rows = <K extends string>(map: Map<string, Tally>, key: K) =>
@@ -1455,16 +1481,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const from = new Date(to.getTime() - (days - 1) * 86_400_000);
     const project = c.req.query('project')?.trim() || undefined;
     const environment = c.req.query('environment')?.trim() || undefined;
-    return c.json(
-      await usageOver(
-        g.tenant,
-        new Date(day(from.toISOString())),
-        to,
-        project,
-        undefined,
-        environment,
-      ),
-    );
+    const [usage, quota] = await Promise.all([
+      usageOver(g.tenant, new Date(day(from.toISOString())), to, project, undefined, environment),
+      deps.quota?.(g.tenant),
+    ]);
+    return c.json({ ...usage, ...(quota ? { quota: quotaView(quota) } : {}) });
   });
 
   app.get('/tenants/:tenant/tasks', async (c) => {

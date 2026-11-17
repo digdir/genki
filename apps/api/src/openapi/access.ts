@@ -1350,6 +1350,10 @@ export const accessRoutes: RouteConfig[] = [
               endpoint: z.string(),
               version: z.string(),
               tools: z.array(z.string()),
+              lastSync: z
+                .object({ at: z.string(), ok: z.boolean(), error: z.string().optional() })
+                .optional()
+                .describe('The last sync and why it failed, kept until the next sync'),
             }),
           ),
         }),

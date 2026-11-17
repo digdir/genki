@@ -87,6 +87,17 @@ const measured = (name: string, failed: number, finished: number): OperationsCom
   ...(finished === 0 ? {} : { errorRate: percent(failed / finished) }),
 });
 
+const ownerOf = (id: string) => /^(\d{9})\//.exec(id)?.[1];
+const visibleTo = (tenant: string, ...ids: string[]) =>
+  ids.every((id) => ownerOf(id) === undefined || ownerOf(id) === tenant);
+
+export const forTenant = (deps: OperationsDeps, tenant: string): OperationsDeps => ({
+  ...deps,
+  models: () => deps.models().filter((m) => visibleTo(tenant, m.id, m.endpoint)),
+  pipelines: async () => (await deps.pipelines()).filter((p) => p.tenant === tenant),
+  tasks: async () => (await deps.tasks()).filter((t) => t.tenant === tenant),
+});
+
 export const operationsOverview = async (deps: OperationsDeps): Promise<OperationsOverview> => {
   const now = deps.now().getTime();
   const since = (iso: string | undefined, window: number) =>

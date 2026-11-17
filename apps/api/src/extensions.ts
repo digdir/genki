@@ -167,7 +167,10 @@ export interface ToolAdminDeps {
   source: ConnectionToolSource;
   secrets: TenantSecrets;
   onToolsChanged: (tenant: string) => Promise<void>;
+  now?: () => Date;
 }
+
+const syncErrorLength = 500;
 
 const forTenant = (principal: Principal, tenant: string) =>
   principal.kind === 'operator'
@@ -262,21 +265,29 @@ export const adminExtensions = (deps: {
     const target = `tool-connection:${tenant}/${id}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
+    const remember = async (error?: string) => {
+      const state = await deps.tools.connections.get(tenant, id);
+      if (!state) return;
+      const at = (deps.tools.now?.() ?? new Date()).toISOString();
+      await deps.tools.connections.save({
+        ...state,
+        lastSync: error === undefined ? { at, ok: true } : { at, ok: false, error },
+      });
+    };
     try {
       const result = await deps.tools.source.sync(
         tenant,
         id,
         AbortSignal.timeout(toolSyncDeadlineMs),
       );
+      await remember();
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
     } catch (error) {
-      return {
-        ok: false,
-        errors: [{ path: 'id', message: error instanceof Error ? error.message : String(error) }],
-        target,
-      };
+      const message = error instanceof Error ? error.message : String(error);
+      await remember(message.slice(0, syncErrorLength));
+      return { ok: false, errors: [{ path: 'id', message }], target };
     }
   },
   'platform.tools.approve': async (input, principal) => {
@@ -509,6 +520,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         endpoint: s.connection.endpoint,
         version: s.connection.version,
         tools: s.tools.map((t) => t.name),
+        ...(s.lastSync ? { lastSync: s.lastSync } : {}),
       })),
     });
   });

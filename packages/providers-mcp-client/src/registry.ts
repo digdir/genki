@@ -81,6 +81,7 @@ export interface ConnectionState {
   connection: Connection;
   tools: PinnedTool[];
   pending: PinnedTool[];
+  lastSync?: { at: string; ok: boolean; error?: string };
 }
 
 export class RegistrationError extends Error {

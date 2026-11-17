@@ -67,6 +67,7 @@ export interface ConfigDeps {
   ) => Promise<DatabaseConnection | undefined>;
   gateProblem?: (gate: string, metric: string) => string | undefined;
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
+  usedByCounts?: (tenant: string) => Promise<Map<string, number>>;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -977,12 +978,16 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
   app.get('/tenants/:tenant/datasets', async (c) => {
     const guard = await member(c);
     if (guard.response) return guard.response;
+    const counts = await deps.usedByCounts?.(guard.tenant);
     return c.json({
       data: await Promise.all(
         deps.catalog
           .visibleTo(guard.tenant)
           .filter((i) => i.kind === 'dataset')
-          .map((i) => withStatus(i, guard.tenant, guard.principal, false)),
+          .map(async (i) => ({
+            ...(await withStatus(i, guard.tenant, guard.principal, false)),
+            ...(counts ? { usedByCount: counts.get(i.id) ?? 0 } : {}),
+          })),
       ),
     });
   });

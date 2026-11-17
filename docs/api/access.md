@@ -6,7 +6,7 @@ Who and what may call the platform, and what the platform may call: the caller's
 
 - `GET /tenants/{tenant}/me` returns the caller's own rights in the tenant. Rights are granted in Altinn, not through this API.
 - An API key holds only the rights its scopes grant in its own tenant: `admin` gives all five, `ingest` gives `manage-datasets`. A Maskinporten client holds none: it calls the services it is registered for, and the tenant's routes and `/eval-runs/*`, `/eval-tasks/*` and `/testcase-candidates/*` answer it 403 `urn:genai:problem:client-scope` (ADR 0027).
-- `GET /me` returns the organisations a signed-in person may act for, with names and rights. The apps use it for logins whose token lists no organisations, such as an Entra ID login in a locked environment (ADR 0033). In a locked environment it also has `lockdownReadOnly: true` when the login may only read, so the apps can show the read-only banner.
+- `GET /me` returns the organisations a signed-in person may act for, with names and rights. The apps use it for logins whose token lists no organisations, such as an Entra ID login in a locked environment (ADR 0033). In a locked environment it also has `lockdownReadOnly: true` when the login may only read, so the apps can show the read-only banner. It has `email` only when the login token carried an email claim; the API looks up nothing else.
 - Keys, key policies, clients and Maskinporten clients need `manage-services`. Registering or syncing a tool connection needs `manage-services` or `register-building-blocks`; approving one needs `manage-services`. A tenant secret needs `manage-services` or `register-building-blocks`; changing the hosts of an existing secret needs `manage-services`.
 - Registering building blocks needs `register-building-blocks`; adopting one needs `manage-services`, or `manage-datasets` for data blocks.
 - Connector syncs and credentials need `manage-datasets`.
@@ -38,7 +38,7 @@ In its own tenant the key then:
 
 Every other write, including every non-GET route under `/operator`, support sessions, secrets, keys, Maskinporten clients, settings, ingestion and batch runs, answers 403 `urn:genai:problem:test-runner-scope`. Routes under `/tenants/{other}` answer 404. See ADR 0033.
 
-For tools: `POST /tenants/{tenant}/tool-connections`, then `.../sync` and `.../approve` for each new tool before a service may name it.
+For tools: `POST /tenants/{tenant}/tool-connections`, then `.../sync` and `.../approve` for each new tool before a service may name it. `GET /tenants/{tenant}/tool-connections` shows each connection's `lastSync`: when it last ran, whether it worked, and the error when it did not, kept until the next sync.
 
 ## Langfuse connections
 

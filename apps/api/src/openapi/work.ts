@@ -1004,6 +1004,22 @@ const taskRoutes: RouteConfig[] = [
     responses: { 200: json(ReviewView, 'Approved'), ...reviewProblems },
   }),
   createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/tasks/{task}/cancel',
+    summary: 'Stop a run started through an API entry point; waits up to 2 seconds for it to end',
+    description: described(
+      'use-services for who started the run, otherwise manage-services',
+      'Audited. A cancelled run answers 200 again without a new entry.',
+    ),
+    request: { params: z.object({ tenant, task }), headers: namedWriteHeaders },
+    responses: {
+      200: json(z.object({ task: z.string(), status: z.literal('cancelled') }), 'Cancelled'),
+      202: json(z.object({ task: z.string(), status: taskStatus }), 'Stop asked, not landed yet'),
+      409: problem('The run has finished, or was not started through an API entry point'),
+      ...memberWrite,
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/operator/tasks',
     summary: 'Tasks on the platform; running (queued or running) by default',
@@ -2664,6 +2680,8 @@ const Day = z.object({
   usage: Usage.extend({ bySource: BySource }),
   byService: z.record(z.string(), UsageWithRuns),
   byModel: z.record(z.string(), Usage),
+  testing: Usage.describe('Test-set and playground runs on this day'),
+  ingestion: Usage.describe('Ingestion on this day'),
 });
 
 const TenantUsage = z
@@ -2711,6 +2729,16 @@ const TenantUsage = z
       usage: Usage,
       byOrigin: z.array(z.object({ origin: z.string(), usage: Usage })),
     }),
+    quota: z
+      .object({
+        usedTokens: z.number().int(),
+        monthlyTokens: z.number().int(),
+        usedPercent: z.number(),
+        alertPercent: z.number(),
+        alert: z.boolean().describe('True once this month has used alertPercent of the quota'),
+      })
+      .optional()
+      .describe('The monthly token quota, for the calendar month, whatever days asks for'),
   })
   .openapi('TenantUsage');
 
@@ -2728,6 +2756,71 @@ const AuditRecord = z
     reason: z.string(),
   })
   .openapi('AuditRecord');
+
+const OperationsOverview = z
+  .object({
+    incidents: z.array(z.object({ title: z.string(), text: z.string() })),
+    components: z.array(
+      z.object({
+        name: z.string(),
+        status: z.enum(['normal', 'degraded', 'down']),
+        errorRate: z.string().optional(),
+        p95: z.string().optional(),
+        note: z.string().optional(),
+      }),
+    ),
+    queueStats: z.array(z.object({ label: z.string(), value: z.string() })),
+    queue: z.array(
+      z.object({
+        type: z.string(),
+        what: z.string(),
+        status: z.enum(['running', 'waiting', 'failed']),
+        age: z.string(),
+        at: z.string(),
+      }),
+    ),
+    triggers: z.array(
+      z.object({
+        tenant: z.string(),
+        what: z.string(),
+        error: z.string(),
+        failedAt: z.string(),
+        lastSuccess: z.string().optional(),
+      }),
+    ),
+  })
+  .openapi('OperationsOverview');
+
+const QuotaRequest = z
+  .object({
+    id: z.string(),
+    monthlyTokens: z.number().int().describe('The monthly token quota asked for'),
+    reason: z.string(),
+    requestedBy: z.string(),
+    requestedByName: z.string().optional(),
+    requestedAt: z.string(),
+    state: z.enum(['pending', 'approved', 'rejected']),
+    decision: z
+      .object({
+        by: z.string(),
+        byName: z.string().optional(),
+        at: z.string(),
+        reason: z.string(),
+      })
+      .optional(),
+  })
+  .openapi('QuotaRequest');
+
+const Incident = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    text: z.string(),
+    tenants: z.array(z.string()).describe('The tenants it concerns; empty means all'),
+    startedAt: z.string(),
+    resolvedAt: z.string().optional(),
+  })
+  .openapi('Incident');
 
 const operationsRoutes: RouteConfig[] = [
   createRoute({
@@ -2815,44 +2908,137 @@ const operationsRoutes: RouteConfig[] = [
   }),
   createRoute({
     method: 'get',
+    path: '/tenants/{tenant}/quota-requests',
+    summary: "The tenant's requests for a larger monthly token quota, newest first",
+    description: described('view-usage', notAudited),
+    request: { params: z.object({ tenant }), headers: readHeaders },
+    responses: {
+      200: json(z.object({ data: z.array(QuotaRequest) }), 'Requests'),
+      403: problem('Missing right'),
+      ...memberRead,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/quota-requests',
+    summary:
+      'Ask Digdir for a larger monthly token quota; the change reason is the reason for the request',
+    description: described(
+      'manage-services',
+      audited,
+      'An operator decides it; an approval does not change the quota by itself.',
+    ),
+    request: {
+      params: z.object({ tenant }),
+      headers: namedWriteHeaders,
+      body: body(z.object({ monthlyTokens: z.number().int().min(1) })),
+    },
+    responses: {
+      201: json(QuotaRequest, 'Requested'),
+      409: problem('A request is already waiting for a decision'),
+      ...memberWrite,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/status',
+    summary:
+      "Platform health as the tenant sees it: shared components, the tenant's own runs, ingestion and failing schedules, and open incidents that concern it",
+    description: described(member, notAudited),
+    request: { params: z.object({ tenant }), headers: readHeaders },
+    responses: { 200: json(OperationsOverview, 'Status'), ...memberRead },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/quota-requests',
+    summary: 'Quota requests from every tenant, newest first',
+    description: described(operator, notAudited),
+    request: {
+      query: z.object({ state: z.enum(['pending', 'approved', 'rejected']).optional() }),
+    },
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(QuotaRequest.extend({ tenant: z.string(), tenantName: z.string() })),
+        }),
+        'Requests',
+      ),
+      400: problem('Unknown state'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/quota-requests/{tenant}/{id}/decision',
+    summary:
+      'Approve or reject a quota request; the quota itself is changed with usage.monthlyTokens in a support session',
+    description: described(operator, audited),
+    request: {
+      params: z.object({ tenant, id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ decision: z.enum(['approved', 'rejected']) })),
+    },
+    responses: {
+      200: json(QuotaRequest, 'Decided'),
+      400: problem('Invalid decision or missing change reason'),
+      404: problem('No such request'),
+      409: problem('Already decided'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/incidents',
+    summary: 'Every incident operators have written, open and resolved, newest first',
+    description: described(operator, notAudited),
+    responses: { 200: json(z.object({ data: z.array(Incident) }), 'Incidents'), ...operatorOnly },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/incidents',
+    summary:
+      'Write an incident that tenants see in their status; without tenants it concerns all of them',
+    description: described(operator, audited),
+    request: {
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          title: z.string().max(200),
+          text: z.string().max(4000),
+          tenants: z.array(z.string()).optional(),
+        }),
+      ),
+    },
+    responses: {
+      201: json(Incident, 'Written'),
+      400: problem('Invalid incident or missing change reason'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/incidents/{id}/resolve',
+    summary: 'Mark an incident resolved; tenants stop seeing it',
+    description: described(operator, audited),
+    request: {
+      params: z.object({ id: pathParam('id', '7d4c1b3e-1f0a-4e2b-9c8d-5a6b7c8d9e0f') }),
+      headers: operatorWriteHeaders,
+    },
+    responses: {
+      200: json(Incident, 'Resolved'),
+      400: problem('Missing change reason'),
+      404: problem('No such incident'),
+      409: problem('Already resolved'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
     path: '/operator/operations',
     summary: 'Incidents, component health, queue and failing triggers',
     description: described(operator, notAudited),
     responses: {
-      200: json(
-        z.object({
-          incidents: z.array(z.object({ title: z.string(), text: z.string() })),
-          components: z.array(
-            z.object({
-              name: z.string(),
-              status: z.enum(['normal', 'degraded', 'down']),
-              errorRate: z.string().optional(),
-              p95: z.string().optional(),
-              note: z.string().optional(),
-            }),
-          ),
-          queueStats: z.array(z.object({ label: z.string(), value: z.string() })),
-          queue: z.array(
-            z.object({
-              type: z.string(),
-              what: z.string(),
-              status: z.enum(['running', 'waiting', 'failed']),
-              age: z.string(),
-              at: z.string(),
-            }),
-          ),
-          triggers: z.array(
-            z.object({
-              tenant: z.string(),
-              what: z.string(),
-              error: z.string(),
-              failedAt: z.string(),
-              lastSuccess: z.string().optional(),
-            }),
-          ),
-        }),
-        'Operations',
-      ),
+      200: json(OperationsOverview, 'Operations'),
       ...operatorOnly,
     },
   }),

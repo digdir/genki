@@ -26,6 +26,7 @@ import type { CatalogRegistry } from './catalog-registry.js';
 import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
 import type { ApiLog } from './failure-log.js';
+import type { OperationsOverview } from './operations.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
 import type { EvalSlots } from './eval-slots.js';
 import type { TaskIndex } from './extensions.js';
@@ -74,6 +75,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     tenant: string,
     options?: { fresh?: boolean },
   ): Promise<{ usedTokens: number; monthlyTokens: number; exhausted: boolean }>;
+  tenantOperations?(tenant: string): Promise<OperationsOverview>;
   drafts: DraftRunner;
   /** The capability that runs an eval as a kernel task (`platform.eval.run`). */
   evalCapability?: string;

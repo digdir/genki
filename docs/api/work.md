@@ -10,9 +10,12 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 - An API key needs the `admin` scope on these routes, also on the ones outside `/tenants/{tenant}` (`/eval-runs/*`, `/eval-tasks/*`, `/testcase-candidates/*`); other keys get 403 `urn:genai:problem:api-key-scope`. A test-runner key in a locked test environment is the exception on `/tenants/{tenant}` (see [Access](access.md#test-runner-keys)).
 - A rerun of a batch with the same `batchId` skips the items that already succeeded. Their entries in the new result carry status, attempts and the task that produced them, not the answer, which stays with that task and its retention.
 - Editing and approving a table review (`PUT .../tasks/{task}/review/edits`, `POST .../review/approve`) needs `use-services` and is open only to whoever started the run. Both are audited admin tasks with `change-reason`; an edit that races another answers 409.
-- Usage and cost need `view-usage`.
+- Usage and cost need `view-usage`. `GET /tenants/{tenant}/usage` splits testing and ingestion per day, and its `quota` has `alert: true` once the calendar month has used 80 % of the monthly token quota.
+- A tenant asks for a larger quota with `POST /tenants/{tenant}/quota-requests` (`manage-services`, audited, one waiting at a time); `GET` lists them with `view-usage`. An operator lists them on `GET /operator/quota-requests` and decides one on `POST /operator/quota-requests/{tenant}/{id}/decision`, audited. A decision does not change the quota: the operator sets `usage.monthlyTokens` in a support session.
+- Stopping one run (`POST /tenants/{tenant}/tasks/{task}/cancel`) needs `use-services` for whoever started it and `manage-services` for anyone else. It is an audited admin task with `change-reason`, and stops only runs started through an API entry point (ADR 0057).
+- `GET /tenants/{tenant}/status` is platform health as a member sees it: shared components, the tenant's own runs, ingestion and failing schedules, and the open incidents that concern it. Operators write incidents with `POST /operator/incidents` and resolve them with `POST /operator/incidents/{id}/resolve`, both audited.
 - Starting, cancelling and retrying a batch run (`POST /tenants/{tenant}/services/{id}/batch-runs`, `.../{runId}/cancel`, `.../{runId}/retry`) are audited admin tasks: each needs `change-reason` and answers with a `genai-task` header.
-- Changes need `change-reason` and appear in `GET /tenants/{tenant}/audit`.
+- Changes need `change-reason` and appear in `GET /tenants/{tenant}/audit`. With `limit` (1 to 500) or `offset` the audit log comes newest first, a page at a time, and `total` says how many entries there are.
 
 ## Typical sequence: evaluate a draft before publishing
 
