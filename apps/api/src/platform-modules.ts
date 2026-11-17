@@ -79,6 +79,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   evalCapability?: string;
   /** The platform's own version, recorded as the commit of the eval runs it starts. */
   appVersion?: string;
+  demoRecorderKeyDigest?: string;
   /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
   tenantSecrets?: TenantSecrets;
   /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */

@@ -626,6 +626,18 @@ export const routeErrors = {
   unknownResidency: 'unknown residency {residency}',
 } satisfies Translation<typeof source.routeErrors>;
 
+export const demoErrors = {
+  recordingFinished: 'the recording has finished',
+  demoIdSlug: 'a demo id is a lowercase slug',
+  ifMatchVersion: 'if-match is a version number',
+  recordingFileTooLarge: '{name} is at most {maxBytes} bytes',
+  recordingFileEmpty: 'the file is empty',
+  uploadVideoFirst: 'upload demo.mp4 before finishing as recorded',
+  failureNeedsReason: 'a failed recording says why',
+  demoIsMapping: 'a demo is a YAML mapping',
+  notSlug: 'not a lowercase slug',
+} satisfies Translation<typeof source.demoErrors>;
+
 export const errors = {
   catalogErrors,
   knowledgeErrors,
@@ -636,4 +648,5 @@ export const errors = {
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };

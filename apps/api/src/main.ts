@@ -82,6 +82,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets.js';
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
+import { readDemoSeeds, seedDemos } from './demos.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { federatedAppTokens, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
@@ -463,6 +464,9 @@ const platform = await createPlatform({
     assertion: managedIdentityTokenSource(process.env.AZURE_CLIENT_ID),
   }),
   appVersion: version,
+  ...(process.env.DEMO_RECORDER_KEY_SHA256
+    ? { demoRecorderKeyDigest: process.env.DEMO_RECORDER_KEY_SHA256 }
+    : {}),
   tracing: {
     ...(process.env.LANGFUSE_BASE_URL ? { instance: process.env.LANGFUSE_BASE_URL } : {}),
     instanceReceivesContent: process.env.LANGFUSE_INSTANCE_RECEIVES_CONTENT === 'true',
@@ -693,6 +697,11 @@ const pipelineSeeds = readPipelineSeeds(join(configDir, 'pipelines'));
 for (const unreadable of pipelineSeeds.unreadable) log('pipeline seed unreadable', unreadable);
 for (const outcome of await seedPipelines(platform.ingestion, pipelineSeeds.seeds))
   if (outcome.state !== 'present') log(`pipeline ${outcome.state}`, outcome);
+
+const demoSeeds = readDemoSeeds(join(import.meta.dirname, '..', '..', '..', 'demos'));
+for (const unreadable of demoSeeds.unreadable) log('demo seed unreadable', unreadable);
+for (const outcome of await seedDemos(configEntries, demoSeeds.seeds))
+  if (outcome.state !== 'present') log(`demo ${outcome.state}`, outcome);
 
 const clientsDir = join(configDir, 'clients');
 for (const file of existsSync(clientsDir)

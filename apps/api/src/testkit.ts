@@ -263,6 +263,7 @@ export interface BootOptions {
   processorRecords?: ProcessorRecordCheck;
   blobStore?: BlobStore;
   fakeKey?: string;
+  demoRecorderKeyDigest?: string;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -295,6 +296,9 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     ...(options.blobStore ? { blobStore: options.blobStore } : {}),
+    ...(options.demoRecorderKeyDigest
+      ? { demoRecorderKeyDigest: options.demoRecorderKeyDigest }
+      : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,
