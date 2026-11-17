@@ -1,21 +1,7 @@
+import { kudosEarlierIdsMap, type EarlierIdsMap } from '@genai/contracts';
 import type { KudosDocument } from './kudos.js';
-import bundledMap from './kudos-earlier-ids.json' with { type: 'json' };
 
-/**
- * The numeric ids of today's Kudos index and the KUDOS UUIDs they lead to (ADR 0042, "Identity and
- * chunks"). Written by `packages/eval/src/scripts/kudos-earlier-ids.ts`.
- */
-export interface EarlierIdsMap {
-  /** Numeric id to UUID, by the live site's redirect and a file sha256 in common. */
-  ids: Record<string, string>;
-  /**
-   * Numeric id to UUID for ids the live site does not redirect, by the one live document that
-   * holds one of its files. Kept apart, so later work can count or leave them out.
-   */
-  byFile?: Record<string, string>;
-  /** Numeric id to why it has no UUID. */
-  unresolved: Record<string, string>;
-}
+export type { EarlierIdsMap };
 
 export type EarlierIdCheck = { uuid: string } | { reason: string };
 
@@ -70,4 +56,4 @@ let byDocument: Map<string, string[]> | undefined;
 
 /** The earlier ids of today's Kudos index, by `kudos:` id, read once per process. */
 export const kudosEarlierIds = (): ReadonlyMap<string, string[]> =>
-  (byDocument ??= earlierIdsByDocument(bundledMap as EarlierIdsMap));
+  (byDocument ??= earlierIdsByDocument(kudosEarlierIdsMap));

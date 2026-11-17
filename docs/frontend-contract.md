@@ -297,7 +297,7 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 }
 ```
 
-- `url` is present only when the platform's public link rule gives an http or https link people can open. Never build a link from `document_id`.
+- `url` is present only when the platform's public link rule gives an http or https link people can open. Never build a link from `document_id`. On a dataset with `links: kudos-legacy`, a source with an old numeric Kudos id links to its Kudos page by UUID (`https://kudos.dfo.no/dokument/<uuid>`) when the platform's map of those ids has one, and to a Kudos search for its title otherwise, or has no `url` when it has no title. A stored turn keeps the `url` it was stored with.
 - `excerpts` holds every retrieved chunk of that document, so a frontend never fetches passage text itself. Per-chunk ids are `excerpts[].chunk_id`.
 - `excerpts[].heading` is that excerpt's own heading path, as plain text with levels joined by `›`; its last level is the excerpt's section. It is present only when the index gives the chunk a heading. The converter's page anchors and its `<u>` and `<sup>` tags are left out, a link to a page keeps only its words, a footnote number is raised (`¹`), and a level with nothing else is left out. Headings stored with a turn before that rule can still carry the markup. `metadata[0].name` stays the first excerpt's path under the document title, in plain text too.
 - `excerpts[].page` is the page of its file the excerpt starts on, and `page_end` the page it ends on when that is a later one. They are present only when the index gives the chunk a page, as the knowledge database does for chunks made from stored conversions; answers stored before pages were kept have none.
