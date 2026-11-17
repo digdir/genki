@@ -1,47 +1,48 @@
 import { Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { findCapability, type SharedCapability } from '../data/shared-services';
-import { useAsync } from '../hooks';
+import { useAsync, type AsyncState } from '../hooks';
 import { modelLabel } from '../models';
 import { useT, type T } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { EmptyState, ErrorState, Loading } from '../states';
-import type { SharedService } from '../types';
+import type { ModelOption, Residency, SharedService } from '../types';
 import { SharedServiceDetail } from './shared/SharedServiceDetail';
 import './shared.css';
 
 interface Entry {
   capability: SharedCapability;
   publicName: string;
+  residency: Residency | undefined;
 }
 
-const residencyLabel = (t: T, r: string | null) =>
+const residencyLabel = (t: T, r: Residency | undefined, models: AsyncState<ModelOption[]>) =>
   r === 'norway'
     ? t('sharedServices.residencyNorway')
     : r === 'eu'
       ? t('sharedServices.residencyEu')
-      : r
+      : r === 'global'
         ? t('sharedServices.residencyOutside')
-        : t('sharedServices.notGiven');
+        : models.status === 'error'
+          ? t('sharedServices.residencyUnavailable')
+          : t('sharedServices.notGiven');
 
-const residencyColor = (t: T, location: string) =>
-  location === 'Norge' || location === t('sharedServices.residencyNorway')
-    ? 'success'
-    : location === 'EU/EØS' || location === t('sharedServices.residencyEu')
-      ? 'info'
-      : 'warning';
+const residencyColors = { norway: 'success', eu: 'info', global: 'warning' } as const;
 
-const fromApi = (t: T, s: SharedService): SharedCapability => ({
+export const modelResidency = (model: string | null | undefined, models: ModelOption[]) =>
+  model ? models.find((m) => m.id === model)?.residency : undefined;
+
+const fromApi = (t: T, s: SharedService, location: string): SharedCapability => ({
   id: s.id,
   alias: s.id,
   tool: `digdir.${s.id}`,
   name: s.name,
-  version: s.version === null ? '–' : String(s.version),
+  version: s.version === null ? '' : String(s.version),
   does: s.purpose,
   long: s.purpose,
   input: t('sharedServices.text'),
   output: t('sharedServices.text'),
   model: s.model ? modelLabel(s.model) : t('sharedServices.notGiven'),
-  location: residencyLabel(t, s.residency),
+  location,
   score: 0,
   price: '–',
   priceNote: t('sharedServices.notPriced'),
@@ -55,16 +56,24 @@ const fromApi = (t: T, s: SharedService): SharedCapability => ({
   body: {},
 });
 
-const merge = (t: T, services: SharedService[], live: boolean): Entry[] =>
+const merge = (
+  t: T,
+  services: SharedService[],
+  models: AsyncState<ModelOption[]>,
+  live: boolean,
+): Entry[] =>
   services.map((s) => {
+    const residency = modelResidency(s.model, models.status === 'ready' ? models.data : []);
+    const location = residencyLabel(t, residency, models);
     const design = live ? undefined : findCapability(s.id);
     return {
-      capability: design ?? fromApi(t, s),
+      capability: design ? { ...design, location } : fromApi(t, s, location),
       publicName: s.variants[0]?.publicName ?? `${s.id}__default`,
+      residency,
     };
   });
 
-const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
+const Card = ({ entry: { capability: c, residency } }: { entry: Entry }) => {
   const t = useT();
   const href = `#/shared-services/${encodeURIComponent(c.id)}`;
   return (
@@ -76,7 +85,7 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
           </h2>
         </div>
         <div className="tag-row">
-          <Tag data-size="sm" data-color={residencyColor(t, c.location)}>
+          <Tag data-size="sm" data-color={residency ? residencyColors[residency] : 'neutral'}>
             {c.location}
           </Tag>
           {c.used ? (
@@ -104,8 +113,10 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
 export const SharedServices = ({ api, route, live }: ScreenProps) => {
   const t = useT();
   const [state, retry] = useAsync((signal) => api.sharedServices(signal), [api]);
+  const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
   const id = route.segments[1];
-  if (state.status === 'loading') return <Loading label={t('sharedServices.loading')} />;
+  if (state.status === 'loading' || models.status === 'loading')
+    return <Loading label={t('sharedServices.loading')} />;
   if (state.status === 'error')
     return (
       <>
@@ -115,7 +126,7 @@ export const SharedServices = ({ api, route, live }: ScreenProps) => {
         <ErrorState error={state.error} onRetry={retry} />
       </>
     );
-  const entries = merge(t, state.data, live);
+  const entries = merge(t, state.data, models, live);
 
   if (id) {
     const key = (live ? undefined : findCapability(id)?.id) ?? id;

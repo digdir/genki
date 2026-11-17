@@ -23,6 +23,7 @@ import {
   skippedOf,
   type DatasetDeleteResult,
   type DatasetDetailView,
+  type DatasetReader,
   type ExecutionView,
   type ExecutionsView,
   type PipelineSource,
@@ -41,12 +42,12 @@ import {
   statusKeys,
   type DatasetStatus,
 } from '../../data/datasets';
-import { useAsync } from '../../hooks';
+import { navigate, useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { admissionRunsOutSoon } from './admission';
-import type { DetailTab } from './DatasetDetail';
+import { backoffDelay } from './backoff';
 import {
   refusalText,
   countText,
@@ -63,6 +64,7 @@ import {
   whenText,
   failureText,
 } from './live-model';
+import { datasetTabPath, type DetailTab } from './model';
 import { SearchEngine } from './SearchEngine';
 import { Uploads } from './Uploads';
 import './search-engine.css';
@@ -525,6 +527,26 @@ const Deleted = ({ name, result }: { name: string; result: DatasetDeleteResult }
   );
 };
 
+const UsedBy = ({ tenant, readers }: { tenant: string; readers: DatasetReader[] }) => {
+  const t = useT();
+  if (readers.length === 0) return <p className="meta">{t('datasets.usedByNone')}</p>;
+  return (
+    <ul className="plain-list stack-xs" aria-label={t('datasets.tabUsedBy')}>
+      {readers.map((r) => (
+        <li key={`${r.kind}:${r.tenant}/${r.id}`}>
+          {r.kind === 'service' && r.tenant === tenant ? (
+            <a href={`#/services/${encodeURIComponent(r.id)}`}>{r.name}</a>
+          ) : r.kind === 'service' ? (
+            r.name
+          ) : (
+            t('datasets.readerAdoption', { tenant: r.tenant })
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 const Facets = ({
   api,
   tenant,
@@ -579,13 +601,13 @@ export const LiveDatasetDetail = ({
   tenant,
   tenantName,
   id,
-  initialTab,
+  tab,
 }: {
   api: ApiClient;
   tenant: string;
   tenantName: string;
   id: string;
-  initialTab: DetailTab;
+  tab: DetailTab;
 }) => {
   const t = useT();
   const [detail, retryDetail] = useAsync(
@@ -617,7 +639,8 @@ export const LiveDatasetDetail = ({
       tenant={tenant}
       tenantName={tenantName}
       initial={detail.data}
-      initialTab={initialTab}
+      tab={tab}
+      onTab={(next) => navigate(datasetTabPath(id, next))}
     />
   );
 };
@@ -627,23 +650,26 @@ const Loaded = ({
   tenant,
   tenantName,
   initial,
-  initialTab,
+  tab,
+  onTab,
 }: {
   api: ApiClient;
   tenant: string;
   tenantName: string;
   initial: DatasetDetailView;
-  initialTab: DetailTab;
+  tab: DetailTab;
+  onTab: (tab: DetailTab) => void;
 }) => {
   const t = useT();
   const f = useFormat();
   const tRef = useRef(t);
   tRef.current = t;
   const [view, setView] = useState(initial);
-  const [tab, setTab] = useState<DetailTab>(initialTab);
   const [trying, setTrying] = useState(false);
   const [openRun, setOpenRun] = useState<string>();
   const [runs, setRuns] = useState<ExecutionsView>();
+  const [runsError, setRunsError] = useState<unknown>();
+  const [pollFailures, setPollFailures] = useState(0);
   const [flash, setFlash] = useState('');
   const [failure, setFailure] = useState('');
   const [finished, setFinished] = useState<ExecutionView>();
@@ -657,7 +683,6 @@ const Loaded = ({
     [api, tenant, view.id, editable],
   );
   const pipeline = pipelines.status === 'ready' ? pipelines.data[0] : undefined;
-  useEffect(() => setTab(initialTab), [initialTab]);
 
   const refresh = useCallback(async () => {
     if (!pipeline) return;
@@ -673,16 +698,28 @@ const Loaded = ({
     if (latest?.status === 'running') watching.current = true;
   }, [api, tenant, view.id, pipeline]);
 
-  useEffect(() => {
-    void refresh().catch(() => undefined);
+  const load = useCallback(async () => {
+    try {
+      await refresh();
+      setRunsError(undefined);
+      setPollFailures(0);
+    } catch (error) {
+      setRunsError(error);
+      setPollFailures((n) => n + 1);
+    }
   }, [refresh]);
 
-  const running = runs?.data[0]?.status === 'running';
   useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => void refresh().catch(() => undefined), pollMs);
-    return () => clearInterval(timer);
-  }, [running, refresh]);
+    void load();
+  }, [load]);
+
+  const running = runs?.data[0]?.status === 'running';
+  const polling = running || (runsError !== undefined && watching.current);
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setTimeout(() => void load(), backoffDelay(pollMs, pollFailures));
+    return () => clearTimeout(timer);
+  }, [polling, load, pollFailures, runs]);
 
   const run = async () => {
     if (!pipeline || running) return;
@@ -690,9 +727,9 @@ const Loaded = ({
     setFlash('');
     setFinished(undefined);
     try {
-      await api.datasets.execute(tenant, view.id, pipeline.id, 'Manuell innlesing fra portalen');
+      await api.datasets.execute(tenant, view.id, pipeline.id, tRef.current('datasets.runReason'));
       watching.current = true;
-      await refresh();
+      await load();
     } catch (error) {
       setFailure(
         error instanceof ApiError &&
@@ -715,10 +752,10 @@ const Loaded = ({
         view.id,
         pipeline.id,
         execution.id,
-        'Avbrutt fra portalen',
+        tRef.current('datasets.cancelReason'),
       );
       setFlash(tRef.current('datasets.ingestionCancelled'));
-      await refresh();
+      await load();
     } catch (error) {
       setFailure(failureText(tRef.current, error));
     }
@@ -749,7 +786,7 @@ const Loaded = ({
         admitted.id,
         tRef.current('datasets.readmitReason'),
       );
-      await refresh();
+      await load();
     } catch (error) {
       setReadmitFailure(refusalText(tRef.current, error));
     } finally {
@@ -929,9 +966,10 @@ const Loaded = ({
         ))}
       </dl>
 
-      <Tabs value={tab} onChange={(v) => setTab(v as DetailTab)}>
+      <Tabs value={tab} onChange={(v) => onTab(v as DetailTab)}>
         <Tabs.List aria-label={t('datasets.tabsLabel')}>
           <Tabs.Tab value="ingestions">{t('datasets.tabIngestions')}</Tabs.Tab>
+          <Tabs.Tab value="used-by">{t('datasets.tabUsedBy')}</Tabs.Tab>
           <Tabs.Tab value="filters">{t('datasets.tabFilters')}</Tabs.Tab>
           <Tabs.Tab value="source">{t('datasets.tabSource')}</Tabs.Tab>
         </Tabs.List>
@@ -944,20 +982,41 @@ const Loaded = ({
             </p>
           ) : pipelines.status === 'error' ? (
             <ErrorState error={pipelines.error} onRetry={retryPipelines} headingLevel={3} />
+          ) : runsError !== undefined && !runs ? (
+            <ErrorState error={runsError} onRetry={() => void load()} headingLevel={3} />
+          ) : pipelines.status === 'loading' || (pipeline && !runs) ? (
+            <Loading label={t('datasets.loadingRuns')} />
           ) : !runs || runs.data.length === 0 ? (
             <p className="meta">{t('datasets.noIngestions')}</p>
           ) : (
-            <ol className="runs" aria-label={t('datasets.tabIngestions')}>
-              {runs.data.map((r) => (
-                <Run
-                  key={r.id}
-                  run={r}
-                  open={openRun === r.id}
-                  onToggle={() => setOpenRun(openRun === r.id ? undefined : r.id)}
-                />
-              ))}
-            </ol>
+            <div className="stack-sm">
+              {runsError !== undefined ? (
+                <Alert data-color="warning" data-size="sm">
+                  <Paragraph data-size="sm">
+                    {polling ? t('datasets.runsRetrying') : t('datasets.runsStale')}
+                  </Paragraph>
+                  {polling ? null : (
+                    <Button variant="secondary" data-size="sm" onClick={() => void load()}>
+                      {t('common.tryAgain')}
+                    </Button>
+                  )}
+                </Alert>
+              ) : null}
+              <ol className="runs" aria-label={t('datasets.tabIngestions')}>
+                {runs.data.map((r) => (
+                  <Run
+                    key={r.id}
+                    run={r}
+                    open={openRun === r.id}
+                    onToggle={() => setOpenRun(openRun === r.id ? undefined : r.id)}
+                  />
+                ))}
+              </ol>
+            </div>
           )}
+        </Tabs.Panel>
+        <Tabs.Panel value="used-by">
+          <UsedBy tenant={tenant} readers={view.usedBy ?? []} />
         </Tabs.Panel>
         <Tabs.Panel value="filters">
           <div className="stack-sm">

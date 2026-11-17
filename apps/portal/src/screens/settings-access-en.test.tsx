@@ -62,11 +62,9 @@ describe('access in English', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
     expect(await screen.findByText('Showing 10 of 10 people')).toBeTruthy();
     expect(screen.getAllByText('Use services').length).toBeGreaterThan(0);
-    expect(screen.getByRole('link', { name: /Change in Altinn/ }).textContent).toContain(
-      '(opens in a new tab)',
-    );
+    expect(screen.getByRole('button', { name: 'Give a colleague access' })).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'No rights' }));
     expect(screen.getByText('Showing 1 of 10 people')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Groups' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Services' })).toBeTruthy();
   });
 });

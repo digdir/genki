@@ -72,11 +72,13 @@ const renderLive = async (path: string) => {
 };
 
 describe('Datasett: delte datasett lest inn utenfor plattformen', () => {
-  it('lists a shared dataset read in outside the platform under the Klar filter', async () => {
+  it('lists a dataset shared with the organisation under the shared filter and not under its own', async () => {
     await renderLive('#/datasets');
     await screen.findByRole('link', { name: 'Kudos' });
-    fireEvent.click(screen.getByRole('radio', { name: 'Klar' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Delt med dere' }));
     expect(screen.getByText('Viser 1 av 1 datasett')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Egne' }));
+    expect(screen.getByText('Viser 0 av 1 datasett')).toBeTruthy();
   });
 
   it('does not tell the overview there are no datasets when only shared ones exist', async () => {
@@ -130,10 +132,10 @@ describe('Datasett: liste', () => {
     expect(screen.getByText('Delt av Eksempeldirektoratet', { selector: 'dd' })).toBeTruthy();
   });
 
-  it('filters by status and search, and resets when nothing matches', async () => {
+  it('filters by what needs attention and search, and resets when nothing matches', async () => {
     await openList();
-    fireEvent.click(screen.getByRole('radio', { name: 'Feilet' }));
-    expect(screen.getByText('Viser 1 av 6 datasett')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Trenger oppfølging' }));
+    expect(screen.getByText('Viser 2 av 6 datasett')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Nettsidene til Testetaten' })).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'Alle' }));
     fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i datasett' }), {
@@ -391,9 +393,11 @@ describe('Datasett: detalj', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Innlesing og deling' })).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Filtre i søket' }));
-    const toggle = screen.getAllByRole('switch', {
-      name: 'Kan brukes som filter',
-    })[0] as HTMLElement;
+    const toggle = (
+      await screen.findAllByRole('switch', {
+        name: 'Kan brukes som filter',
+      })
+    )[0] as HTMLElement;
     expect(toggle.getAttribute('aria-disabled')).toBe('true');
     expectAccessible();
   });

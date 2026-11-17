@@ -163,9 +163,9 @@ describe('rights in the UI', () => {
     cleanup();
 
     await renderAs('#/datasets', mockFetch(), useOnly);
-    await screen.findByRole('heading', { name: 'Egne datasett og endepunkter' });
-    await screen.findByText(/oppføringer/);
-    expect(screen.queryByRole('button', { name: 'Ny' })).toBeNull();
+    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    expect(screen.queryByRole('button', { name: 'Nytt datasett' })).toBeNull();
+    expect(screen.queryByText(/Teknisk: katalogoppføringer/)).toBeNull();
     cleanup();
 
     await renderAs('#/services/rapportassistenten', mockFetch(), useOnly);

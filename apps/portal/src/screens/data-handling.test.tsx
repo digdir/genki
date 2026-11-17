@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import { exampleOrganisations, mockFetch } from '../mock';
-import { expectAccessible } from '../test-utils';
+import { expectAccessible, failingFetch } from '../test-utils';
 
 beforeEach(() => {
   window.location.hash = '#/data-handling';
@@ -55,11 +55,37 @@ describe('Slik behandles data', () => {
     await auth.login();
     render(<App auth={auth} fetch={mockFetch(undefined, undefined, models)} live />);
 
-    const list = await screen.findByRole('list', { name: 'Modeller og hvor de behandler data' });
+    const table = await screen.findByRole('table');
     expect(
-      within(list)
-        .getAllByRole('listitem')
-        .map((li) => li.textContent),
-    ).toEqual(['GPT-4.1 mini: globalt, også utenfor EU/EØS', 'norsk-7b: i Norge']);
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) =>
+          within(row)
+            .getAllByRole('cell')
+            .map((cell) => cell.textContent),
+        ),
+    ).toEqual([
+      ['GPT-4.1 minifoundry-openai/gpt-4.1-mini', 'Utenfor EU/EØS'],
+      ['norsk-7btenant/norsk-7b', 'Norge'],
+    ]);
+    expect(
+      screen.getByText(
+        '1 av de 2 modellene dere kan bruke, behandler data utenfor EU/EØS. De er merket «Utenfor EU/EØS» i tabellen.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows a model list error with retry instead of an empty table', async () => {
+    const auth = mockAnsattporten({ name: 'Kari', organisations: exampleOrganisations });
+    await auth.login();
+    let fail = true;
+    const ok = mockFetch(undefined, undefined, models);
+    const broken = failingFetch(/\/models/, 503, ok);
+    render(<App auth={auth} fetch={(i, init) => (fail ? broken(i, init) : ok(i, init))} live />);
+    expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    expect(await screen.findByRole('table')).toBeTruthy();
   });
 });
