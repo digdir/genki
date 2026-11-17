@@ -136,6 +136,19 @@ describe('a demo', () => {
     expect(screen.getByRole('button', { name: 'Undertekster (srt)' })).toBeTruthy();
   });
 
+  it('shows the narration without times when the video was recorded from an older version of the demo', async () => {
+    const detail = {
+      ...demo({ version: 2 }),
+      genkiVersion: '0.43.0',
+      recordings: [recording({ demoVersion: 1 })],
+    };
+    render(<Demos api={apiFor({ '/operator/demos/playground': detail })} demo="playground" />);
+
+    expect(await screen.findByLabelText('Video: Prøv en tjeneste i prøveområdet')).toBeTruthy();
+    expect(screen.getByText('Så stiller vi et spørsmål.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Hopp til/ })).toBeNull();
+  });
+
   it('plays the last good recording and says the latest one failed', async () => {
     const detail = {
       ...demo(),

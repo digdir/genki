@@ -629,6 +629,18 @@ export const routeErrors = defineNamespace({
   unknownResidency: 'ukjent dataplassering {residency}',
 });
 
+export const demoErrors = defineNamespace({
+  recordingFinished: 'opptaket er ferdig',
+  demoIdSlug: 'en demo-id er en slug med små bokstaver',
+  ifMatchVersion: 'if-match er et versjonsnummer',
+  recordingFileTooLarge: '{name} er på høyst {maxBytes} byte',
+  recordingFileEmpty: 'filen er tom',
+  uploadVideoFirst: 'last opp demo.mp4 før opptaket avsluttes som tatt opp',
+  failureNeedsReason: 'et mislykket opptak sier hvorfor',
+  demoIsMapping: 'en demo er en YAML-mapping',
+  notSlug: 'ikke en slug med små bokstaver',
+});
+
 export const errors = {
   catalogErrors,
   knowledgeErrors,
@@ -639,4 +651,5 @@ export const errors = {
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };

@@ -462,7 +462,7 @@ const Detail = ({ api, id }: { api: ApiClient; id: string }) => {
     demo.genkiVersion,
   );
   const cues = media.status === 'ready' ? media.cues : [];
-  const timed = cues.length === demo.steps.length;
+  const timed = recorded?.demoVersion === demo.version && cues.length === demo.steps.length;
   const jump = (seconds: number) => {
     if (!video.current) return;
     video.current.currentTime = seconds;

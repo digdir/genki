@@ -1,7 +1,11 @@
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { describe, expect, it } from 'vitest';
+import { platformModules } from './composition.js';
 import { platformScope } from './config-store.js';
-import { demoKind, readDemo, recorderKeyDigest } from './demos.js';
+import { createDemosModule, demosModule } from './demo-routes.js';
+import { demoKind, readDemo, recorderKeyDigest, recordingBlobPath } from './demos.js';
+import { maskinportenClientsModule } from './maskinporten-clients.js';
+import { onboardingModule } from './onboarding.js';
 import { bootPlatform, digdir, principals, readJson } from './testkit.js';
 
 const recorderKey = 'opptaker-nøkkel-for-test';
@@ -27,10 +31,19 @@ interface Recording {
 }
 
 const booted = async () => {
+  let second = 0;
+  const now = () => new Date(Date.UTC(2026, 10, 17, 10, 0, second++));
+  const blobs = new InMemoryBlobStore();
   const platform = await bootPlatform({
     people: principals,
-    blobStore: new InMemoryBlobStore(),
+    blobStore: blobs,
     demoRecorderKeyDigest: recorderKeyDigest(recorderKey),
+    modules: [
+      ...platformModules.filter((m) => m !== demosModule),
+      createDemosModule({ now }),
+      onboardingModule,
+      maskinportenClientsModule,
+    ],
   });
   const read = readDemo(demoYaml);
   if (!read.ok) throw new Error('fixture is invalid');
@@ -60,7 +73,7 @@ const booted = async () => {
         json: { genkiVersion: '0.43.0', narrated: true },
       }),
     );
-  return { ...platform, record, start };
+  return { ...platform, blobs, record, start };
 };
 
 describe('the demo library', () => {
@@ -225,6 +238,46 @@ describe('the recorder routes', () => {
     });
 
     expect(late.status).toBe(409);
+  });
+
+  it('refuse a file whose upload ends after the recording has finished, and keep the file it had', async () => {
+    const { app, blobs, record, start } = await booted();
+    const recording = await start();
+    await record(`/recorder/recordings/${recording.id}/files/demo.mp4`, {
+      method: 'PUT',
+      body: new Uint8Array([1, 2, 3]),
+    });
+    let reading = () => {};
+    const readStarted = new Promise<void>((resolve) => (reading = resolve));
+    let release = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const body = new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        reading();
+        await released;
+        controller.enqueue(new Uint8Array([9]));
+        controller.close();
+      },
+    });
+    const late = app.request(`/recorder/recordings/${recording.id}/files/demo.mp4`, {
+      method: 'PUT',
+      headers: { 'x-recorder-key': recorderKey },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    await readStarted;
+    const finished = await record(`/recorder/recordings/${recording.id}/finish`, {
+      json: { status: 'recorded', seconds: 3 },
+    });
+    release();
+
+    expect(finished.status).toBe(200);
+    expect((await late).status).toBe(409);
+    const kept = await blobs.get({
+      tenant: digdir,
+      path: recordingBlobPath(recording.id, 'demo.mp4'),
+    });
+    expect([...(kept?.body ?? [])]).toEqual([1, 2, 3]);
   });
 
   it('audit the start and the end of a recording as the recorder', async () => {
