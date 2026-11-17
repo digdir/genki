@@ -64,15 +64,19 @@ jobs:
           digest() {
             docker buildx imagetools inspect "$SERVER/$1" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty' || true
           }
+          # The attestation must also name this image: verify matches by digest only.
           attested() {
-            gh attestation verify "oci://$SERVER/$1" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/images.yml" \
-              --source-ref refs/heads/main --deny-self-hosted-runners "${@:2}" > /dev/null 2>&1
+            verified=$(gh attestation verify "oci://$SERVER/$1" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/images.yml" \
+              --source-ref refs/heads/main --deny-self-hosted-runners --format json "${@:2}" 2> "$RUNNER_TEMP/verify.err") || return 1
+            jq -e --arg name "$SERVER/${1%%@*}" 'any(.[].verificationResult.statement.subject[]; .name == $name)' <<< "$verified" > /dev/null ||
+              { echo "the attestation is for another image" > "$RUNNER_TEMP/verify.err"; return 1; }
           }
           reuse() {
             reused=""
             found=$(digest "$1")
             if [ -n "$found" ] && attested "${1%%:*}@$found" "${@:2}"; then reused=$found
-            elif [ -n "$found" ]; then echo "::warning::$1 has no build attestation from images.yml on main, so it is built again."
+            elif [ -n "$found" ]; then
+              echo "::warning::$1 is built again: no build attestation from images.yml on main verified ($(tail -n 1 "$RUNNER_TEMP/verify.err"))."
             fi
           }
           # Docling's Debian packages come from live mirrors: the week in its tag rebuilds it weekly.

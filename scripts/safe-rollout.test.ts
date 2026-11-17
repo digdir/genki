@@ -184,6 +184,40 @@ describe('a deploy that takes minutes, not half an hour', () => {
     ).toBe('none');
   });
 
+  const ciLoop = (answers: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'ci-'));
+    writeFileSync(join(dir, 'answers'), answers.join('\n') + '\n');
+    writeFileSync(
+      join(dir, 'gh'),
+      '#!/usr/bin/env bash\nhead -n 1 "$FAKE_ANSWERS"; sed -i.bak 1d "$FAKE_ANSWERS"\n',
+    );
+    writeFileSync(join(dir, 'sleep'), '#!/usr/bin/env bash\nexit 0\n');
+    chmodSync(join(dir, 'gh'), 0o755);
+    chmodSync(join(dir, 'sleep'), 0o755);
+    const output = join(dir, 'output');
+    writeFileSync(output, '');
+    execFileSync('bash', ['-e', '-c', step(job('ci'), 'ci').run ?? ''], {
+      env: {
+        ...process.env,
+        PATH: `${dir}:${process.env.PATH ?? ''}`,
+        FAKE_ANSWERS: join(dir, 'answers'),
+        GITHUB_OUTPUT: output,
+        REPO: 'digdir/genki',
+        SHA: 'c'.repeat(40),
+      },
+      stdio: 'ignore',
+    });
+    return readFileSync(output, 'utf8').trim();
+  };
+
+  it.skipIf(!posix)('waits a minute for a push run that has not started yet', () => {
+    expect(ciLoop(['none', 'none', 'running', 'success'])).toBe('passed=true');
+  });
+
+  it.skipIf(!posix)('runs the checks itself when no push run starts within a minute', () => {
+    expect(ciLoop(Array.from({ length: 10 }, () => 'none'))).toBe('passed=false');
+  });
+
   it('builds the images on every push to main, and when the deploy calls it', () => {
     expect(job('build').uses).toBe('./.github/workflows/images.yml');
     const images = workflow('images.yml');
@@ -300,6 +334,14 @@ describe('a deploy that takes minutes, not half an hour', () => {
     }
   });
 
+  it('gives up on a health call after ten seconds, so a hanging one cannot stall the polling', () => {
+    const polls = Object.values(deploy.jobs)
+      .flatMap((j) => j.steps ?? [])
+      .map((s) => s.run ?? '')
+      .filter((run) => run.includes('/health"'));
+    for (const run of polls) expect(run).toContain('curl -fsS --max-time 10 ');
+  });
+
   it('lets SMOKE_LANES set how many model checks the gate and the smoke test run at once', () => {
     expect(step(job('gate'), 'run').env?.SMOKE_LANES).toBe('${{ vars.SMOKE_LANES }}');
     expect(read('.github/workflows/smoke.yml')).toContain('SMOKE_LANES: ${{ vars.SMOKE_LANES }}');
@@ -383,7 +425,11 @@ describe.skipIf(!posix)('the candidate’s plan of the running apps', () => {
 
 describe.skipIf(!posix)('reusing an image', () => {
   const sha = 'c'.repeat(40);
-  const have = (tags: Record<string, string>, attested: string[]) => {
+  const have = (
+    tags: Record<string, string>,
+    attested: string[],
+    subjects: Record<string, string> = {},
+  ) => {
     const script =
       workflow('images.yml').jobs.build?.steps?.find((s) => s.id === 'have')?.run ?? '';
     const dir = mkdtempSync(join(tmpdir(), 'have-'));
@@ -400,16 +446,22 @@ printf '{"digest":"%s"}\\n' "$digest"
       join(dir, 'gh'),
       `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$FAKE_ASKED"
-digest="\${3##*@}"
-grep -qx "$digest" <<< "$FAKE_ATTESTED"
+ref="\${3#oci://}"
+digest="\${ref##*@}"
+if ! grep -qx "$digest" <<< "$FAKE_ATTESTED"; then echo "Error: no attestations found for $digest" >&2; exit 1; fi
+name=$(jq -r --arg d "$digest" --arg n "\${ref%@*}" '.[$d] // $n' <<< "$FAKE_SUBJECTS")
+printf '[{"verificationResult":{"statement":{"subject":[{"name":"%s"}]}}}]\\n' "$name"
 `,
     );
     chmodSync(join(dir, 'docker'), 0o755);
     chmodSync(join(dir, 'gh'), 0o755);
     const output = join(dir, 'output');
+    const askedFile = join(dir, 'asked');
     writeFileSync(output, '');
-    execFileSync('bash', ['-e', '-c', script], {
+    writeFileSync(askedFile, '');
+    const log = execFileSync('bash', ['-e', '-c', script], {
       cwd: root,
+      encoding: 'utf8',
       env: {
         ...process.env,
         PATH: `${dir}:${process.env.PATH ?? ''}`,
@@ -417,11 +469,13 @@ grep -qx "$digest" <<< "$FAKE_ATTESTED"
         SHA: sha,
         REPO: 'digdir/genki',
         GITHUB_OUTPUT: output,
+        RUNNER_TEMP: dir,
         FAKE_TAGS: JSON.stringify(tags),
         FAKE_ATTESTED: attested.join('\n'),
-        FAKE_ASKED: join(dir, 'asked'),
+        FAKE_SUBJECTS: JSON.stringify(subjects),
+        FAKE_ASKED: askedFile,
       },
-      stdio: ['ignore', 'ignore', 'ignore'],
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
     const values = Object.fromEntries(
       readFileSync(output, 'utf8')
@@ -429,10 +483,21 @@ grep -qx "$digest" <<< "$FAKE_ATTESTED"
         .split('\n')
         .map((line) => line.split('=') as [string, string]),
     );
-    const askedFile = join(dir, 'asked');
-    writeFileSync(askedFile, '', { flag: 'a' });
-    return { values, asked: readFileSync(askedFile, 'utf8') };
+    return { values, log, asked: readFileSync(askedFile, 'utf8') };
   };
+
+  it('builds again an image whose build attestation is for another image', () => {
+    const { values } = have({ [`genai-api:${sha}`]: 'sha256:w' }, ['sha256:w'], {
+      'sha256:w': 'reg.example/genai-worker',
+    });
+    expect(values.api).toBe('');
+  });
+
+  it('says why an attestation did not verify', () => {
+    const { log } = have({ [`genai-api:${sha}`]: 'sha256:planted' }, []);
+    expect(log).toContain('::warning::genai-api');
+    expect(log).toContain('no attestations found for sha256:planted');
+  });
 
   it('reuses an image whose build attestation verifies', () => {
     const { values } = have({ [`genai-api:${sha}`]: 'sha256:a' }, ['sha256:a']);

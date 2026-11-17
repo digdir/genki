@@ -67,8 +67,8 @@ import { renderTable } from './report.ts';
 import { toolboxOf } from './review.ts';
 
 const retryDelay = 20_000;
-// Model checks at once (docs/smoke-tests.md); an estimate, not yet measured on a gate.
-const lanes = 6;
+// Model checks at once (docs/smoke-tests.md); raise it once a few gates are measured.
+const lanes = 3;
 const modelChecksMs = 14 * 60_000;
 const maxDiffChars = 40_000;
 const maxPrs = 30;

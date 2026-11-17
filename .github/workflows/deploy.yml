@@ -38,13 +38,14 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           state=none
-          for _ in $(seq 1 60); do
+          for round in $(seq 1 60); do
             state=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&per_page=10" \
               --jq '[.workflow_runs[] | select(.head_branch == "main" and .path == ".github/workflows/ci.yml")] |
                 if any(.conclusion == "success") then "success"
                 elif any(.status != "completed") then "running"
                 elif length == 0 then "none" else "failure" end') || state=failure
-            [ "$state" = running ] || break
+            # A push run appears a few seconds after the merge, so a missing one is waited for for a minute.
+            [ "$state" = running ] || { [ "$state" = none ] && [ "$round" -le 6 ]; } || break
             sleep 10
           done
           echo "The ci run on main for $SHA: $state"
@@ -187,7 +188,7 @@ jobs:
         if: steps.deploy.outcome == 'success'
         run: |
           for _ in $(seq 1 60); do
-            body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
+            body=$(curl -fsS --max-time 10 "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
             sleep 5
           done
@@ -381,7 +382,7 @@ jobs:
         if: needs.candidate.outputs.revision != ''
         run: |
           for _ in $(seq 1 60); do
-            body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
+            body=$(curl -fsS --max-time 10 "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
             sleep 5
           done
@@ -542,7 +543,7 @@ jobs:
       - name: smoke
         run: |
           for _ in $(seq 1 60); do
-            body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
+            body=$(curl -fsS --max-time 10 "${{ steps.deploy.outputs.url }}/health" || true)
             if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
             sleep 5
           done
