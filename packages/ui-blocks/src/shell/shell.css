@@ -379,7 +379,7 @@
     padding-block-start: var(--genai-shell-card-foot-padding-block-start, var(--ds-size-3));
     border-block-start-color: var(
       --genai-shell-divider-color,
-      var(--ds-color-neutral-surface-tinted)
+      var(--ds-color-neutral-border-subtle)
     );
   }
 
@@ -404,10 +404,7 @@
     box-sizing: border-box;
     padding-block-start: var(--genai-shell-card-padding-block, var(--ds-size-4));
     padding-inline: var(--genai-shell-main-title-padding-inline, var(--ds-size-6));
-    border-block-end-color: var(
-      --genai-shell-divider-color,
-      var(--ds-color-neutral-surface-tinted)
-    );
+    border-block-end-color: var(--genai-shell-divider-color, var(--ds-color-neutral-border-subtle));
   }
 
   /* What the title leaves, filled: not 100 % under it, which would always scroll. */
@@ -779,7 +776,7 @@
       var(--genai-shell-profile-who-padding-block-end, var(--ds-size-2));
     padding-inline: var(--genai-shell-profile-who-padding-inline, var(--ds-size-2));
     border-block-end: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
-      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+      var(--genai-shell-divider-color, var(--ds-color-neutral-border-subtle));
   }
 
   .uib-shell-profile-who-text {
@@ -831,7 +828,7 @@
     padding: 0;
     background: var(--genai-shell-companion-background, var(--ds-color-neutral-surface-default));
     border-inline-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
-      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+      var(--genai-shell-divider-color, var(--ds-color-neutral-border-subtle));
   }
 
   /* Its title on the line of the panel's, the button at the card's edge. */
@@ -875,7 +872,7 @@
     min-block-size: 0;
     inline-size: 100%;
     border-block-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
-      var(--genai-shell-divider-color, var(--ds-color-neutral-surface-tinted));
+      var(--genai-shell-divider-color, var(--ds-color-neutral-border-subtle));
   }
 
   /* Something new in «Endringslogg»: the accent's dot. */

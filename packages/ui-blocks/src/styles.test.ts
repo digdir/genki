@@ -135,6 +135,14 @@ describe.each(sheets)('the styles in $path', ({ path, css, flat }) => {
       expect(use.name).toMatch(/^--genai-[a-z]+(?:-[a-z]+)+$/);
   });
 
+  it('draw every border and line in the border group, as Designsystemet’s Divider does', () => {
+    // A declaration whose property is a border, with each colour token it can fall back to.
+    const lines = [...flat.matchAll(/([a-z-]*border[a-z-]*)\s*:\s*([^;{}]*);/g)]
+      .filter(([, , value]) => /--ds-color-[a-z0-9-]*(surface|background)-/.test(value ?? ''))
+      .map(([declaration]) => declaration);
+    expect(lines).toEqual([]);
+  });
+
   it('are each listed on a component page', () => {
     const names = new Set(genaiUses(flat).map((use) => use.name));
     expect([...names].filter((name) => !pages.includes(`<code>${name}</code>`))).toEqual([]);

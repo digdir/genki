@@ -441,7 +441,12 @@ export const Approach = ({
             </span>
           </Details.Summary>
           <Details.Content className="uib-approach-content">
-            {scope ? <div className="uib-approach-scope">{scope}</div> : null}
+            {scope ? (
+              <>
+                <div className="uib-approach-scope">{scope}</div>
+                <Divider className="uib-approach-scope-divider" />
+              </>
+            ) : null}
             <List.Ordered className="uib-approach-steps">
               {lines.map((line) => {
                 const { step } = line;

@@ -244,9 +244,18 @@
   }
 
   /* Each field a row under a hairline, as the design's. */
-  .uib-filter-row {
-    border-block-end: var(--genai-filter-row-border-width, var(--ds-border-width-default)) solid
-      var(--genai-filter-row-border-color, var(--ds-color-neutral-surface-tinted));
+  /* Designsystemet's Divider under each row, flush with the rows. */
+  .uib-filter-row-divider {
+    --dsc-divider-border-width: var(
+      --genai-filter-row-border-width,
+      var(--ds-border-width-default)
+    );
+    --dsc-divider-border-color: var(
+      --genai-filter-row-border-color,
+      var(--ds-color-neutral-border-subtle)
+    );
+
+    margin: 0;
   }
 
   .uib-filter-row-heading {
@@ -332,7 +341,7 @@
     align-items: center;
     padding-block: var(--genai-filter-checkbox-padding-block, var(--ds-size-2));
     border-block-end: var(--genai-filter-row-border-width, var(--ds-border-width-default)) solid
-      var(--genai-filter-row-border-color, var(--ds-color-neutral-surface-tinted));
+      var(--genai-filter-row-border-color, var(--ds-color-neutral-border-subtle));
   }
 
   /* The board's 20 px box, on the input, which sets its own size. */
