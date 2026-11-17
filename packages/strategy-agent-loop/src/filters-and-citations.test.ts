@@ -282,6 +282,43 @@ describe('a filtered search that finds nothing', () => {
     expect(message).not.toContain('The filter was kept');
   });
 
+  it('keeps the org-number filter when it finds nothing even without the other filters', async () => {
+    const r = emptyWhenFiltered();
+
+    const out = await run({
+      retrieval: r.impl,
+      scripts: {
+        primary: {
+          loop: [
+            () =>
+              result('', [
+                call('search', {
+                  queries: ['KI'],
+                  filter_by: {
+                    fields: [
+                      { field: 'owner_orgnr', selected_options: ['991825827'] },
+                      { field: 'concerned_years', selected_options: ['2019'] },
+                    ],
+                  },
+                }),
+              ]),
+            () => result('Ingen dokumenter.'),
+          ],
+        },
+      },
+    });
+
+    const searches = r.calls.filter((c) => c.op === 'search');
+    expect(searches).toHaveLength(2);
+    expect(searches[1]?.args).toMatchObject({
+      filters: [{ field: 'owner_orgnr', selectedOptions: ['991825827'] }],
+    });
+    const message = toolMessages(out.loops[1])[0];
+    expect(message).toContain('even without the other filters');
+    expect(message).toContain('The filter was kept');
+    expect(message).not.toContain('retried without filters');
+  });
+
   it('still searches without a year filter that finds nothing', async () => {
     const r = emptyWhenFiltered();
 

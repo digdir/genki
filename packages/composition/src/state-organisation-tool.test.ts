@@ -36,6 +36,8 @@ const units16Nov: RegisterUnit[] = [
   stat(fin, 'FINANSDEPARTEMENTET'),
   stat(hod, 'HELSE- OG OMSORGSDEPARTEMENTET'),
   stat(jd, 'JUSTIS- OG BEREDSKAPSDEPARTEMENTET'),
+  stat('971524960', 'STORTINGET'),
+  orgl('974760223', 'RIKSREVISJONEN', '971524960'),
   orgl(paatale, 'DEN HØYERE PÅTALEMYNDIGHET', jd),
   stat('974760347', 'SÁMEDIGGI / SAMETINGET'),
   orgl(digdir, 'DIGITALISERINGSDIREKTORATET', dfd),
@@ -71,6 +73,7 @@ const accounts2022: AccountsEntry = {
     { orgnr: kdd, name: 'Kommunal- og distriktsdepartementet', ministry: kdd },
     { orgnr: digdir, name: 'Digitaliseringsdirektoratet', ministry: kdd },
     { orgnr: datatilsynet, name: 'Datatilsynet', ministry: kdd },
+    { orgnr: '974760223', name: 'Riksrevisjonen', ministry: kdd },
     { orgnr: fin, name: 'Finansdepartementet', ministry: fin },
     { orgnr: skatt, name: 'Skatteetaten', ministry: fin },
   ],
@@ -266,7 +269,7 @@ describe('the state-organisation tool', () => {
     const a = await answer({ action: 'under' });
 
     expect(a.unit).toBeUndefined();
-    expect(orgnrs(a)).toEqual([dfd, kdd, fin, hod, jd, '974760347'].sort());
+    expect(orgnrs(a)).toEqual([dfd, kdd, fin, hod, jd, '974760347', '971524960'].sort());
     expect(a.units.find((u) => u.orgnr === dfd)).toMatchObject({
       abbreviation: 'DFD',
       units_under: 6,
@@ -469,10 +472,12 @@ describe('the state-organisation tool', () => {
   it('refuses a date that does not exist', async () => {
     const { call } = await toolOn();
 
-    const result = await call({ action: 'over', unit: digdir, date: '2022-13-45' });
+    for (const date of ['2022-13-45', '2026-02-30']) {
+      const result = await call({ action: 'over', unit: digdir, date });
 
-    expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/no such date/);
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toMatch(/no such date/);
+    }
   });
 
   it('says the register is not synced yet when none is stored', async () => {
