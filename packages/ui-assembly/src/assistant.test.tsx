@@ -992,12 +992,20 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
 // The «_Ready for dev» boards' frame (dev-navbar, dev-innstillinger-0-start), behind its template.
 describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () => {
   const nextLayout = fromTemplate('knowledge-assistant-next').layout;
-  // Fremgangsmåte and Kilder alone in the secondary panel: two tools, two joined buttons.
-  const twoTools: AssistantLayout = {
+  // The template's panel with Fremgangsmåte also as a tool, as another service may place it.
+  const threeTools: AssistantLayout = {
     ...nextLayout,
     zones: {
       ...nextLayout.zones,
-      secondary: nextLayout.zones.secondary.filter((placed) => placed.block !== 'document-view'),
+      secondary: [{ block: 'approach' }, ...nextLayout.zones.secondary],
+    },
+  };
+  // Fremgangsmåte and Kilder alone in the secondary panel: two tools, two joined buttons.
+  const twoTools: AssistantLayout = {
+    ...threeTools,
+    zones: {
+      ...threeTools.zones,
+      secondary: threeTools.zones.secondary.filter((placed) => placed.block !== 'document-view'),
     },
   };
   const reader: AssistantProfile = {
@@ -1070,8 +1078,8 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     expect(within(tools).queryByRole('button', { name: /velg verktøy/ })).toBeNull();
   });
 
-  it('offers the template’s three tools in a tinted button that opens a menu of them (dev-verktoy-3)', async () => {
-    drawNext();
+  it('offers three tools in a tinted button that opens a menu of them (dev-verktoy-3)', async () => {
+    drawNext(reader, threeTools);
     await opened();
     fireEvent.click(screen.getByRole('button', { name: 'Vis verktøypanelet' }));
     const tools = screen.getByRole('complementary', { name: 'Verktøypanelet' });
@@ -1830,7 +1838,14 @@ describe('the filter in the next look (dev-filter-panel)', () => {
   });
 
   it('says the filter in full in the tool, and only how many it read from in the bar beside it', async () => {
-    drawNext(counted().api);
+    const withTool = {
+      ...nextLayout,
+      zones: {
+        ...nextLayout.zones,
+        secondary: [{ block: 'approach' as const }, ...nextLayout.zones.secondary],
+      },
+    };
+    drawNext(counted().api, withTool);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
@@ -1849,14 +1864,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
   });
 
   it('draws the bar alone, with the filter in full, when the layout puts Fremgangsmåte only in the main column', async () => {
-    const barOnly = {
-      ...nextLayout,
-      zones: {
-        ...nextLayout.zones,
-        secondary: nextLayout.zones.secondary.filter((placed) => placed.block !== 'approach'),
-      },
-    };
-    drawNext(counted().api, barOnly);
+    drawNext(counted().api);
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
@@ -3875,9 +3883,11 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     await ask();
     await waitFor(() => expect(documentMarks()).toEqual(['Kilde 1: Tildelingsbrev 2022']));
     fireEvent.click(screen.getByRole('link', { name: 'Kilde 1: Tildelingsbrev 2022' }));
-    // The template's three tools are a menu, whose button names the tool shown.
+    // The template's two tools are joined buttons, with Kilder's chosen.
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Kilder, velg verktøy' })).toBeTruthy(),
+      expect(screen.getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe(
+        'true',
+      ),
     );
     await waitFor(() => expect(document.activeElement?.textContent).toBe('Tildelingsbrev 2022'));
     expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
