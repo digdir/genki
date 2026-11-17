@@ -1134,8 +1134,9 @@ describe('text search on the knowledge server', () => {
         );
         const read: number[] = [];
         const walk = (node: PlanNode) => {
-          // The rows ranked: ts_rank_cd runs in the aggregate or sort that orders the matches.
-          if (/Aggregate|Sort/.test(node['Node Type'])) read.push(node['Actual Rows']);
+          // The rows going into the aggregate or sort where ts_rank_cd ranks the matches.
+          if (/Aggregate|Sort/.test(node['Node Type']))
+            read.push(node.Plans?.[0]?.['Actual Rows'] ?? 0);
           node.Plans?.forEach(walk);
         };
         const [explained] = plan;
