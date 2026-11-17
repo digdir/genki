@@ -546,7 +546,7 @@ describe('live dataset detail', () => {
           tenant="999888777"
           tenantName="Testdepartementet"
           id="999888777/veiledere"
-          initialTab="ingestions"
+          tab="ingestions"
         />
       </RightsProvider>,
     );
@@ -762,5 +762,191 @@ describe('deleting a live dataset', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' }),
     ).toBeTruthy();
+  });
+});
+
+describe('live dataset tabs and polling', () => {
+  it('opens a dataset tab from its own address', async () => {
+    const { fetch } = recorded();
+    await renderLive(`${nettsider}/used-by`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
+    expect(screen.getByRole('tab', { name: 'Brukes av' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
+  it('puts the chosen tab in the address', async () => {
+    const { fetch } = recorded();
+    await renderLive(nettsider, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Filtre i søket' }));
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        `#/datasets/${encodeURIComponent('999888777/nettsider')}/filters`,
+      ),
+    );
+    expect(screen.getByRole('tab', { name: 'Filtre i søket' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
+  it('opens the tab named by the old tab query', async () => {
+    const { fetch } = recorded();
+    await renderLive(`${nettsider}?tab=source`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Nettsidene til Testetaten' });
+    expect(
+      screen.getByRole('tab', { name: 'Kilde og innstillinger' }).getAttribute('aria-selected'),
+    ).toBe('true');
+  });
+
+  it('links each service that uses the dataset on the used-by tab', async () => {
+    const { fetch } = recorded();
+    await renderLive(`${nettsider}/used-by`, fetch);
+    const list = await screen.findByRole('list', { name: 'Brukes av' });
+    expect(within(list).getByRole('link', { name: 'Hjelperen' }).getAttribute('href')).toBe(
+      '#/services/hjelperen',
+    );
+  });
+
+  it('says no service uses a dataset that has no readers', async () => {
+    const { fetch } = recorded();
+    await renderLive(`${veiledere}/used-by`, fetch);
+    expect(await screen.findByText('Ingen tjenester bruker datasettet ennå.')).toBeTruthy();
+  });
+
+  it('shows an ingestion list error with retry instead of saying there are no ingestions', async () => {
+    let fail = true;
+    const { fetch } = recorded({}, (url, method) =>
+      fail && method === 'GET' && url.endsWith('/executions')
+        ? new Response(JSON.stringify({ title: 'Feil' }), { status: 500 })
+        : undefined,
+    );
+    await renderLive(veiledere, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Veiledere og rundskriv' });
+    expect(await screen.findByText('Kunne ikke hente dataene')).toBeTruthy();
+    expect(screen.queryByText('Ingen innlesinger ennå.')).toBeNull();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    expect(await screen.findByRole('list', { name: 'Innlesinger' })).toBeTruthy();
+  });
+
+  it('keeps polling a running ingestion after a failed poll', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let failNext = false;
+    const { fetch } = recorded({ pollsUntilDone: 2 }, (url, method) => {
+      if (failNext && method === 'GET' && url.endsWith('/executions')) {
+        failNext = false;
+        return new Response(JSON.stringify({ title: 'Feil' }), { status: 503 });
+      }
+      return undefined;
+    });
+    await renderLive(veiledere, fetch);
+    await screen.findByRole('list', { name: 'Innlesinger' });
+    fireEvent.click(screen.getByRole('button', { name: 'Les inn nå' }));
+    expect(await screen.findByText(/Innlesingen pågår\. Siden oppdateres/)).toBeTruthy();
+    failNext = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(
+      await screen.findByText('Fikk ikke oppdatert innlesingene. Vi prøver igjen av oss selv.'),
+    ).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(await screen.findByRole('heading', { name: 'Innlesingen er ferdig' })).toBeTruthy();
+  });
+
+  it('sends the ingestion audit reason in the language the person uses', async () => {
+    const { calls, fetch } = recorded();
+    await renderLive(veiledere, fetch);
+    await screen.findByRole('list', { name: 'Innlesinger' });
+    fireEvent.click(screen.getByRole('button', { name: 'Les inn nå' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url.endsWith('/execute'))?.reason).toBe(
+        'Manuell innlesing fra portalen',
+      ),
+    );
+  });
+});
+
+describe('live dataset list', () => {
+  it('keeps the search and filter in the address', async () => {
+    const { fetch } = recorded();
+    await renderLive('#/datasets', fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Egne' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Søk i datasett' }), {
+      target: { value: 'nett' },
+    });
+    expect(window.location.hash).toBe('#/datasets?filter=own&q=nett');
+  });
+
+  it('restores the search and filter from the address', async () => {
+    const { fetch } = recorded();
+    await renderLive('#/datasets?filter=own&q=nett', fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    expect(screen.getByRole('radio', { name: 'Egne' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('searchbox', { name: 'Søk i datasett' })).toHaveProperty(
+      'value',
+      'nett',
+    );
+  });
+
+  it('keeps the raw catalog closed under a technical section instead of a second list', async () => {
+    const { fetch } = recorded();
+    await renderLive('#/datasets', fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Datasett' });
+    expect(screen.getAllByRole('list', { name: 'Datasett' })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Egne datasett og endepunkter' })).toBeNull();
+    expect(
+      screen.getByText('Teknisk: katalogoppføringer for datasett, søkemotorer og modeller'),
+    ).toBeTruthy();
+  });
+});
+
+describe('live new dataset prerequisites', () => {
+  const toReview = async () => {
+    expect(await screen.findByRole('heading', { level: 1, name: 'Velg kilde' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /Nettsted/ }));
+    next();
+    fireEvent.change(screen.getByLabelText('Navn på datasettet'), {
+      target: { value: 'Nettsidene våre' },
+    });
+    fireEvent.change(screen.getByLabelText('Adresse til nettstedskartet', { exact: false }), {
+      target: { value: 'https://testetaten.example.no/sitemap.xml' },
+    });
+    next();
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Nettsidene skal kunne søkes i' },
+    });
+  };
+
+  it('does not create a dataset while the existing datasets cannot be fetched', async () => {
+    const { calls, fetch } = recorded({}, (url, method) =>
+      method === 'GET' && /\/tenants\/999888777\/datasets$/.test(url)
+        ? new Response(JSON.stringify({ title: 'Feil' }), { status: 503 })
+        : undefined,
+    );
+    await renderLive('#/datasets/new', fetch);
+    await toReview();
+    expect(
+      await screen.findByText(/Vi fikk ikke sjekket hvilke datasett dere har fra før/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start innlesing' }));
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false);
+  });
+
+  it('shows a search engine error with retry instead of claiming built-in search', async () => {
+    const { fetch } = recorded({}, (url, method) =>
+      method === 'GET' && url.includes('/knowledge/endpoints')
+        ? new Response(JSON.stringify({ title: 'Feil' }), { status: 503 })
+        : undefined,
+    );
+    await renderLive('#/datasets/new', fetch);
+    await toReview();
+    const storage = screen.getByRole('region', { name: 'Hvor dataene lagres' });
+    expect(await within(storage).findByText('Kunne ikke hente dataene')).toBeTruthy();
+    expect(storage.textContent).not.toContain('Innebygd søk');
   });
 });

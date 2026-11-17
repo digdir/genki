@@ -9,6 +9,7 @@ import {
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
+import { parseRoute } from '../../hooks';
 import { Icon } from '../../components/Icon';
 import {
   sourceKeys,
@@ -21,10 +22,41 @@ import { navigate } from '../../hooks';
 import { useT, type Format, type T } from '../../i18n';
 import { count, datasetHref } from './model';
 
-const filters = ['alle', 'Klar', 'Innlesing pågår', 'Delvis lest inn', 'Feilet'] as const;
+const filters = ['all', 'own', 'shared', 'attention'] as const;
+type ListFilter = (typeof filters)[number];
 
-export const matchesFilter = (filter: (typeof filters)[number], status: DatasetStatus) =>
-  filter === 'alle' || status === filter || (filter === 'Klar' && status === 'Utenfor plattformen');
+const filterKeys = {
+  all: 'datasets.filterAll',
+  own: 'datasets.filterOwn',
+  shared: 'datasets.filterShared',
+  attention: 'datasets.filterAttention',
+} as const;
+
+const needsAttention = (status: DatasetStatus) =>
+  status === 'Feilet' || status === 'Delvis lest inn';
+
+export const matchesFilter = (filter: ListFilter, d: Pick<DatasetListItem, 'status' | 'shared'>) =>
+  filter === 'all' ||
+  (filter === 'own' && !d.shared) ||
+  (filter === 'shared' && d.shared) ||
+  (filter === 'attention' && needsAttention(d.status));
+
+const filterIn = (value: string | null): ListFilter => filters.find((f) => f === value) ?? 'all';
+
+const keepInAddress = (query: string, filter: ListFilter) => {
+  const route = parseRoute(window.location.hash);
+  const params = new URLSearchParams(route.query);
+  if (query) params.set('q', query);
+  else params.delete('q');
+  if (filter === 'all') params.delete('filter');
+  else params.set('filter', filter);
+  const search = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `#${route.path}${search ? `?${search}` : ''}`,
+  );
+};
 
 export const sourceOf = (t: T, d: DatasetDetails) =>
   d.source === 'shared' && d.owner
@@ -36,6 +68,7 @@ export interface DatasetListItem {
   name: string;
   description: string;
   status: DatasetStatus;
+  shared: boolean;
   sourceText: string;
   docsText: string;
   lastText: string;
@@ -46,6 +79,7 @@ export const listItemFor = (t: T, f: Format, d: DatasetDetails): DatasetListItem
   name: d.name,
   description: d.description,
   status: d.status,
+  shared: d.source === 'shared',
   sourceText: sourceOf(t, d),
   docsText: count(f, d.docs),
   lastText:
@@ -62,15 +96,27 @@ export const DatasetList = ({
   canCreate?: boolean;
 }) => {
   const t = useT();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<(typeof filters)[number]>('alle');
+  const [query, setQueryState] = useState(
+    () => parseRoute(window.location.hash).query.get('q') ?? '',
+  );
+  const [filter, setFilterState] = useState<ListFilter>(() =>
+    filterIn(parseRoute(window.location.hash).query.get('filter')),
+  );
+  const setQuery = (next: string) => {
+    setQueryState(next);
+    keepInAddress(next, filter);
+  };
+  const setFilter = (next: ListFilter) => {
+    setFilterState(next);
+    keepInAddress(query, next);
+  };
   const q = query.trim().toLowerCase();
   const rows = datasets.filter(
     (d) =>
-      matchesFilter(filter, d.status) &&
-      (!q || `${d.name} ${d.description}`.toLowerCase().includes(q)),
+      matchesFilter(filter, d) &&
+      (!q || `${d.name} ${d.description} ${d.sourceText}`.toLowerCase().includes(q)),
   );
-  const failing = datasets.filter((d) => d.status === 'Feilet' || d.status === 'Delvis lest inn');
+  const failing = datasets.filter((d) => needsAttention(d.status));
 
   return (
     <div className="stack dataset-page">
@@ -105,16 +151,16 @@ export const DatasetList = ({
           onChange={(e) => setQuery(e.target.value)}
         />
         <Fieldset>
-          <Fieldset.Legend>{t('datasets.statusLegend')}</Fieldset.Legend>
+          <Fieldset.Legend>{t('datasets.showLegend')}</Fieldset.Legend>
           <div className="tag-row">
             {filters.map((f) => (
               <Chip.Radio
                 key={f}
-                name="statusfilter"
+                name="datasetfilter"
                 checked={filter === f}
                 onChange={() => setFilter(f)}
               >
-                {f === 'alle' ? t('datasets.filterAll') : t(statusKeys[f])}
+                {t(filterKeys[f])}
               </Chip.Radio>
             ))}
           </div>
@@ -162,8 +208,9 @@ export const DatasetList = ({
             variant="secondary"
             data-size="sm"
             onClick={() => {
-              setQuery('');
-              setFilter('alle');
+              setQueryState('');
+              setFilterState('all');
+              keepInAddress('', 'all');
             }}
           >
             {t('datasets.resetFilters')}

@@ -26,6 +26,7 @@ import {
 import { Icon } from '../../components/Icon';
 import { navigate } from '../../hooks';
 import { useT } from '../../i18n';
+import { ErrorState } from '../../states';
 import {
   blockKinds,
   emptyStateSuggestions,
@@ -50,6 +51,8 @@ export interface ListFilters {
 
 export const initialFilters: ListFilters = { tab: 'in-use', q: '', publisher: 'all', kind: 'all' };
 
+export const listKinds: readonly BlockKind[] = blockKinds.map((k) => k.kind);
+
 export const BlockList = ({
   api,
   tenant,
@@ -57,6 +60,7 @@ export const BlockList = ({
   items,
   proposals,
   connectors = [],
+  partialError,
   filters,
   onFilters,
   onFlash,
@@ -67,6 +71,7 @@ export const BlockList = ({
   items: CatalogItem[];
   proposals: CatalogProposal[];
   connectors?: ConnectorView[];
+  partialError?: { error: unknown; retry: () => void } | undefined;
   filters: ListFilters;
   onFilters: (filters: ListFilters) => void;
   onFlash: (flash: Flash) => void;
@@ -111,6 +116,7 @@ export const BlockList = ({
 
   const content: ReactNode = (
     <div className="stack">
+      {partialError ? <ErrorState error={partialError.error} onRetry={partialError.retry} /> : null}
       {pending.map((p) => (
         <ProposalSection key={p.id} api={api} tenant={tenant} proposal={p} onDone={onFlash} />
       ))}

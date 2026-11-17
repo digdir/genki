@@ -1,14 +1,4 @@
-import {
-  Alert,
-  Button,
-  Field,
-  Heading,
-  Label,
-  Link,
-  Paragraph,
-  Select,
-  Tag,
-} from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
@@ -35,7 +25,7 @@ import {
 } from '../../data/building-blocks';
 import { useT, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
-import { refusalOf } from '../../states';
+import { ErrorState, refusalOf } from '../../states';
 import {
   ApiCallButton,
   approverName,
@@ -48,6 +38,7 @@ import {
   shortDate,
   useBlockRights,
   type Flash,
+  type Settled,
 } from './common';
 import { SettingsForm } from './SettingsForm';
 
@@ -81,6 +72,7 @@ export const BlockDetail = ({
   item,
   services,
   versions,
+  onRetry,
   onChanged,
 }: {
   api: ApiClient;
@@ -88,7 +80,8 @@ export const BlockDetail = ({
   tenantName: string;
   item: CatalogItem;
   services: BlockUser[];
-  versions: BlockVersion[];
+  versions: Settled<BlockVersion[]>;
+  onRetry: () => void;
   onChanged: (flash: Flash) => void;
 }) => {
   const t = useT();
@@ -102,27 +95,22 @@ export const BlockDetail = ({
     quality: useId(),
     update: useId(),
     pending: useId(),
-    service: useId(),
   };
   const rights = useBlockRights();
   const canChange = rights.canChange(item.kind);
   const editorHref = flowEditorHref(item);
   const [pending, setPending] = useState<Pending>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [addService, setAddService] = useState('');
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   const [problem, setProblem] = useState('');
   const status = statusLabels[item.status];
   const approver = approverName(t, item.approver);
   const right = rightLabelFor(t, item.kind);
-  const chosen = services.find((s) => s.id === addService) ?? services[0];
   const used = item.usedBy;
   const known = [...item.usedBy, ...services];
 
   const open = (next: Pending) => {
     setPending(next);
-    setAddOpen(false);
     setReason('');
     setTried(false);
     setProblem('');
@@ -272,9 +260,6 @@ export const BlockDetail = ({
                   <th scope="col">{t('blocks.colScoreNow', { version: item.version })}</th>
                   <th scope="col">{t('blocks.colScoreWith', { version: item.update.version })}</th>
                   <th scope="col">{t('blocks.colChange')}</th>
-                  <th scope="col">
-                    <span className="visually-hidden">{t('blocks.colAction')}</span>
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -287,7 +272,7 @@ export const BlockDetail = ({
                   return (
                     <tr key={r.service}>
                       <th scope="row" className="bb-row-head">
-                        {name}
+                        <Link href={`#/services/${encodeURIComponent(r.service)}`}>{name}</Link>
                       </th>
                       <td className="numeric">{r.scoreBefore ?? '–'}</td>
                       <td className="numeric">{r.scoreAfter ?? '–'}</td>
@@ -304,16 +289,6 @@ export const BlockDetail = ({
                                 : t('blocks.noChange')}
                           </Tag>
                         )}
-                      </td>
-                      <td>
-                        {canChange ? (
-                          <Link
-                            href={`#/services/${encodeURIComponent(r.service)}?byggekloss=${encodeURIComponent(`${item.id}@${item.update?.version ?? ''}`)}`}
-                            aria-label={t('blocks.tryInDraftNamed', { name })}
-                          >
-                            {t('blocks.tryInDraft')}
-                          </Link>
-                        ) : null}
                       </td>
                     </tr>
                   );
@@ -349,65 +324,8 @@ export const BlockDetail = ({
                 <a href={editorHref}>{t('blocks.openStepFlow')}</a>
               </Button>
             ) : null}
-            {item.status === 'in_use' || item.status === 'available' ? (
-              <Button
-                variant={item.status === 'in_use' ? 'primary' : 'secondary'}
-                aria-expanded={addOpen}
-                onClick={() => {
-                  setAddOpen((o) => !o);
-                  setPending(null);
-                }}
-              >
-                {t('blocks.addToService')}
-              </Button>
-            ) : null}
             <ApiCallButton call={call} />
           </div>
-
-          {addOpen ? (
-            <div className="bb-panel">
-              {chosen ? (
-                <>
-                  <Field>
-                    <Label htmlFor={ids.service}>{t('blocks.service')}</Label>
-                    <Select
-                      id={ids.service}
-                      value={chosen.id}
-                      onChange={(e) => setAddService(e.target.value)}
-                    >
-                      {services.map((s) => (
-                        <Select.Option key={s.id} value={s.id}>
-                          {s.name}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Paragraph data-size="sm">
-                    {t('blocks.addToDraft', { name: chosen.name })}
-                    {item.status !== 'in_use'
-                      ? ` ${t('blocks.adoptedAtSameTime', { tenant: tenantName })}`
-                      : ''}
-                  </Paragraph>
-                  <Button asChild variant="primary" className="bb-start">
-                    <a
-                      href={`#/services/${encodeURIComponent(chosen.id)}?byggekloss=${encodeURIComponent(item.id)}`}
-                    >
-                      {t('blocks.openDraft')}
-                    </a>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Paragraph data-size="sm">
-                    {t('blocks.noServices', { tenant: tenantName })}
-                  </Paragraph>
-                  <Button asChild variant="secondary" className="bb-start">
-                    <a href="#/services/new">{t('blocks.createService')}</a>
-                  </Button>
-                </>
-              )}
-            </div>
-          ) : null}
 
           {pending ? (
             <section aria-labelledby={ids.pending} className="bb-confirm">
@@ -506,15 +424,21 @@ export const BlockDetail = ({
             <Heading level={2} data-size="xs" id={ids.versions}>
               {t('blocks.versionsAndChanges')}
             </Heading>
-            <ol className="bb-versions">
-              {versionRows(t, versions).map((v) => (
-                <li key={v.key}>
-                  <span className="bb-version">{v.label}</span>
-                  <span className="bb-version-date">{shortDate(f, v.at)}</span>
-                  <span className="bb-version-notes">{v.text}</span>
-                </li>
-              ))}
-            </ol>
+            {!versions.ok ? (
+              <ErrorState error={versions.error} onRetry={onRetry} headingLevel={3} />
+            ) : versions.data.length === 0 ? (
+              <p className="bb-meta">{t('blocks.noVersions')}</p>
+            ) : (
+              <ol className="bb-versions">
+                {versionRows(t, versions.data).map((v) => (
+                  <li key={v.key}>
+                    <span className="bb-version">{v.label}</span>
+                    <span className="bb-version-date">{shortDate(f, v.at)}</span>
+                    <span className="bb-version-notes">{v.text}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
         </div>
 

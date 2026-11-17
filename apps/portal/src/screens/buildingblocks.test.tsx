@@ -9,7 +9,7 @@ import { mockFetch } from '../mock';
 import type { BuildingBlocksMockOptions } from '../mock/building-blocks';
 import { translator } from '../i18n';
 import { versionText } from './buildingblocks/common';
-import { expectAccessible, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, renderAt } from '../test-utils';
 
 const blocksFetch = (options: BuildingBlocksMockOptions = {}) =>
   mockFetch(undefined, undefined, undefined, undefined, {
@@ -145,6 +145,55 @@ describe('Byggeklosser: liste', () => {
       true,
     );
     expectAccessible();
+  });
+});
+
+describe('Byggeklosser: adressen', () => {
+  it('opens the catalogue tab from its own address', async () => {
+    await open('#/building-blocks/catalogue', { proposals: [] });
+    const tab = await screen.findByRole('tab', { name: 'Katalog (27)' });
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('status').textContent).toBe('Viser 27 byggeklosser i katalogen');
+  });
+
+  it('puts the chosen tab in the address', async () => {
+    await open('#/building-blocks', { proposals: [] });
+    fireEvent.click(await screen.findByRole('tab', { name: 'Katalog (27)' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/catalogue'));
+  });
+
+  it('keeps the type filter and the search in the address', async () => {
+    await open('#/building-blocks/catalogue', { proposals: [] });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Modeller 4' }));
+    fireEvent.change(screen.getByLabelText('Søk etter navn'), { target: { value: 'qwen' } });
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/building-blocks/catalogue?type=model&q=qwen'),
+    );
+    cleanup();
+
+    await open('#/building-blocks/catalogue?type=model&q=qwen', { proposals: [] });
+    expect(await screen.findByRole('radio', { name: 'Modeller 1' })).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect((screen.getByLabelText('Søk etter navn') as HTMLInputElement).value).toBe('qwen');
+    expect(groupHeadings()).toEqual(['Modeller']);
+  });
+
+  it('shows a failed proposals load with retry instead of hiding it', async () => {
+    let fail = true;
+    const ok = blocksFetch();
+    const broken = failingFetch(/\/proposals\?/, 503, ok);
+    await renderAt('#/building-blocks', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    expect(await screen.findByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Borealis-27B' })).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeNull(),
+    );
   });
 });
 
@@ -524,8 +573,8 @@ describe('Byggeklosser: detalj', () => {
     expect(within(table).getByText('−1')).toBeTruthy();
     expect(within(table).getByText('Ingen endring')).toBeTruthy();
     expect(
-      within(table).getByRole('link', { name: 'Prøv i utkastet til Rapportassistenten' }),
-    ).toBeTruthy();
+      within(table).getByRole('link', { name: 'Rapportassistenten' }).getAttribute('href'),
+    ).toBe('#/services/rapportassistenten');
     expect(screen.getByText('Lagres ikke av modellen')).toBeTruthy();
     expect(await screen.findByText('Versjon 2.0')).toBeTruthy();
     expect(screen.getByText('84 av 100')).toBeTruthy();
@@ -636,6 +685,62 @@ describe('Byggeklosser: detalj', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send forespørselen' }));
     expect(await screen.findByText(/Forespørselen er sendt til Digdir\. Endret av/)).toBeTruthy();
     expect(await screen.findByText('Venter på godkjenning')).toBeTruthy();
+  });
+});
+
+describe('Byggeklosser: versjoner og overlevering', () => {
+  it('shows an empty text when a block has no versions', async () => {
+    await open('#/building-blocks/model/qwen', { versions: {} });
+    await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
+    expect(
+      await screen.findByText('Ingen versjoner eller endringer er registrert ennå.'),
+    ).toBeTruthy();
+  });
+
+  it('shows the versions error with retry', async () => {
+    let fail = true;
+    const ok = blocksFetch();
+    const broken = failingFetch(/\/versions$/, 503, ok);
+    await renderAt('#/building-blocks/model/borealis', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Kunne ikke hente dataene' }),
+    ).toBeTruthy();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    expect(await screen.findByText('Versjon 2.0')).toBeTruthy();
+  });
+
+  it('keeps the typed reason when the block reloads', async () => {
+    let fail = true;
+    const ok = blocksFetch();
+    const broken = failingFetch(/\/versions$/, 503, ok);
+    await renderAt('#/building-blocks/model/qwen', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
+    await screen.findByRole('heading', { level: 1, name: 'Qwen3.8-27B' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ta i bruk hos oss' }));
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Raskere uttrekk i Postsortering' },
+    });
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Kunne ikke hente dataene' })).toBeNull(),
+    );
+    expect((screen.getByLabelText('Begrunnelse') as HTMLTextAreaElement).value).toBe(
+      'Raskere uttrekk i Postsortering',
+    );
+  });
+
+  it('links a block to services without a hand-off the builder does not read', async () => {
+    await open('#/building-blocks/model/borealis');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.queryByRole('button', { name: 'Legg til i en tjeneste' })).toBeNull();
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? '');
+    expect(hrefs.filter((h) => h.includes('byggekloss='))).toEqual([]);
   });
 });
 

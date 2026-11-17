@@ -18,12 +18,18 @@ const service = {
   purpose: 'Summarises documents',
   version: 1,
   residency: 'norway',
+  model: 'aivar/borealis-27b',
   variants: [],
 } as unknown as SharedService;
 
+const models = [{ id: 'aivar/borealis-27b', residency: 'norway', capabilities: [] }];
+
 describe('shared services in English', () => {
   it('shows a live service with English labels', async () => {
-    const api = { sharedServices: () => Promise.resolve([service]) } as unknown as ApiClient;
+    const api = {
+      sharedServices: () => Promise.resolve([service]),
+      listModels: () => Promise.resolve(models),
+    } as unknown as ApiClient;
     const props = { api, live: true, route: { segments: ['shared-services'] } } as ScreenProps;
     render(inEnglish(<SharedServices {...props} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Shared services' })).toBeTruthy();
@@ -32,7 +38,10 @@ describe('shared services in English', () => {
   });
 
   it('shows the residency and missing score of a live service in English on the detail page', async () => {
-    const api = { sharedServices: () => Promise.resolve([service]) } as unknown as ApiClient;
+    const api = {
+      sharedServices: () => Promise.resolve([service]),
+      listModels: () => Promise.resolve(models),
+    } as unknown as ApiClient;
     const props = {
       api,
       live: true,
@@ -40,7 +49,8 @@ describe('shared services in English', () => {
     } as ScreenProps;
     render(inEnglish(<SharedServices {...props} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Summary' })).toBeTruthy();
-    expect(screen.getByText('Processed in Norway')).toBeTruthy();
+    const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(fact('Where data is processed')?.textContent).toBe('Norway');
     expect(screen.getByText('Not measured')).toBeTruthy();
   });
 

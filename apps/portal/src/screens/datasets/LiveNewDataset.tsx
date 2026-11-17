@@ -24,6 +24,7 @@ import { Icon } from '../../components/Icon';
 import { reasonProblem, ReasonField } from '../../components/ReasonField';
 import { kudosDocumentTypes } from '../../data/datasets';
 import { useAsync } from '../../hooks';
+import { ErrorState } from '../../states';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { FilePicker } from './FilePicker';
 import {
@@ -163,11 +164,15 @@ export const LiveNewDataset = ({
   const done = useRef<{ id?: string; created?: boolean; pipeline?: boolean; uploaded?: boolean }>(
     {},
   );
-  const [engines] = useAsync(
+  const [engines, retryEngines] = useAsync(
     (signal) => api.searchEngines.endpoints(tenant, signal),
     [api, tenant],
   );
-  const [existing] = useAsync((signal) => api.datasets.list(tenant, signal), [api, tenant]);
+  const [existing, retryExisting] = useAsync(
+    (signal) => api.datasets.list(tenant, signal),
+    [api, tenant],
+  );
+  const prerequisitesReady = engines.status === 'ready' && existing.status === 'ready';
   const set = (patch: Partial<Form> | ((x: Form) => Partial<Form>)) =>
     setF((x) => ({ ...x, ...(typeof patch === 'function' ? patch(x) : patch) }));
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -233,6 +238,7 @@ export const LiveNewDataset = ({
 
   const start = async () => {
     setFailure('');
+    if (!prerequisitesReady) return;
     const taken = existing.status === 'ready' ? existing.data.map((d) => d.id) : [];
     const id = done.current.id ?? uniqueId(f.name, taken);
     done.current.id = id;
@@ -546,6 +552,8 @@ export const LiveNewDataset = ({
                 <Spinner aria-hidden="true" data-size="xs" />
                 {t('searchEngine.loading')}
               </span>
+            ) : engines.status === 'error' ? (
+              <ErrorState error={engines.error} onRetry={retryEngines} headingLevel={3} />
             ) : (
               <Paragraph data-size="sm">
                 {t('datasets.storedIn', {
@@ -578,6 +586,12 @@ export const LiveNewDataset = ({
           <Alert data-color="info" data-size="sm">
             {t('datasets.backgroundNote')}
           </Alert>
+          {existing.status === 'error' ? (
+            <div className="stack-xs">
+              <Paragraph data-size="sm">{t('datasets.existingUnknown')}</Paragraph>
+              <ErrorState error={existing.error} onRetry={retryExisting} headingLevel={3} />
+            </div>
+          ) : null}
           <div aria-live="polite">
             {busy ? (
               <span role="status" className="row-wrap">
@@ -607,7 +621,11 @@ export const LiveNewDataset = ({
             {t('common.previous')}
           </Button>
         ) : null}
-        <Button variant="primary" aria-disabled={busy ? true : undefined} onClick={next}>
+        <Button
+          variant="primary"
+          aria-disabled={busy || (f.step === 3 && !prerequisitesReady) ? true : undefined}
+          onClick={next}
+        >
           {f.step === 3 ? t('datasets.startIngestion') : t('common.next')}
         </Button>
         <div className="spacer" />

@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, PlusIcon } from '@navikt/aksel-icons';
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -19,6 +19,7 @@ import { CopyButton } from '../../components/CopyButton';
 import { Icon } from '../../components/Icon';
 import type { SharedCapability } from '../../data/shared-services';
 import { useT, type T } from '../../i18n';
+import { needsRight, useRights } from '../../Shell';
 import { requestExample, responseExample, type CodeLanguage } from './code';
 
 type Status = 'idle' | 'running' | 'done';
@@ -33,17 +34,6 @@ const initialOptions = (c: SharedCapability) => ({ [c.options[0] ?? '']: true })
 
 const given = (t: T, value: string) =>
   value !== 'Ikke oppgitt' && value !== t('sharedServices.notGiven');
-
-const modelAndData = (t: T, c: SharedCapability) => {
-  const model = given(t, c.model) ? c.model : '';
-  const located = given(t, c.location);
-  if (model && located)
-    return t('sharedServices.modelProcessedIn', { model, location: c.location });
-  if (model) return model;
-  return located
-    ? t('sharedServices.processedIn', { location: c.location })
-    : t('sharedServices.notGiven');
-};
 
 const modelAndPlace = (t: T, c: SharedCapability) =>
   [c.model, c.location].filter((x) => given(t, x)).join(', ');
@@ -77,7 +67,8 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
   useEffect(reset, [c.id]);
 
   const selected = Object.keys(options).filter((k) => options[k]);
-  const builderHref = `#/services/new?tool=${c.tool}@${c.version}`;
+  const tool = c.version ? `${c.tool}@${c.version}` : c.tool;
+  const canBuild = useRights().has('manage-services');
 
   const onFile = (event: ChangeEvent<HTMLInputElement>) => {
     const f = event.target.files?.[0];
@@ -165,23 +156,22 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
             <Heading level={1} data-size="md">
               {c.name}
             </Heading>
-            <Tag data-color="neutral">{t('sharedServices.versionN', { version: c.version })}</Tag>
+            {c.version ? (
+              <Tag data-color="neutral">{t('sharedServices.versionN', { version: c.version })}</Tag>
+            ) : null}
           </div>
           <p className="intro" lang={c.longLang}>
             {c.long}
           </p>
         </div>
-        <a className="ds-button" data-variant="primary" href={builderHref}>
-          <Icon icon={PlusIcon} />
-          {t('sharedServices.useInService')}
-        </a>
       </div>
       <dl className="facts">
         {(
           [
             [t('sharedServices.input'), c.input],
             [t('sharedServices.output'), c.output],
-            [t('sharedServices.modelAndData'), modelAndData(t, c)],
+            [t('sharedServices.model'), c.model],
+            [t('sharedServices.whereProcessed'), c.location],
             [
               t('sharedServices.qualityOnTestSet'),
               <>
@@ -454,13 +444,15 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
             {t('sharedServices.useTitle')}
           </Heading>
           <Paragraph>{t('sharedServices.useBody', { name: c.name.toLowerCase() })}</Paragraph>
-          <span className="meta">
-            {t('sharedServices.toolName', { tool: `${c.tool}@${c.version}` })}
-          </span>
+          <span className="meta">{t('sharedServices.toolName', { tool })}</span>
         </div>
-        <a className="ds-button" data-variant="primary" href={builderHref}>
-          {t('sharedServices.openBuilder', { name: c.name })}
-        </a>
+        {canBuild ? (
+          <a className="ds-button" data-variant="secondary" href="#/services/new">
+            {t('sharedServices.openBuilder')}
+          </a>
+        ) : (
+          <Paragraph data-size="sm">{needsRight('manage-services', t)}</Paragraph>
+        )}
       </section>
     </div>
   );
