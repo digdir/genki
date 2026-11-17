@@ -84,6 +84,44 @@ describe('the footnotes in the answer', () => {
     expect(footnotes().map((link) => link.textContent)).toEqual(['[1]', '[2]', '[3]', '[1]']);
   });
 
+  it('numbers each footnote as it stands with `numberEachFootnote`, two for one excerpt too', () => {
+    draw({ numberEachFootnote: true });
+    const marks = [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')];
+    expect(marks.map((link) => link.textContent)).toEqual(['[1]', '[2]', '[3]', '[4]']);
+    expect(marks.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Fotnote 1: Tildelingsbrev Nkom 2022',
+      'Fotnote 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Fotnote 3: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Fotnote 4: Tildelingsbrev Nkom 2022',
+    ]);
+  });
+
+  it('marks the footnote Sources shows whole as the current one, and no other', () => {
+    draw({ numberEachFootnote: true, shownFootnote: 2 });
+    const marks = [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')];
+    expect(marks.map((link) => link.getAttribute('aria-current'))).toEqual([
+      null,
+      null,
+      'true',
+      null,
+    ]);
+  });
+
+  it('marks no footnote current when the footnotes name documents, which Sources never shows whole', () => {
+    render(
+      <Answer
+        text="Bevilgningen økte [2]. Rapporteringen er fast [1]."
+        sources={sources}
+        documentFootnotes
+        numberEachFootnote
+        shownFootnote={0}
+      />,
+    );
+    const marks = [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')];
+    expect(marks).toHaveLength(2);
+    expect(marks.map((mark) => mark.getAttribute('aria-current'))).toEqual([null, null]);
+  });
+
   it('draws the number in a mark, the brackets kept for copying but out of sight', () => {
     draw();
     const mark = footnotes()[0] as HTMLElement;
@@ -716,6 +754,18 @@ describe('the answer as copied', () => {
     );
   });
 
+  it('keeps each footnote’s own number with `numberEachFootnote`, and lists all of an excerpt’s', () => {
+    const copied = answerCopy(text, {
+      sources: [paged, tildeling, memo],
+      markers,
+      numberEachFootnote: true,
+    });
+    expect(copied.text).toContain(
+      'Internkontrollen følger DFØ [2], og bevilgningen var 594,2 mill. kroner [3]. Rapporteringen er fast [4].',
+    );
+    expect(copied.text).toContain('[1, 4] Tildelingsbrev Nkom 2022.');
+  });
+
   it('tells two excerpts of one report apart in the reference list, as the screen does: by page, else section, else their first words', () => {
     const answered = 'Bevilgningen var 594,2 mill. kroner [2], og internkontrollen følger DFØ [3].';
     const both = (report: SourceDocument) =>
@@ -919,20 +969,128 @@ describe('the dev boards’ answer, `variant="plain"` (dev-kilder-hoyre)', () =>
     expect(document.querySelector('.uib-answer')?.hasAttribute('data-plain')).toBe(false);
   });
 
-  it('counts the documents in «Kilder brukt i svaret»’s bar and numbers them, with no excerpt line', () => {
+  it('replaces «Kilder brukt i svaret» with the Kildeliste, closed until the reader opens it', () => {
     draw({ variant: 'plain' });
-    const summary = document.querySelector('.uib-answer-sources-used summary');
-    expect(summary?.textContent).toBe('Kilder· 2 brukt i svaret');
-    // A plain box under its tinted bar, as the board draws it.
-    expect(
-      document.querySelector('.uib-answer-sources-used-card')?.getAttribute('data-variant'),
-    ).toBe('default');
-    const list = document.querySelector('.uib-answer-sources-used-list');
-    expect(list?.tagName).toBe('OL');
-    expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([
-      'Tildelingsbrev Nkom 2022',
-      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    expect(screen.queryByText('Kilder brukt i svaret')).toBeNull();
+    const details = screen.getByText('Kildeliste').closest('details');
+    expect(details?.open).toBe(false);
+    cleanup();
+    draw();
+    expect(screen.queryByText('Kildeliste')).toBeNull();
+    expect(screen.getByText('Kilder brukt i svaret')).toBeTruthy();
+  });
+});
+
+describe('the Kildeliste under a `plain` answer (dev-kildeliste)', () => {
+  const dated: SourceDocument[] = [
+    {
+      ...nkom,
+      documentType: 'Årsrapport',
+      publisher: 'Nasjonal kommunikasjonsmyndighet',
+      publishedAt: '2022-03-01',
+      excerpts: nkom.excerpts.map((e, i) => ({ ...e, page: [12, 13, 27][i] })),
+    },
+    { ...tildeling, url: 'javascript:alert(1)' },
+    memo,
+  ];
+  const drawList = (props: Partial<AnswerProps> = {}) =>
+    render(
+      <Answer
+        text={text}
+        sources={dated}
+        markers={markers}
+        variant="plain"
+        numberEachFootnote
+        {...props}
+      />,
+    );
+  const rows = () =>
+    within(screen.getByRole('list', { name: 'Kildeliste' }))
+      .getAllByRole('listitem')
+      .map((row) => row.textContent);
+
+  it('lists each document once, with every footnote that cites it in front, sorted by the first', () => {
+    drawList();
+    expect(rows()).toEqual([
+      'Fotnoter 1, 4Tildelingsbrev Nkom 2022.',
+      'Fotnoter 2, 3Årsrapport, 2022, Årsrapport Nasjonal kommunikasjonsmyndighet 2021. Nasjonal kommunikasjonsmyndighet. Side 12–13. https://kudos.dfo.no/dokument/2021',
     ]);
+  });
+
+  it('gives the numbers the excerpts have when each footnote is not numbered on its own', () => {
+    drawList({ numberEachFootnote: false });
+    expect(rows()[1]).toMatch(/^Fotnoter 2, 3Årsrapport/);
+    expect(rows()[0]).toMatch(/^Fotnote 1Tildelingsbrev/);
+  });
+
+  it('makes a web address a link that opens in a new tab, and nothing else a link', () => {
+    drawList();
+    const list = screen.getByRole('list', { name: 'Kildeliste' });
+    const links = within(list).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      'https://kudos.dfo.no/dokument/2021',
+    ]);
+    expect(links[0]?.getAttribute('target')).toBe('_blank');
+    expect(links[0]?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('copies the list as Markdown, and says «Kopiert» for 2.5 seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      const onCopyReferences = vi.fn(async () => {});
+      drawList({ onCopyReferences });
+      const button = screen.getByRole('button', { name: 'Kopier kildeliste' });
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      expect(onCopyReferences).toHaveBeenCalledWith(
+        [
+          '- [1, 4] *Tildelingsbrev Nkom 2022*.',
+          '- [2, 3] Årsrapport, 2022, *Årsrapport Nasjonal kommunikasjonsmyndighet 2021*. Nasjonal kommunikasjonsmyndighet. Side 12–13. <https://kudos.dfo.no/dokument/2021>',
+        ].join('\n'),
+      );
+      expect(button.textContent).toBe('Kopiert');
+      act(() => vi.advanceTimersByTime(2499));
+      expect(button.textContent).toBe('Kopiert');
+      act(() => vi.advanceTimersByTime(1));
+      expect(button.textContent).toBe('Kopier kildeliste');
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      act(() => vi.advanceTimersByTime(2000));
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      act(() => vi.advanceTimersByTime(2000));
+      expect(button.textContent).toBe('Kopiert');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps saying «Kopier kildeliste» when the clipboard refuses', async () => {
+    drawList({ onCopyReferences: async () => Promise.reject(new Error('nei')) });
+    const button = screen.getByRole('button', { name: 'Kopier kildeliste' });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(button.textContent).toBe('Kopier kildeliste');
+  });
+
+  it('draws no copy button when the app gives no way to copy', () => {
+    drawList();
+    expect(screen.queryByRole('button', { name: 'Kopier kildeliste' })).toBeNull();
+  });
+
+  it('is not there under an answer on its way, a stopped one or one without sources', () => {
+    drawList({ status: 'streaming' });
+    expect(screen.queryByText('Kildeliste')).toBeNull();
+    cleanup();
+    drawList({ status: 'aborted' });
+    expect(screen.queryByText('Kildeliste')).toBeNull();
+    cleanup();
+    render(<Answer text="Et svar uten kilder." sources={[]} variant="plain" />);
+    expect(screen.queryByText('Kildeliste')).toBeNull();
   });
 });
 
@@ -971,12 +1129,16 @@ describe('marks per document until a service cites excerpts, `documentFootnotes`
     expect(onOpenCitation).toHaveBeenCalledWith(1, { documentId: 'kudos::2021', index: 1 });
   });
 
-  it('lists the documents under the answer in the order of their marks', () => {
+  it('lists the documents in the Kildeliste in the order of their marks, with their numbers', () => {
     render(<Answer text={byDocuments} sources={sources} documentFootnotes variant="plain" />);
-    const list = document.querySelector('.uib-answer-sources-used-list');
-    expect([...(list?.querySelectorAll('li') ?? [])].map((row) => row.textContent)).toEqual([
-      'Tildelingsbrev Nkom 2022',
-      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    const list = screen.getByRole('list', { name: 'Kildeliste' });
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((row) => row.textContent),
+    ).toEqual([
+      'Fotnote 1Tildelingsbrev Nkom 2022.',
+      'Fotnote 2Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021',
     ]);
   });
 

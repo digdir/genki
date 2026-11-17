@@ -5,6 +5,7 @@ import {
   type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
+  defaultServiceLimits,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
   allowOf,
@@ -145,6 +146,7 @@ import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
 import { lastImportAt, publicDatasetState } from './dataset-status.js';
 import { datasetDeleteModule } from './dataset-delete.js';
+import { datasetSearchModule } from './dataset-search.js';
 import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
@@ -371,6 +373,7 @@ export const platformModules: PlatformModuleFactory[] = [
   definitionCompletionModule,
   datasetUploadsModule,
   datasetDeleteModule,
+  datasetSearchModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
@@ -524,6 +527,8 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  /** The clock a thread's last run is held against its deadline with; tests fix it. */
+  now?: () => number;
   evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
@@ -1229,6 +1234,12 @@ export const createPlatform = async (input: PlatformInput) => {
     platformTenant,
     outputTokens: enrichmentOutputTokens,
   });
+  const datasetSearchWork = trackedWork({
+    id: 'platform/dataset-search',
+    title: 'Søk i datasett',
+    platformTenant,
+    outputTokens: 1,
+  });
   let modules: PlatformModule[] = [];
   const decorate = decorateWith(() => modules);
   const sharedTools = new Map<string, string>();
@@ -1342,12 +1353,13 @@ export const createPlatform = async (input: PlatformInput) => {
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
       enrichmentWork.strategy,
+      datasetSearchWork.strategy,
     ],
     extraStrategyConfigs: [builderStrategyId, optimiserStrategyId].map((id) => [
       strategyKey(id, 1),
       platformServiceConfig,
     ]),
-    platformCapabilities: [evalCapability, enrichmentWork.capability],
+    platformCapabilities: [evalCapability, enrichmentWork.capability, datasetSearchWork.capability],
     ...(input.state ? { state: input.state } : {}),
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
@@ -2041,6 +2053,7 @@ export const createPlatform = async (input: PlatformInput) => {
       try: runtime.tryOperation,
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
+    datasetSearchTask: datasetSearchWork.run(() => kernel),
     tasks: taskIndex,
     task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
@@ -2428,6 +2441,19 @@ export const createPlatform = async (input: PlatformInput) => {
       conversationRoutes({
         store: conversations,
         auth: { authenticate: (request) => callerOf(request) },
+        runOf: async ({ principal }, task) => {
+          const run = await kernel.task(principal, task);
+          return {
+            status: run.status,
+            createdAt: Date.parse(run.createdAt),
+            deadlineMs:
+              registry.all().find((c) => c.descriptor.id === run.service.capability.id)
+                ?.deadlineMs ??
+              input.serviceLimits?.deadlineMs ??
+              defaultServiceLimits.deadlineMs,
+          };
+        },
+        ...(input.now ? { now: input.now } : {}),
         onDeleted: async (owner, id) => {
           await threadErasure?.erase(owner.tenant, id);
           if (blobStore) await deleteConversationDocuments(blobStore, owner.tenant, id);

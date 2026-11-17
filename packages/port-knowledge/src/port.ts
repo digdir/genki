@@ -164,6 +164,8 @@ export type KnowledgeErrorCode =
   | 'bad_request'
   | 'unauthorized'
   | 'cancelled'
+  /** The engine stopped the search at the endpoint's time limit. */
+  | 'timeout'
   | 'residency'
   | 'forbidden'
   | 'unsupported';

@@ -316,6 +316,7 @@ export interface Task {
   owner: string;
   parent?: string;
   thread?: string;
+  entryPoint?: string;
   status: TaskStatus;
   pendingInterrupt?: Interrupt;
   result?: Part[];

@@ -83,6 +83,7 @@ export const serviceCallRoutes = new Set([
   'DELETE /api/mcp',
   'POST /a2a/:agent',
   'POST /v1/chat/completions',
+  'POST /v1/tasks/:task/cancel',
   'POST /api/tools/call/:tool',
 ]);
 

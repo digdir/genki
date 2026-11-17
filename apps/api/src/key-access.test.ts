@@ -571,6 +571,14 @@ describe('rate limits and quota', () => {
     }
   });
 
+  it('still takes a cancel of a run when the monthly token quota is used', async () => {
+    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const cancelled = await send('/v1/tasks/no-such-task/cancel', 'veileder', { body: {} });
+
+    expect(cancelled.status).toBe(404);
+    expect(await cancelled.json()).toMatchObject({ error: { code: 'task_not_found' } });
+  });
+
   it('a call through any route stops at the monthly token quota', async () => {
     const { platform, model } = await boot({ monthlyTokens: 100, usedTokens: 150 });
     const run = platform.kernel.invoke(kari, `${digdir}/veileder/default`, {

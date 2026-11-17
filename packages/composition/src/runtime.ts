@@ -184,6 +184,7 @@ import {
   usingRetrievalPorts,
   type RuntimeConfig,
 } from './retrieval-ports.js';
+import { stateOrganisationTool, stateOrganisationToolRef } from './state-organisation-tool.js';
 import { createGuardrailRuleRegistry, resolveRules } from './scoped-registry.js';
 import { answerLanguageFor, houseStyleFor, withSettings } from './settings-runtime.js';
 import type { TenantSecretVault } from './tenant-secrets.js';
@@ -392,6 +393,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     kernel?: Kernel;
     store?: DefinitionStore;
     mcp?: ConnectionToolSources;
+    registry?: CapabilityRegistry;
   } = {};
   const ruleHooks: CustomRuleHooks = {
     resolve: async (ctx, entries) =>
@@ -626,6 +628,20 @@ export const createRuntime = async (input: RuntimeInput) => {
   for (const f of discovery.failed)
     input.onWarning?.(`model discovery failed for ${f.endpoint}: ${f.error}`);
   const tools = new ToolRegistry();
+  tools.register(
+    stateOrganisationTool({
+      configEntries,
+      filterFields: async (capability) => {
+        const config = late.registry?.all().find((c) => c.descriptor.id === capability)?.config as
+          RuntimeConfig | undefined;
+        return (config?.knowledge?.datasets ?? []).flatMap(({ dataset }) =>
+          Object.keys(
+            knowledge.datasets().get(knowledge.resolve(dataset) ?? dataset)?.filters ?? {},
+          ),
+        );
+      },
+    }),
+  );
   const connections = input.connections ?? new InMemoryConnections();
   const toolSourceOptions = {
     registry: connections,
@@ -765,7 +781,10 @@ export const createRuntime = async (input: RuntimeInput) => {
       ],
       ...(input.extraStrategyConfigs ?? []),
     ]),
-    tools: new Map<string, z.ZodType>([[sourceFactsToolRef, zod.strictObject({})]]),
+    tools: new Map<string, z.ZodType>([
+      [sourceFactsToolRef, zod.strictObject({})],
+      [stateOrganisationToolRef, zod.strictObject({})],
+    ]),
     guardrails: guardrailSchemas,
     blocks: new Set(blocks.refs()),
     models: models.models(),
@@ -812,6 +831,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     }),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
+  late.registry = registry;
   registry.replace(() => false, input.platformCapabilities ?? []);
 
   const refreshTools = async (tenant: string) => {

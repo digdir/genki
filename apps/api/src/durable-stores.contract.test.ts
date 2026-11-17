@@ -9,10 +9,13 @@ import {
   type DefinitionStore,
 } from '@genai/definitions';
 import {
+  createKernel,
   envSecrets,
   InMemoryEventLog,
   InMemoryTaskStore,
+  type Capability,
   type EventLog,
+  type Strategy,
   type TaskStore,
 } from '@genai/kernel';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
@@ -490,6 +493,80 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     expect(response.status).toBe(200);
     expect(body.totals).toMatchObject({ runs: 1, inputTokens: 70 });
     expect(body.byModel.map((m) => m.model)).toEqual(['m']);
+  });
+
+  it('takes a cancel only for a queued or running task, and drops it once the task stops running', async () => {
+    const here = backend().stores();
+    const there = await backend().reopen();
+    const org = name === 'memory' ? '310000031' : '310000032';
+    const at = '2026-10-07T10:00:00.000Z';
+    const ended = task(`${name}-cancel-ended`, org, '2026-10-07T08:00:00.000Z');
+    const running: Task = { ...task(`${name}-cancel-running`, org, ended.createdAt) };
+    running.status = 'running';
+    delete running.endedAt;
+    await record(here, ended);
+    await record(here, running);
+
+    await there.tasks.requestCancel?.(ended.id, at);
+    await there.tasks.requestCancel?.(running.id, at);
+    const requested = await here.tasks.cancelRequested?.([ended.id, running.id]);
+    await record(here, { ...running, status: 'interrupted' });
+
+    expect(requested).toEqual([running.id]);
+    expect(await here.tasks.cancelRequested?.([running.id])).toEqual([]);
+  });
+
+  it('hands a cancel to the instance that runs a task', async () => {
+    const here = backend().stores();
+    const there = await backend().reopen();
+    const org = name === 'memory' ? '310000021' : '310000022';
+    const owner: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: org };
+    const stuck: Strategy = {
+      id: 'stuck',
+      version: '1',
+      requires: { kernel: 1, ports: [], features: [] },
+      run: async function* () {
+        yield { type: 'kernel.part.delta', data: { text: 'Svaret' } };
+        await new Promise<never>(() => undefined);
+      },
+    };
+    const capability: Capability = {
+      descriptor: {
+        id: 'stuck',
+        version: '1',
+        tenant: org,
+        title: 'stuck',
+        description: 'stuck',
+        input: {},
+        interaction: ['stream'],
+        accepts: [],
+        produces: [],
+        emits: [],
+        oversight: { interrupts: false, riskClass: 'minimal', aiDisclosure: 'KI' },
+      },
+      strategy: { id: 'stuck', version: '1' },
+      config: {},
+      grants: [],
+    };
+    const kernelOn = (stores: Stores) =>
+      createKernel({
+        strategies: [stuck],
+        capabilities: [capability],
+        ports: {},
+        policy: { decide: async () => ({ allow: true }) },
+        log: stores.log,
+        tasks: stores.tasks,
+        limits: { cancelPollMs: 10 },
+      });
+    const runner = kernelOn(here);
+    const elsewhere = kernelOn(there);
+
+    const run = await runner.invoke(owner, 'stuck', {});
+    await expect.poll(async () => (await elsewhere.task(owner, run.task)).status).toBe('running');
+    await elsewhere.cancel(owner, run.task);
+
+    await expect(run.result).rejects.toMatchObject({ code: 'cancelled' });
+    await expect.poll(async () => (await elsewhere.task(owner, run.task)).status).toBe('cancelled');
   });
 
   it('keeps a building-block adoption across a restart', async () => {
