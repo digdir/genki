@@ -175,6 +175,15 @@ describe('the links and abbreviations fill on records that change', () => {
     expect(filled.fields).not.toHaveProperty('orgs_short');
   });
 
+  it('the fill drops a publisher the record no longer gives', () => {
+    const raw = letter({ owners: [], recipients: [], publishers: [] });
+    const stored = { orgs_long: [], publisher_names: ['Utgått direktorat'] };
+
+    const filled = kudosLinkAndAbbreviationFields({ id: 'kudos:x', record: raw, fields: stored });
+
+    expect(filled.fields).not.toHaveProperty('publisher_names');
+  });
+
   it('the fill leaves a record that is not from KUDOS as it is', () => {
     const fields = { orgs_long: ['Etaten'], orgs_short: ['ET'], title: 'Side' };
 
@@ -220,7 +229,7 @@ describe('the publisher of a KUDOS document', () => {
     );
 
     expect(published.publisher_names).toEqual(['Justis- og beredskapsdepartementet']);
-    expect(unnamed.publisher_names).toEqual(['Direktoratet for forvaltning og økonomistyring']);
+    expect(unnamed).not.toHaveProperty('publisher_names');
     expect(unpublished.publisher_names).toEqual(['Direktoratet for forvaltning og økonomistyring']);
   });
 });

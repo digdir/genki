@@ -133,11 +133,14 @@ const publishedAtOf = (fields: Record<string, unknown>) =>
     .find((v) => v !== undefined);
 
 /** The document's publisher, several joined with a comma, as a source names it. */
-const publisherOf = (fields: Record<string, unknown>) => {
-  const value = joined(fields, 'publisher_names') ?? joined(fields, 'publisher');
-  const names = (Array.isArray(value) ? value : [value]).flatMap((v) =>
+const namesIn = (value: unknown) =>
+  (Array.isArray(value) ? value : [value]).flatMap((v) =>
     typeof v === 'string' && v.trim() ? [v.trim()] : [],
   );
+
+const publisherOf = (fields: Record<string, unknown>) => {
+  const listed = namesIn(joined(fields, 'publisher_names'));
+  const names = listed.length ? listed : namesIn(joined(fields, 'publisher'));
   return names.length ? names.join(', ') : undefined;
 };
 

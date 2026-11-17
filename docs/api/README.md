@@ -65,7 +65,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ### 2026-11-17: a source names its publisher
 
-- A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `publisher`, the organisation that published the document, several joined with a comma, when the document's fields name one. The native shape (`publisher`) in the playground and a step flow's answer, and `sources` on `/api/tools/call/{tool}`, add it too. The field is optional, so the shape is otherwise unchanged.
+- A source on `/v1/chat/completions` (and on a stored conversation's messages) adds `publisher`, the organisation that published the document, several joined with a comma, when the document's fields name one. A step flow's answer sources and `sources` on `/api/tools/call/{tool}` add it too. The field is optional, so the shape is otherwise unchanged.
 - A stored conversation's message `sources` keep `version` and `published_at` as the answer sent them, so a reopened thread shows the year. Messages stored before this have neither.
 
 ### 2026-11-16: rotating a key keeps it within the person's rights

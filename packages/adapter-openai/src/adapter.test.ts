@@ -708,6 +708,24 @@ describe('/api/tools', () => {
     });
   });
 
+  it("a tool call's document link names its publisher", async () => {
+    const first = records[0] as SourceRecord;
+    first.publisher = 'Justis- og beredskapsdepartementet';
+    try {
+      const response = await setup().post('/api/tools/call/kunnskapsassistenten__default', {
+        query: 'tildelingsbrev',
+      });
+      const { sources } = (await response.json()) as { sources: { publisher?: string }[] };
+
+      expect(sources.map((s) => s.publisher)).toEqual([
+        'Justis- og beredskapsdepartementet',
+        undefined,
+      ]);
+    } finally {
+      delete first.publisher;
+    }
+  });
+
   it('calls a tool and returns the answer first, with document links and chunks', async () => {
     const response = await setup().post('/api/tools/call/kunnskapsassistenten__default', {
       query: 'tildelingsbrev',

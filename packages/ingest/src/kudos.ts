@@ -311,9 +311,9 @@ export const kudosOrgFields = (record: Record<string, unknown>) => {
   const role = (key: string) => (record[key] ?? []) as KudosOrganisation[];
   const orgs = [...role('owners'), ...role('recipients'), ...role('publishers')];
   const short = [...new Set(namesOfType(orgs, 'abbreviation'))];
-  // KUDOS names a publisher on few documents; the owners published the rest (issue 684).
-  const named = displayNames(role('publishers'));
-  const publisherNames = [...new Set(named.length ? named : displayNames(role('owners')))];
+  // A document KUDOS lists no publisher for is published by its owners.
+  const publishers = role('publishers').length ? role('publishers') : role('owners');
+  const publisherNames = [...new Set(displayNames(publishers))];
   const owners = orgNumbers(role('owners'));
   const recipients = orgNumbers(role('recipients'));
   return {

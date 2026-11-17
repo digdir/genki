@@ -185,12 +185,12 @@ describe('the fields job', () => {
     const old = kudosEntry('a1', 991825827, 'Digitaliseringsdirektoratet');
     const fresh = { ...old, uuid: 'a2' };
     const generation = await store(name, [
-      { entry: old, before: true },
+      { entry: old, before: true, publisher: false },
       { entry: fresh, before: false },
     ]);
 
     await fieldsWork({ records }).handler(
-      job({ tenant: 'platform', dataset: name, fill: 'kudos-org-numbers' }),
+      job({ tenant: 'platform', dataset: name, fill: 'kudos-links-and-abbreviations' }),
     );
 
     const backfilled = await row(generation, 'kudos:a1');

@@ -199,13 +199,14 @@
                 where they wrap. Then the reference: document type, year, <em>title</em>. Publisher.
                 Side 12–13, 27. Address. The type and the publisher are a source's
                 <code>documentType</code> and <code>publisher</code>, which a host sets: genki's
-                <code>sources[]</code> sends neither yet, so against genki a row reads «2022,
-                <em>Tittel</em>. Side 12. Address». A part the source lacks is left out, and a line
-                break in a title or publisher becomes a space. A title or publisher that ends with
-                «.», «?» or «!» gets no second full stop. The pages are those of the cited excerpts,
-                from <code>page</code> to <code>pageEnd</code>, joined in runs. The address is
-                shown, as a link, only when it is a web address with no <code>&lt;</code> or
-                <code>&gt;</code>. It leads nowhere in Sources; the footnotes in the text do.
+                <code>sources[]</code> sends <code>publisher</code> but no document type yet, so
+                against genki a row reads «2022, <em>Tittel</em>. Utgiver. Side 12. Address». A part
+                the source lacks is left out, and a line break in a title or publisher becomes a
+                space. A title or publisher that ends with «.», «?» or «!» gets no second full stop.
+                The pages are those of the cited excerpts, from <code>page</code> to
+                <code>pageEnd</code>, joined in runs. The address is shown, as a link, only when it
+                is a web address with no <code>&lt;</code> or <code>&gt;</code>. It leads nowhere in
+                Sources; the footnotes in the text do.
               </li>
               <li>
                 <code>onCopyReferences</code>: shows «Kopier kildeliste» under the Kildeliste. The
@@ -596,7 +597,8 @@
               </li>
               <li>
                 kunnskapsassistenten's reference list starts each line with the publisher. The
-                contract's sources carry none, so the copied list starts with the title.
+                contract's sources carry <code>publisher</code>, which the copied list puts after
+                the title, as the Kildeliste does.
               </li>
             </ul>
           </div>
