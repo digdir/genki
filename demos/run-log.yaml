@@ -1,0 +1,35 @@
+title: Følg hver kjøring i loggen
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/log
+signedIn: true
+ready: Siste kjøringer
+steps:
+  - say: Hver gang en tjeneste svarer, lagrer GenKI hva som skjedde. Det står i Logg.
+    hold: 1
+  - say: Listen viser de siste kjøringene, hvem som startet dem og når. Vi ser på én tjeneste.
+    do:
+      - [find, role, heading, hover, --name, Siste kjøringer]
+      - [select, '#lg-svc', smoke]
+      - [find, role, button, click, --name, Søk, --exact]
+      - [wait, --text, Total tid, --timeout, '30000']
+  - say: Til høyre står den valgte kjøringen. Dere ser hvor lang tid den tok, hvor mange tokens den brukte, og hva den kostet.
+    do:
+      - [find, text, Total tid, hover, --exact]
+    hold: 1.5
+  - say: Under står hvert steg. Søket i dokumentene, hvilke kilder som ble lest, og hvert kall til modellen.
+    do:
+      - [find, role, button, click, --name, Åpne alle steg]
+    hold: 2
+  - say: Slik kan en saksbehandler eller en revisor se hva et svar bygde på, også lenge etterpå.
+    do:
+      - [scroll, down, '400']
+    hold: 1.5
+  - say: Under Endringer står hvem som har endret, publisert eller gitt tilgang til tjenestene, og når.
+    do:
+      - [scroll, up, '2000']
+      - [find, role, tab, click, --name, Endringer]
+    hold: 2
+  - say: Loggen gjør det enkelt å svare på spørsmål fra personvernombudet, internrevisjonen eller innbyggeren selv.
+    hold: 2

@@ -1,0 +1,46 @@
+title: Sammenlign to modeller på samme spørsmål
+language: nb-NO
+voice: nb-NO-PernilleNeural
+viewport: [1280, 720]
+start: https://portal.genki-test.digdir.cloud/#/playground
+signedIn: true
+ready: Endre oppsett
+steps:
+  - say: Hvilken modell passer best for tjenesten? I prøveområdet kan dere finne det ut selv, med deres egne spørsmål og dokumenter.
+    hold: 1
+  - say: Vi starter med tjenesten vår, slik den er satt opp i dag.
+    do:
+      - [find, role, button, click, --name, Endre oppsett]
+      - [wait, --text, Hva vil du prøve?, --timeout, '30000']
+      - [select, 'select[id$="-svc"]', smoke]
+      - [find, role, button, click, --name, Bruk oppsettet]
+  - say: Med Sammenlign får vi et oppsett B ved siden av. Det er likt det første, men med en annen modell.
+    do:
+      - [find, role, button, click, --name, Sammenlign, --exact]
+      - [wait, --text, Endre oppsett B, --timeout, '30000']
+  - say: Her ser dere modellene virksomheten har tilgang til, og hvor hver av dem behandler data. En modell som ikke er godkjent ennå, er merket.
+    do:
+      - [find, role, group, hover, --name, Modell, --exact]
+    hold: 1
+  - say: Vi beholder forslaget og tar oppsett B i bruk. Ingenting av dette endrer tjenesten som er publisert.
+    do:
+      - [find, role, button, click, --name, Bruk oppsettet]
+      - [find, role, group, hover, --name, Oppsett B, --exact]
+  - say: Så skriver vi ett spørsmål som går til begge oppsettene.
+    do:
+      - [
+          find,
+          label,
+          Spørsmål til begge oppsettene,
+          fill,
+          Hva sier evalueringene om digital veiledning?,
+        ]
+  - say: Når dere sender, svarer begge side om side, med kilder, tid, tokens og kostnad for hvert svar. Vi sender ikke i denne demoen.
+    do:
+      - [find, role, button, hover, --name, Send, --exact]
+    hold: 1
+  - say: Det samme oppsettet kan hentes som et API-kall, så utviklerne kan prøve nøyaktig det samme fra sitt eget system.
+    do:
+      - [find, role, button, hover, --name, Vis API-kall]
+  - say: Slik velger dere modell ut fra svarene på deres egne spørsmål, ikke ut fra en reklamebrosjyre.
+    hold: 2
