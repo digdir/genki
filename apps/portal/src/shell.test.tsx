@@ -21,7 +21,7 @@ describe('the organisation in the header', () => {
     });
     render(<App auth={single} fetch={mockFetch()} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     expect(await screen.findByText('Digitaliseringsdirektoratet')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Bytt virksomhet/ })).toBeNull();
@@ -29,7 +29,7 @@ describe('the organisation in the header', () => {
 
   it('opens the switcher when the person can act for several organisations', async () => {
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     fireEvent.click(
       await screen.findByRole('button', {
@@ -53,7 +53,7 @@ describe('the organisation in the header', () => {
       observer.observe(document.body, { childList: true, subtree: true });
     });
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
     await clicked;
 
     expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
@@ -64,7 +64,7 @@ describe('login from the start page', () => {
   it('opens the portal on Oversikt after logging in', async () => {
     render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
     expect(
@@ -82,7 +82,7 @@ describe('login from the start page', () => {
     };
     render(<App auth={failing} fetch={mockFetch()} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Logg inn' }))[0] as HTMLElement);
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/Innloggingen mislyktes/);
   });
@@ -163,9 +163,18 @@ describe('shell', () => {
     ['#/integrations', '#/developer/systems'],
     ['#/integrations?tab=hooks&saved=Fnr', '#/developer/hooks?saved=Fnr'],
     ['#/integrations?tab=tracing', '#/developer/runs'],
-    ['#/integrations/code', '#/developer/api/code'],
+    ['#/integrations/code', '#/developer/api'],
     ['#/integrations/hooks/fnr', '#/developer/hooks/fnr'],
   ])('sends the old Integrasjoner address %s on to %s', async (from, to) => {
+    await renderAt(from);
+    await waitFor(() => expect(window.location.hash).toBe(to));
+  });
+
+  it.each([
+    ['#/status', '#/developer/status'],
+    ['#/developer/api/code', '#/developer/api'],
+    ['#/developer/settings', '#/settings/all'],
+  ])('sends the old address %s on to %s', async (from, to) => {
     await renderAt(from);
     await waitFor(() => expect(window.location.hash).toBe(to));
   });
@@ -308,7 +317,6 @@ describe('shell', () => {
 
   it.each([
     ['/onboarding', 'Kom i gang'],
-    ['/status', 'Driftsstatus'],
     ['/contact', 'Kontakt Digdir'],
   ])('gives the unbuilt %s page its own h1', async (path, title) => {
     await renderAt(`#${path}`);
@@ -317,7 +325,6 @@ describe('shell', () => {
 
   it.each([
     ['/onboarding', /Slik henger sidene sammen/],
-    ['/status', /Siden spør plattformens API om det svarer/],
     ['/contact', /ikke et eget kontaktpunkt for brukerstøtte ennå/],
   ])(
     'gives the footer page %s honest content instead of the not designed placeholder',

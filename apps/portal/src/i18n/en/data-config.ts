@@ -116,6 +116,7 @@ export const sharedServices = {
   residencyEu: 'EU/EEA',
   residencyOutside: 'Outside the EU/EEA',
   notGiven: 'Not specified',
+  residencyUnavailable: 'Could not fetch where data is processed',
   text: 'Text',
   option: 'Option',
   standard: 'Standard',
@@ -129,11 +130,9 @@ export const sharedServices = {
   tryAndDetailsFor: 'Try and see details for {name}',
   back: 'Shared services',
   versionN: 'Version {version}',
-  useInService: 'Use in a service',
-  modelAndData: 'Model and data',
+  model: 'Model',
+  whereProcessed: 'Where data is processed',
   qualityOnTestSet: 'Quality on test set',
-  modelProcessedIn: '{model}, processed in {location}',
-  processedIn: 'Processed in {location}',
   priceWithNote: '{price} ({note})',
   tryNow: 'Try now',
   tryNote: 'Trial runs appear in the Log as test runs and count towards usage.',
@@ -173,9 +172,9 @@ export const sharedServices = {
   exampleNote: 'This response is an example. The id, content and tokens differ in real calls.',
   useTitle: 'Use in a service',
   useBody:
-    'The builder opens with {name} added as a tool. The assistant suggests the rest of the setup based on what the service is to do.',
+    'Add {name} as a tool in the builder, using the tool name below. The assistant suggests the rest of the setup based on what the service is to do.',
   toolName: 'Tool name: {tool}',
-  openBuilder: 'Open the builder with {name}',
+  openBuilder: 'Open the builder',
   audioUrlPlaceholder: '<URL of the audio file>',
 } satisfies Translation<typeof sharedSource>;
 

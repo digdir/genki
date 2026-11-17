@@ -1,28 +1,44 @@
-import { Button, Heading, Paragraph } from '@digdir/designsystemet-react';
+import {
+  Button,
+  Details,
+  DetailsContent,
+  DetailsSummary,
+  Heading,
+  Paragraph,
+} from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
+import { useState } from 'react';
 import { navigate, useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import type { ScreenProps } from '../../screen';
 import { needsRight, useRights } from '../../Shell';
 import { EmptyState, ErrorState, Loading } from '../../states';
 import { TenantCatalog } from '../config/TenantCatalog';
-import type { DetailTab } from './DatasetDetail';
 import { DatasetList } from './DatasetList';
 import { listItemOf } from './live-model';
 import { LiveDatasetDetail } from './LiveDatasetDetail';
 import { LiveNewDataset } from './LiveNewDataset';
-import { datasetHref } from './model';
+import { datasetHref, detailTabOf } from './model';
 
-const tabs: Record<string, DetailTab> = {
-  ingestions: 'ingestions',
-  filters: 'filters',
-  source: 'source',
+const Technical = ({ api, tenant }: Pick<ScreenProps, 'api' | 'tenant'>) => {
+  const t = useT();
+  const { has } = useRights();
+  const [open, setOpen] = useState(false);
+  if (!has('manage-datasets') && !has('manage-services')) return null;
+  return (
+    <Details onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <DetailsSummary>{t('datasets.technicalCatalog')}</DetailsSummary>
+      <DetailsContent>{open ? <TenantCatalog api={api} tenant={tenant} /> : null}</DetailsContent>
+    </Details>
+  );
 };
 
 const List = ({ api, tenant }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.datasets.list(tenant, signal), [api, tenant]);
+  const [state, retry] = useAsync((signal) => api.datasets.list(tenant, signal), [api, tenant], {
+    keepPreviousFor: tenant,
+  });
   const canCreate = useRights().has('manage-datasets');
   if (state.status === 'loading') return <Loading label={t('datasets.loading')} />;
   if (state.status === 'error')
@@ -48,13 +64,13 @@ const List = ({ api, tenant }: ScreenProps) => {
             </Button>
           ) : null}
         </EmptyState>
-        <TenantCatalog api={api} tenant={tenant} />
+        <Technical api={api} tenant={tenant} />
       </div>
     );
   return (
     <div className="stack">
       <DatasetList datasets={state.data.map((d) => listItemOf(t, f, d))} canCreate={canCreate} />
-      <TenantCatalog api={api} tenant={tenant} />
+      <Technical api={api} tenant={tenant} />
     </div>
   );
 };
@@ -92,7 +108,7 @@ export const LiveDatasets = (props: ScreenProps) => {
         tenant={tenant}
         tenantName={tenantName}
         id={id}
-        initialTab={tabs[route.query.get('tab') ?? ''] ?? 'ingestions'}
+        tab={detailTabOf(route)}
       />
     );
   return <List {...props} />;

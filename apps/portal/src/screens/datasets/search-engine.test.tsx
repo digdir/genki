@@ -200,6 +200,31 @@ describe('Datasett: søkemotor', () => {
     expect(within(flow).getByText('Bedre', { selector: 'td *' })).toBeTruthy();
   });
 
+  it('keeps polling a running switch after a failed poll', async () => {
+    let failures = 1;
+    const base = fetchWith({ scenario: 'switching', progressStep: 60 });
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (failures > 0 && !init?.method && url.endsWith('/engine-switches/1')) {
+        failures -= 1;
+        return Promise.resolve(new Response('{}', { status: 503 }));
+      }
+      return base(input, init);
+    };
+    await renderAt(kudos, fetch);
+    const flow = await switchSection();
+    expect(
+      await within(flow).findByText(
+        'Fikk ikke hentet status akkurat nå. Vi prøver igjen av oss selv.',
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(within(flow).getByText('Steg 4 av 5')).toBeTruthy(), {
+      timeout: 6000,
+    });
+  }, 10000);
+
   it('activating a switch into the knowledge database shows the refresh, then the new engine', async () => {
     await renderAt(
       kudos,

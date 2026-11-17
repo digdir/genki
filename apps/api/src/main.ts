@@ -641,6 +641,7 @@ const app = createApp(version, {
     caller: platform.caller,
     lifecycle: platform.lifecycle,
     drafts: platform.serviceDrafts,
+    unmaskedInput: platform.unmaskedInput,
     names: actorNames(configEntries),
     lockdown,
     loginRefusal: async (request) => {

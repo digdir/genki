@@ -179,17 +179,14 @@ describe('live mode shows only platform data', () => {
     expect(screen.queryByText('Søknadsuttrekk')).toBeNull();
   });
 
-  it('shows no example people or groups under Tilgang', async () => {
+  it('shows no example people, groups or dataset access under Tilgang', async () => {
     await renderLive('#/access');
 
     await screen.findByRole('tab', { name: 'Tjenester' });
     for (const name of ['Mona Hauge', 'Per Hansen', 'Ahmed Ali'])
       expect(screen.queryByText(name)).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Rettigheter fra Altinn' })).toBeTruthy();
-    expect(screen.getByText(/Plattformen henter ikke rettighetene fra Altinn ennå/)).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Datasett' })).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Grupper' }));
-    expect(await screen.findByText('Grupper kan ikke lagres i plattformen ennå.')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Grupper' })).toBeNull();
   });
 
   it('Tilgang shows no person count in live mode, since Altinn owns who has the right', async () => {
@@ -212,9 +209,10 @@ describe('live mode shows only platform data', () => {
           )
         : emptyPlatform(input, init);
     };
-    await renderLive('#/access', withService);
+    await renderLive('#/access/services', withService);
 
-    expect(await screen.findByText('Alle med «Bruke tjenester» i Altinn')).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Svartjenesten' })).toBeTruthy();
+    expect(screen.getByText('Alle med «Bruke tjenester» kan bruke alle tjenestene.')).toBeTruthy();
     expect(screen.queryByText(/0 personer/)).toBeNull();
   });
 
@@ -260,11 +258,13 @@ describe('live mode shows only platform data', () => {
         });
       return emptyPlatform(input, init);
     };
-    await renderLive('#/access', fetch);
+    await renderLive('#/access/services', fetch);
 
-    const panel = await screen.findByRole('tabpanel');
-    await within(panel).findByText('Svartjenesten');
-    const titles = [...panel.querySelectorAll('.expand-title')].map((e) => e.textContent);
+    const list = await screen.findByRole('list', { name: 'Tjenester' });
+    await within(list).findByText('Svartjenesten');
+    const titles = within(list)
+      .getAllByRole('listitem')
+      .map((e) => e.textContent);
     expect(titles).toEqual(['Svartjenesten', 'Gammel agentArkivert']);
     expect(screen.queryByText(/faithful/)).toBeNull();
   });
@@ -330,7 +330,7 @@ describe('live mode shows only platform data', () => {
   });
 
   it('exports from the platform and offers no example targets in settings', async () => {
-    await renderLive('#/settings?tab=transfer');
+    await renderLive('#/settings/all');
 
     expect(await screen.findByText('0 definisjoner, 0 innstillinger')).toBeTruthy();
     expect(screen.queryByRole('combobox', { name: 'Tjeneste' })).toBeNull();

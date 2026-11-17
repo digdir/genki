@@ -178,9 +178,9 @@ describe('Integrasjoner: utløsere fra API-et', () => {
 describe('Integrasjoner: MCP-koblinger fra API-et', () => {
   const registerServer = async (secretName: string, options?: { secretsFail: boolean }) => {
     const calls = await live('#/integrations?tab=systems', options);
-    fireEvent.click(await screen.findByText('Registrer en MCP-server'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer en MCP-server' }));
     const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
-    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+    fireEvent.change(within(form).getByLabelText('Begrunnelse'), {
       target: { value: 'Saksbehandlerne skal søke i arkivet' },
     });
     const fill = (label: string, value: string) =>
@@ -251,5 +251,34 @@ describe('schedule names', () => {
     expect(describeSchedule('0 7 * * 1')).toBe('Hver mandag kl. 07.00');
     expect(describeSchedule('0 * * * *')).toBe('Hver time');
     expect(describeSchedule('*/5 * * * *')).toBe('Tidsplan «*/5 * * * *»');
+  });
+});
+
+describe('Utviklerverktøy: oppfølging i menyen fra API-et', () => {
+  it('counts systems with tool changes waiting and failing triggers from the API', async () => {
+    await live('#/developer/status');
+    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy' });
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole('link', { name: 'Systemer 1 trenger oppfølging' }),
+      ).toBeTruthy(),
+    );
+    expect(within(menu).getByRole('link', { name: 'Utløsere 1 trenger oppfølging' })).toBeTruthy();
+  });
+});
+
+describe('Integrasjoner: koble til system i en dialog', () => {
+  it('asks before throwing away a half-filled connection', async () => {
+    const calls = await live('#/developer/systems');
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrer en MCP-server' }));
+    const form = screen.getByRole('form', { name: 'Ny MCP-kobling' });
+    fireEvent.change(within(form).getByLabelText('Adresse (https)'), {
+      target: { value: 'https://sak.testetaten.example.no/mcp' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Avbryt' }));
+    expect(within(form).getByText('Forkaste det du har skrevet?')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Forkast' }));
+    expect(screen.queryByRole('form', { name: 'Ny MCP-kobling' })).toBeNull();
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false);
   });
 });

@@ -128,6 +128,7 @@ export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem 
   name: view.name,
   description: view.description ?? '',
   status: datasetStatus(view),
+  shared: view.editable === false,
   sourceText: sharedSourceText(t, view),
   docsText: countText(t, f, view.documents),
   lastText:

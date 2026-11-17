@@ -2,7 +2,6 @@ import type { Translation } from '@genai/i18n';
 import type { about as source } from '../nb/core-about';
 
 export const about = {
-  previewSwitch: 'New start page (preview)',
   navLabel: 'About Genki',
   navTargetPicture: 'Target picture',
   navBlocks: 'Building blocks',

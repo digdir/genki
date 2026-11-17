@@ -33,7 +33,7 @@ const SchemaTable = ({ title, rows }: { title: string; rows: ApiService['input']
   const t = useT();
   return (
     <section className="stack-sm" aria-labelledby={`sch-${title}`}>
-      <Heading level={2} data-size="2xs" id={`sch-${title}`}>
+      <Heading level={4} data-size="2xs" id={`sch-${title}`}>
         {title}
       </Heading>
       {rows.length === 0 ? (
@@ -128,7 +128,7 @@ export const ServiceAsApi = ({ api }: { api: ApiClient }) => {
   return (
     <div className="stack-lg">
       <section aria-labelledby="var-h" className="stack-sm">
-        <Heading level={2} data-size="xs" id="var-h">
+        <Heading level={4} data-size="xs" id="var-h">
           {t('apiref.variants')}
         </Heading>
         <Paragraph data-size="sm" className="ar-measure">
@@ -228,7 +228,7 @@ export const ServiceAsApi = ({ api }: { api: ApiClient }) => {
       <div className="stack">
         {blocks.map(([title, desc, code], i) => (
           <section key={title} className="stack-sm" aria-labelledby={`blk-${i}`}>
-            <Heading level={2} data-size="2xs" id={`blk-${i}`}>
+            <Heading level={4} data-size="2xs" id={`blk-${i}`}>
               {title}
             </Heading>
             <span className="meta small">{desc}</span>

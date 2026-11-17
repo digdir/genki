@@ -80,8 +80,6 @@ export const integrationsArea = {
     noFrontendsText: 'Register a frontend when you want to offer services in your own solutions.',
     noTriggers: 'No triggers',
     noTriggersText: 'Triggers are set up in the service.',
-    downloadOpenApi: 'Download OpenAPI file',
-    openApiDownloaded: 'The OpenAPI file is downloaded.',
     statusActive: 'Active',
     statusFailing: 'Failing',
     statusUnused: 'Not in use',
@@ -98,22 +96,6 @@ export const integrationsArea = {
     scopeWriteDesc: 'Add and remove documents.',
     scopeUsageLabel: 'Read usage',
     scopeUsageDesc: 'Fetch figures for tokens and cost.',
-    docCodeTitle: 'Call a service from code',
-    docCodeDesc: 'Examples in curl, Python, JavaScript and C#, with responses.',
-    docApiTitle: 'API reference',
-    docApiDesc: 'All endpoints, fields and error codes (OpenAPI 3.1).',
-    docMaskinportenTitle: 'Get started with Maskinporten',
-    docMaskinportenDesc: 'Create a client in Samarbeidsportalen and fetch a token.',
-    docAnsattportenTitle: 'Ansattporten for frontends',
-    docAnsattportenDesc: 'Sign in employees and call the platform on their behalf.',
-    docOpenaiTitle: 'OpenAI-compatible endpoint',
-    docOpenaiDesc: 'Use existing code and tools without changes.',
-    docMcpTitle: 'MCP',
-    docMcpDesc: 'Make the services available as tools for AI assistants.',
-    docLimitsTitle: 'Test environment and limits',
-    docLimitsDesc: 'Addresses, test data, maximum file size and calls per minute.',
-    docStatusTitle: 'Operating status and changes',
-    docStatusDesc: 'Planned maintenance and new versions of the API.',
     name: 'Name',
     register: 'Register',
     connect: 'Connect',
@@ -249,6 +231,7 @@ export const integrationsArea = {
     secretHelp:
       'Stored in Key Vault for the address above and cannot be read out again, only replaced.',
     register: 'Register connection',
+    syncButton: 'Fetch the tools',
   },
   secretHosts: {
     setElsewhere:
@@ -387,7 +370,6 @@ export const integrationsArea = {
     intro:
       'API keys for systems that cannot use Maskinporten. Each key can be limited to selected services and datasets, and has its own limit on the number of calls.',
     create: 'Create API key',
-    copyNow: 'Copy the key now',
     copyNowText: 'It is shown only this once. Store it in a secret store, for example Key Vault.',
     newKeyLabel: 'The new key',
     iSavedIt: 'I have saved the key',
@@ -420,6 +402,23 @@ export const integrationsArea = {
     revokeWarning:
       'Systems that use {name} have all calls rejected immediately. This cannot be undone.',
     revokeKey: 'Revoke the key',
+    nameTaken: 'A key named "{name}" already exists. Choose another name.',
+    inUse: 'In use ({count})',
+    revokedGroup: 'Revoked ({count})',
+    revokedListLabel: 'Revoked keys',
+    madeFor: 'New key for "{name}"',
+    discardAsk: 'Discard what you have written?',
+    goBack: 'Go back',
+    discard: 'Discard',
+    uncopiedAsk:
+      'You have not copied the key. If you close now, you must create a new key to get one you can use.',
+    backToCopy: 'Go back and copy',
+    closeUncopied: 'Close without copying',
+    revokeTitle: 'Revoke "{name}"?',
+    rotateTitle: 'Rotate "{name}"?',
+    rotateWarning:
+      'You get a new key with the same access. The old one stops working at once, so the system using {name} must switch to the new one.',
+    rotateKey: 'Rotate the key',
   },
   integMaskinporten: {
     alreadyRegistered: 'The client is already registered.',
@@ -586,6 +585,11 @@ export const integrationsArea = {
   },
   integCode: {
     callService: 'Call the service',
+    moreHeading: 'Next',
+    moreReference: 'API reference: every endpoint, with "Try" that runs as you',
+    moreKeys: 'Keys: create an API key for systems without Maskinporten',
+    moreLimits: 'Test environment and limits: usage and quota in Statistics',
+    moreIdporten: 'Ansattporten and ID-porten for frontends (opens in a new tab)',
     apiStep2Approval:
       'The service has an approval step, so "vent" is set to false. You get a run ID back immediately, and can fetch the status or be notified when the caseworker has approved.',
     apiStep2Wait:

@@ -15,6 +15,7 @@ export const common = defineNamespace({
   delete: 'Slett',
   copy: 'Kopier',
   copied: 'Kopiert',
+  copyFailed: 'Fikk ikke kopiert. Merk teksten og kopier den selv.',
   yes: 'Ja',
   no: 'Nei',
   search: 'Søk',

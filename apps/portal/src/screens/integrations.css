@@ -539,3 +539,35 @@
   color: var(--ds-color-danger-text-default);
   font-size: 14px;
 }
+
+.dev-tools-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--ds-color-warning-surface-tinted);
+  color: var(--ds-color-warning-text-default);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dev-status-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.dev-status-checks li > :first-child {
+  flex: 1 1 260px;
+}
+
+.int-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}

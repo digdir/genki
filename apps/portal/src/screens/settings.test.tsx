@@ -40,7 +40,7 @@ afterEach(cleanup);
 describe('Innstillinger for virksomheten', () => {
   it('shows the layered grid built from the settings catalog', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/settings', fetch);
+    await renderAt('#/settings/all', fetch);
 
     const region = await grid();
     expect(calls.some((c) => c.url.endsWith('/settings') && c.method === 'GET')).toBe(true);
@@ -53,9 +53,9 @@ describe('Innstillinger for virksomheten', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByLabelText('Tjeneste')).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Innstillinger' }).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    expect(
+      screen.getByRole('tab', { name: 'Alle innstillinger' }).getAttribute('aria-selected'),
+    ).toBe('true');
 
     const heads = within(region)
       .getAllByRole('columnheader')
@@ -93,7 +93,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('filters by search, category and overridden values', async () => {
-    await renderAt('#/settings');
+    await renderAt('#/settings/all');
     await grid();
     const total = /Viser (\d+) av (\d+) innstillinger/.exec(document.body.textContent ?? '');
     expect(total?.[1]).toBe(total?.[2]);
@@ -123,7 +123,7 @@ describe('Innstillinger for virksomheten', () => {
 
   it('previews a tenant value through the API and saves it with a reason', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/settings', fetch);
+    await renderAt('#/settings/all', fetch);
     const side = await open('Antall treff som leses');
 
     expect(
@@ -186,7 +186,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('shows the API call for a tenant change', async () => {
-    await renderAt('#/settings');
+    await renderAt('#/settings/all');
     const side = await open('Antall treff som leses');
     fireEvent.change(within(side).getByLabelText('Verdi (treff)'), { target: { value: '12' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -198,7 +198,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('blocks saving when the preview API fails', async () => {
-    await renderAt('#/settings', failingFetch(/dryRun=true/));
+    await renderAt('#/settings/all', failingFetch(/dryRun=true/));
     const side = await open('Antall treff som leses');
     fireEvent.change(within(side).getByLabelText('Verdi (treff)'), { target: { value: '12' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -211,7 +211,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('blocks a limit that would stop a service', async () => {
-    await renderAt('#/settings');
+    await renderAt('#/settings/all');
     const side = await open('Maks tokens per kjøring');
     fireEvent.change(within(side).getByLabelText('Verdi (tokens)'), { target: { value: '16000' } });
     fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
@@ -224,7 +224,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('lists the categories of personal data for both PII settings', async () => {
-    await renderAt('#/settings');
+    await renderAt('#/settings/all');
     let side = await open('Fjern personopplysninger før modellkall');
     let cats = within(side).getByRole('list', { name: 'Kategorier av personopplysninger' });
     expect(within(cats).getByText('Fødselsnummer og D-nummer')).toBeTruthy();
@@ -239,7 +239,7 @@ describe('Innstillinger for virksomheten', () => {
   });
 
   it('sets retention with one value per risk level', async () => {
-    await renderAt('#/settings');
+    await renderAt('#/settings/all');
     const side = await open('Oppbevaring av logg');
     expect(within(side).getByText('Ikke bestemt')).toBeTruthy();
     expect(within(side).getByText('Én verdi per risikonivå')).toBeTruthy();
@@ -259,7 +259,9 @@ describe('Innstillinger for virksomheten', () => {
     let fail = true;
     const ok = mockFetch();
     const broken = failingFetch(/\/settings$/);
-    await renderAt('#/settings', (input, init) => (fail ? broken(input, init) : ok(input, init)));
+    await renderAt('#/settings/all', (input, init) =>
+      fail ? broken(input, init) : ok(input, init),
+    );
     expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
     fail = false;
     fireEvent.click(await screen.findByRole('button', { name: 'Prøv igjen' }));
@@ -354,12 +356,8 @@ describe('Eksporter og importer', () => {
   it('exports a YAML file', async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     URL.createObjectURL ??= () => 'blob:settings';
-    await renderAt('#/settings?tab=transfer');
-    expect(
-      (await screen.findByRole('tab', { name: 'Eksporter og importer' })).getAttribute(
-        'aria-selected',
-      ),
-    ).toBe('true');
+    await renderAt('#/settings/all');
+    expect(await screen.findByRole('heading', { name: 'Eksporter og importer' })).toBeTruthy();
     expect(screen.getByText(/Hemmeligheter eksporteres aldri/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Neste' }));
     expect(screen.getByLabelText('Innholdet i eksportfilen').textContent).toContain('testetaten');
@@ -370,7 +368,7 @@ describe('Eksporter og importer', () => {
   });
 
   it('runs a dry run before importing and needs a reason', async () => {
-    await renderAt('#/settings?tab=transfer');
+    await renderAt('#/settings/all');
     fireEvent.click(await screen.findByRole('radio', { name: 'Importer fra fil' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør prøvekjøring' }));
     expect(screen.getByText('Velg en fil, eller bruk eksempelfilen.')).toBeTruthy();

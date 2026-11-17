@@ -331,6 +331,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,
+      unmaskedInput: platform.unmaskedInput,
       tasks: kernelTaskReader(platform.kernel, {
         kind: 'operator',
         issuer: 'platform',

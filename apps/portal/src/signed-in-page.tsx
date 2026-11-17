@@ -2,15 +2,12 @@ import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { lazy, useEffect } from 'react';
 import { useT } from './i18n';
 import type { ScreenProps } from './screen';
-import { developerHashFor } from './screens/developer-routes';
+import { apiReferenceHashFor, developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
 import { navigation } from './Shell';
 import { StrategyCatalogue } from './strategy-catalogue';
 
 const Access = lazy(() => import('./screens/Access').then((m) => ({ default: m.Access })));
-const ApiReference = lazy(() =>
-  import('./screens/ApiReference').then((m) => ({ default: m.ApiReference })),
-);
 const BuildingBlocks = lazy(() =>
   import('./screens/BuildingBlocks').then((m) => ({ default: m.BuildingBlocks })),
 );
@@ -19,7 +16,6 @@ const DataHandling = lazy(() =>
 );
 const Contact = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Contact })));
 const Guide = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Guide })));
-const Status = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Status })));
 const Datasets = lazy(() => import('./screens/Datasets').then((m) => ({ default: m.Datasets })));
 const DeveloperTools = lazy(() =>
   import('./screens/DeveloperTools').then((m) => ({ default: m.DeveloperTools })),
@@ -50,7 +46,6 @@ const MovedTo = ({ hash }: { hash: string }) => {
 };
 
 const footerPages = {
-  status: 'shell.status',
   contact: 'shell.contact',
 } as const;
 
@@ -79,8 +74,11 @@ export const Page = ({
   if (area === 'usage')
     return <MovedTo hash={window.location.hash.replace(/^#\/usage/, '#/statistics')} />;
   if (area === 'statistics') return <Usage {...props} />;
+  if (area === 'developer' && id === 'api' && sub === 'code')
+    return <MovedTo hash="#/developer/api" />;
+  if (area === 'developer' && id === 'settings') return <MovedTo hash="#/settings/all" />;
   if (area === 'developer')
-    return (id === 'api' && sub === 'code') || (id === 'hooks' && sub) ? (
+    return id === 'hooks' && sub ? (
       <Integrations {...props} />
     ) : (
       <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />
@@ -97,8 +95,11 @@ export const Page = ({
         <Guide />
       </>
     );
-  if (area === 'api-reference') return <ApiReference {...props} />;
+  if (area === 'api-reference') return <MovedTo hash={apiReferenceHashFor(props.route)} />;
   if (area === 'log') return <Log {...props} />;
+  if (area === 'status') return <MovedTo hash="#/developer/status" />;
+  if (area === 'settings' && props.route.query.get('tab') === 'transfer')
+    return <MovedTo hash="#/settings/all" />;
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
   if (area === 'data-handling') return <DataHandling api={props.api} />;
   const item = navigation.find((n) => n.path === `/${area}`);
@@ -108,7 +109,7 @@ export const Page = ({
         <Heading level={1} data-size="lg">
           {t(footerPages[area as keyof typeof footerPages])}
         </Heading>
-        {area === 'status' ? <Status api={props.api} /> : <Contact />}
+        <Contact />
       </>
     );
   return (

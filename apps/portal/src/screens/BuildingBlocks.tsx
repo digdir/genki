@@ -2,16 +2,40 @@ import { Heading } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import { blockPath, type BlockKind, type BlockUser } from '../api/building-blocks';
 import { Crumbs } from '../components/Crumbs';
-import { navigate, useAsync } from '../hooks';
+import { publisherOptions } from '../data/building-blocks';
+import { navigate, useAsync, type Route } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
 import { BlockDetail } from './buildingblocks/BlockDetail';
-import { BlockList, initialFilters, type ListFilters } from './buildingblocks/BlockList';
-import { FlashMessage, type Flash } from './buildingblocks/common';
+import { BlockList, listKinds, type ListFilters, type ListTab } from './buildingblocks/BlockList';
+import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
 import { RegisterBlock } from './buildingblocks/RegisterBlock';
 import './buildingblocks.css';
+
+const listSegments: Record<string, ListTab> = { 'in-use': 'in-use', catalogue: 'catalog' };
+const tabSegment: Record<ListTab, string> = { 'in-use': 'in-use', catalog: 'catalogue' };
+
+const filtersOf = (route: Route): ListFilters => {
+  const type = route.query.get('type');
+  const publisher = route.query.get('publisher');
+  return {
+    tab: listSegments[route.segments[1] ?? ''] ?? 'in-use',
+    q: route.query.get('q') ?? '',
+    kind: listKinds.find((k) => k === type) ?? 'all',
+    publisher: publisherOptions.find((o) => o.value === publisher)?.value ?? 'all',
+  };
+};
+
+export const listHash = (filters: ListFilters) => {
+  const query = new URLSearchParams();
+  if (filters.kind !== 'all') query.set('type', filters.kind);
+  if (filters.publisher !== 'all') query.set('publisher', filters.publisher);
+  if (filters.q) query.set('q', filters.q);
+  const search = query.toString();
+  return `/building-blocks/${tabSegment[filters.tab]}${search ? `?${search}` : ''}`;
+};
 
 const ListPage = ({
   api,
@@ -32,12 +56,13 @@ const ListPage = ({
     async (signal) => {
       const [list, proposals, connectors] = await Promise.all([
         api.buildingBlocks.list(tenant, {}, signal),
-        api.buildingBlocks.proposals(tenant, signal).catch(() => []),
-        api.buildingBlocks.connectors(tenant, signal).catch(() => []),
+        settled(api.buildingBlocks.proposals(tenant, signal)),
+        settled(api.buildingBlocks.connectors(tenant, signal)),
       ]);
       return { ...list, proposals, connectors };
     },
     [tenant, version],
+    { keepPreviousFor: tenant },
   );
   if (state.status !== 'ready')
     return (
@@ -52,14 +77,17 @@ const ListPage = ({
         )}
       </div>
     );
+  const { proposals, connectors } = state.data;
+  const failed = !proposals.ok ? proposals.error : !connectors.ok ? connectors.error : undefined;
   return (
     <BlockList
       api={api}
       tenant={tenant}
       tenantName={tenantName}
       items={state.data.data}
-      proposals={state.data.proposals}
-      connectors={state.data.connectors}
+      proposals={proposals.ok ? proposals.data : []}
+      connectors={connectors.ok ? connectors.data : []}
+      partialError={failed === undefined ? undefined : { error: failed, retry }}
       filters={filters}
       onFilters={onFilters}
       onFlash={onFlash}
@@ -82,7 +110,7 @@ const DetailPage = ({
       const block = { kind, id };
       const [item, versions, services] = await Promise.all([
         api.buildingBlocks.get(tenant, block, signal),
-        api.buildingBlocks.versions(tenant, block, signal).catch(() => []),
+        settled(api.buildingBlocks.versions(tenant, block, signal)),
         api
           .overview(tenant, signal)
           .then((o): BlockUser[] => o.services.map((s) => ({ id: s.id, name: s.name })))
@@ -91,6 +119,7 @@ const DetailPage = ({
       return { item, versions, services };
     },
     [tenant, kind, id, version],
+    { keepPreviousFor: `${tenant}/${kind}/${id}` },
   );
   if (state.status === 'loading') return <Loading label={t('blocks.loadingOne')} />;
   if (state.status === 'error')
@@ -111,6 +140,7 @@ const DetailPage = ({
       item={state.data.item}
       services={state.data.services}
       versions={state.data.versions}
+      onRetry={retry}
       onChanged={(flash) => {
         onChanged(flash);
         setVersion((v) => v + 1);
@@ -120,14 +150,21 @@ const DetailPage = ({
 };
 
 export const BuildingBlocks = (props: ScreenProps) => {
-  const [, kind, id] = props.route.segments;
-  const [filters, setFilters] = useState<ListFilters>(initialFilters);
+  const { route } = props;
+  const [, kind, id] = route.segments;
+  const fromRoute = filtersOf(route);
+  const [typed, setTyped] = useState(fromRoute);
+  const filters = { ...typed, tab: fromRoute.tab };
   const [flash, setFlash] = useState<{ path: string; flash: Flash } | null>(null);
   const [version, setVersion] = useState(0);
-  const path = props.route.path;
+  const path = route.path;
+
+  const search = route.query.toString();
+  useEffect(() => {
+    setTyped(filtersOf(route));
+  }, [search, kind]);
 
   useEffect(() => {
-    setFilters(initialFilters);
     setFlash(null);
   }, [props.tenant]);
 
@@ -135,6 +172,12 @@ export const BuildingBlocks = (props: ScreenProps) => {
     setFlash({ path: at, flash: next });
     setVersion((v) => v + 1);
     window.scrollTo?.(0, 0);
+  };
+
+  const changeFilters = (next: ListFilters) => {
+    setTyped(next);
+    if (next.tab !== filters.tab) navigate(listHash(next));
+    else window.location.replace(`#${listHash(next)}`);
   };
 
   let page;
@@ -161,7 +204,7 @@ export const BuildingBlocks = (props: ScreenProps) => {
       <ListPage
         {...props}
         filters={filters}
-        onFilters={setFilters}
+        onFilters={changeFilters}
         onFlash={(next) => show(next)}
         version={version}
       />

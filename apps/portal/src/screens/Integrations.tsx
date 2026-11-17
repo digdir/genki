@@ -2,9 +2,7 @@ import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react'
 import { useFormat } from '@genai/i18n/react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { TriggerView } from '../api/triggers';
-import { API_BASE, endpoints } from '../data/api-reference';
 import {
-  docs,
   exampleFrontends,
   exampleSystems,
   exampleTriggers,
@@ -13,7 +11,7 @@ import {
   type TriggerSource,
 } from '../data/integrations';
 import { navigate, useAsync } from '../hooks';
-import { useT, type PlainKey, type T } from '../i18n';
+import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
 import { developerPageFor, IntegrationService, IntegrationTab } from './developer-routes';
@@ -49,29 +47,9 @@ const defaultOpen: Partial<Record<Tab, string>> = { systems: 'okon', triggers: '
 
 type Flash = { text: string; color: 'success' | 'info' | 'danger' };
 
-const downloadOpenApi = (t: T) => {
-  const paths: Record<string, Record<string, { summary: string }>> = {};
-  endpoints.forEach((e) => {
-    paths[e.path] = { ...paths[e.path], [e.method.toLowerCase()]: { summary: t(e.summary) } };
-  });
-  const spec = {
-    openapi: '3.1.0',
-    info: { title: 'Fellesløsning for generativ KI', version: '1.0.0' },
-    servers: [{ url: API_BASE }],
-    paths,
-  };
-  if (typeof URL.createObjectURL !== 'function') return;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(
-    new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' }),
-  );
-  a.download = 'felleslosning-ki-openapi.json';
-  a.click();
-};
-
 export const Integrations = (props: ScreenProps) => {
   const { tenantName, route } = props;
-  if (route.segments[1] === 'api' && route.segments[2] === 'code')
+  if (route.segments[1] === 'api')
     return props.live ? (
       <LiveCallFromCode api={props.api} tenant={props.tenant} tenantName={tenantName} />
     ) : (
@@ -533,31 +511,6 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
             status={route.query.get('status') === 'ok' ? 'ok' : 'feil'}
             fullContent
           />
-        ) : null}
-        {id === 'docs' ? (
-          <div className="stack-md">
-            <ul className="int-docs plain-list">
-              {docs.map((d) => (
-                <li key={d.title}>
-                  <a href={d.href} className="int-doc">
-                    <span className="int-doc-title">{t(d.title)}</span>
-                    <span className="meta small">{t(d.desc)}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <div>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  downloadOpenApi(t);
-                  say(t('integrations.openApiDownloaded'));
-                }}
-              >
-                {t('integrations.downloadOpenApi')}
-              </Button>
-            </div>
-          </div>
         ) : null}
       </div>
       {dialog ? (

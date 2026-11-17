@@ -62,7 +62,8 @@ describe('building blocks in English', () => {
             tenantName="Testetaten"
             item={borealis}
             services={[]}
-            versions={[]}
+            versions={{ ok: true, data: [] }}
+            onRetry={() => undefined}
             onChanged={() => undefined}
           />
         </RightsProvider>,
@@ -73,7 +74,7 @@ describe('building blocks in English', () => {
     expect(
       screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Add to a service' })).toBeTruthy();
+    expect(screen.getByText('No versions or changes have been recorded yet.')).toBeTruthy();
   });
 
   it('shows a read-only notice naming the right in English', () => {
@@ -86,7 +87,8 @@ describe('building blocks in English', () => {
             tenantName="Testetaten"
             item={borealis}
             services={[]}
-            versions={[]}
+            versions={{ ok: true, data: [] }}
+            onRetry={() => undefined}
             onChanged={() => undefined}
           />
         </RightsProvider>,

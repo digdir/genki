@@ -37,6 +37,7 @@ import type {
   EvalRunSummary,
   FeedbackItem,
   TestSet,
+  UnmaskedInputUse,
   ValidationResult,
   AccessView,
   ApiKeyView,
@@ -520,11 +521,26 @@ export const createApiClient = ({
     },
     validate: async (definition: unknown, files: Record<string, string> = {}) => {
       try {
-        await sendJson<{ valid: true }>('POST', '/definitions/validate', { definition, files });
-        return { valid: true, errors: [] } satisfies ValidationResult;
+        const valid = await sendJson<{ valid: true; unmaskedInput?: UnmaskedInputUse[] }>(
+          'POST',
+          '/definitions/validate',
+          { definition, files },
+        );
+        return {
+          valid: true,
+          errors: [],
+          ...(valid.unmaskedInput ? { unmaskedInput: valid.unmaskedInput } : {}),
+        } satisfies ValidationResult;
       } catch (error) {
-        if (error instanceof ApiError && error.status === 422)
-          return { valid: false, errors: error.problem?.errors ?? [] } satisfies ValidationResult;
+        if (error instanceof ApiError && error.status === 422) {
+          const unmasked = (error.problem as { unmaskedInput?: UnmaskedInputUse[] } | undefined)
+            ?.unmaskedInput;
+          return {
+            valid: false,
+            errors: error.problem?.errors ?? [],
+            ...(unmasked ? { unmaskedInput: unmasked } : {}),
+          } satisfies ValidationResult;
+        }
         throw error;
       }
     },

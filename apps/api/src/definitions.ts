@@ -19,6 +19,7 @@ import type { ActorNames } from './actor-names.js';
 import { actorOf, shareOperatorOnlyType, sharingRefused, type Admin } from './admin.js';
 import { confirmedBy } from './governance.js';
 import { riskConfirmationProblems } from './risk-confirmation.js';
+import type { UnmaskedInputUse } from './operation-governance.js';
 import { t } from './i18n/index.js';
 import {
   type Authenticator,
@@ -37,6 +38,7 @@ export interface DefinitionsApiOptions {
   admin: Admin;
   access: Access;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
+  unmaskedInput?: (definition: Definition) => Promise<UnmaskedInputUse[]>;
   names?: ActorNames;
   now?: () => Date;
   registered?: (tenant: string) => Promise<boolean>;
@@ -60,6 +62,18 @@ const VersionSummary = z
   .openapi('VersionSummary');
 
 const Warning = z.object({ path: z.string(), message: z.string() }).openapi('DefinitionWarning');
+
+const UnmaskedInput = z
+  .object({
+    flow: z.string(),
+    step: z.string(),
+    stepName: z.string().optional(),
+    descriptor: z.string(),
+    operation: z.string(),
+    mediaType: z.string(),
+    consent: z.object({ mediaType: z.string(), reason: z.string() }).optional(),
+  })
+  .openapi('UnmaskedInputUse');
 
 const PublishedDefinition = VersionSummary.extend({
   kind: z.enum(definitionKinds),
@@ -120,7 +134,11 @@ const routes = {
       200: {
         content: {
           'application/json': {
-            schema: z.object({ valid: z.literal(true), warnings: z.array(Warning).optional() }),
+            schema: z.object({
+              valid: z.literal(true),
+              warnings: z.array(Warning).optional(),
+              unmaskedInput: z.array(UnmaskedInput).optional(),
+            }),
           },
         },
         description: 'The definition is valid',
@@ -342,13 +360,19 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     const lacking = tenant && refusedRight(c, principal, tenant, 'manage-services');
     if (lacking) return lacking;
     if (!validated.ok) return problem(c, 422, 'Invalid definition', { errors: validated.errors });
+    const unmasked = (await options.unmaskedInput?.(validated.definition)) ?? [];
+    const unmaskedInput = unmasked.length ? { unmaskedInput: unmasked } : {};
     const errors = [
       ...admin.check(validated.definition, read.files),
       ...(await publishRefusals(store, validated.definition)),
     ];
-    if (errors.length > 0) return problem(c, 422, 'Invalid definition', { errors });
+    if (errors.length > 0)
+      return problem(c, 422, 'Invalid definition', { errors, ...unmaskedInput });
     const warnings = definitionWarnings(validated.definition);
-    return c.json({ valid: true as const, ...(warnings.length ? { warnings } : {}) }, 200);
+    return c.json(
+      { valid: true as const, ...(warnings.length ? { warnings } : {}), ...unmaskedInput },
+      200,
+    );
   });
 
   app.openapi(routes.publish, async (c) => {

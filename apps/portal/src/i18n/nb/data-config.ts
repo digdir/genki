@@ -115,6 +115,7 @@ export const sharedServices = defineNamespace({
   residencyEu: 'EU/EØS',
   residencyOutside: 'Utenfor EU/EØS',
   notGiven: 'Ikke oppgitt',
+  residencyUnavailable: 'Kunne ikke hente hvor data behandles',
   text: 'Tekst',
   option: 'Valg',
   standard: 'Standard',
@@ -128,11 +129,9 @@ export const sharedServices = defineNamespace({
   tryAndDetailsFor: 'Prøv og se detaljer for {name}',
   back: 'Fellestjenester',
   versionN: 'Versjon {version}',
-  useInService: 'Bruk i en tjeneste',
-  modelAndData: 'Modell og data',
+  model: 'Modell',
+  whereProcessed: 'Hvor data behandles',
   qualityOnTestSet: 'Kvalitet på testsett',
-  modelProcessedIn: '{model}, behandles i {location}',
-  processedIn: 'Behandles i {location}',
   priceWithNote: '{price} ({note})',
   tryNow: 'Prøv nå',
   tryNote: 'Prøvekjøringer vises i Logg som testkjøringer og regnes med i forbruket.',
@@ -172,9 +171,9 @@ export const sharedServices = defineNamespace({
   exampleNote: 'Svaret er et eksempel. Id, innhold og tokens blir andre i ekte kall.',
   useTitle: 'Bruk i en tjeneste',
   useBody:
-    'Byggeren åpnes med {name} lagt til som verktøy. Assistenten foreslår resten av oppsettet ut fra hva tjenesten skal gjøre.',
+    'Legg til {name} som verktøy i byggeren, med verktøynavnet under. Assistenten foreslår resten av oppsettet ut fra hva tjenesten skal gjøre.',
   toolName: 'Verktøynavn: {tool}',
-  openBuilder: 'Åpne byggeren med {name}',
+  openBuilder: 'Åpne byggeren',
   audioUrlPlaceholder: '<URL til lydfilen>',
 });
 

@@ -42,7 +42,10 @@ import {
   strategyKey,
   toCapabilities,
   validateDefinition,
+  variantId,
+  variantStrategyOf,
   type CompiledCapability,
+  type Definition,
   type DefinitionStore,
   type PluginSchemas,
   type ServiceDefinition,
@@ -94,6 +97,7 @@ import {
   deleteConversationDocuments,
   runtimeDocumentStore,
   runtimeDocumentTypes,
+  runtimeFileTypes,
   runtimeMediaTypes,
 } from './runtime-documents.js';
 import {
@@ -317,7 +321,13 @@ import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { operatorOperationsModule } from './operator-operations.js';
-import { describedStepProblems, operationGovernanceModule } from './operation-governance.js';
+import {
+  describedStepProblems,
+  operationGovernanceModule,
+  stepMediaTypes,
+  unmaskedInputIn,
+  type UnmaskedInputUse,
+} from './operation-governance.js';
 import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
@@ -666,6 +676,7 @@ export interface ResolverHooks {
   batch?(compiled: CompiledCapability): Promise<boolean>;
   documents?(compiled: CompiledCapability): Promise<string[]>;
   media?(compiled: CompiledCapability): Promise<string[]>;
+  files?(compiled: CompiledCapability): Promise<string[]>;
 }
 
 const humanized = (id: string) => {
@@ -709,6 +720,8 @@ export const capabilityResolver = (
     if (documents.length) entry = { ...entry, documents };
     const media = (await hooks.media?.(compiled)) ?? [];
     if (media.length) entry = { ...entry, media };
+    const files = (await hooks.files?.(compiled)) ?? [];
+    if (files.length) entry = { ...entry, files };
     const searches = hooks.searches?.(principal, compiled) ?? [];
     if (searches.length) entry = { ...entry, searches };
     const fields = entry.inputFields;
@@ -1531,6 +1544,32 @@ export const createPlatform = async (input: PlatformInput) => {
       : undefined;
   };
 
+  const flowIn = async (tenant: string, flowRef: string) => {
+    const at = flowRef.lastIndexOf('@');
+    const id = flowRef.slice(0, at);
+    const version = Number(flowRef.slice(at + 1));
+    const flow =
+      (await store.get('StepFlow', tenant, id, version))?.definition ??
+      (await runtime.sharedRecipe(tenant, id, version));
+    return flow?.kind === 'StepFlow' ? flow : undefined;
+  };
+  const unmaskedInput = async (d: Definition): Promise<UnmaskedInputUse[]> => {
+    if (d.kind !== 'Service') return [];
+    const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
+    const uses: UnmaskedInputUse[] = [];
+    for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+      const flow = await flowOf(flowRef);
+      if (flow)
+        uses.push(
+          ...(await unmaskedInputIn(d, flow, flowRef, {
+            descriptors: runtime.descriptors,
+            flow: flowOf,
+          })),
+        );
+    }
+    return uses;
+  };
+
   const checkBeforePublish = async (definition: unknown, publisher: string) => {
     const validated = validateDefinition(definition, plugins);
     if (!validated.ok) return undefined;
@@ -1549,15 +1588,7 @@ export const createPlatform = async (input: PlatformInput) => {
         (s) => plugins.datasetNeeds?.has(strategyKey(s.id, s.version)) ?? false,
       );
       if (unsearchable.length > 0) return unsearchable;
-      const flowOf = async (flowRef: string) => {
-        const at = flowRef.lastIndexOf('@');
-        const id = flowRef.slice(0, at);
-        const version = Number(flowRef.slice(at + 1));
-        const flow =
-          (await store.get('StepFlow', d.metadata.tenant, id, version))?.definition ??
-          (await runtime.sharedRecipe(d.metadata.tenant, id, version));
-        return flow?.kind === 'StepFlow' ? flow : undefined;
-      };
+      const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
       for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
         const flow = await flowOf(flowRef);
         const problems = flow
@@ -1749,6 +1780,25 @@ export const createPlatform = async (input: PlatformInput) => {
         (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
           .spec,
       ),
+    files: async (compiled) => {
+      const spec = (await definitions.get('Service', compiled.service.tenant, compiled.service.id))
+        ?.definition.spec;
+      if (!spec) return [];
+      const typed = spec as ServiceDefinition['spec'];
+      const variant = typed.variants?.find((v) => variantId(v) === compiled.variant);
+      const uses = flowUsesOf(typed);
+      const own = uses.filter((u) => u.variant === compiled.variant);
+      const runsService = !variant || variantStrategyOf(typed, variant) === typed.strategy;
+      const refs = (own.length ? own : runsService ? uses.filter((u) => !u.variant) : []).map(
+        (u) => u.flow,
+      );
+      if (refs.length === 0) return [];
+      const stepTypes = await stepMediaTypes(refs, {
+        descriptors: runtime.descriptors,
+        flow: (ref) => flowIn(compiled.service.tenant, ref),
+      });
+      return runtimeFileTypes(spec, stepTypes);
+    },
     batch: async (compiled) => {
       const found = await definitions.get('Service', compiled.service.tenant, compiled.service.id);
       return (
@@ -2558,6 +2608,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     catalog: config.catalog,
     descriptors: runtime.descriptors,
+    unmaskedInput,
     liveSessions: runtime.liveSessions,
     ingestion: config.ingestion,
     gates: configurables.gates,

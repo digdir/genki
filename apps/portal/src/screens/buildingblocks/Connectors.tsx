@@ -467,6 +467,8 @@ const ConnectorCard = ({
 };
 
 export const connectorPollMs = 1500;
+export const connectorPollLimitMs = 30_000;
+const pollFailuresBeforeNotice = 3;
 
 export const ConnectorList = ({
   api,
@@ -481,6 +483,7 @@ export const ConnectorList = ({
   const t = useT();
   const [live, setLive] = useState(connectors);
   const [networks, setNetworks] = useState<PrivateNetworks>();
+  const [failures, setFailures] = useState(0);
   const syncing = live.some((c) => c.status === 'syncing');
 
   useEffect(() => setLive(connectors), [connectors]);
@@ -497,17 +500,22 @@ export const ConnectorList = ({
   useEffect(() => {
     if (!syncing) return;
     const controller = new AbortController();
+    const delay = Math.min(connectorPollMs * 2 ** failures, connectorPollLimitMs);
     const timer = setTimeout(() => {
       api.buildingBlocks.connectors(tenant, controller.signal).then(
-        (next) => !controller.signal.aborted && setLive(next),
-        () => undefined,
+        (next) => {
+          if (controller.signal.aborted) return;
+          setFailures(0);
+          setLive(next);
+        },
+        () => !controller.signal.aborted && setFailures((n) => n + 1),
       );
-    }, connectorPollMs);
+    }, delay);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [api, tenant, syncing, live]);
+  }, [api, tenant, syncing, live, failures]);
 
   return (
     <section aria-labelledby={headingId} className="stack-sm">
@@ -519,6 +527,14 @@ export const ConnectorList = ({
           ? t('connectors.networksOpen', { networks: networks.entries.join(', ') })
           : t('connectors.networksNone')}
       </Paragraph>
+      {syncing && failures >= pollFailuresBeforeNotice ? (
+        <Alert data-color="warning" data-size="sm">
+          <Paragraph data-size="sm">{t('connectors.pollFailing')}</Paragraph>
+          <Button variant="secondary" data-size="sm" onClick={() => setFailures(0)}>
+            {t('common.tryAgain')}
+          </Button>
+        </Alert>
+      ) : null}
       {live.length === 0 ? (
         <Paragraph>{t('connectors.listEmpty')}</Paragraph>
       ) : (

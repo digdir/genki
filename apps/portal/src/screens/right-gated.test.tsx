@@ -123,7 +123,7 @@ describe('buttons the person has no right for', () => {
     calls.push(...(await renderAs('#/integrations?tab=systems', useOnly)));
     await screen.findByRole('heading', { name: /Maskinporten/ });
     cleanup();
-    calls.push(...(await renderAs('#/settings?tab=transfer', useOnly)));
+    calls.push(...(await renderAs('#/settings/all', useOnly)));
     await screen.findAllByText(reason);
     expect(calls.filter((c) => /\/(audit|maskinporten-clients|export)(\?|$)/.test(c))).toEqual([]);
   });
