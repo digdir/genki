@@ -18,6 +18,7 @@ import {
   sourceDataset,
   sourceExcerpt,
   sourceFacts,
+  sourcePageLink,
   sourceTitle,
   sourceUrl,
 } from '../../data/playground';
@@ -182,6 +183,7 @@ const SourceDetail = ({
   const at = order.indexOf(source.chunkId);
   const previous = at > 0 ? order[at - 1] : undefined;
   const next = at >= 0 && at < order.length - 1 ? order[at + 1] : undefined;
+  const pageLink = sourcePageLink(source);
   const rows: [string, string][] = [
     [t('playground.detailChunk'), source.chunkId],
     ...(source.version === undefined || source.version === ''
@@ -190,6 +192,16 @@ const SourceDetail = ({
     ...(source.headers?.length
       ? [[t('playground.detailHeaders'), source.headers.join(' › ')] as [string, string]]
       : []),
+    ...(source.page === undefined
+      ? []
+      : [
+          [
+            t('playground.detailPage'),
+            source.pageEnd !== undefined && source.pageEnd > source.page
+              ? t('playground.detailPages', { from: source.page, to: source.pageEnd })
+              : String(source.page),
+          ] as [string, string],
+        ]),
     ...(source.document
       ? [[t('playground.detailDocument'), source.document] as [string, string]]
       : []),
@@ -218,6 +230,18 @@ const SourceDetail = ({
           </div>
         ))}
       </dl>
+      {pageLink ? (
+        <p className="playground-source-page">
+          <Link
+            href={pageLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t('playground.readPageNewTab', { page: source.page ?? 0, title })}
+          >
+            {t('playground.readPage', { page: source.page ?? 0 })}
+          </Link>
+        </p>
+      ) : null}
       {source.text ? (
         <div
           className="playground-source-text"

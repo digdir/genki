@@ -16,6 +16,7 @@ import {
   mockWorkspaceApi,
 } from './mock';
 import { ansattporten, organisationsFromApi } from './oidc';
+import { isSilentCallback, silentFrame } from './silent-frame';
 import { createProjectsApi } from './projects-api';
 import { setting } from './runtime-config';
 import { mockProjectsApi } from './projects-mock';
@@ -42,6 +43,7 @@ const auth = useMock
       organisations: organisationsFromApi(send, '/api'),
       ...(configuredIssuer ? {} : { fallback: localDevLogin(send) }),
       uiLocales: locale,
+      silent: silentFrame(window),
     });
 const api = useMock
   ? mockWorkspaceApi(400)
@@ -62,7 +64,7 @@ const projects = useMock
     });
 const root = document.getElementById('root');
 
-if (root) {
+if (root && !isSilentCallback(window)) {
   createRoot(root).render(
     <StrictMode>
       <App

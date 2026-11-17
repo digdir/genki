@@ -72,6 +72,24 @@ describe('ported headless-rag flows', () => {
     expect(notices(out.events)).toContainEqual(expect.objectContaining({ kind: 'retrieval' }));
   });
 
+  it("a source carries its chunk's page, page range, PDF address and heading path", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const paged = chunk('c3', { page: 12, pageEnd: 13, fileUrl: pdf, headers: ['3 Funn'] });
+    const retrieval = stubRetrieval([chunk('c1'), paged], [paged, chunk('c1')]);
+    const models = fakeModels({ primary: ['Påstanden stemmer, se [1] og [2].'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    const sources = sourcesOf(out.result) as Record<string, unknown>[];
+    expect(sources.map((s) => [s.chunkId, s.page, s.pageEnd, s.fileUrl, s.headers])).toEqual([
+      ['c3', 12, 13, pdf, ['3 Funn']],
+      ['c1', undefined, undefined, undefined, ['Kapittel']],
+    ]);
+  });
+
   it('records what the search detected in the retrieval notice', async () => {
     const detections = [
       { kind: 'year', field: 'title', values: ['2025'], queries: ['q'], use: 'boost' },

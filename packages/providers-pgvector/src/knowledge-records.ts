@@ -4,6 +4,7 @@ import {
   KnowledgeError,
   tombstoneHash,
   type DocumentRecords,
+  type FieldRefresh,
   type IndexRecord,
   type ListedFile,
   type OwnedRecord,
@@ -11,7 +12,7 @@ import {
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
 import { generationWritable, tryGenerationWrite } from './heavy-work.js';
-import { deleteDocument, replaceDocument } from './knowledge-writer.js';
+import { deleteDocument, replaceDocument, updateDocumentFields } from './knowledge-writer.js';
 import { transaction } from './schema.js';
 
 interface RecordRow {
@@ -37,6 +38,22 @@ const toRecord = (row: RecordRow): IndexRecord => ({
     ? { files: row.files.map((f) => ({ name: f.name, ...(f.sha256 ? { sha256: f.sha256 } : {}) })) }
     : {}),
 });
+
+/** Two field sets hold the same values, whatever the order of their keys (jsonb reorders them). */
+const sameFields = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+  const sorted = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sorted)
+      : v && typeof v === 'object'
+        ? Object.fromEntries(
+            Object.entries(v as Record<string, unknown>)
+              .filter(([, x]) => x !== undefined)
+              .sort(([x], [y]) => x.localeCompare(y))
+              .map(([k, x]) => [k, sorted(x)]),
+          )
+        : v;
+  return JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
+};
 
 const recordColumns = `number::text, dataset, id, record, state, change::text, gone`;
 
@@ -328,6 +345,116 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       return true;
     }),
 
+  refreshFields: async (dataset, fill, options = {}) => {
+    const batch = options.batch ?? 500;
+    // A run's own generation is written through its own tables until attached: refuse until then.
+    const { rows: standalone } = await writer.query<{ generation: string }>(
+      `select generation from kn_generations where dataset = $1 and state = 'standalone'`,
+      [dataset],
+    );
+    if (standalone[0])
+      throw new KnowledgeError(
+        'bad_request',
+        `${dataset} has a generation not attached yet (${standalone[0].generation}); refresh after its run ends`,
+      );
+    const { rows: held } = await writer.query<{ generation: string }>(
+      `select generation from kn_generations where dataset = $1 and state <> 'detaching'
+        order by generation`,
+      [dataset],
+    );
+    const generations = held.map((g) => g.generation);
+    const result: FieldRefresh = {
+      generations: generations.length,
+      updated: 0,
+      unchanged: 0,
+      copied: 0,
+    };
+    for (let after = '0'; ;) {
+      const { rows } = await writer.query<{
+        number: string;
+        id: string;
+        record: Record<string, unknown>;
+        change: string;
+        copied: boolean;
+      }>(
+        `select number::text, id, record, change::text,
+                not exists (select 1 from unnest(owners) o where o <> $3) as copied
+           from src_documents
+          where dataset = $1 and number > $2::bigint and state is distinct from 'deleted'
+          order by src_documents.number limit $4`,
+        [dataset, after, copyOwner, batch],
+      );
+      if (rows.length === 0) return result;
+      after = rows.at(-1)?.number ?? after;
+      const own = rows.filter((r) => {
+        if (r.copied) result.copied += 1;
+        return !r.copied;
+      });
+      if (own.length === 0 || generations.length === 0) {
+        result.unchanged += own.length;
+        continue;
+      }
+      await transaction(writer, async (client) => {
+        // The change sequence first, then the records, as a listing takes them.
+        await client.query(`select 1 from src_changes where dataset = $1 for update`, [dataset]);
+        // In one order, so two refreshes never wait on each other's generations.
+        const locked = [];
+        for (const generation of generations)
+          locked.push({ generation, ...(await lockGeneration(client, generation, dataset)) });
+        const ids = own.map((r) => r.id);
+        const { rows: docs } = await client.query<{
+          generation: string;
+          id: string;
+          fields: Record<string, unknown>;
+          url: string | null;
+          applied: string;
+        }>(
+          `select d.generation, d.id, d.fields, d.url, a.change::text as applied
+             from kn_docs d join kn_applied a on a.generation = d.generation and a.id = d.id
+            where d.dataset = $1 and d.generation = any($2) and d.id = any($3)`,
+          [dataset, generations, ids],
+        );
+        for (const r of own) {
+          const { rows: current } = await client.query<{ change: string }>(
+            `select change::text from src_documents where number = $1::bigint for update`,
+            [r.number],
+          );
+          if (current[0]?.change !== r.change) continue;
+          // Only a generation that holds the record's current change takes the new fields.
+          const holding = docs.filter((d) => d.id === r.id && d.applied === r.change);
+          const filled = holding.map((d) => ({
+            ...d,
+            next: fill({ id: r.id, record: r.record, fields: d.fields }),
+          }));
+          // A fill that gives no url leaves the column as it is.
+          const same = (d: (typeof filled)[number]) =>
+            sameFields(d.fields, d.next.fields) &&
+            (d.next.url === undefined || d.next.url === d.url);
+          if (filled.every(same)) {
+            result.unchanged += 1;
+            continue;
+          }
+          const change = await nextChange(client, dataset);
+          await client.query(`update src_documents set change = $2 where number = $1::bigint`, [
+            r.number,
+            change,
+          ]);
+          for (const d of filled) {
+            const target = locked.find((l) => l.generation === d.generation);
+            if (!target) continue;
+            if (!same(d)) await updateDocumentFields(client, target, r.id, d.next);
+            await client.query(
+              `update kn_applied set change = $3, applied_at = now() where generation = $1 and id = $2`,
+              [d.generation, r.id, change],
+            );
+          }
+          result.updated += 1;
+        }
+        for (const { generation } of locked) await moveDataVersion(client, generation);
+      });
+    }
+  },
+
   remove: (record, generation) =>
     transaction(writer, async (client) => {
       const { via } = await lockGeneration(client, generation, record.dataset);
@@ -359,6 +486,10 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
 
   gone: (record, run) =>
     transaction(writer, async (client) => {
+      // The change sequence before the record, as a listing and a refresh take them.
+      await client.query(`select 1 from src_changes where dataset = $1 for update`, [
+        record.dataset,
+      ]);
       const { rows } = await client.query<RecordRow>(
         `update src_documents set gone = gone + 1, gone_run = $2
           where number = $1::bigint and gone_run is distinct from $2

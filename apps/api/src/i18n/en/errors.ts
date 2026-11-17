@@ -123,6 +123,7 @@ export const catalogErrors = {
   keysCount: 'at most 4 named keys',
   secretReference: 'must be a secret:// reference',
   onlyOperatorSets: 'only the operator sets {field}, and only on a model connection',
+  gatewayBoolean: 'gateway must be true or false',
   endpointExists: 'The endpoint already exists',
   endpointModelsInUse: 'The models from the endpoint are in use',
   usesModelFrom: '{tenant}/{service} uses a model from {id}',
@@ -239,6 +240,9 @@ export const knowledgeErrors = {
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
   notSendRunBack: 'not allowed to send this run back',
+  onlyOperatorRefreshesFields: 'only an operator refreshes fields',
+  fillMustBeOneOf: 'fill must be one of {fieldFills}',
+  runOpenRefreshAfter: 'a run of the dataset is open; refresh after it ends',
   onlyJobRunsSentBack: 'only a run that runs as jobs can be sent back',
   notReadmitRun: 'not allowed to admit this run again',
   onlyJobRunsReadmitted: 'only a run that runs as jobs can be admitted again',
@@ -622,6 +626,18 @@ export const routeErrors = {
   unknownResidency: 'unknown residency {residency}',
 } satisfies Translation<typeof source.routeErrors>;
 
+export const demoErrors = {
+  recordingFinished: 'the recording has finished',
+  demoIdSlug: 'a demo id is a lowercase slug',
+  ifMatchVersion: 'if-match is a version number',
+  recordingFileTooLarge: '{name} is at most {maxBytes} bytes',
+  recordingFileEmpty: 'the file is empty',
+  uploadVideoFirst: 'upload demo.mp4 before finishing as recorded',
+  failureNeedsReason: 'a failed recording says why',
+  demoIsMapping: 'a demo is a YAML mapping',
+  notSlug: 'not a lowercase slug',
+} satisfies Translation<typeof source.demoErrors>;
+
 export const errors = {
   catalogErrors,
   knowledgeErrors,
@@ -632,4 +648,5 @@ export const errors = {
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };

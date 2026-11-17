@@ -1,6 +1,6 @@
 # 0002 A paradigm-neutral kernel
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; cancel from any instance, 2026-11-15). Proposed 2026-10-06
 
 ## Decision
 
@@ -27,4 +27,4 @@ v1 reserves a field for duplex interaction, which it does not build yet. Interru
 - Budgets are enforced by the kernel, along the whole chain of parent and child tasks. Ports report usage through their context, not the strategy.
 - Every task records the capability version, the strategy version and a hash of the resolved configuration.
 - Clients see only client events. The audit stream is a separate call that needs its own right.
-- A task always ends: a throwing strategy fails it, cancel ends it at once, and a deadline fails it.
+- A task always ends while its instance runs: a throwing strategy fails it, cancel ends it at once on that instance and from any other instance within about a second (ADR 0057), and a deadline fails it.

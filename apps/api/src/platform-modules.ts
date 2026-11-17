@@ -79,6 +79,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   evalCapability?: string;
   /** The platform's own version, recorded as the commit of the eval runs it starts. */
   appVersion?: string;
+  demoRecorderKeyDigest?: string;
   /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
   tenantSecrets?: TenantSecrets;
   /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */
@@ -99,6 +100,8 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
   };
   enrichmentTask?: TrackedWork;
+  /** Runs a direct dataset search as a kernel task, so its embedding counts like a run's (#678). */
+  datasetSearchTask?: TrackedWork;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;
   events(task: string): AsyncIterable<Event>;
@@ -107,7 +110,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   onChange(topic: ChangeTopic, listener: () => void | Promise<void>): () => void;
   ingestSources?: IngestSourceConfig;
   vault?: {
-    set(tenant: string, name: string, value: string): Promise<string>;
+    set(tenant: string, name: string, value: string, hosts?: readonly string[]): Promise<string>;
     delete(tenant: string, name: string): Promise<void>;
   };
   defaultEmbedding?: { model: string; dimensions: number; residency: Residency };

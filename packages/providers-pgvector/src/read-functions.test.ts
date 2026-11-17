@@ -573,6 +573,202 @@ describe('read functions on the knowledge server', () => {
     }
   });
 
+  describe("a hit's page and file", () => {
+    const paged = dataset('digdir/sider', 0);
+    const generation = 'g-20261116-sider';
+    const sha = (c: string) => c.repeat(64);
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const pagedDoc = (
+      id: string,
+      files: Record<string, unknown>[],
+      chunk: Partial<IndexDocument['chunks'][number]>,
+    ): IndexDocument => ({
+      id,
+      title: `Rapport ${id}`,
+      fields: { files },
+      chunks: [0, 1, 2].map((position) => ({
+        id: `${id}#${position}`,
+        position,
+        text: `Kommunene rapporterer om tilskudd, del ${position}`,
+        metadata: {},
+        ...chunk,
+        ...(chunk.pageFrom === undefined
+          ? {}
+          : { pageFrom: chunk.pageFrom + position, pageTo: (chunk.pageTo ?? 0) + position }),
+      })),
+      phrases: [],
+    });
+    const config = routed(paged, generation);
+
+    beforeAll(async () => {
+      await fill(paged, generation, [
+        pagedDoc(
+          'pdf',
+          [
+            { url: 'https://kudos.dfo.no/dokument/d1/filer/f0.pdf', sha256: sha('0') },
+            { url: pdf, sha256: sha('a'), mimetype: 'application/pdf' },
+          ],
+          {
+            pageFrom: 12,
+            pageTo: 13,
+            file: 'rapport.pdf',
+            fileSha256: sha('a'),
+            headingPath: ['3 Funn'],
+          },
+        ),
+        pagedDoc('en-side', [{ url: 'https://example.org/en.pdf#x', sha256: sha('b') }], {
+          pageFrom: 4,
+          pageTo: 4,
+          file: 'en.pdf',
+          fileSha256: sha('b'),
+        }),
+        pagedDoc(
+          'word',
+          [
+            {
+              url: 'https://example.org/notat.docx',
+              sha256: sha('c'),
+              mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            },
+          ],
+          { pageFrom: 2, pageTo: 2, file: 'notat.docx', fileSha256: sha('c') },
+        ),
+        pagedDoc(
+          'uten-adresse',
+          [
+            { url: null, sha256: sha('d') },
+            { url: 'ftp://example.org/y.pdf', sha256: sha('e') },
+          ],
+          { pageFrom: 7, pageTo: 7, file: 'y.pdf', fileSha256: sha('e') },
+        ),
+        pagedDoc('kopi', [], { metadata: { page: 30, pageEnd: 31 } }),
+      ]);
+      // As a chunk written before the columns were: its page is in its metadata only.
+      await primary.admin.query(
+        `update kn_chunks set page_from = null, page_to = null where generation = $1 and doc_id = 'kopi'`,
+        [generation],
+      );
+    });
+
+    it("a search hit carries its chunk's page, page range, file and heading path", async () => {
+      const [result] = await connectionOf().search(
+        config,
+        [{ query: 'tilskudd', profile: 'content' }],
+        signal,
+      );
+      const hit = result?.hits.find((h) => h.id === 'pdf#0');
+      expect(hit?.fields).toMatchObject({
+        page: 12,
+        pageEnd: 13,
+        file: 'rapport.pdf',
+        headingPath: ['3 Funn'],
+      });
+      const one = result?.hits.find((h) => h.id === 'en-side#0');
+      expect(one?.fields).toMatchObject({ page: 4, file: 'en.pdf' });
+      expect(one?.fields).not.toHaveProperty('pageEnd');
+      expect(one?.fields).not.toHaveProperty('headingPath');
+    });
+
+    it('the chunks read around a hit carry their pages', async () => {
+      const connection = connectionOf();
+      const around = await connection.range?.(config, 'pdf', 0, 2, signal);
+      expect(around?.map((h) => [h.id, h.fields.page, h.fields.pageEnd])).toEqual([
+        ['pdf#0', 12, 13],
+        ['pdf#1', 13, 14],
+        ['pdf#2', 14, 15],
+      ]);
+      const [fetched] = await connection.fetch(config, ['pdf#1'], signal);
+      expect(fetched?.fields).toMatchObject({ page: 13, pageEnd: 14, file: 'rapport.pdf' });
+    });
+
+    it('a chunk with its page only in metadata still carries it', async () => {
+      const [hit] = await connectionOf().fetch(config, ['kopi#0'], signal);
+      expect(hit?.fields).toMatchObject({ page: 30, pageEnd: 31 });
+      expect(hit?.fields).not.toHaveProperty('file');
+      expect(hit?.fields).not.toHaveProperty('fileUrl');
+    });
+
+    it("a hit's file address is the one its document's record names for the chunk's file", async () => {
+      const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
+      expect(hit?.fields.fileUrl).toBe(pdf);
+      // An address with a fragment of its own loses it, so `#page=N` can follow.
+      const [one] = await connectionOf().fetch(config, ['en-side#0'], signal);
+      expect(one?.fields.fileUrl).toBe('https://example.org/en.pdf');
+      // No http(s) address for the chunk's file in the record: no link, whatever else it lists.
+      const [none] = await connectionOf().fetch(config, ['uten-adresse#0'], signal);
+      expect(none?.fields).toMatchObject({ page: 7, file: 'y.pdf' });
+      expect(none?.fields).not.toHaveProperty('fileUrl');
+    });
+
+    it("a hit's page link is only for a PDF file, by its mimetype or a .pdf address", async () => {
+      const [word] = await connectionOf().fetch(config, ['word#0'], signal);
+      expect(word?.fields).toMatchObject({ page: 2, file: 'notat.docx' });
+      expect(word?.fields).not.toHaveProperty('fileUrl');
+    });
+
+    it('a server whose read functions return no pages gets ones that do when it migrates', async () => {
+      await owner.query(`drop function kn_fetch(text, text, text[])`);
+      await owner.query(
+        `create function kn_fetch(p_dataset text, p_generation text, p_ids text[])
+           returns table (id text, text text, doc_id text, "position" integer, metadata jsonb, title text,
+             url text, fields jsonb, score double precision, total integer, data_version bigint)
+           language sql as $$ select null::text, null, null, null::int, null::jsonb, null, null,
+             null::jsonb, null::float8, null::int, null::bigint where false $$`,
+      );
+      await migrateKnowledgeServer(owner);
+      const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
+      expect(hit?.fields).toMatchObject({ page: 12, pageEnd: 13, fileUrl: pdf });
+    });
+
+    it("a server whose read functions return another hit shape gets this release's when it migrates", async () => {
+      // As a later release would leave them, which a rollback to this one must replace.
+      await owner.query(`drop function kn_fetch(text, text, text[])`);
+      await owner.query(
+        `create function kn_fetch(p_dataset text, p_generation text, p_ids text[])
+           returns table (id text, text text, doc_id text, "position" integer, metadata jsonb, title text,
+             url text, fields jsonb, page_from integer, page_to integer, file text, file_sha256 text,
+             heading_path text[], page_label text, score double precision, total integer, data_version bigint)
+           language plpgsql as $$ begin end $$`,
+      );
+      await migrateKnowledgeServer(owner);
+      const [hit] = await connectionOf().fetch(config, ['pdf#0'], signal);
+      expect(hit?.fields).toMatchObject({ page: 12, pageEnd: 13, fileUrl: pdf });
+      // This release's own functions are kept as they are, not dropped on every start.
+      const oids = async () =>
+        (
+          await owner.query<{ oid: string }>(
+            `select p.oid::text from pg_proc p where p.proname in ('kn_search', 'kn_fetch', 'kn_range') order by 1`,
+          )
+        ).rows.map((r) => r.oid);
+      const before = await oids();
+      await migrateKnowledgeServer(owner);
+      expect(await oids()).toEqual(before);
+    });
+
+    it('an API replica reading functions from before this change keeps the page metadata gives', async () => {
+      // A deploy starts new API replicas before the worker migrates the knowledge server.
+      try {
+        await owner.query(`drop function if exists kn_fetch(text, text, text[])`);
+        await owner.query(
+          `create function kn_fetch(p_dataset text, p_generation text, p_ids text[])
+             returns table (id text, text text, doc_id text, "position" integer, metadata jsonb, title text,
+               url text, fields jsonb, score double precision, total integer, data_version bigint)
+             language sql security definer set search_path = pg_catalog, public as $$
+               select 'kopi#0', 'Tekst', 'kopi', 0, '{"page": 30, "pageEnd": 31}'::jsonb, 'Kopi',
+                 null::text, '{}'::jsonb, null::float8, null::int, 1::bigint $$`,
+        );
+        await owner.query(
+          `grant execute on function kn_fetch(text, text, text[]) to ${knowledgeRoles.reader}`,
+        );
+        const [hit] = await connectionOf().fetch(config, ['kopi#0'], signal);
+        expect(hit?.fields).toMatchObject({ page: 30, pageEnd: 31 });
+        expect(Object.keys(hit?.fields ?? {})).not.toContain('file');
+      } finally {
+        await migrateKnowledgeServer(owner);
+      }
+    });
+  });
+
   it('a document listing past its last page still counts every document', async () => {
     const page = await connectionOf().documents?.(
       routed(kudos, kudosGeneration),
@@ -620,7 +816,7 @@ describe('read functions on the knowledge server', () => {
       );
       await expect(
         connection.fetch(routed(kudos, kudosGeneration), ['a#0'], signal),
-      ).rejects.toMatchObject({ code: '57014' });
+      ).rejects.toMatchObject({ code: 'timeout' });
     } finally {
       await blocker.query('rollback');
       blocker.release();
@@ -764,6 +960,283 @@ describe('read functions on the knowledge server', () => {
     ).toMatch(new RegExp(`(Index Scan using|Bitmap Index Scan on) ${docs}_r_\\w+`));
   });
 });
+
+describe('text search on the knowledge server', () => {
+  const words = dataset('digdir/ord', 8, {
+    options: {
+      profiles: {
+        content: { target: 'chunks', mode: 'hybrid' },
+        mening: { target: 'chunks', mode: 'vector' },
+        ord: { target: 'chunks', mode: 'text' },
+        metadata: { target: 'docs', mode: 'text' },
+      },
+    },
+  });
+  const wordsGeneration = 'g-20261117-ord';
+  const page = (id: string, title: string, text: string): IndexDocument => ({
+    id,
+    title,
+    fields: {},
+    chunks: [{ id: `${id}-0`, position: 0, text, metadata: {}, vector: fixtureVector(text, 8) }],
+    phrases: [],
+  });
+  const at = routed(words, wordsGeneration);
+  /** The rows the read function returns for the text half of a hybrid search: the profile without its vector. */
+  const textHalf = async (query: string) =>
+    (
+      await asReader<{ doc_id: string }>(
+        `select doc_id from kn_search($1, $2, 'chunks', 'hybrid', $3, null, null, '[]', 10, 50, 60)`,
+        [words.id, wordsGeneration, query],
+        [words.id],
+      )
+    ).map((r) => r.doc_id);
+
+  beforeAll(async () => {
+    await fill(words, wordsGeneration, [
+      page(
+        'alle',
+        'Kvinners lønn i Helsedirektoratet',
+        'Kvinners lønn i Helsedirektoratet var 826 000 i 2023',
+      ),
+      page('noen', 'Lønn i Helsedirektoratet', 'Lønn for menn i Helsedirektoratet'),
+      page('rekke', 'Lønn i Statens vegvesen', 'Lønn som kvinner fikk i vegvesenet'),
+    ]);
+  });
+
+  it('a text search whose words all appear in a chunk ranks only the chunks that hold all of them', async () => {
+    expect(await textHalf('kvinners lønn Helsedirektoratet')).toEqual(['alle']);
+    expect(await textHalf('lønn Helsedirektoratet')).toEqual(
+      expect.arrayContaining(['alle', 'noen']),
+    );
+    expect(await textHalf('lønn Helsedirektoratet')).toHaveLength(2);
+  });
+
+  it('a quoted phrase in a text search matches only the words in that order', async () => {
+    expect((await textHalf('kvinners lønn')).sort()).toEqual(['alle', 'rekke']);
+    expect(await textHalf('"kvinners lønn"')).toEqual(['alle']);
+  });
+
+  it('a hybrid search with a word no chunk holds returns the vector hits and no partial word matches', async () => {
+    const query = 'kvinners lønn tjente';
+    const [hybrid, meaning] = await connectionOf().search(
+      at,
+      [
+        { query, profile: 'content' },
+        { query, profile: 'mening' },
+      ],
+      signal,
+    );
+    expect(hybrid?.warning).toBeUndefined();
+    expect(hybrid?.hits.map((h) => h.id)).toEqual(meaning?.hits.map((h) => h.id));
+    // Each hit scores from the vector list alone: 1 / (60 + its rank there).
+    expect(hybrid?.hits.map((h) => h.score)).toEqual(meaning?.hits.map((_, i) => 1 / (60 + i + 1)));
+  });
+
+  it('a text-only search that finds too few documents with all its words adds those with some of them, after', async () => {
+    const [both] = await connectionOf().search(
+      at,
+      [{ query: 'kvinners lønn Helsedirektoratet', profile: 'metadata' }],
+      signal,
+    );
+    // Documents are searched by title: `alle` holds every word, the others some.
+    expect(both?.hits.map((h) => h.document)).toEqual(['alle', 'noen', 'rekke']);
+    expect(both?.hits[0]?.score).toBeGreaterThanOrEqual(1);
+    expect(both?.hits.slice(1).every((h) => h.score < 1)).toBe(true);
+    const [missing] = await connectionOf().search(
+      at,
+      [{ query: 'lønn Helsedirektoratet tjente', profile: 'metadata' }],
+      signal,
+    );
+    expect(missing?.hits.map((h) => h.document).sort()).toEqual(['alle', 'noen', 'rekke']);
+  });
+
+  it('a text-only search that excludes a word never returns a chunk holding it', async () => {
+    const [result] = await connectionOf().search(
+      at,
+      [{ query: 'lønn -menn', profile: 'ord' }],
+      signal,
+    );
+    expect(result?.hits.map((h) => h.document).sort()).toEqual(['alle', 'rekke']);
+  });
+
+  it('a hybrid search whose query cannot be embedded searches text as a text profile does, with a warning', async () => {
+    const unembedded = readEngine(api.pools, () => ({
+      embed: async () => {
+        throw new Error('the embedding service is down');
+      },
+    }));
+    const [result] = await connectionOf(unembedded).search(
+      at,
+      [{ query: 'kvinners lønn tjente', profile: 'content' }],
+      signal,
+    );
+    expect(result?.warning).toMatch(/^vector search is unavailable/);
+    expect(result?.hits.map((h) => h.document).sort()).toEqual(['alle', 'noen', 'rekke']);
+    expect(result?.hits.every((h) => h.score < 1)).toBe(true);
+  });
+
+  describe('with more matches than the cap', () => {
+    const bulkGeneration = 'g-20261117-bulk';
+    const bulk = dataset('digdir/bulk', 8, {
+      options: {
+        profiles: {
+          content: { target: 'chunks', mode: 'hybrid' },
+          ord: { target: 'chunks', mode: 'text' },
+          mening: { target: 'chunks', mode: 'vector' },
+        },
+      },
+    });
+
+    beforeAll(async () => {
+      await fill(bulk, bulkGeneration, [
+        page('budsjett', 'Budsjett', 'Budsjett for tilskudd i 2024'),
+        page('lonn', 'Lønn', 'Lønn og tilskudd i 2024'),
+      ]);
+      const docs = partitionOf('kn_docs', bulkGeneration);
+      const chunks = partitionOf('kn_chunks', bulkGeneration);
+      await owner.query(
+        `insert into ${docs} (dataset, generation, id, title, fields, config)
+           select 'digdir/bulk', $1, 'mange-' || n, 'Budsjett ' || n, '{}', 'norwegian'
+           from generate_series(1, 6000) n`,
+        [bulkGeneration],
+      );
+      await owner.query(
+        `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config)
+           select 'digdir/bulk', $1, 'mange-' || n, 'mange-' || n, 0, 'budsjett og regnskap ' || n, 'norwegian'
+           from generate_series(1, 6000) n`,
+        [bulkGeneration],
+      );
+      // Two words in half the chunks each, never in the same one.
+      await owner.query(
+        `insert into ${chunks} (dataset, generation, id, doc_id, position, text, config)
+           select 'digdir/bulk', $1, 'hver-' || n, 'mange-' || (n % 6000 + 1), n,
+             case when n % 2 = 0 then 'havneavgift ' else 'kystverket ' end || n, 'norwegian'
+           from generate_series(1, 100000) n`,
+        [bulkGeneration],
+      );
+      await owner.query(`analyze ${docs}`);
+      await owner.query(`analyze ${chunks}`);
+    }, 60_000);
+
+    const statementFor = async (target: string, mode: string, query: string) => {
+      const { rows } = await owner.query<{ sql: string }>(
+        `select kn_search_sql($1, $2, $3, $4, $5, null, null, '[]', 10, 50, 60) as sql`,
+        [bulk.id, bulkGeneration, target, mode, query],
+      );
+      return rows[0]?.sql ?? '';
+    };
+
+    it('a text search ranks at most 5,000 of the chunks it matches', async () => {
+      const rankedRows = async (target: string, mode: string, query: string) => {
+        const sql = await statementFor(target, mode, query);
+        const { rows: plan } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+          `explain (analyze, format json) ${sql}`,
+        );
+        const read: number[] = [];
+        const walk = (node: PlanNode) => {
+          // The rows going into the aggregate or sort where ts_rank_cd ranks the matches.
+          if (/Aggregate|Sort/.test(node['Node Type']))
+            read.push(node.Plans?.[0]?.['Actual Rows'] ?? 0);
+          node.Plans?.forEach(walk);
+        };
+        const [explained] = plan;
+        if (explained) walk(explained['QUERY PLAN'][0].Plan);
+        return read;
+      };
+      // All words, as a hybrid search's text half runs it, the fallback to some of them, and documents.
+      for (const [target, mode, query] of [
+        ['chunks', 'hybrid', 'budsjett regnskap'],
+        ['chunks', 'text', 'budsjett tjente'],
+        ['docs', 'text', 'budsjett'],
+      ] as const) {
+        const read = await rankedRows(target, mode, query);
+        expect(read.length).toBeGreaterThan(0);
+        expect(Math.max(...read)).toBeLessThanOrEqual(5000);
+      }
+    });
+
+    it('a text search for words common apart but never together reads a small part of the partition', async () => {
+      const chunks = partitionOf('kn_chunks', bulkGeneration);
+      for (const mode of ['hybrid', 'text']) {
+        const { rows } = await owner.query<{ 'QUERY PLAN': [{ Plan: PlanNode }] }>(
+          `explain (analyze, format json) ${await statementFor('chunks', mode, 'havneavgift kystverket')}`,
+        );
+        let read = 0;
+        const walk = (node: PlanNode) => {
+          if (node['Relation Name'] === chunks)
+            read +=
+              (node['Actual Rows'] + (node['Rows Removed by Filter'] ?? 0)) * node['Actual Loops'];
+          node.Plans?.forEach(walk);
+        };
+        const [explained] = rows;
+        if (explained) walk(explained['QUERY PLAN'][0].Plan);
+        // The partition holds 106,002 chunks; the some-words fallback reads until it has 5,000.
+        expect(read).toBeLessThan(15_000);
+      }
+    });
+
+    it('a hybrid search whose text half runs past its limit returns the vector hits with a warning', async () => {
+      const slow = pgvectorEngine({
+        pool: primary.admin,
+        knowledge: api.pools,
+        embedder: fixtureEmbedder,
+        textSearchMs: 1,
+      });
+      const connection = connectionOf(slow);
+      const [hybrid, meaning] = await connection.search(
+        routed(bulk, bulkGeneration),
+        [
+          { query: 'budsjett regnskap', profile: 'content' },
+          { query: 'budsjett regnskap', profile: 'mening' },
+        ],
+        signal,
+      );
+      expect(hybrid?.warning).toMatch(
+        /^text search took longer than .* s; these hits come from vector search only$/,
+      );
+      expect(hybrid?.hits.map((h) => h.id)).toEqual(meaning?.hits.map((h) => h.id));
+      expect(hybrid?.hits.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('a hybrid search whose vector half fails returns the text hits with a warning', async () => {
+    const broken = readEngine(api.pools, () => ({
+      embed: async (texts) => texts.map(() => Array.from({ length: 8 }, () => Number.NaN)),
+    }));
+    const [hybrid] = await connectionOf(broken).search(
+      at,
+      [{ query: 'kvinners lønn Helsedirektoratet', profile: 'content' }],
+      signal,
+    );
+    expect(hybrid?.warning).toMatch(
+      /^vector search failed: .*; these hits come from text search only$/,
+    );
+    expect(hybrid?.hits.map((h) => h.document)).toEqual(['alle']);
+  });
+
+  it('a hybrid search ranks its hits by RRF of the text and vector ranks', async () => {
+    const query = 'lønn i Helsedirektoratet';
+    const [hybrid] = await connectionOf().search(at, [{ query, profile: 'content' }], signal);
+    // The same search as one statement, merged by the read function's SQL.
+    const sql = await asReader<{ id: string; score: number }>(
+      `select id, score from kn_search($1, $2, 'chunks', 'hybrid', $3, $4::halfvec, null, '[]', 10, 50, 60)`,
+      [words.id, wordsGeneration, query, JSON.stringify(fixtureVector(query, 8))],
+      [words.id],
+    );
+    expect(hybrid?.hits.length).toBe(3);
+    expect(hybrid?.hits.map((h) => h.id)).toEqual(sql.map((r) => r.id));
+    hybrid?.hits.forEach((h, i) => expect(h.score).toBeCloseTo(sql[i]?.score ?? Number.NaN, 12));
+  });
+});
+
+interface PlanNode {
+  'Node Type': string;
+  'Relation Name'?: string;
+  'Actual Rows': number;
+  'Actual Loops': number;
+  'Rows Removed by Filter'?: number;
+  Plans?: PlanNode[];
+}
 
 let seeded = 0;
 const generationFor = (name: string) => {

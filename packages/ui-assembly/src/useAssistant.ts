@@ -210,6 +210,14 @@ const readThreadFilters = (stored: unknown): ReadonlyMap<string, FilterSelection
 const storeThreadFilters = (filters: ReadonlyMap<string, FilterSelection>) =>
   Object.fromEntries(filters);
 
+/** An excerpt's own file: its http(s) `url` before `#page=N`, when it has a page. */
+const excerptFileOf = (
+  excerpt: { page?: number | undefined; url?: string | undefined } | undefined,
+) =>
+  excerpt?.page !== undefined && excerpt.url && /^https?:\/\//i.test(excerpt.url)
+    ? excerpt.url.split('#', 1)[0]
+    : undefined;
+
 /** The first sentence of a service's description, as the picker's line under a variant, if short. */
 const firstSentence = (text: string | undefined) => {
   const sentence = text?.split(/(?<=[.!?])\s/)[0]?.trim();
@@ -571,6 +579,7 @@ export const useAssistant = ({
 
   const [activeId, setActiveId] = useState<string>();
   const [sourceTarget, setSourceTarget] = useState<SourceTarget>();
+  const [shownFootnote, setShownFootnote] = useState<number>();
   const [answerTarget, setAnswerTarget] = useState<ConversationTarget>();
   const lastFollowed = useRef<ConversationTarget>(undefined);
   const [tool, setTool] = useState<string>();
@@ -601,6 +610,7 @@ export const useAssistant = ({
   useEffect(() => {
     reads.current += 1;
     setSourceTarget(undefined);
+    setShownFootnote(undefined);
     setAnswerTarget(undefined);
     setOpenDoc(undefined);
     setActiveId(undefined);
@@ -896,6 +906,7 @@ export const useAssistant = ({
     const id = `local-${Date.now()}`;
     reads.current += 1;
     setSourceTarget(undefined);
+    setShownFootnote(undefined);
     // A question about a document names it, in the thread and to the model, and searches only that
     // document where the collection lets a question be narrowed by its number.
     const documentId = about?.source.documentId;
@@ -1160,10 +1171,10 @@ export const useAssistant = ({
     if (chatZone === 'secondary') setRequest({ action: 'open', side: 'secondary' });
   }, [chatZone]);
 
-  /** A footnote or a document asks for Kilder: the panel opens, on the Kilder tool. */
-  const showSources = (turnId: string, target: SourceTarget) => {
+  const showSources = (turnId: string, target: SourceTarget, footnote?: number) => {
     setActiveId(turnId);
     setSourceTarget({ ...target });
+    setShownFootnote(footnote);
     setTool('sources');
     setRequest({ action: 'open', side: 'secondary' });
   };
@@ -1183,31 +1194,41 @@ export const useAssistant = ({
       ? fileSources[targetPosition(fileSources, openDoc.target)]
       : undefined;
   const fileOf = fileSource ? (fileSource.documentId ?? '') : undefined;
+  // The opened excerpt's own file, its `url` before `#page=N`, so the host can serve that file.
+  const excerptFile = excerptFileOf(
+    fileSource?.excerpts.find((e) => e.chunkId === openDoc?.target.chunkId),
+  );
+  // One call per document and file: another excerpt of the same file asks nothing again.
+  const fileKey = fileOf ? `${fileOf}\n${excerptFile ?? ''}` : fileOf;
   const findFileRef = useRef(findFile);
   findFileRef.current = findFile;
-  const [found, setFound] = useState<{ documentId: string; file: DocumentFileStatus }>();
+  const [found, setFound] = useState<{ key: string; file: DocumentFileStatus }>();
   useEffect(() => {
     const find = findFileRef.current;
-    if (!fileOf || typeof find !== 'function') return;
+    if (!fileOf || !fileKey || typeof find !== 'function') return;
     const controller = new AbortController();
     // A result for a document no longer open is dropped: the call was aborted on the way out.
     const settle = (file: DocumentFileStatus) => {
-      if (!controller.signal.aborted) setFound({ documentId: fileOf, file });
+      if (!controller.signal.aborted) setFound({ key: fileKey, file });
     };
     Promise.resolve()
-      .then(() => find(fileOf, controller.signal))
+      .then(() =>
+        excerptFile
+          ? find(fileOf, controller.signal, { file: excerptFile })
+          : find(fileOf, controller.signal),
+      )
       .then(
         (file) => settle(file ? { status: 'ready', file } : { status: 'none' }),
         () => settle({ status: 'failed' }),
       );
     return () => controller.abort();
-  }, [fileOf]);
+  }, [fileKey]);
   const documentFile: DocumentFileStatus | undefined =
     fileOf === undefined
       ? undefined
       : fileOf === ''
         ? { status: 'none' }
-        : found?.documentId === fileOf
+        : found && found.key === fileKey
           ? found.file
           : { status: 'loading' };
   // The document keeps to the answer it was opened from, whichever answer Kilder shows after.
@@ -1426,6 +1447,8 @@ export const useAssistant = ({
     answered,
     shownIndex,
     sourceTarget,
+    shownFootnote,
+    setShownFootnote,
     answerTarget,
     lastFollowed,
     showSources,
@@ -1434,6 +1457,7 @@ export const useAssistant = ({
       if (!turn) return;
       setActiveId(turn.id);
       setSourceTarget(undefined);
+      setShownFootnote(undefined);
     },
     goToUse: (citation: number) => {
       if (!active) return;

@@ -1,6 +1,7 @@
 import type { InputField } from './input-fields.js';
 
 export * from './input-fields.js';
+export * from './kudos-earlier-ids.js';
 export * from './run-errors.js';
 export * from './schema-meta.js';
 export * from './source-links.js';
@@ -315,6 +316,7 @@ export interface Task {
   owner: string;
   parent?: string;
   thread?: string;
+  entryPoint?: string;
   status: TaskStatus;
   pendingInterrupt?: Interrupt;
   result?: Part[];

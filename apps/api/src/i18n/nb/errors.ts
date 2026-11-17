@@ -122,6 +122,7 @@ export const catalogErrors = defineNamespace({
   keysCount: 'høyst 4 navngitte nøkler',
   secretReference: 'må være en secret://-referanse',
   onlyOperatorSets: 'bare operatøren setter {field}, og bare på en modellkobling',
+  gatewayBoolean: 'gateway må være true eller false',
   endpointExists: 'Endepunktet finnes allerede',
   endpointModelsInUse: 'Modellene fra endepunktet er i bruk',
   usesModelFrom: '{tenant}/{service} bruker en modell fra {id}',
@@ -239,6 +240,9 @@ export const knowledgeErrors = defineNamespace({
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',
   notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
+  onlyOperatorRefreshesFields: 'bare en driftsoperatør fyller nye felt',
+  fillMustBeOneOf: 'fill må være en av {fieldFills}',
+  runOpenRefreshAfter: 'en kjøring av datasettet pågår; fyll feltene når den er ferdig',
   onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
   notReadmitRun: 'du har ikke lov til å slippe denne kjøringen inn igjen',
   onlyJobRunsReadmitted: 'bare en kjøring som går som jobber, kan slippes inn igjen',
@@ -626,6 +630,18 @@ export const routeErrors = defineNamespace({
   unknownResidency: 'ukjent dataplassering {residency}',
 });
 
+export const demoErrors = defineNamespace({
+  recordingFinished: 'opptaket er ferdig',
+  demoIdSlug: 'en demo-id er en slug med små bokstaver',
+  ifMatchVersion: 'if-match er et versjonsnummer',
+  recordingFileTooLarge: '{name} er på høyst {maxBytes} byte',
+  recordingFileEmpty: 'filen er tom',
+  uploadVideoFirst: 'last opp demo.mp4 før opptaket avsluttes som tatt opp',
+  failureNeedsReason: 'et mislykket opptak sier hvorfor',
+  demoIsMapping: 'en demo er en YAML-mapping',
+  notSlug: 'ikke en slug med små bokstaver',
+});
+
 export const errors = {
   catalogErrors,
   knowledgeErrors,
@@ -636,4 +652,5 @@ export const errors = {
   adapterErrors,
   definitionErrors,
   routeErrors,
+  demoErrors,
 };

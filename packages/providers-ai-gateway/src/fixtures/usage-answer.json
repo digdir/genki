@@ -1,0 +1,53 @@
+{
+  "timeRange": { "from": "2026-11-17T10:00:00Z", "to": "2026-11-17T12:00:00Z" },
+  "bucketSeconds": 3600,
+  "buckets": [
+    {
+      "start": "2026-11-17T11:00:00Z",
+      "group": {
+        "requestModel": "aivar:borealis",
+        "usage.client": "genki",
+        "usage.org": "991825827"
+      },
+      "requests": 1,
+      "totalTokens": 19,
+      "cost": 0.0000042,
+      "inputTokens": 16,
+      "outputTokens": 3,
+      "errors": 0,
+      "durationMs": 417,
+      "ttftRequests": 0,
+      "ttftMs": 0.0,
+      "maxTtftMs": 0.0,
+      "generationTokens": 0,
+      "generationMs": 0.0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    }
+  ],
+  "groups": [
+    {
+      "group": {
+        "requestModel": "aivar:borealis",
+        "usage.client": "genki",
+        "usage.org": "991825827"
+      },
+      "requests": 1,
+      "totalTokens": 19,
+      "cost": 0.0000042,
+      "inputTokens": 16,
+      "outputTokens": 3,
+      "errors": 0,
+      "durationMs": 417,
+      "ttftRequests": 0,
+      "ttftMs": 0.0,
+      "maxTtftMs": 0.0,
+      "generationTokens": 0,
+      "generationMs": 0.0,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0
+    }
+  ]
+}

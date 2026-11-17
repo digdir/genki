@@ -29,7 +29,16 @@ export interface MessageSource {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string; position?: number; markers?: string[] }[];
+  excerpts: {
+    chunk_id: string;
+    text: string;
+    position?: number;
+    heading?: string;
+    page?: number;
+    page_end?: number;
+    url?: string;
+    markers?: string[];
+  }[];
   markers?: string[];
 }
 
@@ -52,6 +61,7 @@ export interface Message {
   diagnostics?: unknown;
   parentId?: string;
   task?: string;
+  stopped?: true;
   attachments?: string[];
   input?: Record<string, unknown>;
 }
@@ -75,6 +85,7 @@ export interface NewMessage {
   diagnostics?: unknown;
   parentId?: string;
   task?: string;
+  stopped?: true;
   attachments?: string[];
   input?: Record<string, unknown>;
 }
@@ -221,6 +232,7 @@ export class InMemoryConversationStore implements ConversationStore {
       ...(input.markers?.length ? { markers: input.markers } : {}),
       ...(input.diagnostics === undefined ? {} : { diagnostics: input.diagnostics }),
       ...(input.task === undefined ? {} : { task: input.task }),
+      ...(input.stopped ? { stopped: true as const } : {}),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       ...(input.input ? { input: input.input } : {}),
       ...(parentId === undefined ? {} : { parentId }),

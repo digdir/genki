@@ -72,6 +72,11 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       return { id, tenant: digdir, service: { capability: { id: `${digdir}/svar/default` } } };
     },
     annotate: async () => undefined,
+    invoke: async () => {
+      if (options.quotaExhausted)
+        throw new KernelError('quota_exhausted', 'the monthly token quota is used up');
+      throw new KernelError('misconfigured', 'no eval runs in this test');
+    },
   } as unknown as Kernel;
   mountExtensions(app, {
     admin: {
@@ -121,7 +126,6 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       runs: new InMemoryEvalRunStore(),
       feedback,
       candidates,
-      quotaExhausted: async () => options.quotaExhausted ?? false,
     },
   });
   const call = async (
@@ -135,7 +139,11 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
       headers: { authorization: `Bearer ${who}`, 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
     });
-    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    return {
+      status: res.status,
+      headers: res.headers,
+      body: (await res.json()) as Record<string, unknown>,
+    };
   };
   const read = async (path: string, who = 'kari', headers: Record<string, string> = {}) => {
     const res = await app.request(path, {
@@ -531,13 +539,19 @@ describe('test-case candidates for review', () => {
 });
 
 describe('eval runs and the monthly token quota', () => {
-  it('refuses to start an eval run with 409 when the month is used up', async () => {
+  it('answers an eval run the kernel refuses at the monthly token quota with 429 and Retry-After', async () => {
     const { call } = await boot({ quotaExhausted: true });
 
-    const res = await call(`/tenants/${digdir}/eval-runs`, { service: 'svar' });
+    const res = await call(`/tenants/${digdir}/eval-runs`, {
+      capability: `${digdir}/svar/default`,
+      testSet: { id: 'svar-sporsmal', version: 1 },
+      evaluators: ['exact'],
+      provenance: { commit: 'abc', data: 'v1' },
+    });
 
-    expect(res.status).toBe(409);
-    expect(res.body.errors).toEqual([expect.objectContaining({ path: 'quota' })]);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toMatch(/^\d+$/);
+    expect(res.body).toMatchObject({ type: 'urn:genai:problem:quota-exhausted', status: 429 });
   });
 });
 

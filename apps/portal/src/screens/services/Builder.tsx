@@ -72,7 +72,12 @@ import { proposalKey, useAssistant, type TurnEntry } from './assistant/useAssist
 import type { InputOptionLookup } from './InputFormEditor';
 import { modelWord, SetupTab, type SectionId } from './SetupTab';
 import { initialTestState, scoreText, testKind, type TestState } from './testState';
-import { latestRunFact, type DraftConflict, type ServiceDraft } from '../../api/quality';
+import {
+  latestRunFact,
+  type DraftConflict,
+  type OpenedDraft,
+  type ServiceDraft,
+} from '../../api/quality';
 import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
 import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
@@ -150,6 +155,7 @@ export interface BuilderInit {
   files?: Record<string, string>;
   draftRevision?: number;
   rebasedTo?: number;
+  opened?: OpenedDraft | null;
   autoSend?: string;
 }
 
@@ -621,13 +627,18 @@ export const Builder = ({
     }, 700);
   };
 
+  const firstOpen = useRef({ section, draft: init.opened });
   const [remote] = useAsync(
     async (signal) => {
       if (!serverDraft || isNew) return undefined;
       const keep = unsaved.current;
+      if (firstOpen.current.section !== section) firstOpen.current.draft = undefined;
+      const reused = firstOpen.current.draft;
       const [draft, opened, definition] = await Promise.all([
         keep ? api.quality.draft(tenant, id, signal) : undefined,
-        keep ? undefined : api.quality.openDraft(tenant, id, tRef.current('services.rebaseReason')),
+        keep || reused === null
+          ? undefined
+          : (reused ?? api.quality.openDraft(tenant, id, tRef.current('services.rebaseReason'))),
         api.getDefinition(tenant, 'Service', id, signal),
       ]);
       if (opened?.behind && readOnlyRef.current)

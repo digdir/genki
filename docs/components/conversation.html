@@ -180,8 +180,14 @@
               </li>
               <li>
                 <code>search</code>, <code>sourcesUsed</code>, <code>documentFootnotes</code>,
-                <code>closingQuestion</code>, <code>assistantName</code>, <code>href</code>,
-                <code>citationId</code> and <code>headingLevel</code>.
+                <code>numberEachFootnote</code>, <code>closingQuestion</code>,
+                <code>onCopyReferences</code> (as <code>onCopyReferences(turn, markdown)</code>),
+                <code>assistantName</code>, <code>href</code>, <code>citationId</code> and
+                <code>headingLevel</code>.
+              </li>
+              <li>
+                <code>shownFootnote</code>: <code>{turnId, citation}</code>, the footnote Sources
+                shows whole, passed to that answer's <code>shownFootnote</code> to mark it.
               </li>
               <li>
                 <code>questionColor</code>, <code>answerColor</code> and <code>color</code> set

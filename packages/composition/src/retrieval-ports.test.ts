@@ -64,3 +64,28 @@ describe('a variant fixed filter', () => {
     expect(narrowed.filters).toEqual({ product: { all: [['Maskinporten'], ['ID-porten']] } });
   });
 });
+
+describe('the sources a service reads facts from', () => {
+  it("are its own datasets, opened under the service's tenant, and no other", async () => {
+    const opened: unknown[] = [];
+    const ctx = {
+      use: async (port: string, ref: unknown) => {
+        opened.push({ port, ref });
+        return { info: () => ({ id: 'x', residency: 'norway', filters: {}, profiles: [] }) };
+      },
+    } as never;
+
+    const ports = await openRetrievalPorts(ctx, {
+      model: { tenant: '991825827' },
+      knowledge: {
+        datasets: [{ dataset: 'kudos' }, { dataset: 'nettsider' }, { dataset: 'kudos' }],
+      },
+    } as never);
+
+    expect(Object.keys(ports.sources)).toEqual(['kudos', 'nettsider']);
+    expect(opened.filter((o) => (o as { port: string }).port === 'knowledge')).toEqual([
+      { port: 'knowledge', ref: { kind: 'dataset', id: 'kudos', tenant: '991825827' } },
+      { port: 'knowledge', ref: { kind: 'dataset', id: 'nettsider', tenant: '991825827' } },
+    ]);
+  });
+});

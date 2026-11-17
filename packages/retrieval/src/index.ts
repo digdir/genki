@@ -12,6 +12,7 @@ export {
   tokenize,
 } from './text.js';
 export * from './factories.js';
+export * from './source-facts.js';
 export * from './rules.js';
 export * from './planner.js';
 export * from './filters.js';

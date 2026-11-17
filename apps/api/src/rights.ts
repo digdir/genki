@@ -76,11 +76,19 @@ const subscriptionRight = (input: ActionInput): Right =>
 const toolRegistration = { anyOf: ['register-building-blocks', 'manage-services'] } as const;
 const objectOf = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+const connectionDefaults: Record<string, unknown> = { port: 5432, tls: true };
+const connectionFields = ['password', 'host', 'port', 'database', 'user', 'tls'] as const;
 const borrowsTenantSecret = (input: ActionInput) => {
   const source = objectOf(objectOf(input.spec).source);
   if (source.kind !== 'database') return false;
-  const password = objectOf(source.connection).password;
-  return typeof password !== 'string' || password !== input.connectorSecret;
+  const given = objectOf(source.connection);
+  const connector = objectOf(input.connector);
+  if (typeof given.password !== 'string') return true;
+  return connectionFields.some(
+    (field) =>
+      (given[field] ?? connectionDefaults[field]) !==
+      (connector[field] ?? connectionDefaults[field]),
+  );
 };
 const pipelineSave = (input: ActionInput): ActionRequirement =>
   borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';
@@ -133,6 +141,8 @@ export const adminActionRights: Readonly<
   // Knowledge jobs only: ADR 0042 widens ADR 0041, where only operators send jobs back.
   'platform.jobs.redrive': 'manage-datasets',
   'platform.jobs.readmit': 'manage-datasets',
+  // Operators only, through their own route (ADR 0042).
+  'platform.knowledge.fields': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
   'platform.dataset.delete': datasetWrite,
@@ -218,6 +228,9 @@ export const adminActionRights: Readonly<
   'platform.clients.webhook-test': 'manage-services',
   'platform.quality.matrix.run': 'operator',
   'platform.operations.try': 'operator',
+  'platform.demo.save': 'operator',
+  'platform.demo.recording.start': 'operator',
+  'platform.demo.recording.finish': 'operator',
   'platform.operations.maturity': 'operator',
   'platform.operations.processor-record': 'operator',
   'platform.operations.descriptor-upload': 'operator',

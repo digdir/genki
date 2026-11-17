@@ -1,9 +1,14 @@
 import type { Principal, PrincipalKind } from '@genai/contracts';
-import { lockdownUserScope, trustedEntraScope, type TrustedEntra } from '@genai/identity';
+import {
+  lockdownServiceScope,
+  lockdownUserScope,
+  trustedEntraScope,
+  type TrustedEntra,
+} from '@genai/identity';
 
 export const configuredCredentialScope = 'grant:configured-credential';
 
-export { lockdownUserScope, trustedEntraScope };
+export { lockdownServiceScope, lockdownUserScope, trustedEntraScope };
 
 type Env = Record<string, string | undefined>;
 
@@ -21,11 +26,19 @@ export const isAdmittedEntraLogin = (principal: Principal) =>
   isTrustedEntraLogin(principal) ||
   (people.has(principal.kind) && (principal.scopes?.includes(lockdownUserScope) ?? false));
 
+export const isServiceLogin = (principal: Principal) =>
+  people.has(principal.kind) &&
+  principal.confinedTo?.service !== undefined &&
+  (principal.scopes?.includes(lockdownServiceScope) ?? false);
+
 export const mayUseModels = (principal: Principal | undefined) =>
   principal !== undefined &&
   (isAdmittedEntraLogin(principal) ||
     (!people.has(principal.kind) &&
       (principal.scopes?.includes(configuredCredentialScope) ?? false)));
+
+export const mayInvokeServices = (principal: Principal | undefined) =>
+  mayUseModels(principal) || (principal !== undefined && isServiceLogin(principal));
 
 export const withModelAdmission = (system: Principal): Principal => ({
   ...system,
@@ -45,6 +58,10 @@ const entraGroups = (env: Env) => groupList(env.LOCKDOWN_ENTRA_GROUPS);
 
 const userGroups = (env: Env) => groupList(env.LOCKDOWN_USER_GROUPS);
 
+const serviceGroups = (env: Env) => groupList(env.LOCKDOWN_SERVICE_GROUPS);
+
+const serviceClientIds = (env: Env) => groupList(env.LOCKDOWN_SERVICE_CLIENT_IDS);
+
 export const operatorClientIds = (env: Env) => groupList(env.OPERATOR_CLIENT_IDS);
 
 export const employeeClientIds = (env: Env) => groupList(env.EMPLOYEE_CLIENT_IDS);
@@ -54,6 +71,9 @@ const entraDomain = (env: Env) => env.LOCKDOWN_ENTRA_EMAIL_DOMAIN?.trim().replac
 export const lockdownEntraProblems = (env: Env): string[] => {
   const notGuids = entraGroups(env).filter((g) => !guid.test(g));
   const notUserGuids = userGroups(env).filter((g) => !guid.test(g));
+  const notServiceGuids = serviceGroups(env).filter((g) => !guid.test(g));
+  const platformClients = new Set([...operatorClientIds(env), ...employeeClientIds(env)]);
+  const platformClientsAsService = serviceClientIds(env).filter((id) => platformClients.has(id));
   const emailDomain = entraDomain(env);
   return [
     ...(notGuids.length > 0
@@ -61,6 +81,11 @@ export const lockdownEntraProblems = (env: Env): string[] => {
       : []),
     ...(notUserGuids.length > 0
       ? [`LOCKDOWN_USER_GROUPS must list Entra group object ids, got "${notUserGuids.join(', ')}"`]
+      : []),
+    ...(notServiceGuids.length > 0
+      ? [
+          `LOCKDOWN_SERVICE_GROUPS must list Entra group object ids, got "${notServiceGuids.join(', ')}"`,
+        ]
       : []),
     ...(emailDomain && !domain.test(emailDomain)
       ? [`LOCKDOWN_ENTRA_EMAIL_DOMAIN must be a domain such as digdir.no, got "${emailDomain}"`]
@@ -70,6 +95,16 @@ export const lockdownEntraProblems = (env: Env): string[] => {
       : []),
     ...(isLockdown(env) && userGroups(env).length > 0 && operatorClientIds(env).length === 0
       ? ['LOCKDOWN_USER_GROUPS needs OPERATOR_CLIENT_IDS, the client ids whose Entra logins count']
+      : []),
+    ...(platformClientsAsService.length > 0
+      ? [
+          `LOCKDOWN_SERVICE_CLIENT_IDS must name registered service clients, not platform clients, got "${platformClientsAsService.join(', ')}"`,
+        ]
+      : []),
+    ...(isLockdown(env) && serviceGroups(env).length > 0 && serviceClientIds(env).length === 0
+      ? [
+          'LOCKDOWN_SERVICE_GROUPS needs LOCKDOWN_SERVICE_CLIENT_IDS, the registered service clients whose Entra logins count',
+        ]
       : []),
   ];
 };
@@ -81,11 +116,15 @@ export const trustedEntraFrom = (
 ): TrustedEntra | undefined => {
   const groups = entraGroups(env);
   const users = userGroups(env);
-  if (!isLockdown(env) || groups.length + users.length === 0) return undefined;
+  const services = serviceGroups(env);
+  if (!isLockdown(env) || groups.length + users.length + services.length === 0) return undefined;
   const emailDomain = entraDomain(env);
   return {
     groups,
     ...(users.length > 0 ? { userGroups: users } : {}),
+    ...(services.length > 0
+      ? { serviceGroups: services, serviceClientIds: serviceClientIds(env) }
+      : {}),
     clientIds: operatorClientIds(env),
     tenant,
     resource,

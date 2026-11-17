@@ -28,6 +28,7 @@ import { resolveCatalog } from './catalogs.js';
 import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
+import { appendVersion, InMemoryConfigEntryStore, platformScope } from '@genai/composition';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
 import { kernelTaskReader, toTimeline } from './timeline.js';
 
@@ -257,6 +258,14 @@ const modelReply = (body: Record<string, unknown>) => {
       : { status: 200, json: toolCall(name, args) };
   if (body.tools) {
     const toolTurns = messages.filter((m) => m.role === 'tool').length;
+    const offered = (body.tools as { function: { name: string } }[]).map((t) => t.function.name);
+    const asked = messages.find((m) => m.role === 'user')?.content ?? '';
+    if (typeof asked === 'string' && asked.includes('statens organisering'))
+      return toolTurns === 0
+        ? tool('state-organisation', { action: 'under', unit: '932384469' })
+        : text('Dette er virksomhetene.');
+    if (offered.includes('source_facts'))
+      return toolTurns === 0 ? tool('source_facts', { newest: 3 }) : text('Kudos har dette.');
     if (toolTurns === 0) return tool('search', { queries: ['tildelingsbrev Digdir 2025'] });
     if (toolTurns === 1) return tool('read_chunks', { chunk_ids: ['c1', 'c2'] });
     return text(answer);
@@ -284,6 +293,7 @@ const boot = async (
     settings?: SettingsRegistry;
     prices?: Parameters<typeof createPlatform>[0]['prices'];
     log?: InMemoryEventLog;
+    configEntries?: InMemoryConfigEntryStore;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
@@ -311,6 +321,7 @@ const boot = async (
     ...(extra.settings ? { settings: extra.settings } : {}),
     ...(extra.prices ? { prices: extra.prices } : {}),
     ...(extra.log ? { log: extra.log } : {}),
+    ...(extra.configEntries ? { configurables: { store: extra.configEntries } } : {}),
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: access?.policy ?? { decide: async () => ({ allow: true }) },
@@ -488,6 +499,183 @@ describe('the composed platform', () => {
       expect(f).toContain('type:=[`ZZZ_fast_type`]');
       expect(f).toContain('type:=[`Tildelingsbrev`]');
     }
+  });
+
+  it("answers from the source facts tool within the service's fixed filter, never reading the source outside it", async () => {
+    const { platform, app, search, model } = await boot();
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const fixed = { fields: [{ field: 'type', 'selected-options': ['ZZZ_fast_type'] }] };
+    const published = await platform.definitions.publish(
+      {
+        ...service,
+        metadata: { ...service.metadata, id: 'kudos-source-facts' },
+        spec: {
+          ...service.spec,
+          variants: [{ id: 'default', filters: fixed }],
+          tools: ['source-facts@1'],
+        },
+      },
+      'test',
+      'test',
+    );
+    expect(published.ok).toBe(true);
+    search.seen.length = 0;
+
+    const res = await mcp(app, 'tools/call', {
+      name: 'kudos-source-facts__default',
+      arguments: { query: 'Hvilke nyeste dokumenter har du hentet inn fra Kudos?' },
+    });
+
+    expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+    const reads = search.seen.flatMap(
+      (r) => (r.body as { searches?: Record<string, unknown>[] }).searches ?? [],
+    );
+    expect(reads.length).toBeGreaterThan(0);
+    for (const read of reads) expect(String(read.filter_by)).toContain('type:=[`ZZZ_fast_type`]');
+    const facts = model.seen
+      .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+      .find((m) => m.role === 'tool');
+    expect(facts?.content).toContain('"source": "Kudos"');
+  });
+
+  it('validates a service definition that grants state-organisation@1 and refuses an unknown version', async () => {
+    const { platform } = await boot();
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const publish = (tools: string[]) =>
+      platform.definitions.publish(
+        {
+          ...service,
+          metadata: { ...service.metadata, id: 'ka-register-version' },
+          spec: { ...service.spec, tools },
+        },
+        'test',
+        'test',
+      );
+
+    const known = await publish(['state-organisation@1']);
+    const unknown = await publish(['state-organisation@2']);
+
+    expect(known.ok).toBe(true);
+    expect(!unknown.ok && unknown.errors).toEqual([
+      { path: 'spec.tools[0]', message: 'unknown tool or tool version state-organisation@2' },
+    ]);
+  });
+
+  const registerWithDfd = async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    await appendVersion(configEntries, {
+      kind: 'state-register',
+      scope: platformScope,
+      id: 'enhetsregisteret',
+      spec: {
+        units: [
+          {
+            orgnr: '932384469',
+            name: 'DIGITALISERINGS- OG FORVALTNINGSDEPARTEMENTET (DFD)',
+            form: 'STAT',
+          },
+          {
+            orgnr: '991825827',
+            name: 'DIGITALISERINGSDIREKTORATET',
+            form: 'ORGL',
+            parent: '932384469',
+          },
+        ],
+        changes: [],
+        syncedAt: '2026-11-16T13:49:00.000Z',
+      },
+      deleted: false,
+      by: 'worker',
+      reason: 'test',
+      at: '2026-11-16T13:49:00.000Z',
+    });
+    return configEntries;
+  };
+
+  it('lets only a service that grants state-organisation@1 call it', async () => {
+    const configEntries = await registerWithDfd();
+    const { platform, app, model } = await boot(undefined, { configEntries });
+    const service = yaml('services/kunnskapsassistenten.yaml') as {
+      metadata: Record<string, unknown>;
+      spec: Record<string, unknown>;
+    };
+    const publish = (id: string, tools: string[]) =>
+      platform.definitions.publish(
+        { ...service, metadata: { ...service.metadata, id }, spec: { ...service.spec, tools } },
+        'test',
+        'test',
+      );
+    expect((await publish('ka-with-register', ['state-organisation@1'])).ok).toBe(true);
+    expect((await publish('ka-without-register', [])).ok).toBe(true);
+    const toolMessage = async (name: string) => {
+      model.seen.length = 0;
+      const res = await mcp(app, 'tools/call', {
+        name,
+        arguments: { query: 'Hvilke virksomheter ligger under DFD, ifølge statens organisering?' },
+      });
+      expect(((await res.json()) as { result: { isError: boolean } }).result.isError).toBe(false);
+      return model.seen
+        .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+        .find((m) => m.role === 'tool')?.content;
+    };
+
+    const granted = await toolMessage('ka-with-register__default');
+    const refused = await toolMessage('ka-without-register__default');
+
+    expect(granted).toContain('<untrusted_data kind="tool:state-organisation"');
+    expect(granted).toContain('DIGITALISERINGSDIREKTORATET');
+    expect(granted).toContain('Enhetsregisteret');
+    expect(refused).toContain('Unknown tool: state-organisation');
+    expect(refused).not.toContain('DIGITALISERINGSDIREKTORATET');
+  });
+
+  it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
+    const knowledge = yaml('knowledge.yaml') as {
+      datasets: { id: string; filters: Record<string, string> }[];
+    };
+    const declaring = {
+      ...knowledge,
+      datasets: knowledge.datasets.map((d) =>
+        d.id === 'digdir/kudos'
+          ? { ...d, filters: { ...d.filters, owner_orgnr: 'multiselect' } }
+          : d,
+      ),
+    };
+    const toolMessage = async (catalog: unknown) => {
+      const { platform, app, model } = await boot(undefined, {
+        configEntries: await registerWithDfd(),
+        knowledge: catalog,
+      });
+      const service = yaml('services/kunnskapsassistenten.yaml') as {
+        metadata: Record<string, unknown>;
+        spec: Record<string, unknown>;
+      };
+      await platform.definitions.publish(
+        { ...service, metadata: { ...service.metadata, id: 'ka-filter-values' } },
+        'test',
+        'test',
+      );
+      await mcp(app, 'tools/call', {
+        name: 'ka-filter-values__default',
+        arguments: { query: 'Hva skriver virksomhetene under DFD, ifølge statens organisering?' },
+      });
+      return model.seen
+        .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+        .find((m) => m.role === 'tool')?.content;
+    };
+
+    const declared = await toolMessage(declaring);
+    const undeclared = await toolMessage(knowledge);
+
+    expect(declared).toContain('"filter_values":{"owner_orgnr":["991825827"]}');
+    expect(undeclared).toContain('DIGITALISERINGSDIREKTORATET');
+    expect(undeclared).not.toContain('filter_values');
   });
 
   it('refuses at publish a variant filter on a field none of its datasets declares', async () => {

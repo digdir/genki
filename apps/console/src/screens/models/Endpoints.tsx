@@ -47,6 +47,11 @@ export const capabilityLabel: Record<Capability, PlainKey> = {
   reasoning: 'endpoints.capReasoning',
 };
 
+export const discoverySourceLabel: Record<string, PlainKey> = {
+  'azure-deployments': 'connections.sourceAzureDeployments',
+  'openai-models': 'connections.sourceOpenAiModels',
+};
+
 const modelSlug = (deployment: string) =>
   deployment
     .trim()
@@ -74,6 +79,7 @@ interface EndpointSpec {
     tenant?: string;
     scope?: string;
   };
+  gateway?: boolean;
   settings?: Record<string, string>;
   keys?: Record<string, string>;
 }
@@ -237,6 +243,7 @@ export const EndpointForm = ({
   const [appClientId, setAppClientId] = useState(spec.auth?.clientId ?? '');
   const [appTenant, setAppTenant] = useState(spec.auth?.tenant ?? '');
   const [appScope, setAppScope] = useState(spec.auth?.scope ?? '');
+  const [gateway, setGateway] = useState(spec.gateway === true);
   const [secretName, setSecretName] = useState(storedSecret);
   const [secretValue, setSecretValue] = useState('');
   const [secretSaved, setSecretSaved] = useState<string | undefined>();
@@ -331,6 +338,7 @@ export const EndpointForm = ({
               ...(header ? { header } : {}),
             },
       families: Object.fromEntries(rows.map((r) => [r.family, r.base.trim()])),
+      ...(gateway || spec.gateway ? { gateway } : {}),
       ...(rules.length || spec.discovery ? { discovery: rules.map(ruleOf) } : {}),
       ...(settingRows.length || spec.settings
         ? { settings: Object.fromEntries(settingRows.map((r) => [r.name, r.value])) }
@@ -442,6 +450,27 @@ export const EndpointForm = ({
             return (
               <div className="stack-sm rule-box" key={index}>
                 <span className="label-strong">{t('connections.ruleN', { n })}</span>
+                <div className="field">
+                  <Label htmlFor={`rule-source-${index}`}>
+                    {t('connections.ruleSource', { n })}
+                  </Label>
+                  {index === 0 ? (
+                    <Paragraph data-size="sm">{t('connections.ruleSourceHint')}</Paragraph>
+                  ) : null}
+                  <Select
+                    id={`rule-source-${index}`}
+                    value={draft.rule.source ?? ''}
+                    onChange={(e) =>
+                      setRule(index, { rule: { ...draft.rule, source: e.target.value } })
+                    }
+                  >
+                    {Object.entries(discoverySourceLabel).map(([source, label]) => (
+                      <SelectOption key={source} value={source}>
+                        {t(label)}
+                      </SelectOption>
+                    ))}
+                  </Select>
+                </div>
                 <Textfield
                   label={t('connections.ruleInclude', { n })}
                   description={index === 0 ? t('connections.rulePatternsHint') : undefined}
@@ -592,6 +621,12 @@ export const EndpointForm = ({
             ) : null}
           </Fieldset>
         )}
+        <Checkbox
+          label={t('endpoints.gateway')}
+          description={t('endpoints.gatewayDescription')}
+          checked={gateway}
+          onChange={(e) => setGateway(e.target.checked)}
+        />
         <PairFields
           kind="setting"
           rows={settingRows}

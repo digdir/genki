@@ -360,17 +360,18 @@ describe('upload source', () => {
       { document: 'budsjett.xlsx', reason: 'unsupported_type' },
       { document: 'skannet.pdf', reason: 'no_text' },
     ]);
+    // In the listing's code-point order, as Azure Blob lists: an upper-case T before a lower-case n.
     expect(docs).toEqual([
+      expect.objectContaining({
+        id: uploadDocumentId(tenant, `${prefix}Tildelingsbrev_2025.pdf`),
+        title: 'Tildelingsbrev 2025',
+        path: 'Tildelingsbrev_2025.pdf',
+      }),
       expect.objectContaining({
         id: uploadDocumentId(tenant, `${prefix}notater/møte.md`),
         title: 'møte',
         path: 'notater/møte.md',
         type: 'upload',
-      }),
-      expect.objectContaining({
-        id: uploadDocumentId(tenant, `${prefix}Tildelingsbrev_2025.pdf`),
-        title: 'Tildelingsbrev 2025',
-        path: 'Tildelingsbrev_2025.pdf',
       }),
     ]);
     expect(chunks.join('\n')).not.toContain('Nei');

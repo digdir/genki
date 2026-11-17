@@ -1089,18 +1089,14 @@ describe('usage from an AI gateway', () => {
     } as Event,
   });
 
-  /** Three calls for one tenant: its own gateway key, genki direct, and genki through its gateway key. */
+  const genkiApp = '334f8fa1-437e-4b84-bceb-f320fb60f3ed';
+
   const threeCalls = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> = {}) => {
     let now = new Date('2026-10-06T08:00:00Z');
-    const gateway = memoryUsageSource({ now: () => now });
-    gateway.addKey({ id: 'tenant-key', subject: { kind: 'service', id: 'ka', org: digdir } });
-    gateway.addKey({
-      id: 'genki-key',
-      subject: { kind: 'org', id: '974760673' },
-      consumer: 'genki',
-    });
+    const gateway = memoryUsageSource({ now: () => now, genkiClients: [genkiApp] });
     gateway.record({
-      key: 'tenant-key',
+      client: 'portal',
+      org: digdir,
       model: 'gpt-6.1-sol',
       at: '2026-10-06T08:10:00Z',
       inputTokens: 500,
@@ -1108,13 +1104,13 @@ describe('usage from an AI gateway', () => {
       costMicros: 2000,
     });
     gateway.record({
-      key: 'genki-key',
+      client: genkiApp,
+      org: digdir,
       model: routed,
       at: '2026-10-06T08:20:00Z',
       inputTokens: 1000,
       outputTokens: 200,
       costMicros: 5000,
-      genkiTenant: digdir,
     });
     const store = new InMemoryUsageBuckets(() => [digdir, other]);
     store.setRates([{ currency: 'USD', day: '2026-10-01', nokPerUnit: usdNok }]);
@@ -1180,7 +1176,9 @@ describe('usage from an AI gateway', () => {
   });
 
   it("counts the cost of a call through the gateway from the gateway once genki's endpoint runs through it", async () => {
-    const { send } = await threeCalls({ throughGateway: (model) => model === routed });
+    const { send } = await threeCalls({
+      countingRule: () => ({ throughGateway: (model) => model === routed }),
+    });
     const body = await json<Report>(await send(`/tenants/${digdir}/usage?days=1`, 'kari'));
 
     expect(body.totals).toMatchObject({
@@ -1201,7 +1199,7 @@ describe('usage from an AI gateway', () => {
     ]);
     expect(body.bySubject).toEqual([
       {
-        subject: { kind: 'service', id: 'ka', org: digdir },
+        subject: { kind: 'org', id: digdir },
         usage: expect.objectContaining({ inputTokens: 500, costMicroNok: 20_000 }),
         cost: { currency: 'USD', micros: 2000 },
         rate: usdNok,
@@ -1264,12 +1262,48 @@ describe('usage from an AI gateway', () => {
     expect((await counted.send('/operator/usage/unassigned', 'operator')).status).toBe(200);
   });
 
+  it("shows a tenant only its own organisation's gateway usage, whatever tenant or organisation the request names", async () => {
+    let now = new Date('2026-10-06T08:00:00Z');
+    const gateway = memoryUsageSource({ now: () => now });
+    for (const [org, inputTokens] of [
+      [digdir, 500],
+      [other, 7000],
+    ] as const)
+      gateway.record({
+        client: 'portal',
+        org,
+        model: 'gpt-6.1-sol',
+        at: '2026-10-06T08:10:00Z',
+        inputTokens,
+        outputTokens: 50,
+        costMicros: 2000,
+      });
+    const store = new InMemoryUsageBuckets(() => [digdir, other]);
+    now = new Date('2026-10-06T12:00:00Z');
+    await pollUsage(gateway, store, {
+      firstStart: new Date('2026-10-06T00:00:00Z'),
+      now: () => now,
+    });
+    const { send } = await threeCalls({ gatewayUsage: store });
+    const fromGateway = async (path: string, who: string) => {
+      const body = await json<Report>(await send(path, who));
+      return body.totals.bySource?.find((s) => s.source === 'gateway')?.usage.inputTokens;
+    };
+
+    expect(await fromGateway(`/tenants/${digdir}/usage?days=1`, 'kari')).toBe(500);
+    expect(
+      await fromGateway(`/tenants/${digdir}/usage?days=1&tenant=${other}&org=${other}`, 'kari'),
+    ).toBe(500);
+    expect((await send(`/tenants/${other}/usage?days=1`, 'kari')).status).toBe(404);
+    expect(await fromGateway(`/tenants/${other}/usage?days=1`, 'ola')).toBe(7000);
+  });
+
   const threeRows = async () => {
     let now = new Date('2026-10-06T08:00:00Z');
     const gateway = memoryUsageSource({ now: () => now });
-    gateway.addKey({ id: 'tenant-key', subject: { kind: 'service', id: 'ka', org: digdir } });
     gateway.record({
-      key: 'tenant-key',
+      client: 'portal',
+      org: digdir,
       model: 'gpt-6.1-sol',
       at: '2026-10-06T08:10:00Z',
       inputTokens: 500,

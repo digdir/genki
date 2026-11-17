@@ -6,17 +6,18 @@ Status: stable for the tool step (`tool@1`) and the remote agent (`remote-agent/
 
 You do not need code or an endpoint for these. They are definitions you publish, and each change is a new version.
 
-| Need                               | Where                                                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| The work a service does            | `Service` definition: purpose, input, output, exposure, guardrails                                           |
-| Instructions, examples, prompts    | `strategy.config` of `single-call`, `rag-single-shot` or `agent-loop`, and prompt files                      |
-| Fixed steps in a fixed order       | A `StepFlow` definition built from the built-in step blocks, with branches, loops and approvals              |
-| Which model, with fallback         | `spec.model`, from the model catalogue                                                                       |
-| Where data may be processed        | `spec.model.residency`                                                                                       |
-| Search over your documents         | Datasets, rerankers and `spec.knowledge`                                                                     |
-| Tools the service may call         | A tool source (MCP, OpenAPI or A2A) registered under `/tenants/{tenant}/tool-connections`, then `spec.tools` |
-| Reusable instructions and examples | Skills                                                                                                       |
-| Hooks at defined points in a run   | `/operator/hooks` or `/tenants/{tenant}/hooks`                                                               |
+| Need                                  | Where                                                                                                                                                                                                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The work a service does               | `Service` definition: purpose, input, output, exposure, guardrails                                                                                                                                                           |
+| Instructions, examples, prompts       | `strategy.config` of `single-call`, `rag-single-shot` or `agent-loop`, and prompt files                                                                                                                                      |
+| Fixed steps in a fixed order          | A `StepFlow` definition built from the built-in step blocks, with branches, loops and approvals                                                                                                                              |
+| Which model, with fallback            | `spec.model`, from the model catalogue                                                                                                                                                                                       |
+| Where data may be processed           | `spec.model.residency`                                                                                                                                                                                                       |
+| Search over your documents            | Datasets, rerankers and `spec.knowledge`                                                                                                                                                                                     |
+| Tools the service may call            | A tool source (MCP, OpenAPI or A2A) registered under `/tenants/{tenant}/tool-connections`, then `spec.tools`                                                                                                                 |
+| Facts about the service's own sources | `source-facts@1` in `spec.tools` of an `agent-loop` service with datasets. The agent gets the tool `source_facts`: document count, last import, newest documents and filter values with counts, within the service's filters |
+| Reusable instructions and examples    | Skills                                                                                                                                                                                                                       |
+| Hooks at defined points in a run      | `/operator/hooks` or `/tenants/{tenant}/hooks`                                                                                                                                                                               |
 
 ## What is your endpoint
 

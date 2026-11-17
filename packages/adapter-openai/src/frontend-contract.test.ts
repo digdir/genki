@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Part, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Emitted, type Strategy } from '@genai/kernel';
 import {
@@ -141,19 +141,23 @@ const filterIssues = async (
   );
 };
 
-const setup = () => {
+const setup = (
+  kernelOptions: Partial<Parameters<typeof createKernel>[0]> = {},
+  conversations?: (memory: AskConversations) => AskConversations,
+) => {
   const kernel = createKernel({
     strategies: [strategy],
     capabilities: [capability],
     ports: {},
     policy: { decide: async () => ({ allow: true }) },
+    ...kernelOptions,
   });
   const memory = fakeConversations();
   const app = createOpenAiAdapter({
     kernel,
     resolver,
     auth: { authenticate: async () => kari },
-    conversations: memory.conversations,
+    conversations: conversations ? conversations(memory.conversations) : memory.conversations,
     filterIssues,
     overridePolicy: { check: () => ({ ok: true }) },
     newId: () => 'fixed',
@@ -168,7 +172,7 @@ const setup = () => {
         ...body,
       }),
     });
-  return { ask, ...memory };
+  return { ask, kernel, ...memory };
 };
 
 type Source = {
@@ -176,7 +180,7 @@ type Source = {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string }[];
+  excerpts: { chunk_id: string; text: string; page?: number; url?: string }[];
 };
 
 describe('/v1 frontend contract: conversations', () => {
@@ -292,6 +296,75 @@ describe('/v1 frontend contract: conversations', () => {
     expect(response.headers.get('genai-conversation')).toBe('conv-1');
     expect(text.split('\n\n')[0]).toContain('"conversation_id":"conv-1"');
   });
+
+  it('stores the question with the id of the run that answers it', async () => {
+    const { ask, stored } = setup();
+
+    const response = await ask({ genai_conversation: true });
+
+    expect(stored.get('conv-1')?.[0]).toMatchObject({
+      role: 'user',
+      task: response.headers.get('genai-task'),
+    });
+  });
+
+  it('stores no question in a continued conversation when the run is refused', async () => {
+    let refuse = false;
+    const { ask, stored } = setup({
+      policy: {
+        decide: async (_principal, action) =>
+          refuse && action === 'invoke' ? { allow: false, reason: 'refused' } : { allow: true },
+      },
+    });
+    await ask({ genai_conversation: true });
+    refuse = true;
+
+    const refused = await ask({ conversation_id: 'conv-1' });
+
+    expect(refused.status).toBe(403);
+    expect(stored.get('conv-1')?.map((t) => t.role)).toEqual(['user', 'assistant']);
+  });
+
+  describe('when the question cannot be stored', () => {
+    const unstored = () => {
+      const waiting: Strategy = {
+        ...strategy,
+        run: async function* (ctx): AsyncIterable<Emitted> {
+          await new Promise((resolve) =>
+            ctx.signal.addEventListener('abort', resolve, { once: true }),
+          );
+          yield { type: 'kernel.result', data: [] };
+        },
+      };
+      return setup({ strategies: [waiting], newId: () => 'run-1' }, (memory) => ({
+        ...memory,
+        append: async (request, id, turn) => {
+          if (turn.role === 'user') throw new Error('store unavailable');
+          await memory.append(request, id, turn);
+        },
+      }));
+    };
+
+    it('cancels the run', async () => {
+      const { ask, kernel } = unstored();
+
+      await ask({ genai_conversation: true });
+
+      await vi.waitFor(async () =>
+        expect((await kernel.task(kari, 'run-1')).status).toBe('cancelled'),
+      );
+    });
+
+    it('answers 500 in the OpenAI error shape and leaves no new conversation behind', async () => {
+      const { ask, stored } = unstored();
+
+      const response = await ask({ genai_conversation: true });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ error: { code: 'internal_error' } });
+      expect(stored.has('conv-1')).toBe(false);
+    });
+  });
 });
 
 describe('/v1 frontend contract: filters', () => {
@@ -328,6 +401,52 @@ describe('/v1 frontend contract: filters', () => {
 });
 
 describe('/v1 frontend contract: sources', () => {
+  describe("an excerpt's page", () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    afterEach(() => {
+      pool = chunks;
+    });
+    const paged = (c1: Partial<SourceRecord>, c1b: Partial<SourceRecord> = {}) => {
+      pool = chunks.map((c) =>
+        c.chunkId === 'c1' ? { ...c, ...c1 } : c.chunkId === 'c1b' ? { ...c, ...c1b } : c,
+      );
+    };
+
+    it("a source's excerpt carries the page and heading of its chunk", async () => {
+      paged({ page: 12, pageEnd: 13, headers: ['3 Funn'] }, { page: 14 });
+      const { ask, stored } = setup();
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      const excerpts = [
+        { chunk_id: 'c1', text: 'Første', position: 0, heading: '3 Funn', page: 12, page_end: 13 },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, page: 14 },
+      ];
+      expect(body.sources[0]?.excerpts).toStrictEqual(excerpts);
+      expect(stored.get('conv-1')?.[1]?.sources?.[0]?.excerpts).toStrictEqual(excerpts);
+    });
+
+    it("an excerpt links to its file's address at its page", async () => {
+      paged({ page: 12, pageEnd: 13, fileUrl: pdf });
+      const body = (await (await setup().ask({})).json()) as { sources: Source[] };
+
+      expect(body.sources[0]?.excerpts[0]).toMatchObject({ page: 12, url: `${pdf}#page=12` });
+      // The source's own link stays the document's page.
+      expect(body.sources[0]?.url).toBe('https://x.no/d1');
+    });
+
+    it("an excerpt whose file has no address in the document's record gets no page link", async () => {
+      paged({ page: 12 }, { page: 14, fileUrl: 'javascript:alert(1)' });
+      const body = (await (await setup().ask({})).json()) as { sources: Source[] };
+
+      expect(body.sources[0]?.excerpts.map((e) => [e.chunk_id, e.page, e.url])).toEqual([
+        ['c1', 12, undefined],
+        ['c1b', 14, undefined],
+      ]);
+    });
+  });
+
   it('gives one source per cited document, indexed by the [N] in the answer, with every chunk as an excerpt', async () => {
     const body = (await (await setup().ask({})).json()) as { sources: Source[] };
 

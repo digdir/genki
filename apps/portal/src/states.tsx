@@ -11,6 +11,16 @@ export const Loading = ({ label }: { label: string }) => (
   </div>
 );
 
+export const PageLoading = ({ label }: { label: string }) => (
+  <div className="state loading page-loading" role="status">
+    <Spinner aria-label={label} data-size="md" />
+  </div>
+);
+
+export const NavigationProgress = ({ label }: { label: string }) => (
+  <div className="navigation-progress" role="progressbar" aria-label={label} />
+);
+
 const statusOf = (error: unknown) =>
   error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
     ? error.status

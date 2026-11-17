@@ -1,10 +1,11 @@
-import type { UsageReads } from '@genai/port-usage';
+import { throughGatewayConnections, type UsageReads } from '@genai/port-usage';
 import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
   type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
+  defaultServiceLimits,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
   allowOf,
@@ -143,8 +144,9 @@ import {
 } from './extensions.js';
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
-import { publicDatasetState } from './dataset-status.js';
+import { lastImportAt, publicDatasetState } from './dataset-status.js';
 import { datasetDeleteModule } from './dataset-delete.js';
+import { datasetSearchModule } from './dataset-search.js';
 import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
@@ -228,11 +230,6 @@ import {
   clientAddress,
   keyRateLimited,
   publicCardsPerMinute,
-  quotaExhausted,
-  quotaExhaustedDetail,
-  quotaExhaustedTitle,
-  quotaExhaustedType,
-  secondsToNextMonth,
   tooManyRequests,
   type RateLimiter,
 } from './rate-limit.js';
@@ -277,6 +274,7 @@ import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { stateRegisterModule } from './state-register.js';
+import { demosModule } from './demo-routes.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -348,6 +346,7 @@ import { servicesOpenApiModule } from './openapi/services.js';
 import { workOpenApiModule } from './openapi/work.js';
 import { schemasModule } from './schemas.js';
 import {
+  mayInvokeServices,
   mayUseModels,
   readOnlyInLockdown,
   withCredentialOrigin,
@@ -362,6 +361,7 @@ export const platformModules: PlatformModuleFactory[] = [
   engineSwitchesModule,
   knowledgeEndpointsModule,
   stateRegisterModule,
+  demosModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
@@ -375,6 +375,7 @@ export const platformModules: PlatformModuleFactory[] = [
   definitionCompletionModule,
   datasetUploadsModule,
   datasetDeleteModule,
+  datasetSearchModule,
   datasetEnrichmentModule,
   qualityModule,
   batchRunsModule,
@@ -478,6 +479,7 @@ export interface PlatformInput {
   platformTenant?: string;
   /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
   appVersion?: string;
+  demoRecorderKeyDigest?: string;
   /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
   tracing?: TracingOptions;
   /** Every trace sent to a tenant's sink, until its delete is confirmed. */
@@ -528,6 +530,8 @@ export interface PlatformInput {
   verifyPluginsOnBoot?: boolean;
   rateLimits?: { limiter?: RateLimiter };
   serviceLimits?: { deadlineMs?: number; budget?: Usage };
+  /** The clock a thread's last run is held against its deadline with; tests fix it. */
+  now?: () => number;
   evalSlots?: Partial<EvalSlotLimits>;
   logger?: ApiLog;
   logFailureMessages?: boolean;
@@ -866,6 +870,21 @@ export const capabilityResolver = (
       };
     },
   };
+};
+
+export const resolvesTo = async (
+  resolver: CapabilityResolver,
+  principal: Principal,
+  capability: string,
+) => {
+  const at = capability.lastIndexOf('@');
+  const version = at > 0 ? Number(capability.slice(at + 1)) : NaN;
+  const pinned = Number.isInteger(version) && version > 0;
+  const name = pinned ? capability.slice(0, at) : capability;
+  const resolved = await resolver.resolve(principal, name, pinned ? { version } : {});
+  if (!resolved.ok) return false;
+  const served = resolved.entry.capability;
+  return served === name || served === `${name}@${resolved.entry.version}`;
 };
 
 export type OptionCache = Map<string, { at: number; options: Promise<FacetCount[]> }>;
@@ -1218,6 +1237,12 @@ export const createPlatform = async (input: PlatformInput) => {
     platformTenant,
     outputTokens: enrichmentOutputTokens,
   });
+  const datasetSearchWork = trackedWork({
+    id: 'platform/dataset-search',
+    title: 'Søk i datasett',
+    platformTenant,
+    outputTokens: 1,
+  });
   let modules: PlatformModule[] = [];
   const decorate = decorateWith(() => modules);
   const sharedTools = new Map<string, string>();
@@ -1258,7 +1283,26 @@ export const createPlatform = async (input: PlatformInput) => {
     };
   };
 
+  const ended = new Set(['completed', 'failed', 'cancelled']);
+  const usageLog: EventLog = {
+    append: async (event, scope) => {
+      const stored = await tracker.log.append(event, scope);
+      if (
+        event.type === 'kernel.task.status' &&
+        ended.has(String((event.data as { status?: unknown }).status))
+      )
+        usageCache.delete(scope.tenant);
+      return stored;
+    },
+    read: (task, fromSeq, isLive) => tracker.log.read(task, fromSeq, isLive),
+    wake: (task) => tracker.log.wake(task),
+  };
+
   const runtime = await createRuntime({
+    lastImport: async (dataset) => {
+      const item = runtime.catalog.get('dataset', dataset);
+      return item ? lastImportAt(config.ingestion, item) : undefined;
+    },
     modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
     catalogs: input.catalogs,
@@ -1269,12 +1313,12 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions: input.definitions,
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
-    ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
+    ...(input.lockdown ? { admitsModelUse: mayInvokeServices } : {}),
     ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
     ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
     published: (capability) => originOf(capability) === 'service',
     ...(input.descriptors ? { descriptors: input.descriptors } : {}),
-    log: tracker.log,
+    log: usageLog,
     tasks: taskStore,
     prices,
     decorate: (capability, context) => decorate(capability, context),
@@ -1312,12 +1356,13 @@ export const createPlatform = async (input: PlatformInput) => {
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
       enrichmentWork.strategy,
+      datasetSearchWork.strategy,
     ],
     extraStrategyConfigs: [builderStrategyId, optimiserStrategyId].map((id) => [
       strategyKey(id, 1),
       platformServiceConfig,
     ]),
-    platformCapabilities: [evalCapability, enrichmentWork.capability],
+    platformCapabilities: [evalCapability, enrichmentWork.capability, datasetSearchWork.capability],
     ...(input.state ? { state: input.state } : {}),
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
@@ -1614,14 +1659,19 @@ export const createPlatform = async (input: PlatformInput) => {
     );
     if (!variant) return undefined;
     const id = `${variant.capability.descriptor.id}@${version}`;
+    const shared = compiled.capability.descriptor.availableTo;
+    const descriptor = { ...variant.capability.descriptor, id };
+    if (shared === undefined) delete descriptor.availableTo;
+    else descriptor.availableTo = shared;
     const pinned: CompiledCapability = {
       ...variant,
-      capability: {
-        ...variant.capability,
-        descriptor: { ...variant.capability.descriptor, id },
-      },
+      capability: { ...variant.capability, descriptor },
     };
-    if (!registry.all().some((c) => c.descriptor.id === id)) {
+    const registered = registry.all().find((c) => c.descriptor.id === id);
+    if (
+      !registered ||
+      JSON.stringify(registered.descriptor.availableTo) !== JSON.stringify(shared)
+    ) {
       const decorated = limited(
         await decorate(pinned.capability, {
           compiled: pinned,
@@ -1797,14 +1847,6 @@ export const createPlatform = async (input: PlatformInput) => {
   const caseSlots = evalSlots(input.evalSlots);
 
   const limiter = input.rateLimits?.limiter ?? new SlidingWindowLimiter();
-  const invokes = (c: {
-    req: { method: string; path: string; header(name: string): string | undefined };
-  }) =>
-    c.req.method === 'POST' &&
-    (c.req.path.startsWith('/v1/') ||
-      c.req.path.startsWith('/api/tools/call/') ||
-      (c.req.path === '/api/mcp' && c.req.header('mcp-method') === 'tools/call') ||
-      c.req.path.startsWith('/a2a/'));
   const headlessRagLimited = (c: { req: { method: string; path: string } }) =>
     c.req.method === 'POST' &&
     (c.req.path === '/api/mcp' ||
@@ -1847,10 +1889,6 @@ export const createPlatform = async (input: PlatformInput) => {
             'Too many requests',
             `The organisation allows ${perMinute} calls per minute.`,
           );
-    if (invokes(c)) {
-      const used = await quota(tenant);
-      if (used.exhausted) return quotaExhausted(c, used.monthlyTokens);
-    }
     return next();
   };
   const gate = tenantGate({
@@ -1989,6 +2027,7 @@ export const createPlatform = async (input: PlatformInput) => {
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    ...(input.demoRecorderKeyDigest ? { demoRecorderKeyDigest: input.demoRecorderKeyDigest } : {}),
     tenantSecrets,
     traceSinks,
     sinkLabels: sinkLabelService,
@@ -2018,6 +2057,7 @@ export const createPlatform = async (input: PlatformInput) => {
       try: runtime.tryOperation,
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
+    datasetSearchTask: datasetSearchWork.run(() => kernel),
     tasks: taskIndex,
     task: hidingInternalTasks(definitions, async (id) => (await taskStore.get(id))?.task),
     events: (task) => log.read(task, 0, () => false),
@@ -2078,11 +2118,12 @@ export const createPlatform = async (input: PlatformInput) => {
         ? configuredDiagnostics
         : create)(moduleDeps),
   );
+  const keyPolicies =
+    input.keyPolicies ??
+    (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys());
   modules.push(
     createKeyPoliciesModule({
-      policies:
-        input.keyPolicies ??
-        (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys()),
+      policies: keyPolicies,
       keys: apiKeys,
     })(moduleDeps),
   );
@@ -2100,7 +2141,11 @@ export const createPlatform = async (input: PlatformInput) => {
       },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys, testRunnerKeys: testRunnersAllowed }),
+    ...portalAdminHandlers({
+      apiKeys,
+      policies: keyPolicies,
+      testRunnerKeys: testRunnersAllowed,
+    }),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -2146,7 +2191,7 @@ export const createPlatform = async (input: PlatformInput) => {
           kernel,
           evalCapability: evalCapability.descriptor.id,
           ...evalStores,
-          quotaExhausted: async (tenant) => (await quota(tenant, { fresh: true })).exhausted,
+          runnable: (principal, capability) => resolvesTo(resolver, principal, capability),
         },
       });
     if (admin) {
@@ -2179,6 +2224,14 @@ export const createPlatform = async (input: PlatformInput) => {
         prices,
         ingestionUsage,
         ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
+        countingRule: () => {
+          const { endpoints } = runtime.catalog.effective().models;
+          return throughGatewayConnections(
+            models.describe(),
+            (endpoint) =>
+              (endpoints[endpoint] as { gateway?: unknown } | undefined)?.gateway === true,
+          );
+        },
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);
@@ -2266,18 +2319,6 @@ export const createPlatform = async (input: PlatformInput) => {
         overridePolicy,
         modelsOf,
         conversations: conversationTurns(conversations, callerOf, conversationId),
-        quotaExhausted: async (principal) => {
-          if (!principal.tenant) return undefined;
-          const used = await quota(principal.tenant);
-          return used.exhausted
-            ? {
-                type: quotaExhaustedType,
-                title: quotaExhaustedTitle,
-                detail: quotaExhaustedDetail(used.monthlyTokens),
-                retryAfterSeconds: secondsToNextMonth(),
-              }
-            : undefined;
-        },
       }),
     );
     app.route(
@@ -2412,6 +2453,19 @@ export const createPlatform = async (input: PlatformInput) => {
       conversationRoutes({
         store: conversations,
         auth: { authenticate: (request) => callerOf(request) },
+        runOf: async ({ principal }, task) => {
+          const run = await kernel.task(principal, task);
+          return {
+            status: run.status,
+            createdAt: Date.parse(run.createdAt),
+            deadlineMs:
+              registry.all().find((c) => c.descriptor.id === run.service.capability.id)
+                ?.deadlineMs ??
+              input.serviceLimits?.deadlineMs ??
+              defaultServiceLimits.deadlineMs,
+          };
+        },
+        ...(input.now ? { now: input.now } : {}),
         onDeleted: async (owner, id) => {
           await threadErasure?.erase(owner.tenant, id);
           if (blobStore) await deleteConversationDocuments(blobStore, owner.tenant, id);

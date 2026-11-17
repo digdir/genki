@@ -114,6 +114,7 @@ export interface DiscoveredDeployment {
 
 export interface DiscoverySource {
   kind: string;
+  family?: string;
   list(
     endpoint: Pick<EndpointConfig, 'baseURL' | 'credential' | 'timeoutMs'>,
   ): Promise<DiscoveredDeployment[]>;

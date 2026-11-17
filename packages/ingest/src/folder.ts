@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises';
-import { extname, join } from 'node:path';
+import { extname, join, sep } from 'node:path';
 import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
 import { capitalize, javaSplit } from './text.js';
@@ -10,6 +10,13 @@ export interface FolderEntry {
 }
 
 export const folderExtensions = ['.md', '.txt', '.html', '.htm'];
+
+/**
+ * A path with forward slashes, whatever the platform's separator, so a folder document's id,
+ * title and link are the same on every machine (ADR 0042) and Node still reads the file.
+ */
+export const toPosix = (path: string, separator = sep) =>
+  separator === '/' ? path : path.split(separator).join('/');
 
 export const findFolderFiles = async (
   root: string,
@@ -27,15 +34,18 @@ export const findFolderFiles = async (
         entry.isFile() &&
         (extensions === 'all' || extensions.includes(extname(entry.name).toLowerCase()))
       )
-        out.push({ path: full, lastmod: String((await stat(full)).mtimeMs) });
+        out.push({ path: toPosix(full), lastmod: String((await stat(full)).mtimeMs) });
     }
   };
   await walk(root);
   return out;
 };
 
-export const makeRelativePath = (basePath: string | undefined, path: string) =>
-  basePath && path.startsWith(basePath) ? path.slice(basePath.length) : path;
+export const makeRelativePath = (basePath: string | undefined, path: string) => {
+  const base = basePath && toPosix(basePath);
+  const posix = toPosix(path);
+  return base && posix.startsWith(base) ? posix.slice(base.length) : posix;
+};
 
 export const makeFolderUrl = (
   baseUrl: string | undefined,

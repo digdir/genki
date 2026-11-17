@@ -5,6 +5,7 @@ import type {
   AnswerMarker,
   AskHandlers,
   AskRequest,
+  CancelledRun,
   Conversation,
   ConversationMessage,
   ConversationPage,
@@ -74,6 +75,22 @@ export const sourceFor = (sources: Source[], index: number) =>
 const citedBy = (raw: unknown): { markers?: string[] } =>
   Array.isArray(raw) ? { markers: raw.filter((m): m is string => typeof m === 'string') } : {};
 
+const wholePage = (value: unknown) =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+/** An excerpt's page, the page it ends on when later, and its PDF at that page (http or https). */
+const pageOf = (e: Record<string, unknown>) => {
+  const page = wholePage(e.page);
+  if (page === undefined) return {};
+  const end = wholePage(e.page_end);
+  const url = str(e.url);
+  return {
+    page,
+    ...(end !== undefined && end > page ? { pageEnd: end } : {}),
+    ...(url !== undefined && /^https?:\/\//i.test(url) ? { url } : {}),
+  };
+};
+
 const sourceOf = (raw: unknown): Source[] => {
   if (!isRecord(raw)) return [];
   const excerpts = Array.isArray(raw.excerpts)
@@ -84,6 +101,7 @@ const sourceOf = (raw: unknown): Source[] => {
           text: str(e.text) ?? '',
           ...(typeof e.position === 'number' ? { position: e.position } : {}),
           ...(heading === undefined ? {} : { heading }),
+          ...pageOf(e),
           ...citedBy(e.markers),
         };
       })
@@ -271,6 +289,7 @@ export const createClient = (options: ClientOptions) => {
     );
     if (!response.body) throw new ApiError(502, 'The response has no body.');
     const acc = new Accumulator(taskOf(response), versionOf(response));
+    if (acc.taskId !== undefined) yield { type: 'task', taskId: acc.taskId };
     let failure: ApiError | undefined;
     for await (const frame of dataFrames(response.body)) {
       if (frame === '[DONE]') break;
@@ -404,6 +423,10 @@ export const createClient = (options: ClientOptions) => {
     },
     ask,
     stream,
+    cancel: async (taskId: string, call?: CallOptions): Promise<CancelledRun> => {
+      const body = await json('POST', `/v1/tasks/${encodeURIComponent(taskId)}/cancel`, {}, call);
+      return { taskId: String(body.id ?? taskId), status: String(body.status) };
+    },
     conversations: {
       list: async (
         params: { pageSize?: number; pageIndex?: number; tags?: string[] } = {},

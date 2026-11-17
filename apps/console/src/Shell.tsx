@@ -42,6 +42,7 @@ export const navigation: NavGroup[] = [
       { path: '/search-engines', label: 'shell.pageSearchEngines' },
       { path: '/state-register', label: 'shell.pageStateRegister' },
       { path: '/shared-services', label: 'shell.pageSharedServices' },
+      { path: '/demos', label: 'shell.pageDemos' },
       { path: '/settings', label: 'shell.pageSettings' },
       { path: '/quality', label: 'shell.pageQuality' },
       { path: '/quality-matrix', label: 'shell.pageQualityMatrix' },

@@ -109,6 +109,19 @@
                 their passages keep the service's order.
               </li>
               <li>
+                <strong>The excerpts, one by one</strong> (dev-kilder-hoyre and
+                dev-kilder-hoyre-2-detalj): in the <code>tool</code> variant, when every footnote
+                names its excerpt and the app holds <code>footnote</code>. The footnotes are
+                numbered 1, 2, 3 as they stand in the answer, and one excerpt can have several
+                numbers. All the cited excerpts stand as tinted Designsystemet cards in the order
+                the footnotes first cite them, «Viser 3 utdrag fra 2 dokumenter»: each card is one
+                button with its footnote numbers, the document and page, the section and two lines
+                of text. A card or a footnote in the answer shows that excerpt whole, under a row
+                that stays put: «Alle utdrag» back to the cards, and ‹ 2 av 7 › through the
+                footnotes, round at both ends. There is no search and no fold of the sources nothing
+                cites. When the footnotes name documents, the tool keeps the document cards.
+              </li>
+              <li>
                 <strong>Panel</strong>, with a search over the excerpts, and
                 <strong>compact</strong>, as a section after the answer.
               </li>
@@ -166,6 +179,17 @@
                 <code>title</code> is the heading, «Kilder», or <code>false</code> for none.
                 <code>headingLevel</code> is each document's heading level, 2 to 5, 3 by default.
                 <code>documentsClosed</code> starts every card closed.
+              </li>
+              <li>
+                <code>footnote</code> and <code>onFootnoteChange</code>: the footnote shown whole,
+                by its index in <code>citations</code>, or none for the cards. The app holds it, so
+                the answer can mark the same footnote (<code>Answer</code>'s
+                <code>shownFootnote</code>). Given in the <code>tool</code> variant, they turn on
+                the excerpts one by one. Into an excerpt, the focus goes to its document's title; a
+                step keeps it on the step; «Alle utdrag» puts it back on the card; Escape calls
+                <code>onReturn</code>. <code>onOpenDocument</code> draws «Åpne i dokumentvisning»
+                under the excerpt shown. The words a citation rests on are not marked yet: the
+                contract does not name them (#638).
               </li>
               <li>
                 <code>foldUncited</code>: the documents the answer read but cites nowhere stand
@@ -490,6 +514,243 @@
                   <td><code>--genai-sources-tool-gap</code></td>
                   <td><code>--ds-size-3</code></td>
                   <td><code>tool</code>: between the search, the caption and the list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>
+                    The excerpts: between the parts of the excerpts and of the one shown whole
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-lead-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>The excerpts: «Viser 6 utdrag fra 4 dokumenter …»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>The excerpts: between the excerpts’ cards</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-card-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>The excerpts: between a card’s lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-card-background</code></td>
+                  <td><code>--ds-color-background-tinted</code></td>
+                  <td>The excerpts: an excerpt’s card</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-card-hover-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>The excerpts: a card under the pointer, pinned to accent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-top-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>The excerpts: between a card’s numbers and its document</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-numbers-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>The excerpts: between a card’s footnote numbers</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-size</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>The excerpts: a footnote number’s height and least width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-padding</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>The excerpts: inside a footnote number, either side</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-border-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>The excerpts: a footnote number’s corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>The excerpts: a footnote number’s font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>The excerpts: a footnote number’s size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>The excerpts: a footnote number’s weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>The excerpts: a footnote number, pinned to accent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>The excerpts: a footnote number’s text, pinned to accent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-current-background</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>The excerpts: the shown footnote’s number, pinned to accent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-number-current-color</code></td>
+                  <td><code>--ds-color-accent-base-contrast-default</code></td>
+                  <td>The excerpts: the shown footnote’s number’s text, pinned to accent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-doc-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>The excerpts: a card’s document and page</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-doc-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>The excerpts: a card’s document and page</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-title-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>The excerpts: a card’s section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-preview-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>The excerpts: a card’s two lines of text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-nav-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>The excerpts: between «Alle utdrag» and the steps</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-nav-padding</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>The excerpts: under the row over the excerpt shown</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-nav-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>The excerpts: the line under that row</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-nav-border-color</code></td>
+                  <td><code>--ds-color-border-subtle</code></td>
+                  <td>The excerpts: the line under that row</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-nav-background</code></td>
+                  <td><code>--ds-color-background-default</code></td>
+                  <td>The excerpts: that row, over what scrolls under it</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-all-pull</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>The excerpts: how far «Alle utdrag» stands out to line its icon up</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-step-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>The excerpts: between ‹, «2 av 7» and ›</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-position-min-size</code></td>
+                  <td><code>--ds-size-12</code></td>
+                  <td>The excerpts: «2 av 7», so the steps stay put</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-position-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>The excerpts: «2 av 7»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-head-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>The excerpts: between the shown footnote’s number and its document</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-head-number-offset</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>The excerpts: how far the number sits down, level with the title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-titles-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>The excerpts: between the document’s title and its line under</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-meta-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>The excerpts: the line under the document: year and page</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-meta-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>The excerpts: the line under the document</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-section-font-size</code></td>
+                  <td><code>--ds-body-sm-font-size</code></td>
+                  <td>The excerpts: the shown excerpt’s section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-section-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>The excerpts: the shown excerpt’s section</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-text-padding</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>The excerpts: inside the box with the whole excerpt</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-text-border-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>The excerpts: that box’s corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-text-background</code></td>
+                  <td><code>--ds-color-background-tinted</code></td>
+                  <td>The excerpts: that box</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-quote-font-size</code></td>
+                  <td><code>--ds-body-sm-font-size</code></td>
+                  <td>The excerpts: the whole excerpt</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-quote-line-height</code></td>
+                  <td><code>--ds-line-height-lg</code></td>
+                  <td>The excerpts: the whole excerpt</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-doc-line-height</code></td>
+                  <td><code>--ds-body-xs-line-height</code></td>
+                  <td>The excerpts: a card’s document and page</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-position-line-height</code></td>
+                  <td><code>--ds-body-xs-line-height</code></td>
+                  <td>The excerpts: «2 av 7»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-meta-line-height</code></td>
+                  <td><code>--ds-body-xs-line-height</code></td>
+                  <td>The excerpts: the line under the document</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-ex-section-line-height</code></td>
+                  <td><code>--ds-body-sm-line-height</code></td>
+                  <td>The excerpts: the shown excerpt’s section</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-caption-color</code></td>

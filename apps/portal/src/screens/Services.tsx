@@ -235,6 +235,7 @@ const BuilderScreen = (
     ...(current?.files ? { files: current.files } : {}),
     ...(draft ? { draftRevision: draft.revision } : {}),
     ...(state.data && 'rebasedTo' in state.data ? { rebasedTo: state.data.rebasedTo } : {}),
+    ...(props.live && live ? { opened: draft ?? null } : {}),
   };
   const pane = paneOf(route.query);
   return (

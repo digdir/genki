@@ -2,6 +2,8 @@ import { translator, type Locale, type T } from './i18n';
 import { tenantLabel } from './tenant-names';
 import type {
   AuditEntry,
+  DatasetSearchAnswer,
+  DatasetSearchRequest,
   ModelClassification,
   ModelPrice,
   OperatorModel,
@@ -91,6 +93,46 @@ export interface StateRegisterView {
     accountsMinistry?: string;
     accountsMinistryName?: string;
   }[];
+}
+
+export type DemoApp = 'portal' | 'console' | 'workspace';
+export type DemoAudience = 'municipality' | 'state-agency' | 'internal';
+
+export interface DemoRecording {
+  id: string;
+  demo: string;
+  demoVersion: number;
+  genkiVersion: string;
+  status: 'running' | 'recorded' | 'failed';
+  steps: number;
+  narrated: boolean;
+  voice?: string;
+  startedAt: string;
+  finishedAt?: string;
+  seconds?: number;
+  files: { name: string; size: number; contentType: string }[];
+  failure?: { step: number; command?: string; message: string };
+}
+
+export interface Demo {
+  id: string;
+  version: number;
+  updatedAt: string;
+  title: string;
+  description: string;
+  audience: DemoAudience[];
+  language: string;
+  voice: string;
+  app: DemoApp;
+  path: string;
+  steps: { say: string; hold?: number }[];
+  latest?: DemoRecording;
+  recorded?: DemoRecording;
+}
+
+export interface DemoDetail extends Demo {
+  genkiVersion: string | null;
+  recordings: DemoRecording[];
 }
 
 export class ApiError extends Error {
@@ -477,6 +519,26 @@ export const createApiClient = ({
       ),
     openSupportSession: (tenant: string, reason: string, minutes = 30) =>
       call<SupportSession>('POST', '/support-sessions', { body: { tenant, reason, minutes } }),
+    demos: (signal?: AbortSignal) =>
+      call<{ genkiVersion: string | null; data: Demo[] }>('GET', '/operator/demos', { signal }),
+    demo: (id: string, signal?: AbortSignal) =>
+      call<DemoDetail>('GET', `/operator/demos/${encodeURIComponent(id)}`, { signal }),
+    demoFile: async (recording: string, name: string, signal?: AbortSignal) => {
+      const bearer = token();
+      const response = await send(
+        `${baseUrl}/operator/recordings/${encodeURIComponent(recording)}/files/${encodeURIComponent(name)}`,
+        {
+          headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+          ...(signal ? { signal } : {}),
+        },
+      );
+      if (!response.ok)
+        throw new ApiError(
+          response.status,
+          (await response.json().catch(() => undefined)) as Problem | undefined,
+        );
+      return response.blob();
+    },
     stateRegister: (signal?: AbortSignal) =>
       call<StateRegisterView>('GET', '/operator/state-register', { signal }),
     sharedServices: async (signal?: AbortSignal) =>
@@ -748,6 +810,9 @@ export const createApiClient = ({
           signal,
         })
       ).data,
+    /** Searches a dataset directly, as a service's search does; `base` is the dataset's path. */
+    datasetSearch: (base: string, body: DatasetSearchRequest, signal?: AbortSignal) =>
+      call<DatasetSearchAnswer>('POST', `${base}/search`, { body, signal }),
     /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
     datasetEngine: (base: string, signal?: AbortSignal) =>
       call<DatasetEngine>('GET', `${base}/engine`, { signal }),

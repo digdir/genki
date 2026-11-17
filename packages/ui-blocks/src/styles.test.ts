@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(`${import.meta.dirname}/${path}`, 'utf8');
@@ -8,6 +9,7 @@ const flatten = (css: string) =>
 
 // Every block's own stylesheet, branded the Designsystemet way.
 const sheets = readdirSync(import.meta.dirname, { recursive: true, encoding: 'utf8' })
+  .map((path) => path.split(sep).join('/'))
   .filter((path) => path.endsWith('.css') && path.includes('/'))
   .sort()
   .map((path) => {
@@ -68,6 +70,11 @@ const accentPins = [
   '--genai-sources-toggle-color',
   '--genai-sources-excerpt-active-background',
   '--genai-sources-excerpt-active-marker-color',
+  '--genai-sources-ex-card-hover-background',
+  '--genai-sources-ex-number-background',
+  '--genai-sources-ex-number-color',
+  '--genai-sources-ex-number-current-background',
+  '--genai-sources-ex-number-current-color',
 ];
 // The disclaimer is grey in kunnskapsassistenten whatever the host's family.
 const neutralPins = ['--genai-sources-disclaimer-color'];
@@ -194,7 +201,7 @@ describe('the lint', () => {
 describe('the Sources styles', () => {
   const flat = sheets.find((sheet) => sheet.path === 'sources/sources.css')?.flat ?? '';
 
-  it('follow the host’s colour family, but for the eight deliberate pins', () => {
+  it('follow the host’s colour family, but for the thirteen deliberate pins', () => {
     const uses = genaiUses(flat);
     const pinned = uses
       .filter((use) =>

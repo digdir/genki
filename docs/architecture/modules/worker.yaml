@@ -30,6 +30,7 @@ responsibilities:
   - Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try
   - Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start
   - Work knowledge.drop on the platform server for one generation an engine switch left, never the active one
+  - Work knowledge.fields on the platform server - write new fields, and a url when the fill gives one, on a dataset's stored documents in every generation holding them, nothing embedded (ADR 0042)
   - End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold
   - Cancel a knowledge run whose document dead letters reach its pipeline's failure budget
   - Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not

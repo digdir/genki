@@ -27,7 +27,7 @@ import {
   type TaskStore,
 } from './memory.js';
 import { DeltaCoalescer } from './deltas.js';
-import type { UseOptions } from './gate.js';
+import type { QuotaCheck, UseOptions } from './gate.js';
 import {
   KERNEL_MAJOR,
   KernelError,
@@ -54,6 +54,7 @@ export interface KernelLimits {
   maxConcurrentPerTenant: number;
   deltaFlushMs: number;
   deltaFlushChars: number;
+  cancelPollMs: number;
 }
 
 export interface CapabilitySource {
@@ -65,6 +66,7 @@ export interface KernelOptions {
   capabilities: Capability[] | CapabilitySource;
   ports: Record<string, PortProvider>;
   policy: PolicyDecisionPoint;
+  quota?: QuotaCheck;
   log?: EventLog;
   tasks?: TaskStore;
   state?: StateStore;
@@ -79,6 +81,7 @@ const defaultLimits: KernelLimits = {
   maxConcurrentPerTenant: 100,
   deltaFlushMs: 100,
   deltaFlushChars: 500,
+  cancelPollMs: 1000,
 };
 
 const strategyTypes = new Set<string>(strategyEventTypes);
@@ -392,6 +395,35 @@ export const createKernel = (options: KernelOptions): Kernel => {
     l.controller.abort(reason);
   };
 
+  const cancelled = () => new KernelError('cancelled', 'task was cancelled');
+
+  let cancelWatch: ReturnType<typeof setInterval> | undefined;
+  let checkingCancels = false;
+  const checkCancels = async () => {
+    if (live.size === 0) {
+      clearInterval(cancelWatch);
+      cancelWatch = undefined;
+      return;
+    }
+    if (checkingCancels || !store.cancelRequested) return;
+    checkingCancels = true;
+    try {
+      for (const id of await store.cancelRequested([...live.keys()])) {
+        const running = live.get(id);
+        if (running) abort(running, cancelled());
+      }
+    } catch {
+      // The next round asks again.
+    } finally {
+      checkingCancels = false;
+    }
+  };
+  const watchCancels = () => {
+    if (cancelWatch || !store.cancelRequested) return;
+    cancelWatch = setInterval(() => void checkCancels(), limits.cancelPollMs);
+    cancelWatch.unref?.();
+  };
+
   const outputLimit = (l: Live) => {
     const limits = [
       l.budget.headroom()?.outputTokens,
@@ -458,7 +490,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   };
 
   const finishAborted = async (l: Live) => {
-    const reason = l.abortReason ?? new KernelError('cancelled', 'task was cancelled');
+    const reason = l.abortReason ?? cancelled();
     if (reason.code !== 'cancelled') return fail(l, reason);
     if (l.finished) return;
     l.finished = true;
@@ -503,6 +535,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   const drive = async (l: Live, start: () => AsyncIterable<Emitted>) => {
     await setStatus(l, 'running');
     live.set(l.task.id, l);
+    watchCancels();
     const deadlineMs = l.capability.deadlineMs;
     const timer =
       deadlineMs === undefined
@@ -702,6 +735,10 @@ export const createKernel = (options: KernelOptions): Kernel => {
       capabilityRef(capability.descriptor),
     );
     if (!decision.allow) throw new KernelError('forbidden', decision.reason);
+    if (!parent) {
+      const spent = await options.quota?.({ tenant, capability: capability.descriptor.id });
+      if (spent) throw new KernelError('quota_exhausted', spent);
+    }
     const depth = parent ? parent.depth + 1 : 0;
     if (depth > limits.maxDepth)
       throw new KernelError('limit_exceeded', `invocation depth over ${limits.maxDepth}`);
@@ -745,6 +782,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
         owner: capability.descriptor.tenant,
         ...(parent ? { parent: parent.task.id } : {}),
         ...(thread === undefined ? {} : { thread }),
+        ...(invokeOptions.entryPoint === undefined ? {} : { entryPoint: invokeOptions.entryPoint }),
         status: 'queued',
         artifacts: [],
         usage: {},
@@ -909,7 +947,8 @@ export const createKernel = (options: KernelOptions): Kernel => {
     cancel: async (principal, taskId) => {
       const stored = await authorize(principal, taskId, 'cancel');
       const running = live.get(taskId);
-      if (running) return abort(running, new KernelError('cancelled', 'task was cancelled'));
+      if (running) return abort(running, cancelled());
+      if (isRunning(stored.task.status)) return store.requestCancel?.(taskId, now().toISOString());
       if (stored.task.status !== 'interrupted') return;
       const l = revive(stored);
       l.finished = true;

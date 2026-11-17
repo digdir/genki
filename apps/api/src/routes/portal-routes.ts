@@ -17,6 +17,7 @@ import type { TaskErasure } from '@genai/kernel';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import {
   combine,
+  directOnly,
   genkiCostCounts,
   genkiSource,
   inNok,
@@ -29,7 +30,7 @@ import {
 } from '@genai/port-usage';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, tenantAccess } from '../access.js';
-import { defaultKeyCallsPerMinute } from '../rate-limit.js';
+import { defaultKeyCallsPerMinute, quotaExhausted } from '../rate-limit.js';
 import { actorOf, type Admin, type AdminHandler, type AdminOutcome } from '../admin.js';
 import {
   originOf,
@@ -48,6 +49,7 @@ import { testRunnerRefusedType } from '../test-runner.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 import { isHiddenTask, shownKeys } from '../internal-services.js';
+import { rightBeyondHolder } from '../key-policies.js';
 
 export interface PortalTaskRow {
   task: string;
@@ -197,7 +199,7 @@ export interface PortalRouteDeps {
   qualityWarnings?(tenant: string): Promise<{ service: string; message: string }[]>;
   drafts?: DraftRunner;
   gatewayUsage?: UsageReads;
-  throughGateway?(model: string): boolean;
+  countingRule?(): CountingRule;
   testRunnerKeys?: boolean;
   now?(): Date;
   newKey?(): string;
@@ -323,6 +325,7 @@ export const overridable = (value: unknown) =>
 
 export const portalAdminHandlers = (deps: {
   apiKeys: TenantApiKeys;
+  policies?: KeyPolicyStore;
   testRunnerKeys?: boolean;
 }): Record<string, AdminHandler> => ({
   'platform.apikeys.create': async (input, principal) => {
@@ -394,6 +397,16 @@ export const portalAdminHandlers = (deps: {
       return { ok: false, errors: [{ path: 'id', message: 'no active key with that id' }], target };
     if (typeof input.digest !== 'string' || !/^[0-9a-f]{64}$/.test(input.digest))
       return { ok: false, errors: [{ path: 'digest', message: 'not a key digest' }], target };
+    const policyId = old.policy?.id;
+    const policy =
+      (policyId &&
+        (await deps.policies?.listPolicies(input.tenant))?.find((p) => p.id === policyId)) ||
+      old.policy;
+    const beyond = rightBeyondHolder(principal, input.tenant, [
+      ...(old.scopes ?? []),
+      ...(policy?.scopes ?? []),
+    ]);
+    if (beyond) return refused(target, t('problems.keyBeyondRights', { right: beyond }));
     const kept: TenantApiKey = { ...old };
     delete kept.revokedAt;
     delete kept.lastUsedAt;
@@ -888,8 +901,6 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     });
   };
 
-  const counting: CountingRule = { throughGateway: deps.throughGateway ?? (() => false) };
-
   const gatewayWindow = async (tenants: string[], from: Date, to: Date): Promise<GatewayWindow> => {
     if (!deps.gatewayUsage) return { rows: [], rates: [] };
     const [rows, rates] = await Promise.all([
@@ -911,6 +922,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const withGateway = deps.gatewayUsage !== undefined;
     const gatewayRead =
       withGateway && !scoped ? (preloaded ?? gatewayWindow([tenant], from, to)) : undefined;
+    const counting = gatewayRead && deps.countingRule ? deps.countingRule() : directOnly;
     const [all, projectTasks] = await Promise.all([
       deps.definitions.capabilities(),
       deps.projectTasks?.(tenant),
@@ -1640,6 +1652,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       return c.json(invalidInputProblem(result.errors), 400, {
         'content-type': 'application/problem+json',
       });
+    if (!result.ok && result.quota) return quotaExhausted(c, result.quota);
     if (result.ok)
       return c.json(
         { ok: true, task: result.task, answer: result.answer, parts: result.parts },

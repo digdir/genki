@@ -33,6 +33,7 @@ import {
   type SearchHit,
 } from '../markdown/textSearch.js';
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
+import { ExcerptTool } from './ExcerptTool.js';
 import { useT } from './i18n.js';
 import {
   documentKeys,
@@ -103,6 +104,9 @@ export interface SourcesProps {
   onSelect?: ((selection: SourceSelection) => void) | undefined;
   excerptActions?: ((selection: Required<SourceSelection>) => ReactNode) | undefined;
   sourceActions?: ((source: SourceDocument) => ReactNode) | undefined;
+  footnote?: number | undefined;
+  onFootnoteChange?: ((citation: number | undefined) => void) | undefined;
+  onOpenDocument?: ((selection: Required<SourceSelection>) => void) | undefined;
   children?: ReactNode;
   className?: string | undefined;
 }
@@ -130,6 +134,15 @@ const classes = (...names: (string | false | undefined)[]) => names.filter(Boole
 
 /** A «Les side N» link is drawn only where the address opens that page. */
 export const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
+
+/** «side 12», or «side 12–13» for an excerpt that runs on to a later page. */
+export const usePageText = () => {
+  const t = useT();
+  return (page: number, pageEnd?: number) =>
+    pageEnd !== undefined && pageEnd > page
+      ? t('sources.pages', { from: page, to: pageEnd })
+      : t('sources.page', { page });
+};
 
 /** Whether the reader asks for less motion, so a scroll jumps rather than glides. */
 export const prefersStill = () =>
@@ -617,6 +630,7 @@ const SourceItem = ({
   back,
 }: ItemProps) => {
   const t = useT();
+  const pageText = usePageText();
   const detailsId = useId();
   const bodyId = useId();
   const rowId = useId();
@@ -875,7 +889,7 @@ const SourceItem = ({
                       {path && path !== section ? <strong>{path}</strong> : null}
                       {path && path !== section && page !== undefined ? ' · ' : null}
                       {page === undefined ? null : (
-                        <span className="uib-sources-page">{t('sources.page', { page })}</span>
+                        <span className="uib-sources-page">{pageText(page, excerpt?.pageEnd)}</span>
                       )}
                     </Paragraph>
                   ) : null}
@@ -965,6 +979,9 @@ export const Sources = ({
   foldUncited = false,
   headingLevel = 3,
   itemId,
+  footnote,
+  onFootnoteChange,
+  onOpenDocument,
   children,
   className,
   ...item
@@ -986,6 +1003,11 @@ export const Sources = ({
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
+  const excerptView =
+    variant === 'tool' &&
+    onFootnoteChange !== undefined &&
+    pairing?.mode === 'excerpt' &&
+    (citations?.length ?? 0) > 0;
   // Cards and excerpts in the footnotes' order, 1, 2, 3, which the search steps through too.
   const order = useMemo(() => readingOrder(sources ?? [], pairing), [sources, pairing]);
   const prepared = useMemo(
@@ -1000,13 +1022,14 @@ export const Sources = ({
   );
   // With `foldUncited`, the documents nothing in the finished answer cites.
   const uncited = useMemo(() => {
-    if (!foldUncited || !pairing || answerStatus === 'streaming') return new Set<number>();
+    if (!foldUncited || excerptView || !pairing || answerStatus === 'streaming')
+      return new Set<number>();
     const cited = (i: number) =>
       pairing.mode === 'excerpt'
         ? (sources?.[i]?.excerpts ?? []).some((e) => pairing.numbers.has(e.chunkId))
         : pairing.uses.has(prepared[i]?.key ?? '');
     return new Set(order.documents.filter((i) => !cited(i)));
-  }, [foldUncited, pairing, answerStatus, sources, prepared, order]);
+  }, [foldUncited, excerptView, pairing, answerStatus, sources, prepared, order]);
   // The documents as drawn: the cited ones, then the folded ones, which the search follows.
   const shown = useMemo(
     () => [
@@ -1152,14 +1175,16 @@ export const Sources = ({
     );
   // The tool's caption names the list it stands over, «Utdrag svaret bygger på».
   const tool = variant === 'tool';
-  const captioned = tool && !waiting && !empty && (sources?.length ?? 0) > uncited.size;
+  const captioned =
+    tool && !excerptView && !waiting && !empty && (sources?.length ?? 0) > uncited.size;
   const named = captioned
     ? { 'aria-labelledby': captionId }
     : heading
       ? { 'aria-labelledby': titleId }
       : { 'aria-label': t('sources.title') };
   const own = hasOwnDocuments ?? sources?.some(isOwn) ?? false;
-  const searching = (search ?? variant !== 'compact') && !empty && Boolean(sources?.length);
+  const searching =
+    !excerptView && (search ?? variant !== 'compact') && !empty && Boolean(sources?.length);
   const describedBy = disclaimer && sources?.length ? (disclaimerId ?? madeId) : undefined;
   const items = (indexes: readonly number[]) =>
     indexes.flatMap((i) => {
@@ -1260,6 +1285,19 @@ export const Sources = ({
           level={headingLevel}
           corpus={corpus}
           assistantName={assistantName}
+        />
+      ) : sources?.length && excerptView && pairing ? (
+        <ExcerptTool
+          sources={sources}
+          names={prepared.map((document) => document.name)}
+          pairing={pairing}
+          total={citations?.length ?? 0}
+          footnote={footnote}
+          onFootnoteChange={onFootnoteChange}
+          onOpenDocument={onOpenDocument}
+          request={item.target}
+          onReturn={item.onReturn}
+          level={headingLevel}
         />
       ) : sources?.length ? (
         <>

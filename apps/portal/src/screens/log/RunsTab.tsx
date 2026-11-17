@@ -76,9 +76,7 @@ export const RunsTab = ({
   const [services] = useAsync(
     async (signal) =>
       live
-        ? Object.fromEntries(
-            (await api.overview(tenant, signal)).services.map((s) => [s.id, s.name]),
-          )
+        ? Object.fromEntries((await api.services(tenant, signal)).data.map((s) => [s.id, s.name]))
         : serviceNames,
     [api, tenant, live],
   );

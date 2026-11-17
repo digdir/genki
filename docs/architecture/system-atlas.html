@@ -1865,9 +1865,9 @@
             summary:
               'A local MCP server that lets coding agents list, read, validate, publish and try services through the API, as the person who logged in.',
             description:
-              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
+              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, search a dataset as a run does, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
             responsibilities: [
-              'MCP tools over the definition, playground and task routes',
+              'MCP tools over the definition, playground, dataset search and task routes',
               'Browser login with PKCE and a localhost callback',
               'Validate before publish, and a required change reason',
             ],
@@ -1883,7 +1883,7 @@
             edges: [
               {
                 to: 'api',
-                label: 'Definitions, playground runs and run timelines',
+                label: 'Definitions, playground runs, dataset searches and run timelines',
                 kind: 'http',
                 target: 'http',
                 witness: { file: 'apps/admin-mcp/src/tools.ts', contains: '/definitions/validate' },
@@ -1897,7 +1897,7 @@
               },
             ],
             keywords:
-              'admin mcp coding agent claude code copilot publish validate playground timeline',
+              'admin mcp coding agent claude code copilot publish validate playground timeline search dataset',
             schemas: [],
           },
           {
@@ -2145,6 +2145,7 @@
               {
                 'Frontend extensions': 'conversations, filters, step events, per-document sources',
               },
+              'Stopping a /v1 run for the caller that started it, with its turn kept as stopped',
               'OpenAPI tool endpoints',
             ],
             files: ['packages/adapter-openai/src/app.ts', 'packages/adapter-openai/src/sources.ts'],
@@ -2725,6 +2726,7 @@
               'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
+              "Work knowledge.fields on the platform server - write new fields, and a url when the fill gives one, on a dataset's stored documents in every generation holding them, nothing embedded (ADR 0042)",
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
               "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
@@ -7067,6 +7069,7 @@
                               pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
                             },
                           },
+                          gateway: { type: 'boolean' },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -7714,7 +7717,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -7758,7 +7761,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8284,7 +8287,7 @@
                                 type: 'string',
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
-                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                               follow: {
                                 type: 'string',
                                 format: 'starts_with',
@@ -8328,7 +8331,7 @@
                               encoding: {
                                 default: 'json',
                                 type: 'string',
-                                enum: ['json', 'binary', 'text', 'ndjson'],
+                                enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                               },
                               headers: {
                                 default: {},
@@ -8582,7 +8585,7 @@
                       type: 'object',
                       properties: {
                         method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
-                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}:-]*$' },
                         follow: {
                           type: 'string',
                           format: 'starts_with',
@@ -8623,7 +8626,7 @@
                         encoding: {
                           default: 'json',
                           type: 'string',
-                          enum: ['json', 'binary', 'text', 'ndjson'],
+                          enum: ['json', 'binary', 'text', 'ndjson', 'none'],
                         },
                         headers: {
                           default: {},
@@ -8869,7 +8872,7 @@
             summary:
               'Search and fetch over datasets, with grants checked and a timeout on every call.',
             description:
-              'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents with a retired numeric Kudos id a Kudos title search as their url (publicSourceUrl in @genai/contracts); other datasets keep their own url or none.',
+              'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents with an old numeric Kudos id their Kudos page by UUID as their url, from the map of earlier ids, or a Kudos title search where the map has none and the hit has a title (publicSourceUrl in @genai/contracts); other datasets keep their own url or none.',
             responsibilities: [
               'Dataset catalog',
               'Search and fetch with timeouts',
@@ -9402,7 +9405,7 @@
             summary:
               'Reads usage from sources outside genki, such as an AI gateway, and counts each call once.',
             description:
-              'Holds the gateway usage contract, a fake that keeps its rules, the usage@1 contract suite, the hourly poll and the rule that counts a call once whether genki or the gateway measured it.',
+              'Holds the gateway usage contract, a fake that keeps its rules, the usage@2 contract suite, the hourly poll and the rule that counts a call once whether genki or the gateway measured it.',
             responsibilities: [
               'Usage source interface and gateway usage contract',
               'Fake gateway and contract suite',
@@ -10506,7 +10509,7 @@
             summary:
               "Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.",
             description:
-              "Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
+              "Hybrid search with Norwegian full text and pgvector, as two statements fused with RRF in TypeScript, so a slow text half keeps the vector hits. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
@@ -10520,6 +10523,7 @@
               'packages/providers-pgvector/src/engine.ts',
               'packages/providers-pgvector/src/schema.ts',
               'packages/providers-pgvector/src/sql.ts',
+              'packages/providers-pgvector/src/hybrid.ts',
               'packages/providers-pgvector/src/knowledge-setup.ts',
               'packages/providers-pgvector/src/partitions.ts',
               'packages/providers-pgvector/src/knowledge-writer.ts',

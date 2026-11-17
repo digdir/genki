@@ -39,6 +39,10 @@ export interface Excerpt {
   position?: number;
   /** Its own section path, levels joined by ` › `, when the index gives one. */
   heading?: string;
+  /** The page of its file it starts on, the page it ends on when later, and its PDF at `page`. */
+  page?: number;
+  pageEnd?: number;
+  url?: string;
   markers?: string[];
 }
 
@@ -105,6 +109,7 @@ export type Step = { event?: string; stage?: string; tool?: string; iteration?: 
 >;
 
 export type StreamEvent =
+  | { type: 'task'; taskId: string }
   | { type: 'conversation'; conversationId: string }
   | { type: 'text'; text: string }
   | { type: 'retract' }
@@ -154,6 +159,9 @@ export interface ConversationMessage {
   chunks: ConversationChunk[];
   sources?: Source[];
   markers?: AnswerMarker[];
+  task?: string;
+  runState?: 'running' | 'failed' | 'cancelled';
+  stopped?: true;
 }
 
 export interface ConversationPage {
@@ -199,4 +207,9 @@ export interface FeedbackRequest {
   rating: 'up' | 'down';
   comment?: string;
   reasons?: string[];
+}
+
+export interface CancelledRun {
+  taskId: string;
+  status: string;
 }

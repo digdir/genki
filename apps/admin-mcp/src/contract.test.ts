@@ -1,3 +1,4 @@
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -194,6 +195,15 @@ describe('the admin MCP tools against the API', () => {
     expect(checked.text).toMatch(/^Valid/);
   });
 
+  it('reaches the dataset search route, and says when a dataset is not in the catalogue', async () => {
+    const { call } = await boot();
+
+    const missing = await call('search_dataset', { dataset: 'digdir/finnes-ikke', query: 'lønn' });
+
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toContain('Fant ikke datasettet');
+  });
+
   it('lists the models the organisation may choose', async () => {
     const { call } = await boot();
 
@@ -305,39 +315,56 @@ describe('the playground tool', () => {
     expect(refused).toMatchObject({ isError: true, text: expect.stringContaining('budget') });
   });
 
-  it('sends a document only from the folder it was started in, and never a hidden or linked-out file', async () => {
-    const outside = await mkdtemp(join(tmpdir(), 'genki-admin-outside-'));
-    const root = await mkdtemp(join(tmpdir(), 'genki-admin-root-'));
-    await writeFile(join(outside, 'secret.txt'), 'hemmelig');
-    await writeFile(join(root, 'brev.txt'), 'Et brev');
-    await writeFile(join(root, '.env'), 'KEY=hemmelig');
-    await mkdir(join(root, '.aws'));
-    await writeFile(join(root, '.aws', 'credentials'), 'hemmelig');
-    await symlink(join(outside, 'secret.txt'), join(root, 'lenke.txt'));
-    const sent: unknown[] = [];
-    const send = (documentPath: string) =>
-      runTool(
-        adminTools,
-        'run_playground',
-        { service: 'hjelper', question: 'Les brevet', documentPath },
-        { client: fakeClient(sent), spend: { budgetNok: 50, spentNok: 0 }, documentRoot: root },
+  // Windows lets only developer mode or an administrator make symlinks; the rule cannot be tried without one.
+  const symlinksAllowed = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'symlink-probe-'));
+    try {
+      symlinkSync(join(dir, 'target'), join(dir, 'link'));
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'EPERM') return false;
+      throw error;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it.skipIf(!symlinksAllowed())(
+    'sends a document only from the folder it was started in, and never a hidden or linked-out file',
+    async () => {
+      const outside = await mkdtemp(join(tmpdir(), 'genki-admin-outside-'));
+      const root = await mkdtemp(join(tmpdir(), 'genki-admin-root-'));
+      await writeFile(join(outside, 'secret.txt'), 'hemmelig');
+      await writeFile(join(root, 'brev.txt'), 'Et brev');
+      await writeFile(join(root, '.env'), 'KEY=hemmelig');
+      await mkdir(join(root, '.aws'));
+      await writeFile(join(root, '.aws', 'credentials'), 'hemmelig');
+      await symlink(join(outside, 'secret.txt'), join(root, 'lenke.txt'));
+      const sent: unknown[] = [];
+      const send = (documentPath: string) =>
+        runTool(
+          adminTools,
+          'run_playground',
+          { service: 'hjelper', question: 'Les brevet', documentPath },
+          { client: fakeClient(sent), spend: { budgetNok: 50, spentNok: 0 }, documentRoot: root },
+        );
+
+      const allowed = await send('brev.txt');
+      const refused = await Promise.all(
+        [join(outside, 'secret.txt'), '../secret.txt', '.env', '.aws/credentials', 'lenke.txt'].map(
+          send,
+        ),
       );
 
-    const allowed = await send('brev.txt');
-    const refused = await Promise.all(
-      [join(outside, 'secret.txt'), '../secret.txt', '.env', '.aws/credentials', 'lenke.txt'].map(
-        send,
-      ),
-    );
-
-    expect(allowed.isError).toBeUndefined();
-    expect(sent).toEqual([
-      expect.objectContaining({
-        input: { file: expect.objectContaining({ name: 'brev.txt', mediaType: 'text/plain' }) },
-      }),
-    ]);
-    for (const r of refused) expect(r.isError).toBe(true);
-  });
+      expect(allowed.isError).toBeUndefined();
+      expect(sent).toEqual([
+        expect.objectContaining({
+          input: { file: expect.objectContaining({ name: 'brev.txt', mediaType: 'text/plain' }) },
+        }),
+      ]);
+      for (const r of refused) expect(r.isError).toBe(true);
+    },
+  );
 
   it('wraps what others wrote as untrusted data', async () => {
     const sent: unknown[] = [];

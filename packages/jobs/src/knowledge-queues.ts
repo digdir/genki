@@ -25,6 +25,10 @@ const dropPayload = z.union([
   z.strictObject({ tenant, dataset: id }),
   z.strictObject({ tenant, dataset: id, generation: id }),
 ]);
+/** The fills a fields-only refresh knows, each by the source whose records it reads (ADR 0042). */
+export const fieldFills = ['kudos-org-numbers', 'kudos-links-and-abbreviations'] as const;
+/** A dataset whose stored documents get new fields, without re-chunking or embedding. */
+const fieldsPayload = z.strictObject({ tenant, dataset: id, fill: z.enum(fieldFills) });
 /**
  * A file to convert, the record whose source fetches it, and every other organisation with a record
  * waiting on it, comma-separated and starting with its own, so the job's dead letter is shown to
@@ -97,6 +101,17 @@ export const knowledgeDropQueue = defineQueue({
   name: 'knowledge.drop',
   policy: 'singleton',
   payload: dropPayload,
+  expireInSeconds: hour,
+  heartbeatSeconds: minute,
+  ...retried,
+  deadLetter: true,
+});
+
+/** Writes new fields on a dataset's stored documents, sent by an operator through the API. */
+export const knowledgeFieldsQueue = defineQueue({
+  name: 'knowledge.fields',
+  policy: 'singleton',
+  payload: fieldsPayload,
   expireInSeconds: hour,
   heartbeatSeconds: minute,
   ...retried,
@@ -199,6 +214,7 @@ export const knowledgePlatformQueues: QueueDefinition[] = [
   knowledgePushQueue,
   knowledgeActivateQueue,
   knowledgeDropQueue,
+  knowledgeFieldsQueue,
 ];
 
 /** Jobs that follow a document record: on the knowledge server, sent and worked by the writer. */
@@ -232,6 +248,7 @@ export const knowledgeKeys = {
   push: (dataset: string, record: string) => `${dataset}#${record}`,
   activate: (dataset: string) => dataset,
   drop: (dataset: string) => dataset,
+  fields: (dataset: string) => dataset,
   convert: (file: { sha256: string; converter: string; version: string; settings: string }) =>
     `${file.sha256}:${file.converter}:${file.version}:${file.settings}`,
   index: (generation: string, record: string) => `${generation}#${record}`,

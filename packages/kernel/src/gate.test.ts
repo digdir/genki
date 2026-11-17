@@ -577,4 +577,26 @@ describe('the gate outside a run', () => {
     await fetch('https://plugin.example/b');
     expect(reached).toEqual(['https://plugin.example/b']);
   });
+
+  it('replaces an incoming genki-tenant with the call tenant, and drops it when the tenant is not a 9-digit organisation number', async () => {
+    const arrived: (string | null)[] = [];
+    let current: string | undefined;
+    const gate = createGate({
+      callScope: { run: (_tenant, send) => send(), tenant: () => current },
+      egress: () =>
+        (async (_input: string, init?: RequestInit) => {
+          arrived.push(new Headers(init?.headers).get('genki-tenant'));
+          return new Response('ok');
+        }) as unknown as typeof fetch,
+    });
+    const fetch = gate.egress('gateway', { tenantHeader: true });
+    const smuggled = { headers: { 'genki-tenant': '999999999' } };
+
+    current = '123456789';
+    await fetch('https://gateway.example/v1/chat', smuggled);
+    current = 'digdir';
+    await fetch('https://gateway.example/v1/chat', smuggled);
+
+    expect(arrived).toEqual(['123456789', null]);
+  });
 });

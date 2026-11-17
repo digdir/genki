@@ -199,7 +199,7 @@ const ask = async (question?: string) => {
 
 const footnotes = () =>
   [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].filter((mark) =>
-    /^Utdrag \d+: /.test(mark.getAttribute('aria-label') ?? ''),
+    /^(?:Utdrag|Fotnote) \d+: /.test(mark.getAttribute('aria-label') ?? ''),
   );
 
 const state = (template: Parameters<typeof fromTemplate>[0]): BuilderState =>
@@ -2718,6 +2718,100 @@ describe('the whole document in Dokumentvisning, from the host', () => {
     await waitFor(() => expect(frame()).toBeTruthy());
     expect(documentFile).toHaveBeenCalledTimes(1);
   });
+
+  describe("at the excerpt's page", () => {
+    const main = 'https://kudos.dfo.no/dokument/42/filer/hoved.pdf';
+    const attachment = 'https://kudos.dfo.no/dokument/42/filer/vedlegg.pdf';
+    // One document, cited at page 12 and page 20 of its main PDF, and at page 3 of an attachment.
+    const paged = () => {
+      const { api } = fakeApi();
+      api.loadThread = vi.fn(async () => ({
+        title: 'En gammel tråd',
+        turns: [
+          {
+            id: 'm1',
+            question: 'Hva er fast?',
+            askedAt: 1,
+            answer: {
+              text: 'Fast [1], hvert år [2], i vedlegget [3].',
+              status: 'complete' as const,
+              sources: [
+                {
+                  ...source,
+                  excerpts: [
+                    { chunkId: 'c1', text: 'Fast.', page: 12, url: `${main}#page=12` },
+                    { chunkId: 'c3', text: 'Hvert år.', page: 20, url: `${main}#page=20` },
+                    { chunkId: 'c4', text: 'Vedlegget.', page: 3, url: `${attachment}#page=3` },
+                  ],
+                },
+              ],
+              markers: [
+                { marker: '1', chunkId: 'c1', documentId: '42' },
+                { marker: '2', chunkId: 'c3', documentId: '42' },
+                { marker: '3', chunkId: 'c4', documentId: '42' },
+              ],
+              created: 2,
+            },
+          },
+        ],
+      }));
+      return api;
+    };
+    // The host's own address for a file of the document, as kunnskapsassistenten's server gives it.
+    const served = (file: string | undefined, source = file) => ({
+      url: `/files/42?file=${encodeURIComponent(file ?? 'first')}`,
+      mediaType: 'application/pdf',
+      ...(source ? { source } : {}),
+    });
+
+    it('the assembly asks the host for the file of the excerpt it opens', async () => {
+      const documentFile = vi.fn(async (_id: string, _s: AbortSignal, at?: { file?: string }) =>
+        served(at?.file),
+      );
+      await open(documentFile, withView(), paged());
+      await waitFor(() => expect(frame()).toBeTruthy());
+      expect(documentFile.mock.calls.map(([id, , at]) => [id, at])).toEqual([
+        ['42', { file: main }],
+      ]);
+    });
+
+    it("the document view frames the excerpt's own file at its page", async () => {
+      await open(async (_id, _s, at) => served(at?.file), withView(), paged());
+      await waitFor(() =>
+        expect(frame()?.getAttribute('src')).toBe(
+          `/files/42?file=${encodeURIComponent(main)}#page=12`,
+        ),
+      );
+    });
+
+    it("the document view keeps the frame at its start when the host's file is not the excerpt's", async () => {
+      // A host that serves the document's first PDF whatever it is asked, and says so or not.
+      for (const said of [attachment, undefined]) {
+        cleanup();
+        await open(async () => served(undefined, said), withView(), paged());
+        await waitFor(() => expect(frame()?.getAttribute('src')).toBe('/files/42?file=first'));
+      }
+    });
+
+    it('a footnote to another page in the same file opens the frame at that page', async () => {
+      const documentFile = vi.fn(async (_id: string, _s: AbortSignal, at?: { file?: string }) =>
+        served(at?.file),
+      );
+      await open(documentFile, withView(), paged());
+      await waitFor(() => expect(frame()?.getAttribute('src')).toMatch(/#page=12$/));
+      fireEvent.click(footnotes()[1] as HTMLElement);
+      await waitFor(() => expect(frame()?.getAttribute('src')).toMatch(/#page=20$/));
+      expect(documentFile).toHaveBeenCalledTimes(1);
+      // The attachment is another file: asked for, and framed at its own page.
+      fireEvent.click(footnotes()[2] as HTMLElement);
+      await waitFor(() =>
+        expect(frame()?.getAttribute('src')).toBe(
+          `/files/42?file=${encodeURIComponent(attachment)}#page=3`,
+        ),
+      );
+      expect(documentFile.mock.calls.map(([, , at]) => at?.file)).toEqual([main, attachment]);
+    });
+  });
 });
 
 describe('asking, whatever genki has said of the service', () => {
@@ -3830,9 +3924,34 @@ describe('footnotes per document in the next look, until genki cites excerpts', 
     expect(clipboard).toEqual(['Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.']);
   });
 
-  it('keeps one number per excerpt for an answer that cites excerpts', async () => {
+  it('puts the Kildeliste under the answer, which copies itself as Markdown', async () => {
+    const clipboard: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+    draw(fromTemplate('knowledge-assistant-next').layout, fakeApi().api, true);
+    await ask();
+    expect(screen.queryByText('Kilder brukt i svaret')).toBeNull();
+    fireEvent.click(await screen.findByText('Kildeliste'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Kopier kildeliste' }));
+    });
+    expect(clipboard).toEqual(['- [1] *Tildelingsbrev 2022*.']);
+    expect(screen.getByRole('button', { name: 'Kopiert' })).toBeTruthy();
+  });
+
+  it('offers «Kopier kildeliste» only when the layout lets the answer be copied', async () => {
+    const off = withSetting(fromTemplate('knowledge-assistant-next'), 'chat', 'copy', false).layout;
+    draw(off, fakeApi().api, true);
+    await ask();
+    fireEvent.click(await screen.findByText('Kildeliste'));
+    expect(screen.queryByRole('button', { name: 'Kopier kildeliste' })).toBeNull();
+  });
+
+  it('numbers each footnote as it stands for an answer that cites excerpts', async () => {
     await openStored(fromTemplate('knowledge-assistant-next').layout);
-    expect(documentMarks()).toEqual(['Utdrag 1: Tildelingsbrev 2022']);
+    expect(documentMarks()).toEqual(['Fotnote 1: Tildelingsbrev 2022']);
   });
 
   it('leaves «Kunnskapsassistenten» drawing no mark for a document', async () => {
@@ -3894,7 +4013,10 @@ describe('Kilder in the next look', () => {
     documentId: '43',
     excerpts: [{ chunkId: 'c2', text: 'Lest, men ikke brukt i svaret.' }],
   };
-  const drawStored = (template: 'knowledge-assistant' | 'knowledge-assistant-next') => {
+  const drawStored = (
+    template: 'knowledge-assistant' | 'knowledge-assistant-next',
+    citesExcerpts = true,
+  ) => {
     const { api } = fakeApi();
     api.loadThread = vi.fn(async () => ({
       title: 'En gammel tråd',
@@ -3907,7 +4029,9 @@ describe('Kilder in the next look', () => {
             text: answer,
             status: 'complete' as const,
             sources: [read, source],
-            markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+            ...(citesExcerpts
+              ? { markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }] }
+              : {}),
             created: 2,
           },
         },
@@ -3917,15 +4041,43 @@ describe('Kilder in the next look', () => {
     draw(fromTemplate(template).layout, api, true);
   };
   const showKilder = async () => {
-    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    await waitFor(() => expect(document.querySelectorAll('.uib-answer-mark')).toHaveLength(1));
     const shown = screen.queryByRole('button', { name: 'Vis verktøypanelet' });
     if (shown) fireEvent.click(shown);
     chooseTool('Kilder');
   };
   const fold = () => document.querySelector<HTMLDetailsElement>('details.uib-sources-others');
 
-  it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)»', async () => {
+  it('shows each cited excerpt as a card, and a footnote shows it whole, marked in the answer', async () => {
     drawStored('knowledge-assistant-next');
+    await showKilder();
+    const cards = await screen.findByRole('list', { name: 'Utdrag i svaret' });
+    expect(
+      within(cards)
+        .getAllByRole('button')
+        .map((card) => card.getAttribute('aria-label')),
+    ).toEqual(['Fotnote 1: Utdrag, Tildelingsbrev 2022']);
+    expect(screen.queryByText(read.title)).toBeNull();
+    expect(fold()).toBeNull();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+
+    const mark = screen.getByRole('link', { name: 'Fotnote 1: Tildelingsbrev 2022' });
+    fireEvent.click(mark);
+    await screen.findByText('1 av 1');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('heading', { name: 'Tildelingsbrev 2022' }),
+      ),
+    );
+    expect(mark.getAttribute('aria-current')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alle utdrag' }));
+    await waitFor(() => expect(mark.getAttribute('aria-current')).toBeNull());
+    expect(screen.getByRole('list', { name: 'Utdrag i svaret' })).toBeTruthy();
+  });
+
+  it('folds the sources the answer read but did not cite under «Andre kilder som ble lest (N)» when it cites documents', async () => {
+    drawStored('knowledge-assistant-next', false);
     await showKilder();
     expect(fold()?.open).toBe(false);
     expect(fold()?.querySelector('summary')?.textContent).toBe('Andre kilder som ble lest (1)');

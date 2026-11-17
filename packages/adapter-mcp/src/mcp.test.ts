@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Principal } from '@genai/contracts';
-import { createKernel, type Capability, type Kernel, type Strategy } from '@genai/kernel';
+import {
+  createKernel,
+  KernelError,
+  type Capability,
+  type Kernel,
+  type Strategy,
+} from '@genai/kernel';
 import {
   createMcpApp,
   progressTracker,
@@ -1218,7 +1224,7 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
     expect(withoutQueries).toMatch(/"chunks":\[[^\]]*\]\}$/);
   });
 
-  it('records the user turn before the run and the assistant turn with its chunks after', async () => {
+  it('records the user turn once the run has started, and the assistant turn with its chunks after', async () => {
     const turns: { id: string; role: string; text: string; chunks?: unknown[] }[] = [];
     const { app } = setup({
       conversations: {
@@ -1258,8 +1264,93 @@ describe('MCP wire parity with headless-rag streams and KA', () => {
     await (await call(app, KA, { query: 'hei' })).json();
 
     expect(turns.map((t) => t.role)).toEqual(['user', 'assistant']);
-    expect(turns[0]).not.toHaveProperty('task');
     expect(turns[1]?.task).toBe(tasks.at(-1));
+  });
+
+  it('stores the question with the id of the run that answers it', async () => {
+    const turns: { role: string; task?: string }[] = [];
+    const { app } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-3', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn);
+        },
+      },
+    });
+
+    await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(turns[0]).toMatchObject({ role: 'user', task: tasks.at(-1) });
+  });
+
+  it('cancels the run when the question cannot be stored', async () => {
+    tasks.length = 0;
+    const { app, kernel } = setup({
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-4', history: [] }),
+        append: async () => {
+          throw new Error('store unavailable');
+        },
+      },
+    });
+
+    const body = await (await call(app, 'kunnskapsassistenten__slow', { query: 'hei' })).json();
+
+    await until(
+      async () =>
+        tasks.length === 1 && (await kernel.task(kari, tasks[0] as string)).status === 'cancelled',
+    );
+    expect(body.error.code).toBe(-32603);
+  });
+
+  it('stores no question and leaves no new conversation when the run is refused', async () => {
+    const turns: string[] = [];
+    const discarded: string[] = [];
+    const { app } = setup({
+      resolver: {
+        list: resolver.list,
+        resolve: async () => ({ ok: true, entry: { id: KA, capability: 'not-published' } }),
+      },
+      conversations: {
+        open: async () => ({ ok: true, id: 'stored-5', history: [] }),
+        append: async (_request, _id, turn) => {
+          turns.push(turn.role);
+        },
+        discard: async (_request, id) => {
+          discarded.push(id);
+        },
+      },
+    });
+
+    const body = await (await call(app, KA, { query: 'hei' })).json();
+
+    expect(body.result.isError).toBe(true);
+    expect(turns).toEqual([]);
+    expect(discarded).toEqual(['stored-5']);
+  });
+
+  it('stores no user turn when the kernel refuses the call at the monthly token quota', async () => {
+    const turns: string[] = [];
+    const base = setup().kernel;
+    const { app } = setup({
+      kernel: {
+        ...base,
+        invoke: async () => {
+          throw new KernelError('quota_exhausted', 'the monthly token quota is used up');
+        },
+      },
+      conversations: {
+        open: async () => ({ ok: true, id: 'c', history: [] }),
+        append: async (_r, _id, turn) => {
+          turns.push(turn.role);
+        },
+      },
+    });
+
+    const res = await call(app, KA, { query: 'hei' });
+
+    expect(res.status).toBe(429);
+    expect(turns).toEqual([]);
   });
 
   it('answers the conversation store refusal as a tool error without running the service', async () => {

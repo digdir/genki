@@ -1,6 +1,8 @@
 import { sourceLinkRules, type Principal } from '@genai/contracts';
 import { testCase, testSet, type TestSet, type TestSetStore } from '@genai/eval';
 import { guardrailSchemas, ruleKinds } from '@genai/guardrails';
+import type { DatabaseConnection } from '@genai/ingest';
+import { fieldFills } from '@genai/jobs';
 import {
   filterValueTypes,
   type DatasetDraft,
@@ -58,11 +60,11 @@ export interface ConfigDeps {
     tenant: string;
     principal: Principal;
   }) => Promise<number | undefined>;
-  connectorSecret?: (
+  connectorConnection?: (
     tenant: string,
     dataset: string,
     pipeline: string,
-  ) => Promise<string | undefined>;
+  ) => Promise<DatabaseConnection | undefined>;
   gateProblem?: (gate: string, metric: string) => string | undefined;
   usedBy?: (dataset: string) => Promise<DatasetReader[]>;
 }
@@ -421,6 +423,34 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
           audit: { scope, execution: cancelled.value.id },
         }
       : { ok: false, errors: cancelled.errors, target, conflict: true as const };
+  },
+  'platform.knowledge.fields': async (input, principal) => {
+    const dataset = String(input.dataset);
+    const fill = String(input.fill ?? '');
+    const target = `dataset:${dataset}`;
+    if (principal.kind !== 'operator') return refused(target, 'only an operator refreshes fields');
+    if (!(fieldFills as readonly string[]).includes(fill))
+      return {
+        ok: false,
+        errors: [{ path: 'fill', message: `fill must be one of ${fieldFills.join(', ')}` }],
+        target,
+      };
+    if ((await deps.ingestion.openRuns(scopeOf(input), dataset)).length > 0)
+      return {
+        ok: false,
+        conflict: true,
+        errors: [
+          { path: 'dataset', message: 'a run of the dataset is open; refresh after it ends' },
+        ],
+        target,
+      };
+    await deps.ingestion.refreshFields({ tenant: platformScope, dataset, fill });
+    return {
+      ok: true,
+      value: { dataset, fill, status: 'sent' },
+      target,
+      audit: { scope: scopeOf(input), fill },
+    };
   },
   'platform.jobs.redrive': async (input, principal) => {
     const scope = scopeOf(input);
@@ -1032,12 +1062,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         ]);
       if (id && !(await deps.ingestion.get(guard.scope, dataset, pipelineId)))
         return problem(c, 404, 'Not found');
-      const connectorSecret = await deps.connectorSecret?.(guard.scope, dataset, pipelineId);
+      const connector = await deps.connectorConnection?.(guard.scope, dataset, pipelineId);
       const response = await perform(c, guard.principal, 'platform.pipeline.save', guard.scope, {
         dataset,
         id: pipelineId,
         spec,
-        ...(connectorSecret ? { connectorSecret } : {}),
+        ...(connector ? { connector } : {}),
       });
       return !id && response.status === 200 ? c.json(await response.json(), 201) : response;
     };
@@ -1177,6 +1207,21 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
     return guard.response
       ? { response: guard.response }
       : { principal: guard.principal, scope: platformScope };
+  });
+  // Only operators write fields on stored documents, for platform datasets (ADR 0042).
+  app.post('/operator/datasets/:dataset/fields', async (c) => {
+    const guard = await operator(c);
+    if (guard.response) return guard.response;
+    const item = deps.catalog.get(
+      'dataset',
+      deps.catalog.qualify(platformScope, param(c, 'dataset')),
+    );
+    if (!item || item.scope !== platformScope) return problem(c, 404, 'Not found');
+    const response = await perform(c, guard.principal, 'platform.knowledge.fields', platformScope, {
+      dataset: item.id,
+      fill: (await body(c)).fill,
+    });
+    return response.status === 200 ? c.json(await response.json(), 202) : response;
   });
   pipelineRoutes('/tenants/:tenant', async (c, right) => {
     const guard = await member(c, right);

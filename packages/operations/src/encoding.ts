@@ -174,6 +174,8 @@ export const contentTypeFits = (
       return type.startsWith('text/');
     case 'binary':
       return mediaTypes.includes(type);
+    case 'none':
+      return true;
   }
 };
 
@@ -186,7 +188,9 @@ export const acceptOf = (encoding: ResponseEncoding, mediaTypes: readonly string
         ? mediaTypes.length > 0
           ? mediaTypes.join(', ')
           : '*/*'
-        : 'text/plain';
+        : encoding === 'none'
+          ? '*/*'
+          : 'text/plain';
 
 export class AnswerFormatError extends Error {}
 
@@ -197,6 +201,10 @@ export const decodeAnswer = async (
   maxBytes: number,
   mediaTypes: readonly string[] = [],
 ): Promise<unknown> => {
+  if (encoding === 'none') {
+    await response.body?.cancel();
+    return null;
+  }
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > maxBytes)
     throw new AnswerFormatError(

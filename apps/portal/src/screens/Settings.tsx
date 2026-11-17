@@ -23,6 +23,7 @@ import {
 } from '../data/settings';
 import { navigate, useAsync } from '../hooks';
 import type { ScreenProps, SettingsContext } from '../screen';
+import { useRights } from '../Shell';
 import { ErrorState, Loading } from '../states';
 import { mergeRows, type Ctx } from './settings/model';
 import { settingLabel } from './settings/text';
@@ -231,11 +232,15 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
   const t = useT();
   const embedded = useInServicePage();
   const id = context.kind === 'tenant' ? '' : context.id;
+  const canExport = useRights().has('manage-services');
   const [state, retry] = useAsync(
     async (signal): Promise<Loaded> => {
-      const catalog = await api.settingsCatalog(signal);
+      if (context.kind === 'tenant' && live && canExport)
+        api.exportTenant(tenant, signal).catch(() => undefined);
+      const catalogLoad = api.settingsCatalog(signal);
       if (context.kind === 'service') {
-        const [effective, definition] = await Promise.all([
+        const [catalog, effective, definition] = await Promise.all([
+          catalogLoad,
           api.effectiveSettings(tenant, id, signal),
           api.getDefinition(tenant, 'Service', id, signal).catch(() => undefined),
         ]);
@@ -257,7 +262,10 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
         };
       }
       if (context.kind === 'dataset') {
-        const dataset = await api.getDataset(id, signal).catch(() => undefined);
+        const [catalog, dataset] = await Promise.all([
+          catalogLoad,
+          api.getDataset(id, signal).catch(() => undefined),
+        ]);
         const name =
           (live ? undefined : nameFromSlug(exampleDatasetNames, id)) ?? dataset?.name ?? id;
         return {
@@ -268,9 +276,10 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
           norwayOnly: false,
         };
       }
-      const effective = live
-        ? await api.tenantEffectiveSettings(tenant, signal).catch(() => undefined)
-        : undefined;
+      const [catalog, effective] = await Promise.all([
+        catalogLoad,
+        live ? api.tenantEffectiveSettings(tenant, signal).catch(() => undefined) : undefined,
+      ]);
       return {
         ...mergeRows(catalog, effective, '', live),
         target: '',

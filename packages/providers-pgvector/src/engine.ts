@@ -26,6 +26,13 @@ import {
   vacuumKnowledge,
 } from './schema.js';
 import { facetSql, fieldsText, hitColumns, searchSql, type Profile } from './sql.js';
+import {
+  candidatesFor,
+  searchHybrid,
+  textSearchMs,
+  type SearchHalf,
+  type SearchOne,
+} from './hybrid.js';
 import { knowledgeWriterOf } from './knowledge-writer.js';
 import { knowledgeReads } from './knowledge-reads.js';
 import { migrateKnowledgeServer, syncFilterIndexes } from './partitions.js';
@@ -87,6 +94,8 @@ export interface PgvectorEngineOptions {
   knowledgeGuard?: () => void;
   embedder?: (dataset: DatasetConfig) => QueryEmbedder;
   maxQueryLength?: number;
+  /** How long a hybrid search's text half may run; `textSearchMs` unless a test shortens it. */
+  textSearchMs?: number;
   /** A VACUUM after a run's end failed; the run has already committed, so it does not fail. */
   onVacuumError?: (error: unknown) => void;
 }
@@ -219,11 +228,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     dataset: Dataset,
     requests: SearchRequest[],
     signal: AbortSignal,
-    one: (
-      p: Profile,
-      request: SearchRequest,
-      vector: number[] | undefined,
-    ) => Promise<SearchResult>,
+    one: SearchOne,
   ): Promise<SearchResult[]> => {
     const profiles = new Map(profilesOf(dataset));
     const planned = requests.map((request) => {
@@ -257,7 +262,20 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
         const warning = x.wantsVector ? embedWarning : undefined;
         if (x.p.mode === 'vector' && vector === undefined)
           return { hits: [], warning: warning ?? 'no query vector' };
-        const result = await one(x.p, x.request, vector);
+        const result =
+          x.p.mode !== 'hybrid'
+            ? await one(x.p, x.request, vector)
+            : vector === undefined
+              ? // Without its vector half, a hybrid profile searches text as a text profile does.
+                await one({ ...x.p, mode: 'text' }, x.request, undefined)
+              : await searchHybrid(
+                  one,
+                  x.p,
+                  x.request,
+                  vector,
+                  dataset.options.rrfK ?? defaultRrfK,
+                  options.textSearchMs ?? textSearchMs,
+                );
         return warning === undefined ? result : { ...result, warning };
       }),
     );
@@ -292,21 +310,24 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       p: Profile,
       request: SearchRequest,
       vector: number[] | undefined,
+      half?: SearchHalf,
     ): Promise<SearchResult> => {
-      const limit = request.limit ?? 10;
+      const limit = half?.candidates ?? request.limit ?? 10;
       const built = searchSql({
         dataset,
         profile: p,
         query: request.query,
         filters: request.filters ?? {},
         limit,
-        candidates: Math.max(limit * 4, 50),
+        candidates: half?.candidates ?? candidatesFor(limit),
         config: configOf(dataset),
         rrfK: dataset.options.rrfK ?? defaultRrfK,
         vector,
       });
-      const { rows } = await run(timeoutMs, built.usesVectors, (c) =>
-        c.query<HitRow>(built.sql, built.values),
+      const { rows } = await run(
+        Math.min(timeoutMs, half?.timeoutMs ?? timeoutMs),
+        built.usesVectors,
+        (c) => c.query<HitRow>(built.sql, built.values),
       );
       return { hits: rows.map(hitOf), found: rows[0]?.found ?? 0 };
     };
@@ -326,8 +347,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       search: async (dataset, requests, signal) => {
         failIfAborted(signal);
         await migrated();
-        return searchBatch(dataset, requests, signal, (p, request, vector) =>
-          searchOne(dataset, p, request, vector),
+        return searchBatch(dataset, requests, signal, (p, request, vector, half) =>
+          searchOne(dataset, p, request, vector, half),
         );
       },
       fetch: async (dataset, ids, signal) => {

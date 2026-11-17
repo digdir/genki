@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03; admission shown on keys, 2026-11-10; test-runner keys built, 2026-11-10; Maskinporten clients hold no right, ADR 0027, 2026-11-11; a knowledge run admitted again, and when its admission runs out shown, 2026-11-15)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02; admission on the run for knowledge jobs, 2026-11-02; user groups built, 2026-11-03; admission shown on keys, 2026-11-10; test-runner keys built, 2026-11-10; Maskinporten clients hold no right, ADR 0027, 2026-11-11; a knowledge run admitted again, and when its admission runs out shown, 2026-11-15; service groups, 2026-11-16)
 
 ## Context
 
@@ -12,7 +12,7 @@ genki-test logs people in through Ansattporten TEST. With TestID anyone can log 
 
 In lockdown, only a credential from configuration, a trusted Entra login (below) or a credential such a login created may reach a model provider. A credential from configuration is an API key whose secret the API was given at startup (today `DEV_API_KEY` and `DEV_SERVICE_API_KEY`). The API marks such a caller when it authenticates the request, by the digest of the key it presented, so a key made or rotated through the API carries the mark only as described under Keys and clients from Entra logins.
 
-- People (Ansattporten), operators and every other caller get a 403 problem, `urn:genai:problem:locked-environment`, whose title says the environment is locked, on routes that run models: service calls (MCP, OpenAI, A2A, tool calls), playground and test runs, builder assistant turns, eval and batch runs, project runs, the quality matrix, enrichment proposals, diagnostics and skill fixes.
+- People (Ansattporten), operators and every other caller get a 403 problem, `urn:genai:problem:locked-environment`, whose title says the environment is locked, on routes that run models: service calls (MCP, OpenAI, A2A, tool calls), playground and test runs, builder assistant turns, eval and batch runs, project runs, the quality matrix, enrichment proposals, diagnostics, direct dataset searches (which embed the query) and skill fixes.
 - The same callers get the same problem, with a title that says ingestion is locked, on routes that fetch documents or write new embeddings: running a pipeline (tenant and operator), syncing a connector, starting, retrying or activating an engine switch, and applying hypothetical questions.
 - The model port refuses the same callers, so a model call from a route not on that list, a background job or a trigger fails too.
 - The worker reads the same setting. It binds no triggers, so a document that lands in a folder or a scheduled trigger starts nothing, and each sync logs that it is locked. Its model port uses the same rule, and the worker runs as a system user without the mark, so any model call it makes is refused.
@@ -56,6 +56,20 @@ Proposed 2026-11-02, built 2026-11-03.
 
 Membership is controlled by the lab, which monitors it, so the rights are those of the Digdir organisation's own people rather than a reduced set. Two groups remain because of the operator role. Rejected: adding these people to `LOCKDOWN_ENTRA_GROUPS` (they would become operators in every tenant), a list of persons in configuration (a deploy per change), and opening TestID logins to models (anyone can log in with TestID).
 
+## Service groups in lockdown
+
+Built 2026-11-16.
+
+Every Digdir employee should be able to use a published service in test, such as Kunnskapsassistenten, without getting any right to build, change or publish. An email domain alone cannot say who that is, since the token carries no Entra tenant id (above); a group object id can. `LOCKDOWN_SERVICE_GROUPS` (comma-separated Entra group object ids, meant for Digdir's all-employees group; the API refuses to start if one is not a GUID) admits them narrowly:
+
+- Only through a client in `LOCKDOWN_SERVICE_CLIENT_IDS` (comma-separated Ansattporten client ids) that a tenant has registered as a frontend of its service. The login is then confined to that client as any registered-client login is (ADR 0008): it reaches only the client's service and channels, such as service calls, its own conversations and feedback, and `GET /me`. The client must be registered in `PLATFORM_TENANT`; one registered elsewhere is refused. Through a platform client, an unlisted registered client or no client, the login gets `urn:genai:problem:entra-not-trusted`. In lockdown the API refuses to start with `LOCKDOWN_SERVICE_GROUPS` set and this list empty, and with a platform client (`OPERATOR_CLIENT_IDS`, `EMPLOYEE_CLIENT_IDS`) in it, since those can never be registered.
+- The email must be at `LOCKDOWN_ENTRA_EMAIL_DOMAIN` when it is set, as for the other groups.
+- It becomes an employee of `PLATFORM_TENANT` with only `use-services` and the internal scope `grant:lockdown-service-user`, set only by the verifier. It is not admitted (`isAdmittedEntraLogin` is false): it is read-only, may not run ingestion, create keys or clients, and never becomes an operator.
+- It may use models only to invoke the service: the model gate admits it when it is confined to a service (`mayInvokeServices`), and on the routes that run models the lockdown gate lets it through only on the service calls (`serviceCallRoutes`: MCP, OpenAI, A2A and tool calls, and stopping a `/v1` run it started). Playground, test, eval, batch and assistant runs stay refused.
+- The two other groups win where they apply: an operator-group member is a trusted Entra login on any of these clients, and a user-group member is a user on the platform clients. A user-group member who is also in a service group and logs in through a service client is a service user there.
+
+Rejected: listing KA's client in `OPERATOR_CLIENT_IDS` (it would admit user-group logins unconfined there and reserve the id, so the client could no longer be registered and confined), and every registered client of the platform organisation without a list (a new frontend would open models to all employees without a deploy).
+
 ## Keys and clients from Entra logins
 
 An API key created or rotated by a trusted Entra login, and a Maskinporten client registered by one, gets the same configured-credential mark when it authenticates in lockdown, so a team member can hand the KA test backend a key without a redeploy. The API stores `admittedInLockdown` with the key (column `admitted_in_lockdown` in `legacy_api_keys`) or with the client registration, and sets it from the principal that makes the change, never from the request body. `verifyApiKey` and the Maskinporten client admission turn it into the internal scope `grant:admitted-credential`, which the API turns into the configured-credential mark only in lockdown.
@@ -97,6 +111,7 @@ Test should stay open for the team to look at, and for configuration to be tried
 - TestID logins, including test persons who are general manager of `PLATFORM_TENANT` and operators listed in `OPERATOR_SUBJECTS` (`issuer|subject` pairs for Ansattporten logins), can only read in genki-test.
 - Who may work in test is decided by Entra group membership in Digdir, not by the platform. Removing someone from the group takes effect at their next token.
 - genki-test has two security groups in Digdir's Entra tenant, owned by the lab and created by Digdir IT on 2026-11-03: `genki-test-operators` (`76d10637-d517-413c-a10b-84675a3ed64b`) for `LOCKDOWN_ENTRA_GROUPS` and `genki-test-users` (`789b5488-39ec-47b3-9217-840e5cd957fd`) for `LOCKDOWN_USER_GROUPS`.
+- A new service frontend open to every Digdir employee in test is registered in `PLATFORM_TENANT` and its client id added to `LOCKDOWN_SERVICE_CLIENT_IDS`.
 - Production does not run in lockdown. It will have a real Kunnskapsassistenten service and a separate test service for KA's test backend.
 - A new check that sends a stored secret somewhere goes in `secretSendingChecks`.
 - A new route that runs a model goes in `modelRunRoutes` in `apps/api/src/lockdown.ts`, and a new route that ingests or writes embeddings goes in `ingestionRoutes`, so it gets the clear problem and not a failed task.
