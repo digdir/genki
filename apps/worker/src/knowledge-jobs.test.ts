@@ -222,6 +222,7 @@ describe('the worker and the knowledge queues', () => {
     expect(await names(api.pool)).toEqual([
       'knowledge.activate',
       'knowledge.drop',
+      'knowledge.fields',
       'knowledge.ingest',
       'knowledge.push',
     ]);
@@ -861,6 +862,27 @@ describe('the worker and the knowledge queues', () => {
       [at.dataset],
     );
     expect(rows).toEqual([]);
+  });
+
+  it('a run that did not run as jobs cannot be sent back', async () => {
+    const at = pipeline();
+    const id = await insertRun(at, { status: 'failed', admittedAt: new Date().toISOString() });
+    await api.pool.query(`update ingestion_executions set runs_as_jobs = false where id = $1`, [
+      id,
+    ]);
+    const sent = await apiRuns.redrive({
+      dataset: at.dataset,
+      pipeline: at.pipeline,
+      execution: id,
+      by: 'employee:test:kari',
+      reason: 'try again',
+      at: new Date().toISOString(),
+    });
+    expect(sent).toMatchObject({
+      ok: false,
+      message: 'only an ended run that runs as jobs can be sent back',
+    });
+    expect(await run(id)).toMatchObject({ status: 'failed' });
   });
 
   it('sending back refuses a run of another pipeline', async () => {

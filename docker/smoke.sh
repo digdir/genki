@@ -107,6 +107,15 @@ else
   failed=1
 fi
 
+if headers /callback | grep -qi "^x-frame-options: SAMEORIGIN" &&
+  headers /callback | grep -qi "frame-ancestors 'self'" &&
+  headers /callback | grep -qi "frame-src 'self'"; then
+  echo "ok: the console's own origin may frame its login callback for silent renewal"
+else
+  echo "FAILED: login callback headers in the console" >&2
+  failed=1
+fi
+
 if [ "$failed" -ne 0 ]; then
   docker logs "$name-apps" >&2
   exit 1

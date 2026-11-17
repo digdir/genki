@@ -67,6 +67,40 @@ describe('the ai gateway usage source', () => {
     );
   });
 
+  it('signs in with the federated app token when the source is set up as an app', async () => {
+    const fake = memoryUsageSource({ now: () => new Date(day + 600_000) });
+    const server = await serveUsageGateway(fake, { clientKey });
+    servers.push(server);
+    const app = {
+      clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+      tenant: '11111111-2222-3333-4444-555555555555',
+      scope: 'api://gateway/.default',
+    };
+    const asked: unknown[] = [];
+    const source = aiGatewayUsageSource(
+      {
+        id: 'gateway',
+        baseUrl: server.url,
+        federatedApp: app,
+        since: new Date('2026-10-01T00:00:00Z'),
+        timeoutMs: 5_000,
+        maxResponseBytes: 1024 * 1024,
+      },
+      {
+        secrets,
+        egress,
+        federatedTokens: (given) => {
+          asked.push(given);
+          return async () => clientKey;
+        },
+      },
+    );
+    await source.usage(window);
+
+    expect(asked).toEqual([app]);
+    expect(server.requests[0]?.headers.authorization).toBe(`Bearer ${clientKey}`);
+  });
+
   it('turns a refusal into an error with the status genki acts on, and the wait after a 429', async () => {
     const fake = memoryUsageSource();
     const server = await serveUsageGateway(fake, { clientKey });
@@ -119,6 +153,42 @@ describe('gateway settings', () => {
 
     expect(config).toBeUndefined();
     expect(problems).toEqual(['GATEWAY_USAGE_CREDENTIAL must be a secret:// reference']);
+  });
+
+  it('signs in as an app when the app client id, tenant and scope are set instead of a key', () => {
+    const { config, problems } = gatewayUsageConfigFromEnv({
+      GATEWAY_USAGE_URL: 'https://gateway-api.example.no/v1',
+      GATEWAY_USAGE_APP_CLIENT_ID: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+      GATEWAY_USAGE_APP_TENANT: '11111111-2222-3333-4444-555555555555',
+      GATEWAY_USAGE_APP_SCOPE: 'api://gateway/.default',
+    });
+
+    expect(problems).toEqual([]);
+    expect(config?.credential).toBeUndefined();
+    expect(config?.federatedApp).toEqual({
+      clientId: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+      tenant: '11111111-2222-3333-4444-555555555555',
+      scope: 'api://gateway/.default',
+    });
+  });
+
+  it('refuses both a client key and an app, and an app without a tenant', () => {
+    const app = {
+      GATEWAY_USAGE_URL: 'https://gateway-api.example.no/v1',
+      GATEWAY_USAGE_APP_CLIENT_ID: '334f8fa1-437e-4b84-bceb-f320fb60f3ed',
+      GATEWAY_USAGE_APP_SCOPE: 'api://gateway/.default',
+    };
+
+    expect(
+      gatewayUsageConfigFromEnv({
+        ...app,
+        GATEWAY_USAGE_APP_TENANT: '11111111-2222-3333-4444-555555555555',
+        GATEWAY_USAGE_CREDENTIAL: 'secret://env/gateway-usage-key',
+      }).problems,
+    ).toEqual(['set GATEWAY_USAGE_CREDENTIAL or GATEWAY_USAGE_APP_*, not both']);
+    expect(gatewayUsageConfigFromEnv(app).problems).toEqual([
+      'GATEWAY_USAGE_APP_TENANT must be the GUID of the gateway tenant',
+    ]);
   });
 
   it('strips any number of trailing slashes from the base URL in linear time', () => {

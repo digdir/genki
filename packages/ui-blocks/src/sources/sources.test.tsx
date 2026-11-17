@@ -120,6 +120,40 @@ describe('the sources block', () => {
     expect(quote().classList.contains('uib-sources-preview')).toBe(false);
   });
 
+  it('shows «side 12–13» for an excerpt that runs on to the next page, and «Les side 12» only with a link', () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    // An excerpt on pages 12 and 13 of a PDF with a link to its page, and one on page 14 without.
+    const evaluering: SourceDocument = {
+      index: 1,
+      title: 'Evaluering av tilskudd',
+      url: 'https://kudos.dfo.no/dokument/d1',
+      documentId: 'kudos:d1',
+      excerpts: [
+        {
+          chunkId: 'c1',
+          text: 'Kommunene rapporterer at ordningen virker.',
+          heading: '3 Funn',
+          page: 12,
+          pageEnd: 13,
+          url: `${pdf}#page=12`,
+        },
+        { chunkId: 'c2', text: 'Ordningen bør fortsette.', heading: '4 Råd', page: 14 },
+      ],
+    };
+    render(<Sources sources={[evaluering]} corpus="Kudos" />);
+    fireEvent.click(toggleOf(/3 Funn/));
+    fireEvent.click(toggleOf(/4 Råd/));
+    expect(within(rowOf(/3 Funn/)).getByText('side 12–13')).toBeTruthy();
+    expect(
+      within(rowOf(/3 Funn/))
+        .getByRole('link', { name: /^Les side 12 på Kudos/ })
+        .getAttribute('href'),
+    ).toBe(`${pdf}#page=12`);
+    // A page with no link to it: «side 14», and no «Les side».
+    expect(within(rowOf(/4 Råd/)).getByText('side 14')).toBeTruthy();
+    expect(within(rowOf(/4 Råd/)).queryByRole('link', { name: /Les side/ })).toBeNull();
+  });
+
   it('keeps the page link and the actions for an open excerpt', () => {
     draw({ citations: cite('kudos::2021-1'), excerptActions: () => <button>Lagre</button> });
     expect(screen.queryByRole('link', { name: /Les side 12 på Kudos/ })).toBeNull();

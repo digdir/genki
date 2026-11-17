@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   ensureEnvFile,
   fillEnv,
+  knowledgeSetupCommand,
   knowledgeSetupWanted,
   localDatabaseUrl,
   localModelUrl,
@@ -85,7 +86,8 @@ describe('setup env file', () => {
     ]);
   });
 
-  it('writes .env.local readable by the owner only', () => {
+  // Windows has no POSIX file modes, so the mode a file is written with is not readable there.
+  it.skipIf(process.platform === 'win32')('writes .env.local readable by the owner only', () => {
     const root = tempRoot();
     ensureEnvFile(root, counter());
     expect(statSync(join(root, '.env.local')).mode & 0o077).toBe(0);
@@ -181,5 +183,13 @@ describe('setup npm command', () => {
   it('falls back to plain npm outside npm or under another package manager', () => {
     for (const cli of ['', '/usr/local/lib/node_modules/pnpm/bin/pnpm.cjs', '/x/not-npm-cli.js'])
       expect(npmCommand(['run', 'dev'], cli)).toEqual({ command: 'npm', args: ['run', 'dev'] });
+  });
+
+  it('runs the knowledge server setup through the node that runs npm, so it starts on Windows', () => {
+    const cli = 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js';
+    expect(knowledgeSetupCommand(cli)).toEqual({
+      command: process.execPath,
+      args: [cli, 'run', 'knowledge:setup', '--', '--local'],
+    });
   });
 });

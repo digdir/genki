@@ -581,6 +581,183 @@ describe('with no document to show', () => {
   });
 });
 
+describe('the whole document from the host', () => {
+  const pdf = { url: '/api/files/2021', mediaType: 'application/pdf' };
+  const ready = { status: 'ready' as const, file: pdf };
+  const frameOf = () => document.querySelector('iframe');
+  const pdfViewer = Object.getOwnPropertyDescriptor(Navigator.prototype, 'pdfViewerEnabled');
+  const media = window.matchMedia;
+  afterEach(() => {
+    if (pdfViewer) Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', pdfViewer);
+    else delete (Navigator.prototype as { pdfViewerEnabled?: boolean }).pdfViewerEnabled;
+    window.matchMedia = media;
+  });
+  const viewer = (enabled: boolean) =>
+    Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', {
+      configurable: true,
+      get: () => enabled,
+    });
+  const smallScreen = () => {
+    window.matchMedia = ((query: string) => ({
+      media: query,
+      matches: query === '(width < 40rem), (height < 30rem)',
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+  };
+
+  it('shows a PDF in the browser’s own viewer, titled by the document, in place of the excerpts', () => {
+    draw({ file: ready });
+    const frame = screen.getByTitle(`Dokumentet ${report.title} som PDF`);
+    expect(frame.tagName).toBe('IFRAME');
+    expect(frame.getAttribute('src')).toBe('/api/files/2021');
+    expect(passages()).toEqual([]);
+    expect(screen.queryByText(/utdragene som ble hentet/)).toBeNull();
+    expect(screen.queryByText(/All tekst er sitater/)).toBeNull();
+  });
+
+  it('keeps the way back, the head, the link to the original and the question with a PDF', () => {
+    const onReturn = vi.fn();
+    const onAsk = vi.fn();
+    draw({ file: ready, onReturn, onAsk, citations: cite('kudos::2021-9', 'kudos::2021-3') });
+    expect(screen.getByRole('button', { name: 'Tilbake til svaret' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: report.title })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Les dokumentet på Kudos/ })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: /Spør om dette dokumentet/ })).toBeTruthy();
+    // No excerpt is marked in the file yet, so no chip jumps to one.
+    expect(screen.queryByRole('group', { name: 'Utdrag i svaret:' })).toBeNull();
+  });
+
+  it('lands the focus on the document’s title once the file is there', async () => {
+    const { rerender } = draw({ file: { status: 'loading' } });
+    await frame();
+    expect(document.activeElement?.tagName).not.toBe('H3');
+    rerender(
+      <DocumentView
+        sources={[report, memo]}
+        target={{ documentId: 'kudos::2021' }}
+        corpus="Kudos"
+        file={ready}
+      />,
+    );
+    await frame();
+    expect(document.activeElement?.textContent).toBe(report.title);
+  });
+
+  it('says it is fetching the document, and shows no excerpts while it does', () => {
+    draw({ file: { status: 'loading' } });
+    expect(screen.getByText('Henter dokumentet …')).toBeTruthy();
+    expect(document.querySelector('article')?.getAttribute('aria-busy')).toBe('true');
+    expect(passages()).toEqual([]);
+    expect(frameOf()).toBeNull();
+  });
+
+  it('links to the PDF instead where the browser has no viewer of its own', () => {
+    viewer(false);
+    draw({ file: ready });
+    expect(frameOf()).toBeNull();
+    const link = screen.getByRole('link', {
+      name: `Åpne dokumentet (PDF), ${report.title} (åpnes i ny fane)`,
+    });
+    expect(link.getAttribute('href')).toBe('/api/files/2021');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.textContent).toBe('Åpne dokumentet (PDF)');
+  });
+
+  it('links to the PDF instead on a phone’s small screen', () => {
+    viewer(true);
+    smallScreen();
+    draw({ file: ready });
+    expect(frameOf()).toBeNull();
+    expect(screen.getByRole('link', { name: /^Åpne dokumentet \(PDF\)/ })).toBeTruthy();
+  });
+
+  it("opens the PDF at the shown excerpt's page when the host's file is that excerpt's, framed or linked", () => {
+    const own = {
+      status: 'ready' as const,
+      file: { ...pdf, source: 'https://kudos.dfo.no/dokument/2021' },
+    };
+    const target = { documentId: 'kudos::2021', chunkId: 'kudos::2021-2' };
+    const { unmount } = draw({ file: own, target });
+    expect(frameOf()?.getAttribute('src')).toBe('/api/files/2021#page=12');
+    unmount();
+    // Another file, or one the host does not name, stays at its start.
+    for (const file of [pdf, { ...pdf, source: 'https://kudos.dfo.no/dokument/vedlegg' }]) {
+      const other = draw({ file: { status: 'ready', file }, target });
+      expect(frameOf()?.getAttribute('src')).toBe('/api/files/2021');
+      other.unmount();
+    }
+    viewer(true);
+    smallScreen();
+    draw({ file: own, target });
+    expect(
+      screen.getByRole('link', { name: /^Åpne dokumentet \(PDF\)/ }).getAttribute('href'),
+    ).toBe('/api/files/2021#page=12');
+  });
+
+  it('shows the excerpts as before, and says so, when the host has no file for the document', () => {
+    draw({ file: { status: 'none' } });
+    expect(screen.getByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+    expect(passages()).toHaveLength(3);
+    expect(frameOf()).toBeNull();
+  });
+
+  it('shows the excerpts as before, and says so, when the file could not be found', () => {
+    draw({ file: { status: 'failed' } });
+    expect(screen.getByText('Fikk ikke vist hele dokumentet.')).toBeTruthy();
+    expect(passages()).toHaveLength(3);
+  });
+
+  it('shows a file that is not a PDF, or not at a web address, as none', () => {
+    for (const file of [
+      { url: '/api/files/2021', mediaType: 'text/html' },
+      { url: 'javascript:alert(1)', mediaType: 'application/pdf' },
+      { url: 'data:application/pdf;base64,JVBERi0=', mediaType: 'application/pdf' },
+    ]) {
+      const { unmount } = draw({ file: { status: 'ready', file } });
+      expect(frameOf()).toBeNull();
+      expect(screen.queryByRole('link', { name: /Åpne dokumentet/ })).toBeNull();
+      expect(screen.getByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it('takes a PDF’s media type with parameters and in any case', () => {
+    draw({
+      file: {
+        status: 'ready',
+        file: { url: pdf.url, mediaType: 'Application/PDF; charset=binary' },
+      },
+    });
+    expect(frameOf()).toBeTruthy();
+  });
+
+  it('draws the excerpts as before, with no line about the file, without a file from the host', () => {
+    draw();
+    expect(passages()).toHaveLength(3);
+    expect(screen.getByText(/Her er de 3 utdragene/)).toBeTruthy();
+    expect(frameOf()).toBeNull();
+    expect(document.querySelector('.uib-document-view-file-note')).toBeNull();
+  });
+
+  it('shows the file only for the targeted document, not for another one jumped to', async () => {
+    const otherReport: SourceDocument = {
+      ...memo,
+      excerpts: [{ chunkId: 'attached:abc:0', text: 'Notatet beskriver rutinen.' }],
+    };
+    draw({
+      sources: [report, otherReport],
+      file: { status: 'none' },
+      citations: cite('kudos::2021-9', 'attached:abc:0'),
+    });
+    expect(screen.getByText('Hele dokumentet kan ikke vises her.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Utdrag 2, i Internt notat/ }));
+    await frame();
+    expect(screen.getByRole('heading', { level: 3, name: 'Internt notat' })).toBeTruthy();
+    expect(screen.queryByText('Hele dokumentet kan ikke vises her.')).toBeNull();
+  });
+});
+
 describe('the catalogue', () => {
   it('speaks English when the reader does', () => {
     render(

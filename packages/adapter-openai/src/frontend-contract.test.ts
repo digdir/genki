@@ -176,7 +176,7 @@ type Source = {
   title: string;
   url?: string;
   document_id?: string;
-  excerpts: { chunk_id: string; text: string }[];
+  excerpts: { chunk_id: string; text: string; page?: number; url?: string }[];
 };
 
 describe('/v1 frontend contract: conversations', () => {
@@ -328,6 +328,52 @@ describe('/v1 frontend contract: filters', () => {
 });
 
 describe('/v1 frontend contract: sources', () => {
+  describe("an excerpt's page", () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    afterEach(() => {
+      pool = chunks;
+    });
+    const paged = (c1: Partial<SourceRecord>, c1b: Partial<SourceRecord> = {}) => {
+      pool = chunks.map((c) =>
+        c.chunkId === 'c1' ? { ...c, ...c1 } : c.chunkId === 'c1b' ? { ...c, ...c1b } : c,
+      );
+    };
+
+    it("a source's excerpt carries the page and heading of its chunk", async () => {
+      paged({ page: 12, pageEnd: 13, headers: ['3 Funn'] }, { page: 14 });
+      const { ask, stored } = setup();
+      const body = (await (await ask({ genai_conversation: true })).json()) as {
+        sources: Source[];
+      };
+
+      const excerpts = [
+        { chunk_id: 'c1', text: 'Første', position: 0, heading: '3 Funn', page: 12, page_end: 13 },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, page: 14 },
+      ];
+      expect(body.sources[0]?.excerpts).toStrictEqual(excerpts);
+      expect(stored.get('conv-1')?.[1]?.sources?.[0]?.excerpts).toStrictEqual(excerpts);
+    });
+
+    it("an excerpt links to its file's address at its page", async () => {
+      paged({ page: 12, pageEnd: 13, fileUrl: pdf });
+      const body = (await (await setup().ask({})).json()) as { sources: Source[] };
+
+      expect(body.sources[0]?.excerpts[0]).toMatchObject({ page: 12, url: `${pdf}#page=12` });
+      // The source's own link stays the document's page.
+      expect(body.sources[0]?.url).toBe('https://x.no/d1');
+    });
+
+    it("an excerpt whose file has no address in the document's record gets no page link", async () => {
+      paged({ page: 12 }, { page: 14, fileUrl: 'javascript:alert(1)' });
+      const body = (await (await setup().ask({})).json()) as { sources: Source[] };
+
+      expect(body.sources[0]?.excerpts.map((e) => [e.chunk_id, e.page, e.url])).toEqual([
+        ['c1', 12, undefined],
+        ['c1b', 14, undefined],
+      ]);
+    });
+  });
+
   it('gives one source per cited document, indexed by the [N] in the answer, with every chunk as an excerpt', async () => {
     const body = (await (await setup().ask({})).json()) as { sources: Source[] };
 

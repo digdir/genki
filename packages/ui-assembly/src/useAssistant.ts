@@ -27,6 +27,7 @@ import {
   serviceOf,
   settingsOf,
   lookOf,
+  targetPosition,
   zoneOf,
   zonesOf,
   type AssistantLayout,
@@ -38,6 +39,7 @@ import {
   type ConversationTurn,
   type CorpusOption,
   type DisplayLevel,
+  type DocumentFileStatus,
   type DocumentItem,
   type DocumentQuestion,
   type DocumentViewReturn,
@@ -207,6 +209,14 @@ const readThreadFilters = (stored: unknown): ReadonlyMap<string, FilterSelection
 };
 const storeThreadFilters = (filters: ReadonlyMap<string, FilterSelection>) =>
   Object.fromEntries(filters);
+
+/** An excerpt's own file: its http(s) `url` before `#page=N`, when it has a page. */
+const excerptFileOf = (
+  excerpt: { page?: number | undefined; url?: string | undefined } | undefined,
+) =>
+  excerpt?.page !== undefined && excerpt.url && /^https?:\/\//i.test(excerpt.url)
+    ? excerpt.url.split('#', 1)[0]
+    : undefined;
 
 /** The first sentence of a service's description, as the picker's line under a variant, if short. */
 const firstSentence = (text: string | undefined) => {
@@ -1172,6 +1182,52 @@ export const useAssistant = ({
   const documentOverChat = documentZone === 'main' && where('chat') === 'main';
   const documentTurn = openDoc ? turns.find((t) => t.id === openDoc.turnId) : undefined;
   const documentAnswer = documentTurn?.answer;
+  // The opened document's file from the host, asked once per document while `file` is on.
+  const findFile = profile?.documentFile;
+  const fileOn = documentOn && option('document-view', 'file') && typeof findFile === 'function';
+  const fileSources = documentAnswer?.sources;
+  const fileSource =
+    fileOn && openDoc && fileSources
+      ? fileSources[targetPosition(fileSources, openDoc.target)]
+      : undefined;
+  const fileOf = fileSource ? (fileSource.documentId ?? '') : undefined;
+  // The opened excerpt's own file, its `url` before `#page=N`, so the host can serve that file.
+  const excerptFile = excerptFileOf(
+    fileSource?.excerpts.find((e) => e.chunkId === openDoc?.target.chunkId),
+  );
+  // One call per document and file: another excerpt of the same file asks nothing again.
+  const fileKey = fileOf ? `${fileOf}\n${excerptFile ?? ''}` : fileOf;
+  const findFileRef = useRef(findFile);
+  findFileRef.current = findFile;
+  const [found, setFound] = useState<{ key: string; file: DocumentFileStatus }>();
+  useEffect(() => {
+    const find = findFileRef.current;
+    if (!fileOf || !fileKey || typeof find !== 'function') return;
+    const controller = new AbortController();
+    // A result for a document no longer open is dropped: the call was aborted on the way out.
+    const settle = (file: DocumentFileStatus) => {
+      if (!controller.signal.aborted) setFound({ key: fileKey, file });
+    };
+    Promise.resolve()
+      .then(() =>
+        excerptFile
+          ? find(fileOf, controller.signal, { file: excerptFile })
+          : find(fileOf, controller.signal),
+      )
+      .then(
+        (file) => settle(file ? { status: 'ready', file } : { status: 'none' }),
+        () => settle({ status: 'failed' }),
+      );
+    return () => controller.abort();
+  }, [fileKey]);
+  const documentFile: DocumentFileStatus | undefined =
+    fileOf === undefined
+      ? undefined
+      : fileOf === ''
+        ? { status: 'none' }
+        : found && found.key === fileKey
+          ? found.file
+          : { status: 'loading' };
   // The document keeps to the answer it was opened from, whichever answer Kilder shows after.
   const documentCitations = useMemo(
     () =>
@@ -1411,6 +1467,7 @@ export const useAssistant = ({
     documentOverChat,
     openDoc,
     documentAnswer,
+    documentFile,
     documentCitations,
     documentIndex: Math.max(
       0,

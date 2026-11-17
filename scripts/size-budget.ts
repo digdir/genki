@@ -76,13 +76,33 @@ export const overBudget = (loads: FirstLoad[]): string[] =>
 export const report = (load: FirstLoad) =>
   `${load.app.padEnd(10)} ${String(load.files.length).padStart(3)} files  ${kB(load.raw).padStart(10)}  ${kB(load.gzip).padStart(9)} gzip  budget ${kB(load.budget)}`;
 
+// Run Vite's CLI through the node that runs this script: spawning `npx` without a shell fails
+// on Windows, where npx is npx.cmd (see npmCommand in setup.ts).
+export const viteBuildCommand = (
+  outDir: string,
+  root = repo,
+): { command: string; args: string[] } => ({
+  command: process.execPath,
+  args: [
+    join(root, 'node_modules', 'vite', 'bin', 'vite.js'),
+    'build',
+    '--manifest',
+    '--outDir',
+    outDir,
+    '--emptyOutDir',
+    '--logLevel',
+    'error',
+  ],
+});
+
 const build = (app: string, outDir: string) => {
-  const result = spawnSync(
-    'npx',
-    ['vite', 'build', '--manifest', '--outDir', outDir, '--emptyOutDir', '--logLevel', 'error'],
-    { cwd: join(repo, 'apps', app), encoding: 'utf8' },
-  );
-  if (result.status !== 0) throw new Error(`${app} did not build:\n${result.stderr}`);
+  const vite = viteBuildCommand(outDir);
+  const result = spawnSync(vite.command, vite.args, {
+    cwd: join(repo, 'apps', app),
+    encoding: 'utf8',
+  });
+  if (result.status !== 0)
+    throw new Error(`${app} did not build:\n${result.error?.message ?? result.stderr}`);
   const manifest = JSON.parse(
     readFileSync(join(outDir, '.vite/manifest.json'), 'utf8'),
   ) as Manifest;

@@ -10,6 +10,7 @@ import { App } from './App';
 import { ansattportenLogin, mockEntra, operatorRole } from './auth';
 import { setting } from './runtime-config';
 import { mockFetch } from './mock';
+import { isSilentCallback, silentFrame } from './silent-frame';
 
 const useMock = setting('API') === 'mock';
 const language = storedPreference(window.localStorage, 'genai.console.language');
@@ -36,10 +37,11 @@ const auth = useMock
       storage: window.sessionStorage,
       navigate: (url) => window.location.assign(url),
       locale: () => resolveLocale(document.documentElement.lang),
+      silent: silentFrame(window),
     });
 const root = document.getElementById('root');
 
-if (root) {
+if (root && !isSilentCallback(window)) {
   createRoot(root).render(
     <StrictMode>
       <LocaleProvider

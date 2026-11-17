@@ -29,16 +29,14 @@ export const openRetrievalPorts = async (
   const scoped = (kind: string, id: string): Ref => ({ kind, id, ...(tenant ? { tenant } : {}) });
   const datasets = [...new Set((config.knowledge?.datasets ?? []).map((d) => d.dataset))];
   if (datasets.length === 0) throw new Error('the service has no dataset to search');
-  const knowledge = combineKnowledge(
-    Object.fromEntries(
-      await Promise.all(
-        datasets.map(
-          async (d) =>
-            [d, await ctx.use<KnowledgePort>('knowledge', scoped('dataset', d))] as const,
-        ),
+  const sources = Object.fromEntries(
+    await Promise.all(
+      datasets.map(
+        async (d) => [d, await ctx.use<KnowledgePort>('knowledge', scoped('dataset', d))] as const,
       ),
     ),
   );
+  const knowledge = combineKnowledge(sources);
   const rerank = config.knowledge?.reranker
     ? await ctx.use<RerankPort>('rerank', scoped('reranker', config.knowledge.reranker))
     : undefined;
@@ -48,6 +46,7 @@ export const openRetrievalPorts = async (
     : undefined;
   return {
     knowledge,
+    sources,
     ...(rerank ? { rerank } : {}),
     ...(model ? { model } : {}),
     config: config.knowledge?.retrieval ?? {},

@@ -29,7 +29,10 @@ export interface VacuumOptions extends MaintenanceOptions {
 
 export interface RecallSample {
   recall: number;
+  /** The exact searches that ran. */
   queries: number;
+  /** Whether `stop` ended the sample before all its searches ran. */
+  cut: boolean;
 }
 
 /** The knowledge server's heavy work, as the worker's owner login runs it (ADR 0042, "Heavy work"). */
@@ -44,7 +47,11 @@ export interface HeavyServer {
   toFreeze(): Promise<string[]>;
   progress(pid: number): Promise<unknown>;
   cancel(pid: number): Promise<unknown>;
-  recall(generation: string, options: { sample: number }): Promise<RecallSample | undefined>;
+  /** recall@10 on a sample: `stop` is asked before each exact search, `signal` cancels it. */
+  recall(
+    generation: string,
+    options: { sample: number; stop: () => boolean; signal: AbortSignal },
+  ): Promise<RecallSample | undefined>;
   baseline(generation: string, measured: number): Promise<number>;
   /** The dataset a generation on the server belongs to. */
   datasetOf(generation: string): Promise<string | undefined>;
@@ -93,16 +100,22 @@ export const recallMargin = 0.01;
 export const recallBudget = recallSampleSize * 500_000;
 const fewestRecallQueries = 50;
 
+/** The margin for a recall measured on `queries` exact searches. */
+export const recallMarginFor = (queries: number) =>
+  Number((recallMargin * Math.sqrt(recallSampleSize / queries)).toFixed(4));
+
 export const recallQueries = (chunks: number) => {
   const sample = Math.max(
     fewestRecallQueries,
     Math.min(recallSampleSize, Math.floor(recallBudget / Math.max(chunks, 1))),
   );
-  return {
-    sample,
-    margin: Number((recallMargin * Math.sqrt(recallSampleSize / sample)).toFixed(4)),
-  };
+  return { sample, margin: recallMarginFor(sample) };
 };
+
+/** No exact search starts this long after the check starts (ADR 0042, "Heavy work"). */
+export const recallDeadlineMs = 90 * 60_000;
+/** Fewer searches cut by the deadline give no verdict (ADR 0042, "Heavy work"). */
+export const fewestRecallVerdict = 20;
 
 /** A build still running this long after the window's end is cancelled (ADR 0042, "Heavy work"). */
 export const buildOverrunMs = 60 * 60_000;
@@ -232,21 +245,61 @@ export const buildWork = (deps: HeavyDeps) =>
  * the freeze age, and a REINDEX for an active generation whose sampled recall dropped.
  */
 export const checkWork = (deps: HeavyDeps) =>
-  queueWork(knowledgeCheckQueue, async () => {
+  queueWork(knowledgeCheckQueue, async (job) => {
+    const deadline = nowOf(deps).getTime() + recallDeadlineMs;
+    const stop = () => nowOf(deps).getTime() >= deadline;
     for (const generation of await deps.server.toFreeze()) {
       const dataset = await deps.server.datasetOf(generation);
       if (!dataset) continue;
       await sendHeavy(deps, { tenant: tenantOf(dataset), generation, kind: 'freeze' });
     }
-    for (const dataset of deps.datasets()) {
-      const generation = dataset.generation;
-      if (!generation) continue;
-      const { sample: size, margin } = recallQueries(await deps.server.chunks(generation));
-      const sample = await deps.server.recall(generation, { sample: size });
-      if (!sample) continue;
+    // Smallest first, so a large generation takes only the time left.
+    const active: { dataset: DatasetConfig; generation: string; chunks: number }[] = [];
+    for (const dataset of deps.datasets())
+      if (dataset.generation)
+        active.push({
+          dataset,
+          generation: dataset.generation,
+          chunks: await deps.server.chunks(dataset.generation),
+        });
+    active.sort((a, b) => a.chunks - b.chunks);
+    for (const { dataset, generation, chunks } of active) {
+      const { sample: planned } = recallQueries(chunks);
+      // Past the deadline no sample is drawn: the draw alone reads the partition.
+      if (stop()) {
+        deps.log?.('knowledge recall check cut short', { generation, planned, queries: 0 });
+        continue;
+      }
+      deps.log?.('knowledge recall check started', { generation, chunks, planned });
+      const sample = await deps.server.recall(generation, {
+        sample: planned,
+        stop,
+        signal: job.signal,
+      });
+      if (!sample) {
+        deps.log?.('knowledge recall check skipped', { generation, reason: 'no vectors' });
+        continue;
+      }
+      // Only a sample the deadline cut goes without a verdict.
+      if (sample.cut && sample.queries < fewestRecallVerdict) {
+        deps.log?.('knowledge recall check cut short', {
+          generation,
+          planned,
+          queries: sample.queries,
+        });
+        continue;
+      }
       const baseline = await deps.server.baseline(generation, sample.recall);
-      const dropped = sample.recall < baseline - margin;
-      deps.log?.('knowledge recall checked', { generation, ...sample, baseline, dropped });
+      const dropped = sample.recall < baseline - recallMarginFor(sample.queries);
+      deps.log?.('knowledge recall checked', {
+        generation,
+        recall: sample.recall,
+        queries: sample.queries,
+        cut: sample.cut,
+        planned,
+        baseline,
+        dropped,
+      });
       if (dropped)
         await sendHeavy(deps, { tenant: tenantOf(dataset.id), generation, kind: 'reindex' });
     }

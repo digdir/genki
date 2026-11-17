@@ -18,6 +18,9 @@ param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
 param knowledgePostgresSkuName = 'Standard_D2ds_v5'
 param knowledgePostgresSkuTier = 'GeneralPurpose'
 param knowledgePostgresStorageSizeGB = 128
+// Raised to P30 by hand when the Kudos fill ran out of disk burst on 2026-11-14 (issue 599), and set here so infra
+// leaves it there. The tier test steps down to waits for a week of Kudos searches; see infra/README.md, "Disk tier".
+param knowledgePostgresPerformanceTier = 'P30'
 param knowledgePostgresVCores = 2
 param knowledgePostgresBackupRetentionDays = 7
 param knowledgePostgresGeoRedundantBackup = 'Disabled'
@@ -53,6 +56,8 @@ param appEnv = {
   GENAI_LOCKDOWN: 'true'
   LOCKDOWN_ENTRA_GROUPS: readEnvironmentVariable('LOCKDOWN_ENTRA_GROUPS', '')
   LOCKDOWN_USER_GROUPS: readEnvironmentVariable('LOCKDOWN_USER_GROUPS', '')
+  LOCKDOWN_SERVICE_GROUPS: readEnvironmentVariable('LOCKDOWN_SERVICE_GROUPS', '')
+  LOCKDOWN_SERVICE_CLIENT_IDS: readEnvironmentVariable('LOCKDOWN_SERVICE_CLIENT_IDS', '')
   LOCKDOWN_ENTRA_EMAIL_DOMAIN: readEnvironmentVariable('LOCKDOWN_ENTRA_EMAIL_DOMAIN', 'digdir.no')
   OPERATOR_CLIENT_IDS: readEnvironmentVariable('OPERATOR_CLIENT_IDS', '')
 }

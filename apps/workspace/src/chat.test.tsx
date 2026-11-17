@@ -77,6 +77,43 @@ describe('chat', () => {
     expect(within(conversation()).getByText('Svar laget med KI')).toBeTruthy();
   });
 
+  it("shows a source's page and a link to its PDF at that page", async () => {
+    const pdf = 'https://kudos.dfo.no/dokument/d1/filer/f1.pdf';
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async () => ({
+        text: 'Nav sikrer ikke utbetalingene [1].',
+        sources: [
+          {
+            title: 'Rapport om sykepenger',
+            url: 'https://kudos.dfo.no/dokument/d1',
+            excerpt: 'Vi konkluderer med at Nav ikke i tilstrekkelig grad sikrer …',
+            page: 6,
+            pageEnd: 7,
+            pageUrl: `${pdf}#page=6`,
+          },
+          { title: 'Notat', excerpt: 'Uten lenke.', page: 3 },
+        ],
+      }),
+    };
+    await renderApp('#/chat', { api, initialMessages: [] });
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Still et spørsmål/ }), {
+      target: { value: 'Hva fant Riksrevisjonen?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const item = (await screen.findByRole('link', { name: 'Rapport om sykepenger' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(item.textContent).toContain('side 6–7');
+    const page = within(item).getByRole('link', { name: /^Les side 6/ });
+    expect(page.getAttribute('href')).toBe(`${pdf}#page=6`);
+    expect(page.getAttribute('target')).toBe('_blank');
+    const other = screen.getByText('Notat').closest('li') as HTMLElement;
+    expect(other.textContent).toContain('side 3');
+    expect(within(other).queryByRole('link', { name: /Les side/ })).toBeNull();
+  });
+
   it('shows an image in the answer as a preview card fetched with the login', async () => {
     URL.createObjectURL ??= () => 'blob:figur';
     URL.revokeObjectURL ??= () => undefined;

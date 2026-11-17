@@ -9,7 +9,7 @@ import {
   type Part,
   type Principal,
 } from '@genai/contracts';
-import { KernelError, type Kernel, type Run } from '@genai/kernel';
+import { KernelError, quotaExhaustedProblem, type Kernel, type Run } from '@genai/kernel';
 import { progressTracker } from './progress.js';
 import {
   discoverTtlMs,
@@ -81,13 +81,6 @@ export interface McpConversations {
   append(request: Request, conversationId: string, turn: ConversationTurn): Promise<void>;
 }
 
-export interface QuotaRefusal {
-  type: string;
-  title: string;
-  detail: string;
-  retryAfterSeconds: number;
-}
-
 export interface McpAppOptions {
   kernel: Kernel;
   resolver: CapabilityResolver;
@@ -109,7 +102,6 @@ export interface McpAppOptions {
   heartbeatMs?: number;
   overridePolicy?: OverridePolicy;
   modelsOf?: (task: string) => Promise<string[]>;
-  quotaExhausted?: (principal: Principal) => Promise<QuotaRefusal | undefined>;
 }
 
 type Response = JsonRpcResult | JsonRpcError;
@@ -371,10 +363,6 @@ export const createMcpApp = (options: McpAppOptions) => {
       };
 
       let run: Run;
-      await options.conversations?.append(hooks.request, conversationId, {
-        role: 'user',
-        text: query ?? '',
-      });
       try {
         run = await kernel.invoke(
           principal,
@@ -390,8 +378,28 @@ export const createMcpApp = (options: McpAppOptions) => {
           },
         );
       } catch (error) {
+        const spent = quotaExhaustedProblem(error);
+        if (spent)
+          return outcomeOf(
+            rpcError(id, quotaExhaustedCode, spent.title, {
+              type: spent.type,
+              status: spent.status,
+              detail: spent.detail,
+            }),
+            spent.status,
+            { 'Retry-After': String(spent.retryAfterSeconds) },
+          );
         if (error instanceof KernelError)
           return outcomeOf(result(id, toolError(error.message, error.code)));
+        throw error;
+      }
+      try {
+        await options.conversations?.append(hooks.request, conversationId, {
+          role: 'user',
+          text: query ?? '',
+        });
+      } catch (error) {
+        await kernel.cancel(principal, run.task).catch(() => undefined);
         throw error;
       }
       hooks.onRun?.(run);
@@ -464,7 +472,7 @@ export const createMcpApp = (options: McpAppOptions) => {
     }
   };
 
-  const streamToolCall = (
+  const streamToolCall = async (
     c: Context,
     id: JsonRpcId,
     principal: Principal,
@@ -479,20 +487,38 @@ export const createMcpApp = (options: McpAppOptions) => {
     let open = true;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
 
+    c.req.raw.signal.addEventListener('abort', () => abort.abort(), { once: true });
+    let started: () => void = () => undefined;
+    const startedOrSettled = new Promise<void>((resolve) => (started = resolve));
+    const frames: string[] = [];
+    let write = (text: string) => {
+      frames.push(text);
+    };
+    const call = callTool(id, principal, name, args, {
+      request: c.req.raw,
+      signal: abort.signal,
+      ...(version === undefined ? {} : { version }),
+      onEvent: (event) => {
+        started();
+        for (const frame of track(event)) write(`data: ${JSON.stringify(frame)}\n\n`);
+      },
+    });
+    let refused: CallOutcome | undefined;
+    void call.then((outcome) => {
+      if (outcome.status === 429) refused = outcome;
+      started();
+    });
+    await startedOrSettled;
+    if (refused) return json(c, refused.status, refused.response, refused.headers);
+
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const write = (text: string) => {
+        write = (text: string) => {
           if (open) controller.enqueue(encoder.encode(text));
         };
+        for (const frame of frames.splice(0)) write(frame);
         heartbeat = setInterval(() => write(': ping\n\n'), heartbeatMs);
-        void callTool(id, principal, name, args, {
-          request: c.req.raw,
-          signal: abort.signal,
-          ...(version === undefined ? {} : { version }),
-          onEvent: (event) => {
-            for (const frame of track(event)) write(`data: ${JSON.stringify(frame)}\n\n`);
-          },
-        }).then(({ response }) => {
+        void call.then(({ response }) => {
           clearInterval(heartbeat);
           if (!open) return;
           write(`data: ${JSON.stringify(response)}\n\n`);
@@ -506,7 +532,6 @@ export const createMcpApp = (options: McpAppOptions) => {
         abort.abort();
       },
     });
-    c.req.raw.signal.addEventListener('abort', () => abort.abort(), { once: true });
     return new globalThis.Response(stream, {
       status: 200,
       headers: {
@@ -629,18 +654,6 @@ export const createMcpApp = (options: McpAppOptions) => {
         const pinned = readVersion(c.req.header(versionHeader));
         if ('error' in pinned)
           return json(c, 400, invalidParams(id, pinned.error, { code: 'invalid_version' }));
-        const refusal = await options.quotaExhausted?.(principal);
-        if (refusal)
-          return json(
-            c,
-            429,
-            rpcError(id, quotaExhaustedCode, refusal.title, {
-              type: refusal.type,
-              status: 429,
-              detail: refusal.detail,
-            }),
-            { 'Retry-After': String(refusal.retryAfterSeconds) },
-          );
         const meta = isRecord(params._meta) ? params._meta : {};
         const token = meta.progressToken ?? meta.progress_token;
         if (token !== undefined && token !== null)

@@ -63,6 +63,7 @@ export const audit = defineNamespace({
   actionOnboardingRequest: 'Ba om oppstart',
   actionPipelineCancel: 'Avbrøt innlesing',
   actionJobsRedrive: 'Sendte feilede jobber tilbake',
+  actionKnowledgeFields: 'Fylte nye felt på et datasetts dokumenter',
   actionJobsReadmit: 'Slapp innlesingen inn igjen',
   actionEngineSwitchReadmit: 'Slapp byttets innlesing inn igjen',
   actionPlatformSecretSet: 'Lagret plattformhemmelighet',

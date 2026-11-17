@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { databaseSource, rowCondition, rowMapping, tableQuery } from './database.js';
+import {
+  databaseConnection,
+  databaseSource,
+  rowCondition,
+  rowMapping,
+  tableQuery,
+} from './database.js';
+import { resolvedConnection, type DatabaseAccess } from './pipeline-sources.js';
 
 const mapping = rowMapping.parse({
   table: 'saker',
@@ -71,5 +78,46 @@ describe('rows from a database table as documents', () => {
     expect(rowCondition.safeParse({ column: 'status', op: 'in', value: ['a', 'b'] }).success).toBe(
       true,
     );
+  });
+});
+
+describe('the connector password of a database pipeline', () => {
+  const tenant = '991825827';
+  const password = `secret://tenant/${tenant}/connector-arkiv`;
+  const access = (hosts: readonly string[] | undefined): DatabaseAccess => ({
+    reader: { check: async () => ({ rows: 0 }), rows: async function* () {} },
+    secrets: { resolve: async () => 'hemmelig', hostsFor: async () => hosts },
+  });
+  const source = (host: string) => ({
+    kind: 'database' as const,
+    connection: databaseConnection.parse({
+      engine: 'postgres',
+      host,
+      database: 'arkiv',
+      user: 'leser',
+      password,
+    }),
+    mapping,
+  });
+
+  it('a database pipeline does not send the connector password to a host it is not bound to', async () => {
+    await expect(
+      resolvedConnection(access(['db.example.no']), source('andre.example.no'), tenant),
+    ).rejects.toThrow('the database password is not set for andre.example.no');
+  });
+
+  it('a database pipeline sends the connector password to the host it is bound to', async () => {
+    await expect(
+      resolvedConnection(access(['DB.example.no']), source('db.example.no'), tenant),
+    ).resolves.toMatchObject({ host: 'db.example.no', password: 'hemmelig' });
+    await expect(
+      resolvedConnection(access(['https://db.example.no']), source('db.example.no'), tenant),
+    ).resolves.toMatchObject({ host: 'db.example.no' });
+  });
+
+  it('a connector password bound to no host still reaches the host its pipeline names', async () => {
+    await expect(
+      resolvedConnection(access([]), source('db.example.no'), tenant),
+    ).resolves.toMatchObject({ host: 'db.example.no' });
   });
 });

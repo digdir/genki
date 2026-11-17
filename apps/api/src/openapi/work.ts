@@ -1471,8 +1471,11 @@ const evalRoutes: RouteConfig[] = [
       202: json(RunStatus, 'Started'),
       400: problem('Invalid request or no such test set'),
       403: problem('Missing right'),
-      409: problem('The monthly quota is used up'),
+      429: problem('The monthly token quota is used up'),
       ...memberRead,
+      404: problem(
+        'No access to the tenant, or capability names no service the organisation may use, at that version',
+      ),
     },
   }),
   createRoute({

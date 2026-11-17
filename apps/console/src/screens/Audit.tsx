@@ -88,6 +88,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.pipeline.cancel': 'audit.actionPipelineCancel',
   'platform.jobs.redrive': 'audit.actionJobsRedrive',
   'platform.jobs.readmit': 'audit.actionJobsReadmit',
+  'platform.knowledge.fields': 'audit.actionKnowledgeFields',
   'platform.engine-switch.readmit': 'audit.actionEngineSwitchReadmit',
   'platform.platform-secret.set': 'audit.actionPlatformSecretSet',
   'platform.plugin.register': 'audit.actionPluginRegister',

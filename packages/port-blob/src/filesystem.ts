@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  byPath,
   checkKey,
   checkPath,
   checkTenant,
@@ -92,9 +93,7 @@ export class FileSystemBlobStore implements BlobStore {
     const infos = await Promise.all(
       files.map(async (f) => JSON.parse(await readFile(f, 'utf8')) as BlobInfo),
     );
-    return infos
-      .filter((i) => i.path.startsWith(prefix))
-      .sort((a, b) => a.path.localeCompare(b.path));
+    return infos.filter((i) => i.path.startsWith(prefix)).sort(byPath);
   }
 
   async delete(key: BlobKey): Promise<boolean> {

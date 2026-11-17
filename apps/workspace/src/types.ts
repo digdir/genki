@@ -61,6 +61,10 @@ export interface Source {
   document?: string;
   url?: string;
   excerpt?: string;
+  /** The page of its file the excerpt starts on, where it ends when later, and its PDF there. */
+  page?: number;
+  pageEnd?: number;
+  pageUrl?: string;
   version?: string;
   publishedAt?: string;
 }

@@ -143,7 +143,7 @@ import {
 } from './extensions.js';
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
 import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
-import { publicDatasetState } from './dataset-status.js';
+import { lastImportAt, publicDatasetState } from './dataset-status.js';
 import { datasetDeleteModule } from './dataset-delete.js';
 import { datasetReaders } from './dataset-readers.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
@@ -171,6 +171,7 @@ import {
   type Strategy,
   type TaskStore,
   type ThreadErasure,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
@@ -227,11 +228,6 @@ import {
   clientAddress,
   keyRateLimited,
   publicCardsPerMinute,
-  quotaExhausted,
-  quotaExhaustedDetail,
-  quotaExhaustedTitle,
-  quotaExhaustedType,
-  secondsToNextMonth,
   tooManyRequests,
   type RateLimiter,
 } from './rate-limit.js';
@@ -275,6 +271,7 @@ import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { stateRegisterModule } from './state-register.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
 import { connectorsModule, privateNetworkRegistry } from './connectors.js';
@@ -346,6 +343,7 @@ import { servicesOpenApiModule } from './openapi/services.js';
 import { workOpenApiModule } from './openapi/work.js';
 import { schemasModule } from './schemas.js';
 import {
+  mayInvokeServices,
   mayUseModels,
   readOnlyInLockdown,
   withCredentialOrigin,
@@ -359,6 +357,7 @@ export const platformModules: PlatformModuleFactory[] = [
   playgroundModule,
   engineSwitchesModule,
   knowledgeEndpointsModule,
+  stateRegisterModule,
   assistantModule,
   proposalsModule,
   connectorsModule,
@@ -449,6 +448,7 @@ export interface PlatformInput {
   catalogs: Catalogs;
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   definitions: (
     plugins: PluginSchemas,
     sharedSkill?: SkillFinder,
@@ -864,6 +864,21 @@ export const capabilityResolver = (
   };
 };
 
+export const resolvesTo = async (
+  resolver: CapabilityResolver,
+  principal: Principal,
+  capability: string,
+) => {
+  const at = capability.lastIndexOf('@');
+  const version = at > 0 ? Number(capability.slice(at + 1)) : NaN;
+  const pinned = Number.isInteger(version) && version > 0;
+  const name = pinned ? capability.slice(0, at) : capability;
+  const resolved = await resolver.resolve(principal, name, pinned ? { version } : {});
+  if (!resolved.ok) return false;
+  const served = resolved.entry.capability;
+  return served === name || served === `${name}@${resolved.entry.version}`;
+};
+
 export type OptionCache = Map<string, { at: number; options: Promise<FacetCount[]> }>;
 
 export const facetOptions = (
@@ -1254,7 +1269,26 @@ export const createPlatform = async (input: PlatformInput) => {
     };
   };
 
+  const ended = new Set(['completed', 'failed', 'cancelled']);
+  const usageLog: EventLog = {
+    append: async (event, scope) => {
+      const stored = await tracker.log.append(event, scope);
+      if (
+        event.type === 'kernel.task.status' &&
+        ended.has(String((event.data as { status?: unknown }).status))
+      )
+        usageCache.delete(scope.tenant);
+      return stored;
+    },
+    read: (task, fromSeq, isLive) => tracker.log.read(task, fromSeq, isLive),
+    wake: (task) => tracker.log.wake(task),
+  };
+
   const runtime = await createRuntime({
+    lastImport: async (dataset) => {
+      const item = runtime.catalog.get('dataset', dataset);
+      return item ? lastImportAt(config.ingestion, item) : undefined;
+    },
     modelQuota: gateQuota(async (tenant) => (await quota(tenant)).exhausted),
     platformTenant,
     catalogs: input.catalogs,
@@ -1265,12 +1299,12 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions: input.definitions,
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
-    ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
+    ...(input.lockdown ? { admitsModelUse: mayInvokeServices } : {}),
     ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
     ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
     published: (capability) => originOf(capability) === 'service',
     ...(input.descriptors ? { descriptors: input.descriptors } : {}),
-    log: tracker.log,
+    log: usageLog,
     tasks: taskStore,
     prices,
     decorate: (capability, context) => decorate(capability, context),
@@ -1318,6 +1352,7 @@ export const createPlatform = async (input: PlatformInput) => {
     observe: (log: EventLog) =>
       observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
@@ -1609,14 +1644,19 @@ export const createPlatform = async (input: PlatformInput) => {
     );
     if (!variant) return undefined;
     const id = `${variant.capability.descriptor.id}@${version}`;
+    const shared = compiled.capability.descriptor.availableTo;
+    const descriptor = { ...variant.capability.descriptor, id };
+    if (shared === undefined) delete descriptor.availableTo;
+    else descriptor.availableTo = shared;
     const pinned: CompiledCapability = {
       ...variant,
-      capability: {
-        ...variant.capability,
-        descriptor: { ...variant.capability.descriptor, id },
-      },
+      capability: { ...variant.capability, descriptor },
     };
-    if (!registry.all().some((c) => c.descriptor.id === id)) {
+    const registered = registry.all().find((c) => c.descriptor.id === id);
+    if (
+      !registered ||
+      JSON.stringify(registered.descriptor.availableTo) !== JSON.stringify(shared)
+    ) {
       const decorated = limited(
         await decorate(pinned.capability, {
           compiled: pinned,
@@ -1792,14 +1832,6 @@ export const createPlatform = async (input: PlatformInput) => {
   const caseSlots = evalSlots(input.evalSlots);
 
   const limiter = input.rateLimits?.limiter ?? new SlidingWindowLimiter();
-  const invokes = (c: {
-    req: { method: string; path: string; header(name: string): string | undefined };
-  }) =>
-    c.req.method === 'POST' &&
-    (c.req.path.startsWith('/v1/') ||
-      c.req.path.startsWith('/api/tools/call/') ||
-      (c.req.path === '/api/mcp' && c.req.header('mcp-method') === 'tools/call') ||
-      c.req.path.startsWith('/a2a/'));
   const headlessRagLimited = (c: { req: { method: string; path: string } }) =>
     c.req.method === 'POST' &&
     (c.req.path === '/api/mcp' ||
@@ -1842,10 +1874,6 @@ export const createPlatform = async (input: PlatformInput) => {
             'Too many requests',
             `The organisation allows ${perMinute} calls per minute.`,
           );
-    if (invokes(c)) {
-      const used = await quota(tenant);
-      if (used.exhausted) return quotaExhausted(c, used.monthlyTokens);
-    }
     return next();
   };
   const gate = tenantGate({
@@ -2073,11 +2101,12 @@ export const createPlatform = async (input: PlatformInput) => {
         ? configuredDiagnostics
         : create)(moduleDeps),
   );
+  const keyPolicies =
+    input.keyPolicies ??
+    (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys());
   modules.push(
     createKeyPoliciesModule({
-      policies:
-        input.keyPolicies ??
-        (apiKeys instanceof InMemoryTenantApiKeys ? apiKeys : new InMemoryTenantApiKeys()),
+      policies: keyPolicies,
       keys: apiKeys,
     })(moduleDeps),
   );
@@ -2095,7 +2124,11 @@ export const createPlatform = async (input: PlatformInput) => {
       },
       directory,
     }),
-    ...portalAdminHandlers({ apiKeys, testRunnerKeys: testRunnersAllowed }),
+    ...portalAdminHandlers({
+      apiKeys,
+      policies: keyPolicies,
+      testRunnerKeys: testRunnersAllowed,
+    }),
     ...frontendAdminHandlers({
       clients,
       definitions,
@@ -2141,7 +2174,7 @@ export const createPlatform = async (input: PlatformInput) => {
           kernel,
           evalCapability: evalCapability.descriptor.id,
           ...evalStores,
-          quotaExhausted: async (tenant) => (await quota(tenant, { fresh: true })).exhausted,
+          runnable: (principal, capability) => resolvesTo(resolver, principal, capability),
         },
       });
     if (admin) {
@@ -2261,18 +2294,6 @@ export const createPlatform = async (input: PlatformInput) => {
         overridePolicy,
         modelsOf,
         conversations: conversationTurns(conversations, callerOf, conversationId),
-        quotaExhausted: async (principal) => {
-          if (!principal.tenant) return undefined;
-          const used = await quota(principal.tenant);
-          return used.exhausted
-            ? {
-                type: quotaExhaustedType,
-                title: quotaExhaustedTitle,
-                detail: quotaExhaustedDetail(used.monthlyTokens),
-                retryAfterSeconds: secondsToNextMonth(),
-              }
-            : undefined;
-        },
       }),
     );
     app.route(

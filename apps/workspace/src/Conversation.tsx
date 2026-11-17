@@ -91,6 +91,13 @@ const SourceItem = ({ source, id }: { source: Source; id: string }) => {
     return Number.isNaN(date.getTime()) ? value : f.date(date);
   };
   const facts = [
+    ...(source.page === undefined
+      ? []
+      : [
+          source.pageEnd !== undefined && source.pageEnd > source.page
+            ? t('answer.pages', { from: source.page, to: source.pageEnd })
+            : t('answer.page', { page: source.page }),
+        ]),
     ...(source.version ? [t('answer.version', { version: source.version })] : []),
     ...(source.publishedAt ? [dateText(source.publishedAt)] : []),
   ];
@@ -109,6 +116,17 @@ const SourceItem = ({ source, id }: { source: Source; id: string }) => {
           <Details.Summary>{t('answer.excerpt')}</Details.Summary>
           <Details.Content>{source.excerpt}</Details.Content>
         </Details>
+      ) : null}
+      {source.pageUrl && source.page !== undefined ? (
+        <a
+          className="source-page"
+          href={source.pageUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={t('answer.readPageOf', { page: source.page, title: source.title })}
+        >
+          {t('answer.readPage', { page: source.page })}
+        </a>
       ) : null}
     </li>
   );

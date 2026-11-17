@@ -25,6 +25,7 @@ import {
   fileNameOf,
   isTransient,
   outcomeOf,
+  modelChecksRan,
   overallOutcome,
   parseJsonOr,
   parseSse,
@@ -533,6 +534,12 @@ describe('outcomes', () => {
   it('calls a run without the core tier partial', () => {
     expect(overallOutcome([check({})], ['free', 'cheap'])).toBe('partial');
   });
+
+  it('says a model check ran only when a check outside the free tier was not skipped', () => {
+    expect(modelChecksRan([check({}), check({ tier: 'cheap', outcome: 'skip' })])).toBe(false);
+    expect(modelChecksRan([check({}), check({ tier: 'cheap', outcome: 'fail' })])).toBe(true);
+    expect(modelChecksRan([check({ tier: 'core', outcome: 'pass' })])).toBe(true);
+  });
 });
 
 describe('daily cap', () => {
@@ -553,6 +560,11 @@ describe('daily cap', () => {
 
   it('runs the free and cheap tiers when only those are asked for', () => {
     expect(tiersToRun('cheap', 0, 6).tiers).toEqual(['free', 'cheap']);
+  });
+
+  it('runs every wanted tier when uncapped, whatever the count', () => {
+    expect(tiersToRun('all', 99, 6, false)).toEqual({ tiers: allTiers });
+    expect(tiersToRun('all', undefined, 6, false)).toEqual({ tiers: allTiers });
   });
 
   it('needs no note for a free run, whatever the count', () => {

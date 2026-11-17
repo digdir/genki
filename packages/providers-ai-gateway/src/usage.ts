@@ -1,4 +1,11 @@
-import { secretRefPattern, type SecretResolver } from '@genai/kernel';
+import {
+  federatedScopePattern,
+  guidPattern,
+  secretRefPattern,
+  type FederatedApp,
+  type FederatedTokens,
+  type SecretResolver,
+} from '@genai/kernel';
 import {
   gatewayUsageSource,
   UsageGatewayError,
@@ -14,7 +21,8 @@ export interface GatewayUsageConfig {
   id: string;
   baseUrl: string;
   /** A `secret://` reference to the client key, resolved per request. */
-  credential: string;
+  credential?: string;
+  federatedApp?: FederatedApp;
   since: Date;
   timeoutMs: number;
   maxResponseBytes: number;
@@ -72,15 +80,32 @@ const withoutTrailingSlashes = (url: string) => {
   return url.slice(0, end);
 };
 
+const federatedAppFromEnv = (env: NodeJS.ProcessEnv, problems: string[]) => {
+  const clientId = env.GATEWAY_USAGE_APP_CLIENT_ID?.trim();
+  const tenant = env.GATEWAY_USAGE_APP_TENANT?.trim();
+  const scope = env.GATEWAY_USAGE_APP_SCOPE?.trim();
+  if (!clientId && !tenant && !scope) return undefined;
+  if (!clientId || !guidPattern.test(clientId))
+    problems.push('GATEWAY_USAGE_APP_CLIENT_ID must be the GUID of the app');
+  if (!tenant || !guidPattern.test(tenant))
+    problems.push('GATEWAY_USAGE_APP_TENANT must be the GUID of the gateway tenant');
+  if (!scope || !federatedScopePattern.test(scope))
+    problems.push('GATEWAY_USAGE_APP_SCOPE must be a scope ending in /.default');
+  return { clientId: clientId ?? '', tenant: tenant ?? '', scope: scope ?? '' };
+};
+
 export const gatewayUsageConfigFromEnv = (
   env: NodeJS.ProcessEnv,
 ): { config?: GatewayUsageConfig; problems: string[] } => {
   const baseUrl = env.GATEWAY_USAGE_URL?.trim();
   const credential = env.GATEWAY_USAGE_CREDENTIAL?.trim();
-  if (!baseUrl && !credential) return { problems: [] };
   const problems: string[] = [];
+  const federatedApp = federatedAppFromEnv(env, problems);
+  if (!baseUrl && !credential && !federatedApp) return { problems: [] };
   if (!baseUrl || !URL.canParse(baseUrl)) problems.push('GATEWAY_USAGE_URL must be a URL');
-  if (!credential || !secretRefPattern.test(credential))
+  if (credential && federatedApp)
+    problems.push('set GATEWAY_USAGE_CREDENTIAL or GATEWAY_USAGE_APP_*, not both');
+  else if (!federatedApp && (!credential || !secretRefPattern.test(credential)))
     problems.push('GATEWAY_USAGE_CREDENTIAL must be a secret:// reference');
   const since = new Date(env.GATEWAY_USAGE_SINCE ?? '2026-11-01T00:00:00Z');
   if (Number.isNaN(since.getTime())) problems.push('GATEWAY_USAGE_SINCE must be a date');
@@ -92,7 +117,7 @@ export const gatewayUsageConfigFromEnv = (
     config: {
       id: 'gateway',
       baseUrl: withoutTrailingSlashes(baseUrl as string),
-      credential: credential as string,
+      ...(federatedApp ? { federatedApp } : { credential: credential as string }),
       since,
       timeoutMs,
       maxResponseBytes: 32 * 1024 * 1024,
@@ -101,11 +126,29 @@ export const gatewayUsageConfigFromEnv = (
   };
 };
 
-/** The gateway's usage route over HTTP, through the egress guard, with the client key from a secret. */
+export interface GatewayUsageDeps {
+  secrets: SecretResolver;
+  egress: EgressGuard;
+  federatedTokens?: FederatedTokens;
+}
+
+const clientToken = (config: GatewayUsageConfig, deps: GatewayUsageDeps) => {
+  if (config.federatedApp) {
+    if (!deps.federatedTokens)
+      throw new Error('the gateway usage source signs in as an app, but no app sign-in is set up');
+    return deps.federatedTokens(config.federatedApp);
+  }
+  const ref = config.credential;
+  if (!ref) throw new Error('the gateway usage source has no credential');
+  return () => deps.secrets.resolve(ref);
+};
+
+/** The gateway's usage route over HTTP, through the egress guard, signed in with a client key or as an app. */
 export const httpUsageGateway = (
   config: GatewayUsageConfig,
-  deps: { secrets: SecretResolver; egress: EgressGuard },
+  deps: GatewayUsageDeps,
 ): UsageGateway => {
+  const token = clientToken(config, deps);
   const base = new URL(config.baseUrl);
   const allow = [
     {
@@ -126,7 +169,7 @@ export const httpUsageGateway = (
           cursor: query.cursor,
         }),
       );
-      const key = await deps.secrets.resolve(config.credential);
+      const key = await token();
       let response;
       try {
         response = await deps.egress.request(allow, `${config.baseUrl}/usage?${params}`, {
@@ -175,5 +218,5 @@ export const httpUsageGateway = (
 
 export const aiGatewayUsageSource = (
   config: GatewayUsageConfig,
-  deps: { secrets: SecretResolver; egress: EgressGuard },
+  deps: GatewayUsageDeps,
 ): UsageSource => gatewayUsageSource(config.id, httpUsageGateway(config, deps));

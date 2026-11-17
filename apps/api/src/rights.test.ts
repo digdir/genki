@@ -14,7 +14,7 @@ import {
 } from '@genai/identity';
 import { tenantAccess } from './access.js';
 import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
-import { connectorMappingKind, connectorSecretOf } from './connectors.js';
+import { connectorConnectionOf, connectorMappingKind } from './connectors.js';
 import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
 import { platformCaller } from './composition.js';
@@ -165,14 +165,27 @@ describe('database pipelines that name a tenant secret', () => {
     authorizedFor: [{ org: digdir, resource, actions: ['manage-datasets'] }],
   };
   const own = `secret://tenant/${digdir}/connector-arkiv`;
-  const pipeline = (password: string, connectorSecret: string | undefined = own) => ({
+  const connector = {
+    engine: 'postgres',
+    host: 'db.example.no',
+    port: 5432,
+    database: 'arkiv',
+    user: 'leser',
+    password: own,
+    tls: true,
+  };
+  const pipeline = (
+    password: string,
+    owned: Record<string, unknown> | undefined = connector,
+    changed: Record<string, unknown> = {},
+  ) => ({
     dataset: `${digdir}/arkiv`,
     id: 'kobling',
-    ...(connectorSecret ? { connectorSecret } : {}),
+    ...(owned ? { connector: owned } : {}),
     spec: {
       source: {
         kind: 'database',
-        connection: { engine: 'postgres', host: 'db.example.no', password },
+        connection: { ...connector, password, ...changed },
       },
     },
   });
@@ -191,6 +204,42 @@ describe('database pipelines that name a tenant secret', () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    ['host', { host: 'andre.example.no' }],
+    ['port', { port: 6543 }],
+    ['user', { user: 'eier' }],
+    ['database', { database: 'annen' }],
+    ['tls', { tls: false }],
+  ])(
+    "saving a database pipeline that changes the connector's %s needs manage-services",
+    (_field, changed) => {
+      expect(
+        refusedAction(
+          datasetAdmin,
+          'platform.pipeline.save',
+          digdir,
+          pipeline(own, connector, changed),
+        ),
+      ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    },
+  );
+
+  it("a database pipeline that leaves out the default port and TLS keeps the connector's connection", () => {
+    const given = {
+      engine: connector.engine,
+      host: connector.host,
+      database: connector.database,
+      user: connector.user,
+      password: own,
+    };
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, {
+        ...pipeline(own),
+        spec: { source: { kind: 'database', connection: given } },
+      }),
+    ).toBeUndefined();
+  });
+
   it("a pipeline cannot name another connector's secret", () => {
     const another = `secret://tenant/${digdir}/connector-personal`;
     expect(
@@ -201,7 +250,7 @@ describe('database pipelines that name a tenant secret', () => {
     ).toMatchObject({ kind: 'right', right: 'manage-services' });
   });
 
-  it("knows a pipeline's own connector secret only from the connector that created it", async () => {
+  it("knows a pipeline's own connector connection only from the connector that created it", async () => {
     const store = new InMemoryConfigEntryStore();
     await appendVersion(store, {
       kind: connectorMappingKind,
@@ -214,17 +263,17 @@ describe('database pipelines that name a tenant secret', () => {
         connector: {
           dataset: `${digdir}/arkiv`,
           pipeline: 'kobling',
-          connection: { engine: 'postgres', host: 'db.example.no', password: own },
+          connection: connector,
         },
       },
       deleted: false,
       by: 'employee:test:kari',
       reason: 'Koblingen er godkjent',
     });
-    const secretOf = connectorSecretOf(store);
+    const connectionOf = connectorConnectionOf(store);
 
-    expect(await secretOf(digdir, `${digdir}/arkiv`, 'kobling')).toBe(own);
-    expect(await secretOf(digdir, `${digdir}/annet`, 'kobling')).toBeUndefined();
-    expect(await secretOf('889640782', `${digdir}/arkiv`, 'kobling')).toBeUndefined();
+    expect(await connectionOf(digdir, `${digdir}/arkiv`, 'kobling')).toEqual(connector);
+    expect(await connectionOf(digdir, `${digdir}/annet`, 'kobling')).toBeUndefined();
+    expect(await connectionOf('889640782', `${digdir}/arkiv`, 'kobling')).toBeUndefined();
   });
 });

@@ -47,6 +47,7 @@ import {
   type StateStore,
   type Strategy,
   type TaskStore,
+  type FederatedTokens,
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
@@ -58,6 +59,7 @@ import {
   type DatasetConfig,
   type IndexWriterAdapter,
   type KnowledgeAdapter,
+  type KnowledgePort,
 } from '@genai/port-knowledge';
 import {
   liveSession,
@@ -99,7 +101,12 @@ import {
   type ConnectionRegistry,
   type EgressOptions,
 } from '@genai/providers-mcp-client';
-import { azureDeployments, openAiChat, openAiEmbeddings } from '@genai/providers-openai';
+import {
+  azureDeployments,
+  openAiChat,
+  openAiEmbeddings,
+  openAiModels,
+} from '@genai/providers-openai';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import {
   pgvectorEngine,
@@ -109,8 +116,13 @@ import {
 } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
 import { typesenseIndexWriter } from '@genai/providers-typesense-writer';
-import { createAgentRetrieval, createRagRetrieval, retrievalConfig } from '@genai/retrieval';
-import { agentLoopConfig, createAgentLoop } from '@genai/strategy-agent-loop';
+import {
+  createAgentRetrieval,
+  createRagRetrieval,
+  retrievalConfig,
+  sourceFacts,
+} from '@genai/retrieval';
+import { agentLoopConfig, createAgentLoop, sourceFactsToolRef } from '@genai/strategy-agent-loop';
 import { createRagSingleShot, ragConfig } from '@genai/strategy-rag';
 import {
   createRemoteAgent,
@@ -288,6 +300,7 @@ export interface RuntimeInput {
   state?: StateStore;
   observe?: (log: EventLog) => EventLog;
   tokenProviders?: TokenProviders;
+  federatedTokens?: FederatedTokens;
   egress?: EgressOptions;
   blobStore?: BlobStore;
   mediaOutput?: MediaOutputConfig;
@@ -316,6 +329,7 @@ export interface RuntimeInput {
   logFailureMessages?: boolean;
   derivedCatalog?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   sharedTools?: (connection: string) => string | undefined;
+  lastImport?: (dataset: string) => Promise<string | undefined>;
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
   foreignFetch?: (hosts: string[]) => typeof fetch;
   providerObjects?: ProviderObjectStore;
@@ -414,6 +428,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const discoverySources = [azureDeployments, openAiModels];
   const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
   const rerankAdapters = [colbert];
   const portApis: BuiltInApi[] = [
@@ -486,6 +501,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     secrets: catalogSecrets,
     priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
   });
   const loggedEmbedderRouter = input.logger
     ? loggedEmbedders(
@@ -563,11 +579,12 @@ export const createRuntime = async (input: RuntimeInput) => {
         kind,
         processorRecords: typedCalls,
       }),
-    sources: [azureDeployments],
+    sources: discoverySources,
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     onParameterDropped: (model, parameter) =>
       input.logger?.('model rejected a request parameter', { model, parameter }),
   });
@@ -593,6 +610,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     adapters: rerankAdapters,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
+    ...(input.federatedTokens ? { federatedTokens: input.federatedTokens } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
   const migrated = await migrateConnections({
@@ -631,12 +649,30 @@ export const createRuntime = async (input: RuntimeInput) => {
     });
   const blob = new BlobPortProvider(blobStore);
 
+  const factSources = (ports: Record<string, KnowledgePort>) =>
+    Object.entries(ports).map(([dataset, port]) => {
+      const id = knowledge.resolve(dataset) ?? dataset;
+      const known = knowledge.datasets().get(id);
+      const lastImport = input.lastImport;
+      return {
+        id: dataset,
+        knowledge: port,
+        ...(known?.name ? { name: known.name } : {}),
+        ...(known?.valueTypes ? { valueTypes: known.valueTypes } : {}),
+        ...(lastImport ? { lastImport: () => lastImport(id) } : {}),
+      };
+    });
   const agentLoop = usingRetrievalPorts(
     createAgentLoop({
-      retrieval: async (ctx, config, request) =>
-        hasDataset(config as RuntimeConfig)
-          ? createAgentRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig, request))
-          : undefined,
+      retrieval: async (ctx, config, request) => {
+        if (!hasDataset(config as RuntimeConfig)) return undefined;
+        const ports = await openRetrievalPorts(ctx, config as RuntimeConfig, request);
+        return {
+          ...createAgentRetrieval(ports),
+          sourceFacts: (facts, signal) =>
+            sourceFacts(factSources(ports.sources), ports.filters, facts, signal),
+        };
+      },
     }),
   );
   const blocks = builtinBlocks();
@@ -729,7 +765,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       ],
       ...(input.extraStrategyConfigs ?? []),
     ]),
-    tools: new Map(),
+    tools: new Map<string, z.ZodType>([[sourceFactsToolRef, zod.strictObject({})]]),
     guardrails: guardrailSchemas,
     blocks: new Set(blocks.refs()),
     models: models.models(),
@@ -820,25 +856,19 @@ export const createRuntime = async (input: RuntimeInput) => {
     capabilities: registry,
     ports,
     policy: operationTryPolicy(policy),
+    ...(input.modelQuota ? { quota: input.modelQuota } : {}),
     log,
     tasks: taskStore,
     ...(input.state ? { state: input.state } : {}),
   });
   late.kernel = kernel;
 
-  const sharedSkill: SkillFinder = async (tenant, id, version) => {
-    const owners = (await configEntries.latest({ kind: 'skill-share' }))
-      .filter((e) => {
-        const spec = e.spec as { skill?: string; state?: string };
-        return spec.skill === id && spec.state === 'shared' && e.scope !== tenant;
-      })
-      .map((e) => e.scope);
-    for (const owner of owners) {
-      const found = await store.get('Skill', owner, id, version);
-      if (found?.definition.kind === 'Skill') return found.definition;
-    }
-    return undefined;
-  };
+  const skillLookup = skillResolver({
+    definitions: { get: (...args) => store.get(...args) },
+    configEntries,
+  });
+  const sharedSkill: SkillFinder = async (tenant, id, version) =>
+    (await skillLookup.resolveShared(tenant, id, version))?.definition;
   const sharedRecipe = sharedRecipeFinder(
     configEntries,
     () => late.store,
@@ -892,7 +922,13 @@ export const createRuntime = async (input: RuntimeInput) => {
     store: configEntries,
     checks: {
       models: (c) => [
-        ...problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind])),
+        ...problemsOf(
+          parseCatalog(
+            c,
+            models.apis(),
+            discoverySources.map((s) => s.kind),
+          ),
+        ),
         ...embedders.problems(c),
         ...rerank.problems(c),
       ],
@@ -953,8 +989,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     deadlineMs: capability.deadlineMs ?? serviceLimits.deadlineMs,
     budget: capability.budget ?? serviceLimits.budget,
   });
-  const baseDecorate: CapabilityDecorator =
-    input.decorate ?? skillDecorator(skillResolver({ definitions: store, configEntries }));
+  const baseDecorate: CapabilityDecorator = input.decorate ?? skillDecorator(skillLookup);
   const afterDecorate = input.decorateAfter?.(store);
   const decorate: CapabilityDecorator = afterDecorate
     ? async (capability, context) => afterDecorate(await baseDecorate(capability, context), context)

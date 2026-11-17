@@ -7,6 +7,7 @@ import { en, nb } from '../i18n.js';
 import {
   blockCatalogue,
   blockIds,
+  coverKey,
   movableBlocks,
   nameKey,
   needWords,
@@ -15,8 +16,10 @@ import {
   placesHelpKey,
   placesOf,
   settingsSchema,
+  userNeeds,
   zones,
 } from './catalogue.js';
+import { describedBlocks } from './described.js';
 import { needKey } from './index.js';
 import { templateIds, templateKey } from './templates.js';
 
@@ -53,6 +56,36 @@ describe('the block catalogue', () => {
 
   it('gives a reason in both languages for every need that can go unmet', () => {
     for (const need of needWords) expect(has(needKey(need)), need).toBe(true);
+  });
+
+  it('says which reader needs every built block covers, in both languages', () => {
+    for (const spec of blockCatalogue.filter((s) => s.status === 'built'))
+      expect(spec.covers.length, spec.id).toBeGreaterThan(0);
+    for (const need of userNeeds) {
+      expect(has(coverKey(need)), need).toBe(true);
+      expect(
+        blockCatalogue.some((spec) => spec.covers.includes(need)),
+        need,
+      ).toBe(true);
+    }
+  });
+
+  it('describes only the built blocks to the builder assistant, with their needs in both languages', () => {
+    const described = describedBlocks();
+    expect(described.map((block) => block.id)).toEqual(
+      blockCatalogue.filter((s) => s.status === 'built').map((s) => s.id),
+    );
+    expect(described.find((block) => block.id === 'document-view')).toEqual({
+      id: 'document-view',
+      name: { nb: 'Dokumentvisning', en: 'Document view' },
+      covers: [
+        { nb: 'Enkel tilgang til originaldokumentet', en: 'Easy access to the original document' },
+        {
+          nb: 'Lese utdraget i sammenheng med resten av dokumentet',
+          en: 'Read the excerpt in the context of the rest of the document',
+        },
+      ],
+    });
   });
 
   it('keeps the English catalogue in step with the bokmål one', () => {
@@ -142,6 +175,14 @@ describe('the block catalogue', () => {
     expect(view?.members).toEqual(['DocumentView']);
     expect(view?.zones).toEqual(['secondary', 'main']);
     expect(view?.needs).toEqual(['service:datasets|documents']);
+  });
+
+  it('offers the whole document in Document view as a switch, on by default and marked beta in both languages', () => {
+    const view = blockCatalogue.find((s) => s.id === 'document-view');
+    expect(view?.options).toEqual([{ id: 'file', kind: 'switch', default: true }]);
+    expect(nb.builder.documentViewFile).toBe('Vis hele dokumentet (beta)');
+    expect(en.builder.documentViewFile).toBe('Show the whole document (beta)');
+    expect(nb.builder.documentViewFileHelp).toMatch(/Av: dokumentvisningen viser bare utdragene$/);
   });
 
   it('puts Settings in the foot of the primary panel', () => {

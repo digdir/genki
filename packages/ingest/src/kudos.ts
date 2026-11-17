@@ -60,6 +60,18 @@ export interface KudosPage {
   meta: { current_page: number; last_page: number; total?: number };
 }
 
+/** One page of `/api/v0/actors`: every organisation KUDOS knows, with its org number and names. */
+export interface KudosActorPage {
+  data: {
+    uuid?: string;
+    org_number?: number | string | null;
+    name?: string;
+    actor_type?: string;
+    alternative_names?: { name: string; type: string }[];
+  }[];
+  meta: { current_page: number; last_page: number; total?: number };
+}
+
 /** One listing of `/documents`: a type, an actor and publish years, in one order. */
 export interface KudosSearch {
   type?: string;
@@ -206,6 +218,15 @@ export const kudosClient = (options: KudosClientOptions) => {
       return { documents: documents(), total: () => total };
     },
 
+    /** One page of KUDOS's actors, fifty to a page as `/documents`. */
+    actors: (n: number) =>
+      getJson<KudosActorPage>(
+        `${options.profile.baseUrl}/api/v0/actors?${new URLSearchParams({
+          page: String(n),
+          per_page: String(kudosPageSize),
+        }).toString()}`,
+      ),
+
     document: (id: number | string) =>
       getJson<KudosDocument>(`${options.profile.baseUrl}${options.profile.documentPath}/${id}`),
   };
@@ -245,12 +266,25 @@ export const displayNames = (orgs: KudosOrganisation[]) =>
     .filter((n) => n.type === 'display')
     .map((n) => n.name);
 
+/** The nine-digit org numbers of one role's organisations, each once (ADR 0058). */
+export const orgNumbers = (orgs: KudosOrganisation[]) => [
+  ...new Set(
+    orgs.flatMap((o) => {
+      const n = o.org_number;
+      const text = typeof n === 'number' || typeof n === 'string' ? String(n).trim() : '';
+      return /^\d{9}$/.test(text) ? [text] : [];
+    }),
+  ),
+];
+
 const kudosStoredFields = [
   'id',
   'doc_num',
   'title',
   'authors',
   'orgs_long',
+  'owner_orgnr',
+  'recipient_orgnr',
   'concerned_year',
   'concerned_year_from',
   'concerned_year_to',
@@ -268,6 +302,29 @@ const kudosStoredFields = [
   'retrieval_attempts',
 ];
 
+/** A stored document's fields with its org numbers, in a fresh ingest's order (ADR 0042). */
+export const kudosOrgNumberFields = (doc: {
+  id: string;
+  record: Record<string, unknown>;
+  fields: Record<string, unknown>;
+}): Record<string, unknown> => {
+  const owners = orgNumbers((doc.record.owners ?? []) as KudosOrganisation[]);
+  const recipients = orgNumbers((doc.record.recipients ?? []) as KudosOrganisation[]);
+  const rest = Object.fromEntries(
+    Object.entries(doc.fields).filter(([k]) => k !== 'owner_orgnr' && k !== 'recipient_orgnr'),
+  );
+  const fields: Record<string, unknown> = {
+    ...rest,
+    ...(owners.length ? { owner_orgnr: owners } : {}),
+    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
+  };
+  const known = kudosStoredFields.filter((k) => k in fields);
+  return Object.fromEntries([
+    ...known.map((k) => [k, fields[k]]),
+    ...Object.entries(fields).filter(([k]) => !kudosStoredFields.includes(k)),
+  ]);
+};
+
 export const prepareKudosDoc = (
   doc: ReturnType<typeof fillInKudosFields> & Record<string, unknown>,
   totalChunks: number,
@@ -280,9 +337,13 @@ export const prepareKudosDoc = (
         'path'
       >,
   );
+  const owners = orgNumbers(doc.owners ?? []);
+  const recipients = orgNumbers(doc.recipients ?? []);
   const enriched: Record<string, unknown> = {
     ...doc,
     orgs_long: [...new Set(displayNames(orgs))],
+    ...(owners.length ? { owner_orgnr: owners } : {}),
+    ...(recipients.length ? { recipient_orgnr: recipients } : {}),
     files,
     file_sha256: [...new Set(files.flatMap((f) => (f.sha256 ? [f.sha256] : [])))],
     total_chunks: totalChunks,

@@ -22,6 +22,7 @@ import { confirmedAs } from './risk-confirmation.js';
 import { createPlatform, definitionSubject } from './composition.js';
 
 const tenant = '991825827';
+const other = '974761076';
 const config = join(import.meta.dirname, '..', 'config', 'local');
 const yaml = (file: string) =>
   parseYaml(readFileSync(join(config, file), 'utf8')) as Record<string, unknown>;
@@ -180,6 +181,13 @@ const boot = async () => {
       authorizedFor: [{ org: tenant }],
     } as Principal,
     ops: { kind: 'operator', issuer: 'test', subject: 'ops' },
+    ola: {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'ola',
+      tenant: other,
+      authorizedFor: [{ org: other }],
+    } as Principal,
   };
   const platform = await createPlatform({
     catalogs: {
@@ -730,5 +738,101 @@ describe('the integrated platform', () => {
     expect(running.length).toBe(1);
     expect(cancelled.status).toBe(200);
     expect(refused.status).toBe(403);
+  });
+});
+
+describe('sharing a pinned older version', () => {
+  const pinnedVersionOne = async (app: Hono, id: string) => {
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: as('kari', { 'GenAI-Version': '1' }),
+      body: JSON.stringify({
+        model: `${id}__default`,
+        messages: [{ role: 'user', content: 'Hei' }],
+      }),
+    });
+    expect(res.headers.get('genai-service-version')).toBe('1');
+    return `${tenant}/${id}/default@1`;
+  };
+  const ola: Principal = {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'ola',
+    tenant: other,
+    authorizedFor: [{ org: other }],
+  } as Principal;
+
+  it('a pinned older version is shared with the organisations the latest version names', async () => {
+    const { platform, app } = await boot();
+    await platform.definitions.publish(singleCall('delt', { availableTo: [other] }), 'test', 't');
+    await platform.definitions.publish(singleCall('delt'), 'test', 't');
+    await platform.definitions.publish(singleCall('ny'), 'test', 't');
+    await platform.definitions.publish(singleCall('ny', { availableTo: [other] }), 'test', 't');
+    const unshared = await pinnedVersionOne(app, 'delt');
+    const shared = await pinnedVersionOne(app, 'ny');
+
+    const seen = (await platform.kernel.describe(ola)).map((d) => d.id);
+
+    expect(seen).not.toContain(unshared);
+    expect(seen).toContain(shared);
+    await expect(platform.kernel.invoke(ola, unshared, { parts: [] })).rejects.toThrow(
+      'not available',
+    );
+  });
+
+  it('an organisation unshared from a service cannot run a pinned older version through an eval run', async () => {
+    const { platform, app } = await boot();
+    await platform.definitions.publish(singleCall('delt', { availableTo: [other] }), 'test', 't');
+    await platform.definitions.publish(singleCall('delt'), 'test', 't');
+    const unshared = await pinnedVersionOne(app, 'delt');
+    await platform.evalStores.testSets.put({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: other, id: 'mini', name: 'Mini', version: 1 },
+      spec: { cases: [{ id: 'a', split: 'validation', input: 'hei', expected: {} }] },
+    } as Parameters<typeof platform.evalStores.testSets.put>[0]);
+    const evaluate = (capability: string) =>
+      app.request(`/tenants/${other}/eval-runs`, {
+        method: 'POST',
+        headers: as('ola'),
+        body: JSON.stringify({
+          capability,
+          testSet: { id: 'mini' },
+          evaluators: ['contract'],
+          provenance: { commit: 'test', data: 'test' },
+        }),
+      });
+
+    const pinned = await evaluate(unshared);
+    const latest = await evaluate(`${tenant}/delt/default`);
+
+    expect(pinned.status).toBe(404);
+    expect(latest.status).toBe(404);
+  });
+
+  it('runs an eval run of a pinned older version of a service shared with the organisation', async () => {
+    const { platform, app } = await boot();
+    await platform.definitions.publish(singleCall('delt'), 'test', 't');
+    await platform.definitions.publish(singleCall('delt', { availableTo: [other] }), 'test', 't');
+    const pinned = await pinnedVersionOne(app, 'delt');
+    await platform.evalStores.testSets.put({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: other, id: 'mini', name: 'Mini', version: 1 },
+      spec: { cases: [{ id: 'a', split: 'validation', input: 'hei', expected: {} }] },
+    } as Parameters<typeof platform.evalStores.testSets.put>[0]);
+
+    const started = await app.request(`/tenants/${other}/eval-runs`, {
+      method: 'POST',
+      headers: as('ola'),
+      body: JSON.stringify({
+        capability: pinned,
+        testSet: { id: 'mini' },
+        evaluators: ['contract'],
+        provenance: { commit: 'test', data: 'test' },
+      }),
+    });
+
+    expect(started.status).toBe(202);
   });
 });

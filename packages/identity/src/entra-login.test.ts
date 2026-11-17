@@ -4,6 +4,7 @@ import {
   altinnPolicy,
   createSigningKey,
   createTokenVerifier,
+  lockdownServiceScope,
   lockdownUserScope,
   PLATFORM_RIGHTS,
   platformRightsOf,
@@ -22,6 +23,7 @@ const PLATFORM = '312521172';
 const TRUSTED_GROUP = '0f0e0d0c-0b0a-4908-8706-050403020100';
 const OTHER_GROUP = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const USER_GROUP = '11111111-2222-4333-8444-555555555555';
+const SERVICE_GROUP = '2a2b2c2d-3e3f-4a4b-8c8d-9e9f0a0b0c0d';
 
 let key: SigningKey;
 
@@ -341,5 +343,107 @@ describe('user groups in lockdown', () => {
     expect(
       (await policy.decide({ ...principal, tenant: '999999999' }, 'invoke', service)).allow,
     ).toBe(false);
+  });
+});
+
+describe('service groups in lockdown', () => {
+  const withServices: TrustedEntra = {
+    ...trusted,
+    userGroups: [USER_GROUP],
+    serviceGroups: [SERVICE_GROUP],
+    serviceClientIds: ['ka-web'],
+  };
+  const registeredAt = (tenant: string): ClientRegistry => ({
+    byClientId: async (clientId) =>
+      clientId === 'ka-web' || clientId === 'other-web'
+        ? { clientId, audience: AUDIENCE, tenant, service: 'kunnskapsassistent', client: clientId }
+        : undefined,
+  });
+  const registered = registeredAt(PLATFORM);
+  const serviceClaims = (overrides: Record<string, unknown> = {}) =>
+    entraClaims({ client_id: 'ka-web', groups: [OTHER_GROUP, SERVICE_GROUP], ...overrides });
+  const verify = async (claims: Record<string, unknown>, clients = registered) =>
+    verifier(withServices, clients).verify(await sign(claims));
+
+  it('a service-group member through a listed service client may only use services, confined to that client', async () => {
+    const { principal } = await verify(serviceClaims());
+
+    expect(principal).toMatchObject({
+      kind: 'employee',
+      assurance: 'entraid',
+      tenant: PLATFORM,
+      authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: ['use-services'] }],
+      scopes: [lockdownServiceScope],
+      confinedTo: { tenant: PLATFORM, service: 'kunnskapsassistent', client: 'ka-web' },
+    });
+    expect(platformRightsOf(principal, PLATFORM, RESOURCE)).toEqual(['use-services']);
+  });
+
+  it('a service-group member is refused through a platform client, an unlisted registered client or no client', async () => {
+    const cases = [
+      serviceClaims({ client_id: 'genki-test-portal' }),
+      serviceClaims({ client_id: 'other-web' }),
+      serviceClaims({ client_id: 'unregistered-web' }),
+      serviceClaims({ client_id: undefined }),
+    ];
+
+    for (const claims of cases)
+      await expect(verify(claims)).rejects.toMatchObject({ code: 'entra_not_trusted' });
+  });
+
+  it('a service client registered by another organisation admits no service-group member', async () => {
+    await expect(verify(serviceClaims(), registeredAt('999999999'))).rejects.toMatchObject({
+      code: 'not_authorized_for_org',
+    });
+  });
+
+  it('a service-group member with an email outside the domain is refused', async () => {
+    for (const email of ['kari@example.com', 'kari@digdir.example.evil.example', undefined])
+      await expect(verify(serviceClaims({ email }))).rejects.toMatchObject({
+        code: 'entra_not_trusted',
+      });
+  });
+
+  it('a login in no configured group is still refused through a service client', async () => {
+    await expect(verify(serviceClaims({ groups: [OTHER_GROUP] }))).rejects.toMatchObject({
+      code: 'entra_not_trusted',
+    });
+  });
+
+  it('the operator and user groups win where they apply, and a user-group member on a service client is a service user', async () => {
+    const operator = await verify(serviceClaims({ groups: [SERVICE_GROUP, TRUSTED_GROUP] }));
+    const userOnPortal = await verify(
+      serviceClaims({ client_id: 'genki-test-portal', groups: [SERVICE_GROUP, USER_GROUP] }),
+    );
+    const userOnService = await verify(serviceClaims({ groups: [SERVICE_GROUP, USER_GROUP] }));
+
+    expect(operator.principal.scopes).toEqual([trustedEntraScope]);
+    expect(userOnPortal.principal.scopes).toEqual([lockdownUserScope]);
+    expect(userOnService.principal).toMatchObject({
+      scopes: [lockdownServiceScope],
+      authorizedFor: [{ actions: ['use-services'] }],
+    });
+  });
+
+  it('ignores a service scope the caller supplies', async () => {
+    const scope = `openid profile ${lockdownServiceScope}`;
+    const testId = await sign({ acr: 'idporten-loa-substantial', pid: '01017012345', scope });
+
+    expect((await verifier(withServices).verify(testId)).principal.scopes).toBeUndefined();
+    await expect(verify(serviceClaims({ groups: [OTHER_GROUP], scope }))).rejects.toMatchObject({
+      code: 'entra_not_trusted',
+    });
+  });
+
+  it('lets a service-group member invoke a service in the platform organisation without a pid', async () => {
+    const policy = altinnPolicy({
+      altinn: { decide: async () => 'Deny' },
+      identities: { personId: async () => undefined },
+      requirementFor: () => ({ resource: RESOURCE, action: 'use-services', scope: 'legacy:query' }),
+    });
+    const { principal } = await verify(serviceClaims());
+    const service = { kind: 'capability' as const, id: `${PLATFORM}/kunnskapsassistent` };
+
+    expect(await policy.decide(principal, 'invoke', service)).toEqual({ allow: true });
   });
 });

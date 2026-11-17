@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,8 +13,8 @@ describe('an unhandled promise rejection in a request handler', () => {
     const script = join(dir, 'probe.mts');
     writeFileSync(
       script,
-      `import { Hono } from ${JSON.stringify(join(root, 'node_modules', 'hono', 'dist', 'index.js'))};
-import { keepRunningOnRejection } from ${JSON.stringify(join(root, 'packages', 'composition', 'src', 'process-guard.ts'))};
+      `import { Hono } from ${JSON.stringify(pathToFileURL(join(root, 'node_modules', 'hono', 'dist', 'index.js')).href)};
+import { keepRunningOnRejection } from ${JSON.stringify(pathToFileURL(join(root, 'packages', 'composition', 'src', 'process-guard.ts')).href)};
 keepRunningOnRejection((msg, fields) => console.log(JSON.stringify({ msg, ...fields })));
 const app = new Hono();
 app.get('/leak', (c) => {

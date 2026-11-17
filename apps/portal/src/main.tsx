@@ -9,6 +9,7 @@ import { App } from './App';
 import { localDevLogin, mockAnsattporten } from './auth';
 import { setting } from './runtime-config';
 import { ansattporten, organisationsFromApi } from './oidc';
+import { isSilentCallback, silentFrame } from './silent-frame';
 
 const reloadedFor = 'genki:reloaded-for';
 window.addEventListener('vite:preloadError', (event) => {
@@ -44,10 +45,11 @@ const auth = mock
       organisations: organisationsFromApi(send, '/api'),
       ...(configuredIssuer ? {} : { fallback: localDevLogin(send) }),
       uiLocales: locale,
+      silent: silentFrame(window),
     });
 const root = document.getElementById('root');
 
-if (root) {
+if (root && !isSilentCallback(window)) {
   createRoot(root).render(
     <StrictMode>
       <App

@@ -6,6 +6,7 @@
 import {
   isHttpsLink,
   type AssistantLayout,
+  type DocumentFile,
   type DocumentIdPattern,
   type FieldKind,
   type ProfileData,
@@ -82,6 +83,17 @@ export interface AssistantProfile {
    * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
    */
   family?: ((service: string) => boolean) | undefined;
+  /**
+   * A document's whole file for Dokumentvisning, by its number, and the opened excerpt's own file
+   * (its `url` before `#page=N`) when the excerpt has one; provisional until genki has a route.
+   */
+  documentFile?:
+    | ((
+        documentId: string,
+        signal: AbortSignal,
+        excerpt?: { file?: string },
+      ) => Promise<DocumentFile | undefined>)
+    | undefined;
   /**
    * The trials the reader may turn on in «Innstillinger», «Eksperimenter». The assembly knows what
    * kunnskapsassistenten's do: `filters-right-panel`, which puts the filter over the sources in the
