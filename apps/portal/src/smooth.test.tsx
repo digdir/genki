@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App } from './App';
+import { mockAnsattporten } from './auth';
 import { mockFetch } from './mock';
-import { go, heldFetch, renderAt } from './test-utils';
+import { go, heldFetch, kari, renderAt } from './test-utils';
 
 interface Call {
   method: string;
@@ -38,6 +40,24 @@ const recording = (base: typeof fetch = mockFetch()) => {
   const gets = (pattern: RegExp) =>
     calls.filter((c) => c.method === 'GET' && pattern.test(c.path)).length;
   return { calls, fetch, gets };
+};
+
+const renderLiveAt = async (
+  path: string,
+  fetch: typeof globalThis.fetch,
+  organisations = kari.organisations,
+) => {
+  const auth = mockAnsattporten({ ...kari, organisations });
+  await auth.login();
+  window.location.hash = path;
+  render(<App auth={auth} fetch={fetch} live />);
+};
+
+const hover = async (link: string) => {
+  const nav = screen.getByRole('navigation', { name: 'Hovedmeny' });
+  fireEvent.pointerOver(within(nav).getByRole('link', { name: new RegExp(`^${link}`) }));
+  await settle();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
 };
 
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
@@ -183,6 +203,55 @@ describe('a smooth portal', () => {
     await settle();
     expect(api.gets(/\/tasks$/)).toBe(1);
   });
+
+  const prefetched: [string, string, string, RegExp[]][] = [
+    [
+      'Oversikt',
+      '#/log',
+      '#/overview',
+      [/\/overview$/, /\/usage\?days=\d+$/, /\/settings\/effective$/, /\/datasets$/],
+    ],
+    ['Datasett', '#/developer', '#/datasets', [/\/datasets$/, /\/catalog\?kind=dataset$/]],
+    ['Innstillinger', '#/developer', '#/settings', [/\/settings$/, /\/settings\/effective$/]],
+    ['Logg', '#/developer', '#/log', [/\/tasks$/, /\/services$/]],
+  ];
+
+  it.each(prefetched)(
+    'resting the pointer on %s loads its requests before the click and the screen reuses them',
+    async (link, from, to, requests) => {
+      const api = recording();
+      await renderLiveAt(from, api.fetch);
+      await screen.findByRole('navigation', { name: 'Hovedmeny' });
+      await settle();
+      const before = requests.map((r) => api.gets(r));
+
+      await hover(link);
+      const hovered = requests.map((r) => api.gets(r));
+      requests.forEach((_, i) => expect(hovered[i]).toBe((before[i] ?? 0) + 1));
+
+      await go(to);
+      await settle();
+      await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+      expect(requests.map((r) => api.gets(r))).toEqual(hovered);
+    },
+  );
+
+  it.each([
+    ['manage-services', true],
+    ['view-usage', false],
+  ])(
+    'opening the settings requests the tenant export only with the right %s',
+    async (right, exports) => {
+      const api = recording();
+      await renderLiveAt('#/settings', api.fetch, [
+        { orgNumber: '999888777', name: 'Testetaten', actions: ['use-services', right] },
+      ] as typeof kari.organisations);
+      await screen.findByRole('heading', { level: 1, name: 'Innstillinger for Testetaten' });
+      await settle();
+
+      expect(api.gets(/\/export$/) > 0).toBe(exports);
+    },
+  );
 
   it('navigation keeps the previous screen while the next one is pending', async () => {
     await renderAt('#/overview');
