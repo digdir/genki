@@ -60,13 +60,13 @@ States to show: an empty library, a demo being recorded, a demo marked «Utdater
 
 ## Phase 1 as built
 
-- `.github/workflows/demos.yml` records every demo after each successful deploy from main to genki-test, from the deployed commit, and by hand with **Run workflow** on the Actions tab (one demo or all). A run waits for the one before it, and only the newest waiting run is kept, so frequent deploys do not pile up. The voice is cached per line, so a recording after a deploy only pays for changed lines.
+- `.github/workflows/demos.yml` runs by hand from main, with **Run workflow** on the Actions tab (one demo or all). It does not run after a deploy: genki-test is deployed too often for that to be worth the voice and the minutes.
 - The `voice` job reads the lines aloud in the `smoke-review` environment with the review identity (`AZURE_REVIEW_*`), and keeps the clips in a cache keyed by the demo files. It is skipped when `SPEECH_RESOURCE` is not set, and the demos are then recorded with subtitles only. To turn it on, set `SPEECH_RESOURCE` and `SPEECH_RESOURCE_GROUP` (and `SPEECH_SUBSCRIPTION` if it is not the review subscription) in `smoke-review`, and give the review identity _Cognitive Services Speech User_ on that resource.
 - The `record` job signs in with the smoke test's key (`SMOKE_API_KEY` in `genki-test`) and has no Azure identity. It keeps each demo's mp4, srt and any `failed-step-<n>.png` as the `demos` artifact for 30 days.
 - The demos run in the smoke test's own organisation, not a demo organisation. They pass by screens that can show who made a key or a version, so check a recording before it leaves Digdir.
 - `test-set` needs at least one earlier run of the smoke service's test set, and `playground` asks the smoke service one question on every run, about 0.2 kr on its cheapest model. No other demo calls a model: `playground-compare` fills in the question but does not send it.
 - The console's audit log is not recorded: the smoke key may read only the operator screens in the test runner's view, and the audit log is not one of them. `console-models` points at it instead.
-- The step summary of each run lists every demo with its result, its length, whether it has a voice, and for a failed demo the step and its screenshot. A start page that never shows `ready` fails as step 0.
+- A failed demo names its step and leaves `failed-step-<n>.png` in the artifact. A start page that never shows `ready` fails as step 0.
 
 ## Add a demo
 

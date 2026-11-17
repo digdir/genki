@@ -19,52 +19,28 @@ interface Job {
   steps: Step[];
 }
 
-const deployGate = [
-  "github.event.workflow_run.conclusion == 'success'",
-  "github.event.workflow_run.event == 'workflow_dispatch'",
-  "github.event.workflow_run.head_branch == 'main'",
-];
-
 const workflow = parse(
   readFileSync(join(import.meta.dirname, '../.github/workflows/demos.yml'), 'utf8'),
 ) as {
-  on: Record<string, { workflows?: string[]; types?: string[] } | null>;
+  on: Record<string, unknown>;
   permissions: Record<string, string>;
   jobs: Record<string, Job>;
 };
 const { voice, record } = workflow.jobs as { voice: Job; record: Job };
 
 describe('the demos workflow', () => {
-  it('runs by hand or after a deploy, never on a pull request, and grants nothing by default', () => {
-    expect(Object.keys(workflow.on).sort()).toEqual(['workflow_dispatch', 'workflow_run']);
-    expect(workflow.on.workflow_run).toEqual({ workflows: ['deploy'], types: ['completed'] });
+  it('runs only by hand, never on a pull request or a deploy, and grants nothing by default', () => {
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
     expect(workflow.permissions).toEqual({});
   });
 
-  it('records only from main, and after a deploy only when a deploy from main succeeded', () => {
-    for (const job of [voice, record]) {
-      expect(job.if).toContain(
-        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
-      );
-      for (const condition of deployGate) expect(job.if).toContain(condition);
-    }
-  });
-
-  it('records the deployed commit after a deploy', () => {
-    for (const job of [voice, record])
-      for (const step of job.steps.filter((s) => s.uses?.startsWith('actions/checkout@')))
-        expect(step.with?.ref).toBe('${{ github.event.workflow_run.head_sha }}');
-  });
-
-  it('narrates after a deploy, and by hand only when asked', () => {
-    expect(voice.if).toMatch(
-      /^\(github\.event_name == 'workflow_run' \|\| inputs\.narrate\) && \(/,
-    );
+  it('records only from main', () => {
+    for (const job of [voice, record]) expect(job.if).toContain("github.ref == 'refs/heads/main'");
   });
 
   it('records the demos without a voice when narration is skipped or fails', () => {
     expect(record.needs).toBe('voice');
-    expect(record.if).toMatch(/^always\(\) && needs\.voice\.result != 'cancelled' && \(/);
+    expect(record.if).toMatch(/^always\(\) && needs\.voice\.result != 'cancelled'/);
     const download = record.steps.find((s) => s.uses?.startsWith('actions/download-artifact@'));
     expect(download).toMatchObject({ if: "needs.voice.result == 'success'" });
   });

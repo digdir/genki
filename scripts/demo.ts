@@ -341,33 +341,6 @@ export interface DemoResult {
   reason?: string;
 }
 
-const cell = (text: string) => text.split('\n').join(' ').replace(/\|/g, '/');
-
-export const summaryOf = (results: DemoResult[]) => {
-  const rows = results.map((r) => {
-    const length = r.seconds === undefined ? '' : `${Math.round(r.seconds)} s`;
-    const sound = r.voice === undefined ? '' : r.voice ? 'voice' : 'subtitles only';
-    const result =
-      r.outcome === 'failed'
-        ? `failed${r.failedStep === undefined ? '' : ` at step ${r.failedStep}, see failed-step-${r.failedStep}.png`}: ${cell(r.reason ?? '')}`
-        : r.outcome === 'skipped'
-          ? `skipped: ${cell(r.reason ?? '')}`
-          : 'recorded';
-    return `| ${r.name} | ${result} | ${r.steps} | ${length} | ${sound} | ${r.file ?? ''} |`;
-  });
-  const count = (o: DemoResult['outcome']) => results.filter((r) => r.outcome === o).length;
-  return [
-    '### Demos',
-    '',
-    `${count('recorded')} recorded, ${count('failed')} failed, ${count('skipped')} skipped.`,
-    '',
-    '| Demo | Result | Steps | Length | Sound | File |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...rows,
-    '',
-  ].join('\n');
-};
-
 export const runStep = (
   step: DemoStep,
   index: number,
@@ -712,11 +685,15 @@ async function main(argv: string[]) {
       });
     }
   }
-  if (mode === 'record') {
-    const summary = summaryOf(results);
-    console.log(`\n${summary}`);
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
-  }
+  const resultOf = (r: DemoResult) =>
+    r.outcome === 'failed'
+      ? `failed: ${(r.reason ?? '').split('\n').join(' ').replace(/\|/g, '/')}`
+      : r.outcome;
+  if (mode === 'record' && process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `### Demos\n\n| Demo | Result |\n| --- | --- |\n${results.map((r) => `| ${r.name} | ${resultOf(r)} |`).join('\n')}\n`,
+    );
   if (failed) process.exitCode = 1;
 }
 
