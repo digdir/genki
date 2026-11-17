@@ -137,4 +137,7 @@ export const devTools = defineNamespace({
   statusApiCheck: 'API-et svarer',
   statusApiHow: 'Spør /health når du åpner siden eller trykker «Sjekk nå».',
   statusAnsweredIn: 'Svarte på {ms} ms',
+  statusLockdown: 'Låst miljø',
+  statusLockdownOn: 'Ja, bare noen kan endre noe nå',
+  statusLockdownOff: 'Nei',
 });

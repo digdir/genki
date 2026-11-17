@@ -99,9 +99,22 @@ interface Options {
   onWrite?: (path: string, method: string) => Response | undefined;
   effectiveFails?: boolean;
   secret?: boolean;
+  audit?: unknown[];
 }
 
-const platform = ({ onWrite, effectiveFails = false, secret = false }: Options = {}) => {
+const otherSave = (key: string, reason: string) => ({
+  task: 't9',
+  tenant: '991825827',
+  action: 'platform.setting.set',
+  actor: 'employee:ola',
+  actorName: 'Ola Nordmann',
+  at: '2026-10-07T09:30:00Z',
+  outcome: 'applied',
+  target: `setting:${key}`,
+  reason,
+});
+
+const platform = ({ onWrite, effectiveFails = false, secret = false, audit }: Options = {}) => {
   const calls: Call[] = [];
   const state: { tenant?: number | undefined; service?: number | undefined } = {};
   const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -167,20 +180,22 @@ const platform = ({ onWrite, effectiveFails = false, secret = false }: Options =
       });
     if (path.endsWith('/audit'))
       return json({
-        data: state.tenant
-          ? [
-              {
-                task: 't1',
-                tenant: '991825827',
-                action: 'platform.setting.set',
-                actor: 'kari',
-                at: '2026-10-07T09:00:00Z',
-                outcome: 'applied',
-                target: 'setting:retrieval.retrieveTopK',
-                reason: 'Vi trenger flere treff',
-              },
-            ]
-          : [],
+        data: audit
+          ? audit
+          : state.tenant
+            ? [
+                {
+                  task: 't1',
+                  tenant: '991825827',
+                  action: 'platform.setting.set',
+                  actor: 'kari',
+                  at: '2026-10-07T09:00:00Z',
+                  outcome: 'applied',
+                  target: 'setting:retrieval.retrieveTopK',
+                  reason: 'Vi trenger flere treff',
+                },
+              ]
+            : [],
       });
     if (/\/definitions\/services\/ka$/.test(path))
       return json({
@@ -414,6 +429,30 @@ describe('Innstillinger: Vanlige', () => {
     ).toHaveLength(2);
   });
 
+  it('names who saved first, when and why, when a save meets a conflict', async () => {
+    let conflicts = 1;
+    const { fetch } = platform({
+      onWrite: (path) =>
+        path.endsWith('answers.writtenStandard') && conflicts-- > 0
+          ? problem(409, 'Changed elsewhere')
+          : undefined,
+      audit: [otherSave('answers.writtenStandard', 'Vi svarer på nynorsk')],
+    });
+    await renderLive('#/settings', fetch);
+    fireEvent.change(await screen.findByLabelText('Målform i svar'), {
+      target: { value: 'bokmal' },
+    });
+    fireEvent.change(screen.getByLabelText(/Hvorfor endrer du dette/), {
+      target: { value: 'Vi svarer alltid på bokmål' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre endringene' }));
+    expect(
+      await screen.findByText(
+        /Lagret av Ola Nordmann 7\. okt\. 2026, 11:30: «Vi svarer på nynorsk»/,
+      ),
+    ).toBeTruthy();
+  });
+
   it('shows an error instead of the defaults when the saved settings cannot be loaded', async () => {
     const { fetch } = platform({ effectiveFails: true });
     await renderLive('#/settings', fetch);
@@ -527,5 +566,37 @@ describe('Innstillinger: ærlig lagring i tabellen', () => {
         (c) => c.method === 'PUT' && !c.path.includes('dryRun') && c.path.endsWith('retrieveTopK'),
       ),
     ).toHaveLength(2);
+  });
+
+  it('names who saved the setting first, when and why, after a conflict in the panel', async () => {
+    let conflicts = 1;
+    const { fetch } = platform({
+      onWrite: (path, method) =>
+        method === 'PUT' &&
+        !path.includes('dryRun') &&
+        path.endsWith('retrieval.retrieveTopK') &&
+        conflicts-- > 0
+          ? new Response(JSON.stringify({ title: 'Changed elsewhere', status: 409 }), {
+              status: 409,
+            })
+          : undefined,
+      audit: [otherSave('retrieval.retrieveTopK', 'Færre treff for KA')],
+    });
+    await renderLive('#/settings/all', fetch);
+    fireEvent.click(
+      await within(await grid()).findByRole('button', { name: 'Treff som hentes (top-k)' }),
+    );
+    const side = await screen.findByRole('dialog');
+    fireEvent.change(within(side).getByLabelText('Verdi'), { target: { value: '120' } });
+    fireEvent.click(within(side).getByRole('button', { name: 'Forhåndsvis endring' }));
+    const preview = await within(side).findByRole('region', { name: 'Forhåndsvisning' });
+    fireEvent.change(within(preview).getByLabelText('Begrunnelse'), {
+      target: { value: 'Vi trenger flere treff' },
+    });
+    fireEvent.click(within(preview).getByRole('button', { name: 'Lagre' }));
+    const alert = await within(side).findByRole('alert');
+    expect(alert.textContent).toMatch(
+      /Lagret av Ola Nordmann 7\. okt\. 2026, 11:30: «Færre treff for KA»/,
+    );
   });
 });

@@ -16,7 +16,7 @@ import type { SettingRow } from '../../data/settings';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
 import type { EffectiveSetting } from '../../types';
-import { settingErrorText } from './model';
+import { lastSaveOf, savedByText, settingErrorText } from './model';
 
 interface Choice {
   key: string;
@@ -62,7 +62,7 @@ const valueOf = (row: SettingRow | undefined) => {
 
 type Problem =
   | { kind: 'refused' }
-  | { kind: 'conflict'; theirs: { key: string; value: string }[] }
+  | { kind: 'conflict'; theirs: { key: string; value: string }[]; by: string[] }
   | { kind: 'failed'; text: string };
 
 const failureOf = (error: unknown, t: T): Problem => {
@@ -85,7 +85,7 @@ export const CommonSettings = ({
   onDirty,
   now = () => new Date(),
 }: {
-  api: Pick<ApiClient, 'setTenantSetting' | 'tenantEffectiveSettings'>;
+  api: Pick<ApiClient, 'setTenantSetting' | 'tenantEffectiveSettings' | 'audit'>;
   tenant: string;
   live: boolean;
   rows: SettingRow[];
@@ -158,13 +158,14 @@ export const CommonSettings = ({
         const current: Record<string, EffectiveSetting> | undefined = await api
           .tenantEffectiveSettings(tenant)
           .catch(() => undefined);
-        const theirs = changed
-          .filter((c) => !done.some((d) => d.key === c.key))
-          .flatMap((c) => {
-            const value = current?.[c.key]?.value;
-            return typeof value === 'string' ? [{ key: c.key, value }] : [];
-          });
-        setProblem({ kind: 'conflict', theirs });
+        const open = changed.filter((c) => !done.some((d) => d.key === c.key));
+        const saves = await Promise.all(open.map((c) => lastSaveOf(api, tenant, c.key)));
+        const theirs = open.flatMap((c) => {
+          const value = current?.[c.key]?.value;
+          return typeof value === 'string' ? [{ key: c.key, value }] : [];
+        });
+        const by = saves.map((save) => savedByText(save, tRef.current, f)).filter(Boolean);
+        setProblem({ kind: 'conflict', theirs, by });
       } else setProblem(failureOf(error, tRef.current));
       setBusy(false);
       return;
@@ -290,6 +291,7 @@ export const CommonSettings = ({
                         })
                       : '';
                   })
+                  .concat(problem.by)
                   .join(' ')}
               </Paragraph>
               <div className="actions">

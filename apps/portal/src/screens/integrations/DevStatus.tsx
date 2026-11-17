@@ -86,6 +86,16 @@ export const DevStatus = ({
             <dd>
               <code>{shortVersion(health.data.version)}</code>
             </dd>
+            {health.data.lockdown === undefined ? null : (
+              <>
+                <dt>{t('devTools.statusLockdown')}</dt>
+                <dd>
+                  {health.data.lockdown
+                    ? t('devTools.statusLockdownOn')
+                    : t('devTools.statusLockdownOff')}
+                </dd>
+              </>
+            )}
           </dl>
         </>
       )}

@@ -67,12 +67,13 @@ const settings = defineNamespace({
   commonUseTheirs: 'Bruk verdien som er lagret',
   panelValueHere: 'Verdien her',
   panelSecretNotHere:
-    'Hemmelige verdier kan ikke settes her ennå. Portalen sender dem ikke til API-et, så vi lar deg ikke tro at de er lagret.',
+    'Hemmelige verdier kan ikke settes her ennå. API-et tar ikke imot en hemmelighet virksomheten lagrer selv i en innstilling, så vi lar deg ikke tro at den er lagret.',
   panelNoRight: 'Du kan se verdien, men ikke endre den. {need}',
   panelRefused: 'Endringen ble ikke lagret: du mangler «{right}».',
   panelConflict:
     'Noen andre lagret denne innstillingen etter at du åpnet den. Nå lagret: {value}. Det du skrev, står fortsatt.',
   panelSaveMineAnyway: 'Lagre min verdi likevel',
+  conflictBy: 'Lagret av {who} {when}: «{reason}».',
 
   layerP: 'Plattformstandard',
   layerV: 'Virksomhet',

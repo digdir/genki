@@ -39,6 +39,8 @@ import {
   effectiveOf,
   formatValue,
   fromApiValue,
+  lastSaveOf,
+  savedByText,
   isSet,
   layerName,
   layersFor,
@@ -226,7 +228,7 @@ export const SettingPanel = ({
   const [reason, setReason] = useState('');
   const [reasonErr, setReasonErr] = useState('');
   const [saveErr, setSaveErr] = useState('');
-  const [stale, setStale] = useState<{ theirs: string } | undefined>();
+  const [stale, setStale] = useState<{ theirs: string; by: string } | undefined>();
   const [busy, setBusy] = useState(false);
 
   const liveService = liveMode && el === 'T' && serviceId !== undefined && s.type !== 'secret';
@@ -377,14 +379,17 @@ export const SettingPanel = ({
         const status = error instanceof ApiError ? error.status : undefined;
         const details = error instanceof ApiError ? error.problem?.errors : undefined;
         if (status === 409) {
-          const current = await (
-            liveService
+          const [current, last] = await Promise.all([
+            (liveService
               ? api.effectiveSettings(tenant, serviceId ?? '')
               : api.tenantEffectiveSettings(tenant)
-          ).catch(() => undefined);
+            ).catch(() => undefined),
+            liveService ? undefined : lastSaveOf(api, tenant, key),
+          ]);
           const value = current?.[key]?.value;
           setStale({
             theirs: value === undefined ? '' : show(fromApiValue(s, value)),
+            by: savedByText(last, tRef.current, f),
           });
           setSaveErr('');
         } else {
@@ -761,6 +766,7 @@ export const SettingPanel = ({
               {t('settings.panelConflict', {
                 value: stale.theirs || t('settings.panelInheritedWord'),
               })}
+              {stale.by ? ` ${stale.by}` : ''}
             </Alert>
           ) : null}
           {saveErr ? (

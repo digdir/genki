@@ -30,8 +30,8 @@ export const Guide = () => {
       <Paragraph>
         {t.rich('app.guideTry', {
           playground: link('#/playground'),
-          code: link('#/developer/api'),
-          api: link('#/developer/api/reference'),
+          code: link('#/developer/api/code'),
+          api: link('#/api-reference'),
         })}
       </Paragraph>
       <Heading level={2} data-size="sm">

@@ -142,4 +142,7 @@ export const devTools = {
   statusApiCheck: 'The API answers',
   statusApiHow: 'Asks /health when you open the page or press "Check now".',
   statusAnsweredIn: 'Answered in {ms} ms',
+  statusLockdown: 'Locked environment',
+  statusLockdownOn: 'Yes, only some people can change things now',
+  statusLockdownOff: 'No',
 } satisfies Translation<typeof devToolsSource>;

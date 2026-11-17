@@ -68,12 +68,13 @@ const settings = {
   commonUseTheirs: 'Use the saved value',
   panelValueHere: 'The value here',
   panelSecretNotHere:
-    'Secret values cannot be set here yet. The portal does not send them to the API, so we do not let you think they are saved.',
+    'Secret values cannot be set here yet. The API does not take a secret the organisation stores itself in a setting, so we do not let you think it is saved.',
   panelNoRight: 'You can see the value, but not change it. {need}',
   panelRefused: 'The change was not saved: you lack "{right}".',
   panelConflict:
     'Someone else saved this setting after you opened it. Saved now: {value}. What you typed is still here.',
   panelSaveMineAnyway: 'Save my value anyway',
+  conflictBy: 'Saved by {who} {when}: "{reason}".',
 
   layerP: 'Platform default',
   layerV: 'Organisation',
