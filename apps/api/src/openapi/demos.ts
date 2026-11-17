@@ -20,7 +20,7 @@ const viewerOnly = {
 } as const;
 
 const recorderOnly = {
-  401: problem('No valid recorder key in x-recorder-key'),
+  401: problem('urn:genai:problem:recorder-key: no valid recorder key in x-recorder-key'),
 } as const;
 
 const recorderKey = z.object({
@@ -200,8 +200,8 @@ export const demoRoutes: RouteConfig[] = [
       400: problem('Empty file'),
       ...recorderOnly,
       404: problem('No such recording, or a file name the recording does not take'),
-      409: problem('The recording has finished'),
-      413: problem('The file is too large'),
+      409: problem('urn:genai:problem:recording-finished: the recording has finished'),
+      413: problem('urn:genai:problem:file-too-large: the file is too large'),
     },
   }),
   createRoute({
@@ -218,7 +218,7 @@ export const demoRoutes: RouteConfig[] = [
       400: problem('Invalid body, no demo.mp4 for a recorded one, or no failure for a failed one'),
       ...recorderOnly,
       404: problem('No such recording'),
-      409: problem('The recording has finished'),
+      409: problem('urn:genai:problem:recording-finished: the recording has finished'),
     },
   }),
 ];

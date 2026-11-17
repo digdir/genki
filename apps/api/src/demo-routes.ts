@@ -54,8 +54,12 @@ const titles = {
 
 type Status = keyof typeof titles;
 
-const problem = (c: Context, status: Status, errors: DemoProblem[] = []) =>
-  c.json({ type: 'about:blank', title: titles[status], status, errors }, status, {
+export const recorderKeyType = 'urn:genai:problem:recorder-key';
+export const recordingFinishedType = 'urn:genai:problem:recording-finished';
+export const fileTooLargeType = 'urn:genai:problem:file-too-large';
+
+const problem = (c: Context, status: Status, errors: DemoProblem[] = [], type = 'about:blank') =>
+  c.json({ type, title: titles[status], status, errors }, status, {
     'content-type': 'application/problem+json',
   });
 
@@ -131,7 +135,12 @@ export const createDemosModule =
       });
 
     const finished = (c: Context) =>
-      problem(c, 409, [{ path: 'status', message: 'the recording has finished' }]);
+      problem(
+        c,
+        409,
+        [{ path: 'status', message: 'the recording has finished' }],
+        recordingFinishedType,
+      );
 
     const running = async (c: Context) => {
       const found = await latestRecording(store, c.req.param('id') ?? '');
@@ -269,7 +278,7 @@ export const createDemosModule =
 
         app.post('/recorder/demos/:id/recordings', async (c) => {
           const principal = recorder(c);
-          if (!principal) return problem(c, 401);
+          if (!principal) return problem(c, 401, [], recorderKeyType);
           const demo = await latestDemo(store, c.req.param('id') ?? '');
           if (!demo) return problem(c, 404);
           const body = recordingStart.safeParse(await c.req.json().catch(() => undefined));
@@ -308,14 +317,17 @@ export const createDemosModule =
 
         app.put('/recorder/recordings/:id/files/:name', async (c) => {
           const principal = recorder(c);
-          if (!principal) return problem(c, 401);
+          if (!principal) return problem(c, 401, [], recorderKeyType);
           const name = c.req.param('name') ?? '';
           const type = recordingFileType(name);
           if (!type) return problem(c, 404, [{ path: 'name', message: `no file ${name}` }]);
           const tooLarge = (ctx: Context) =>
-            problem(ctx, 413, [
-              { path: 'body', message: `${name} is at most ${type.maxBytes} bytes` },
-            ]);
+            problem(
+              ctx,
+              413,
+              [{ path: 'body', message: `${name} is at most ${type.maxBytes} bytes` }],
+              fileTooLargeType,
+            );
           if (Number(c.req.header('content-length')) > type.maxBytes) return tooLarge(c);
           const g = await running(c);
           if ('response' in g) return g.response;
@@ -359,7 +371,7 @@ export const createDemosModule =
 
         app.post('/recorder/recordings/:id/finish', async (c) => {
           const principal = recorder(c);
-          if (!principal) return problem(c, 401);
+          if (!principal) return problem(c, 401, [], recorderKeyType);
           const g = await running(c);
           if ('response' in g) return g.response;
           const body = recordingFinish.safeParse(await c.req.json().catch(() => undefined));

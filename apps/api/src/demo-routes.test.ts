@@ -152,6 +152,8 @@ describe('the recorder routes', () => {
 
     expect(anonymous.status).toBe(401);
     expect(operator.status).toBe(401);
+    expect(await anonymous.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
+    expect(await operator.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
   });
 
   it('refuse every recorder call when no recorder key is configured', async () => {
@@ -164,6 +166,7 @@ describe('the recorder routes', () => {
     });
 
     expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
   });
 
   it('take only the file names a recording has', async () => {
@@ -188,6 +191,7 @@ describe('the recorder routes', () => {
     });
 
     expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:file-too-large' });
   });
 
   it('stop reading a file without a length once it passes its limit', async () => {
@@ -211,6 +215,7 @@ describe('the recorder routes', () => {
     } as RequestInit);
 
     expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ type: 'urn:genai:problem:file-too-large' });
     expect(sent).toBeLessThan(1024 * 1024);
   });
 
@@ -238,6 +243,7 @@ describe('the recorder routes', () => {
     });
 
     expect(late.status).toBe(409);
+    expect(await late.json()).toMatchObject({ type: 'urn:genai:problem:recording-finished' });
   });
 
   it('refuse a file whose upload ends after the recording has finished, and keep the file it had', async () => {
@@ -272,7 +278,9 @@ describe('the recorder routes', () => {
     release();
 
     expect(finished.status).toBe(200);
-    expect((await late).status).toBe(409);
+    const refused = await late;
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ type: 'urn:genai:problem:recording-finished' });
     const kept = await blobs.get({
       tenant: digdir,
       path: recordingBlobPath(recording.id, 'demo.mp4'),

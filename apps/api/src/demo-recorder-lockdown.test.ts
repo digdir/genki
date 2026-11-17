@@ -161,6 +161,8 @@ describe('the recorder routes in the locked test environment', () => {
     const wrong = await start({ 'x-recorder-key': 'gjettet-nøkkel' });
 
     expect([without.status, wrong.status]).toEqual([401, 401]);
+    expect(await without.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
+    expect(await wrong.json()).toMatchObject({ type: 'urn:genai:problem:recorder-key' });
     expect(await recordings()).toBe(0);
   });
 
