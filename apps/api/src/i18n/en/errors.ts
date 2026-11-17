@@ -366,6 +366,14 @@ export const blockErrors = {
   alreadyRegisteredShort: 'already registered',
   applicationPending: 'The organisation already has an application being processed',
   approveAndReason: 'approve (true or false) and a reason are required',
+  toolSyncAuthFailed: 'the tool server refused the credentials',
+  toolSyncSecretUnavailable: "the connection's secret cannot be used for this address",
+  toolSyncBlocked: 'the address is not allowed for the connection',
+  toolSyncUnreachable: 'the platform could not reach the tool server',
+  toolSyncTimeout: 'the tool server did not answer in time',
+  toolSyncProtocolError: 'the tool server answered in a way the platform does not understand',
+  toolSyncToolListInvalid: 'the tool list from the server is not valid',
+  toolSyncUnknown: 'the tool sync failed',
 } satisfies Translation<typeof source.blockErrors>;
 
 export const projectErrors = {

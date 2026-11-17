@@ -2226,6 +2226,7 @@ export const createPlatform = async (input: PlatformInput) => {
         source: mcp,
         secrets: new TenantSecrets(vault.resolver(input.secrets)),
         onToolsChanged: refreshTools,
+        ...(input.logger ? { log: input.logger } : {}),
       },
       directory,
     }),

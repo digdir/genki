@@ -3,6 +3,7 @@ export {
   clientProtocolVersion,
   McpClient,
   McpProtocolError,
+  McpToolListError,
   type CallToolResult,
   type RemoteTool,
 } from './client.js';

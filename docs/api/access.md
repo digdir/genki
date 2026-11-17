@@ -38,7 +38,7 @@ In its own tenant the key then:
 
 Every other write, including every non-GET route under `/operator`, support sessions, secrets, keys, Maskinporten clients, settings, ingestion and batch runs, answers 403 `urn:genai:problem:test-runner-scope`. Routes under `/tenants/{other}` answer 404. See ADR 0033.
 
-For tools: `POST /tenants/{tenant}/tool-connections`, then `.../sync` and `.../approve` for each new tool before a service may name it. `GET /tenants/{tenant}/tool-connections` shows each connection's `lastSync`: when it last ran, whether it worked, and the error when it did not, kept until the next sync. The error has the connection's secret and token-shaped strings replaced with `[redacted]`, and only members with `register-building-blocks` or `manage-services` see it; others see `at` and `ok`.
+For tools: `POST /tenants/{tenant}/tool-connections`, then `.../sync` and `.../approve` for each new tool before a service may name it. `GET /tenants/{tenant}/tool-connections` shows each connection's `lastSync`: when it last ran, whether it worked, and why it did not, kept until the next sync. A failed sync keeps only a fixed `code` (`auth_failed`, `secret_unavailable`, `blocked`, `unreachable`, `timeout`, `protocol_error`, `tool_list_invalid` or `unknown`), and the API adds a fixed bokmål or English sentence for it as `message`; the tool server's own text is never stored, returned or audited. Registration answers the same as `syncErrorCode` and `syncError`.
 
 ## Langfuse connections
 

@@ -510,18 +510,25 @@ describe('the integrated platform', () => {
       (
         (await (
           await app.request(`/tenants/${tenant}/tool-connections`, { headers: as('kari') })
-        ).json()) as { data: { lastSync?: { ok: boolean; error?: string } }[] }
+        ).json()) as { data: { lastSync?: { ok: boolean; code?: string } }[] }
       ).data[0]?.lastSync;
 
     expect((await sync()).status).toBe(400);
-    expect(await lastSync()).toMatchObject({ ok: false, error: expect.any(String) });
+    expect(await lastSync()).toEqual({
+      at: expect.any(String),
+      ok: false,
+      code: 'protocol_error',
+      message: 'verktøytjeneren svarte på en måte plattformen ikke forstår',
+    });
     failing = false;
     expect((await sync()).status).toBe(200);
     expect(await lastSync()).toEqual({ at: expect.any(String), ok: true });
   });
 
-  it('keeps a sync error that echoes the connection secret only in redacted form, and shows it only to those who manage tools', async () => {
-    const { platform, app } = await boot();
+  it('keeps no trace of a tool server error that echoes the secret, plain, base64-encoded or split, and gives every member only the code', async () => {
+    const { platform, app, admin } = await boot();
+    const secret = 'tool-token-7f3a';
+    const encoded = Buffer.from(secret).toString('base64');
     const server = createServer((req, res) => {
       let raw = '';
       req.on('data', (c: Buffer) => (raw += c.toString()));
@@ -534,7 +541,7 @@ describe('the integrated platform', () => {
             id: body.id,
             error: {
               code: -32000,
-              message: `refused ${req.headers.authorization}, key tool-token-7f3a`,
+              message: `refused ${req.headers.authorization}, ${encoded}, tool- token- 7f3a`,
             },
           }),
         );
@@ -546,10 +553,7 @@ describe('the integrated platform', () => {
     await app.request(`/tenants/${tenant}/secrets/case-api`, {
       method: 'PUT',
       headers: as('kari', { 'change-reason': 'test av endringen' }),
-      body: JSON.stringify({
-        value: 'tool-token-7f3a',
-        allowedHosts: [`http://127.0.0.1:${port}`],
-      }),
+      body: JSON.stringify({ value: secret, allowedHosts: [`http://127.0.0.1:${port}`] }),
     });
     await platform.connections.save({
       connection: {
@@ -569,19 +573,29 @@ describe('the integrated platform', () => {
       method: 'POST',
       headers: as('kari', { 'change-reason': 'test av endringen' }),
     });
-    const lastSync = async (who: string) =>
-      (
-        (await (
-          await app.request(`/tenants/${tenant}/tool-connections`, { headers: as(who) })
-        ).json()) as { data: { lastSync?: { ok: boolean; error?: string } }[] }
-      ).data[0]?.lastSync;
-    const managed = await lastSync('kari');
+    const listed = async (who: string) =>
+      (await app.request(`/tenants/${tenant}/tool-connections`, { headers: as(who) })).text();
+    const seen = [
+      await sync.text(),
+      JSON.stringify(await platform.connections.get(tenant, 'saker')),
+      await listed('kari'),
+      await listed('per'),
+      JSON.stringify(await admin.audit(tenant)),
+    ];
 
     expect(sync.status).toBe(400);
-    expect(await sync.text()).not.toContain('tool-token-7f3a');
-    expect(managed?.error).toContain('[redacted]');
-    expect(managed?.error).not.toContain('tool-token-7f3a');
-    expect(await lastSync('per')).toEqual({ at: expect.any(String), ok: false });
+    for (const text of seen) {
+      expect(text).not.toContain('7f3a');
+      expect(text).not.toContain('token');
+      expect(text).not.toContain(encoded);
+      expect(text).not.toContain('refused');
+    }
+    expect(
+      (await admin.audit(tenant)).filter((e) => e.action === 'platform.tools.sync'),
+    ).toMatchObject([{ outcome: 'rejected' }]);
+    expect(JSON.parse(await listed('per'))).toMatchObject({
+      data: [{ lastSync: { ok: false, code: 'protocol_error' } }],
+    });
   });
 
   it('records feedback on an answer through the KA-compatible route', async () => {

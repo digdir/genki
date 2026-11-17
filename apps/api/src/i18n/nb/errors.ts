@@ -366,6 +366,14 @@ export const blockErrors = defineNamespace({
   alreadyRegisteredShort: 'allerede registrert',
   applicationPending: 'Virksomheten har allerede en søknad til behandling',
   approveAndReason: 'approve (true eller false) og en begrunnelse er påkrevd',
+  toolSyncAuthFailed: 'verktøytjeneren avviste påloggingen',
+  toolSyncSecretUnavailable: 'hemmeligheten til tilkoblingen kan ikke brukes mot denne adressen',
+  toolSyncBlocked: 'adressen er ikke tillatt for tilkoblingen',
+  toolSyncUnreachable: 'plattformen kom ikke fram til verktøytjeneren',
+  toolSyncTimeout: 'verktøytjeneren svarte ikke i tide',
+  toolSyncProtocolError: 'verktøytjeneren svarte på en måte plattformen ikke forstår',
+  toolSyncToolListInvalid: 'verktøylisten fra tjeneren er ugyldig',
+  toolSyncUnknown: 'synkroniseringen av verktøyene feilet',
 });
 
 export const projectErrors = defineNamespace({

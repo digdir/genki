@@ -1,4 +1,10 @@
-import { redactSecrets } from './sync-errors.js';
+import {
+  redactSecrets,
+  syncFailureMessage,
+  syncFailureOf,
+  type SyncFailureCode,
+} from './sync-errors.js';
+import type { ApiLog } from './failure-log.js';
 import { hidesInternalServices } from './internal-services.js';
 import { t } from './i18n/index.js';
 import { quotaRefused } from './rate-limit.js';
@@ -54,7 +60,7 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, rightsOf, seesUsage, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
 import { backgroundLeases } from './background-lease.js';
 import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -169,6 +175,7 @@ export interface ToolAdminDeps {
   secrets: TenantSecrets;
   onToolsChanged: (tenant: string) => Promise<void>;
   now?: () => Date;
+  log?: ApiLog;
 }
 
 const syncErrorLength = 500;
@@ -278,13 +285,13 @@ export const adminExtensions = (deps: {
     const target = `tool-connection:${tenant}/${id}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
-    const remember = async (error?: string) => {
+    const remember = async (code?: SyncFailureCode) => {
       const state = await deps.tools.connections.get(tenant, id);
       if (!state) return;
       const at = (deps.tools.now?.() ?? new Date()).toISOString();
       await deps.tools.connections.save({
         ...state,
-        lastSync: error === undefined ? { at, ok: true } : { at, ok: false, error },
+        lastSync: code === undefined ? { at, ok: true } : { at, ok: false, code },
       });
     };
     try {
@@ -298,10 +305,24 @@ export const adminExtensions = (deps: {
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
     } catch (error) {
-      const raw = error instanceof Error ? error.message : String(error);
-      const message = redactSecrets(raw, await connectionSecrets(deps.tools, tenant, id));
-      await remember(message.slice(0, syncErrorLength));
-      return { ok: false, errors: [{ path: 'id', message }], target };
+      const code = syncFailureOf(error);
+      if (deps.tools.log) {
+        const raw = error instanceof Error ? error.message : String(error);
+        const secrets = await connectionSecrets(deps.tools, tenant, id);
+        deps.tools.log('tool sync failed', {
+          tenant,
+          connection: id,
+          code,
+          error: redactSecrets(raw, secrets).slice(0, syncErrorLength),
+        });
+      }
+      await remember(code);
+      return {
+        ok: false,
+        errors: [{ path: 'id', message: syncFailureMessage(code) }],
+        target,
+        audit: { code },
+      };
     }
   },
   'platform.tools.approve': async (input, principal) => {
@@ -525,8 +546,6 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const entered = enterTenant(c, access, principal, param(c, 'tenant'));
     if ('response' in entered) return entered.response;
     const tenant = param(c, 'tenant');
-    const held = rightsOf(entered.principal, tenant);
-    const managesTools = held.has('manage-services') || held.has('register-building-blocks');
     const states = await deps.connections.list(tenant);
     return c.json({
       data: states.map((s) => ({
@@ -538,7 +557,14 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
         tools: s.tools.map((t) => t.name),
         ...(s.lastSync
           ? {
-              lastSync: managesTools ? s.lastSync : { at: s.lastSync.at, ok: s.lastSync.ok },
+              lastSync: s.lastSync.ok
+                ? { at: s.lastSync.at, ok: true }
+                : {
+                    at: s.lastSync.at,
+                    ok: false,
+                    code: s.lastSync.code ?? 'unknown',
+                    message: syncFailureMessage(s.lastSync.code ?? 'unknown'),
+                  },
             }
           : {}),
       })),
