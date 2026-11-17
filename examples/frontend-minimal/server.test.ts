@@ -86,9 +86,14 @@ afterEach(async () => {
 
 const startExample = (platformUrl: string) =>
   new Promise<string>((resolve, reject) => {
+    // tsx through the node that runs the test: `.bin/tsx` is a shell script, which Windows cannot spawn.
     const child = spawn(
-      join(repoRoot, 'node_modules', '.bin', 'tsx'),
-      ['--conditions=source', join(import.meta.dirname, 'server.mjs')],
+      process.execPath,
+      [
+        join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+        '--conditions=source',
+        join(import.meta.dirname, 'server.mjs'),
+      ],
       {
         cwd: repoRoot,
         env: {

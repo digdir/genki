@@ -86,7 +86,8 @@ describe('setup env file', () => {
     ]);
   });
 
-  it('writes .env.local readable by the owner only', () => {
+  // Windows has no POSIX file modes, so the mode a file is written with is not readable there.
+  it.skipIf(process.platform === 'win32')('writes .env.local readable by the owner only', () => {
     const root = tempRoot();
     ensureEnvFile(root, counter());
     expect(statSync(join(root, '.env.local')).mode & 0o077).toBe(0);

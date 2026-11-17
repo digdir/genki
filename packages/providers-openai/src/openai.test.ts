@@ -534,10 +534,12 @@ describe.skipIf(!live)('live openai-chat on Azure AI Foundry', () => {
             families: { openai: '' },
             baseURL: process.env.FOUNDRY_OPENAI_BASE_URL,
             auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/foundry-openai-key' },
-            discovery: {
-              source: 'azure-deployments',
-              capabilities: ['stream', 'tools', 'json-schema'],
-            },
+            discovery: [
+              {
+                source: 'azure-deployments',
+                capabilities: ['stream', 'tools', 'json-schema'],
+              },
+            ],
           },
         },
       },

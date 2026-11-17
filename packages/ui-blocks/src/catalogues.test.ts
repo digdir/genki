@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { uiBlocksEn, uiBlocksNb } from './index.js';
 
@@ -6,7 +7,9 @@ type Catalogue = Record<string, unknown>;
 
 const read = (path: string) => readFileSync(`${import.meta.dirname}/${path}`, 'utf8');
 
+// Forward slashes whatever the platform: a recursive readdir uses the platform's separator.
 const modules = readdirSync(import.meta.dirname, { recursive: true, encoding: 'utf8' })
+  .map((path) => path.split(sep).join('/'))
   .filter((path) => /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path))
   .sort();
 

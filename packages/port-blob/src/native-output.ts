@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/p
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { gunzipSync, gzip } from 'node:zlib';
-import { BlobError, checkPath } from './blob.js';
+import { BlobError, byPath, checkPath } from './blob.js';
 
 export type Settings = { readonly [key: string]: unknown };
 
@@ -167,7 +167,7 @@ export const nativeOutputStore = (
     return (await container.list(`${sha256}/`))
       .map(entryFromPath)
       .filter((e): e is NativeOutputEntry => e !== undefined)
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .sort(byPath);
   },
   files: async (prefix) => {
     if (!/^[0-9a-f]{1,64}$/.test(prefix))
@@ -175,7 +175,7 @@ export const nativeOutputStore = (
     return (await container.list(prefix))
       .map(entryFromPath)
       .filter((e): e is NativeOutputEntry => e !== undefined)
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .sort(byPath);
   },
   read: (entry) => readEntry(container, entry),
   delete: async (key) => {
