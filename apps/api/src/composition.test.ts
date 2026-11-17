@@ -567,7 +567,7 @@ describe('the composed platform', () => {
     ]);
   });
 
-  it('lets only a service that grants state-organisation@1 call it', async () => {
+  const registerWithDfd = async () => {
     const configEntries = new InMemoryConfigEntryStore();
     await appendVersion(configEntries, {
       kind: 'state-register',
@@ -595,6 +595,11 @@ describe('the composed platform', () => {
       reason: 'test',
       at: '2026-11-16T13:49:00.000Z',
     });
+    return configEntries;
+  };
+
+  it('lets only a service that grants state-organisation@1 call it', async () => {
+    const configEntries = await registerWithDfd();
     const { platform, app, model } = await boot(undefined, { configEntries });
     const service = yaml('services/kunnskapsassistenten.yaml') as {
       metadata: Record<string, unknown>;
@@ -628,6 +633,49 @@ describe('the composed platform', () => {
     expect(granted).toContain('Enhetsregisteret');
     expect(refused).toContain('Unknown tool: state-organisation');
     expect(refused).not.toContain('DIGITALISERINGSDIREKTORATET');
+  });
+
+  it('offers owner_orgnr filter values only when a dataset of the calling service declares the field', async () => {
+    const knowledge = yaml('knowledge.yaml') as {
+      datasets: { id: string; filters: Record<string, string> }[];
+    };
+    const declaring = {
+      ...knowledge,
+      datasets: knowledge.datasets.map((d) =>
+        d.id === 'digdir/kudos'
+          ? { ...d, filters: { ...d.filters, owner_orgnr: 'multiselect' } }
+          : d,
+      ),
+    };
+    const toolMessage = async (catalog: unknown) => {
+      const { platform, app, model } = await boot(undefined, {
+        configEntries: await registerWithDfd(),
+        knowledge: catalog,
+      });
+      const service = yaml('services/kunnskapsassistenten.yaml') as {
+        metadata: Record<string, unknown>;
+        spec: Record<string, unknown>;
+      };
+      await platform.definitions.publish(
+        { ...service, metadata: { ...service.metadata, id: 'ka-filter-values' } },
+        'test',
+        'test',
+      );
+      await mcp(app, 'tools/call', {
+        name: 'ka-filter-values__default',
+        arguments: { query: 'Hva skriver virksomhetene under DFD, ifølge statens organisering?' },
+      });
+      return model.seen
+        .flatMap((r) => (r.body.messages as Message[] | undefined) ?? [])
+        .find((m) => m.role === 'tool')?.content;
+    };
+
+    const declared = await toolMessage(declaring);
+    const undeclared = await toolMessage(knowledge);
+
+    expect(declared).toContain('"filter_values":{"owner_orgnr":["991825827"]}');
+    expect(undeclared).toContain('DIGITALISERINGSDIREKTORATET');
+    expect(undeclared).not.toContain('filter_values');
   });
 
   it('refuses at publish a variant filter on a field none of its datasets declares', async () => {

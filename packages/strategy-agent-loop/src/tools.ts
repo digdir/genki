@@ -403,10 +403,7 @@ const autoReadTopK = async (
   }
 };
 
-/**
- * Org-number filters (issue 621) are never dropped when they find nothing: a search without them
- * would return other organisations' documents as theirs. Other filters fall back as before.
- */
+/** Org-number filters that find nothing are kept, or a search returns others' documents as theirs. */
 const keptWhenEmpty = new Set(['owner_orgnr', 'recipient_orgnr']);
 
 const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
@@ -439,15 +436,28 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     };
   }
   const kept = (filters ?? []).filter((f) => keptWhenEmpty.has(f.field));
+  let narrowed = false;
+  if (kept.length > 0 && kept.length < (filters?.length ?? 0) && outcome.chunks.length === 0) {
+    try {
+      outcome = await retrieval.search(args.data.queries, { ...options, filters: kept }, signal);
+      narrowed = true;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return {
+        content: `Filtered retrieval returned 0 chunks; retry with only the org-number filter failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
   if (kept.length > 0 && outcome.chunks.length === 0) {
-    workspace.recordSearch(args.data.queries, [], false, { filters: filters ?? [] });
+    workspace.recordSearch(args.data.queries, [], false, { filters: kept });
     const named = kept.map((f) => `${f.field} ${f.selectedOptions.join(', ')}`).join(' and ');
     return {
-      content: `Search found 0 chunks with ${named}. The filter was kept: these organisations have no documents that match. Search again with other words, or say that their documents do not cover this.`,
+      content: `Search found 0 chunks with ${named}${narrowed ? ', even without the other filters' : ''}. The filter was kept: these organisations have no documents that match. Search again with other words, or say that their documents do not cover this.`,
       retrieved: [],
-      search: { queries: args.data.queries, ...(filters?.length ? { filters } : {}) },
+      search: { queries: args.data.queries, filters: kept },
     };
   }
+  const searched = narrowed ? kept : filters;
   let fellBack = false;
   if (filters?.length && outcome.chunks.length === 0) {
     try {
@@ -467,7 +477,7 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   );
   const effective = enforceStrategyQuota(rescored, settings.strategyQuota);
   const fresh = workspace.recordSearch(args.data.queries, effective, fellBack, {
-    ...(!fellBack && filters?.length ? { filters } : {}),
+    ...(!fellBack && searched?.length ? { filters: searched } : {}),
     ...(outcome.attribution ? { attribution: outcome.attribution } : {}),
   });
   const autoRead = await autoReadTopK(env, effective, settings.autoReadTopK);
@@ -484,14 +494,16 @@ const search = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
     content:
       (fellBack
         ? `Filtered retrieval returned 0 chunks; retried without filters. ${summary}`
-        : summary) +
+        : narrowed
+          ? `Filtered retrieval returned 0 chunks; retried with only ${kept.map((f) => f.field).join(' and ')}. ${summary}`
+          : summary) +
       (autoRead.length
         ? `\nAuto-read top ${autoRead.length} by rank into workspace: ${autoRead.map((c) => c.chunkId).join(', ')}. Do NOT re-read these via read_chunks.`
         : ''),
     retrieved: retrievalHits(effective),
     search: {
       queries: args.data.queries,
-      ...(!fellBack && filters?.length ? { filters } : {}),
+      ...(!fellBack && searched?.length ? { filters: searched } : {}),
       ...(fellBack ? { fellBack } : {}),
       ...(outcome.attribution?.detections?.length
         ? { detections: outcome.attribution.detections }

@@ -80,9 +80,7 @@ describe('the state register screen', () => {
     expect(href('norsk lisens for offentlige data (NLOD)')).toBe(
       'https://data.norge.no/nlod/no/2.0',
     );
-    expect(href('Brønnøysundregistrene')).toBe(
-      'https://data.brreg.no/enhetsregisteret/oppslag/enheter',
-    );
+    expect(href('Brønnøysundregistrene')).toBe('https://virksomhet.brreg.no/nb/oppslag/enheter');
     expect(href('Direktoratet for forvaltning og økonomistyring (DFØ)')).toBe(
       'https://statsregnskapet.dfo.no/',
     );

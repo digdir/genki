@@ -21,8 +21,8 @@ export interface StateOrganisationDeps {
   filterFields(capability: string | undefined): Promise<readonly string[]>;
 }
 
-/** The org-number fields a search can filter on (issue 620), in the order they are offered. */
-export const orgNumberFields = ['owner_orgnr', 'recipient_orgnr'] as const;
+/** The field filter values are offered for: the units' own documents (issue 620). */
+export const filterValueField = 'owner_orgnr';
 
 const maxFound = 20;
 /** A search takes at most 100 values per filter field. */
@@ -50,6 +50,12 @@ const input = z.strictObject({
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'a date is YYYY-MM-DD')
+    .refine(
+      (d) =>
+        !Number.isNaN(Date.parse(`${d}T12:00:00Z`)) &&
+        new Date(`${d}T12:00:00Z`).toISOString().startsWith(d),
+      'no such date',
+    )
     .optional()
     .describe('The organisation on this date, YYYY-MM-DD; today when left out'),
 });
@@ -73,7 +79,7 @@ const nlod = (licensorNb: string, licensorEn: string, source: string): Credit =>
 export const registerCredit = nlod(
   'Brønnøysundregistrene',
   'Brønnøysundregistrene',
-  'https://data.brreg.no/enhetsregisteret/oppslag/enheter',
+  'https://virksomhet.brreg.no/nb/oppslag/enheter',
 );
 export const accountsCredit = nlod(
   'Direktoratet for forvaltning og økonomistyring (DFØ)',
@@ -85,10 +91,11 @@ const osloDay = (iso: string) =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Oslo' }).format(new Date(iso));
 const norwegianDate = (day: string) => day.split('-').reverse().join('.');
 
-/** Lower case, NFKC, and every run of other characters than letters and digits as one space. */
+/** Lower case without accents, and every run of other characters than letters and digits as one space. */
 const fold = (text: string) =>
   text
-    .normalize('NFKC')
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
@@ -140,8 +147,7 @@ export const stateOrganisationTool = (deps: StateOrganisationDeps): BuiltinTool<
       const sync = await latestRegisterSync(deps.configEntries);
       return registerView(latest.register.units, osloDay(sync?.lastGood ?? latest.at));
     }
-    const end = `${date}T23:59:59.999Z`;
-    const current = versions.filter((v) => v.at <= end).at(-1);
+    const current = versions.filter((v) => osloDay(v.at) <= date).at(-1);
     return current ? registerView(current.register.units, osloDay(current.at)) : undefined;
   };
 
@@ -196,12 +202,16 @@ export const stateOrganisationTool = (deps: StateOrganisationDeps): BuiltinTool<
         `${args.unit} is not a ministry in the state accounts for ${year}; before the register, only a ministry's agencies are known`,
       );
     const unit = accounts.agencies.find((a) => a.orgnr === args.unit);
+    // As ministryOn: a body whose register top is not a ministry is a budget booking, not under it.
+    const month = await latestAccounts(deps.configEntries, 'month');
+    const anyMinistry = new Set([...ministries, ...Object.values(month?.ministries ?? {})]);
+    const today = (await registerVersions(deps.configEntries)).at(-1)?.register.units ?? [];
     const units: Listed[] = [];
     for (const a of accounts.agencies) {
       if (a.ministry !== args.unit || a.orgnr === args.unit) continue;
+      const top = ministryChain(today, a.orgnr).at(-1)?.orgnr;
+      if (top && !anyMinistry.has(top)) continue;
       const known = names[a.orgnr];
-      const top = await ministryOn(deps.configEntries, a.orgnr, new Date(`${args.date}T12:00:00Z`));
-      if (top?.orgnr !== args.unit) continue;
       units.push({
         orgnr: a.orgnr,
         name: a.name,
@@ -311,7 +321,7 @@ export const stateOrganisationTool = (deps: StateOrganisationDeps): BuiltinTool<
               : await find(args, names);
         const declared = new Set(await deps.filterFields(ctx.capability));
         const values = [...new Set(result.units.map((u) => u.orgnr))].sort();
-        const fields = orgNumberFields.filter((f) => declared.has(f));
+        const fields = declared.has(filterValueField) ? [filterValueField] : [];
         const filterValues =
           fields.length > 0 && values.length > 0 && values.length <= maxFilterValues
             ? Object.fromEntries(fields.map((f) => [f, values]))

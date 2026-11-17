@@ -24,7 +24,7 @@ const kindColor: Record<Kind, 'warning' | 'neutral' | 'info'> = {
   'budget-booking': 'neutral',
   'not-in-register': 'info',
 };
-const registerUrl = 'https://data.brreg.no/enhetsregisteret/oppslag/enheter';
+const registerUrl = 'https://virksomhet.brreg.no/nb/oppslag/enheter';
 const accountsUrl = 'https://statsregnskapet.dfo.no/';
 
 const kindLabel = {

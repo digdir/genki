@@ -26,6 +26,8 @@ const helfo = '986965610';
 const skatt = '974761076';
 const innkreving = '936295266';
 const oppdragskrav = '971648198';
+const jd = '972417831';
+const paatale = '979529805';
 
 /** The register on 2026-11-16: DFD with Digdir, Datatilsynet and Statsforvalter units. */
 const units16Nov: RegisterUnit[] = [
@@ -33,6 +35,9 @@ const units16Nov: RegisterUnit[] = [
   stat(kdd, 'KOMMUNAL- OG DISTRIKTSDEPARTEMENTET'),
   stat(fin, 'FINANSDEPARTEMENTET'),
   stat(hod, 'HELSE- OG OMSORGSDEPARTEMENTET'),
+  stat(jd, 'JUSTIS- OG BEREDSKAPSDEPARTEMENTET'),
+  orgl(paatale, 'DEN HØYERE PÅTALEMYNDIGHET', jd),
+  stat('974760347', 'SÁMEDIGGI / SAMETINGET'),
   orgl(digdir, 'DIGITALISERINGSDIREKTORATET', dfd),
   orgl(datatilsynet, 'DATATILSYNET', dfd),
   orgl('974762994', 'STATSFORVALTEREN I AGDER', dfd),
@@ -53,6 +58,7 @@ const units20Nov = units16Nov.map((u) => (u.orgnr === datatilsynet ? { ...u, par
 const names: RegisterNames = {
   [dfd]: { display: 'Digitaliserings- og forvaltningsdepartementet', abbreviation: 'DFD' },
   [digdir]: { display: 'Digitaliseringsdirektoratet', abbreviation: 'Digdir' },
+  [paatale]: { display: 'Riksadvokaten' },
   ['974760665']: { display: 'Statsforvaltaren i Vestland' },
   ['974761122']: { display: 'Direktoratet for medisinske produkter', abbreviation: 'DMP' },
 };
@@ -102,7 +108,9 @@ const save = <T>(
     at,
   });
 
-const stored = async (opts: { history?: boolean; extra?: RegisterUnit[] } = {}) => {
+const stored = async (
+  opts: { history?: boolean; historyAt?: string; extra?: RegisterUnit[] } = {},
+) => {
   const configEntries = new InMemoryConfigEntryStore();
   const register = (units: RegisterUnit[], at: string): StateRegister => ({
     units,
@@ -121,8 +129,8 @@ const stored = async (opts: { history?: boolean; extra?: RegisterUnit[] } = {}) 
       configEntries,
       'state-register',
       'enhetsregisteret',
-      register(units20Nov, '2026-11-20T01:40:00.000Z'),
-      '2026-11-20T01:40:00.000Z',
+      register(units20Nov, opts.historyAt ?? '2026-11-20T01:40:00.000Z'),
+      opts.historyAt ?? '2026-11-20T01:40:00.000Z',
     );
   await save<RegisterSync>(
     configEntries,
@@ -178,6 +186,7 @@ interface Answer {
 const toolOn = async (
   opts: {
     history?: boolean;
+    historyAt?: string;
     empty?: boolean;
     extra?: RegisterUnit[];
     filterFields?: readonly string[];
@@ -257,7 +266,7 @@ describe('the state-organisation tool', () => {
     const a = await answer({ action: 'under' });
 
     expect(a.unit).toBeUndefined();
-    expect(orgnrs(a)).toEqual([dfd, kdd, fin, hod].sort());
+    expect(orgnrs(a)).toEqual([dfd, kdd, fin, hod, jd, '974760347'].sort());
     expect(a.units.find((u) => u.orgnr === dfd)).toMatchObject({
       abbreviation: 'DFD',
       units_under: 6,
@@ -277,16 +286,21 @@ describe('the state-organisation tool', () => {
   it('finds a unit by its official name, KUDOS display name or abbreviation', async () => {
     const { answer } = await toolOn();
 
-    const official = await answer({ action: 'find', name: 'Digitaliseringsdirektoratet' });
-    const display = await answer({
-      action: 'find',
-      name: 'digitaliserings- og forvaltningsdepartementet',
-    });
+    const official = await answer({ action: 'find', name: 'Den høyere påtalemyndighet' });
+    const display = await answer({ action: 'find', name: 'riksadvokaten' });
     const abbreviation = await answer({ action: 'find', name: 'DIGDIR' });
 
-    expect(orgnrs(official)).toEqual([digdir]);
-    expect(orgnrs(display)).toEqual([dfd]);
+    expect(orgnrs(official)).toEqual([paatale]);
+    expect(orgnrs(display)).toEqual([paatale]);
     expect(orgnrs(abbreviation)).toEqual([digdir]);
+  });
+
+  it('finds a unit whatever accents the name is written with', async () => {
+    const { answer } = await toolOn();
+
+    const plain = await answer({ action: 'find', name: 'Samediggi' });
+
+    expect(orgnrs(plain)).toEqual(['974760347']);
   });
 
   it('finds the units whose name words start with every query word, at most 20', async () => {
@@ -338,6 +352,18 @@ describe('the state-organisation tool', () => {
     expect(overNow.units.map((u) => u.orgnr)).toEqual([kdd]);
   });
 
+  it('answers a date from the register version read by the end of that day in Oslo', async () => {
+    const { answer } = await toolOn({ history: true, historyAt: '2026-11-20T23:30:00.000Z' });
+
+    const sameUtcDay = await answer({ action: 'over', unit: datatilsynet, date: '2026-11-20' });
+    const nextOsloDay = await answer({ action: 'over', unit: datatilsynet, date: '2026-11-21' });
+
+    expect(sameUtcDay.units.map((u) => u.orgnr)).toEqual([dfd]);
+    expect(sameUtcDay.as_of).toBe('2026-11-16');
+    expect(nextOsloDay.units.map((u) => u.orgnr)).toEqual([kdd]);
+    expect(nextOsloDay.as_of).toBe('2026-11-21');
+  });
+
   it("answers under before the first register version from that year's state accounts, flat and labelled", async () => {
     const { answer } = await toolOn();
 
@@ -364,6 +390,14 @@ describe('the state-organisation tool', () => {
 
     expect(withField.filter_values).toEqual({ owner_orgnr: orgnrs(withField) });
     expect(without.filter_values).toBeUndefined();
+  });
+
+  it('offers only owner_orgnr when a dataset declares both org-number fields', async () => {
+    const { answer } = await toolOn({ filterFields: ['owner_orgnr', 'recipient_orgnr'] });
+
+    const a = await answer({ action: 'under', unit: dfd });
+
+    expect(Object.keys(a.filter_values ?? {})).toEqual(['owner_orgnr']);
   });
 
   it('gives no filter values for more than 100 units, and says why', async () => {
@@ -404,8 +438,41 @@ describe('the state-organisation tool', () => {
         'Contains data under the Norwegian licence for Open Government data (NLOD) distributed by Brønnøysundregistrene.',
       );
       expect(a.credit.licence).toBe('https://data.norge.no/nlod/no/2.0');
-      expect(a.credit.source).toMatch(/^https:\/\/data\.brreg\.no\//);
+      expect(a.credit.source).toBe('https://virksomhet.brreg.no/nb/oppslag/enheter');
     }
+  });
+
+  it('lists at most 20 units a name finds, and says how many matched', async () => {
+    const many = Array.from({ length: 25 }, (_, i) =>
+      orgl(String(910000000 + i), `REGIONKONTOR ${i}`, hod),
+    );
+    const { answer } = await toolOn({ extra: many });
+
+    const a = await answer({ action: 'find', name: 'regionkontor' });
+
+    expect(a.units).toHaveLength(20);
+    expect(a.note).toMatch(/25 units match/);
+  });
+
+  it('refuses find and the top units before the first register version', async () => {
+    const { call } = await toolOn();
+
+    const find = await call({ action: 'find', name: 'Digdir', date: '2022-06-01' });
+    const top = await call({ action: 'under', date: '2022-06-01' });
+
+    expect(find.isError).toBe(true);
+    expect(textOf(find)).toMatch(/find works from the register/);
+    expect(top.isError).toBe(true);
+    expect(textOf(top)).toMatch(/top units are known only from the register/);
+  });
+
+  it('refuses a date that does not exist', async () => {
+    const { call } = await toolOn();
+
+    const result = await call({ action: 'over', unit: digdir, date: '2022-13-45' });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/no such date/);
   });
 
   it('says the register is not synced yet when none is stored', async () => {
