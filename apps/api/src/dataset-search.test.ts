@@ -16,7 +16,13 @@ import type { Access } from './access.js';
 import { policyKind } from './building-blocks.js';
 import type { CatalogItem } from './catalog-registry.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
-import { mountDatasetSearch, type DatasetSearchAnswer } from './dataset-search.js';
+import {
+  datasetDocumentsFailedType,
+  datasetDocumentsPeopleOnlyType,
+  mountDatasetSearch,
+  type DatasetDocumentsPage,
+  type DatasetSearchAnswer,
+} from './dataset-search.js';
 import { modelRunRoutes } from './lockdown.js';
 import { bootPlatform } from './testkit.js';
 
@@ -608,8 +614,112 @@ describe('the dataset search on the platform', () => {
     expect(await tenant.json()).toMatchObject({ title: 'Fant ikke datasettet' });
   });
 
+  it('mounts the document listing on the platform, also for a dataset id with a slash', async () => {
+    const { send } = await bootPlatform({ people: platformPeople });
+
+    const response = await send(
+      `/tenants/${digdir}/datasets/${encodeURIComponent('digdir/finnes-ikke')}/documents`,
+      'kari',
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ title: 'Fant ikke datasettet' });
+  });
+
   it('is closed in lockdown like a model run, since it embeds the query', () => {
     expect(modelRunRoutes).toContain('POST /tenants/:tenant/datasets/:id/search');
     expect(modelRunRoutes).toContain('POST /operator/datasets/:id/search');
+  });
+});
+
+describe("listing a dataset's documents", () => {
+  const documentsPath = (dataset: string, tenant = digdir, query = '') =>
+    `/tenants/${tenant}/datasets/${encodeURIComponent(dataset)}/documents${query}`;
+  const get = (app: Hono, path: string, as: string) =>
+    app.request(path, { headers: { authorization: `Bearer ${as}` } });
+
+  it("pages through a dataset's documents with their title and fields", async () => {
+    const { app } = await boot();
+
+    const first = (await (
+      await get(app, documentsPath('filer', digdir, '?limit=2'), 'erik')
+    ).json()) as DatasetDocumentsPage;
+    const second = (await (
+      await get(app, documentsPath('filer', digdir, '?limit=2&offset=2'), 'erik')
+    ).json()) as DatasetDocumentsPage;
+
+    expect(first).toMatchObject({ dataset: `${digdir}/filer`, limit: 2, offset: 0 });
+    expect(first.documents).toHaveLength(2);
+    expect(first.documents[0]).toMatchObject({
+      id: 'dok-1',
+      title: 'Tilskudd til digitalisering i kommunene',
+      fields: { kategori: 'Veiledning' },
+    });
+    expect(second.offset).toBe(2);
+    expect(second.documents.map((d) => d.id)).not.toContain('dok-1');
+    expect(first.found).toBeGreaterThan(2);
+  });
+
+  it('lists a platform dataset shared with the tenant', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, documentsPath('digdir/felles'), 'kari');
+
+    expect(response.status).toBe(200);
+  });
+
+  it("never lists another tenant's dataset, nor a platform dataset shared only with others", async () => {
+    const { app } = await boot();
+
+    const own = await get(app, documentsPath(`${other}/hemmelig`), 'kari');
+    const notShared = await get(app, documentsPath('digdir/kun-nav'), 'kari');
+    const outsider = await get(app, documentsPath('filer'), 'ola');
+
+    expect([own.status, notShared.status, outsider.status]).toEqual([404, 404, 404]);
+  });
+
+  it('refuses an API key with a typed problem, since only people list documents here', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, documentsPath('filer'), 'nokkel');
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ type: datasetDocumentsPeopleOnlyType });
+  });
+
+  it('refuses a page size above the limit instead of cutting it', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, documentsPath('filer', digdir, '?limit=101'), 'kari');
+
+    expect(response.status).toBe(422);
+  });
+
+  it('refuses an offset that is not a multiple of the page size, since engines read whole pages', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, documentsPath('filer', digdir, '?offset=10&limit=50'), 'kari');
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ errors: [{ path: 'offset' }] });
+  });
+
+  it('answers a failing engine with a typed problem and never its error text', async () => {
+    const { app, knowledge } = await boot();
+    const open = knowledge.open.bind(knowledge);
+    knowledge.open = (ref, ctx) => ({
+      ...open(ref, ctx),
+      documents: async () => {
+        throw new Error('connect ECONNREFUSED 10.0.0.7:8108 api-key=hemmelig');
+      },
+    });
+
+    const response = await get(app, documentsPath('filer'), 'kari');
+    const text = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(JSON.parse(text)).toMatchObject({ type: datasetDocumentsFailedType });
+    expect(text).not.toContain('hemmelig');
+    expect(text).not.toContain('10.0.0.7');
   });
 });

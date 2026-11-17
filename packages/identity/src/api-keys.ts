@@ -76,6 +76,13 @@ export class InMemoryApiKeys implements ApiKeyStore {
   }
 }
 
+export const lastUseWriteIntervalMs = 60_000;
+
+const usedWithin = (lastUsedAt: string | undefined, now: Date, ms: number) => {
+  const last = lastUsedAt ? Date.parse(lastUsedAt) : Number.NaN;
+  return Number.isFinite(last) && now.getTime() - last >= 0 && now.getTime() - last < ms;
+};
+
 export const apiKeyDigest = (key: string) => createHash('sha256').update(key, 'utf8').digest('hex');
 
 export interface LegacyCredential {
@@ -140,7 +147,8 @@ export const verifyApiKey = async (
     throw new AuthenticationError('invalid_token', 'the API key has expired');
   if (!stored.tenant || !/^\d{9}$/.test(stored.tenant))
     throw new AuthenticationError('invalid_token', 'the API key has no tenant');
-  await store.touch?.(stored.id, now).catch(() => undefined);
+  if (!usedWithin(stored.lastUsedAt, now, lastUseWriteIntervalMs))
+    await store.touch?.(stored.id, now).catch(() => undefined);
   const union = <T>(fromPolicy: T[] = [], own: T[] = []) => [...new Set([...fromPolicy, ...own])];
   const policy = stored.policy;
   const scopes = union(policy?.scopes, stored.scopes);

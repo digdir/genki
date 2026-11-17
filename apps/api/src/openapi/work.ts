@@ -109,6 +109,13 @@ const BySource = z
   .optional()
   .describe('The sum split per source; only when an AI gateway is configured');
 const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
+const PeriodTotals = UsageWithRuns.extend({
+  unpricedModels: z
+    .array(z.string())
+    .describe(
+      'Models with use in the period and no price in the model list; costMicroNok then counts only the priced part',
+    ),
+});
 
 const OperationKind = z
   .object({
@@ -239,8 +246,17 @@ const TaskBase = z.object({
   endedAt: z.string().nullable(),
 });
 
+const RunFailure = z
+  .object({
+    code: z.string().describe('The run error code, such as deadline_exceeded'),
+    reason: z.string().describe('A fixed sentence for the code; never provider or model text'),
+    step: z.string().optional().describe('The step that failed, in a step flow'),
+  })
+  .openapi('RunFailure');
+
 const TaskRow = TaskBase.extend({
   usage: Usage.optional().describe('Only for callers with view-usage'),
+  failure: RunFailure.optional().describe('Only on a failed run'),
   serviceName: z.string(),
   excerpt: z
     .string()
@@ -255,9 +271,7 @@ const TaskRow = TaskBase.extend({
 
 const MyTask = TaskBase.extend({
   serviceName: z.string().optional(),
-  failure: z
-    .object({ code: z.string(), reason: z.string(), step: z.string().optional() })
-    .optional(),
+  failure: RunFailure.optional(),
 }).openapi('MyTask');
 
 const TrackedTask = z
@@ -894,7 +908,8 @@ const taskRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks',
-    summary: "The tenant's service runs, or its playground runs, newest first",
+    summary:
+      "The tenant's service runs, or its playground runs, newest first, with the failure reason of failed runs",
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
@@ -2670,8 +2685,8 @@ const TenantUsage = z
   .object({
     from: z.string(),
     to: z.string(),
-    priced: z.boolean(),
-    totals: UsageWithRuns.describe('The sum of genki and the AI gateway, when one is configured'),
+    priced: z.boolean().describe('The same as totals.priced'),
+    totals: PeriodTotals.describe('The sum of genki and the AI gateway, when one is configured'),
     daily: z.array(Day),
     byService: z.array(
       z.object({ service: z.string(), usage: UsageWithRuns, title: z.string().optional() }),
@@ -2767,7 +2782,7 @@ const operationsRoutes: RouteConfig[] = [
         z.object({
           from: z.string(),
           to: z.string(),
-          data: z.array(z.object({ orgNumber: z.string(), usage: UsageWithRuns })),
+          data: z.array(z.object({ orgNumber: z.string(), usage: PeriodTotals })),
         }),
         'Usage',
       ),
@@ -2904,7 +2919,7 @@ const operationsRoutes: RouteConfig[] = [
             }),
           ),
           recentTasks: z.array(TaskBase.extend({ usage: Usage.optional() })),
-          usageThisMonth: UsageWithRuns.optional(),
+          usageThisMonth: PeriodTotals.optional(),
           qualityWarnings: z.array(z.object({ service: z.string(), message: z.string() })),
           review: z.object({
             pendingToolChanges: z.number().int(),
