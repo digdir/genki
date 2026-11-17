@@ -79,6 +79,7 @@ export interface RiskConfirmation {
   at?: string;
   reasons?: string[];
   riskClass?: RiskClass;
+  unmaskedInput?: { mediaType: string; reason: string }[];
 }
 
 export interface ServiceSpec {

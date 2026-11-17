@@ -45,6 +45,7 @@ import {
   variantId,
   variantStrategyOf,
   type CompiledCapability,
+  type Definition,
   type DefinitionStore,
   type PluginSchemas,
   type ServiceDefinition,
@@ -324,6 +325,8 @@ import {
   describedStepProblems,
   operationGovernanceModule,
   stepMediaTypes,
+  unmaskedInputIn,
+  type UnmaskedInputUse,
 } from './operation-governance.js';
 import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
@@ -1550,6 +1553,22 @@ export const createPlatform = async (input: PlatformInput) => {
       (await runtime.sharedRecipe(tenant, id, version));
     return flow?.kind === 'StepFlow' ? flow : undefined;
   };
+  const unmaskedInput = async (d: Definition): Promise<UnmaskedInputUse[]> => {
+    if (d.kind !== 'Service') return [];
+    const flowOf = (flowRef: string) => flowIn(d.metadata.tenant, flowRef);
+    const uses: UnmaskedInputUse[] = [];
+    for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+      const flow = await flowOf(flowRef);
+      if (flow)
+        uses.push(
+          ...(await unmaskedInputIn(d, flow, flowRef, {
+            descriptors: runtime.descriptors,
+            flow: flowOf,
+          })),
+        );
+    }
+    return uses;
+  };
 
   const checkBeforePublish = async (definition: unknown, publisher: string) => {
     const validated = validateDefinition(definition, plugins);
@@ -2589,6 +2608,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     catalog: config.catalog,
     descriptors: runtime.descriptors,
+    unmaskedInput,
     liveSessions: runtime.liveSessions,
     ingestion: config.ingestion,
     gates: configurables.gates,

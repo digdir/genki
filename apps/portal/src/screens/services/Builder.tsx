@@ -107,6 +107,15 @@ import { VersionsSection } from '../service/VersionsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { InterfaceTab } from './blocks/InterfaceTab';
 import { TryViewKeeper } from './blocks/TryViewKeeper';
+import { UnmaskedInputConsent } from './UnmaskedInputConsent';
+import {
+  isUnmaskedReasonGiven,
+  mediaKind,
+  refusedUnmaskedInput,
+  unmaskedTypes,
+  withUnmaskedInput,
+} from '../../data/unmasked-input';
+import type { UnmaskedInputUse } from '../../types';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -917,11 +926,19 @@ export const Builder = ({
     await resolveConflicts(picks, conflicts);
   };
   const [check, setCheck] = useState<
-    { status: 'checking' } | { status: 'done'; errors: PublishProblem[] } | undefined
+    | { status: 'checking' }
+    | { status: 'done'; errors: PublishProblem[]; unmasked: UnmaskedInputUse[] }
+    | undefined
   >();
+  const [unmaskedReasons, setUnmaskedReasons] = useState<Record<string, string>>({});
+  const [unmaskedRefused, setUnmaskedRefused] = useState<{
+    uses: UnmaskedInputUse[];
+    messages: Record<string, string>;
+  }>({ uses: [], messages: {} });
   useEffect(() => {
     if (!publish) {
       setCheck(undefined);
+      setUnmaskedRefused({ uses: [], messages: {} });
       return;
     }
     let active = true;
@@ -930,15 +947,42 @@ export const Builder = ({
       .completeDefinition(definitionRef.current)
       .then((completed) => api.validate(completed, filesRef.current))
       .then(
-        (result) => active && setCheck({ status: 'done', errors: result.errors }),
+        (result) => {
+          if (!active) return;
+          const unmasked = result.unmaskedInput ?? [];
+          setUnmaskedReasons((given) => ({
+            ...Object.fromEntries(
+              unmasked.flatMap((u) => (u.consent ? [[u.mediaType, u.consent.reason]] : [])),
+            ),
+            ...given,
+          }));
+          setCheck({ status: 'done', errors: result.errors, unmasked });
+        },
         (error: unknown) =>
-          active && setCheck({ status: 'done', errors: problemErrors(error, tRef.current) }),
+          active &&
+          setCheck({
+            status: 'done',
+            errors: problemErrors(error, tRef.current),
+            unmasked: [],
+          }),
       );
     return () => {
       active = false;
     };
   }, [publish]);
   const validationErrors = check?.status === 'done' ? check.errors : [];
+  const unmaskedUses = [
+    ...(check?.status === 'done' ? check.unmasked : []),
+    ...unmaskedRefused.uses,
+  ];
+  const unmaskedTypeList = unmaskedTypes(unmaskedUses);
+  const unmaskedMissing = unmaskedTypeList.filter(
+    (m) => !isUnmaskedReasonGiven(unmaskedReasons[m]),
+  ).length;
+  const publishable = withUnmaskedInput(
+    definition,
+    Object.fromEntries(unmaskedTypeList.map((m) => [m, unmaskedReasons[m] ?? ''])),
+  );
   const invalid = validationErrors.length > 0;
   const blockedBy =
     check?.status === 'checking'
@@ -978,16 +1022,30 @@ export const Builder = ({
 
   const doPublish = async ({ reason }: PublishInput) => {
     setProblems(undefined);
+    setUnmaskedRefused({ uses: [], messages: {} });
     draftBlocked.current = true;
     const outcome = await publishDraft(
       api,
-      definition,
+      publishable,
       files,
       reason,
       serverDraft && revisionRef.current > 0 ? revisionRef.current : undefined,
     );
     if (!outcome.ok) {
       draftBlocked.current = false;
+      const refused = refusedUnmaskedInput(outcome.errors);
+      setUnmaskedRefused({
+        uses: refused,
+        messages: Object.fromEntries(
+          refused.map((u) => [
+            u.mediaType,
+            tRef.current('unmaskedInput.refused', {
+              kind: mediaKind(tRef.current, u.mediaType),
+              mediaType: u.mediaType,
+            }),
+          ]),
+        ),
+      });
       setProblems(outcome);
       throw new Error(outcome.errors[0]?.message ?? tRef.current('services.publishFailed'));
     }
@@ -1158,6 +1216,7 @@ export const Builder = ({
           id={id}
           definition={service}
           versions={versions}
+          {...(remoteLatest ? { published: remoteLatest } : {})}
         />
       );
     if (section === 'test')
@@ -1485,6 +1544,22 @@ export const Builder = ({
                   </ul>
                 </Alert>
               ) : null}
+              {unmaskedTypeList.length ? (
+                <UnmaskedInputConsent
+                  uses={unmaskedUses}
+                  reasons={unmaskedReasons}
+                  refused={unmaskedRefused.messages}
+                  onReason={(mediaType, reason) => {
+                    setUnmaskedReasons((given) => ({ ...given, [mediaType]: reason }));
+                    setUnmaskedRefused(({ uses, messages }) => ({
+                      uses,
+                      messages: Object.fromEntries(
+                        Object.entries(messages).filter(([m]) => m !== mediaType),
+                      ),
+                    }));
+                  }}
+                />
+              ) : null}
               <PublishSummary
                 tenantName={tenantName}
                 currentVersion={current}
@@ -1541,12 +1616,27 @@ export const Builder = ({
                     passed: riskPassed,
                     explanation: t('services.gateRiskWhy'),
                   },
+                  ...(unmaskedTypeList.length
+                    ? [
+                        {
+                          name: t('unmaskedInput.gate'),
+                          value: unmaskedMissing
+                            ? t('unmaskedInput.gateMissing', {
+                                missing: unmaskedMissing,
+                                count: unmaskedTypeList.length,
+                              })
+                            : t('services.gateConfirmed'),
+                          passed: unmaskedMissing === 0,
+                          explanation: t('unmaskedInput.gateWhy'),
+                        },
+                      ]
+                    : []),
                 ]}
                 apiCall={{
                   action: t('services.publishAction'),
                   method: 'POST',
                   path: '/definitions',
-                  body: { definition, files },
+                  body: { definition: publishable, files },
                   right: rightLabel(t, 'manage-services'),
                 }}
                 {...(riskPassed && !forbidden

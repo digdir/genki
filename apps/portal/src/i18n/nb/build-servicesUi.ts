@@ -196,4 +196,26 @@ export const servicesUi = {
     publishAction: 'Publiser tjenesten',
     fixRisk: 'Gå til risikonivå',
   }),
+  unmaskedInput: defineNamespace({
+    heading: 'Lyd, bilder og filer som sendes umaskert',
+    intro:
+      'Genki kan ikke maskere personopplysninger i disse typene. Skriv hvorfor tjenesten trenger å sende dem slik. Begrunnelsen lagres med navnet ditt når du publiserer.',
+    usedIn: '{kind} ({mediaType}) sendes umaskert i steget «{step}» i oppskriften {flow}.',
+    reasonLabel: 'Begrunnelse for {mediaType}',
+    reasonTooShort: 'Skriv en begrunnelse på minst {min} tegn.',
+    refused:
+      '{kind} ({mediaType}) kan ikke maskeres, og plattformen fant ingen begrunnelse for det.',
+    gate: 'Umaskede typer begrunnet',
+    gateMissing: '{missing} av {count} mangler begrunnelse',
+    gateWhy: 'Skriv en begrunnelse for hver type under Lyd, bilder og filer som sendes umaskert.',
+    kindText: 'Tekstfiler',
+    kindImage: 'Bilder',
+    kindAudio: 'Lyd',
+    kindVideo: 'Video',
+    kindPdf: 'PDF-filer',
+    kindFile: 'Filer',
+    overviewLabel: 'Sendes umaskert',
+    overviewLine: '{kind} ({mediaType}): {reason}',
+    overviewBy: 'Bekreftet av {who}, {when}',
+  }),
 } as const;
