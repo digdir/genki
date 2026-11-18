@@ -384,7 +384,7 @@ export const RunEstimate = ({
   const { t, f } = usePortalFormat();
   const fromRuns = perCaseFromRuns(runs);
   const canSeeUsage = useRights().has('view-usage');
-  const [usage] = useAsync(
+  const [usage, retryUsage] = useAsync(
     async (signal) => {
       if (fromRuns !== undefined || !canSeeUsage) return undefined;
       const report = await api.usage(tenant, usageDays, signal).catch(() => undefined);
@@ -397,7 +397,9 @@ export const RunEstimate = ({
     [api, tenant, serviceId, fromRuns, canSeeUsage],
   );
   if (fromRuns === undefined && usage.status === 'loading')
-    return <Loading label={t('quality.estimateLoading')} shape="list" rows={1} />;
+    return (
+      <Loading label={t('quality.estimateLoading')} shape="list" rows={1} onRetry={retryUsage} />
+    );
   const perCase = fromRuns ?? (usage.status === 'ready' ? usage.data : undefined);
   if (perCase === undefined)
     return <Paragraph data-size="sm">{t('quality.estimateUnknown', { count: cases })}</Paragraph>;
@@ -448,6 +450,7 @@ const RunDetail = ({
             t('quality.runInterval'),
             t('quality.runCases'),
           ]}
+          headingLevel={4}
           onRetry={retry}
         />
       ) : state.status === 'error' ? (
@@ -750,7 +753,7 @@ export const RunHistory = ({
         </Alert>
       ) : null}
       {state.status === 'loading' && !seen.current ? (
-        <Loading label={t('quality.runsLoading')} shape="list" onRetry={retry} />
+        <Loading label={t('quality.runsLoading')} shape="list" headingLevel={3} onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : runs.length === 0 ? (

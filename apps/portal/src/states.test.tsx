@@ -14,6 +14,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const wait = (ms: number) => act(() => vi.advanceTimersByTime(ms));
@@ -62,6 +63,24 @@ describe('loading a page or a section', () => {
     expect(onRetry).toHaveBeenCalledOnce();
     expect(screen.getByRole('status', { name: 'Henter tjenesten' }).childElementCount).toBe(0);
     expect(screen.queryByRole('heading', { name: 'Det tok for lang tid' })).toBeNull();
+  });
+
+  it('titles the give-up alert at the heading level of its section', async () => {
+    render(<Loading label="Henter filer" headingLevel={4} />);
+    await wait(30_000);
+
+    expect(screen.getByRole('heading', { level: 4, name: 'Det tok for lang tid' })).toBeTruthy();
+  });
+
+  it('starts the wait over without reloading the page when no retry is given', async () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    render(<Loading label="Henter filer" />);
+    await wait(30_000);
+    fireEvent.click(screen.getByRole('button', { name: 'Prøv igjen' }));
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByRole('status', { name: 'Henter filer' })).toBeTruthy();
   });
 });
 

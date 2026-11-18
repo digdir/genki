@@ -568,7 +568,12 @@ const Loaded = ({
           ) : runsError !== undefined && !runs ? (
             <ErrorState error={runsError} onRetry={() => void load()} headingLevel={3} />
           ) : pipelines.status === 'loading' || (pipeline && !runs) ? (
-            <Loading label={t('datasets.loadingRuns')} shape="list" onRetry={retryPipelines} />
+            <Loading
+              label={t('datasets.loadingRuns')}
+              shape="list"
+              headingLevel={3}
+              onRetry={retryPipelines}
+            />
           ) : (
             <section className="stack-sm" aria-labelledby="runs-h">
               <Heading level={2} data-size="xs" id="runs-h">
@@ -626,7 +631,12 @@ const Loaded = ({
         </Tabs.Panel>
         <Tabs.Panel value="source">
           {canEdit && pipelines.status === 'loading' ? (
-            <Loading label={t('datasets.loadingOne')} shape="form" onRetry={retryPipelines} />
+            <Loading
+              label={t('datasets.loadingOne')}
+              shape="form"
+              headingLevel={3}
+              onRetry={retryPipelines}
+            />
           ) : canEdit ? (
             <SourceSettings
               key={`${view.name}-${pipeline?.version ?? 0}-${formKey}`}

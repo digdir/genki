@@ -289,7 +289,7 @@ export const Improvements = ({
         </Alert>
       ) : null}
       {state.status === 'loading' && !seen.current ? (
-        <Loading label={t('quality.impLoading')} shape="list" onRetry={retry} />
+        <Loading label={t('quality.impLoading')} shape="list" headingLevel={3} onRetry={retry} />
       ) : state.status === 'error' && !seen.current ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : list.length === 0 ? (

@@ -130,6 +130,7 @@ export const LiveChanges = ({
       <Loading
         label={t('changes.loading')}
         shape="list"
+        headingLevel={3}
         onRetry={paged ? pages.retry : retryLoad}
       />
     );

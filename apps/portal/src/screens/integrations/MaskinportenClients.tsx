@@ -95,7 +95,14 @@ export const MaskinportenClients = ({
     return children({
       button: null,
       rows: null,
-      after: <Loading label={t('integMaskinporten.loading')} shape="list" onRetry={retry} />,
+      after: (
+        <Loading
+          label={t('integMaskinporten.loading')}
+          shape="list"
+          headingLevel={3}
+          onRetry={retry}
+        />
+      ),
     });
   if (state.status === 'error')
     return children({

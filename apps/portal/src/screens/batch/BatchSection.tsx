@@ -209,7 +209,7 @@ export const BatchSection = ({
         ) : detail.status === 'error' ? (
           <ErrorState error={detail.error} headingLevel={3} />
         ) : (
-          <Loading label={t('batch.loadingJob')} shape="detail" />
+          <Loading label={t('batch.loadingJob')} shape="detail" headingLevel={3} />
         )
       ) : null}
       {showList ? (
@@ -227,6 +227,7 @@ export const BatchSection = ({
                 t('batch.colDocuments'),
                 t('batch.colStatus'),
               ]}
+              headingLevel={4}
               onRetry={retryRuns}
             />
           ) : runs.status === 'error' ? (

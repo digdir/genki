@@ -566,7 +566,12 @@ export const LiveTestSets = ({
           <Paragraph data-size="sm">{t('quality.markHint')}</Paragraph>
         ) : null}
         {cases.status === 'loading' ? (
-          <Loading label={t('quality.casesLoading')} shape="list" onRetry={retryCases} />
+          <Loading
+            label={t('quality.casesLoading')}
+            shape="list"
+            headingLevel={3}
+            onRetry={retryCases}
+          />
         ) : cases.status === 'error' ? (
           <ErrorState error={cases.error} onRetry={retryCases} headingLevel={3} />
         ) : (

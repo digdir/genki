@@ -31,6 +31,7 @@ export interface LoadingProps {
   rows?: number;
   columns?: number | string[];
   onRetry?: () => void;
+  headingLevel?: 2 | 3 | 4;
 }
 
 const LoadingState = ({
@@ -39,6 +40,7 @@ const LoadingState = ({
   rows,
   columns,
   onRetry,
+  headingLevel = 2,
   page,
   onGiveUpRetry,
 }: LoadingProps & { shape: SkeletonShape; page: boolean; onGiveUpRetry: () => void }) => {
@@ -48,7 +50,7 @@ const LoadingState = ({
     return (
       <div className="state">
         <Alert data-color="danger">
-          <Heading level={2} data-size="xs">
+          <Heading level={headingLevel} data-size="xs">
             {t('states.tooSlowTitle')}
           </Heading>
           <Paragraph>{t('states.tooSlowText')}</Paragraph>
@@ -57,8 +59,7 @@ const LoadingState = ({
             data-size="sm"
             onClick={() => {
               onGiveUpRetry();
-              if (onRetry) onRetry();
-              else window.location.reload();
+              onRetry?.();
             }}
           >
             {t('common.tryAgain')}

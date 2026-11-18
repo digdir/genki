@@ -174,7 +174,13 @@ export const Uploads = ({
         {t('datasets.uploadedFiles')}
       </Heading>
       {list.status === 'loading' ? (
-        <Loading label={t('datasets.loadingFiles')} shape="list" rows={3} onRetry={retry} />
+        <Loading
+          label={t('datasets.loadingFiles')}
+          shape="list"
+          rows={3}
+          headingLevel={4}
+          onRetry={retry}
+        />
       ) : null}
       {list.status === 'error' ? (
         <ErrorState error={list.error} onRetry={retry} headingLevel={4} />
