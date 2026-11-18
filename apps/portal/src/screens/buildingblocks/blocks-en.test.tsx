@@ -6,7 +6,6 @@ import type { ApiClient } from '../../api';
 import type { CatalogItem } from '../../api/building-blocks';
 import { exampleBlocks, exampleProposal } from '../../data/building-blocks';
 import { RightsProvider } from '../../Shell';
-import { BlockCard } from './BlockCard';
 import { BlockDetail } from './BlockDetail';
 import { BlockList, initialFilters } from './BlockList';
 import { MappingTable, ProposalSection } from './ProposalSection';
@@ -15,9 +14,10 @@ afterEach(cleanup);
 
 const api = {
   buildingBlocks: { path: () => '/x', proposalsPath: () => '/y' },
+  blocks: { models: async () => [], toolConnections: async () => [] },
 } as unknown as ApiClient;
 
-const borealis = exampleBlocks.find((b) => b.id === 'borealis') as CatalogItem;
+const borealis = exampleBlocks.find((b) => b.id === 'aivar/borealis-27b') as CatalogItem;
 
 describe('building blocks in English', () => {
   it('lists blocks with English headings, counts and tags', () => {
@@ -38,18 +38,31 @@ describe('building blocks in English', () => {
       ),
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Building blocks' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toMatch(
-      /^Showing \d+ building blocks that Testetaten uses$/,
-    );
-    expect(screen.getByRole('button', { name: 'Add your own building block' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Models' })).toBeTruthy();
+    expect(screen.getByText(/^Showing \d+ of \d+ building blocks$/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Register a building block' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'In use here' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: /^Models \(\d+\)$/ })).toBeTruthy();
   });
 
-  it('describes a card in English', () => {
-    render(inEnglish(<BlockCard item={borealis} />));
-    expect(screen.getByText('In use')).toBeTruthy();
+  it('describes a row in English', () => {
+    render(
+      inEnglish(
+        <RightsProvider value={['manage-services']}>
+          <BlockList
+            api={api}
+            tenant="t"
+            tenantName="Testetaten"
+            items={[borealis]}
+            proposals={[]}
+            filters={initialFilters}
+            onFilters={() => undefined}
+            onFlash={() => undefined}
+          />
+        </RightsProvider>,
+      ),
+    );
     expect(screen.getByText('Update available')).toBeTruthy();
-    expect(screen.getByText(/^Digdir · version 2\.1 · Used by 5 services$/)).toBeTruthy();
+    expect(screen.getByText('Used in 5 services')).toBeTruthy();
   });
 
   it('shows the detail page with English sections and a short date', () => {
@@ -75,7 +88,7 @@ describe('building blocks in English', () => {
     expect(
       screen.getByRole('heading', { name: /^Version 2\.2, available from \d+ Oct$/ }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Versions' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Versions' })).toBeTruthy();
   });
 
   it('shows a read-only notice naming the right in English', () => {

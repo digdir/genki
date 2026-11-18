@@ -1,4 +1,5 @@
 import { Button, Heading, Paragraph } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import type { CatalogItem } from '../api/building-blocks';
 import { findCapability, type SharedCapability } from '../data/shared-services';
 import { useAsync, type AsyncState } from '../hooks';
@@ -9,6 +10,7 @@ import { EmptyState, ErrorState, Loading } from '../states';
 import type { ModelOption, Residency, SharedService } from '../types';
 import { SharedServiceDetail } from './shared/SharedServiceDetail';
 import { UsageTag } from './shared/UsageTag';
+import { priceText } from './shared/price';
 import './shared.css';
 
 interface Entry {
@@ -99,7 +101,7 @@ const merge = (
     };
   });
 
-const Card = ({ entry, processed }: { entry: Entry; processed: string }) => {
+const Card = ({ entry, meta }: { entry: Entry; meta: string }) => {
   const t = useT();
   const c = entry.capability;
   const href = `#/shared-services/${encodeURIComponent(c.id)}`;
@@ -113,7 +115,7 @@ const Card = ({ entry, processed }: { entry: Entry; processed: string }) => {
           <UsageTag block={entry.block} />
         </div>
         <p className="cap-does">{c.does}</p>
-        <p className="cap-meta">{processed}</p>
+        <p className="cap-meta">{meta}</p>
       </div>
       <Button
         className="cap-action"
@@ -131,6 +133,7 @@ const Card = ({ entry, processed }: { entry: Entry; processed: string }) => {
 
 export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   const t = useT();
+  const f = useFormat();
   const [state, retry] = useAsync((signal) => api.sharedServices(signal), [api]);
   const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
   const [blocks] = useAsync(
@@ -175,6 +178,8 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
         publicName={entry.publicName}
         block={entry.block}
         blockId={sharedBlockId(entry.service)}
+        owner={entry.service.tenant}
+        price={priceText(t, f, entry.service.model, models)}
       />
     );
   }
@@ -185,7 +190,7 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
         <Heading level={1} data-size="lg">
           {t('sharedServices.title')}
         </Heading>
-        <p className="lead">{t('sharedServices.lead')}</p>
+        <p className="lead">{t('sharedServicesMore.lead')}</p>
       </div>
       {entries.length === 0 ? (
         <EmptyState title={t('sharedServices.emptyTitle')}>
@@ -199,7 +204,7 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
               <Card
                 key={e.capability.id}
                 entry={e}
-                processed={processedLabel(t, e.residency, models)}
+                meta={`${processedLabel(t, e.residency, models)} · ${priceText(t, f, e.service.model, models, true)}`}
               />
             ))}
           </ul>

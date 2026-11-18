@@ -1,3 +1,4 @@
+import type { BlockFacts } from '../api/blocks';
 import type {
   BlockKind,
   BlockScore,
@@ -106,13 +107,6 @@ export const extensionPointLabel = (
   const found = extensionPoints.find((p) => p.value === point);
   return found ? t(found.label) : point;
 };
-
-export const publisherOptions = [
-  { value: 'all', label: 'blocks.publisherAll' },
-  { value: 'digdir', label: 'blocks.publisherDigdir' },
-  { value: 'own', label: 'blocks.publisherOwn' },
-  { value: 'shared', label: 'blocks.publisherShared' },
-] as const satisfies readonly { value: string; label: PlainKey }[];
 
 export type StatusColor = 'success' | 'info' | 'warning' | 'danger';
 
@@ -334,10 +328,19 @@ const block = ({ versions: _v, usedBy, scores, ...b }: Example): CatalogItem => 
   usedBy: (usedBy ?? []).map(userOf),
 });
 
+export const borealisFacts: BlockFacts = {
+  maker: 'AIVAR',
+  operator: { name: 'AIVAR', region: 'Norge' },
+  adoptedAt: '2026-09-02T10:00:00Z',
+  adoptedBy: 'kari',
+  adoptedByName: 'Kari Nordmann',
+};
+
 const examples: Example[] = [
   {
-    id: 'borealis',
+    id: 'aivar/borealis-27b',
     kind: 'model',
+    ...borealisFacts,
     name: 'Borealis-27B',
     description: 'Norsk språkmodell fra AIVAR, driftet i Norge.',
     publisher: publishers.digdir,
@@ -687,7 +690,7 @@ const examples: Example[] = [
     ),
   },
   {
-    id: 'sk-vedtak',
+    id: 'skrive-vedtaksbrev',
     kind: 'skill',
     name: 'Skrive vedtaksbrev',
     description: 'Oppbygging, faste formuleringer og klagerett for vedtak fra Testetaten.',
@@ -799,16 +802,16 @@ const examples: Example[] = [
     ],
   },
   {
-    id: 'sf-vedtak',
+    id: 'postruting',
     kind: 'step_flow',
-    name: 'Vedtaksforberedelse',
-    description: 'Leser søknaden, henter regelverk, vurderer vilkår og skriver utkast.',
+    name: 'Postruting',
+    description: 'Klassifiserer innkommende post og sender klager til klageenheten.',
     publisher: publishers.own,
     version: '2',
     dataLocation: 'norway',
     status: 'in_use',
     usedBy: ['vedtaksutkast'],
-    capabilities: ['5 steg', 'Saksbehandler godkjenner før noe sendes'],
+    capabilities: ['3 steg', 'Klager går til klageenheten'],
   },
   {
     id: 'sf-hoering',
@@ -915,8 +918,6 @@ export const emptyTenantBlocks = (): CatalogItem[] =>
           }
         : { ...b, scores: [] },
     );
-
-export const emptyStateSuggestions = ['borealis', 'hybrid', 'pii'];
 
 export const exampleProposal: CatalogProposal = {
   id: 'brreg',

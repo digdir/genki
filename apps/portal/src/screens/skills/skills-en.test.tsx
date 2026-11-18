@@ -25,23 +25,34 @@ describe('skills in English', () => {
     expect(gateWhy(t, gate)).toBe('The draft or the judge has changed since the last run.');
   });
 
-  it('renders the version list', () => {
-    const version = {
-      version: 2,
-      publishedAt: '2026-10-01T08:00:00Z',
-      by: 'Kari',
-      current: true,
-      score: null,
-    } as unknown as SkillVersion;
+  it('names who published each version, marks the one in use and quotes the reason', () => {
+    const versions = [
+      {
+        version: 1,
+        publishedAt: '2026-10-01T08:00:00Z',
+        by: 'Kari',
+        current: false,
+        shared: false,
+      },
+      {
+        version: 2,
+        publishedAt: '2026-10-02T08:00:00Z',
+        by: 'Per',
+        reason: 'Shorter first paragraph',
+        current: true,
+        shared: false,
+      },
+    ] as SkillVersion[];
     render(
       inEnglish(
-        <VersionsTab draft={{ version: 3, changes: [], score: 'x' }} versions={[version]} inUse />,
+        <VersionsTab versions={versions} services={[{ service: 's', name: 'S', version: 2 }]} />,
       ),
     );
-    expect(screen.getByText('Draft of version 3')).toBeTruthy();
-    expect(screen.getByText('Version 2')).toBeTruthy();
-    expect(screen.getByText('In use')).toBeTruthy();
-    expect(screen.getByText('No test set')).toBeTruthy();
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]?.textContent).toMatch(
+      /^Version 2 · .* by Per · in use"Shorter first paragraph"$/,
+    );
+    expect(items[1]?.textContent).toMatch(/^Version 1 · .* by KariNo reason given\.$/);
   });
 
   it('renders the rejected and fix cards', () => {

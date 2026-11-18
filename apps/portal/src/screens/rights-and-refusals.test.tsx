@@ -417,12 +417,13 @@ describe('empty lists and deep links', () => {
     expect(screen.queryByRole('button', { name: 'Nullstill søk og filter' })).toBeNull();
   });
 
-  it('shows an empty state for Ferdigheter when there are none', async () => {
-    const fetch = answering(/\/skills(\?|$)/, () => Response.json({ data: [] }));
-    await renderAs('#/skills', fetch);
+  it('sends the old Ferdigheter address to skills under Byggeklosser', async () => {
+    await renderAs(
+      '#/skills',
+      answering(/\/skills(\?|$)/, () => Response.json({ data: [] })),
+    );
 
-    expect(await screen.findByRole('heading', { name: 'Ingen ferdigheter ennå' })).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe('#/building-blocks/in-use?type=skill'));
   });
 
   it('opens a dataset from a link with its full id', async () => {
