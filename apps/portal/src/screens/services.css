@@ -18,14 +18,6 @@ a.ds-button {
   line-height: 1.5;
 }
 
-.back-link {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 15px;
-}
-
 .chip-fieldset,
 .plain-fieldset {
   border: none;

@@ -15,7 +15,7 @@ import { ErrorState, Loading } from '../../states';
 import { servicePath } from '../service/sections';
 import { BatchJob } from './BatchJob';
 import { jobStatus, kroner, selectionName, startedByLabel } from './shared';
-import { BatchWizard } from './BatchWizard';
+import { BatchDialog } from './BatchDialog';
 import './batch.css';
 
 const pollMs = 2000;
@@ -113,7 +113,7 @@ export const BatchSection = ({
   const [round, setRound] = useState(0);
   const [flash, setFlash] = useState<Flash>();
   const [wizard, setWizard] = useState(false);
-  const [sources, retrySources] = useAsync(
+  const [sources] = useAsync(
     (signal) => api.batchRuns.sources(tenant, id, signal),
     [api, tenant, id],
   );
@@ -144,7 +144,7 @@ export const BatchSection = ({
     setWizard(false);
     navigate(servicePath(id, 'batch', run ? `/${encodeURIComponent(run)}` : ''));
   };
-  const showList = !wizard && !runId;
+  const showList = !runId;
 
   return (
     <div className="stack batch">
@@ -175,26 +175,19 @@ export const BatchSection = ({
       </div>
       {!canManage ? <Paragraph data-size="sm">{needsRight('manage-services')}</Paragraph> : null}
       {wizard && canManage ? (
-        sources.status === 'loading' ? (
-          <Loading label={t('batch.loadingSources')} />
-        ) : sources.status === 'error' ? (
-          <ErrorState error={sources.error} onRetry={retrySources} headingLevel={3} />
-        ) : (
-          <BatchWizard
-            api={api}
-            tenant={tenant}
-            serviceId={id}
-            sources={sources.data}
-            onCancel={() => setWizard(false)}
-            onStarted={(run) => {
-              setFlash({ text: t('batch.started'), color: 'info' });
-              setRound((r) => r + 1);
-              open(run);
-            }}
-          />
-        )
+        <BatchDialog
+          api={api}
+          tenant={tenant}
+          id={id}
+          onClose={() => setWizard(false)}
+          onStarted={(run) => {
+            setFlash({ text: t('batch.started'), color: 'info' });
+            setRound((r) => r + 1);
+            open(run);
+          }}
+        />
       ) : null}
-      {!wizard && runId ? (
+      {runId ? (
         selected ? (
           <>
             <BatchJob

@@ -4,8 +4,9 @@ import type { serviceUi as source } from '../nb/build-serviceUi';
 export const serviceUi = {
   service: {
     back: 'Services',
-    navLabel: 'Service',
+    navLabel: 'Tabs for {name}',
     sectionOverview: 'Overview',
+    draftNote: 'Overview and Quality arrive once the service is published.',
     sectionSetup: 'Setup',
     sectionInterface: 'Interface',
     sectionTest: 'Test',
@@ -59,6 +60,7 @@ export const serviceUi = {
     noDatasets: 'No datasets',
     model: 'Model',
     modelWhere: ', data is processed in {where}',
+    modelWhereAt: ', data is processed in {where} ({at})',
     residencyNorway: 'Norway',
     residencyEu: 'the EU/EEA',
     residencyGlobal: 'a global region, possibly outside the EU/EEA',
@@ -89,6 +91,10 @@ export const serviceUi = {
     },
     whoCanUse: 'Who can use it',
     costAtLeast: 'at least {cost}',
+    selectedOnly: {
+      one: 'Only selected people: {count} person',
+      other: 'Only selected people: {count} people',
+    },
     everyoneWith: 'Everyone in {org} with «{right}»',
     batchTitle: 'Run on many documents',
     batchLead:

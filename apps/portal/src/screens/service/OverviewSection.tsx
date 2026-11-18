@@ -8,6 +8,7 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
+import { useState } from 'react';
 import type { ApiClient } from '../../api';
 import { blockHref } from '../../api/building-blocks';
 import type { DatasetView } from '../../api/datasets';
@@ -18,11 +19,11 @@ import { actorLabel, formatDateTime, formatSeconds, notPriced, statusOf } from '
 import { useAsync } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import { runsOf } from '../usage/model';
-import type { PublishedDefinition, TaskRow } from '../../types';
+import type { ModelOption, PublishedDefinition, TaskRow, UsageTotals } from '../../types';
 import type { VersionItem } from '../services/VersionsTab';
 import { rightLabel } from '../../Shell';
 import { PausedBanner } from './PausedBanner';
-import { servicePath } from './sections';
+import { BatchDialog } from '../batch/BatchDialog';
 
 const dayMs = 86_400_000;
 
@@ -37,7 +38,8 @@ interface Activity {
   failed: number | undefined;
   today: number | undefined;
   failedToday: number | undefined;
-  latestFailure: (TaskRow & { failure?: { reason?: string } }) | undefined;
+  latestFailure:
+    (TaskRow & { failure?: { code?: string; reason?: string; detail?: string } }) | undefined;
   recent: TaskRow[];
 }
 
@@ -78,11 +80,13 @@ export const OverviewSection = ({
       ? notPriced
       : f.currency(micro / 1_000_000, { digits: 2 });
   const today = startOfDay(now());
+  const [batchOpen, setBatchOpen] = useState(false);
 
   const [usageState] = useAsync(
     async (signal) => {
       const usage = await api.usage(tenant, 30, signal);
-      return usage.byService.find((x) => x.service === id)?.usage;
+      return usage.byService.find((x) => x.service === id)?.usage as
+        (UsageTotals & { failedRequests?: number }) | undefined;
     },
     [api, tenant, id],
   );
@@ -114,12 +118,17 @@ export const OverviewSection = ({
   const [causeState] = useAsync(
     async (signal) => {
       if (!latestFailure) return undefined;
-      const reason = latestFailure.failure?.reason?.trim();
-      if (reason) return reason.charAt(0).toLocaleLowerCase('nb') + reason.slice(1);
+      const lower = (text: string) => text.charAt(0).toLocaleLowerCase('nb') + text.slice(1);
+      const failure = latestFailure.failure;
+      const detail = failure?.detail?.trim();
+      if (detail) return lower(detail);
+      const reason = failure?.reason?.trim();
+      if (reason && failure?.code !== 'strategy_error') return lower(reason);
       const timeline = await api
         .getTaskTimeline(tenant, latestFailure.id, signal)
         .catch(() => undefined);
-      return timeline?.steps.find((s) => s.type === 'error')?.summary.trim() || undefined;
+      const summary = timeline?.steps.find((s) => s.type === 'error')?.summary.trim();
+      return summary ? lower(summary) : reason ? lower(reason) : undefined;
     },
     [api, tenant, latestFailure?.id],
   );
@@ -135,9 +144,21 @@ export const OverviewSection = ({
     [api, tenant],
   );
   const known = lookups.status === 'ready' ? lookups.data : undefined;
+  const [accessState] = useAsync(
+    async (signal) =>
+      (await api.accessPeople.services(tenant, signal)).find(
+        (s) => s.id === id && s.mode === 'selected',
+      ),
+    [api, tenant, id],
+  );
 
   const primary = d.spec.model.primary;
-  const model = known?.models?.find((m) => m.id === primary);
+  const model = known?.models?.find((m) => m.id === primary) as
+    (ModelOption & { operator?: { name: string; region?: string } }) | undefined;
+  const operator = model?.operator;
+  const runsAt = operator
+    ? [operator.name.replace(/^Microsoft /, ''), operator.region].filter(Boolean).join(' ')
+    : undefined;
   const residency = known ? (model?.residency ?? d.spec.model.residency) : undefined;
   const residencyKey = residency ? residencyKeys[residency] : undefined;
   const sources = datasetsOf(d.spec);
@@ -160,7 +181,9 @@ export const OverviewSection = ({
   };
   const duration = (r: TaskRow) =>
     r.endedAt ? formatSeconds((Date.parse(r.endedAt) - Date.parse(r.createdAt)) / 1000, f, t) : '–';
-  const activity = state.status === 'ready' ? state.data : undefined;
+  const counted = state.status === 'ready' ? state.data : undefined;
+  const causePending = Boolean(counted?.latestFailure) && causeState.status === 'loading';
+  const activity = causePending ? undefined : counted;
   const failedToday = activity?.failedToday ?? 0;
   const serviceUsage = usageState.status === 'ready' ? usageState.data : undefined;
   const usageFailed = usageState.status === 'error';
@@ -217,7 +240,11 @@ export const OverviewSection = ({
                 <Link href={blockHref({ kind: 'model', id: primary })}>
                   {model?.name ?? primary}
                 </Link>
-                {residencyKey ? t('serviceOverview.modelWhere', { where: t(residencyKey) }) : ''}
+                {residencyKey
+                  ? runsAt
+                    ? t('serviceOverview.modelWhereAt', { where: t(residencyKey), at: runsAt })
+                    : t('serviceOverview.modelWhere', { where: t(residencyKey) })
+                  : ''}
               </>
             ) : (
               waiting
@@ -251,10 +278,20 @@ export const OverviewSection = ({
           ) : null}
           <dt>{t('serviceOverview.whoCanUse')}</dt>
           <dd>
-            {t('serviceOverview.everyoneWith', {
-              org: tenantName || tenant,
-              right: rightLabel(t, 'use-services'),
-            })}
+            {accessState.status === 'loading' ? (
+              waiting
+            ) : accessState.status === 'error' ? (
+              notAvailable
+            ) : accessState.data ? (
+              <Link href={`#/access/services?open=${encodeURIComponent(id)}`}>
+                {t('serviceOverview.selectedOnly', { count: accessState.data.members.length })}
+              </Link>
+            ) : (
+              t('serviceOverview.everyoneWith', {
+                org: tenantName || tenant,
+                right: rightLabel(t, 'use-services'),
+              })
+            )}
           </dd>
         </dl>
       </section>
@@ -282,11 +319,16 @@ export const OverviewSection = ({
           <div>
             <dt>{t('serviceOverview.errorShare')}</dt>
             <dd>
-              {activity
-                ? activity.runs !== undefined && activity.failed !== undefined
-                  ? f.percent(activity.runs ? activity.failed / activity.runs : 0, 1)
-                  : notAvailable
-                : waiting}
+              {serviceUsage?.failedRequests !== undefined
+                ? f.percent(
+                    serviceUsage.requests ? serviceUsage.failedRequests / serviceUsage.requests : 0,
+                    1,
+                  )
+                : counted
+                  ? counted.runs !== undefined && counted.failed !== undefined
+                    ? f.percent(counted.runs ? counted.failed / counted.runs : 0, 1)
+                    : notAvailable
+                  : waiting}
             </dd>
           </div>
           <div>
@@ -381,7 +423,9 @@ export const OverviewSection = ({
               </Table.Body>
             </Table>
           </div>
-        ) : state.status === 'loading' ? null : (
+        ) : state.status === 'loading' || causePending ? (
+          <Skeleton variant="rectangle" height="12rem" />
+        ) : (
           <p className="body-sm">{t('serviceOverview.noRuns')}</p>
         )}
       </section>
@@ -394,9 +438,12 @@ export const OverviewSection = ({
             </Heading>
             <Paragraph data-size="sm">{t('serviceOverview.batchLead')}</Paragraph>
           </div>
-          <Button asChild variant="secondary" data-size="sm">
-            <a href={`#${servicePath(id, 'batch')}`}>{t('serviceOverview.batchTitle')}</a>
+          <Button variant="secondary" data-size="sm" onClick={() => setBatchOpen(true)}>
+            {t('serviceOverview.batchTitle')}
           </Button>
+          {batchOpen ? (
+            <BatchDialog api={api} tenant={tenant} id={id} onClose={() => setBatchOpen(false)} />
+          ) : null}
         </section>
       ) : null}
     </div>

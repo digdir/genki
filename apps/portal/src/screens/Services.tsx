@@ -18,6 +18,7 @@ import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { rightLabel, useRights } from '../Shell';
 import { EmptyState, ErrorState, Loading } from '../states';
+import { listedServiceCount } from '../listed-services';
 import { availableSections, locate } from './service/sections';
 import { Builder, newDraftId, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
@@ -41,7 +42,7 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
   const p = usePortalFormat();
   const { t } = p;
   const [state, retry] = useAsync(
-    async (signal): Promise<ServiceRow[]> => {
+    async (signal): Promise<{ rows: ServiceRow[]; listed?: number }> => {
       if (live) {
         const [services, drafts] = await Promise.all([
           api.services(tenant, signal),
@@ -61,7 +62,7 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
             by: p.actor(d.by, d.byName),
             when: p.dateTime(d.at),
           }));
-        return [
+        const rows = [
           ...unpublished,
           ...services.data.map((s): ServiceRow => ({
             id: s.id,
@@ -83,6 +84,7 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
             when: s.updatedAt ? p.dateTime(s.updatedAt) : '–',
           })),
         ];
+        return { rows, listed: listedServiceCount(services.data, drafts) };
       }
       const definitions = await api.listDefinitions(tenant, signal);
       const unknown = definitions.filter(
@@ -108,13 +110,19 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
           };
         }),
       );
-      return [...serviceRows, ...extra];
+      return { rows: [...serviceRows, ...extra] };
     },
     [api, tenant, live],
   );
   if (state.status === 'loading') return <Loading label={t('servicesScreen.loadingServices')} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
-  return <ServiceList rows={state.data} tenantName={tenantName} />;
+  return (
+    <ServiceList
+      rows={state.data.rows}
+      tenantName={tenantName}
+      {...(state.data.listed === undefined ? {} : { listed: state.data.listed })}
+    />
+  );
 };
 
 const useLocation = (id: string, route: ScreenProps['route'], isNew: boolean) => {

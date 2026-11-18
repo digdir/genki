@@ -108,9 +108,9 @@ export const usageArea = {
     environment: 'Miljø',
     allEnvironments: 'Alle miljøer',
     environmentScope:
-      'Viser bare forbruket fra kjøringene i miljøet {environment}. Kvoten gjelder hele {tenant}.',
-    emptyEnvironmentTitle: 'Ingen bruk i miljøet ennå',
-    emptyEnvironmentText: 'Bruken vises her når en tjeneste har kjørt i miljøet.',
+      'Viser bare bruken fra kjøringene i miljøet {environment}. Kvoten gjelder hele {tenant}.',
+    emptyEnvironmentTitle: 'Ingen forbruk i miljøet ennå',
+    emptyEnvironmentText: 'Forbruket vises her når en tjeneste har kjørt i miljøet.',
     projectScope:
       'Viser bare bruken fra kjøringene i prosjektet {project}. Kvoten gjelder hele {tenant}.',
     loading: 'Henter bruken',

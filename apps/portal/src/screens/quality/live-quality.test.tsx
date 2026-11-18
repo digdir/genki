@@ -52,7 +52,7 @@ const openLive = async (
   await auth.login();
   window.location.hash = `${base}${tab}`;
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('link', { name: 'Kvalitet', current: 'page' });
+  await screen.findByRole('tab', { name: 'Kvalitet', selected: true });
   const writes = () => calls.filter((c) => c.method !== 'GET');
   return { calls, writes };
 };

@@ -214,13 +214,91 @@ describe('Tjenester in live mode', () => {
   });
 });
 
+describe('the Tjenester list filters', () => {
+  const withDraft = (): typeof fetch => {
+    const base = platform();
+    return async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (/\/service-drafts(\?|$)/.test(url))
+        return Response.json({
+          data: [
+            {
+              id: 'utkast-1',
+              name: 'Permisjonssvar',
+              purpose: 'Svarer om permisjon',
+              outputKind: 'answer',
+              latestVersion: null,
+              revision: 1,
+              at: '2026-10-09T08:00:00Z',
+              by: 'employee:test:kari',
+              byName: 'Kari Testansatt',
+            },
+          ],
+        });
+      return base(input, init);
+    };
+  };
+  const openList = async (hash: string, fetch: typeof globalThis.fetch = platform()) => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = hash;
+    render(<App auth={auth} fetch={fetch} live />);
+    await screen.findByText(/^Viser \d+ av/);
+  };
+
+  it('offers no I test filter when no service on the platform is in test', async () => {
+    await openList('#/services');
+
+    expect(screen.queryByRole('radio', { name: /^I test/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /^I bruk/ })).toBeTruthy();
+  });
+
+  it('counts in Viser N av M only the services the filter covers, so archived ones are not in Alle', async () => {
+    await openList('#/services');
+
+    expect(screen.getByText('Viser 2 av 2 tjenester')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Alle 2' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Arkivert 1' })).toBeTruthy();
+  });
+
+  it('counts Alle as Oversikt counts the services: unpublished drafts and every service not archived', async () => {
+    await openList('#/services', withDraft());
+
+    expect(screen.getByRole('radio', { name: 'Alle 3' })).toBeTruthy();
+  });
+
+  it('keeps search and filter in the address, and reads them back on reload', async () => {
+    await openList('#/services');
+
+    fireEvent.click(screen.getByRole('radio', { name: /^Satt på pause/ }));
+    fireEvent.change(screen.getByLabelText('Søk i tjenester'), { target: { value: 'alfa' } });
+    expect(window.location.hash).toBe('#/services?status=paused&q=alfa');
+
+    cleanup();
+    await openList('#/services?status=archived');
+    expect(screen.queryByText('Svar med kilder')).toBeNull();
+    expect(await screen.findByText('Gamma')).toBeTruthy();
+  });
+
+  it('says a draft has no runs yet and no start chosen, instead of a dash before the unit', async () => {
+    await openList('#/services', withDraft());
+
+    const row = (await screen.findByRole('link', { name: 'Permisjonssvar' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(row).getByText('Ingen kjøringer ennå')).toBeTruthy();
+    expect(within(row).getByText('Ikke valgt ennå')).toBeTruthy();
+    expect(within(row).queryByText(/–/)).toBeNull();
+  });
+});
+
 describe('pausing and archiving from the service page', () => {
   it('hides archived services from Tjenester until the Arkivert filter is chosen', async () => {
     await open('#/services');
 
     await screen.findByText('Svar med kilder');
     expect(screen.queryByText('Gamma')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: 'Arkivert' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Arkivert/ }));
 
     expect(await screen.findByText('Gamma')).toBeTruthy();
     expect(screen.queryByText('Kunnskapsassistenten')).toBeNull();
@@ -277,6 +355,21 @@ describe('pausing and archiving from the service page', () => {
   });
 });
 
+describe('Mer on the service page', () => {
+  it('opens Kjør på mange dokumenter as a dialog over the service page', async () => {
+    await open('#/services/rapportassistenten');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mer' }));
+    const menu = screen.getByRole('button', { name: 'Mer' }).parentElement as HTMLElement;
+    fireEvent.click(
+      within(menu).getByRole('button', { name: 'Kjør på mange dokumenter', hidden: true }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: 'Kjør på mange dokumenter' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/rapportassistenten');
+  });
+});
+
 describe('an archived service', () => {
   it('reads as archived only, with a read-only banner, the read-only tabs and no publishing', async () => {
     await open('#/services/rapportassistenten');
@@ -295,9 +388,9 @@ describe('an archived service', () => {
     expect(within(header).queryByText('I bruk')).toBeNull();
     expect(within(header).queryByRole('button', { name: 'Publiser' })).toBeNull();
     expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
-    const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
-    expect(within(tabs).queryByRole('link', { name: 'Oppsett' })).toBeNull();
-    expect(within(tabs).getByRole('link', { name: 'Utviklerverktøy' })).toBeTruthy();
+    const tabs = screen.getByRole('tablist', { name: /^Faner for/ });
+    expect(within(tabs).queryByRole('tab', { name: 'Oppsett' })).toBeNull();
+    expect(within(tabs).getByRole('tab', { name: 'Utviklerverktøy' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
   });
 });
@@ -320,10 +413,10 @@ describe('an archived service opened at an editing address', () => {
       render(<App auth={auth} fetch={archivedFetch()} live />);
 
       await screen.findByText('Tjenesten er arkivert og kan bare leses.');
-      const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
+      const tabs = screen.getByRole('tablist', { name: /^Faner for/ });
       expect(
-        within(tabs).getByRole('link', { name: 'Oversikt' }).getAttribute('aria-current'),
-      ).toBe('page');
+        within(tabs).getByRole('tab', { name: 'Oversikt' }).getAttribute('aria-selected'),
+      ).toBe('true');
       const main = screen.getByRole('main');
       expect(within(main).queryAllByRole('textbox')).toEqual([]);
       expect(within(main).queryAllByRole('combobox')).toEqual([]);

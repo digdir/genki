@@ -6,9 +6,16 @@ import { ServiceNav } from './ServiceNav';
 afterEach(cleanup);
 
 const renderNav = () =>
-  render(<ServiceNav id="rapport" sections={['overview', 'setup', 'quality']} current="setup" />);
+  render(
+    <ServiceNav
+      id="rapport"
+      name="Rapportassistenten"
+      sections={['overview', 'setup', 'quality']}
+      current="setup"
+    />,
+  );
 
-const link = (name: string) => screen.getByRole('link', { name });
+const link = (name: string) => screen.getByRole('tab', { name });
 
 describe('the service tab bar', () => {
   it('moves the focus to the next and previous tab with the arrow keys, wrapping at the ends', () => {
@@ -31,5 +38,12 @@ describe('the service tab bar', () => {
     expect(document.activeElement).toBe(link('Kvalitet'));
     fireEvent.keyDown(link('Kvalitet'), { key: 'Home' });
     expect(document.activeElement).toBe(link('Oversikt'));
+  });
+
+  it('names the tab bar after the service, so its tabs are told apart from the sidebar links', () => {
+    renderNav();
+
+    expect(screen.getByRole('tablist', { name: 'Faner for Rapportassistenten' })).toBeTruthy();
+    expect(link('Oppsett').getAttribute('aria-selected')).toBe('true');
   });
 });

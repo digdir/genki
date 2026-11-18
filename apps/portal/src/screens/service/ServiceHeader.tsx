@@ -1,10 +1,9 @@
-import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Heading, Tag } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
-import { Icon } from '../../components/Icon';
 import { statusKeys } from '../../data/service-labels';
 import { statusColor, type ServiceStatus } from '../../data/services';
 import { useT } from '../../i18n';
+import { BackLink } from '../../components/BackLink';
 
 export const ServiceHeader = ({
   name,
@@ -22,10 +21,7 @@ export const ServiceHeader = ({
   const t = useT();
   return (
     <header className="service-head">
-      <a href="#/services" className="back-link">
-        <Icon icon={ChevronLeftIcon} size={18} />
-        {t('service.back')}
-      </a>
+      <BackLink label={t('service.back')} href="#/services" />
       <div className="service-head-row">
         <div className="service-title">
           <Heading level={1} data-size="md">
