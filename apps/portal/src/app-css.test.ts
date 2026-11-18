@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
-const css = readFileSync(`${import.meta.dirname}/app.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// Vitest gives `?raw` CSS as an empty string, so the stylesheet is read from disk.
+let css = '';
+beforeAll(async () => {
+  const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as {
+    readFileSync: (path: URL, encoding: 'utf8') => string;
+  };
+  css = fs
+    .readFileSync(new URL('./app.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+});
 
 /** The at-rules a selector's rules sit in, outermost first, one list per place it is written. */
 const wrappersOf = (selector: string) => {

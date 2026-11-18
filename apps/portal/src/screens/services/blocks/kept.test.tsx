@@ -102,8 +102,12 @@ const openTry = async (fetch: typeof globalThis.fetch) => {
   await screen.findByRole('group', { name: 'Byggeklosser og maler' });
 };
 
+// The question field: «Spørsmål til …» in the current look, «Still et spørsmål» or «Spør videre»
+// in the next.
+const questionField = /^(Spørsmål til|Still et spørsmål|Spør videre)/;
+
 const ask = async (text: string) => {
-  const field = await screen.findByRole('textbox', { name: /^Spørsmål til/ });
+  const field = await screen.findByRole('textbox', { name: questionField });
   fireEvent.change(field, { target: { value: text } });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send spørsmålet' }));
@@ -204,7 +208,7 @@ describe('the try view drawn again', () => {
     const run = await askHeld();
     await click(screen.getByRole('radio', { name: 'Oppsett' }));
     expect(questionOnScreen()).toBeNull();
-    expect(screen.queryByRole('textbox', { name: /^Spørsmål til/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: questionField })).toBeNull();
     // Out of sight, but in the page.
     expect(screen.getByText(question, { selector: 'p' }).closest('[hidden]')).not.toBeNull();
     await click(screen.getByRole('radio', { name: 'Prøv assistenten' }));
@@ -271,9 +275,7 @@ describe('the try view drawn again', () => {
     await ask(question);
     await waitFor(() => expect(answerText()).toBe('Ja.'));
     await renameElsewhere('Tilsynshjelpen');
-    expect(
-      await screen.findByRole('textbox', { name: 'Spørsmål til Tilsynshjelpen' }),
-    ).toBeTruthy();
+    expect(await screen.findByText(/^Tilsynshjelpen kan gjøre feil/)).toBeTruthy();
     expect(questionOnScreen()).toBeTruthy();
   });
 
@@ -293,7 +295,7 @@ describe('the try view drawn again', () => {
     await ask(question);
     await screen.findByText(notReady);
     await renameElsewhere('Tilsynshjelpen');
-    await screen.findByRole('textbox', { name: 'Spørsmål til Tilsynshjelpen' });
+    await screen.findByText(/^Tilsynshjelpen kan gjøre feil/);
     expect(screen.queryByText(notReady)).toBeNull();
   });
 
@@ -301,7 +303,7 @@ describe('the try view drawn again', () => {
     const { stopped } = await askHeld();
     await click(screen.getByRole('button', { name: 'Start samtalen på nytt' }));
     await waitFor(() => expect(stopped).toEqual([question]));
-    await screen.findByRole('textbox', { name: /^Spørsmål til/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(questionOnScreen()).toBeNull();
     expect(answerText()).toBe('');
   });
