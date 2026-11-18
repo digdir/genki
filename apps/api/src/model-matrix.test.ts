@@ -5,17 +5,32 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { parseTestSet } from '@genai/eval';
+import {
+  InMemoryCandidateStore,
+  InMemoryEvalRunStore,
+  InMemoryFeedbackStore,
+  InMemoryTestSetStore,
+  parseTestSet,
+} from '@genai/eval';
 import { envSecrets, InMemoryTaskStore, type StoredTask } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
+import type { LeaseOptions } from './background-lease.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform, platformModules } from './composition.js';
+import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
+import type { EvalSlotLimits } from './eval-slots.js';
 import { candidateTrialScope, withCandidateTrial } from './model-access.js';
-import { createModelMatrixModule, modelMatrixModule, releaseGate } from './model-matrix.js';
+import {
+  createModelMatrixModule,
+  matrixRunKind,
+  modelMatrixModule,
+  releaseGate,
+  type MatrixRun,
+} from './model-matrix.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -131,14 +146,24 @@ const testSet = parseTestSet({
   },
 });
 
+interface Restart {
+  store?: InMemoryConfigEntryStore;
+  evalStores?: Parameters<typeof createPlatform>[0]['evalStores'];
+  leases?: LeaseOptions;
+  evalSlots?: Partial<EvalSlotLimits>;
+  hold?: (body: Record<string, unknown>) => Promise<void> | undefined;
+  definitions?: { store?: InMemoryDefinitionStore };
+}
+
 const boot = async (
   candidateKnowsDeadlines: boolean,
   withTestSet = true,
   lockdown = false,
   usageLookupMs = 0,
+  restart: Restart = {},
 ) => {
   const deployments: string[] = [];
-  const model = await fakeHttp((body: Record<string, unknown>) => {
+  const model = await fakeHttp(async (body: Record<string, unknown>) => {
     if (!body.messages)
       return {
         status: 200,
@@ -150,6 +175,7 @@ const boot = async (
         },
       };
     deployments.push(String(body.model));
+    await restart.hold?.(body);
     const messages = body.messages as { content?: string }[];
     const system = messages[0]?.content ?? '';
     const user = messages.at(-1)?.content ?? '';
@@ -186,7 +212,10 @@ const boot = async (
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
-    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    definitions: (plugins) =>
+      restart.definitions
+        ? (restart.definitions.store ??= new InMemoryDefinitionStore(plugins))
+        : new InMemoryDefinitionStore(plugins),
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
     prices: {
@@ -195,8 +224,14 @@ const boot = async (
     },
     modules: [
       ...platformModules.filter((m) => m !== modelMatrixModule),
-      createModelMatrixModule({ onBackground: (w) => background.push(w) }),
+      createModelMatrixModule({
+        onBackground: (w) => background.push(w),
+        ...(restart.leases ? { leases: restart.leases } : {}),
+      }),
     ],
+    ...(restart.store ? { configurables: { store: restart.store } } : {}),
+    ...(restart.evalStores ? { evalStores: restart.evalStores } : {}),
+    ...(restart.evalSlots ? { evalSlots: restart.evalSlots } : {}),
     ...(lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     ...(usageLookupMs
       ? {
@@ -226,7 +261,8 @@ const boot = async (
   platform.mount(app, admin);
   const published = await platform.definitions.publish(service(current), 'kari', 'første');
   if (!published.ok) throw new Error(JSON.stringify(published.errors));
-  if (withTestSet) await platform.evalStores.testSets.put(testSet);
+  if (withTestSet && !(await platform.evalStores.testSets.get(tenant, testSet.metadata.id)))
+    await platform.evalStores.testSets.put(testSet);
   const send = async (
     method: string,
     path: string,
@@ -269,6 +305,19 @@ const boot = async (
   if (added.status !== 200) throw new Error(JSON.stringify(added.body));
   const visible = async () =>
     ((await send('GET', '/models', 'kari')).body.data as { id: string }[]).map((m) => m.id);
+  const startMatrix = async (who = 'operator') => {
+    const estimate = await send('POST', '/operator/quality/matrix/estimate', who, {
+      model: candidate,
+      current,
+    });
+    return send(
+      'POST',
+      '/operator/quality/matrix/runs',
+      who,
+      { model: candidate, current, confirmedCostNok: estimate.body.estimatedCostNok },
+      { 'change-reason': reason },
+    );
+  };
   const runMatrix = async (who = 'operator') => {
     const estimate = await send('POST', '/operator/quality/matrix/estimate', who, {
       model: candidate,
@@ -307,6 +356,7 @@ const boot = async (
     settled,
     visible,
     runMatrix,
+    startMatrix,
     release,
     deployments,
     usage,
@@ -821,6 +871,161 @@ describe('trying a candidate model before release', () => {
       };
 
       expect((await gate.decide(key, 'use:model', model)).allow).toBe(false);
+    });
+  });
+});
+
+describe('a matrix run across a restart', () => {
+  const t0 = new Date('2026-11-18T10:00:00Z');
+  const shared = () => ({
+    store: new InMemoryConfigEntryStore(),
+    evalStores: {
+      testSets: new InMemoryTestSetStore(),
+      runs: new InMemoryEvalRunStore(),
+      feedback: new InMemoryFeedbackStore(),
+      candidates: new InMemoryCandidateStore(),
+    },
+    definitions: {},
+  });
+  const isCandidate = (body: Record<string, unknown>) =>
+    body.model === 'kandidat' &&
+    (body.messages as { content?: string }[]).some((m) => m.content?.includes('fristen'));
+  const stored = async (store: InMemoryConfigEntryStore, id: string) =>
+    (await store.history(matrixRunKind, platformScope, id)).at(-1)?.spec as MatrixRun;
+  const read = async (env: Awaited<ReturnType<typeof boot>>, id: string) =>
+    (await env.send('GET', `/operator/quality/matrix/runs/${id}`)).body;
+
+  it('survives a worker restart mid-run, resumes from the last finished case and counts the cases done', async () => {
+    const stores = shared();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let held = false;
+    const before = await boot(false, true, false, 0, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => t0 },
+      hold: (body) => {
+        if (held || !isCandidate(body)) return undefined;
+        held = true;
+        return gate;
+      },
+    });
+    const started = await before.startMatrix();
+    const id = String(started.body.id);
+    await vi.waitFor(() => expect(held).toBe(true));
+
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    await before.settled();
+    const handed = await read(before, id);
+    const handedOver = await stored(stores.store, id);
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await after.settled();
+    const run = await read(after, id);
+
+    expect(handed).toMatchObject({ status: 'running', casesDone: 3, casesTotal: 4 });
+    expect(handedOver.released).toBe(true);
+    expect(after.deployments.filter((d) => d !== 'kandidat' && d !== 'gpt-41-dommer')).toEqual([]);
+    expect(after.deployments.filter((d) => d === 'kandidat')).toHaveLength(1);
+    expect(run).toMatchObject({
+      status: 'succeeded',
+      resumed: 1,
+      casesDone: 4,
+      casesTotal: 4,
+      rows: [
+        {
+          current: { score: 1, passed: 2, total: 2 },
+          candidate: { score: 0.5, passed: 1, total: 2 },
+        },
+      ],
+    });
+  });
+
+  it('charges no duplicate cost for the cases finished before the restart', async () => {
+    const whole = shared();
+    const uninterrupted = await boot(false, true, false, 0, whole);
+    const { started: once } = await uninterrupted.runMatrix();
+    const stores = shared();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let held = false;
+    const before = await boot(false, true, false, 0, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => t0 },
+      hold: (body) => {
+        if (held || !isCandidate(body)) return undefined;
+        held = true;
+        return gate;
+      },
+    });
+    const id = String((await before.startMatrix()).body.id);
+    await vi.waitFor(() => expect(held).toBe(true));
+    const drained = before.platform.evalSlots.drain();
+    open();
+    await drained;
+    await before.settled();
+    const handed = await stored(stores.store, id);
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => t0 },
+    });
+    await after.settled();
+
+    const resumed = await stored(stores.store, id);
+    const reference = await stored(whole.store, String(once.body.id));
+    expect(resumed.status).toBe('succeeded');
+    expect(resumed.tokens).toEqual(reference.tokens);
+    expect(resumed.tokens.input).toBeGreaterThan(handed.tokens.input);
+    expect(handed.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('takes up a run whose instance stopped without handing it over, two minutes after its last heartbeat', async () => {
+    const stores = shared();
+    let held = false;
+    const before = await boot(false, true, false, 0, {
+      ...stores,
+      evalSlots: { perInstance: 1, perTenant: 1, perRun: 1 },
+      leases: { instance: 'before', now: () => t0 },
+      hold: (body) => {
+        if (!isCandidate(body)) return undefined;
+        held = true;
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const id = String((await before.startMatrix()).body.id);
+    await vi.waitFor(() => expect(held).toBe(true));
+    const crashed = await read(before, id);
+    const early = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'early', now: () => new Date(t0.getTime() + 60_000) },
+    });
+    await early.settled();
+    const untouched = await read(early, id);
+    const after = await boot(false, true, false, 0, {
+      ...stores,
+      leases: { instance: 'after', now: () => new Date(t0.getTime() + 10 * 60_000) },
+    });
+    await after.settled();
+    const run = await read(after, id);
+
+    expect(crashed).toMatchObject({ status: 'running', casesDone: 2, casesTotal: 4 });
+    expect(untouched).toMatchObject({ status: 'running' });
+    expect(untouched).not.toHaveProperty('resumed');
+    expect(after.deployments.filter((d) => d === 'kandidat')).toHaveLength(2);
+    expect(run).toMatchObject({
+      status: 'succeeded',
+      resumed: 1,
+      rows: [
+        {
+          current: { score: 1, passed: 2, total: 2 },
+          candidate: { score: 0.5, passed: 1, total: 2 },
+        },
+      ],
     });
   });
 });
