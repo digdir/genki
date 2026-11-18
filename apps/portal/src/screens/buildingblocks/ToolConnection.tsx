@@ -10,8 +10,8 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useId, useState } from 'react';
-import type { ApiClient } from '../../api';
-import type { ToolConnectionDetail, ToolDetail } from '../../api/blocks';
+import { ApiError, type ApiClient } from '../../api';
+import type { ToolConnectionDetail, ToolConnectionView, ToolDetail } from '../../api/blocks';
 import type { CatalogItem } from '../../api/building-blocks';
 import { reasonProblem } from '../../components/ReasonField';
 import { useT } from '../../i18n';
@@ -47,7 +47,7 @@ export const SyncButton = ({
         text: t('blockTool.synced', { active: result.active, pending: result.pending.length }),
       });
     } catch (error) {
-      onSynced({ ok: false, text: refusalOf(error) ?? t('blockTool.syncFailed') });
+      onSynced({ ok: false, text: refusalOf(error, t) ?? t('blockTool.syncFailed') });
     } finally {
       setBusy(false);
     }
@@ -71,7 +71,7 @@ export const ToolConnectionSections = ({
   api: ApiClient;
   tenant: string;
   item: CatalogItem;
-  connection: ToolConnectionDetail | undefined;
+  connection: ToolConnectionView | undefined;
   canChange: boolean;
   syncMessage: { ok: boolean; text: string } | null;
   onSaved: () => void;
@@ -102,17 +102,27 @@ export const ToolConnectionSections = ({
     if (!connection) return;
     setBusy(true);
     setProblem('');
+    let current = '';
     try {
-      for (const change of changes)
+      for (const change of changes) {
+        current = change.tool;
         await (change.approve
           ? api.blocks.approveTool(tenant, connection.id, change.tool, why)
           : api.blocks.revokeTool(tenant, connection.id, change.tool, why));
+      }
       setSaved(t('blockTool.saved', { time: f.time(new Date().toISOString()) }));
       setWhy('');
       setTried(false);
       onSaved();
     } catch (error) {
-      setProblem(refusalOf(error) ?? t('blocks.saveFailed'));
+      const moved =
+        error instanceof ApiError && error.problem?.type === 'urn:genai:problem:tool-not-found';
+      setProblem(
+        moved
+          ? t('blockTool.toolMoved', { name: current })
+          : (refusalOf(error, t) ?? t('blocks.saveFailed')),
+      );
+      if (moved) onSaved();
     } finally {
       setBusy(false);
     }
@@ -130,6 +140,19 @@ export const ToolConnectionSections = ({
             <div className="bb-kv-row">
               <dt>{t('blocks.address')}</dt>
               <dd>{endpoint}</dd>
+            </div>
+          ) : null}
+          {connection?.connectedAt ? (
+            <div className="bb-kv-row">
+              <dt>{t('blockTool.connected')}</dt>
+              <dd>
+                {connection.connectedByName
+                  ? t('blockTool.connectedBy', {
+                      date: f.date(connection.connectedAt),
+                      name: connection.connectedByName,
+                    })
+                  : f.date(connection.connectedAt)}
+              </dd>
             </div>
           ) : null}
           <div className="bb-kv-row">
@@ -199,7 +222,7 @@ export const ToolConnectionSections = ({
                     }
                     description={tool.description}
                     checked={approved[tool.name] ?? false}
-                    disabled={!canChange}
+                    disabled={!canChange || (tool.state === 'approved' && !connection?.canRevoke)}
                     onChange={(e) =>
                       setApproved((current) => ({ ...current, [tool.name]: e.target.checked }))
                     }
@@ -207,6 +230,11 @@ export const ToolConnectionSections = ({
                 </li>
               ))}
             </ul>
+            {canChange && !connection?.canRevoke ? (
+              <Paragraph data-size="sm" className="bb-meta">
+                {t('blockTool.revokeLater')}
+              </Paragraph>
+            ) : null}
           </Fieldset>
         ) : (
           <ul className="bb-list bb-tools">
@@ -226,6 +254,11 @@ export const ToolConnectionSections = ({
             <p role="status" className="bb-meta">
               {saved}
             </p>
+          ) : null}
+          {problem && !dirty ? (
+            <Alert data-color="danger" data-size="sm">
+              {problem}
+            </Alert>
           ) : null}
         </div>
       </section>

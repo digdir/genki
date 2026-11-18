@@ -325,7 +325,6 @@ export const blocksLane = {
     registerLead:
       'The platform creates a manifest from what you fill in, and runs the contract tests. The building block can be registered once the tests have passed. It is only available to the services of {tenant}.',
     whatToAdd: 'What do you want to add?',
-    apiNotDecided: 'API not decided',
     setup: 'Setup',
     name: 'Name',
     whenRun: 'When should it run?',
@@ -360,8 +359,6 @@ export const blocksLane = {
     fixFailures:
       'Fix the errors below and run the test again. The building block cannot be registered until all tests have passed.',
     requestedAccess: 'The access it asks for',
-    manifest: 'Manifest',
-    manifestNote: 'Created by the platform from the setup. Updated as you fill in.',
     register: 'Register',
     registerLogged: 'The registration is logged with the reason.',
     runContractFirst: 'Run the contract test and get it to pass before you register.',
@@ -486,6 +483,11 @@ export const blocksLane = {
     approvalNote:
       'Services can only use approved tools. Tools that change something should only be approved when a service needs them.',
     approvedLegend: 'Approved tools',
+    connected: 'Connected',
+    connectedBy: '{date} by {name}',
+    toolMoved:
+      'The tool {name} has changed since you opened the page. We have fetched the list again.',
+    revokeLater: 'An approved tool cannot be withdrawn from here yet.',
     noToolsTitle: '{name} offers no tools yet',
     noToolsBody: 'Check that the server has tools set up, and sync again.',
     changesData: 'Changes data',
@@ -498,6 +500,15 @@ export const blocksLane = {
     why: 'Why are you changing this?',
   },
   blockRegister: {
+    previewTitle: 'How it will look',
+    previewUnnamed: 'Untitled',
+    previewConnected: 'Tool · connected by {tenant} with {type}',
+    previewTools: {
+      one: '{count} tool, none approved yet',
+      other: '{count} tools, none approved yet',
+    },
+    toolReads: '{name} (reads)',
+    toolChanges: '{name} (changes)',
     residency: 'Where is the data processed?',
     residencyHelp: 'Shown to everyone who considers using the building block.',
     residencyNorway: 'In Norway',
@@ -508,7 +519,5 @@ export const blocksLane = {
     useInService: 'Use in a service',
     errorTitle: 'We could not load the step flow',
     errorBody: 'The services that use it work as before. Only this view is missing.',
-    notShared:
-      'The publisher has not shared the diagram and YAML for this step flow yet. You can use it in a service as before.',
   },
 } satisfies Translation<typeof source>;

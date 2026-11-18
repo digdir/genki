@@ -29,7 +29,8 @@ import { useRights } from '../../Shell';
 import { Icon } from '../../components/Icon';
 import { PlaygroundPanel } from '../../components/playground/PlaygroundPanel';
 import { ErrorState, Loading } from '../../states';
-import { BackLink, LinkTabs } from '../buildingblocks/LinkTabs';
+import { BackLink } from '../../components/BackLink';
+import { LinkTabs } from '../../components/LinkTabs';
 import { askMessage, failureNotice, intentFor, readTurn } from './assistant';
 import { download } from './files';
 import type { AskState } from './model';
@@ -360,7 +361,7 @@ const Editor = ({
     try {
       const rev = await flush();
       if (rev === undefined) throw new Error('draft not saved');
-      await api.skills.deleteCase(tenant, id, index, rev);
+      await api.skills.deleteCase(tenant, id, index, rev, tRef.current('skills.caseDeleteReason'));
       await refresh(true);
       notify(tRef.current('skills.caseDeleted'));
     } catch {
@@ -736,7 +737,13 @@ const Editor = ({
       ) : null}
 
       {leaving ? (
-        <Dialog open modal onClose={() => setLeaving(undefined)} aria-labelledby="skill-leave-h">
+        <Dialog
+          open
+          modal
+          closeButton={false}
+          onClose={() => setLeaving(undefined)}
+          aria-labelledby="skill-leave-h"
+        >
           <div className="stack-sm">
             <Heading level={2} data-size="xs" id="skill-leave-h">
               {t('skills.leaveQuestion')}

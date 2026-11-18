@@ -515,6 +515,26 @@ describe('Ferdighet under Byggeklosser', () => {
     expect(cases().getAllByRole('listitem')).toHaveLength(before - 1);
   });
 
+  it('gives the reason for deleting a test case in the language the user has chosen', async () => {
+    const reasons: (string | null)[] = [];
+    const base = mockFetch(undefined, undefined, undefined, undefined, {
+      features: { skills: { failing: true }, preferences: { language: 'en' } },
+    });
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      if (init?.method === 'DELETE') {
+        const raw = new Headers(init.headers).get('change-reason');
+        reasons.push(raw === null ? null : decodeURIComponent(raw));
+      }
+      return base(input, init);
+    };
+    await renderAt(`${skillPath('skrive-vedtaksbrev')}/tests`, fetch);
+    await screen.findByRole('heading', { level: 1, name: 'Skrive vedtaksbrev' });
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: /^Delete the test case/ }))[0] as HTMLElement,
+    );
+    await waitFor(() => expect(reasons).toEqual(['Deleted a test case']));
+  });
+
   it('a failed delete shows a danger alert, not a success message', async () => {
     const base = fetchWith({ failing: true });
     const fetch: typeof globalThis.fetch = (input, init) =>

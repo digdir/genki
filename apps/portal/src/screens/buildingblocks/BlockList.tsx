@@ -34,7 +34,7 @@ import {
   type Flash,
 } from './common';
 import { ConnectorsSummary } from './Connectors';
-import { LinkTabs, type LinkTab } from './LinkTabs';
+import { LinkTabs, type LinkTab } from '../../components/LinkTabs';
 import { ProposalSection } from './ProposalSection';
 import { skillHref } from '../skills/SkillBlockPage';
 import { SkillCreateActions } from '../skills/SkillCreateActions';
@@ -278,12 +278,18 @@ export const BlockList = ({
   const inUseSkills = new Set(
     pool.filter((b) => b.kind === 'skill').map((b) => `${ownerOf(b) ?? tenant}/${b.id}`),
   );
+  const inCatalogue = new Set(
+    items
+      .filter((b) => b.kind === 'skill' && b.status !== 'in_use' && b.publisher.type !== 'own')
+      .map((b) => b.id),
+  );
   const otherSkills =
     catalogue || (filters.kind !== 'all' && filters.kind !== 'skill')
       ? []
       : skills.filter(
           (s) =>
             !inUseSkills.has(`${s.owner}/${s.id}`) &&
+            !(s.owner !== tenant && inCatalogue.has(s.id)) &&
             (!q || `${s.name} ${s.description}`.toLowerCase().includes(q)),
         );
   const open = proposals.filter((p) => p.state === 'pending' || p.state === 'sent_for_approval');
@@ -305,7 +311,10 @@ export const BlockList = ({
             <a href="#/building-blocks/new">{t('blockPages.register')}</a>
           ) : null
         ) : (
-          <a href="#/building-blocks/catalogue">{t('blockPages.seeCatalogue')}</a>
+          <>
+            <a href="#/building-blocks/catalogue">{t('blockPages.seeCatalogue')}</a>
+            <SkillCreateActions api={api} tenant={tenant} />
+          </>
         )}
       </section>
     );

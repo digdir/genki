@@ -20,6 +20,7 @@ export const skills = defineNamespace({
   importFailed: 'Vi kunne ikke lese inn {file}. Sjekk at det er en Agent Skills-pakke.',
   lead: 'En ferdighet er instruksjoner, eksempler og verktøy for én bestemt oppgave. Tjenester henter den når beskrivelsen passer. Ferdigheter lagres i Agent Skills-formatet, så de kan flyttes og deles.',
   importPackage: 'Importer pakke',
+  caseDeleteReason: 'Slettet et testtilfelle',
   loadingList: 'Henter ferdighetene',
   emptyTitle: 'Ingen ferdigheter ennå',
   emptyManage: 'Lag en ny ferdighet, eller importer en pakke i Agent Skills-formatet.',

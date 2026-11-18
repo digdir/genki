@@ -1,7 +1,7 @@
 import { Alert, Button, Heading, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
-import type { BlockFacts, ToolConnectionDetail } from '../../api/blocks';
+import type { BlockFacts, ToolConnectionView } from '../../api/blocks';
 import type { ApiClient } from '../../api';
 import {
   blockPath,
@@ -43,7 +43,8 @@ import {
 } from './common';
 import { SettingsForm } from './SettingsForm';
 import { StepFlowView } from './StepFlowView';
-import { BackLink, LinkTabs } from './LinkTabs';
+import { BackLink } from '../../components/BackLink';
+import { LinkTabs } from '../../components/LinkTabs';
 import { SyncButton, ToolConnectionSections } from './ToolConnection';
 import { UseInService } from '../stepflows/UseInService';
 
@@ -71,8 +72,8 @@ const tabLabels = {
 export const hasFlowDefinition = (item: Pick<CatalogItem, 'kind' | 'id'>) =>
   item.kind === 'step_flow' && !item.id.includes('@');
 
-export const tabsFor = (item: Pick<CatalogItem, 'kind' | 'id'>): BlockTab[] =>
-  hasFlowDefinition(item)
+export const tabsFor = (item: Pick<CatalogItem, 'kind' | 'id'>, flowShown = true): BlockTab[] =>
+  hasFlowDefinition(item) && flowShown
     ? ['diagram', 'yaml', 'used-by', 'versions']
     : ['about', 'used-by', 'versions'];
 
@@ -174,7 +175,8 @@ export const BlockDetail = ({
     connection: useId(),
     price: useId(),
   };
-  const tabs = tabsFor(item);
+  const [missingFlow, setMissingFlow] = useState('');
+  const tabs = tabsFor(item, missingFlow !== item.id);
   const current = tabs.includes(tab) ? tab : (tabs[0] ?? 'about');
   const facts2 = item as CatalogItem & BlockFacts;
   const ownTool = item.kind === 'tool' && item.publisher.type === 'own';
@@ -186,7 +188,7 @@ export const BlockDetail = ({
           : undefined,
       connection: ownTool
         ? (
-            await api.blocks.toolConnections(tenant, signal).catch((): ToolConnectionDetail[] => [])
+            await api.blocks.toolConnections(tenant, signal).catch((): ToolConnectionView[] => [])
           ).find((c) => c.id === item.id)
         : undefined,
     }),
@@ -354,7 +356,9 @@ export const BlockDetail = ({
               }}
             />
           ) : null}
-          {hasFlowDefinition(item) && rights.canChange('step_flow') ? (
+          {hasFlowDefinition(item) &&
+          (item.publisher.type === 'own' || item.status === 'in_use') &&
+          rights.canChange('step_flow') ? (
             <Button variant="primary" onClick={() => setUsing(true)}>
               {t('blockFlow.useInService')}
             </Button>
@@ -537,6 +541,7 @@ export const BlockDetail = ({
           id={item.id}
           own={item.publisher.type === 'own'}
           view={current}
+          onMissing={() => setMissingFlow(item.id)}
         />
       ) : null}
 

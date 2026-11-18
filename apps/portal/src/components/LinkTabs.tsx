@@ -6,21 +6,23 @@ export interface LinkTab {
   href: string;
 }
 
-const step: Record<string, (i: number, n: number) => number> = {
-  ArrowRight: (i, n) => (i + 1) % n,
-  ArrowLeft: (i, n) => (i - 1 + n) % n,
+const step: Record<string, (at: number, count: number) => number> = {
+  ArrowRight: (at, count) => (at + 1) % count,
+  ArrowLeft: (at, count) => (at - 1 + count) % count,
   Home: () => 0,
-  End: (_, n) => n - 1,
+  End: (_, count) => count - 1,
 };
 
 export const LinkTabs = ({
   label,
   tabs,
   current,
+  className,
 }: {
   label: string;
   tabs: LinkTab[];
   current: string;
+  className?: string;
 }) => {
   const onKeyDown = (event: KeyboardEvent<HTMLAnchorElement>, index: number) => {
     const move = step[event.key];
@@ -30,10 +32,14 @@ export const LinkTabs = ({
     const list = event.currentTarget.closest('[role="tablist"]');
     list?.querySelectorAll<HTMLAnchorElement>('[role="tab"]')[next]?.focus();
     const target = tabs[next];
-    if (target) window.location.hash = target.href.replace(/^#/, '');
+    if (target?.href.startsWith('#')) window.location.hash = target.href.slice(1);
   };
   return (
-    <div role="tablist" aria-label={label} className="bb-nav bb-tablist">
+    <div
+      role="tablist"
+      aria-label={label}
+      className={['link-tabs', className].filter(Boolean).join(' ')}
+    >
       {tabs.map((tab, i) => {
         const selected = tab.key === current;
         return (
@@ -52,9 +58,3 @@ export const LinkTabs = ({
     </div>
   );
 };
-
-export const BackLink = ({ label, href }: { label: string; href: string }) => (
-  <a className="bb-back" href={href}>
-    {label}
-  </a>
-);

@@ -105,14 +105,16 @@ afterEach(() => {
 });
 
 describe('Arbeidsmåte in the step flow editor', () => {
-  it('shows tabs, crumbs, the strategy chooser and the default flow diagram', async () => {
+  it('shows tabs, a back link to the service, the strategy chooser and the default flow diagram', async () => {
     await openService();
     expect(screen.getByRole('tab', { name: 'I tjenesten' }).getAttribute('aria-selected')).toBe(
       'true',
     );
     expect(screen.getByRole('tab', { name: 'Bibliotek: Stegflyter' })).toBeTruthy();
-    const crumbs = screen.getByRole('navigation', { name: 'Brødsmuler' });
-    expect(within(crumbs).getByRole('link', { name: 'Rapportassistenten' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
+    expect(
+      within(screen.getByRole('main')).getByRole('link', { name: 'Rapportassistenten' }),
+    ).toBeTruthy();
     const group = screen.getByRole('radiogroup', { name: 'Arbeidsmåte' });
     expect(within(group).getAllByRole('radio')).toHaveLength(5);
     expect(
