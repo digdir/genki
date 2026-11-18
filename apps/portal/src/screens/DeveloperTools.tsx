@@ -230,7 +230,7 @@ export const DeveloperTools = ({
         </div>
       ) : null}
       {current.id === 'status' ? (
-        <DevStatus api={api} />
+        <DevStatus api={api} tenant={tenant} />
       ) : current.id === 'api' ? (
         <ApiPage {...props} integrations={integrations} />
       ) : current.id === 'guardrails' ? (

@@ -88,6 +88,7 @@ const unpriced = (u: UsageTotals): UsageTotals => ({ ...u, costMicroNok: null, p
 
 export const trialRow = 'trial-runs';
 export const gatewayRow = 'gateway';
+export const ingestionRow = 'ingestion';
 
 const less = (a: UsageTotals, b: UsageTotals): UsageTotals => {
   const priced = isPriced(a) && isPriced(b);
@@ -104,7 +105,11 @@ const gatewayOf = (u: UsageTotals) => u.bySource?.find((s) => s.source === 'gate
 
 const nonEmpty = (u: UsageTotals) => tokensOf(u) > 0 || u.requests > 0;
 
-const folded = (byService: Record<string, UsageTotals>, total: UsageTotals) => {
+const folded = (
+  byService: Record<string, UsageTotals>,
+  total: UsageTotals,
+  ingestion?: UsageTotals,
+) => {
   const out: Record<string, UsageTotals> = {};
   let trial: UsageTotals | undefined;
   for (const [id, u] of Object.entries(byService)) {
@@ -113,20 +118,23 @@ const folded = (byService: Record<string, UsageTotals>, total: UsageTotals) => {
   }
   const counted = Object.values(byService).reduce((a, u) => add(a, u), zeroUsage());
   const gateway = gatewayOf(total);
-  const rest = less(less(total, counted), gateway ?? zeroUsage());
+  const read = ingestion && nonEmpty(ingestion) ? ingestion : undefined;
+  const rest = less(less(less(total, counted), gateway ?? zeroUsage()), read ?? zeroUsage());
   if (nonEmpty(rest)) trial = add(trial ?? zeroUsage(), { ...rest, runs: 0 });
   if (trial) out[trialRow] = trial;
+  if (read) out[ingestionRow] = { ...read, runs: 0 };
   if (gateway && nonEmpty(gateway)) out[gatewayRow] = { ...gateway, runs: 0 };
   return out;
 };
 
 export const withTrialRows = (report: UsageReport): UsageReport => {
   const daily = report.daily.map((d) =>
-    d.byService ? { ...d, byService: folded(d.byService, d.usage) } : d,
+    d.byService ? { ...d, byService: folded(d.byService, d.usage, d.ingestion) } : d,
   );
   const whole = folded(
     Object.fromEntries(report.byService.map((s) => [s.service, s.usage])),
     report.totals,
+    report.ingestion?.usage,
   );
   const titles = new Map(report.byService.map((s) => [s.service, s.title]));
   return {
@@ -149,12 +157,13 @@ export const monthUsage = (report: UsageReport) => {
     for (const [id, u] of Object.entries(d.byService ?? {}))
       parts[id] = add(parts[id] ?? zeroUsage(), u);
   const services = Object.entries(parts)
-    .filter(([id]) => id !== trialRow && id !== gatewayRow)
+    .filter(([id]) => id !== trialRow && id !== gatewayRow && id !== ingestionRow)
     .reduce((a, [, u]) => add(a, u), zeroUsage());
   return {
     total,
     services,
     trial: parts[trialRow] ?? zeroUsage(),
+    ingestion: parts[ingestionRow] ?? zeroUsage(),
     gateway: parts[gatewayRow] ?? zeroUsage(),
     perService: parts,
     runs: Object.values(parts).reduce((n, u) => n + runsOf(u), 0),
@@ -167,9 +176,13 @@ export const withPricing = (report: UsageReport): UsageReport =>
     : {
         ...report,
         totals: unpriced(report.totals),
+        ...(report.ingestion
+          ? { ingestion: { ...report.ingestion, usage: unpriced(report.ingestion.usage) } }
+          : {}),
         daily: report.daily.map((d) => ({
           ...d,
           usage: unpriced(d.usage),
+          ...(d.ingestion ? { ingestion: unpriced(d.ingestion) } : {}),
           ...(d.byService
             ? {
                 byService: Object.fromEntries(
@@ -258,7 +271,7 @@ export const categories = (
     });
   }
   const ids = report.byService.map((s) => s.service);
-  const extra = [trialRow, gatewayRow];
+  const extra = [trialRow, ingestionRow, gatewayRow];
   const ordered = [
     ...usageServices.filter((s) => ids.includes(s.id)).map((s) => s.id),
     ...ids.filter((id) => !usageServices.some((s) => s.id === id) && !extra.includes(id)),
@@ -268,6 +281,14 @@ export const categories = (
     const color = COLORS[i % COLORS.length] ?? '';
     if (id === trialRow)
       return { id, label: t('usage.trialRuns'), sub: t('usage.trialRunsSub'), color, extra: true };
+    if (id === ingestionRow)
+      return {
+        id,
+        label: t('usageParts.ingestion'),
+        sub: t('usageParts.ingestionSub'),
+        color,
+        extra: true,
+      };
     if (id === gatewayRow)
       return {
         id,

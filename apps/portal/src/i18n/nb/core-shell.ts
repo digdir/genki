@@ -60,12 +60,9 @@ export const app = defineNamespace({
   statusIntro: 'Siden spør plattformens API om det svarer.',
   statusChecking: 'Sjekker API-et',
   statusApi: 'API',
-  statusUp: 'Svarer',
   statusDown: 'API-et svarer ikke akkurat nå. Prøv igjen om litt.',
   statusVersion: 'Versjon',
   statusCheckAgain: 'Sjekk igjen',
-  statusScope:
-    'Siden viser bare om API-et svarer. Status for hver tjeneste ser du under <services>Tjenester</services>, og kjøringer som har feilet, ser du i <log>Logg</log>.',
   contactOwner:
     'Plattformen eies og utvikles av Digitaliseringsdirektoratet (Digdir). Kildekoden ligger i kodelageret genki.',
   contactText:

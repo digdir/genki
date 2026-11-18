@@ -17,6 +17,8 @@ import { playgroundApi, type PlaygroundInputField } from './api/playground';
 import { qualityApi } from './api/quality';
 import { recipesApi } from './api/recipes';
 import { batchRunsApi } from './api/batch-runs';
+import { platformStatusApi } from './api/platform-status';
+import { quotaRequestsApi } from './api/quota-requests';
 import { searchEnginesApi } from './api/search-engines';
 import { skillsApi } from './api/skills';
 import type {
@@ -47,6 +49,7 @@ import type {
   ServiceKeyView,
   IntegrationsView,
   Overview,
+  ToolConnectionView,
   ServiceLifecycleView,
   ServiceSummaryView,
   SharedService,
@@ -183,6 +186,8 @@ const featureClients = (ctx: ApiContext) => ({
   triggers: triggersApi(ctx),
   preferences: preferencesApi(ctx),
   recipes: recipesApi(ctx),
+  platformStatus: platformStatusApi(ctx),
+  quotaRequests: quotaRequestsApi(ctx),
 });
 
 const kindPaths: Record<PublishedDefinition['kind'], string> = {
@@ -318,9 +323,13 @@ export const createApiClient = ({
     cache,
     getJson: (path: string, signal?: AbortSignal) => get<unknown>(path, signal),
     getHealth: (signal?: AbortSignal) =>
-      get<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
+      get<{ status: 'ok'; version: string; lockdown?: boolean; builtAt?: string }>(
+        '/health',
+        signal,
+      ),
     isReadOnlyInLockdown: async (signal?: AbortSignal) =>
       (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
+    me: (signal?: AbortSignal) => get<{ email?: string }>('/me', signal),
     ...featureClients({
       get,
       request,
@@ -750,6 +759,9 @@ export const createApiClient = ({
     },
     integrations: (tenant: string, signal?: AbortSignal) =>
       get<IntegrationsView>(`${tenantPath(tenant)}/integrations`, signal),
+    toolConnections: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data?: ToolConnectionView[] }>(`${tenantPath(tenant)}/tool-connections`, signal))
+        .data ?? [],
     registerConnection: (tenant: string, connection: Record<string, unknown>, reason: string) =>
       request<{ id: string }>('POST', `${tenantPath(tenant)}/tool-connections`, connection, {
         'change-reason': reason,
@@ -821,6 +833,18 @@ export const createApiClient = ({
       ).fields,
     audit: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ data: AuditRow[] }>(`${tenantPath(tenant)}/audit`, signal)).data,
+    auditPage: async (
+      tenant: string,
+      page: { limit: number; offset: number },
+      signal?: AbortSignal,
+    ) => {
+      const found = await get<{ data?: AuditRow[]; total?: number }>(
+        `${tenantPath(tenant)}/audit?limit=${page.limit}&offset=${page.offset}`,
+        signal,
+      );
+      const data = found.data ?? [];
+      return { data, total: found.total ?? page.offset + data.length };
+    },
     exportTenant: (tenant: string, signal?: AbortSignal) =>
       get<TenantBundle>(`${tenantPath(tenant)}/export`, signal),
     importTenant: (

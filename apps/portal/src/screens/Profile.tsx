@@ -1,7 +1,9 @@
 import { Fieldset, Heading, Link, Radio } from '@digdir/designsystemet-react';
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useId, useState } from 'react';
+import type { ApiClient } from '../api';
 import { formatOrgNumber } from '../data/organisations';
+import { useAsync } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import { rightLabel, useRights, useUserName } from '../Shell';
 import { saveTheme, storedTheme, type Theme } from '../theme';
@@ -31,8 +33,18 @@ const useSavedFlash = () => {
   return [shown, () => setShown(true)] as const;
 };
 
-export const Profile = ({ tenant, tenantName }: { tenant: string; tenantName: string }) => {
+export const Profile = ({
+  api,
+  tenant,
+  tenantName,
+}: {
+  api: Pick<ApiClient, 'me'>;
+  tenant: string;
+  tenantName: string;
+}) => {
   const t = useT();
+  const [me] = useAsync((signal) => api.me(signal), [api]);
+  const email = me.status === 'ready' ? me.data.email : undefined;
   const name = useUserName();
   const { rights } = useRights();
   const themeName = useId();
@@ -50,6 +62,12 @@ export const Profile = ({ tenant, tenantName }: { tenant: string; tenantName: st
           <dt>{t('profile.name')}</dt>
           <dd>{name}</dd>
         </div>
+        {email && email !== name ? (
+          <div>
+            <dt>{t('account.email')}</dt>
+            <dd>{email}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>{t('profile.actingFor')}</dt>
           <dd>{t('profile.organisation', { name: tenantName, orgNr: formatOrgNumber(tenant) })}</dd>

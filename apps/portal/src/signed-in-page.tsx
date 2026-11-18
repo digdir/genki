@@ -90,7 +90,8 @@ export const Page = ({
       <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />
     );
   if (area === 'integrations') return <MovedTo hash={developerHashFor(props.route)} />;
-  if (area === 'profile') return <Profile tenant={props.tenant} tenantName={props.tenantName} />;
+  if (area === 'profile')
+    return <Profile api={props.api} tenant={props.tenant} tenantName={props.tenantName} />;
   if (area === 'help') return <MovedTo hash="#/onboarding" />;
   if (area === 'onboarding') return <Onboarding {...props} />;
   if (area === 'api-reference') return <MovedTo hash={apiReferenceHashFor(props.route)} />;

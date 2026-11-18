@@ -22,7 +22,7 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
 import { navigate, useAsync } from '../hooks';
 import { useT } from '../i18n';
@@ -37,6 +37,7 @@ import {
   decimalText,
   money,
   monthStatus,
+  monthUsage,
   nb,
   percentText,
   periodLabels,
@@ -52,6 +53,8 @@ import {
   type Group,
   type Period,
 } from './usage/model';
+import { quotaFacts } from './quota/model';
+import { QuotaRequestAction } from './quota/QuotaRequest';
 import { UsageChart } from './usage/UsageChart';
 import { UsageSources } from './usage/UsageSources';
 import './usage.css';
@@ -87,7 +90,9 @@ const UsageView = ({
   onView,
   sort,
   setSort,
+  quotaAction,
 }: {
+  quotaAction?: ((forecast: number) => ReactNode) | undefined;
   scoped: boolean;
   onProject: (id: string) => void;
   report: UsageReport;
@@ -264,6 +269,9 @@ const UsageView = ({
             </h2>
             <span className="meta">{t('usage.updated', { time: f.time(report.to) })}</span>
           </div>
+          {quotaAction ? (
+            <div className="usage-quota-action">{quotaAction(status.forecast)}</div>
+          ) : null}
           <div className="row-baseline">
             <span className="usage-big numeric">{short(f, t, status.used)}</span>
             <span className="usage-of">
@@ -695,7 +703,25 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
     usage.status === 'ready' && (settings.status === 'loading' || models.status === 'loading')
       ? ({ status: 'loading' } as const)
       : usage;
-  const quota = settings.status === 'ready' ? quotaOf(settings.data) : null;
+  const settingsQuota = settings.status === 'ready' ? quotaOf(settings.data) : null;
+  const report = state.status === 'ready' ? state.data : undefined;
+  const quota = report?.quota?.monthlyTokens ?? settingsQuota;
+  const facts = report
+    ? quotaFacts(report, settingsQuota, tokensOf(monthUsage(report).total))
+    : undefined;
+  const quotaAction =
+    facts?.alert && report
+      ? (forecast: number) => (
+          <QuotaRequestAction
+            api={api}
+            tenant={tenant}
+            facts={facts}
+            forecast={forecast}
+            month={periodLabels(report, f, t).month}
+            canRequest={rights.has('manage-services')}
+          />
+        )
+      : undefined;
   const hasData = state.status === 'ready' && !isEmptyReport(state.data);
   return (
     <>
@@ -848,6 +874,7 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
           models={models.status === 'ready' ? models.data : null}
           scoped={scoped}
           onProject={setProject}
+          quotaAction={quotaAction}
         />
       ) : null}
     </>

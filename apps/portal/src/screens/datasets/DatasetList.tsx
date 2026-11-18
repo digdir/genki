@@ -91,6 +91,7 @@ export interface DatasetListItem {
   note?: string;
   needsSource?: boolean;
   canRetry?: boolean;
+  usedByText?: string | undefined;
 }
 
 export const listItemFor = (t: T, f: Format, d: DatasetDetails): DatasetListItem => ({
@@ -150,6 +151,7 @@ export const DatasetList = ({
       (!q || `${d.name} ${d.description} ${d.sourceText}`.toLowerCase().includes(q)),
   );
   const attention = datasets.filter(needsAttention).length;
+  const showUse = datasets.some((d) => d.usedByText !== undefined);
   const filtered = q !== '' || filter !== 'all';
 
   const retry = async (d: DatasetListItem) => {
@@ -233,6 +235,9 @@ export const DatasetList = ({
                   {t('datasets.factDocuments')}
                 </TableHeaderCell>
                 <TableHeaderCell scope="col">{t('datasets.columnLastStarted')}</TableHeaderCell>
+                {showUse ? (
+                  <TableHeaderCell scope="col">{t('datasetUse.label')}</TableHeaderCell>
+                ) : null}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -271,6 +276,13 @@ export const DatasetList = ({
                     </TableCell>
                     <TableCell className="numeric right">{d.docsText}</TableCell>
                     <TableCell>{d.lastText}</TableCell>
+                    {showUse ? (
+                      <TableCell
+                        className={d.usedByText === t('datasetUse.none') ? 'meta' : undefined}
+                      >
+                        {d.usedByText}
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 );
               })}

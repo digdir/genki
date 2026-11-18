@@ -1,3 +1,4 @@
+import { usedByText } from './used-by-count';
 import type {
   DatasetSourceKind,
   DatasetView,
@@ -160,6 +161,7 @@ export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem 
         : view.lastExecution
           ? f.dateTime(view.lastExecution.startedAt)
           : t('datasets.notYet'),
+    usedByText: usedByText(t, view.usedByCount),
     ...(note ? { note } : {}),
     ...(view.state !== 'external' && !view.lastExecution && needsSource(view)
       ? { needsSource: true }

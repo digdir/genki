@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -71,8 +71,8 @@ describe('footer pages', () => {
   it('shows what Driftsstatus checks, that the API answers, and the version', async () => {
     await open('#/developer/status', health([up('1.4.2')]));
     expect(await screen.findByText('1.4.2')).toBeTruthy();
-    expect(screen.getByText('API-et svarer')).toBeTruthy();
-    expect(screen.getByText('Svarer')).toBeTruthy();
+    const check = screen.getByText('API-et svarer').closest('li') as HTMLElement;
+    expect(within(check).getByText('Virker')).toBeTruthy();
     expect(screen.getByText('Versjon')).toBeTruthy();
   });
 
@@ -82,8 +82,10 @@ describe('footer pages', () => {
   });
 
   it('checks again when the person presses Sjekk nå', async () => {
-    await open('#/developer/status', health([up('1.0.0'), up('1.0.1')]));
+    let version = '1.0.0';
+    await open('#/developer/status', health([() => up(version)()]));
     expect(await screen.findByText('1.0.0')).toBeTruthy();
+    version = '1.0.1';
     fireEvent.click(screen.getByRole('button', { name: 'Sjekk nå' }));
     expect(await screen.findByText('1.0.1')).toBeTruthy();
   });
@@ -105,7 +107,7 @@ describe('footer pages', () => {
   it('shows the footer pages in English when the language is English', async () => {
     await open('#/developer/status', health([up('dev')]), ['en']);
     expect(await screen.findByRole('heading', { level: 1, name: 'Developer tools' })).toBeTruthy();
-    expect(await screen.findByText('Answering')).toBeTruthy();
+    expect(await screen.findByText('Everything works')).toBeTruthy();
     cleanup();
     await open('#/contact', mockFetch(), ['en']);
     expect(

@@ -6,6 +6,7 @@ import { useAsync } from '../../hooks';
 import type { PlainKey } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
+import { useAuditPages } from './audit-pages';
 import { relativeTime } from '../log/format';
 import {
   actorOf,
@@ -17,6 +18,9 @@ import {
   newestFirst,
   type ChangeArea,
 } from './changes';
+import './paging.css';
+
+export const auditPageSize = 50;
 
 const areaKeys: Record<ChangeArea, PlainKey> = {
   services: 'changes.areaServices',
@@ -31,21 +35,27 @@ interface Loaded {
   keys: Map<string, string>;
 }
 
-const load = async (api: ApiClient, tenant: string, signal: AbortSignal): Promise<Loaded> => {
+const load = async (
+  api: ApiClient,
+  tenant: string,
+  signal: AbortSignal,
+  paged: boolean,
+): Promise<Loaded> => {
   const [audit, services] = await Promise.all([
-    api.audit(tenant, signal),
+    paged ? [] : api.audit(tenant, signal),
     api.services(tenant, signal).then(
       (r) => r.data,
       () => [],
     ),
   ]);
   const entries = Array.isArray(audit) ? audit : [];
-  const keys = entries.some((e) => keyOfActor(e.actor) !== undefined)
-    ? await api.access(tenant, signal).then(
-        (a) => a.keys,
-        () => [],
-      )
-    : [];
+  const keys =
+    paged || entries.some((e) => keyOfActor(e.actor) !== undefined)
+      ? await api.access(tenant, signal).then(
+          (a) => a.keys,
+          () => [],
+        )
+      : [];
   return {
     entries: collapseRepeats(newestFirst(entries)),
     services: new Map(services.map((s) => [s.id, s.name])),
@@ -58,20 +68,23 @@ export const LiveChanges = ({
   tenant,
   limit = 5,
   filters = false,
+  paged = false,
 }: {
   api: ApiClient;
   tenant: string;
   limit?: number;
   filters?: boolean;
+  paged?: boolean;
 }) => {
   const p = usePortalFormat();
   const { t, f } = p;
   const allowed = useRights().has('manage-services');
   const [area, setArea] = useState<ChangeArea | ''>('');
   const [person, setPerson] = useState('');
-  const [state, retry] = useAsync(
-    async (signal) => (allowed ? load(api, tenant, signal) : undefined),
-    [api, tenant, allowed],
+  const pages = useAuditPages(api, tenant, auditPageSize, allowed && paged);
+  const [loaded, retryLoad] = useAsync(
+    async (signal) => (allowed ? load(api, tenant, signal, paged) : undefined),
+    [api, tenant, allowed, paged],
   );
   if (!allowed)
     return (
@@ -79,11 +92,15 @@ export const LiveChanges = ({
         <span className="empty-text">{needsRight('manage-services', t)}</span>
       </div>
     );
-  if (state.status === 'loading') return <Loading label={t('changes.loading')} />;
-  if (state.status === 'error')
-    return <ErrorState error={state.error} onRetry={retry} headingLevel={3} />;
-  const data = state.data;
-  if (!data || data.entries.length === 0)
+  if (paged && pages.first.status === 'error')
+    return <ErrorState error={pages.first.error} onRetry={pages.retry} headingLevel={3} />;
+  if (loaded.status === 'error')
+    return <ErrorState error={loaded.error} onRetry={retryLoad} headingLevel={3} />;
+  if ((paged && pages.first.status === 'loading') || loaded.status === 'loading')
+    return <Loading label={t('changes.loading')} />;
+  const data = loaded.data;
+  const entries = paged ? collapseRepeats(newestFirst(pages.rows)) : (data?.entries ?? []);
+  if (!data || entries.length === 0)
     return (
       <div className="card-empty">
         <span className="empty-title">{t('changes.none')}</span>
@@ -91,11 +108,11 @@ export const LiveChanges = ({
       </div>
     );
   const who = (e: AuditRow) => actorOf(e, t, (id) => data.keys.get(id));
-  const people = [...new Set(data.entries.map(who))].sort((a, b) => a.localeCompare(b));
-  const shown = data.entries
+  const people = [...new Set(entries.map(who))].sort((a, b) => a.localeCompare(b));
+  const matching = entries
     .filter((e) => !area || areaOf(e.action) === area)
-    .filter((e) => !person || who(e) === person)
-    .slice(0, limit);
+    .filter((e) => !person || who(e) === person);
+  const shown = paged ? matching : matching.slice(0, limit);
   const reset = () => {
     setArea('');
     setPerson('');
@@ -167,7 +184,10 @@ export const LiveChanges = ({
       </div>
       <div className="row-between">
         <p role="status" className="changes-count">
-          {t('changes.showing', { shown: f.number(shown.length), count: data.entries.length })}
+          {t('changes.showing', {
+            shown: f.number(shown.length),
+            count: entries.length + (paged ? pages.total - pages.rows.length : 0),
+          })}
         </p>
         {area || person ? (
           <Button variant="tertiary" data-size="sm" onClick={reset}>
@@ -201,6 +221,23 @@ export const LiveChanges = ({
           })}
         </ol>
       )}
+      {paged && pages.rows.length < pages.total ? (
+        <div className="changes-paging">
+          {pages.more === 'error' ? (
+            <p className="meta" role="alert">
+              {t('changesPaging.moreFailed')}
+            </p>
+          ) : null}
+          <Button
+            variant="secondary"
+            data-size="sm"
+            aria-disabled={pages.more === 'loading' || undefined}
+            onClick={() => void pages.loadMore()}
+          >
+            {pages.more === 'loading' ? t('changesPaging.loadingMore') : t('changesPaging.more')}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 };
