@@ -2,7 +2,19 @@ import { createFormat } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
 import { translator } from '../../i18n';
 import type { UsageReport, UsageTotals } from '../../types';
-import { aggregate, COLORS, costOf, monthStatus, runsOf, series } from './model';
+import { zeroUsage } from '../../data/usage';
+import {
+  add,
+  aggregate,
+  COLORS,
+  costOf,
+  costText,
+  isLowerBound,
+  knownCostOf,
+  monthStatus,
+  runsOf,
+  series,
+} from './model';
 
 const f = createFormat('nb');
 const t = translator('nb');
@@ -78,5 +90,31 @@ describe('chart colours', () => {
       expect(fill).not.toMatch(/-base-default/);
       expect(fill).toMatch(/var\(--ds-color-[a-z0-9]+-border-default\)/);
     }
+  });
+});
+
+describe('cost with a model that has no price', () => {
+  const unpriced = (tokens: number): UsageTotals => ({
+    inputTokens: tokens,
+    outputTokens: 0,
+    requests: 1,
+    costMicroNok: null,
+    priced: false,
+  });
+
+  it('keeps the priced part of a sum and marks it as at least that much', () => {
+    const sum = add(u(1000, 12, 1), unpriced(500));
+    expect(knownCostOf(sum)).toBe(12);
+    expect(isLowerBound(sum)).toBe(true);
+    expect(costText(f, t, sum)).toBe('minst 12 kr');
+  });
+
+  it('says Ikke priset, never minst 0 kr, when nothing in the sum has a price', () => {
+    const sum = add(add(zeroUsage(), unpriced(500)), unpriced(200));
+    expect(costText(f, t, sum)).toBe('Ikke priset');
+  });
+
+  it('a fully priced sum is shown as it is, without minst', () => {
+    expect(costText(f, t, add(zeroUsage(), u(1000, 12, 1)))).toBe('12 kr');
   });
 });

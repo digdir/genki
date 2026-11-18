@@ -117,7 +117,7 @@ export const UsageChart = ({
             <span className="numeric">
               {t('usage.selectedTotal', {
                 tokens: short(f, t, sel.total),
-                cost: money(f, t, sel.cost),
+                cost: money(f, t, sel.cost, sel.costAtLeast),
               })}
             </span>
           </div>
