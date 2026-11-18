@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: comparing two test runs case by case
+
+- New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).
+
 ### 2026-11-18: platform secrets on their own console screen
 
 - `GET /operator/secrets` lists the platform secrets for operators: each name, whether a value is stored, when it last changed (from the audit log) and the platform catalog entries that name it, such as a connection. Never a value.
