@@ -27,6 +27,7 @@ import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
 import { connectionsCovering } from './trace-connections.js';
 import { datasetsOf } from './trace-datasets.js';
+import { compareCases, isCaseChange, runSide } from './eval-compare.js';
 import {
   runDetail,
   casesIn,
@@ -40,8 +41,17 @@ import {
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
 
-const problem = (c: Context, status: Status, title: string, errors: unknown[] = []) =>
-  c.json({ type: 'about:blank', title, status, errors }, status, {
+const compareInvalid = 'urn:genai:problem:eval-compare-invalid';
+const notComparable = 'urn:genai:problem:eval-runs-not-comparable';
+
+const problem = (
+  c: Context,
+  status: Status,
+  title: string,
+  errors: unknown[] = [],
+  type = 'about:blank',
+) =>
+  c.json({ type, title, status, errors }, status, {
     'content-type': 'application/problem+json',
   });
 
@@ -724,6 +734,82 @@ export const createQualityModule =
               const summary = runSummary(s.run, isSinkJudge, agreementsOf?.(s.run));
               return usage ? summary : costless(summary);
             }),
+          });
+        });
+
+        app.get('/tenants/:tenant/services/:id/eval-runs/compare', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const { tenant } = guard;
+          const service = param(c, 'id');
+          const invalid = (path: string, message: string) =>
+            problem(c, 400, t('problems.evalCompareInvalid'), [{ path, message }], compareInvalid);
+          const candidateId = text(c.req.query('candidate'));
+          if (!candidateId) return invalid('candidate', 'the candidate run is required');
+          const change = c.req.query('change');
+          if (change !== undefined && !isCaseChange(change))
+            return invalid('change', 'change is worse, better, new, missing, pending or same');
+          const limit = Number(c.req.query('limit') ?? 50);
+          if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+            return invalid('limit', 'limit is 1 to 200');
+          const offset = Number(c.req.query('offset') ?? 0);
+          if (!Number.isInteger(offset) || offset < 0 || offset > 100_000)
+            return invalid('offset', 'offset is 0 to 100000');
+          if (await isHiddenService(deps.definitions, tenant, service))
+            return problem(c, 404, t('problems.evalRunNotFound'));
+          const ofService = async (id: string) => {
+            const stored = await evals.runOf(tenant, id);
+            return stored?.service === service && stored.run.tested ? stored : undefined;
+          };
+          const candidate = await ofService(candidateId);
+          if (!candidate)
+            return problem(c, 404, t('problems.evalRunNotFound'), [
+              { path: 'candidate', message: `no run ${candidateId} of ${service}` },
+            ]);
+          const baselineId = text(c.req.query('baseline')) ?? 'published';
+          const baseline =
+            baselineId === 'published'
+              ? await evals.publishedBaseline(
+                  tenant,
+                  service,
+                  candidate.run.testSet.id,
+                  candidate.run.id,
+                )
+              : await ofService(baselineId);
+          if (!baseline)
+            return baselineId === 'published'
+              ? problem(c, 404, t('problems.evalBaselineMissing'), [
+                  { path: 'baseline', message: 'no completed run of the published version' },
+                ])
+              : problem(c, 404, t('problems.evalRunNotFound'), [
+                  { path: 'baseline', message: `no run ${baselineId} of ${service}` },
+                ]);
+          if (baseline.run.testSet.id !== candidate.run.testSet.id)
+            return problem(
+              c,
+              400,
+              t('problems.evalRunsNotComparable'),
+              [{ path: 'baseline', message: 'the runs are of different test sets' }],
+              notComparable,
+            );
+          const setOf = (run: typeof candidate.run) =>
+            deps.evalStores.testSets.get(tenant, run.testSet.id, run.testSet.version);
+          const compared = compareCases(
+            { run: baseline.run, set: await setOf(baseline.run) },
+            { run: candidate.run, set: await setOf(candidate.run) },
+          );
+          const matching = change
+            ? compared.cases.filter((x) => x.change === change)
+            : compared.cases;
+          return c.json({
+            testSet: candidate.run.testSet.id,
+            baseline: { ...runSide(baseline.run), published: baselineId === 'published' },
+            candidate: runSide(candidate.run),
+            counts: compared.counts,
+            data: matching.slice(offset, offset + limit),
+            total: matching.length,
+            offset,
+            limit,
           });
         });
 

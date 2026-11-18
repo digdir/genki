@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-18: comparing two test runs case by case
+
+- New `GET /tenants/{tenant}/services/{id}/eval-runs/compare?candidate={runId}`: two test-set runs of a service, case by case, with each verdict, a `change` per case (`better`, `worse`, `same`, `new`, `missing`, `pending`) and `counts`; the baseline is a named run or, by default, the run of the published version. Paged with `limit` and `offset` (see [work.md](work.md#two-kinds-of-evaluation-run)).
+
 ### 2026-11-18: what the portal rework reads
 
 - `GET /tenants/{tenant}/datasets/{id}/documents` always answers `total` and `totalExact`, and adds `status` (`indexed`, `failed`, `pending`), `statusCounts`, `listing` (whether the engine can search titles and which sort keys it has), `query`, `sort` and `order`; each document adds `status`, and `chunkCount` when the engine keeps it. `GET .../documents/{doc}?chunks=from-to` adds the chunks at those positions (see [datasets.md](datasets.md#listing-a-datasets-documents)).
