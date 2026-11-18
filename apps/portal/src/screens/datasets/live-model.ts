@@ -38,6 +38,7 @@ export const sourceText: Record<DatasetSourceKind, PlainKey> = {
   folder: 'datasets.sourceFolder',
   database: 'datasets.sourceDatabase',
   parquet: 'datasets.sourceParquet',
+  endpoint: 'datasets.sourceEndpoint',
   none: 'datasets.sourceNone',
 };
 
@@ -77,10 +78,20 @@ const residencyOrder: Residency[] = ['norway', 'eu', 'global'];
 export const widest = (...all: Residency[]) =>
   all.reduce((a, b) => (residencyOrder.indexOf(b) > residencyOrder.indexOf(a) ? b : a), 'norway');
 
+export const isForeign = (view: Pick<DatasetView, 'editable' | 'scope'>) =>
+  view.editable === false && !!view.scope && view.scope !== 'platform';
+
+const foreignStatus: Partial<Record<NonNullable<DatasetView['state']>, DatasetStatus>> = {
+  running: 'Innlesing pågår',
+  degraded: 'Delvis lest inn',
+  ready: 'Klar',
+};
+
 export const datasetStatus = (
-  view: Pick<DatasetView, 'lastExecution' | 'state'>,
+  view: Pick<DatasetView, 'lastExecution' | 'state' | 'editable' | 'scope'>,
 ): DatasetStatus => {
   if (view.state === 'external') return 'Utenfor plattformen';
+  if (isForeign(view)) return (view.state && foreignStatus[view.state]) ?? 'Ikke lest inn';
   const last = view.lastExecution;
   if (!last) return 'Ikke lest inn';
   if (last.status === 'running') return 'Innlesing pågår';
@@ -93,6 +104,7 @@ export const needsSource = (view: Pick<DatasetView, 'source' | 'state'>) =>
   view.state === 'needs-pipeline' || view.source === 'none';
 
 const noteOf = (t: T, view: DatasetView) => {
+  if (isForeign(view)) return undefined;
   const last = view.lastExecution;
   if (view.state !== 'external' && !last && needsSource(view)) return t('datasets.sourceNone');
   if (last?.status === 'failed') return t('datasets.noteFailed');
@@ -115,6 +127,8 @@ export const executionStatus = (
     : { text: t('datasets.runDone'), color: 'success' };
 };
 
+export const lastSucceeded = (runs: ExecutionView[]) => runs.find((r) => r.status === 'succeeded');
+
 export const countText = (t: T, f: Format, n: number | null | undefined) =>
   n === null || n === undefined ? t('datasets.notAvailable') : f.number(n);
 
@@ -133,14 +147,21 @@ export const sharedSourceText = (
 ) =>
   view.state === 'external'
     ? externalSourceText(t, view)
-    : view.editable === false
-      ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
-      : t(sourceText[view.source]);
+    : isForeign(view)
+      ? t('datasets.sharedByOther')
+      : view.editable === false
+        ? t('datasets.sourceSharedWithYou', { source: t(sourceText[view.source]) })
+        : t(sourceText[view.source]);
 
 export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem => {
   const shared = view.editable === false;
+  const foreign = isForeign(view);
   const source =
-    view.state === 'external' ? externalSourceText(t, view) : t(sourceText[view.source]);
+    view.state === 'external'
+      ? externalSourceText(t, view)
+      : foreign
+        ? t('datasets.unknown')
+        : t(sourceText[view.source]);
   const note = noteOf(t, view);
   const status = datasetStatus(view);
   return {
@@ -150,20 +171,24 @@ export const listItemOf = (t: T, f: Format, view: DatasetView): DatasetListItem 
     status,
     shared,
     sourceText: source,
-    subText: t('datasets.subLine', {
-      source,
-      owner: t(shared ? 'datasets.filterShared' : 'datasets.filterOwn'),
-    }),
+    subText: foreign
+      ? t('datasets.sharedByOther')
+      : t('datasets.subLine', {
+          source,
+          owner: t(shared ? 'datasets.filterShared' : 'datasets.filterOwn'),
+        }),
     docsText: countText(t, f, view.documents),
     lastText:
       view.state === 'external'
         ? t('datasets.lastExternal')
-        : view.lastExecution
-          ? f.dateTime(view.lastExecution.startedAt)
-          : t('datasets.notYet'),
+        : foreign
+          ? t('datasets.unknown')
+          : view.lastExecution
+            ? f.dateTime(view.lastExecution.startedAt)
+            : t('datasets.notYet'),
     usedByText: usedByText(t, view.usedByCount),
     ...(note ? { note } : {}),
-    ...(view.state !== 'external' && !view.lastExecution && needsSource(view)
+    ...(view.state !== 'external' && !foreign && !view.lastExecution && needsSource(view)
       ? { needsSource: true }
       : {}),
     ...(status === 'Feilet' && !shared ? { canRetry: true } : {}),

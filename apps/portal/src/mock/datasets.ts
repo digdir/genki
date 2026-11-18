@@ -1,8 +1,13 @@
 import type {
   DatasetDeleteResult,
   DatasetDetailView,
+  DatasetDocumentDetail,
+  DatasetSearchHit,
   ExecutionView,
   PipelineView,
+  DatasetChange,
+  NewDatasetSpec,
+  NewEndpointDataset,
   SkippedDocument,
   UploadedFile,
   UploadResult,
@@ -16,6 +21,8 @@ export interface DatasetsMockOptions {
   uploads?: Record<string, UploadedFile[]>;
   pollsUntilDone?: number;
   report?: { stored: number; skipped: SkippedDocument[] };
+  documents?: Record<string, DatasetDocumentDetail[]>;
+  documentsFound?: Record<string, number | undefined>;
 }
 
 const day = 86_400_000;
@@ -36,8 +43,8 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     index: { endpoint: 'typesense-digdir' },
     facets: ['type', 'orgs_long'],
     source: 'kudos',
-    documents: 48312,
-    chunks: 612400,
+    documents: null,
+    chunks: null,
     lastExecution: {
       status: 'succeeded',
       startedAt: '2026-10-07T01:00:00Z',
@@ -58,6 +65,7 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     effectiveResidency: 'global',
     index: { endpoint: 'platform-pg' },
     facets: [],
+    searchScope: 'tenant',
     source: 'upload',
     documents: 6,
     chunks: 48,
@@ -86,6 +94,7 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
     effectiveResidency: 'global',
     index: { endpoint: 'platform-pg' },
     facets: [],
+    searchScope: 'tenant',
     source: 'website',
     documents: 1240,
     chunks: 9810,
@@ -95,6 +104,9 @@ export const exampleLiveDatasets: DatasetDetailView[] = [
         tenant: '999888777',
         id: 'rapportassistenten',
         name: 'Rapportassistenten',
+        addedAt: '2026-10-01T09:30:00Z',
+        addedBy: 'kari.nordmann@testetaten.example.no',
+        addedByName: 'Kari Nordmann',
       },
     ],
     lastExecution: {
@@ -177,6 +189,70 @@ const exampleUploads: Record<string, UploadedFile[]> = {
   ],
 };
 
+const doc = (
+  id: string,
+  title: string,
+  fields: Record<string, unknown>,
+  extra: Partial<DatasetDocumentDetail> = {},
+): DatasetDocumentDetail => ({ id, title, fields, ...extra });
+
+export const exampleDocuments: Record<string, DatasetDocumentDetail[]> = {
+  '999888777/veiledere': [
+    doc(
+      'rundskriv-3-2026',
+      'Rundskriv 3-2026',
+      { type: 'Rundskriv', year: '2026', unit: 'Fagavdelingen' },
+      {
+        original: { name: 'Rundskriv 3-2026.pdf', size: 634_880, type: 'pdf' },
+        excerpt:
+          'Rundskrivet gjelder fra 1. mars 2026 og erstatter rundskriv 7-2024. Endringene gjelder fristene for klage.',
+      },
+    ),
+    doc(
+      'veileder-for-sokere',
+      'Veileder for søkere',
+      { type: 'Veileder', year: '2025', unit: 'Fagavdelingen' },
+      {
+        original: { name: 'Veileder for søkere.docx', size: 348_160, type: 'docx' },
+        excerpt:
+          'Veilederen forklarer hvordan du søker, hva du må legge ved og hvor lang tid det tar.',
+      },
+    ),
+    doc(
+      'veileder-tilsyn',
+      'Veileder for tilsyn',
+      { type: 'Veileder', year: '2024', unit: 'Tilsynsavdelingen' },
+      {
+        original: { name: 'Veileder for tilsyn.pdf', size: 512_000, type: 'pdf' },
+        excerpt: 'Tilsynet varsles minst tre uker før det gjennomføres.',
+      },
+    ),
+  ],
+  '999888777/nettsider': [
+    doc(
+      'side-om-oss',
+      'Om Testetaten',
+      { type: 'Nettside', year: '2026' },
+      { url: 'https://testetaten.example.no/om-oss' },
+    ),
+    doc(
+      'side-kontakt',
+      'Kontakt oss',
+      { type: 'Nettside', year: '2026' },
+      { url: 'https://testetaten.example.no/kontakt' },
+    ),
+  ],
+  'digdir/kudos': [
+    doc('kudos-1', 'Årsrapport 2025 Testetaten', { type: 'Årsrapport', orgs_long: 'Testetaten' }),
+    doc('kudos-2', 'Tildelingsbrev 2026 Testetaten', {
+      type: 'Tildelingsbrev',
+      orgs_long: 'Testetaten',
+    }),
+  ],
+};
+
+const exampleFound: Record<string, number | undefined> = { 'digdir/kudos': 48312 };
+
 const slugOk = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => {
@@ -187,12 +263,30 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
   );
   const uploads = new Map(Object.entries(structuredClone(options.uploads ?? exampleUploads)));
   const polls = new Map<string, number>();
+  const keyed = new Set<string>();
   const until = options.pollsUntilDone ?? 1;
+  const documents = structuredClone(options.documents ?? exampleDocuments);
+  const found = options.documentsFound ?? exampleFound;
 
   const find = (tenant: string, id: string) =>
     datasets.find((d) => d.fullId === id || d.fullId === `${tenant}/${id}`);
   const visible = (tenant: string) =>
-    datasets.filter((d) => d.scope === 'platform' || d.fullId.startsWith(`${tenant}/`));
+    datasets.filter((d) => d.scope === 'platform' || d.scope === tenant || d.searchScope === 'all');
+  const foreign = (tenant: string, d: DatasetDetailView) =>
+    d.scope !== 'platform' && d.scope !== tenant;
+  const seenBy = (tenant: string, d: DatasetDetailView): DatasetDetailView =>
+    foreign(tenant, d)
+      ? {
+          ...d,
+          id: d.fullId,
+          editable: false,
+          source: 'none',
+          lastExecution: null,
+          nextRunAt: null,
+          skipped: [],
+          usedBy: [],
+        }
+      : d;
   const nextRun = (schedule: string) =>
     schedule === 'daily' ? tomorrow() : schedule === 'weekly' ? tomorrow() : null;
 
@@ -241,7 +335,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     const writes = method !== 'GET';
     if (writes && !request.reason) {
       if (
-        /^\/tenants\/[^/]+\/(catalog\/dataset\/[^/]+|datasets\/[^/]+(\/pipelines|\/uploads)(\/.*)?|datasets\/[^/]+)$/.test(
+        /^\/tenants\/[^/]+\/(catalog\/dataset\/[^/]+|datasets|datasets\/[^/]+(\/pipelines|\/uploads)(\/.*)?|datasets\/[^/]+)$/.test(
           path,
         )
       )
@@ -252,12 +346,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     if (create && method === 'PUT') {
       const tenant = decodeURIComponent(create[1] ?? '');
       const id = decodeURIComponent(create[2] ?? '');
-      const spec = request.body<{
-        name: string;
-        description?: string;
-        endpoint: string;
-        residency: DatasetDetailView['residency'];
-      }>();
+      const spec = request.body<NewDatasetSpec>();
       const fresh: DatasetDetailView = {
         id,
         fullId: `${tenant}/${id}`,
@@ -270,6 +359,7 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
           : {}),
         index: { endpoint: spec.endpoint },
         facets: [],
+        searchScope: spec.searchScope ?? 'tenant',
         source: 'none',
         documents: 0,
         chunks: 0,
@@ -283,13 +373,173 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     }
 
     const list = /^\/tenants\/([^/]+)\/datasets$/.exec(path);
+    if (list && method === 'POST') {
+      const tenant = decodeURIComponent(list[1] ?? '');
+      const input = request.body<NewEndpointDataset>();
+      const source = input.endpointSource;
+      const invalid = (path: string, message: string) =>
+        json({ title: 'Invalid request', status: 400, errors: [{ path, message }] }, 400);
+      if (!/^https:\/\//.test(source?.url ?? ''))
+        return invalid('endpointSource.url', 'Invalid URL');
+      if (
+        source.auth.kind === 'api-key' &&
+        source.auth.header !== undefined &&
+        !/^[A-Za-z0-9-]{1,64}$/.test(source.auth.header)
+      )
+        return invalid('endpointSource.auth.header', 'Invalid string');
+      const url = new URL(source.url);
+      if (
+        url.username ||
+        url.password ||
+        /^[\d.]+$|^\[|(^|\.)(localhost|local|internal)$/i.test(url.hostname) ||
+        !url.hostname.includes('.')
+      )
+        return json(
+          {
+            type: 'urn:genai:problem:endpoint-not-allowed',
+            title: 'genki does not call this address',
+            status: 422,
+            errors: [{ path: 'endpointSource.url', message: 'not a public host name' }],
+          },
+          422,
+        );
+      const id = input.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      if (find(tenant, id))
+        return json(
+          {
+            title: 'Conflict',
+            status: 409,
+            errors: [{ path: 'id', message: `dataset ${id} exists` }],
+          },
+          409,
+        );
+      const fresh: DatasetDetailView = {
+        id,
+        fullId: `${tenant}/${id}`,
+        name: input.name,
+        scope: tenant,
+        editable: true,
+        residency: input.residency,
+        index: { endpoint: `endpoint-${id}` },
+        facets: [],
+        searchScope: input.searchScope ?? 'tenant',
+        source: 'endpoint',
+        state: 'external',
+        documents: null,
+        chunks: null,
+        lastExecution: null,
+        nextRunAt: null,
+        usedBy: [],
+      };
+      datasets.push(fresh);
+      if (source.auth.kind === 'api-key') keyed.add(fresh.fullId);
+      return json(fresh, 201);
+    }
     if (list && method === 'GET')
       return json({
-        data: visible(decodeURIComponent(list[1] ?? '')).map(({ skipped: _, usedBy, ...d }) => ({
-          ...d,
-          usedByCount: usedBy?.length ?? 0,
-        })),
+        data: visible(decodeURIComponent(list[1] ?? ''))
+          .map((d) => seenBy(decodeURIComponent(list[1] ?? ''), d))
+          .map(({ skipped: _, usedBy, ...d }) => ({
+            ...d,
+            usedByCount: usedBy?.length ?? 0,
+          })),
       });
+
+    const content =
+      /^\/tenants\/([^/]+)\/datasets\/([^/]+)\/(documents|search)(?:\/([^/]+))?$/.exec(path);
+    if (content) {
+      const tenant = decodeURIComponent(content[1] ?? '');
+      const dataset = find(tenant, decodeURIComponent(content[2] ?? ''));
+      if (!dataset) return notFound();
+      const own = dataset.scope === tenant;
+      const all = (documents[dataset.fullId] ?? []).map(
+        ({ original, ...d }): DatasetDocumentDetail => (own && original ? { ...d, original } : d),
+      );
+      const matches = (d: DatasetDocumentDetail, filters: [string, unknown][]) =>
+        filters.every(([field, wanted]) =>
+          [wanted].flat().some((w) => [d.fields[field]].flat().map(String).includes(String(w))),
+        );
+      if (content[3] === 'search' && method === 'POST') {
+        const body = request.body<{ query: string; filters?: Record<string, unknown> }>();
+        const words = body.query.toLowerCase().split(/\s+/).filter(Boolean);
+        const filters = Object.entries(body.filters ?? {});
+        const hits: DatasetSearchHit[] = all
+          .filter((d) =>
+            words.every((w) =>
+              `${d.title ?? ''} ${Object.values(d.fields).join(' ')} ${d.original?.name ?? ''}`
+                .toLowerCase()
+                .includes(w),
+            ),
+          )
+          .filter((d) => matches(d, filters))
+          .map((d, i) => ({
+            id: `${d.id}#0`,
+            document: d.id,
+            ...(d.title ? { title: d.title } : {}),
+            ...(d.url ? { url: d.url } : {}),
+            score: 1 - i / 100,
+            text: d.excerpt ?? '',
+            fields: d.fields,
+          }));
+        return json({ dataset: dataset.fullId, limit: 100, found: hits.length, hits });
+      }
+      if (content[3] !== 'documents' || method !== 'GET') return undefined;
+      const item = content[4] ? decodeURIComponent(content[4]) : undefined;
+      if (item) {
+        const one = all.find((d) => d.id === item);
+        if (!one)
+          return json(
+            {
+              type: 'urn:genai:problem:dataset-document-not-found',
+              title: 'The dataset has no such document',
+              status: 404,
+            },
+            404,
+          );
+        return json(one);
+      }
+      const limit = Number(request.url.searchParams.get('limit') ?? 50);
+      const offset = Number(request.url.searchParams.get('offset') ?? 0);
+      const invalid = (errors: { path: string; message: string }[]) =>
+        json({ title: 'Invalid request', status: 422, errors }, 422);
+      if (offset % limit !== 0)
+        return invalid([{ path: 'offset', message: 'offset must be a multiple of limit' }]);
+      const raw = request.url.searchParams.get('filters');
+      let filters: Record<string, unknown> | undefined;
+      if (raw) {
+        const parsed: unknown = (() => {
+          try {
+            return JSON.parse(raw) as unknown;
+          } catch {
+            return undefined;
+          }
+        })();
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+          return invalid([{ path: 'filters', message: 'filters must be a JSON object' }]);
+        filters = parsed as Record<string, unknown>;
+        const undeclared = Object.keys(filters).filter((f) => !(dataset.facets ?? []).includes(f));
+        if (undeclared.length)
+          return invalid(
+            undeclared.map((field) => ({
+              path: `filters.${field}`,
+              message: `The dataset ${dataset.fullId} has no filter ${field}`,
+            })),
+          );
+      }
+      const kept = filters ? all.filter((d) => matches(d, Object.entries(filters))) : all;
+      const total = !filters && dataset.fullId in found ? found[dataset.fullId] : kept.length;
+      return json({
+        dataset: dataset.fullId,
+        limit,
+        offset,
+        ...(total === undefined ? {} : { found: total }),
+        ...(filters ? { filters } : {}),
+        documents: kept.slice(offset, offset + limit).map(({ excerpt: _, ...d }) => d),
+      });
+    }
 
     const one =
       /^\/tenants\/([^/]+)\/datasets\/([^/]+)(?:\/(pipelines|uploads)(?:\/([^/]+))?(?:\/(execute|executions)(?:\/([^/]+)\/cancel)?)?)?$/.exec(
@@ -302,14 +552,16 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     const item = one[4] ? decodeURIComponent(one[4]) : undefined;
     const action = one[5];
     const cancelling = one[6] ? decodeURIComponent(one[6]) : undefined;
-    if (!dataset) return notFound();
+    if (!dataset || !visible(tenant).includes(dataset)) return notFound();
+    if (foreign(tenant, dataset) && (area || method !== 'GET')) return notFound();
 
     if (!area) {
-      if (method === 'GET') return json(dataset);
+      if (method === 'GET') return json(seenBy(tenant, dataset));
       if (method === 'PUT') {
-        const change = request.body<{ name?: string; description?: string }>();
+        const change = request.body<DatasetChange>();
         if (change.name) dataset.name = change.name;
         if (change.description !== undefined) dataset.description = change.description;
+        if (change.searchScope) dataset.searchScope = change.searchScope;
         return json(dataset);
       }
       if (method === 'DELETE') {
@@ -336,6 +588,12 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
             generations: own.flatMap((p) =>
               (executions.get(`${dataset.fullId}/${p.id}`) ?? []).map((e) => e.id),
             ),
+            ...(dataset.source === 'endpoint'
+              ? {
+                  endpoint: `endpoint-${dataset.id}`,
+                  ...(keyed.has(dataset.fullId) ? { secret: `endpoint-${dataset.id}-key` } : {}),
+                }
+              : {}),
           },
           kept: { knowledgeRecords: dataset.index?.endpoint === 'knowledge-pg', generations: [] },
         };
@@ -350,6 +608,25 @@ export const datasetsMock = (options: DatasetsMockOptions = {}): MockHandler => 
     if (area === 'uploads') {
       const files = uploads.get(dataset.fullId) ?? [];
       if (!item && method === 'GET') return json({ data: files });
+      if (item && method === 'GET') {
+        const file = files.find((f) => f.name === item);
+        if (!file)
+          return json(
+            {
+              type: 'urn:genai:problem:original-not-kept',
+              title: 'The original file is not kept',
+              status: 404,
+            },
+            404,
+          );
+        return new Response(new Blob([`original ${file.name}`]), {
+          status: 200,
+          headers: {
+            'content-type': 'application/octet-stream',
+            'content-disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,
+          },
+        });
+      }
       if (!item && method === 'POST') {
         const body = request.init?.body;
         const sent = body instanceof FormData ? (body.getAll('files') as File[]) : [];
