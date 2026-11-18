@@ -1,4 +1,6 @@
 import { residencies } from '@genai/port-model';
+import { bodyLimit } from 'hono/body-limit';
+import { maxPlatformSecretLength, platformSecretNamePattern } from './platform-secrets.js';
 import {
   redactSecrets,
   syncFailureMessage,
@@ -765,28 +767,50 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     );
   });
 
-  app.put('/operator/secrets/:name', async (c) => {
-    const principal = await who(c);
-    if (!principal) return problem(c, 401, 'Unauthorized');
-    if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
-    const name = param(c, 'name');
-    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
-    if (typeof body.value !== 'string' || body.value.length === 0)
-      return problem(c, 400, 'Invalid request', [
-        { path: 'value', message: 'a value is required' },
-      ]);
-    const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
-    const value = body.value;
-    return performed(
-      c,
-      acting,
-      'platform.platform-secret.set',
-      { tenant: acting.tenant, name },
-      async () => {
-        await deps.vault.set('platform', name, value);
-      },
-    );
-  });
+  app.put(
+    '/operator/secrets/:name',
+    bodyLimit({
+      maxSize: maxPlatformSecretLength * 4,
+      onError: (c) =>
+        c.json(
+          { type: 'about:blank', title: 'The request is too large', status: 413, errors: [] },
+          413,
+          {
+            'content-type': 'application/problem+json',
+          },
+        ),
+    }),
+    async (c) => {
+      const principal = await who(c);
+      if (!principal) return problem(c, 401, 'Unauthorized');
+      if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
+      const name = param(c, 'name');
+      if (!platformSecretNamePattern.test(name))
+        return problem(c, 400, 'Invalid request', [
+          { path: 'name', message: 'lowercase letters, digits, dots, dashes; at most 63' },
+        ]);
+      const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+      if (typeof body.value !== 'string' || body.value.trim().length === 0)
+        return problem(c, 400, 'Invalid request', [
+          { path: 'value', message: 'a value is required' },
+        ]);
+      if (body.value.length > maxPlatformSecretLength)
+        return problem(c, 400, 'Invalid request', [
+          { path: 'value', message: 'at most 16384 characters' },
+        ]);
+      const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
+      const value = body.value;
+      return performed(
+        c,
+        acting,
+        'platform.platform-secret.set',
+        { tenant: acting.tenant, name },
+        async () => {
+          await deps.vault.set('platform', name, value);
+        },
+      );
+    },
+  );
 
   app.post('/operator/tenants', async (c) => {
     const principal = await who(c);

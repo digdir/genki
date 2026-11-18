@@ -390,6 +390,8 @@ export const projectErrors = defineNamespace({
   estimateRequired: 'en id for kostnadsberegningen er påkrevd',
   runNotFound: 'Fant ikke kjøringen',
   atMost4000: 'høyst 4000 tegn',
+  atMost16384: 'høyst 16384 tegn',
+  platformSecretName: 'små bokstaver, sifre, punktum og bindestrek; høyst 63',
   atMost120: 'høyst 120 tegn',
   selectionsList: 'selections er en liste',
   selectionObject: 'et utvalg er et objekt',

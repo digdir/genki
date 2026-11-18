@@ -1,0 +1,43 @@
+import type { Translation } from '@genai/i18n';
+import type { platformSecrets as source } from '../nb/platformSecrets';
+
+export const platformSecrets = {
+  title: 'Platform secrets',
+  intro:
+    "Keys and passwords the connections use, kept in the platform's secret store. Values are never shown, only whether each is set and when it last changed. Every change goes to the audit log with its reason.",
+  loading: 'Loading the secrets',
+  add: 'New secret',
+  tableLabel: 'Platform secrets',
+  colName: 'Name',
+  colStatus: 'Status',
+  colChanged: 'Last changed',
+  colUsedBy: 'Used by',
+  colAction: 'Action',
+  isSet: 'Set',
+  notSet: 'Not set',
+  never: 'Not recorded',
+  unused: 'None',
+  connection: 'Connection {id}',
+  set: 'Set value',
+  replace: 'Replace value',
+  setLabel: 'Set value for {name}',
+  replaceLabel: 'Replace value for {name}',
+  noneTitle: 'No platform secrets',
+  noneText: 'Add a secret here, or name one in a connection.',
+  addTitle: 'New platform secret',
+  setTitle: 'Set value for {name}',
+  replaceTitle: 'Replace value for {name}',
+  dialogText:
+    'The value is stored encrypted and is not shown again. Connections that use the secret get the new value at once.',
+  name: 'Name',
+  nameDescription: 'Lowercase letters, digits, dots and dashes.',
+  nameInvalid: 'Use lowercase letters, digits, dots and dashes, at most 63 characters.',
+  nameTaken: 'A secret with this name already exists. Replace its value in the table.',
+  value: 'Value',
+  valueDescription: 'Paste the value from the provider.',
+  valueMissing: 'Enter a value.',
+  valueTooLong: 'The value can be at most {max} characters.',
+  save: 'Save',
+  saved: 'The secret {name} is saved. The value is not shown again.',
+  saveFailed: 'Could not save the secret. Try again in a moment.',
+} satisfies Translation<typeof source>;

@@ -25,6 +25,7 @@ import { modelOperations as enModelOperations } from './en/modelOperations';
 import { modelParameters as enModelParameters } from './en/modelParameters';
 import { onboarding as enOnboarding } from './en/onboarding';
 import { operations as enOperations } from './en/operations';
+import { platformSecrets as enPlatformSecrets } from './en/platformSecrets';
 import { policies as enPolicies } from './en/policies';
 import { quality as enQuality } from './en/quality';
 import { qualityMatrix as enQualityMatrix } from './en/qualityMatrix';
@@ -60,6 +61,7 @@ import { modelOperations } from './nb/modelOperations';
 import { modelParameters } from './nb/modelParameters';
 import { onboarding } from './nb/onboarding';
 import { operations } from './nb/operations';
+import { platformSecrets } from './nb/platformSecrets';
 import { policies } from './nb/policies';
 import { quality } from './nb/quality';
 import { qualityMatrix } from './nb/qualityMatrix';
@@ -97,6 +99,7 @@ export const nb = defineCatalogue({
   modelParameters,
   onboarding,
   operations,
+  platformSecrets,
   policies,
   quality,
   qualityMatrix,
@@ -135,6 +138,7 @@ export const en = {
   modelParameters: enModelParameters,
   onboarding: enOnboarding,
   operations: enOperations,
+  platformSecrets: enPlatformSecrets,
   policies: enPolicies,
   quality: enQuality,
   qualityMatrix: enQualityMatrix,

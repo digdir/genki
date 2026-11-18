@@ -1591,7 +1591,37 @@ export const accessRoutes: RouteConfig[] = [
         z.object({ ref: z.string().openapi({ example: 'secret://platform/enhetsregisteret' }) }),
         'The reference',
       ),
-      400: problem('Missing value or reason, or an invalid name'),
+      400: problem('Missing or too long value, missing reason, or an invalid name'),
+      401: unauthorized,
+      403: operatorOnly,
+      413: problem('The request is too large'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/secrets',
+    summary:
+      'Platform secret names, whether each is stored, when it last changed and which catalog entries use it; never a value (operators)',
+    responses: {
+      200: json(
+        z.object({
+          data: z.array(
+            z.object({
+              name: z.string().openapi({ example: 'enhetsregisteret' }),
+              ref: z.string().openapi({ example: 'secret://platform/enhetsregisteret' }),
+              set: z.boolean(),
+              changedAt: z.string().optional(),
+              usedBy: z.array(
+                z.object({
+                  kind: z.string().openapi({ example: 'model-endpoint' }),
+                  id: z.string().openapi({ example: 'foundry' }),
+                }),
+              ),
+            }),
+          ),
+        }),
+        'Platform secrets',
+      ),
       401: unauthorized,
       403: operatorOnly,
     },
