@@ -1,4 +1,4 @@
-import { ChevronDownIcon, XMarkIcon } from '@navikt/aksel-icons';
+import { ChatIcon, ChevronDownIcon, XMarkIcon } from '@navikt/aksel-icons';
 import type { FlowInputCheck } from '../../data/flow-inputs';
 import {
   Alert,
@@ -98,6 +98,7 @@ import { TableColumnsEditor, type TableSpec } from './TableOutputEditor';
 import { VariantsEditor } from './VariantsEditor';
 import type { ApiClient } from '../../api';
 import { A2aChannel } from '../integrations/A2aChannel';
+import type { SetupArea } from './setup-diff';
 
 export interface OperationModelChoice {
   kind: string;
@@ -307,6 +308,23 @@ export const datasetName = (ref: string, names?: Map<string, string>) =>
 
 const toolName = (ref: string) => tools.find((x) => x.ref === ref)?.name ?? ref;
 
+const inputSummary = (t: T, s: ServiceSpec) =>
+  `${
+    inputChoiceIds
+      .filter((i) => inputChoiceOn(s, i))
+      .map((i) => labelOf(t, inputKeys, i))
+      .join(', ') || t('setup.nothingChosen')
+  }${s.input.fields?.length ? t('setup.formWithFields', { count: s.input.fields.length }) : ''}`;
+
+const outputSummary = (t: T, s: ServiceSpec) =>
+  s.output.kind === 'fields'
+    ? t('setup.outFields', { count: s.output.fields?.length ?? 0 })
+    : s.output.kind === 'document'
+      ? t('setup.outDocument', { template: s.output.template || '?' })
+      : s.output.kind === 'table'
+        ? t('setup.outTable')
+        : t(s.output.withSources ? 'setup.outAnswerSources' : 'setup.outAnswer');
+
 export const summaries = (
   t: T,
   d: ServiceDefinition,
@@ -334,20 +352,7 @@ export const summaries = (
     ]
       .filter(Boolean)
       .join(' · '),
-    io: `${
-      inputChoiceIds
-        .filter((i) => inputChoiceOn(s, i))
-        .map((i) => labelOf(t, inputKeys, i))
-        .join(', ') || t('setup.nothingChosen')
-    }${s.input.fields?.length ? t('setup.formWithFields', { count: s.input.fields.length }) : ''} → ${
-      s.output.kind === 'fields'
-        ? t('setup.outFields', { count: s.output.fields?.length ?? 0 })
-        : s.output.kind === 'document'
-          ? t('setup.outDocument', { template: s.output.template || '?' })
-          : s.output.kind === 'table'
-            ? t('setup.outTable')
-            : t(s.output.withSources ? 'setup.outAnswerSources' : 'setup.outAnswer')
-    }`,
+    io: `${inputSummary(t, s)} → ${outputSummary(t, s)}`,
     instructions: instructions
       ? `${(instructions.split('\n')[0] ?? '').slice(0, 90)}${instructions.length > 90 ? '…' : ''}`
       : (defaultInstructions(t, s) ?? t('setup.notWritten')),
@@ -382,6 +387,38 @@ export const summaries = (
         ...channelKeys.filter((x) => channelOn(s, x)).map((x) => labelOf(t, startKeys, x)),
         ...(frontends.length ? [t('setup.startFrontends', { names: frontends.join(', ') })] : []),
       ].join(', ') || t('setup.noStart'),
+  };
+};
+
+export const areaSummaries = (
+  t: T,
+  d: ServiceDefinition,
+  riskConfirmed: boolean,
+  catalog?: ModelChoice[],
+  datasetNames?: Map<string, string>,
+): Record<SetupArea, string> => {
+  const s = d.spec;
+  const sum = summaries(t, d, catalog, datasetNames);
+  const level = riskLabel(t, s.riskClass ?? '');
+  const own = Object.keys(s.settings ?? {}).length;
+  return {
+    purpose: s.purpose
+      ? `${s.purpose.slice(0, 60)}${s.purpose.length > 60 ? '…' : ''}`
+      : t('setupList.notWrittenPurpose'),
+    sources: sum.knowledge,
+    input: inputSummary(t, s),
+    result: outputSummary(t, s),
+    model: sum.model,
+    tools: sum.tools,
+    how: sum.how,
+    variants: sum.variants,
+    guards: sum.guards,
+    risk: level
+      ? t(riskConfirmed ? 'setupList.riskConfirmedSummary' : 'setupList.riskUnconfirmedSummary', {
+          level,
+        })
+      : t('setup.riskNotSet'),
+    limits: own ? t('setupList.limitsOwn', { count: own }) : t('setupList.limitsDefault'),
   };
 };
 
@@ -509,6 +546,9 @@ interface Props {
   readOnly?: boolean;
   api?: ApiClient | undefined;
   operationModels?: OperationModelChoice[] | undefined;
+  area?: SetupArea | undefined;
+  ask?: ((question: string) => void) | undefined;
+  modelNote?: ReactNode;
 }
 
 const pickClass = (on: boolean) => (on ? 'pick-card picked' : 'pick-card');
@@ -542,6 +582,9 @@ export const SetupTab = ({
   readOnly = false,
   api,
   operationModels = [],
+  area,
+  ask,
+  modelNote,
 }: Props) => {
   const t = useT();
   const userName = useUserName();
@@ -621,464 +664,412 @@ export const SetupTab = ({
     readOnly,
   });
 
-  return (
-    <div className="stack-sm">
-      {!sections || sections.includes('purpose') ? (
-        <p className="meta setup-intro">{t('setup.intro')}</p>
-      ) : null}
-
-      <Section {...props('purpose')}>
-        <Textfield
-          label={t('setup.name')}
-          id="felt-navn"
-          value={d.metadata.name ?? ''}
-          onChange={(e) => onRename(e.target.value)}
+  const nameField = (
+    <>
+      <Textfield
+        label={t('setup.name')}
+        id="felt-navn"
+        value={d.metadata.name ?? ''}
+        onChange={(e) => onRename(e.target.value)}
+      />
+    </>
+  );
+  const purposeField = (
+    <>
+      <Field>
+        <Label htmlFor="felt-formal">{t('setup.purpose')}</Label>
+        <Field.Description>{t('setup.purposeHelp')}</Field.Description>
+        <Textarea
+          id="felt-formal"
+          rows={2}
+          value={s.purpose}
+          onChange={(e) => patch({ purpose: e.target.value })}
         />
-        <Field>
-          <Label htmlFor="felt-formal">{t('setup.purpose')}</Label>
-          <Field.Description>{t('setup.purposeHelp')}</Field.Description>
-          <Textarea
-            id="felt-formal"
-            rows={2}
-            value={s.purpose}
-            onChange={(e) => patch({ purpose: e.target.value })}
+      </Field>
+    </>
+  );
+  const audienceField = (
+    <>
+      <fieldset className="chip-fieldset">
+        <legend className="ds-label">{t('setup.audience')}</legend>
+        <div className="tag-row">
+          {audienceIds.map((id) =>
+            offeredAudiences.has(id) ? (
+              <Chip.Checkbox
+                key={id}
+                checked={(s.audience as string[] | undefined)?.includes(id) ?? false}
+                onChange={() =>
+                  patch((cur) => {
+                    const audience = cur.spec.audience ?? [];
+                    return {
+                      audience: audience.includes(id as 'employees')
+                        ? audience.filter((a) => a !== id)
+                        : [...audience, id as 'employees'],
+                    };
+                  })
+                }
+              >
+                {labelOf(t, audienceKeys, id)}
+              </Chip.Checkbox>
+            ) : (
+              <Chip.Checkbox key={id} checked={false} aria-disabled="true" readOnly>
+                {t('setup.comingLater', { label: labelOf(t, audienceKeys, id) })}
+              </Chip.Checkbox>
+            ),
+          )}
+        </div>
+      </fieldset>
+    </>
+  );
+  const riskBody = (
+    <>
+      <fieldset className="plain-fieldset stack-xs">
+        <legend className="ds-label">{t('setup.prohibitedHeading')}</legend>
+        <p className="meta">{t('setup.prohibitedHelp')}</p>
+        {prohibitedUses.map((use, i) => (
+          <Checkbox
+            key={use}
+            label={prohibitedKeys[i] ? t(prohibitedKeys[i]) : use}
+            checked={!!prohibited[i]}
+            onChange={() => onProhibited(i)}
           />
-        </Field>
-        <fieldset className="chip-fieldset">
-          <legend className="ds-label">{t('setup.audience')}</legend>
-          <div className="tag-row">
-            {audienceIds.map((id) =>
-              offeredAudiences.has(id) ? (
-                <Chip.Checkbox
-                  key={id}
-                  checked={(s.audience as string[] | undefined)?.includes(id) ?? false}
-                  onChange={() =>
-                    patch((cur) => {
-                      const audience = cur.spec.audience ?? [];
-                      return {
-                        audience: audience.includes(id as 'employees')
-                          ? audience.filter((a) => a !== id)
-                          : [...audience, id as 'employees'],
-                      };
-                    })
-                  }
-                >
-                  {labelOf(t, audienceKeys, id)}
-                </Chip.Checkbox>
-              ) : (
-                <Chip.Checkbox key={id} checked={false} aria-disabled="true" readOnly>
-                  {t('setup.comingLater', { label: labelOf(t, audienceKeys, id) })}
-                </Chip.Checkbox>
-              ),
-            )}
-          </div>
-        </fieldset>
-        <fieldset className="plain-fieldset stack-xs">
-          <legend className="ds-label">{t('setup.prohibitedHeading')}</legend>
-          <p className="meta">{t('setup.prohibitedHelp')}</p>
-          {prohibitedUses.map((use, i) => (
-            <Checkbox
-              key={use}
-              label={prohibitedKeys[i] ? t(prohibitedKeys[i]) : use}
-              checked={!!prohibited[i]}
-              onChange={() => onProhibited(i)}
-            />
+        ))}
+      </fieldset>
+      {forbidden ? (
+        <Alert data-color="danger" data-size="sm">
+          {t('setup.forbidden')}
+        </Alert>
+      ) : null}
+      <div className="risk-proposal">
+        <span className="risk-proposal-title">
+          {t('setup.riskProposal', { level: t(high ? 'setup.riskHigh' : 'setup.riskLimited') })}
+        </span>
+        <ul className="bullets small">
+          {(high
+            ? [t('setup.riskReasonHigh1'), t('setup.riskReasonHigh2')]
+            : [t('setup.riskReasonLimited1'), t('setup.riskReasonLimited2')]
+          ).map((r) => (
+            <li key={r}>{r}</li>
           ))}
-        </fieldset>
-        {forbidden ? (
-          <Alert data-color="danger" data-size="sm">
-            {t('setup.forbidden')}
+        </ul>
+        <div className="row-wrap">
+          {riskConfirmed ? (
+            <Tag data-size="sm" data-color="success">
+              {t('setup.confirmedBy', { name: userName || t('setup.you') })}
+            </Tag>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                data-size="sm"
+                aria-disabled={forbidden || undefined}
+                onClick={() => !forbidden && onConfirmRisk()}
+              >
+                {t('setup.confirmRisk')}
+              </Button>
+              <span className="small">{t('setup.confirmFirst')}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <fieldset className="plain-fieldset stack-xs">
+        <legend className="ds-label">{t('setup.riskLevel')}</legend>
+        {riskClasses.map((id) => (
+          <div key={id} className={pickClass(s.riskClass === id)}>
+            <Radio
+              name="risiko"
+              label={t(riskKeys[id]?.[0] ?? 'setup.notChosen')}
+              description={t(riskKeys[id]?.[1] ?? 'setup.notChosen')}
+              checked={s.riskClass === id}
+              onChange={() => patch(withRisk(id))}
+            />
+          </div>
+        ))}
+        {high ? (
+          <Alert data-color="info" data-size="sm">
+            {t('setup.highRiskInfo')}
           </Alert>
         ) : null}
-        <div className="risk-proposal">
-          <span className="risk-proposal-title">
-            {t('setup.riskProposal', { level: t(high ? 'setup.riskHigh' : 'setup.riskLimited') })}
-          </span>
-          <ul className="bullets small">
-            {(high
-              ? [t('setup.riskReasonHigh1'), t('setup.riskReasonHigh2')]
-              : [t('setup.riskReasonLimited1'), t('setup.riskReasonLimited2')]
-            ).map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-          <div className="row-wrap">
-            {riskConfirmed ? (
-              <Tag data-size="sm" data-color="success">
-                {t('setup.confirmedBy', { name: userName || t('setup.you') })}
-              </Tag>
-            ) : (
-              <>
-                <Button
-                  variant="primary"
-                  data-size="sm"
-                  aria-disabled={forbidden || undefined}
-                  onClick={() => !forbidden && onConfirmRisk()}
-                >
-                  {t('setup.confirmRisk')}
-                </Button>
-                <span className="small">{t('setup.confirmFirst')}</span>
-              </>
-            )}
-          </div>
+      </fieldset>
+    </>
+  );
+  const inputBody = (
+    <>
+      <fieldset className="plain-fieldset stack-xs">
+        <legend className="ds-label">{t('setup.whatGoesIn')}</legend>
+        <div className="tag-row">
+          {inputChoiceIds.map((id) => (
+            <Chip.Checkbox
+              key={id}
+              checked={inputChoiceOn(s, id)}
+              onChange={() => patch((cur) => withInputChoice(cur.spec, id))}
+            >
+              {labelOf(t, inputKeys, id)}
+            </Chip.Checkbox>
+          ))}
         </div>
-        <fieldset className="plain-fieldset stack-xs">
-          <legend className="ds-label">{t('setup.riskLevel')}</legend>
-          {riskClasses.map((id) => (
-            <div key={id} className={pickClass(s.riskClass === id)}>
+        <Switch
+          label={t('setup.ocr')}
+          description={t('setup.ocrHelp')}
+          checked={s.input.ocr === true}
+          onChange={() =>
+            patch((cur) => ({ input: { ...cur.spec.input, ocr: cur.spec.input.ocr !== true } }))
+          }
+        />
+      </fieldset>
+      <InputFieldsEditor
+        fields={s.input.fields ?? []}
+        datasets={datasets.map((x) => x.dataset)}
+        onChange={(inputFields) =>
+          patch((cur) => ({
+            input: defined({ ...cur.spec.input, fields: inputFields }) as ServiceSpec['input'],
+          }))
+        }
+        {...(inputLockedIds ? { lockedIds: inputLockedIds } : {})}
+        flowCheck={flowCheck}
+        lookup={inputLookup}
+        serviceId={serviceId}
+        tenant={tenant ?? d.metadata.tenant}
+      />
+    </>
+  );
+  const outputBody = (
+    <>
+      <fieldset className="plain-fieldset stack-xs">
+        <legend className="ds-label">{t('setup.whatComesOut')}</legend>
+        <div className="pick-grid">
+          {(
+            [
+              ['answer', 'setup.outputAnswer', 'setup.outputAnswerDesc'],
+              ['fields', 'setup.outputFields', 'setup.outputFieldsDesc'],
+              ['document', 'setup.outputDocument', 'setup.outputDocumentDesc'],
+              ['table', 'setup.outputTable', 'setup.outputTableDesc'],
+            ] as const
+          ).map(([id, label, desc]) => (
+            <div key={id} className={pickClass(s.output.kind === id)}>
               <Radio
-                name="risiko"
-                label={t(riskKeys[id]?.[0] ?? 'setup.notChosen')}
-                description={t(riskKeys[id]?.[1] ?? 'setup.notChosen')}
-                checked={s.riskClass === id}
-                onChange={() => patch(withRisk(id))}
+                name="utdata"
+                label={t(label)}
+                description={t(desc)}
+                checked={s.output.kind === id}
+                disabled={id === 'table' && !tableAllowed && s.output.kind !== 'table'}
+                onChange={() => patch((cur) => withOutputKind(cur.spec, id))}
               />
             </div>
           ))}
-          {high ? (
-            <Alert data-color="info" data-size="sm">
-              {t('setup.highRiskInfo')}
-            </Alert>
-          ) : null}
-        </fieldset>
-      </Section>
-
-      <Section {...props('io')}>
-        <fieldset className="plain-fieldset stack-xs">
-          <legend className="ds-label">{t('setup.whatGoesIn')}</legend>
-          <div className="tag-row">
-            {inputChoiceIds.map((id) => (
-              <Chip.Checkbox
-                key={id}
-                checked={inputChoiceOn(s, id)}
-                onChange={() => patch((cur) => withInputChoice(cur.spec, id))}
-              >
-                {labelOf(t, inputKeys, id)}
-              </Chip.Checkbox>
-            ))}
-          </div>
-          <Switch
-            label={t('setup.ocr')}
-            description={t('setup.ocrHelp')}
-            checked={s.input.ocr === true}
-            onChange={() =>
-              patch((cur) => ({ input: { ...cur.spec.input, ocr: cur.spec.input.ocr !== true } }))
-            }
-          />
-        </fieldset>
-        <InputFieldsEditor
-          fields={s.input.fields ?? []}
-          datasets={datasets.map((x) => x.dataset)}
-          onChange={(inputFields) =>
+        </div>
+        {s.output.kind === 'table' && !tableAllowed ? (
+          <ValidationMessage>{t('setup.tableNeedsFlow')}</ValidationMessage>
+        ) : null}
+      </fieldset>
+      {s.output.kind === 'table' && tableAllowed ? (
+        <TableColumnsEditor
+          serviceId={serviceId}
+          table={s.output}
+          onChange={(table: TableSpec) =>
             patch((cur) => ({
-              input: defined({ ...cur.spec.input, fields: inputFields }) as ServiceSpec['input'],
+              output: defined({ ...cur.spec.output, ...table }) as ServiceSpec['output'],
             }))
           }
-          {...(inputLockedIds ? { lockedIds: inputLockedIds } : {})}
-          flowCheck={flowCheck}
-          lookup={inputLookup}
-          serviceId={serviceId}
-          tenant={tenant ?? d.metadata.tenant}
         />
-        <fieldset className="plain-fieldset stack-xs">
-          <legend className="ds-label">{t('setup.whatComesOut')}</legend>
-          <div className="pick-grid">
-            {(
-              [
-                ['answer', 'setup.outputAnswer', 'setup.outputAnswerDesc'],
-                ['fields', 'setup.outputFields', 'setup.outputFieldsDesc'],
-                ['document', 'setup.outputDocument', 'setup.outputDocumentDesc'],
-                ['table', 'setup.outputTable', 'setup.outputTableDesc'],
-              ] as const
-            ).map(([id, label, desc]) => (
-              <div key={id} className={pickClass(s.output.kind === id)}>
-                <Radio
-                  name="utdata"
-                  label={t(label)}
-                  description={t(desc)}
-                  checked={s.output.kind === id}
-                  disabled={id === 'table' && !tableAllowed && s.output.kind !== 'table'}
-                  onChange={() => patch((cur) => withOutputKind(cur.spec, id))}
-                />
+      ) : null}
+      {s.output.kind === 'fields' ? (
+        <div className="stack-xs">
+          <span className="ds-label" id="felter-h">
+            {t('setup.resultFields')}
+          </span>
+          <div role="group" aria-labelledby="felter-h" className="field-editor">
+            {narrow ? null : (
+              <div aria-hidden="true" className="field-row field-row-head">
+                <span>{t('setup.fieldName')}</span>
+                <span>{t('setup.fieldType')}</span>
+                <span>{t('setup.fieldDescription')}</span>
+                <span>{t('setup.fieldRequired')}</span>
+                <span />
               </div>
-            ))}
-          </div>
-          {s.output.kind === 'table' && !tableAllowed ? (
-            <ValidationMessage>{t('setup.tableNeedsFlow')}</ValidationMessage>
-          ) : null}
-        </fieldset>
-        {s.output.kind === 'table' && tableAllowed ? (
-          <TableColumnsEditor
-            serviceId={serviceId}
-            table={s.output}
-            onChange={(table: TableSpec) =>
-              patch((cur) => ({
-                output: defined({ ...cur.spec.output, ...table }) as ServiceSpec['output'],
-              }))
-            }
-          />
-        ) : null}
-        {s.output.kind === 'fields' ? (
-          <div className="stack-xs">
-            <span className="ds-label" id="felter-h">
-              {t('setup.resultFields')}
-            </span>
-            <div role="group" aria-labelledby="felter-h" className="field-editor">
-              {narrow ? null : (
-                <div aria-hidden="true" className="field-row field-row-head">
-                  <span>{t('setup.fieldName')}</span>
-                  <span>{t('setup.fieldType')}</span>
-                  <span>{t('setup.fieldDescription')}</span>
-                  <span>{t('setup.fieldRequired')}</span>
-                  <span />
-                </div>
-              )}
-              {fields.map((f, i) => (
-                <div key={i} className={narrow ? 'field-row narrow' : 'field-row'}>
-                  <Input
-                    data-size="sm"
-                    value={f.name}
-                    aria-label={t('setup.fieldNameLabel', { n: i + 1 })}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setFields((fs) => fs.map((x, j) => (j === i ? { ...x, name: v } : x)));
-                    }}
-                  />
-                  <Select
-                    data-size="sm"
-                    value={f.type}
-                    aria-label={t('setup.fieldTypeLabel', { n: i + 1, name: f.name })}
-                    onChange={(e) => {
-                      const v = e.target.value as OutputFieldType;
-                      setFields((fs) => fs.map((x, j) => (j === i ? { ...x, type: v } : x)));
-                    }}
-                  >
-                    {(Object.keys(fieldTypeKeys) as OutputFieldType[]).map((ft) => (
-                      <Select.Option key={ft} value={ft}>
-                        {t(fieldTypeKeys[ft])}
-                      </Select.Option>
-                    ))}
-                  </Select>
-                  <Input
-                    data-size="sm"
-                    value={f.description}
-                    aria-label={t('setup.fieldDescriptionLabel', { n: i + 1, name: f.name })}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setFields((fs) => fs.map((x, j) => (j === i ? { ...x, description: v } : x)));
-                    }}
-                  />
-                  <label className="field-required">
-                    <input
-                      className="ds-input"
-                      type="checkbox"
-                      checked={f.required !== false}
-                      aria-label={t('setup.fieldRequiredLabel', { n: i + 1, name: f.name })}
-                      onChange={() =>
-                        setFields((fs) =>
-                          fs.map((x, j) =>
-                            j !== i
-                              ? x
-                              : x.required === false
-                                ? required(x)
-                                : { ...x, required: false },
-                          ),
-                        )
-                      }
-                    />
-                    <span aria-hidden="true">
-                      {f.required !== false ? t('setup.yes') : t('setup.no')}
-                    </span>
-                  </label>
-                  <Button
-                    variant="tertiary"
-                    data-size="sm"
-                    icon
-                    aria-label={t('setup.removeFieldLabel', { name: f.name })}
-                    onClick={() => setFields((fs) => fs.filter((_x, j) => j !== i))}
-                  >
-                    <Icon icon={XMarkIcon} size={18} />
-                  </Button>
-                </div>
-              ))}
-              {fields.length === 0 ? (
-                <p className="meta field-empty">{t('setup.noFields')}</p>
-              ) : null}
-            </div>
-            <Button
-              variant="secondary"
-              data-size="sm"
-              className="align-start"
-              onClick={() =>
-                setFields((fs) => [
-                  ...fs,
-                  { name: t('setup.newFieldName'), type: 'string', description: '' },
-                ])
-              }
-            >
-              {t('setup.addField')}
-            </Button>
-            {conflict ? (
-              <Alert data-color="warning" data-size="sm">
-                {conflict}
-              </Alert>
-            ) : null}
-          </div>
-        ) : null}
-        {s.output.kind === 'answer' ? (
-          <Switch
-            label={t('setup.showSources')}
-            checked={s.output.withSources === true}
-            onChange={() =>
-              patch((cur) => ({
-                output: { ...cur.spec.output, withSources: cur.spec.output.withSources !== true },
-              }))
-            }
-          />
-        ) : null}
-        {s.output.kind === 'document' ? (
-          <Field className="narrow-field">
-            <Label htmlFor="felt-mal">{t('setup.docTemplate')}</Label>
-            <Select
-              id="felt-mal"
-              value={s.output.template ?? ''}
-              onChange={(e) => {
-                const template = e.target.value;
-                patch((cur) => ({ output: { ...cur.spec.output, template } }));
-              }}
-            >
-              {Object.keys(docTemplateKeys).map((name) => (
-                <Select.Option key={name} value={name}>
-                  {labelOf(t, docTemplateKeys, name)}
-                </Select.Option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-      </Section>
-
-      <Section {...props('instructions')}>
-        {(languageTabs ?? ((shared: ReactNode) => shared))(
-          <Field>
-            <Label htmlFor="felt-instr">{t('setup.instructionsLabel')}</Label>
-            <Field.Description>{t('setup.instructionsHelp')}</Field.Description>
-            {flowOf(s) ? (
-              <p className="meta">{t('setup.instructionsInFlowHelp', { flow: flowOf(s) ?? '' })}</p>
-            ) : s.strategy.id === 'remote-agent' ? (
-              <p className="meta">{t('setup.instructionsRemoteHelp')}</p>
-            ) : (
-              <>
-                {defaultInstructions(t, s) ? (
-                  <p className="meta">{t('setup.instructionsBuiltInHelp')}</p>
-                ) : null}
-                <Textarea
-                  id="felt-instr"
-                  rows={14}
-                  className="instructions-editor"
-                  value={instructions}
+            )}
+            {fields.map((f, i) => (
+              <div key={i} className={narrow ? 'field-row narrow' : 'field-row'}>
+                <Input
+                  data-size="sm"
+                  value={f.name}
+                  aria-label={t('setup.fieldNameLabel', { n: i + 1 })}
                   onChange={(e) => {
-                    const text = e.target.value;
-                    patch((cur) => withSharedInstructions(cur.spec, text));
+                    const v = e.target.value;
+                    setFields((fs) => fs.map((x, j) => (j === i ? { ...x, name: v } : x)));
                   }}
                 />
-                <span className="meta">
-                  {t('setup.characters', { count: instructions.length })}
-                </span>
-              </>
-            )}
-          </Field>,
-        )}
-        {flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
-          <BuiltInInstructions
-            strategy={s.strategy.id}
-            own={!!instructions || typeof s.strategy.config.instructions === 'object'}
-            onUse={
-              readOnly
-                ? undefined
-                : (text) => patch((cur) => withSharedInstructions(cur.spec, text))
-            }
-          />
-        )}
-        {instructionsAssist}
-        {takesOf(s.strategy.id).examples === 'no' ? null : (
-          <div className="stack-xs">
-            <span className="ds-label">{t('setup.examples')}</span>
-            {examples.map((e, i) => (
-              <div key={i} className="example-row">
-                <span>
-                  <strong>{t('setup.exampleIn')}</strong> {e.input}
-                </span>
-                <span>
-                  <strong>{t('setup.exampleOut')}</strong> {e.output}
-                </span>
+                <Select
+                  data-size="sm"
+                  value={f.type}
+                  aria-label={t('setup.fieldTypeLabel', { n: i + 1, name: f.name })}
+                  onChange={(e) => {
+                    const v = e.target.value as OutputFieldType;
+                    setFields((fs) => fs.map((x, j) => (j === i ? { ...x, type: v } : x)));
+                  }}
+                >
+                  {(Object.keys(fieldTypeKeys) as OutputFieldType[]).map((ft) => (
+                    <Select.Option key={ft} value={ft}>
+                      {t(fieldTypeKeys[ft])}
+                    </Select.Option>
+                  ))}
+                </Select>
+                <Input
+                  data-size="sm"
+                  value={f.description}
+                  aria-label={t('setup.fieldDescriptionLabel', { n: i + 1, name: f.name })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFields((fs) => fs.map((x, j) => (j === i ? { ...x, description: v } : x)));
+                  }}
+                />
+                <label className="field-required">
+                  <input
+                    className="ds-input"
+                    type="checkbox"
+                    checked={f.required !== false}
+                    aria-label={t('setup.fieldRequiredLabel', { n: i + 1, name: f.name })}
+                    onChange={() =>
+                      setFields((fs) =>
+                        fs.map((x, j) =>
+                          j !== i
+                            ? x
+                            : x.required === false
+                              ? required(x)
+                              : { ...x, required: false },
+                        ),
+                      )
+                    }
+                  />
+                  <span aria-hidden="true">
+                    {f.required !== false ? t('setup.yes') : t('setup.no')}
+                  </span>
+                </label>
                 <Button
                   variant="tertiary"
                   data-size="sm"
-                  aria-label={t('setup.removeExampleLabel', { n: i + 1 })}
-                  onClick={() =>
-                    patch((cur) =>
-                      withExamples(
-                        cur.spec,
-                        examplesOf(cur.spec).filter((_x, j) => j !== i),
-                      ),
-                    )
-                  }
+                  icon
+                  aria-label={t('setup.removeFieldLabel', { name: f.name })}
+                  onClick={() => setFields((fs) => fs.filter((_x, j) => j !== i))}
                 >
-                  {t('setup.remove')}
+                  <Icon icon={XMarkIcon} size={18} />
                 </Button>
               </div>
             ))}
-            <Button
-              variant="secondary"
-              data-size="sm"
-              className="align-start"
-              onClick={() =>
-                patch((cur) =>
-                  withExamples(cur.spec, [
-                    ...examplesOf(cur.spec),
-                    { input: t('setup.exampleInDefault'), output: t('setup.exampleOutDefault') },
-                  ]),
-                )
-              }
-            >
-              {t('setup.addExample')}
-            </Button>
+            {fields.length === 0 ? <p className="meta field-empty">{t('setup.noFields')}</p> : null}
           </div>
-        )}
-      </Section>
-
-      <Section {...props('knowledge')}>
-        {datasets.map((ref, i) => {
-          const shown = datasetName(ref.dataset, datasetNames);
-          const reranker = rerankerOf(s);
-          const filter = filterText(ref.filters);
-          return (
-            <div key={`${ref.dataset}-${i}`} className="item-row">
-              <span className="item-text">
-                <span className="item-name">{shown}</span>
-                <span className="meta">
-                  {[
-                    live
-                      ? shown === ref.dataset
-                        ? ''
-                        : ref.dataset
-                      : (exampleDatasets[ref.dataset]?.meta ?? ''),
-                    live && reranker ? t('setup.rerankedWith', { name: reranker }) : '',
-                    filter ? t('setup.defaultFilter', { filter }) : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>
+          <Button
+            variant="secondary"
+            data-size="sm"
+            className="align-start"
+            onClick={() =>
+              setFields((fs) => [
+                ...fs,
+                { name: t('setup.newFieldName'), type: 'string', description: '' },
+              ])
+            }
+          >
+            {t('setup.addField')}
+          </Button>
+          {conflict ? (
+            <Alert data-color="warning" data-size="sm">
+              {conflict}
+            </Alert>
+          ) : null}
+        </div>
+      ) : null}
+      {s.output.kind === 'answer' ? (
+        <Switch
+          label={t('setup.showSources')}
+          checked={s.output.withSources === true}
+          onChange={() =>
+            patch((cur) => ({
+              output: { ...cur.spec.output, withSources: cur.spec.output.withSources !== true },
+            }))
+          }
+        />
+      ) : null}
+      {s.output.kind === 'document' ? (
+        <Field className="narrow-field">
+          <Label htmlFor="felt-mal">{t('setup.docTemplate')}</Label>
+          <Select
+            id="felt-mal"
+            value={s.output.template ?? ''}
+            onChange={(e) => {
+              const template = e.target.value;
+              patch((cur) => ({ output: { ...cur.spec.output, template } }));
+            }}
+          >
+            {Object.keys(docTemplateKeys).map((name) => (
+              <Select.Option key={name} value={name}>
+                {labelOf(t, docTemplateKeys, name)}
+              </Select.Option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
+    </>
+  );
+  const instructionsBody = (
+    <>
+      {(languageTabs ?? ((shared: ReactNode) => shared))(
+        <Field>
+          <Label htmlFor="felt-instr">{t('setup.instructionsLabel')}</Label>
+          <Field.Description>{t('setup.instructionsHelp')}</Field.Description>
+          {flowOf(s) ? (
+            <p className="meta">{t('setup.instructionsInFlowHelp', { flow: flowOf(s) ?? '' })}</p>
+          ) : s.strategy.id === 'remote-agent' ? (
+            <p className="meta">{t('setup.instructionsRemoteHelp')}</p>
+          ) : (
+            <>
+              {defaultInstructions(t, s) ? (
+                <p className="meta">{t('setup.instructionsBuiltInHelp')}</p>
+              ) : null}
+              <Textarea
+                id="felt-instr"
+                rows={14}
+                className="instructions-editor"
+                value={instructions}
+                onChange={(e) => {
+                  const text = e.target.value;
+                  patch((cur) => withSharedInstructions(cur.spec, text));
+                }}
+              />
+              <span className="meta">{t('setup.characters', { count: instructions.length })}</span>
+            </>
+          )}
+        </Field>,
+      )}
+      {flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
+        <BuiltInInstructions
+          strategy={s.strategy.id}
+          own={!!instructions || typeof s.strategy.config.instructions === 'object'}
+          onUse={
+            readOnly ? undefined : (text) => patch((cur) => withSharedInstructions(cur.spec, text))
+          }
+        />
+      )}
+      {instructionsAssist}
+      {takesOf(s.strategy.id).examples === 'no' ? null : (
+        <div className="stack-xs">
+          <span className="ds-label">{t('setup.examples')}</span>
+          {examples.map((e, i) => (
+            <div key={i} className="example-row">
+              <span>
+                <strong>{t('setup.exampleIn')}</strong> {e.input}
+              </span>
+              <span>
+                <strong>{t('setup.exampleOut')}</strong> {e.output}
               </span>
               <Button
                 variant="tertiary"
                 data-size="sm"
-                aria-label={t('setup.removeDatasetLabel', { name: shown })}
+                aria-label={t('setup.removeExampleLabel', { n: i + 1 })}
                 onClick={() =>
                   patch((cur) =>
-                    withDatasets(
+                    withExamples(
                       cur.spec,
-                      datasetsOf(cur.spec).filter((_x, j) => j !== i),
+                      examplesOf(cur.spec).filter((_x, j) => j !== i),
                     ),
                   )
                 }
@@ -1086,510 +1077,680 @@ export const SetupTab = ({
                 {t('setup.remove')}
               </Button>
             </div>
-          );
-        })}
-        {datasets.length === 0 ? <p className="meta">{t('setup.noDatasets')}</p> : null}
-        {live ? (
-          <>
-            <Button
-              variant="secondary"
-              data-size="sm"
-              className="align-start"
-              aria-expanded={datasetPicker}
-              onClick={() => setDatasetPicker((x) => !x)}
-            >
-              {datasetPicker ? t('setup.closeDatasetList') : t('setup.addDataset')}
-            </Button>
-            {datasetPicker ? (
-              <DatasetPicker
-                state={live.datasets}
-                chosen={datasets.map((x) => x.dataset)}
-                onAdd={(o) =>
-                  patch((cur) =>
-                    withDatasets(cur.spec, [...datasetsOf(cur.spec), { dataset: o.id }]),
-                  )
-                }
-              />
-            ) : null}
-          </>
-        ) : (
+          ))}
           <Button
             variant="secondary"
             data-size="sm"
             className="align-start"
             onClick={() =>
               patch((cur) =>
-                withDatasets(cur.spec, [
-                  ...datasetsOf(cur.spec),
-                  { dataset: 'veiledere-og-rundskriv' },
+                withExamples(cur.spec, [
+                  ...examplesOf(cur.spec),
+                  { input: t('setup.exampleInDefault'), output: t('setup.exampleOutDefault') },
                 ]),
               )
             }
           >
-            {t('setup.addDataset')}
+            {t('setup.addExample')}
           </Button>
-        )}
-        <Switch
-          label={t('setup.runtimeDocs')}
-          description={t.rich('setup.runtimeDocsHelp', {
-            notDecided: (chunk) => <span className="not-decided-inline">{chunk}</span>,
-          })}
-          checked={s.knowledge?.runtimeDocuments === true}
-          onChange={() =>
-            patch((cur) =>
-              withRuntimeDocuments(cur.spec, cur.spec.knowledge?.runtimeDocuments !== true),
-            )
-          }
-        />
-      </Section>
-
-      <Section {...props('tools')}>
-        {live ? (
-          <LiveTools
-            state={live.tools}
-            chosen={toolRefs}
-            onAdd={(ref) => patch((cur) => withTool(cur.spec, ref, true))}
-            onRemove={(ref) => patch((cur) => withTool(cur.spec, ref, false))}
-          />
-        ) : null}
-        {live
-          ? null
-          : toolRefs.map((ref) => {
-              const tool = tools.find((x) => x.ref === ref);
-              if (!tool) return null;
-              return (
-                <div key={ref} className="item-row">
-                  <span className="item-text">
-                    <span className="tag-row">
-                      <span className="item-name">{tool.name}</span>
-                      <Tag data-size="sm" data-color="neutral">
-                        {tool.group}
-                      </Tag>
-                      <code className="meta">{tool.ref}</code>
-                    </span>
-                    <span className="small">
-                      <span className="meta">{t('setup.canReach')}</span> {tool.reach}
-                    </span>
-                  </span>
-                  <Button
-                    variant="tertiary"
-                    data-size="sm"
-                    aria-label={t('setup.removeToolLabel', { name: tool.name })}
-                    onClick={() => patch((cur) => withTool(cur.spec, ref, false))}
-                  >
-                    {t('setup.remove')}
-                  </Button>
-                </div>
-              );
-            })}
-        {!live && toolRefs.length === 0 ? <p className="meta">{t('setup.noTools')}</p> : null}
-        {live ? null : (
+        </div>
+      )}
+    </>
+  );
+  const knowledgeBody = (
+    <>
+      {datasets.map((ref, i) => {
+        const shown = datasetName(ref.dataset, datasetNames);
+        const reranker = rerankerOf(s);
+        const filter = filterText(ref.filters);
+        return (
+          <div key={`${ref.dataset}-${i}`} className="item-row">
+            <span className="item-text">
+              <span className="item-name">{shown}</span>
+              <span className="meta">
+                {[
+                  live
+                    ? shown === ref.dataset
+                      ? ''
+                      : ref.dataset
+                    : (exampleDatasets[ref.dataset]?.meta ?? ''),
+                  live && reranker ? t('setup.rerankedWith', { name: reranker }) : '',
+                  filter ? t('setup.defaultFilter', { filter }) : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </span>
+            <Button
+              variant="tertiary"
+              data-size="sm"
+              aria-label={t('setup.removeDatasetLabel', { name: shown })}
+              onClick={() =>
+                patch((cur) =>
+                  withDatasets(
+                    cur.spec,
+                    datasetsOf(cur.spec).filter((_x, j) => j !== i),
+                  ),
+                )
+              }
+            >
+              {t('setup.remove')}
+            </Button>
+          </div>
+        );
+      })}
+      {datasets.length === 0 ? <p className="meta">{t('setup.noDatasets')}</p> : null}
+      {live ? (
+        <>
           <Button
             variant="secondary"
             data-size="sm"
             className="align-start"
-            aria-expanded={catalog}
-            onClick={() => setCatalog((x) => !x)}
+            aria-expanded={datasetPicker}
+            onClick={() => setDatasetPicker((x) => !x)}
           >
-            {catalog ? t('setup.closeCatalogue') : t('setup.addToolFromCatalogue')}
+            {datasetPicker ? t('setup.closeDatasetList') : t('setup.addDataset')}
           </Button>
-        )}
-        {!live && catalog ? (
-          <div className="catalog">
-            {toolGroups.map((g) => (
-              <div key={g} className="stack-xs">
-                <h3 className="catalog-group">{labelOf(t, toolGroupKeys, g)}</h3>
-                {tools
-                  .filter((tool) => tool.group === g)
-                  .map((tool) => {
-                    const added = toolRefs.includes(tool.ref);
-                    return (
-                      <div key={tool.id} className="catalog-item">
-                        <span className="item-text">
-                          <span className="item-name">{tool.name}</span>
-                          <span className="meta">
-                            {t('setup.canReachWith', { reach: tool.reach })}
-                          </span>
-                        </span>
-                        <Button
-                          variant="secondary"
-                          data-size="sm"
-                          aria-disabled={added || undefined}
-                          aria-label={t('setup.addLabel', { name: tool.name })}
-                          onClick={() =>
-                            !added && patch((cur) => withTool(cur.spec, tool.ref, true))
-                          }
-                        >
-                          {added ? t('setup.added') : t('setup.add')}
-                        </Button>
-                      </div>
-                    );
-                  })}
+          {datasetPicker ? (
+            <DatasetPicker
+              state={live.datasets}
+              chosen={datasets.map((x) => x.dataset)}
+              onAdd={(o) =>
+                patch((cur) => withDatasets(cur.spec, [...datasetsOf(cur.spec), { dataset: o.id }]))
+              }
+            />
+          ) : null}
+        </>
+      ) : (
+        <Button
+          variant="secondary"
+          data-size="sm"
+          className="align-start"
+          onClick={() =>
+            patch((cur) =>
+              withDatasets(cur.spec, [
+                ...datasetsOf(cur.spec),
+                { dataset: 'veiledere-og-rundskriv' },
+              ]),
+            )
+          }
+        >
+          {t('setup.addDataset')}
+        </Button>
+      )}
+      <Switch
+        label={t('setup.runtimeDocs')}
+        description={t.rich('setup.runtimeDocsHelp', {
+          notDecided: (chunk) => <span className="not-decided-inline">{chunk}</span>,
+        })}
+        checked={s.knowledge?.runtimeDocuments === true}
+        onChange={() =>
+          patch((cur) =>
+            withRuntimeDocuments(cur.spec, cur.spec.knowledge?.runtimeDocuments !== true),
+          )
+        }
+      />
+    </>
+  );
+  const toolsBody = (
+    <>
+      {live ? (
+        <LiveTools
+          state={live.tools}
+          chosen={toolRefs}
+          onAdd={(ref) => patch((cur) => withTool(cur.spec, ref, true))}
+          onRemove={(ref) => patch((cur) => withTool(cur.spec, ref, false))}
+        />
+      ) : null}
+      {live
+        ? null
+        : toolRefs.map((ref) => {
+            const tool = tools.find((x) => x.ref === ref);
+            if (!tool) return null;
+            return (
+              <div key={ref} className="item-row">
+                <span className="item-text">
+                  <span className="tag-row">
+                    <span className="item-name">{tool.name}</span>
+                    <Tag data-size="sm" data-color="neutral">
+                      {tool.group}
+                    </Tag>
+                    <code className="meta">{tool.ref}</code>
+                  </span>
+                  <span className="small">
+                    <span className="meta">{t('setup.canReach')}</span> {tool.reach}
+                  </span>
+                </span>
+                <Button
+                  variant="tertiary"
+                  data-size="sm"
+                  aria-label={t('setup.removeToolLabel', { name: tool.name })}
+                  onClick={() => patch((cur) => withTool(cur.spec, ref, false))}
+                >
+                  {t('setup.remove')}
+                </Button>
               </div>
+            );
+          })}
+      {!live && toolRefs.length === 0 ? <p className="meta">{t('setup.noTools')}</p> : null}
+      {live ? null : (
+        <Button
+          variant="secondary"
+          data-size="sm"
+          className="align-start"
+          aria-expanded={catalog}
+          onClick={() => setCatalog((x) => !x)}
+        >
+          {catalog ? t('setup.closeCatalogue') : t('setup.addToolFromCatalogue')}
+        </Button>
+      )}
+      {!live && catalog ? (
+        <div className="catalog">
+          {toolGroups.map((g) => (
+            <div key={g} className="stack-xs">
+              <h3 className="catalog-group">{labelOf(t, toolGroupKeys, g)}</h3>
+              {tools
+                .filter((tool) => tool.group === g)
+                .map((tool) => {
+                  const added = toolRefs.includes(tool.ref);
+                  return (
+                    <div key={tool.id} className="catalog-item">
+                      <span className="item-text">
+                        <span className="item-name">{tool.name}</span>
+                        <span className="meta">
+                          {t('setup.canReachWith', { reach: tool.reach })}
+                        </span>
+                      </span>
+                      <Button
+                        variant="secondary"
+                        data-size="sm"
+                        aria-disabled={added || undefined}
+                        aria-label={t('setup.addLabel', { name: tool.name })}
+                        onClick={() => !added && patch((cur) => withTool(cur.spec, tool.ref, true))}
+                      >
+                        {added ? t('setup.added') : t('setup.add')}
+                      </Button>
+                    </div>
+                  );
+                })}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+  const howBody = (
+    <>
+      {strategy}
+      <fieldset className="plain-fieldset stack-xs">
+        <legend className="ds-label">{t('setup.improvement')}</legend>
+        <Switch
+          label={t('setup.improveLabel')}
+          description={t('setup.improveHelp')}
+          checked={improves(s, 'instructions')}
+          onChange={() =>
+            patch((cur) =>
+              withImprove(cur.spec, 'instructions', !improves(cur.spec, 'instructions')),
+            )
+          }
+        />
+      </fieldset>
+    </>
+  );
+  const modelBody = (
+    <>
+      <ModelPicker
+        models={pickerModels}
+        value={primary}
+        service={d.metadata.name ?? serviceId}
+        readOnly={readOnly}
+        onRetry={retryModels}
+        onChange={(id) => {
+          const choice = modelList.find((x) => x.id === id);
+          const picked =
+            pickerModels.status === 'ready'
+              ? pickerModels.data.find((x) => x.id === id)
+              : undefined;
+          patch((cur) =>
+            withModel(
+              cur.spec,
+              id,
+              choice ? residencyOfChoice(choice, !!modelCatalog) : picked?.residency,
+            ),
+          );
+        }}
+      />
+      {modelNote}
+      {operationLine.length ? (
+        <p className="meta">
+          {operationLine.join(' ')}{' '}
+          <Link asChild>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                const target = document.getElementById('setup-operation-models');
+                target?.scrollIntoView?.({ block: 'start' });
+                target?.querySelector('select')?.focus();
+              }}
+            >
+              {t('modelPicker.operationLink')}
+            </button>
+          </Link>
+        </p>
+      ) : null}
+      <Field className="narrow-field">
+        <Label htmlFor="felt-reserve">{t('setup.fallbackModel')}</Label>
+        <Field.Description>{t('setup.fallbackHelp')}</Field.Description>
+        <Select
+          id="felt-reserve"
+          value={s.model.fallback ?? ''}
+          onChange={(e) => {
+            const id = e.target.value;
+            patch((cur) => withFallback(cur.spec, id));
+          }}
+        >
+          <Select.Option value="">{t('setup.noFallback')}</Select.Option>
+          {modelList.map((x) => (
+            <Select.Option key={x.id} value={x.id}>
+              {x.name} ({modelWord(t, x.where)})
+            </Select.Option>
+          ))}
+        </Select>
+      </Field>
+      {fallbackWarn ? (
+        <Alert data-color="warning" data-size="sm">
+          {fallbackWarn}
+        </Alert>
+      ) : null}
+      {operationModels.length ? (
+        <fieldset id="setup-operation-models" className="plain-fieldset stack-xs">
+          <legend className="ds-label">{t('setup.operationModels')}</legend>
+          <p className="meta">{t('setup.operationModelsHelp')}</p>
+          {operationModels.map(({ kind, models: offered }) => {
+            const name = kindName(kind);
+            const chosen = s.model.operations?.[kind] ?? '';
+            return (
+              <Field key={kind} className="narrow-field">
+                <Label htmlFor={`felt-operasjon-${kind}`}>
+                  {t('setup.operationModelFor', { kind: name })}
+                </Label>
+                {offered.length ? null : (
+                  <Field.Description>
+                    {t('setup.operationModelNone', { kind: name })}
+                  </Field.Description>
+                )}
+                <Select
+                  id={`felt-operasjon-${kind}`}
+                  value={chosen}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    patch((cur) => withOperationModel(cur.spec, kind, id));
+                  }}
+                >
+                  <Select.Option value="">{t('setup.operationModelMain')}</Select.Option>
+                  {chosen && !offered.some((x) => x.id === chosen) ? (
+                    <Select.Option value={chosen}>{chosen}</Select.Option>
+                  ) : null}
+                  {offered.map((x) => (
+                    <Select.Option key={x.id} value={x.id}>
+                      {x.name} ({modelWord(t, x.where)})
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Field>
+            );
+          })}
+        </fieldset>
+      ) : null}
+    </>
+  );
+  const variantsBody = (
+    <>
+      <VariantsEditor
+        serviceId={serviceId}
+        publicName={publicName}
+        variants={variantsOf(s)}
+        models={modelList}
+        service={{ strategy: s.strategy.id, config: s.strategy.config }}
+        model={primary}
+        onChange={(variants) => patch({ variants })}
+        api={api}
+        tenant={tenant}
+        dataset={datasets[0]?.dataset}
+      />
+    </>
+  );
+  const guardsBody = (
+    <>
+      <span className="meta">
+        {t('setup.guardDefaults', {
+          level: (riskLabel(t, s.riskClass ?? '') ?? t('setup.notSet')).toLowerCase(),
+        })}
+      </span>
+      {conflict ? (
+        <Alert data-color="warning" data-size="sm">
+          {conflict}
+        </Alert>
+      ) : null}
+      <Switch
+        label={t('setup.piiBefore')}
+        description={t('setup.piiBeforeHelp')}
+        checked={guardOn(s, 'pii-before-model')}
+        onChange={() => toggleGuard('pii-before-model')}
+      />
+      <Switch
+        label={t('setup.piiLog')}
+        description={t('setup.piiLogHelp')}
+        checked={guardOn(s, 'pii-out-of-log')}
+        onChange={() => toggleGuard('pii-out-of-log')}
+      />
+      <Switch
+        label={t('setup.requireSources')}
+        description={
+          s.output.kind === 'fields'
+            ? t('setup.requireSourcesFields')
+            : t('setup.requireSourcesHelp')
+        }
+        checked={guardOn(s, 'require-sources')}
+        aria-disabled={s.output.kind === 'fields' || undefined}
+        readOnly={s.output.kind === 'fields'}
+        onChange={() => s.output.kind !== 'fields' && toggleGuard('require-sources')}
+      />
+      <div className="stack-xs">
+        <Label htmlFor="felt-avsla">{t('setup.refuseTopics')}</Label>
+        <div className="tag-row">
+          {refuse.map((r) => (
+            <Chip.Removable
+              key={r}
+              aria-label={t('setup.removeTopicLabel', { topic: r })}
+              onClick={() =>
+                patch((cur) =>
+                  withRefuseTopics(
+                    cur.spec,
+                    refuseTopicsOf(cur.spec).filter((x) => x !== r),
+                  ),
+                )
+              }
+            >
+              {r}
+            </Chip.Removable>
+          ))}
+        </div>
+        <div className="inline-add">
+          <Input
+            id="felt-avsla"
+            data-size="sm"
+            value={refuseInput}
+            placeholder={t('setup.refusePlaceholder')}
+            onChange={(e) => setRefuseInput(e.target.value)}
+          />
+          <Button
+            variant="secondary"
+            data-size="sm"
+            onClick={() => {
+              const v = refuseInput.trim();
+              if (!v) return;
+              patch((cur) => withRefuseTopics(cur.spec, [...refuseTopicsOf(cur.spec), v]));
+              setRefuseInput('');
+            }}
+          >
+            {t('setup.add')}
+          </Button>
+        </div>
+      </div>
+      <Field className="narrow-field">
+        <Label htmlFor="felt-sprak">{t('setup.resultLanguage')}</Label>
+        <Select
+          id="felt-sprak"
+          value={languageModeOf(s)}
+          onChange={(e) => {
+            const mode = e.target.value as LanguageMode;
+            patch((cur) => withLanguageMode(cur.spec, mode));
+          }}
+        >
+          <Select.Option value="nb">{t('setup.langNb')}</Select.Option>
+          <Select.Option value="nn">{t('setup.langNn')}</Select.Option>
+          <Select.Option value="en">{t('setup.langEn')}</Select.Option>
+          <Select.Option value="same">{t('setup.langSame')}</Select.Option>
+        </Select>
+      </Field>
+      <Switch
+        label={t('setup.humanApproval')}
+        description={high ? t('setup.humanHigh') : t('setup.humanHelp')}
+        checked={guardOn(s, 'human-approval') || high}
+        aria-disabled={high || undefined}
+        readOnly={high}
+        onChange={() => !high && toggleGuard('human-approval')}
+      />
+      {guardrails}
+    </>
+  );
+  const startBody = (
+    <>
+      {channelGroups.map(([group, keys]) => (
+        <fieldset key={group} className="chip-fieldset">
+          <legend className="ds-label">{labelOf(t, startGroupKeys, group)}</legend>
+          <div className="tag-row">
+            {keys.map((id) => (
+              <Chip.Checkbox
+                key={id}
+                checked={channelOn(s, id)}
+                onChange={() => patch((cur) => withChannel(cur.spec, id, !channelOn(cur.spec, id)))}
+              >
+                {labelOf(t, startKeys, id)}
+              </Chip.Checkbox>
             ))}
           </div>
-        ) : null}
-      </Section>
-
-      <Section {...props('how')}>
-        {strategy}
-        <fieldset className="plain-fieldset stack-xs">
-          <legend className="ds-label">{t('setup.improvement')}</legend>
-          <Switch
-            label={t('setup.improveLabel')}
-            description={t('setup.improveHelp')}
-            checked={improves(s, 'instructions')}
-            onChange={() =>
-              patch((cur) =>
-                withImprove(cur.spec, 'instructions', !improves(cur.spec, 'instructions')),
-              )
-            }
-          />
         </fieldset>
-      </Section>
-
-      <Section {...props('model')}>
-        <ModelPicker
-          models={pickerModels}
-          value={primary}
-          service={d.metadata.name ?? serviceId}
-          readOnly={readOnly}
-          onRetry={retryModels}
-          onChange={(id) => {
-            const choice = modelList.find((x) => x.id === id);
-            const picked =
-              pickerModels.status === 'ready'
-                ? pickerModels.data.find((x) => x.id === id)
-                : undefined;
-            patch((cur) =>
-              withModel(
-                cur.spec,
-                id,
-                choice ? residencyOfChoice(choice, !!modelCatalog) : picked?.residency,
-              ),
-            );
+      ))}
+      {frontends ? (
+        <p className="meta">
+          {frontends.length
+            ? t('setup.registeredFrontends', { names: frontends.join(', ') })
+            : t('setup.noFrontends')}
+        </p>
+      ) : null}
+      {channelOn(s, 'a2a') ? (
+        <A2aChannel
+          name={d.metadata.name ?? ''}
+          purpose={s.purpose}
+          publicName={publicName || defaultPublicName(serviceId)}
+          hasInputForm={!!s.input.fields?.length}
+        />
+      ) : null}
+      {channelOn(s, 'a2a') ? (
+        <Switch
+          label={t('setup.publicCard')}
+          description={t('setup.publicCardHelp')}
+          checked={s.exposure?.a2aPublicCard === true}
+          onChange={() =>
+            patch((cur) => withPublicCard(cur.spec, cur.spec.exposure?.a2aPublicCard !== true))
+          }
+        />
+      ) : null}
+      {folder !== undefined ? (
+        <Textfield
+          className="narrow-field"
+          id="felt-mappe"
+          label={t('setup.folder')}
+          description={t('setup.folderHelp')}
+          value={folder}
+          onChange={(e) => {
+            const value = e.target.value;
+            patch((cur) => withTrigger(cur.spec, { kind: 'document-arrives', folder: value }));
           }}
         />
-        {operationLine.length ? (
-          <p className="meta">
-            {operationLine.join(' ')}{' '}
-            <Link asChild>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => {
-                  const target = document.getElementById('setup-operation-models');
-                  target?.scrollIntoView?.({ block: 'start' });
-                  target?.querySelector('select')?.focus();
-                }}
-              >
-                {t('modelPicker.operationLink')}
-              </button>
-            </Link>
-          </p>
-        ) : null}
+      ) : null}
+      {queue !== undefined ? (
+        <Textfield
+          className="narrow-field"
+          id="felt-ko"
+          label={t('setup.queue')}
+          description={t('setup.queueHelp')}
+          value={queue}
+          onChange={(e) => {
+            const value = e.target.value;
+            patch((cur) => withTrigger(cur.spec, { kind: 'queue-message', queue: value }));
+          }}
+        />
+      ) : null}
+      {cron !== undefined ? (
         <Field className="narrow-field">
-          <Label htmlFor="felt-reserve">{t('setup.fallbackModel')}</Label>
-          <Field.Description>{t('setup.fallbackHelp')}</Field.Description>
+          <Label htmlFor="felt-tidsplan">{t('setup.schedule')}</Label>
           <Select
-            id="felt-reserve"
-            value={s.model.fallback ?? ''}
+            id="felt-tidsplan"
+            value={preset ?? 'custom'}
             onChange={(e) => {
-              const id = e.target.value;
-              patch((cur) => withFallback(cur.spec, id));
-            }}
-          >
-            <Select.Option value="">{t('setup.noFallback')}</Select.Option>
-            {modelList.map((x) => (
-              <Select.Option key={x.id} value={x.id}>
-                {x.name} ({modelWord(t, x.where)})
-              </Select.Option>
-            ))}
-          </Select>
-        </Field>
-        {fallbackWarn ? (
-          <Alert data-color="warning" data-size="sm">
-            {fallbackWarn}
-          </Alert>
-        ) : null}
-        {operationModels.length ? (
-          <fieldset id="setup-operation-models" className="plain-fieldset stack-xs">
-            <legend className="ds-label">{t('setup.operationModels')}</legend>
-            <p className="meta">{t('setup.operationModelsHelp')}</p>
-            {operationModels.map(({ kind, models: offered }) => {
-              const name = kindName(kind);
-              const chosen = s.model.operations?.[kind] ?? '';
-              return (
-                <Field key={kind} className="narrow-field">
-                  <Label htmlFor={`felt-operasjon-${kind}`}>
-                    {t('setup.operationModelFor', { kind: name })}
-                  </Label>
-                  {offered.length ? null : (
-                    <Field.Description>
-                      {t('setup.operationModelNone', { kind: name })}
-                    </Field.Description>
-                  )}
-                  <Select
-                    id={`felt-operasjon-${kind}`}
-                    value={chosen}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      patch((cur) => withOperationModel(cur.spec, kind, id));
-                    }}
-                  >
-                    <Select.Option value="">{t('setup.operationModelMain')}</Select.Option>
-                    {chosen && !offered.some((x) => x.id === chosen) ? (
-                      <Select.Option value={chosen}>{chosen}</Select.Option>
-                    ) : null}
-                    {offered.map((x) => (
-                      <Select.Option key={x.id} value={x.id}>
-                        {x.name} ({modelWord(t, x.where)})
-                      </Select.Option>
-                    ))}
-                  </Select>
-                </Field>
+              const value = e.target.value;
+              if (value === 'custom') return;
+              patch((cur) =>
+                withTrigger(cur.spec, {
+                  kind: 'schedule',
+                  cron: schedulePresets[value as SchedulePreset],
+                }),
               );
-            })}
-          </fieldset>
-        ) : null}
-      </Section>
-
-      <Section {...props('variants')}>
-        <VariantsEditor
-          serviceId={serviceId}
-          publicName={publicName}
-          variants={variantsOf(s)}
-          models={modelList}
-          service={{ strategy: s.strategy.id, config: s.strategy.config }}
-          model={primary}
-          onChange={(variants) => patch({ variants })}
-          api={api}
-          tenant={tenant}
-          dataset={datasets[0]?.dataset}
-        />
-      </Section>
-
-      <Section {...props('guards')}>
-        <span className="meta">
-          {t('setup.guardDefaults', {
-            level: (riskLabel(t, s.riskClass ?? '') ?? t('setup.notSet')).toLowerCase(),
-          })}
-        </span>
-        {conflict ? (
-          <Alert data-color="warning" data-size="sm">
-            {conflict}
-          </Alert>
-        ) : null}
-        <Switch
-          label={t('setup.piiBefore')}
-          description={t('setup.piiBeforeHelp')}
-          checked={guardOn(s, 'pii-before-model')}
-          onChange={() => toggleGuard('pii-before-model')}
-        />
-        <Switch
-          label={t('setup.piiLog')}
-          description={t('setup.piiLogHelp')}
-          checked={guardOn(s, 'pii-out-of-log')}
-          onChange={() => toggleGuard('pii-out-of-log')}
-        />
-        <Switch
-          label={t('setup.requireSources')}
-          description={
-            s.output.kind === 'fields'
-              ? t('setup.requireSourcesFields')
-              : t('setup.requireSourcesHelp')
-          }
-          checked={guardOn(s, 'require-sources')}
-          aria-disabled={s.output.kind === 'fields' || undefined}
-          readOnly={s.output.kind === 'fields'}
-          onChange={() => s.output.kind !== 'fields' && toggleGuard('require-sources')}
-        />
-        <div className="stack-xs">
-          <Label htmlFor="felt-avsla">{t('setup.refuseTopics')}</Label>
-          <div className="tag-row">
-            {refuse.map((r) => (
-              <Chip.Removable
-                key={r}
-                aria-label={t('setup.removeTopicLabel', { topic: r })}
-                onClick={() =>
-                  patch((cur) =>
-                    withRefuseTopics(
-                      cur.spec,
-                      refuseTopicsOf(cur.spec).filter((x) => x !== r),
-                    ),
-                  )
-                }
-              >
-                {r}
-              </Chip.Removable>
-            ))}
-          </div>
-          <div className="inline-add">
-            <Input
-              id="felt-avsla"
-              data-size="sm"
-              value={refuseInput}
-              placeholder={t('setup.refusePlaceholder')}
-              onChange={(e) => setRefuseInput(e.target.value)}
-            />
-            <Button
-              variant="secondary"
-              data-size="sm"
-              onClick={() => {
-                const v = refuseInput.trim();
-                if (!v) return;
-                patch((cur) => withRefuseTopics(cur.spec, [...refuseTopicsOf(cur.spec), v]));
-                setRefuseInput('');
-              }}
-            >
-              {t('setup.add')}
-            </Button>
-          </div>
-        </div>
-        <Field className="narrow-field">
-          <Label htmlFor="felt-sprak">{t('setup.resultLanguage')}</Label>
-          <Select
-            id="felt-sprak"
-            value={languageModeOf(s)}
-            onChange={(e) => {
-              const mode = e.target.value as LanguageMode;
-              patch((cur) => withLanguageMode(cur.spec, mode));
             }}
           >
-            <Select.Option value="nb">{t('setup.langNb')}</Select.Option>
-            <Select.Option value="nn">{t('setup.langNn')}</Select.Option>
-            <Select.Option value="en">{t('setup.langEn')}</Select.Option>
-            <Select.Option value="same">{t('setup.langSame')}</Select.Option>
+            {preset ? null : (
+              <Select.Option value="custom">{t('setup.schedulePublished', { cron })}</Select.Option>
+            )}
+            <Select.Option value="nightly">{t('setup.scheduleNightly')}</Select.Option>
+            <Select.Option value="hourly">{t('setup.scheduleHourly')}</Select.Option>
+            <Select.Option value="monday">{t('setup.scheduleMonday')}</Select.Option>
           </Select>
         </Field>
-        <Switch
-          label={t('setup.humanApproval')}
-          description={high ? t('setup.humanHigh') : t('setup.humanHelp')}
-          checked={guardOn(s, 'human-approval') || high}
-          aria-disabled={high || undefined}
-          readOnly={high}
-          onChange={() => !high && toggleGuard('human-approval')}
+      ) : null}
+      {channelOn(s, 'api') || channelOn(s, 'mcp') || channelOn(s, 'openai') ? (
+        <Textfield
+          className="narrow-field"
+          id="felt-offentlig"
+          label={t('setup.publicName')}
+          description={t('setup.publicNameHelp')}
+          value={publicName}
+          onChange={(e) => {
+            const value = e.target.value;
+            patch((cur) => withPublicName(cur.spec, value));
+          }}
         />
-        {guardrails}
+      ) : null}
+      {!channelKeys.some((x) => channelOn(s, x)) && !frontends?.length ? (
+        <Alert data-color="info" data-size="sm">
+          {t('setup.noChannel')}
+        </Alert>
+      ) : null}
+    </>
+  );
+
+  if (area) {
+    const askButton = (question: PlainKey) =>
+      ask ? (
+        <Button
+          variant="secondary"
+          data-size="sm"
+          className="align-start"
+          onClick={() => ask(t(question))}
+        >
+          <Icon icon={ChatIcon} />
+          {t(question)}
+        </Button>
+      ) : null;
+    const flat = (() => {
+      switch (area) {
+        case 'purpose':
+          return (
+            <>
+              {nameField}
+              {purposeField}
+              {askButton('setupList.askGoal')}
+              {audienceField}
+              {instructionsBody}
+            </>
+          );
+        case 'sources':
+          return (
+            <>
+              {askButton('setupList.askSources')}
+              {knowledgeBody}
+            </>
+          );
+        case 'input':
+          return (
+            <>
+              {askButton('setupList.askInput')}
+              {inputBody}
+              <p className="meta">{t('setupList.inputLooksNote')}</p>
+            </>
+          );
+        case 'result':
+          return (
+            <>
+              {outputBody}
+              {askButton('setupList.askOutcome')}
+            </>
+          );
+        case 'model':
+          return modelBody;
+        case 'tools':
+          return toolsBody;
+        case 'how':
+          return howBody;
+        case 'variants':
+          return variantsBody;
+        case 'guards':
+          return guardsBody;
+        case 'risk':
+          return riskBody;
+        default:
+          return null;
+      }
+    })();
+    return (
+      <div className="stack setup-area-body">
+        {readOnly ? (
+          <fieldset disabled className="setup-readonly stack">
+            {flat}
+          </fieldset>
+        ) : (
+          flat
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack-sm">
+      {!sections || sections.includes('purpose') ? (
+        <p className="meta setup-intro">{t('setup.intro')}</p>
+      ) : null}
+
+      <Section {...props('purpose')}>
+        {nameField}
+        {purposeField}
+        {audienceField}
+        {riskBody}
       </Section>
 
-      <Section {...props('start')}>
-        {channelGroups.map(([group, keys]) => (
-          <fieldset key={group} className="chip-fieldset">
-            <legend className="ds-label">{labelOf(t, startGroupKeys, group)}</legend>
-            <div className="tag-row">
-              {keys.map((id) => (
-                <Chip.Checkbox
-                  key={id}
-                  checked={channelOn(s, id)}
-                  onChange={() =>
-                    patch((cur) => withChannel(cur.spec, id, !channelOn(cur.spec, id)))
-                  }
-                >
-                  {labelOf(t, startKeys, id)}
-                </Chip.Checkbox>
-              ))}
-            </div>
-          </fieldset>
-        ))}
-        {frontends ? (
-          <p className="meta">
-            {frontends.length
-              ? t('setup.registeredFrontends', { names: frontends.join(', ') })
-              : t('setup.noFrontends')}
-          </p>
-        ) : null}
-        {channelOn(s, 'a2a') ? (
-          <A2aChannel
-            name={d.metadata.name ?? ''}
-            purpose={s.purpose}
-            publicName={publicName || defaultPublicName(serviceId)}
-            hasInputForm={!!s.input.fields?.length}
-          />
-        ) : null}
-        {channelOn(s, 'a2a') ? (
-          <Switch
-            label={t('setup.publicCard')}
-            description={t('setup.publicCardHelp')}
-            checked={s.exposure?.a2aPublicCard === true}
-            onChange={() =>
-              patch((cur) => withPublicCard(cur.spec, cur.spec.exposure?.a2aPublicCard !== true))
-            }
-          />
-        ) : null}
-        {folder !== undefined ? (
-          <Textfield
-            className="narrow-field"
-            id="felt-mappe"
-            label={t('setup.folder')}
-            description={t('setup.folderHelp')}
-            value={folder}
-            onChange={(e) => {
-              const value = e.target.value;
-              patch((cur) => withTrigger(cur.spec, { kind: 'document-arrives', folder: value }));
-            }}
-          />
-        ) : null}
-        {queue !== undefined ? (
-          <Textfield
-            className="narrow-field"
-            id="felt-ko"
-            label={t('setup.queue')}
-            description={t('setup.queueHelp')}
-            value={queue}
-            onChange={(e) => {
-              const value = e.target.value;
-              patch((cur) => withTrigger(cur.spec, { kind: 'queue-message', queue: value }));
-            }}
-          />
-        ) : null}
-        {cron !== undefined ? (
-          <Field className="narrow-field">
-            <Label htmlFor="felt-tidsplan">{t('setup.schedule')}</Label>
-            <Select
-              id="felt-tidsplan"
-              value={preset ?? 'custom'}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === 'custom') return;
-                patch((cur) =>
-                  withTrigger(cur.spec, {
-                    kind: 'schedule',
-                    cron: schedulePresets[value as SchedulePreset],
-                  }),
-                );
-              }}
-            >
-              {preset ? null : (
-                <Select.Option value="custom">
-                  {t('setup.schedulePublished', { cron })}
-                </Select.Option>
-              )}
-              <Select.Option value="nightly">{t('setup.scheduleNightly')}</Select.Option>
-              <Select.Option value="hourly">{t('setup.scheduleHourly')}</Select.Option>
-              <Select.Option value="monday">{t('setup.scheduleMonday')}</Select.Option>
-            </Select>
-          </Field>
-        ) : null}
-        {channelOn(s, 'api') || channelOn(s, 'mcp') || channelOn(s, 'openai') ? (
-          <Textfield
-            className="narrow-field"
-            id="felt-offentlig"
-            label={t('setup.publicName')}
-            description={t('setup.publicNameHelp')}
-            value={publicName}
-            onChange={(e) => {
-              const value = e.target.value;
-              patch((cur) => withPublicName(cur.spec, value));
-            }}
-          />
-        ) : null}
-        {!channelKeys.some((x) => channelOn(s, x)) && !frontends?.length ? (
-          <Alert data-color="info" data-size="sm">
-            {t('setup.noChannel')}
-          </Alert>
-        ) : null}
+      <Section {...props('io')}>
+        {inputBody}
+        {outputBody}
       </Section>
+
+      <Section {...props('instructions')}>{instructionsBody}</Section>
+
+      <Section {...props('knowledge')}>{knowledgeBody}</Section>
+
+      <Section {...props('tools')}>{toolsBody}</Section>
+
+      <Section {...props('how')}>{howBody}</Section>
+
+      <Section {...props('model')}>{modelBody}</Section>
+
+      <Section {...props('variants')}>{variantsBody}</Section>
+
+      <Section {...props('guards')}>{guardsBody}</Section>
+
+      <Section {...props('start')}>{startBody}</Section>
     </div>
   );
 };

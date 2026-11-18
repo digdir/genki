@@ -123,15 +123,20 @@ describe('buttons the person has no right for', () => {
     expect(
       await screen.findByRole('heading', { name: 'Du ser tjenesten uten å kunne endre den' }),
     ).toBeTruthy();
-    const toggles = [...document.querySelectorAll<HTMLButtonElement>('.setup-toggle')];
-    expect(toggles.length).toBeGreaterThan(0);
-    for (const toggle of toggles)
-      if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
-    const editable = document.querySelectorAll(
-      '.setup-body input:not(:disabled), .setup-body textarea:not(:disabled)',
-    );
-    expect(document.querySelectorAll('.setup-readonly').length).toBeGreaterThan(0);
-    expect(editable.length).toBe(0);
+    const nav = screen.getByRole('navigation', { name: 'Deler av oppsettet' });
+    fireEvent.click(within(nav).getByRole('button', { name: /^Avansert/ }));
+    const areas = within(nav)
+      .getAllByRole('button')
+      .filter((b) => b.classList.contains('setup-nav-item'));
+    expect(areas.length).toBeGreaterThan(4);
+    for (const area of areas) {
+      fireEvent.click(area);
+      const editable = document.querySelectorAll(
+        '.setup-area-body input:not(:disabled), .setup-area-body textarea:not(:disabled)',
+      );
+      expect(editable.length).toBe(0);
+    }
+    expect(screen.queryByRole('region', { name: 'Utkast' })?.querySelector('button')).toBeFalsy();
     expect(calls.some((c) => c.startsWith('PUT') && c.includes('/draft'))).toBe(false);
   });
 

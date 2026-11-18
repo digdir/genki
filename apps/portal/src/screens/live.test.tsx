@@ -495,8 +495,8 @@ describe('live service page', () => {
       ((await screen.findByLabelText(new RegExp(`^${field}`))) as HTMLInputElement).value,
     ).toBe(value);
     expect(
-      screen.getByRole('button', {
-        name: new RegExp(`^Arbeidsmåte\\s*${name.replace(/[()]/g, '\\$&')}`),
+      within(screen.getByRole('navigation', { name: 'Deler av oppsettet' })).getByRole('button', {
+        name: new RegExp(`^Arbeidsmåte.*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
       }),
     ).toBeTruthy();
   });

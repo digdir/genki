@@ -9,6 +9,7 @@ import { assistantStates } from '../../data/services';
 import { exampleTestSets, mockFetch } from '../../mock';
 import type { AssistantMockOptions } from '../../mock/assistant';
 import { expectAccessible, go, renderAt } from '../../test-utils';
+import { openArea, setupNav } from './setup-areas.test-utils';
 
 beforeEach(() => {
   window.location.hash = '';
@@ -68,10 +69,7 @@ const say = (panel: HTMLElement, text: string) => {
 const instructions = () =>
   screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement;
 
-const openInstructions = () => {
-  const toggle = screen.getByRole('button', { name: /^Instruksjoner/ });
-  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
-};
+const openInstructions = () => openArea(/^Formål og målgruppe/);
 
 const settled = (panel: HTMLElement) =>
   waitFor(() => expect(panel.querySelector('.stream-cursor')).toBeNull(), slow);
@@ -235,7 +233,9 @@ describe('builder assistant', () => {
     expect(within(card).queryByText('Fra assistenten')).toBeNull();
     await waitFor(() => expect(instructions().value).toContain('Slå opp søkeren'));
     expect(
-      within(screen.getByRole('button', { name: /^Instruksjoner/ })).getByText('Fra assistenten'),
+      within(within(setupNav()).getByRole('button', { name: /^Formål og målgruppe/ })).getByText(
+        'Fra assistenten',
+      ),
     ).toBeTruthy();
     fireEvent.click(
       within(panel).getByRole('button', {
@@ -332,8 +332,7 @@ describe('builder assistant', () => {
         posts.find((p) => /\/definitions$/.test(p.url))?.body as { definition?: unknown },
       ).toMatchObject({ definition: flow }),
     );
-    const toggle = screen.getByRole('button', { name: /^Varianter/ });
-    if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+    openArea(/^Varianter/);
     expect(await screen.findByRole('heading', { level: 3, name: 'Kort svar' })).toBeTruthy();
   });
 
