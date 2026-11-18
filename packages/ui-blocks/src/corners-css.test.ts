@@ -51,6 +51,14 @@ describe('the corners of the blocks', () => {
         '--dsc-button-border-radius: var(--genai-shell-toggle-radius, var(--ds-border-radius-xl))',
       ],
       [
+        ".uib-shell[data-frame='cards'] .uib-shell-rail :is(a, button) {",
+        '--dsc-button-border-radius: var(--genai-shell-rail-button-radius, var(--ds-border-radius-xl))',
+      ],
+      [
+        '.uib-shell-profile-rail {',
+        '--dsc-button-border-radius: var(--genai-shell-rail-button-radius, var(--ds-border-radius-xl))',
+      ],
+      [
         '.uib-conversation-question {',
         '--dsc-card-border-radius: var(--genai-conversation-question-border-radius, var(--ds-border-radius-xl))',
       ],

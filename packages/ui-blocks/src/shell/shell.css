@@ -722,6 +722,7 @@
 
   /* As big as the panel's own button, the design's 44 in a card. */
   .uib-shell[data-frame='cards'] .uib-shell-rail :is(a, button) {
+    --dsc-button-border-radius: var(--genai-shell-rail-button-radius, var(--ds-border-radius-xl));
     --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
   }
 
@@ -764,6 +765,7 @@
 
   /* On a rail, the avatar alone, on a button as big as the panel's. */
   .uib-shell-profile-rail {
+    --dsc-button-border-radius: var(--genai-shell-rail-button-radius, var(--ds-border-radius-xl));
     --dsc-button-size: var(--genai-shell-rail-button-size, var(--ds-size-11));
   }
 
