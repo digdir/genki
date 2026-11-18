@@ -294,6 +294,13 @@ export const withSettings = <C>(registry: SettingsRegistry, inner: Strategy<C>):
     : {}),
 });
 
+export const tenantSampleRate =
+  (registry: Pick<SettingsRegistry, 'effective'>) =>
+  (tenant: string): number | undefined => {
+    const rate = registry.effective(tenant)['tracing.sampleRate']?.value;
+    return typeof rate === 'number' ? rate : undefined;
+  };
+
 export const showSourcesSetting = 'answers.showSources';
 const sourcesMime = 'application/vnd.genai.sources+json';
 

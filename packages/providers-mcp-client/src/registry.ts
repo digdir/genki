@@ -148,7 +148,6 @@ export interface ConnectionRegistry {
   get(tenant: string, id: string): Promise<ConnectionState | undefined>;
   list(tenant: string): Promise<ConnectionState[]>;
   save(state: ConnectionState): Promise<void>;
-  /** Reads, changes and saves one connection as one step, so no other write lands in between. */
   update(
     tenant: string,
     id: string,

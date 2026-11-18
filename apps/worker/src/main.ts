@@ -66,6 +66,7 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
+import { workerTraceDeps } from './traces.js';
 import {
   copyListing,
   copyOwner,
@@ -644,7 +645,7 @@ const traces = process.env.TRACES_ENDPOINT
         content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
-      { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-worker' },
+      workerTraceDeps({ secrets, tasks: async (id) => (await tasks.get(id))?.task, settings }),
     )
   : undefined;
 log('traces', { enabled: Boolean(traces) });

@@ -61,6 +61,7 @@ import {
   ownedByPlatformTenant,
   platformTenantFrom,
   keepRunningOnRejection,
+  tenantSampleRate,
 } from '@genai/composition';
 import { buildTimeOf, createApp } from './app.js';
 import { defaultSlowRequestMs } from './request-timing.js';
@@ -352,10 +353,7 @@ const traces = process.env.TRACES_ENDPOINT
         secrets,
         tasks: async (id) => (await tasks.get(id))?.task,
         serviceName: 'genai-api',
-        sampleRateFor: (tenant) => {
-          const rate = settings.effective(tenant)['tracing.sampleRate']?.value;
-          return typeof rate === 'number' ? rate : undefined;
-        },
+        sampleRateFor: (tenant) => tenantSampleRate(settings)(tenant),
       },
     )
   : undefined;
