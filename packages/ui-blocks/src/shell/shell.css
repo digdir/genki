@@ -636,22 +636,34 @@
     white-space: nowrap;
   }
 
-  /* Three or more (dev-verktoy-3): a button as wide as the panel, on the tinted ground. */
+  /* Three or more (dev-verktoy-3): a button as wide as the panel, on the tinted ground. Neutral,
+     not the host's family: Designsystemet's colours carry meaning, and this is navigation, not the
+     page's main action. Every state is named, so none falls back to the Button's accent. */
   .uib-shell-tools-trigger {
     --dsc-button-background: var(
-      --genai-shell-tools-tinted-background,
-      var(--ds-color-surface-tinted)
+      --genai-shell-tools-trigger-background,
+      var(--ds-color-neutral-surface-tinted)
     );
     --dsc-button-background--hover: var(
-      --genai-shell-tools-tinted-hover-background,
-      var(--ds-color-surface-hover)
+      --genai-shell-tools-trigger-hover-background,
+      var(--ds-color-neutral-surface-hover)
     );
     --dsc-button-background--active: var(
-      --genai-shell-tools-tinted-active-background,
-      var(--ds-color-surface-active)
+      --genai-shell-tools-trigger-active-background,
+      var(--ds-color-neutral-surface-active)
     );
-    --dsc-button-color: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
-    --dsc-button-color--hover: var(--genai-shell-tools-tinted-color, var(--ds-color-text-default));
+    --dsc-button-color: var(
+      --genai-shell-tools-trigger-color,
+      var(--ds-color-neutral-text-default)
+    );
+    --dsc-button-color--hover: var(
+      --genai-shell-tools-trigger-color,
+      var(--ds-color-neutral-text-default)
+    );
+    --dsc-button-color--active: var(
+      --genai-shell-tools-trigger-color,
+      var(--ds-color-neutral-text-default)
+    );
 
     justify-content: start;
     gap: var(--genai-shell-tools-tinted-gap, var(--ds-size-2));
@@ -665,12 +677,12 @@
   /* Pressed or with its menu open, the active surface; hover is for the pointer only. */
   .uib-shell-tools-trigger[aria-expanded='true'] {
     --dsc-button-background: var(
-      --genai-shell-tools-tinted-active-background,
-      var(--ds-color-surface-active)
+      --genai-shell-tools-trigger-active-background,
+      var(--ds-color-neutral-surface-active)
     );
     --dsc-button-background--hover: var(
-      --genai-shell-tools-tinted-active-background,
-      var(--ds-color-surface-active)
+      --genai-shell-tools-trigger-active-background,
+      var(--ds-color-neutral-surface-active)
     );
   }
 

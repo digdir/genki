@@ -55,6 +55,11 @@ const neutralPins = [
   '--genai-shell-tools-tab-hover-background',
   '--genai-shell-tools-tab-selected-background',
   '--genai-shell-tools-tabs-background',
+  // The tools' dropdown button: navigation, not the main action, so neutral in every state.
+  '--genai-shell-tools-trigger-active-background',
+  '--genai-shell-tools-trigger-background',
+  '--genai-shell-tools-trigger-color',
+  '--genai-shell-tools-trigger-hover-background',
 ];
 
 describe('the Shell styles', () => {
@@ -223,12 +228,38 @@ describe('the Shell styles', () => {
   it('draw the tools’ dropdown button pressed or open on the active surface, hover only under the pointer (dev-verktoy-3)', () => {
     const open = css.slice(css.indexOf(".uib-shell-tools-trigger[aria-expanded='true'] {"));
     expect(open.slice(0, open.indexOf('}'))).toContain(
-      '--dsc-button-background: var(--genai-shell-tools-tinted-active-background, var(--ds-color-surface-active));',
+      '--dsc-button-background: var(--genai-shell-tools-trigger-active-background, var(--ds-color-neutral-surface-active));',
     );
     const trigger = css.slice(css.indexOf('.uib-shell-tools-trigger {'));
     expect(trigger.slice(0, trigger.indexOf('}'))).toContain(
-      '--dsc-button-background--active: var(--genai-shell-tools-tinted-active-background, var(--ds-color-surface-active));',
+      '--dsc-button-background--active: var(--genai-shell-tools-trigger-active-background, var(--ds-color-neutral-surface-active));',
     );
+  });
+
+  it('draw the tools’ dropdown button in neutral in every state, never in the Button’s accent', () => {
+    const rules = [
+      '.uib-shell-tools-trigger {',
+      ".uib-shell-tools-trigger[aria-expanded='true'] {",
+    ].map((start) => {
+      const from = css.slice(css.indexOf(start));
+      return from.slice(0, from.indexOf('}'));
+    });
+    const trigger = rules[0] ?? '';
+    for (const [name, token] of [
+      ['--dsc-button-background', 'surface-tinted'],
+      ['--dsc-button-background--hover', 'surface-hover'],
+      ['--dsc-button-background--active', 'surface-active'],
+      ['--dsc-button-color', 'text-default'],
+      ['--dsc-button-color--hover', 'text-default'],
+      ['--dsc-button-color--active', 'text-default'],
+    ]) {
+      expect(trigger).toMatch(
+        new RegExp(`${name}: var\\([^;]*var\\(--ds-color-neutral-${token}\\)\\);`),
+      );
+    }
+    for (const rule of rules) {
+      expect(rule).not.toMatch(/accent|--ds-color-(surface|text|base)-/);
+    }
   });
 
   it('keep what a rail shows at its bottom out of the top row', () => {
