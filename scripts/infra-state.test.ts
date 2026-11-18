@@ -15,13 +15,56 @@ const hasJq = (() => {
   }
 })();
 
-const built = (settings: object, generator = '0.49.2', resources: object[] = []) => {
+type Fake = {
+  settings?: object;
+  generator?: string;
+  resources?: object[];
+  appsResources?: object[];
+  appName?: string;
+};
+const built = ({
+  settings = { postgresSkuName: { value: 'B1ms' }, cpu: { value: '0.5' } },
+  generator = '0.49.2',
+  resources = [],
+  appsResources = [
+    {
+      type: 'Microsoft.App/containerApps',
+      name: 'api',
+      properties: { configuration: { ingress: { external: true } } },
+    },
+  ],
+  appName = "[format('{0}-api', parameters('name'))]",
+}: Fake = {}) => {
   const stamp = { _generator: { name: 'bicep', version: generator } };
   return JSON.stringify({
     parametersJson: JSON.stringify({ parameters: settings }),
     templateJson: JSON.stringify({
       metadata: stamp,
-      resources: [{ name: 'module', properties: { template: { metadata: stamp } } }, ...resources],
+      parameters: { postgresSkuName: { type: 'string' }, cpu: { type: 'string' } },
+      resources: [
+        {
+          type: 'Microsoft.Resources/deployments',
+          name: 'postgres',
+          properties: {
+            parameters: { skuName: { value: "[parameters('postgresSkuName')]" } },
+            template: { metadata: stamp },
+          },
+        },
+        {
+          type: 'Microsoft.Resources/deployments',
+          name: 'containerapps',
+          properties: {
+            parameters: { name: { value: 'genai-test' }, cpu: { value: "[parameters('cpu')]" } },
+            template: {
+              metadata: stamp,
+              parameters: { name: { type: 'string' }, cpu: { type: 'string' } },
+              resources: appsResources,
+              outputs: { appName: { type: 'string', value: appName } },
+            },
+          },
+        },
+        ...resources,
+      ],
     }),
   });
 };
@@ -33,7 +76,7 @@ describe.skipIf(process.platform === 'win32' || (!hasJq && !process.env.CI))(
   () => {
     let dir = '';
     let fingerprint = '';
-    const settings = built({ minReplicas: { value: 1 } });
+    const settings = built();
     const state = (params: string, found: string, force?: string) => {
       const out = execFileSync(
         script,
@@ -86,12 +129,55 @@ exit 1
     });
 
     it('applies it when a setting changed', () => {
-      const changed = built({ minReplicas: { value: 2 } });
+      const changed = built({
+        settings: { postgresSkuName: { value: 'D2ds' }, cpu: { value: '0.5' } },
+      });
       expect(state(changed, newest('Succeeded', fingerprint)).infrastructure).toBe('true');
     });
 
     it('applies it when only the template changed', () => {
-      const changed = built({ minReplicas: { value: 1 } }, '0.49.2', [{ name: 'added' }]);
+      const changed = built({ resources: [{ name: 'added' }] });
+      expect(state(changed, newest('Succeeded', fingerprint)).infrastructure).toBe('true');
+    });
+
+    it('skips it when only a setting the container apps alone read changed', () => {
+      const changed = built({
+        settings: { postgresSkuName: { value: 'B1ms' }, cpu: { value: '1' } },
+      });
+      expect(state(changed, newest('Succeeded', fingerprint)).infrastructure).toBe('false');
+    });
+
+    it('skips it when only the container apps module changed inside', () => {
+      const changed = built({
+        appsResources: [
+          {
+            type: 'Microsoft.App/containerApps',
+            name: 'api',
+            properties: {
+              configuration: { ingress: { external: true } },
+              template: { replicas: 2 },
+            },
+          },
+        ],
+      });
+      expect(state(changed, newest('Succeeded', fingerprint)).infrastructure).toBe('false');
+    });
+
+    it('applies it when an output of the container apps module that infra reads changed', () => {
+      const changed = built({ appName: "[format('{0}-platform-api', parameters('name'))]" });
+      expect(state(changed, newest('Succeeded', fingerprint)).infrastructure).toBe('true');
+    });
+
+    it('applies it when a container app’s ingress changed, since the alerts and DNS follow its host', () => {
+      const changed = built({
+        appsResources: [
+          {
+            type: 'Microsoft.App/containerApps',
+            name: 'api',
+            properties: { configuration: { ingress: { external: false } } },
+          },
+        ],
+      });
       expect(state(changed, newest('Succeeded', fingerprint)).infrastructure).toBe('true');
     });
 
@@ -100,9 +186,7 @@ exit 1
     });
 
     it('keeps the fingerprint when only the Bicep version changed, in every module', () => {
-      expect(state(built({ minReplicas: { value: 1 } }, '0.50.0'), 'null').fingerprint).toBe(
-        fingerprint,
-      );
+      expect(state(built({ generator: '0.50.0' }), 'null').fingerprint).toBe(fingerprint);
     });
 
     it('reads the newest full deploy of main.bicep, failed or not, never a deploy of the apps alone', () => {
@@ -116,3 +200,12 @@ exit 1
     });
   },
 );
+
+it('names the container apps module as the fingerprint expects', () => {
+  const template = readFileSync(join(import.meta.dirname, '../infra/main.bicep'), 'utf8');
+  const filter = readFileSync(join(import.meta.dirname, 'infra-fingerprint.jq'), 'utf8');
+  expect(template).toMatch(
+    /module apps 'modules\/containerapps\.bicep' = \{\n {2}name: 'containerapps'\n/,
+  );
+  expect(filter).toContain('.name == "containerapps"');
+});

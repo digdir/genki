@@ -30,7 +30,7 @@ jobs:
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - id: scope
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          BASE: ${{ github.event.pull_request.base.sha || '' }}
         run: node scripts/ci-scope.ts $BASE
 
   static:
@@ -75,7 +75,7 @@ jobs:
       - id: changed
         if: needs.scope.outputs.tests == 'changed'
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if git merge-base --is-ancestor "$BASE" HEAD; then
             echo "since=$BASE" >> "$GITHUB_OUTPUT"

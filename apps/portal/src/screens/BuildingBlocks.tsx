@@ -1,7 +1,7 @@
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import { blockPath, type BlockKind } from '../api/building-blocks';
-import { navigate, useAsync, type Route } from '../hooks';
+import { navigate, parseRoute, useAsync, type Route } from '../hooks';
 import { useT } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
@@ -216,7 +216,8 @@ export const BuildingBlocks = (props: ScreenProps) => {
 
   const search = route.query.toString();
   useEffect(() => {
-    setTyped(filtersOf(route));
+    const now = parseRoute(window.location.hash);
+    if (now.path === route.path && now.query.toString() === search) setTyped(filtersOf(route));
   }, [search, kind]);
 
   useEffect(() => {

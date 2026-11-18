@@ -8,10 +8,9 @@ force=${3:-false}
 
 hash() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; }
 
-# The template and its resolved settings, without the Bicep version stamps (_generator).
+# What a full deploy adds to an apps-only one: the template and settings, minus the container apps behind their outputs.
 fingerprint=$(az bicep build-params --file "$params" --stdout |
-  jq -S '{parameters: (.parametersJson | fromjson), template: (.templateJson | fromjson)}
-    | walk(if type == "object" then del(._generator) else . end)' |
+  jq -S -f "$(dirname "$0")/infra-fingerprint.jq" |
   hash | cut -d' ' -f1)
 
 # The newest deploy of main.bicep that applied, or tried to apply, the whole template, whether it succeeded or not.

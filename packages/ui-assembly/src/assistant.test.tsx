@@ -4626,6 +4626,21 @@ describe('the assistant in English', () => {
     expect(words().filter((text) => norwegian.test(text))).toEqual([]);
   });
 
+  it('names the tab in the same commit that draws the thread', async () => {
+    history.replaceState(null, '', '/?t=t-old');
+    const titleWhenDrawn = new Promise<string>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('.uib-answer')?.textContent?.includes('Reporting is fixed'))
+          return;
+        observer.disconnect();
+        resolve(document.title);
+      });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
+    drawEnglish(state('knowledge-assistant').layout);
+    expect(await titleWhenDrawn).toBe('An old thread – KA');
+  });
+
   it('draws every word of the builder’s own arrangements in the reader’s language', async () => {
     const layout = placeIn(
       placeIn(turnOn(state('knowledge-assistant'), 'document-view'), 'filter', 'main'),

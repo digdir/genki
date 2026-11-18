@@ -35,7 +35,7 @@ describe('support access and audit in English', () => {
     vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await open('#/audit');
     expect(await screen.findByRole('heading', { name: 'Audit' })).toBeTruthy();
-    expect(screen.getByLabelText('Organisation')).toBeTruthy();
+    expect(await screen.findByLabelText('Organisation')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Export (CSV)' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Audit log' })).toBeTruthy();
   });
