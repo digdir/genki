@@ -607,6 +607,7 @@ const platform = await createPlatform({
 const admin = createAdmin({
   platformTenant,
   store: platform.definitions,
+  lifecycle: platform.lifecycle,
   plugins: platform.plugins,
   settings,
   models: platform.models,

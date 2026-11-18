@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { serviceArchivedType } from './archived-services.js';
-import { digdir, klarsprak, setup } from './testkit.js';
+import { refusedAsArchived, serviceArchivedType } from './archived-services.js';
+import { appendVersion } from './config-store.js';
+import { serviceLifecycleKind } from './service-lifecycle.js';
+import { bootPlatform, digdir, files, klarsprak, setup, testService } from './testkit.js';
 
 const archivedKlarsprak = async (tenant: string, service: string) => ({
   state: tenant === digdir && service === 'klarsprak' ? 'archived' : 'active',
@@ -61,5 +63,101 @@ describe('archived services', () => {
 
     expect(res.status).not.toBe(409);
     expect(anonymous.status).not.toBe(409);
+  });
+
+  describe('import', () => {
+    type Json = Record<string, unknown>;
+    const twoServices = async () => {
+      const archived = new Set<string>();
+      const env = setup({
+        lifecycle: async (tenant, service) => ({
+          state: archived.has(`${tenant}/${service}`) ? 'archived' : 'active',
+        }),
+      });
+      await env.publish('kari', klarsprak());
+      await env.publish(
+        'kari',
+        klarsprak({ id: 'klartekst', variants: [{ id: 'default', publicName: 'klartekst' }] }),
+      );
+      const exported = (await (await env.send(`/tenants/${digdir}/export`, 'kari')).json()) as {
+        definitions: { definition: Json; files: Json }[];
+      };
+      const changed = {
+        ...exported,
+        definitions: exported.definitions.map((d) => ({
+          ...d,
+          definition: {
+            ...d.definition,
+            spec: { ...(d.definition.spec as Json), purpose: 'Et nytt formål for tjenesten' },
+          },
+        })),
+      };
+      archived.add(`${digdir}/klarsprak`);
+      return { ...env, changed };
+    };
+
+    it('import with overwrite refuses an archived service and imports nothing', async () => {
+      const { send, store, changed } = await twoServices();
+
+      const refused = await send(`/tenants/${digdir}/import?onConflict=overwrite`, 'kari', {
+        body: changed,
+        reason: 'henter inn en eksport',
+      });
+
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({
+        type: serviceArchivedType,
+        errors: [expect.objectContaining({ path: 'Service:klarsprak.lifecycle' })],
+      });
+      expect((await store.get('Service', digdir, 'klarsprak'))?.version).toBe(1);
+      expect((await store.get('Service', digdir, 'klartekst'))?.version).toBe(1);
+    });
+
+    it('a dry run of the import names the archived service', async () => {
+      const { send, changed } = await twoServices();
+
+      const dry = await send(`/tenants/${digdir}/import?onConflict=overwrite&dryRun=true`, 'kari', {
+        body: changed,
+        reason: 'henter inn en eksport',
+      });
+
+      expect(dry.status).toBe(409);
+      expect(((await dry.json()) as { type: string }).type).toBe(serviceArchivedType);
+    });
+
+    it('an import that skips conflicts leaves the archived service alone', async () => {
+      const { send, store, changed } = await twoServices();
+
+      const skipped = await send(`/tenants/${digdir}/import?onConflict=skip`, 'kari', {
+        body: changed,
+        reason: 'henter inn en eksport',
+      });
+
+      expect(skipped.status).toBe(200);
+      expect((await store.get('Service', digdir, 'klarsprak'))?.version).toBe(1);
+    });
+  });
+
+  it('every publish through the platform store refuses an archived service, whichever route calls it', async () => {
+    const { platform, configEntries } = await bootPlatform({ services: ['arkivert'] });
+    await appendVersion(configEntries, {
+      kind: serviceLifecycleKind,
+      scope: digdir,
+      id: 'arkivert',
+      spec: { state: 'archived' },
+      deleted: false,
+      by: 'employee:test:kari',
+      reason: 'Erstattet av en annen tjeneste',
+    });
+
+    const result = await platform.definitions.publish(
+      testService('arkivert'),
+      'employee:test:kari',
+      'ny versjon',
+      files,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && refusedAsArchived(result.errors)).toBe(true);
   });
 });

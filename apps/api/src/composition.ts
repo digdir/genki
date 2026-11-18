@@ -317,6 +317,7 @@ import { createKeyPoliciesModule } from './key-policies.js';
 import { maskinportenClientsModule } from './maskinporten-clients.js';
 import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
+import { archivedPublishRefusal } from './archived-services.js';
 import {
   allowedEnvironments,
   chooseEnvironment,
@@ -1675,6 +1676,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ];
   };
 
+  const serviceLifecycle = (tenant: string, service: string) =>
+    lifecycleOf(configEntries, tenant, service);
   const compiled = compiledCapabilityCache(() => store.capabilities());
   const resync = async () => {
     compiled.invalidate();
@@ -1688,6 +1691,8 @@ export const createPlatform = async (input: PlatformInput) => {
       resolve: (...args) => store.resolve(...args),
       capabilities: () => compiled.get(),
       publish: async (...args) => {
+        const archived = await archivedPublishRefusal(args[0], serviceLifecycle);
+        if (archived) return archived;
         const problems = await checkBeforePublish(args[0], args[1]);
         if (problems) return { ok: false, errors: problems };
         const result = await store.publish(...args);

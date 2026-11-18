@@ -1,4 +1,5 @@
 import { isHiddenAuditTarget } from './internal-services.js';
+import { refusedAsArchived, serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
@@ -576,7 +577,10 @@ const routes = {
         content: problemContent,
         description: `Not allowed for this tenant; ${shareOperatorOnlyType}: the bundle changes a service's spec.availableTo, which only operators change; or ${operatorOnlySettingType}: the bundle sets or pins a limit only an operator changes for a tenant`,
       },
-      409: conflict,
+      409: {
+        content: problemContent,
+        description: `Changed elsewhere since it was read; or ${serviceArchivedType}: the bundle would publish a new version of an archived service, and nothing is imported (errors name the service)`,
+      },
       422: problems[422],
       404: problems[404],
     },
@@ -1190,6 +1194,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         check: admin.importCheck(acting),
       });
       if (!plan.ok && plan.operatorOnly) return operatorOnlyRefused(c, plan.errors);
+      if (!plan.ok && refusedAsArchived(plan.errors)) return serviceArchived(c, plan.errors);
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);
     }
@@ -1198,6 +1203,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     if (!result.ok && result.conflict) return conflicted(c);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === serviceArchivedType) return serviceArchived(c, result.errors);
     if (!result.ok && result.type === operatorOnlySettingType)
       return operatorOnlyRefused(c, result.errors);
     if (!result.ok) return problem(c, 422, 'Invalid bundle', { errors: result.errors });

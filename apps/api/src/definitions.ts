@@ -1,10 +1,5 @@
 import { publishRefusals } from './internal-services.js';
-import {
-  isArchived,
-  serviceArchived,
-  serviceArchivedType,
-  type LifecycleOf,
-} from './archived-services.js';
+import { serviceArchived, serviceArchivedType } from './archived-services.js';
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import {
@@ -48,7 +43,6 @@ export interface DefinitionsApiOptions {
   names?: ActorNames;
   now?: () => Date;
   registered?: (tenant: string) => Promise<boolean>;
-  lifecycle?: LifecycleOf;
 }
 
 const kinds = { services: 'Service', 'step-flows': 'StepFlow', skills: 'Skill' } as const;
@@ -410,8 +404,6 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
       return problem(c, 422, 'Invalid definition', { errors: unconfirmed });
 
     const service = validated.definition.kind === 'Service' ? validated.definition.metadata.id : '';
-    if (service && (await isArchived(options.lifecycle, tenant, service)))
-      return serviceArchived(c);
     const fromDraft = service !== '' && (await draftRevisionOf(c)) !== undefined;
     const behind = fromDraft ? await options.drafts?.outdated(tenant, service) : undefined;
     if (behind)
@@ -441,6 +433,7 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     c.header('genai-task', result.task);
     if (!result.ok && result.type === shareOperatorOnlyType)
       return sharingRefused(c, result.errors);
+    if (!result.ok && result.type === serviceArchivedType) return serviceArchived(c);
     if (!result.ok)
       return problem(c, 422, 'Invalid definition', { errors: redact(result.errors, tenant) });
     if (service && !fromDraft)

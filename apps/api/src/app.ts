@@ -194,6 +194,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         ...(options.platform.models ? { models: options.platform.models } : {}),
         ...(options.platform.now ? { now: options.platform.now } : {}),
         ...(options.platform.names ? { names: options.platform.names } : {}),
+        ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
     if (options.platform.lifecycle)
@@ -219,7 +220,6 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       ...(options.platform.unmaskedInput ? { unmaskedInput: options.platform.unmaskedInput } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.registered ? { registered: options.platform.registered } : {}),
-      ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
     });
     registerPlatformRoutes(app, {
       store,
