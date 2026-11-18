@@ -175,8 +175,12 @@ const draw = (layout: AssistantLayout, api: AssistantApi, threadInUrl = false) =
     />,
   );
 
+// The question field by its name: «Spørsmål til KA» in the current look, and in the next look
+// «Still et spørsmål» on a new thread and «Spør videre» in a conversation (dev-chat boards).
+const questionField = /^(Spørsmål til KA|Still et spørsmål|Spør videre)$/;
+
 const send = async (question = 'Hva er fast?') => {
-  const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+  const field = await screen.findByRole('textbox', { name: questionField });
   // The service's collection must be known before the question can go.
   await waitFor(() => expect(screen.getByRole('button', { name: 'Send spørsmålet' })).toBeTruthy());
   fireEvent.change(field, { target: { value: question } });
@@ -218,7 +222,7 @@ const chooseTool = (name: string) => {
 describe('the assistant a layout describes', () => {
   it('draws no panel for a zone the layout leaves empty', async () => {
     draw(state('chat-only').layout, fakeApi().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.queryByRole('navigation')).toBeNull();
     expect(screen.queryByRole('complementary')).toBeNull();
   });
@@ -615,7 +619,7 @@ describe('the assistant a layout describes', () => {
       history.replaceState(null, '', `/?t=${id}`);
       const { api } = fakeApi();
       const { unmount } = draw(state('approach-only').layout, api, true);
-      await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+      await screen.findByRole('textbox', { name: questionField });
       expect(api.loadThread, id).not.toHaveBeenCalled();
       unmount();
     }
@@ -669,7 +673,7 @@ describe('the assistant a layout describes', () => {
 
   it('offers no variant picker when the service has one variant', async () => {
     draw(state('knowledge-assistant').layout, fakeApi().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.queryByRole('button', { name: /variant/i })).toBeNull();
   });
 
@@ -696,7 +700,7 @@ describe('the assistant a layout describes', () => {
     unmount();
     const without = fakeApi().api;
     draw(state('chat-only').layout, without);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.queryByRole('link', { name: /En gammel tråd/ })).toBeNull();
     expect(without.loadThreads).not.toHaveBeenCalled();
   });
@@ -755,7 +759,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
 
   it('keeps Kilder’s own heading when it is the secondary panel’s only tool', async () => {
     drawKa(memory().storage);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(document.querySelector('.uib-shell-tools')).toBeNull();
     expect(screen.getByRole('complementary', { name: 'Kilder', hidden: true })).toBeTruthy();
   });
@@ -830,7 +834,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     const { storage } = memory();
     storage.write('flags', ['filters-right-panel']);
     drawKa(storage);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.getByRole('navigation', { name: 'Tråder' })).toBeTruthy();
     expect(
       screen.getByRole('complementary', { name: 'Filter og kilder', hidden: true }),
@@ -1025,7 +1029,7 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
         threadInUrl
       />,
     );
-  const opened = async () => screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+  const opened = async () => screen.findByRole('textbox', { name: questionField });
   const menu = () => document.querySelector<HTMLElement>('.uib-shell-profile-menu');
   const entries = () =>
     [...(menu()?.querySelectorAll('li .uib-shell-profile-label') ?? [])].map((e) => e.textContent);
@@ -1591,6 +1595,39 @@ describe('kunnskapsassistenten’s next look, `knowledge-assistant-next`', () =>
     ).toBe('var(--genai-shell-card-background, var(--ds-color-neutral-surface-default))');
   });
 
+  it('names the field «Still et spørsmål», «Skriv her …», on a new thread and «Spør videre» in a conversation', async () => {
+    drawNext();
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål' });
+    expect(field.getAttribute('placeholder')).toBe('Skriv her …');
+    await ask();
+    const followUp = await screen.findByRole('textbox', { name: 'Spør videre' });
+    expect(followUp.getAttribute('placeholder')).toBe('Spør videre …');
+  });
+
+  it('draws the dev-chat boards’ field, one row with send as an arrow, one line high in a conversation', async () => {
+    drawNext();
+    await opened();
+    const frame = () => document.querySelector('.uib-composer-frame');
+    expect(frame()?.getAttribute('data-variant')).toBe('inline');
+    const chat = () => document.querySelector<HTMLElement>('.uia-chat');
+    expect(chat()?.style.getPropertyValue('--genai-composer-field-min-block-size')).toBe('');
+    await ask();
+    expect(frame()?.getAttribute('data-variant')).toBe('inline');
+    expect(chat()?.style.getPropertyValue('--genai-composer-field-min-block-size')).toBe('0px');
+    expect(chat()?.style.getPropertyValue('--genai-composer-field-min-block-size-floor')).toBe(
+      '0px',
+    );
+  });
+
+  it('leaves «Kunnskapsassistenten»’s field stacked, named for the assistant', async () => {
+    drawNext(reader, fromTemplate('knowledge-assistant').layout);
+    const field = await screen.findByRole('textbox', { name: 'Spørsmål til KA' });
+    expect(field.getAttribute('placeholder')).toBe('Hva vil du vite mer om?');
+    expect(document.querySelector('.uib-composer-frame')?.getAttribute('data-variant')).toBe(
+      'stacked',
+    );
+  });
+
   it('offers no follow-up questions under an answer, which «Kunnskapsassistenten» still offers', async () => {
     const followUps = { ...reader, followUps: ['Kan du utdype?'] };
     const { unmount } = drawNext(followUps, fromTemplate('knowledge-assistant').layout);
@@ -1741,7 +1778,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
   /** Asks, and waits until the answers on screen are one more. */
   const askMore = async (question: string) => {
     const before = answers();
-    const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    const field = await screen.findByRole('textbox', { name: questionField });
     fireEvent.change(field, { target: { value: question } });
     await waitFor(() =>
       expect(
@@ -1813,7 +1850,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
 
   it('draws no line under the field about what the next question reads from (dev-filter-panel)', async () => {
     drawNext(counted().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     await tick(/^Årsrapport/);
     await waitFor(() =>
       expect(document.querySelector('.uib-documents-scope-summary')?.textContent).toBe(
@@ -1834,7 +1871,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
 
   it('draws Fremgangsmåte as Card and Details, with the filter the answer built on over «Prosess» (dev-fremgangsmate-1)', async () => {
     drawNext(counted().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
     const card = document.querySelector<HTMLElement>('.uib-approach');
@@ -1860,7 +1897,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
   it('says what changed in the filter since the answer before, and nothing when it did not', async () => {
     const { api, asked } = counted();
     drawNext(api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
     await tick(/^Tildelingsbrev/);
@@ -1884,7 +1921,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       },
     };
     drawNext(counted().api, withTool);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     await tick(/^Årsrapport/);
     await askMore('Hva er fast?');
     const tool = document.querySelector('aside .uib-approach[data-variant="list"]');
@@ -2013,7 +2050,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
       { id: 'constructor', title: 'En tråd fra adressen', updatedAt: Date.now(), service: 'ka' },
     ]);
     drawNext(fake.api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     await tick(/^Årsrapport/);
     fireEvent.click(await screen.findByRole('link', { name: 'En tråd fra adressen' }));
     await waitFor(() => expect(answers()).toBe(1));
@@ -2287,7 +2324,7 @@ describe('the filter in the next look (dev-filter-panel)', () => {
 
   it('leaves «Kunnskapsassistenten»’s filter as it was: a view of the panel, no line under the field', async () => {
     drawNext(counted().api, fromTemplate('knowledge-assistant').layout);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.queryByRole('region', { name: 'Filter for tråden' })).toBeNull();
     expect(document.querySelector('.uib-filter-next')).toBeNull();
     expect(document.querySelector('.uib-filter-rows')).toBeNull();
@@ -2578,7 +2615,7 @@ const focusIsOn = (footnote: HTMLElement) =>
     ),
   );
 const typeInField = async (text: string) => {
-  const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+  const field = await screen.findByRole('textbox', { name: questionField });
   fireEvent.change(field, { target: { value: text } });
   return field as HTMLTextAreaElement;
 };
@@ -3037,7 +3074,7 @@ describe('a question the service would not take', () => {
     expect(answers()).toHaveLength(1);
     expect(answers()[0]).toContain('Rapporteringen er fast');
     expect(screen.queryByText('Svaret kom ikke fram')).toBeNull();
-    const field = screen.getByRole('textbox', { name: /Spørsmål til KA/ }) as HTMLTextAreaElement;
+    const field = screen.getByRole('textbox', { name: questionField }) as HTMLTextAreaElement;
     expect(field.value).toBe('Hva er nytt?');
     expect(logged).not.toHaveBeenCalledWith('[assistant] ask', 'Invalid setup');
   });
@@ -3213,7 +3250,7 @@ describe('leaving a thread while its answer streams', () => {
     await act(async () => fail());
     expect(await screen.findByRole('heading', { name: 'Kunne ikke hente tråden' })).toBeTruthy();
     expect(asked).toHaveLength(0);
-    const field = screen.getByRole('textbox', { name: /Spørsmål til KA/ }) as HTMLTextAreaElement;
+    const field = screen.getByRole('textbox', { name: questionField }) as HTMLTextAreaElement;
     expect(field.value).toBe('Hva er nytt?');
   });
 
@@ -3873,7 +3910,7 @@ describe('the way back to the answer', () => {
     expect(screen.getByRole('button', { name: 'Avbryt genereringen', hidden: true })).toBeTruthy();
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        screen.getByRole('textbox', { name: /Spørsmål til KA/, hidden: true }),
+        screen.getByRole('textbox', { name: questionField, hidden: true }),
       ),
     );
     await act(async () => release());
@@ -4176,7 +4213,7 @@ describe('the page around the blocks', () => {
   it('is the chat everywhere without Innstillinger, even at its address', async () => {
     history.replaceState(null, '', '/#innstillinger');
     draw(turnOff(state('knowledge-assistant'), 'settings').layout, fakeApi().api, true);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(document.title).toBe('Ny tråd – KA');
     expect(screen.getByRole('link', { name: /Hopp til skrivefeltet/ })).toBeTruthy();
   });
@@ -4184,7 +4221,7 @@ describe('the page around the blocks', () => {
   it('keeps no thread in the address without Tråder', async () => {
     history.replaceState(null, '', '/?t=t-old&layout=abc');
     draw(state('chat-only').layout, fakeApi().api, true);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     await waitFor(() => expect(location.search).toBe('?layout=abc'));
   });
 
@@ -4200,7 +4237,7 @@ describe('the page around the blocks', () => {
 
   it('has one h1 with Chat in the right panel, first in the main column', async () => {
     draw(placeIn(state('sources-only'), 'chat', 'secondary').layout, fakeApi().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/, hidden: true });
+    await screen.findByRole('textbox', { name: questionField, hidden: true });
     expect(outline().h1s.map((h) => h.textContent)).toEqual(['KA']);
     expect(outline().first?.tagName).toBe('H1');
   });
@@ -4262,7 +4299,7 @@ describe('the page around the blocks', () => {
       get: () => 390,
     });
     draw(placeIn(state('sources-only'), 'chat', 'secondary').layout, fakeApi().api);
-    const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    const field = await screen.findByRole('textbox', { name: questionField });
     expect(field.closest<HTMLElement>('.uib-shell-fill')?.hidden).toBe(false);
     expect(field.closest('dialog')).toBeNull();
   });
@@ -4794,7 +4831,7 @@ describe('in a host’s preview', () => {
         frameWidth={1280}
       />,
     );
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.queryAllByRole('heading', { level: 1 })).toEqual([]);
     expect(screen.queryByRole('main')).toBeNull();
   });
@@ -4817,7 +4854,7 @@ describe('in a host’s preview', () => {
 
   it('draws its name as the page’s `h1` on a page of its own', async () => {
     draw(fromTemplate('knowledge-assistant').layout, fakeApi().api);
-    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await screen.findByRole('textbox', { name: questionField });
     expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['KA']);
   });
 });
@@ -4853,7 +4890,7 @@ describe('the profile a layout carries', () => {
         profile={{ assistantName: 'KA' }}
       />,
     );
-    expect(await screen.findByRole('textbox', { name: /Spørsmål til KA/ })).toBeTruthy();
+    expect(await screen.findByRole('textbox', { name: questionField })).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: /Kunnskapsassistenten/ })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Hva handler dokumentene i Kudos om?' }),

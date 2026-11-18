@@ -148,6 +148,70 @@
     min-inline-size: 0;
   }
 
+  /* Inline, as the dev-chat boards draw it: the field and its buttons in one row, «+» first and
+     send last, on a frame with a shadow. The buttons sit at the foot of a field that has grown. */
+  .uib-composer-frame[data-variant='inline'] {
+    flex-flow: row wrap;
+    align-items: flex-end;
+    gap: var(--genai-composer-frame-gap, var(--ds-size-1));
+    box-shadow: var(--genai-composer-frame-shadow, var(--ds-shadow-md));
+  }
+
+  .uib-composer-frame[data-variant='inline']:focus-within {
+    box-shadow: var(--dsc-focus-boxShadow), var(--genai-composer-frame-shadow, var(--ds-shadow-md));
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-controls {
+    display: contents;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-attach {
+    order: 1;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-field {
+    order: 2;
+    flex: 1 1 0;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-actions {
+    order: 3;
+  }
+
+  .uib-composer-frame[data-variant='inline'] .uib-composer-send {
+    --dsc-button-border-radius: var(
+      --genai-composer-send-border-radius,
+      var(--ds-border-radius-lg)
+    );
+
+    order: 4;
+    margin-inline-start: auto;
+  }
+
+  /* The question centred on the buttons' line. Six lines at most before it scrolls: seven line
+     heights hold six and the padding of about one. */
+  .uib-composer-frame[data-variant='inline'] .uib-composer-field textarea {
+    max-block-size: var(--genai-composer-field-max-block-size, 7lh);
+    padding-block: var(--genai-composer-field-padding-block, var(--ds-size-3));
+    padding-inline: var(--genai-composer-field-padding-inline-start, var(--ds-size-2)) 0;
+  }
+
+  .uib-composer-frame[data-variant='inline']:has(.uib-composer-attach)
+    .uib-composer-field
+    textarea {
+    padding-inline-start: var(--genai-composer-field-padding-inline-start, var(--ds-size-1));
+  }
+
+  /* A question longer than a line: over the buttons in full width, «+» left and send right. */
+  .uib-composer-frame[data-variant='inline'][data-wrapped] .uib-composer-field {
+    order: 0;
+    flex-basis: 100%;
+  }
+
+  .uib-composer-frame[data-variant='inline'][data-wrapped] .uib-composer-field textarea {
+    padding-inline-start: var(--genai-composer-field-padding-inline-start, var(--ds-size-2));
+  }
+
   .uib-composer-file-input {
     display: none;
   }

@@ -85,6 +85,12 @@ import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
+// The next look's field in a conversation is one line until the question grows (dev-chat-samtale).
+const oneLineField = {
+  '--genai-composer-field-min-block-size-floor': '0px',
+  '--genai-composer-field-min-block-size': '0px',
+} as CSSProperties;
+
 // The cards frame's ground, the shell's, under the docked field: it fades into the card, not the
 // page (the next look).
 const cardGround = {
@@ -510,7 +516,15 @@ export const AssistantView = ({
         data-start={start || undefined}
         data-in-panel={inPanel || undefined}
         // In the next look the docked field stands on the main card's ground, not the page's.
-        style={next ? { ...nextFootnotes, ...(inPanel ? {} : cardGround) } : undefined}
+        style={
+          next
+            ? {
+                ...nextFootnotes,
+                ...(inPanel ? {} : cardGround),
+                ...(start ? {} : oneLineField),
+              }
+            : undefined
+        }
       >
         {titled ? pageHeading : null}
         {middle}
@@ -563,6 +577,16 @@ export const AssistantView = ({
             // scroll margin as tall as it, as kunnskapsassistenten does.
             sticky={!start && !inPanel}
             fieldRef={a.fieldRef}
+            // The dev-chat boards' field: one row with «+» and send, an arrow up, named as they name it.
+            {...(next
+              ? {
+                  variant: 'inline' as const,
+                  label: start ? t('assembly.fieldStart') : t('assembly.fieldFollowUp'),
+                  placeholder: start
+                    ? t('assembly.fieldStartPlaceholder')
+                    : t('assembly.fieldFollowUpPlaceholder'),
+                }
+              : {})}
           />
         )}
         {start ? (

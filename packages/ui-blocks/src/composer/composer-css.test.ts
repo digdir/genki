@@ -27,6 +27,26 @@ describe('the Composer styles', () => {
     );
   });
 
+  it('put «+» first and send last in the inline row, and a longer question over them in full width', () => {
+    const inline = ".uib-composer-frame[data-variant='inline']";
+    expect(rule(inline)).toContain('flex-flow: row wrap;');
+    expect(rule(`${inline} .uib-composer-controls`)).toContain('display: contents;');
+    expect(rule(`${inline} .uib-composer-attach`)).toContain('order: 1;');
+    expect(rule(`${inline} .uib-composer-send`)).toContain('order: 4;');
+    const wrapped = rule(`${inline}[data-wrapped] .uib-composer-field`);
+    expect(wrapped).toContain('order: 0;');
+    expect(wrapped).toContain('flex-basis: 100%;');
+  });
+
+  it('give the inline frame a shadow, kept under the focus ring, and send the 8 px corners', () => {
+    const inline = ".uib-composer-frame[data-variant='inline']";
+    expect(rule(inline)).toContain('var(--genai-composer-frame-shadow, var(--ds-shadow-md))');
+    expect(rule(`${inline}:focus-within`)).toContain(
+      'var(--dsc-focus-boxShadow), var(--genai-composer-frame-shadow, var(--ds-shadow-md))',
+    );
+    expect(rule(`${inline} .uib-composer-send`)).toContain('var(--ds-border-radius-lg)');
+  });
+
   it('take the empty refusal out of the flow, but keep it in the page', () => {
     const empty = rule('.uib-composer-refusal:empty');
     expect(empty).toContain('position: absolute;');
@@ -36,7 +56,7 @@ describe('the Composer styles', () => {
 
 // A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.
 const pins: Record<string, string[]> = {
-  'Composer.tsx': ['uib-composer-scroll', 'uib-composer-attach', 'uib-composer-attach'],
+  'Composer.tsx': ['uib-composer-attach', 'uib-composer-attach', 'uib-composer-scroll'],
   'Attachments.tsx': ['composer.retryLabel'],
   '../welcome/Welcome.tsx': ['uib-welcome-suggestion'],
 };
