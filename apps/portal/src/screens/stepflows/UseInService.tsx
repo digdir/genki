@@ -97,7 +97,7 @@ export const UseInService = ({
   };
 
   return (
-    <Dialog open modal onClose={onClose} aria-labelledby="use-in-service-h">
+    <Dialog open modal closeButton={false} onClose={onClose} aria-labelledby="use-in-service-h">
       <div className="stack-sm">
         <Heading level={2} data-size="xs" id="use-in-service-h">
           {t('stepflows.useTitle', { name })}

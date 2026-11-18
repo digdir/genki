@@ -1,5 +1,5 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
-import { Crumbs } from '../../components/Crumbs';
+import { BackLink } from '../../components/BackLink';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import type { ScreenProps } from '../../screen';
@@ -31,12 +31,7 @@ export const ConnectorsPage = ({
   );
   return (
     <div className="stack">
-      <Crumbs
-        items={[
-          { label: t('connectors.pageBlocks'), href: '#/building-blocks' },
-          { label: t('connectors.pageCrumb') },
-        ]}
-      />
+      <BackLink label={t('connectors.pageBlocks')} href="#/building-blocks" />
       <div className="stack-xs bb-connect-intro">
         <Heading level={1} data-size="md">
           {t('connectors.pageHeading')}

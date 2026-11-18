@@ -1,7 +1,7 @@
 import { Alert, Button, Chip, Heading, Paragraph, Tabs, Tag } from '@digdir/designsystemet-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ApiClient } from '../../api';
-import { Crumbs } from '../../components/Crumbs';
+import { BackLink } from '../../components/BackLink';
 import { serviceOfFlow, strategies, type Flow, type Strategy } from '../../data/stepflows';
 import { NotAvailable } from '../../components/NotAvailable';
 import { useAsync } from '../../hooks';
@@ -216,25 +216,17 @@ export const Workspace = ({
         <Tabs.Panel value="flow">
           {view === 'flow' && flow && current ? (
             <div className="stack-md">
-              <Crumbs
-                items={
-                  service || serviceOfFlow[flow.id]
-                    ? [
-                        { label: t('stepflows.crumbServices'), href: '#/services' },
-                        {
-                          label: serviceName,
-                          href: service
-                            ? `#/services/${encodeURIComponent(service.id)}`
-                            : '#/services',
-                        },
-                        { label: t('stepflows.strategyTitle') },
-                      ]
-                    : [
-                        { label: t('stepflows.crumbFlows'), href: '#/step-flows' },
-                        { label: flowName(flow, t) },
-                      ]
-                }
-              />
+              {service || serviceOfFlow[flow.id] ? (
+                <BackLink
+                  label={serviceName}
+                  href={service ? `#/services/${encodeURIComponent(service.id)}` : '#/services'}
+                />
+              ) : (
+                <BackLink
+                  label={t('stepflows.crumbFlows')}
+                  href="#/building-blocks/in-use?type=step_flow"
+                />
+              )}
               <div className="stack-xs">
                 <Heading level={1} data-size="md" id="strategi-h">
                   {t('stepflows.strategyTitle')}

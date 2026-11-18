@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
@@ -36,6 +36,29 @@ const pick = (input: HTMLElement, name: string, size = 1000) => {
   const file = new File(['x'], name);
   Object.defineProperty(file, 'size', { value: size });
   fireEvent.change(input, { target: { files: [file] } });
+};
+
+const filesFetch = (bodies: unknown[] = []) => {
+  const base = mockFetch(undefined, undefined, undefined, undefined, {
+    chatReply: 'Lest.',
+    capabilities: [
+      {
+        id: 'klarsprak__default',
+        _files: {
+          accepts: [
+            'application/pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          ],
+          max_bytes: 10 * 1048576,
+          max_count: 1,
+        },
+      } as never,
+    ],
+  });
+  return ((input, init) => {
+    if (urlOf(input).includes('/v1/chat/completions')) bodies.push(JSON.parse(String(init?.body)));
+    return base(input, init);
+  }) as typeof globalThis.fetch;
 };
 
 const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
@@ -174,7 +197,7 @@ describe('Fellestjenester: liste', () => {
     );
   });
 
-  it("shows the API's purpose and its model's residency on the card for a capability without design data", async () => {
+  it("shows the API's purpose and the service's residency on the card for a capability without design data", async () => {
     await renderAt(
       '#/shared-services',
       mockFetch(undefined, undefined, undefined, undefined, {
@@ -196,12 +219,53 @@ describe('Fellestjenester: liste', () => {
     );
     expect(await screen.findByRole('link', { name: 'Tolk' })).toBeTruthy();
     expect(screen.getByText('Tolker tekst.')).toBeTruthy();
-    expect(screen.getByText(/^Behandler data i EU\/EØS · /)).toBeTruthy();
+    expect(screen.getByText(/^Behandler data i Norge · /)).toBeTruthy();
     expectAccessible();
   });
 });
 
 describe('Fellestjenester: detalj', () => {
+  const withFacts = {
+    tenant: '991825827',
+    id: 'nynorsk',
+    name: 'Bokmål til nynorsk',
+    purpose: 'Oversetter tekst.',
+    version: 1,
+    riskClass: null,
+    residency: 'eu',
+    model: 'aivar/borealis-27b',
+    exposure: [],
+    variants: [{ id: 'default', publicName: 'nynorsk__default', aliases: [] }],
+    storage: { keepsText: false, logDays: 30 },
+    languages: { in: ['nb', 'nn'], out: 'same' },
+    estimatedCostPerThousandRuns: { microNok: 9_000_000, basis: 'tekster på én side' },
+  };
+
+  it('states the price per 1 000 runs, what is stored and the languages from the shared service', async () => {
+    await openDetail(
+      'nyn',
+      'Bokmål til nynorsk',
+      mockFetch(undefined, undefined, undefined, undefined, { shared: [withFacts] }),
+    );
+    expect(fact('Pris')?.textContent).toBe(
+      'Omtrent 9 kr per 1 000 kjøringer (anslått, for tekster på én side)',
+    );
+    expect(fact('Lagres')?.textContent).toBe(
+      'Teksten lagres ikke. Kjøringen logges i 30 dager uten tekstinnhold.',
+    );
+    expect(fact('Språk')?.textContent).toBe('Bokmål og nynorsk inn, samme målform ut');
+  });
+
+  it('puts the price per 1 000 runs on the card, as the design does', async () => {
+    await renderAt(
+      '#/shared-services',
+      mockFetch(undefined, undefined, undefined, undefined, { shared: [withFacts] }),
+    );
+    expect(
+      await screen.findByText('Behandler data i EU/EØS · omtrent 9 kr per 1 000 kjøringer'),
+    ).toBeTruthy();
+  });
+
   it('builds facts for a capability without design data from what the API gives', async () => {
     const tolk = {
       tenant: '991825827',
@@ -222,7 +286,7 @@ describe('Fellestjenester: detalj', () => {
 
     const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
     expect(fact('Modell')?.textContent).toBe('Ikke oppgitt');
-    expect(fact('Hvor data behandles')?.textContent).toBe('Ikke oppgitt Slik behandles data');
+    expect(fact('Hvor data behandles')?.textContent).toBe('EU/EØS Slik behandles data');
     expect(screen.queryByRole('group', { name: 'Valg' })).toBeNull();
     expect(screen.queryByText('Versjon')).toBeNull();
   });
@@ -289,7 +353,7 @@ describe('Fellestjenester: detalj', () => {
       '#/services/vedtaksutkast',
     );
   });
-  it("takes where data is processed from the model's residency, not from the service definition", async () => {
+  it('takes where data is processed from the service, as Byggeklosser does, not from its model', async () => {
     const tolk = {
       tenant: '991825827',
       id: 'tolk',
@@ -309,7 +373,7 @@ describe('Fellestjenester: detalj', () => {
     );
     const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling;
     expect(fact('Modell')?.textContent).toBe('gpt-4o-2m-tps');
-    expect(fact('Hvor data behandles')?.textContent).toBe('Utenfor EU/EØS Slik behandles data');
+    expect(fact('Hvor data behandles')?.textContent).toBe('EU/EØS Slik behandles data');
   });
 
   it('klar: shows facts from the API and opens the builder without a hand-off it does not read', async () => {
@@ -328,31 +392,31 @@ describe('Fellestjenester: detalj', () => {
     expect(screen.getByText('Resultatet vises her når du trykker «Kjør».')).toBeTruthy();
     expectAccessible();
   });
-  it('klar: runs the sample and shows result, change notes and copy', async () => {
+  it('runs the sample text through the API and shows only what the service answered', async () => {
     const writeText = vi.fn(async (_text: string) => undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    await openDetail('klarsprak', 'Klarspråk');
-    expect((screen.getByLabelText('Tekst du vil skrive om') as HTMLTextAreaElement).value).toMatch(
-      /^Det vises til Deres søknad/,
-    );
-    fireEvent.click(screen.getByRole('radio', { name: 'Fagpersoner' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    expect(within(resultBox()).getByText('Kjører klarspråk')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Kjør' }).getAttribute('aria-disabled')).toBe('true');
-    expectAccessible();
-    act(() => {
-      vi.advanceTimersByTime(1200);
+    const bodies: unknown[] = [];
+    const base = mockFetch(undefined, undefined, undefined, undefined, {
+      chatReply: 'Svar fra tjenesten.',
     });
-    expect(within(resultBox()).getByText(/Du får ikke tilskudd\./)).toBeTruthy();
-    expect(within(resultBox()).getByText('Beholdt henvisningen til § 4 første ledd.')).toBeTruthy();
-    expect(
-      within(resultBox()).getByText('Ferdig på 2,1 s · 1 240 tokens · borealis-27b, Norge'),
-    ).toBeTruthy();
+    await openDetail('klarsprak', 'Klarspråk', (input, init) => {
+      if (urlOf(input).includes('/v1/chat/completions'))
+        bodies.push(JSON.parse(String(init?.body)));
+      return base(input, init);
+    });
+    const sample = (screen.getByLabelText('Tekst du vil skrive om') as HTMLTextAreaElement).value;
+    expect(sample).toMatch(/^Det vises til Deres søknad/);
+    expect(screen.queryByRole('radio')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
+    expect(await within(resultBox()).findByText('Svar fra tjenesten.')).toBeTruthy();
+    expect(bodies).toEqual([
+      { model: 'klarsprak__default', messages: [{ role: 'user', content: sample }] },
+    ]);
+    expect(within(resultBox()).queryByText(/Du får ikke tilskudd/)).toBeNull();
+    expect(within(resultBox()).getByText('Ferdig · borealis-27b, Norge')).toBeTruthy();
     fireEvent.click(within(resultBox()).getByRole('button', { name: 'Kopier resultatet' }));
     expect(await within(resultBox()).findByText('Kopiert')).toBeTruthy();
-    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/Du får ikke tilskudd\./));
-    expect(within(resultBox()).getByRole('link', { name: 'Se tidslinjen' })).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith('Svar fra tjenesten.');
     expectAccessible();
   });
 
@@ -390,126 +454,98 @@ describe('Fellestjenester: detalj', () => {
     ).toBeTruthy();
   });
 
-  it('klar: validates empty text, too long text and wrong file type', async () => {
+  it('offers no file upload while the service does not say it takes files', async () => {
     await openDetail('klar', 'Klarspråk');
     const text = screen.getByLabelText('Tekst du vil skrive om');
+    expect(screen.queryByText('Velg fil')).toBeNull();
     fireEvent.change(text, { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    expect(screen.getByText('Lim inn tekst eller last opp en fil.')).toBeTruthy();
+    expect(screen.getByText('Skriv eller lim inn en tekst først.')).toBeTruthy();
     expect(text.getAttribute('aria-invalid')).toBe('true');
     expect(screen.getByText('0 av 20 000 tegn')).toBeTruthy();
-    expectAccessible();
     fireEvent.change(text, { target: { value: 'a'.repeat(20001) } });
     fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
     expect(
-      screen.getByText('Teksten er lengre enn 20 000 tegn. Last den opp som fil i stedet.'),
+      screen.getByText('Teksten er lengre enn 20 000 tegn. Kort den ned og prøv igjen.'),
     ).toBeTruthy();
-    pick(screen.getByLabelText('eller last opp en fil:'), 'bilde.png');
-    expect(screen.getByText('Filen må være PDF, Word (.docx) eller tekst.')).toBeTruthy();
-    pick(screen.getByLabelText('eller last opp en fil:'), 'stor.pdf', 201 * 1048576);
-    expect(screen.getByText('Filen er større enn 200 MB.')).toBeTruthy();
-    pick(screen.getByLabelText('eller last opp en fil:'), 'brev.docx');
-    expect(screen.queryByText('Filen er større enn 200 MB.')).toBeNull();
-    expect(screen.getByText('brev.docx')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Tilbakestill' }));
-    expect((text as HTMLTextAreaElement).value).toMatch(/^Det vises til/);
-    expect(screen.queryByText('brev.docx')).toBeNull();
+    expectAccessible();
   });
 
-  it('nyn: marks the nynorsk description, result and notes with lang="nn"', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  it('checks a file against the types and size the service takes', async () => {
+    await openDetail('klar', 'Klarspråk', filesFetch());
+    const input = await screen.findByLabelText('Velg fil');
+    expect(screen.getByText('Ingen fil valgt')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Tekst du vil skrive om'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
+    expect(
+      screen.getByText('Skriv eller lim inn en tekst først, eller last opp et dokument.'),
+    ).toBeTruthy();
+    pick(input, 'bilde.png');
+    expect(screen.getByText('Filen må være en av disse typene: PDF, Word (.docx).')).toBeTruthy();
+    pick(input, 'stor.pdf', 11 * 1048576);
+    expect(screen.getByText(/^Filen er større enn 10/)).toBeTruthy();
+    pick(input, 'brev.docx');
+    expect(screen.queryByText(/^Filen er større enn/)).toBeNull();
+    expect(screen.getByText('brev.docx')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tilbakestill' }));
+    expect(screen.queryByText('brev.docx')).toBeNull();
+    expectAccessible();
+  });
+
+  it('sends a chosen file as a file part and never shows a result that was not run', async () => {
+    const bodies: unknown[] = [];
+    await openDetail('klar', 'Klarspråk', filesFetch(bodies));
+    const input = await screen.findByLabelText('Velg fil');
+    fireEvent.change(screen.getByLabelText('Tekst du vil skrive om'), { target: { value: '' } });
+    fireEvent.change(input, {
+      target: { files: [new File(['hei'], 'brev.pdf', { type: 'application/pdf' })] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
+    expect(await within(resultBox()).findByText('Lest.')).toBeTruthy();
+    expect(bodies).toEqual([
+      {
+        model: 'klarsprak__default',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'file',
+                file: { filename: 'brev.pdf', file_data: 'data:application/pdf;base64,aGVp' },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('nyn: marks the nynorsk description with lang="nn" but not the answer it has not seen', async () => {
     await openDetail('nyn', 'Bokmål til nynorsk');
     expect(screen.getByText(/^Set om tekst frå bokmål til nynorsk/).getAttribute('lang')).toBe(
       'nn',
     );
-    expect(screen.getByRole('radio', { name: 'Moderat nynorsk' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
-    const result = within(resultBox()).getByText(/^Du kan søkje om tilskot/);
-    expect(result.closest('[lang]')?.getAttribute('lang')).toBe('nn');
-    const note = within(resultBox()).getByText(/Brukte «tilskot»/);
-    expect(note.closest('[lang]')?.getAttribute('lang')).toBe('nn');
-    expect(
-      within(resultBox())
-        .getByText(/Ferdig på 1,4 s/)
-        .closest('[lang="nn"]'),
-    ).toBeNull();
+    const done = await within(resultBox()).findByText(/^Ferdig/);
+    expect(done.closest('[lang="nn"]')).toBeNull();
     expectAccessible();
   });
 
-  it('sum: offers length options and shows the summary with references', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  it('has no choice of target group or length, which the service does not read', async () => {
     await openDetail('sum', 'Oppsummering');
-    const group = screen.getByRole('group', { name: 'Lengde' });
-    expect(within(group).getAllByRole('radio')).toHaveLength(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
-    expect(
-      within(resultBox()).getByText(/Telefonhenvendelsene gikk ned med 18 prosent/),
-    ).toBeTruthy();
-    expectAccessible();
+    expect(screen.queryByRole('group', { name: 'Lengde' })).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
-  it('anon: needs at least one type of personal data and lists findings', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    await openDetail('anon', 'Anonymisering');
-    const group = screen.getByRole('group', { name: 'Fjern' });
-    expect(within(group).getAllByRole('checkbox')).toHaveLength(4);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Navn' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    expect(screen.getByText('Velg minst én type opplysning som skal fjernes.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Fødselsnummer' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Adresse' }));
-    expect(screen.queryByText('Velg minst én type opplysning som skal fjernes.')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
-    expect(
-      within(resultBox()).getByText(/^\[NAVN\] \(fødselsnummer \[FØDSELSNUMMER\]\)/),
-    ).toBeTruthy();
-    expect(
-      within(resultBox()).getByText('Datoen ble beholdt fordi den ikke peker på en person.'),
-    ).toBeTruthy();
-  });
-
-  it('trans: requires an audio file, accepts the sample and shows the transcript', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  it('trans: offers no audio upload and no sample recording while the service takes no audio', async () => {
     await openDetail('trans', 'Transkribering');
     expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /eksempelopptak/ })).toBeNull();
+    expect(screen.getByText('Denne tjenesten tar ikke imot lydfiler herfra ennå.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    expect(screen.getByText('Velg en lydfil, eller bruk eksempelopptaket.')).toBeTruthy();
-    pick(screen.getByLabelText('Last opp lydfil'), 'notat.pdf');
-    expect(screen.getByText('Filen må være MP3, M4A eller WAV.')).toBeTruthy();
-    expectAccessible();
-    fireEvent.click(screen.getByRole('button', { name: 'Bruk eksempelopptak (2 min)' }));
-    expect(screen.getByText('Eksempelopptak.m4a (2 min)')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    expect(within(resultBox()).getByText('Transkriberer opptaket')).toBeTruthy();
-    act(() => {
-      vi.advanceTimersByTime(2000);
-    });
-    expect(within(resultBox()).getByText(/\[00:00\] Taler 1: Da starter vi\./)).toBeTruthy();
-    expect(within(resultBox()).getByText('Ferdig på 9,8 s · borealis-27b, Norge')).toBeTruthy();
-  });
-
-  it('felt: shows extracted fields as a description list', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    await openDetail('felt', 'Hent ut opplysninger');
-    fireEvent.click(screen.getByRole('radio', { name: 'Faktura' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
-    act(() => {
-      vi.advanceTimersByTime(1200);
-    });
-    const box = resultBox();
-    expect(within(box).getByText('Søkers navn').tagName).toBe('DT');
-    expect(within(box).getByText('Elvebakken Musikkorps').tagName).toBe('DD');
-    expect(within(box).getByText('Vedtekter')).toBeTruthy();
-    expectAccessible();
+    expect(screen.getByText('Velg en lydfil først.')).toBeTruthy();
+    expect(within(resultBox()).queryByText(/Taler 1/)).toBeNull();
   });
 
   it('shows the call in three languages with an API key, and links to where a key is made', async () => {
@@ -556,9 +592,9 @@ describe('Fellestjenester: detalj', () => {
     expect(screen.getByText(/Administrere tjenester/)).toBeTruthy();
   });
 
-  it('says where data is processed could not be fetched when the model list fails', async () => {
+  it('still says where data is processed when the model list fails, since the service gives it', async () => {
     await openDetail('klarsprak', 'Klarspråk', failingFetch(/\/models/));
     const fact = screen.getByText('Hvor data behandles', { selector: 'dt' }).nextElementSibling;
-    expect(fact?.textContent).toBe('Kunne ikke hente hvor data behandles Slik behandles data');
+    expect(fact?.textContent).toBe('Norge Slik behandles data');
   });
 });

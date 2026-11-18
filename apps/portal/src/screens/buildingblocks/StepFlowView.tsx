@@ -1,6 +1,6 @@
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
 import { blockDefFromSchema } from '../../data/step-blocks';
@@ -20,12 +20,14 @@ export const StepFlowView = ({
   id,
   own,
   view,
+  onMissing,
 }: {
   api: ApiClient;
   tenant: string;
   id: string;
   own: boolean;
   view: 'diagram' | 'yaml';
+  onMissing: () => void;
 }) => {
   const t = useT();
   const f = useFormat();
@@ -39,6 +41,7 @@ export const StepFlowView = ({
               definition: d.latest.definition,
               version: d.latest.version,
               publishedAt: d.latest.publishedAt,
+              yaml: toYaml(d.latest.definition),
             }))
           : api.blocks.flowDefinition(tenant, id, signal),
       ]);
@@ -56,22 +59,19 @@ export const StepFlowView = ({
         },
         t,
       );
-      return { flow, yaml: toYaml(found.definition) };
+      return { flow, yaml: found.yaml };
     },
     [api, tenant, id, own, t, f],
   );
-  if (state.status === 'loading') return <Loading label={t('blocks.flowLoading')} />;
-  if (
+  const missing =
     state.status === 'error' &&
     !own &&
     state.error instanceof ApiError &&
-    state.error.status === 404
-  )
-    return (
-      <Alert data-color="info">
-        <Paragraph>{t('blockFlow.notShared')}</Paragraph>
-      </Alert>
-    );
+    state.error.status === 404;
+  useEffect(() => {
+    if (missing) onMissing();
+  }, [missing, onMissing]);
+  if (state.status === 'loading' || missing) return <Loading label={t('blocks.flowLoading')} />;
   if (state.status === 'error')
     return (
       <Alert data-color="danger" role="alert">

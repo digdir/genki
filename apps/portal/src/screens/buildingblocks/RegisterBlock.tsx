@@ -27,7 +27,8 @@ import type {
   RegistrationType,
   TenantSecretName,
 } from '../../api/building-blocks';
-import { BackLink } from './LinkTabs';
+import { BackLink } from '../../components/BackLink';
+import { DataLocationTag } from '../../components/DataLocationTag';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import {
   authOptions,
@@ -37,6 +38,7 @@ import {
   registrationTypes,
 } from '../../data/building-blocks';
 import { navigate } from '../../hooks';
+import type { Residency } from '../../types';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { rightLabel } from '../../Shell';
 import { refusalOf } from '../../states';
@@ -60,11 +62,11 @@ interface Form {
   residency: RegistrationResidency;
 }
 
-export type RegistrationResidency = 'norway' | 'eu-eea' | 'global';
+export type RegistrationResidency = Residency;
 
 export const residencyOptions: { value: RegistrationResidency; label: PlainKey }[] = [
   { value: 'norway', label: 'blockRegister.residencyNorway' },
-  { value: 'eu-eea', label: 'blockRegister.residencyEu' },
+  { value: 'eu', label: 'blockRegister.residencyEu' },
   { value: 'global', label: 'blockRegister.residencyGlobal' },
 ];
 
@@ -93,6 +95,12 @@ const usesSecret = (form: Form) =>
   (form.auth === 'api-key' || form.auth === 'oauth-client-credentials');
 const httpsUrl = /^https:\/\/.+/;
 
+const typeShort: Partial<Record<RegistrationType, string>> = {
+  mcp: 'MCP',
+  openapi: 'API',
+  a2a: 'A2A',
+};
+
 const authOf = (form: Form): RegistrationAuth =>
   form.auth === 'api-key'
     ? {
@@ -117,13 +125,10 @@ export const agentCardUrl = (address: string) => {
     : `${url.replace(/\/+$/, '')}/.well-known/agent-card.json`;
 };
 
-const toDraft = (
-  form: Form,
-  withResidency: boolean,
-): RegistrationInput & { residency?: RegistrationResidency } => ({
+const toDraft = (form: Form): RegistrationInput => ({
   type: form.type,
   name: form.name.trim(),
-  ...(withResidency ? { residency: form.residency } : {}),
+  ...(form.type === 'skill_package' ? {} : { residency: form.residency }),
   ...(needsUrl(form.type)
     ? { endpoint: form.type === 'a2a' ? agentCardUrl(form.url) : form.url.trim() }
     : {}),
@@ -259,16 +264,6 @@ export const RegisterBlock = ({
   const [secretsFailed, setSecretsFailed] = useState(false);
   const [operations, setOperations] = useState<RegisteredTool[] | null>(null);
   const [agent, setAgent] = useState<AgentCardSummary | null>(null);
-  const [residencyStored, setResidencyStored] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api.buildingBlocks.list(tenant, {}, controller.signal).then(
-      (list) => setResidencyStored(list.data.some((b) => 'residency' in b)),
-      () => undefined,
-    );
-    return () => controller.abort();
-  }, [tenant]);
 
   useEffect(() => {
     if (!canRegister) return;
@@ -280,7 +275,7 @@ export const RegisterBlock = ({
     return () => controller.abort();
   }, [tenant, canRegister]);
 
-  const draft = toDraft(form, residencyStored);
+  const draft = toDraft(form);
   const draftKey = JSON.stringify(draft);
   useEffect(() => {
     const controller = new AbortController();
@@ -349,6 +344,17 @@ export const RegisterBlock = ({
   const passed = !!result && result.every((test) => test.passed);
   const failures = result?.filter((test) => !test.passed).length ?? 0;
   const typeInfo = registrationTypes.find((rt) => rt.type === form.type);
+  const toolCount =
+    form.type === 'openapi' && operations ? operations.filter(selected).length : undefined;
+  const previewMeta = [
+    t('blockRegister.previewConnected', {
+      tenant: tenantName,
+      type: typeShort[form.type] ?? t(typeInfo?.label ?? 'blocks.kindOneTool'),
+    }),
+    toolCount === undefined ? '' : t('blockRegister.previewTools', { count: toolCount }),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const runTest = async () => {
     if (testing) return;
@@ -705,7 +711,7 @@ export const RegisterBlock = ({
               })}
             </Fieldset>
           ) : null}
-          {form.type === 'skill_package' || !residencyStored ? null : (
+          {form.type === 'skill_package' ? null : (
             <Field>
               <Label htmlFor={ids.residency}>{t('blockRegister.residency')}</Label>
               <span className="bb-help" id={ids.residencyHelp}>
@@ -777,15 +783,29 @@ export const RegisterBlock = ({
             </div>
           </section>
           <section aria-labelledby={ids.manifest} className="stack-sm">
-            <div className="bb-stack-xs">
-              <Heading level={2} data-size="xs" id={ids.manifest}>
-                {t('blocks.manifest')}
-              </Heading>
-              <span className="bb-meta">{t('blocks.manifestNote')}</span>
+            <Heading level={2} data-size="xs" id={ids.manifest}>
+              {t('blockRegister.previewTitle')}
+            </Heading>
+            <div className="bb-boxed stack-xs">
+              <div className="bb-row-head">
+                <strong>{draft.name || t('blockRegister.previewUnnamed')}</strong>
+                {form.type === 'skill_package' ? null : (
+                  <DataLocationTag location={form.residency} />
+                )}
+              </div>
+              <span className="bb-meta">{previewMeta}</span>
+              {form.type === 'openapi' && operations?.length ? (
+                <ul className="bb-list">
+                  {operations.filter(selected).map((tool) => (
+                    <li key={tool.name}>
+                      {t(tool.readOnly ? 'blockRegister.toolReads' : 'blockRegister.toolChanges', {
+                        name: tool.description ?? tool.name,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
-            <pre className="bb-manifest" tabIndex={0} aria-label={t('blocks.manifest')}>
-              <code>{preview?.manifest ?? ''}</code>
-            </pre>
           </section>
         </div>
       </div>

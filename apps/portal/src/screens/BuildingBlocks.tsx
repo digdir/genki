@@ -23,7 +23,7 @@ import { StepFlowEditor } from './StepFlows';
 import { FlashMessage, settled, type Flash } from './buildingblocks/common';
 import { ConnectorsPage } from './buildingblocks/ConnectorsPage';
 import { RegisterBlock } from './buildingblocks/RegisterBlock';
-import { BackLink } from './buildingblocks/LinkTabs';
+import { BackLink } from '../components/BackLink';
 import './buildingblocks.css';
 
 const listSegments: Record<string, ListTab> = { 'in-use': 'in-use', catalogue: 'catalog' };

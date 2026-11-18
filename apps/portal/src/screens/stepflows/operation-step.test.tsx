@@ -63,11 +63,13 @@ const addImageStep = async () => {
 };
 
 describe('a new step flow', () => {
-  it('opens under the step flows breadcrumb, not under a new service', async () => {
+  it('opens with a back link to the step flows, not under a new service', async () => {
     await newFlow();
-    const crumbs = screen.getByRole('navigation', { name: 'Brødsmuler' });
-    expect(within(crumbs).getByRole('link', { name: 'Stegflyter' })).toBeTruthy();
-    expect(within(crumbs).queryByText('Ny tjeneste')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Stegflyter' }).getAttribute('href')).toBe(
+      '#/building-blocks/in-use?type=step_flow',
+    );
+    expect(screen.queryByRole('link', { name: 'Ny tjeneste' })).toBeNull();
   });
 
   it('a new flow that was never saved is saved as v1', async () => {

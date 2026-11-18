@@ -202,6 +202,13 @@ describe('Byggeklosser: liste', () => {
     expectAccessible();
   });
 
+  it('lets a new organisation with nothing in use create or import a skill', async () => {
+    await open('#/building-blocks/in-use?type=skill', { empty: true });
+    await screen.findByRole('heading', { name: 'Ingen byggeklosser i bruk ennå' });
+    expect(await screen.findByRole('button', { name: 'Ny ferdighet' })).toBeTruthy();
+    expect(screen.getByText('Importer pakke')).toBeTruthy();
+  });
+
   it('shows only three step flows until asked for all of them', async () => {
     const flow = exampleBlocks.find((b) => b.id === 'postruting') as CatalogItem;
     const flows = Array.from({ length: 5 }, (_, i) => ({
@@ -465,9 +472,12 @@ describe('Byggeklosser: koblinger', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Koblinger til egne databaser' }),
     ).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Brødsmuler' }).textContent).toContain(
-      'Byggeklosser',
-    );
+    expect(screen.queryByRole('navigation', { name: 'Brødsmuler' })).toBeNull();
+    expect(
+      within(screen.getByRole('main'))
+        .getByRole('link', { name: 'Byggeklosser' })
+        .getAttribute('href'),
+    ).toBe('#/building-blocks');
     const section = await approvalForm();
     expect(within(section).getByText('Det plattformen skal lese').parentElement?.textContent).toBe(
       'Det plattformen skal leseTabellen saker: tittel fra tittel, tekst fra sammendrag, bare der status er avsluttet. Fyller datasettet «Kobling for Søknadsuttrekk».',
@@ -965,12 +975,7 @@ describe('Byggeklosser: legg til egen', () => {
     fireEvent.change(screen.getByLabelText('Adresse til MCP-serveren'), {
       target: { value: 'https://mcp.saksarkiv.testetaten.example.no' },
     });
-    await waitFor(() =>
-      expect(screen.getByLabelText('Manifest', { selector: 'pre' }).textContent).toContain(
-        'endpoint: https://mcp.saksarkiv.testetaten.example.no',
-      ),
-    );
-    expect(screen.getByText('mcp.saksarkiv.testetaten.example.no')).toBeTruthy();
+    expect(await screen.findByText('mcp.saksarkiv.testetaten.example.no')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Kjør kontrakttest' }));
     expect(await screen.findByText('Kontrakttest ikke bestått: 2 av 5 feilet')).toBeTruthy();
     expect(
@@ -1095,34 +1100,40 @@ describe('Byggeklosser: legg til egen', () => {
     expectAccessible();
   });
 
-  it('hides where the data is processed and sends no residency while the API does not store it', async () => {
-    const bodies: string[] = [];
+  it('asks where the data is processed without an extra list request, and sends it with the registration', async () => {
+    const calls: { path: string; body: string }[] = [];
     const fetch = blocksFetch();
     await renderAt('#/building-blocks/new', (input, init) => {
-      if (init?.body && String(input).includes('manifest-preview')) bodies.push(String(init.body));
-      return fetch(input, init);
-    });
-    await screen.findByRole('heading', { level: 1, name: 'Registrer byggekloss' });
-    fireEvent.change(screen.getByLabelText('Navn'), { target: { value: 'Arkivet' } });
-    await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
-    expect(screen.queryByLabelText('Hvor behandles dataene?')).toBeNull();
-    expect(bodies.every((b) => !b.includes('residency'))).toBe(true);
-  });
-
-  it('asks where the data is processed and sends it once the API returns residency on blocks', async () => {
-    const bodies: string[] = [];
-    const fetch = blocksFetch({
-      items: exampleBlocks.map((b) => ({ ...b, residency: 'norway' }) as CatalogItem),
-    });
-    await renderAt('#/building-blocks/new', (input, init) => {
-      if (init?.body && String(input).includes('manifest-preview')) bodies.push(String(init.body));
+      const url = String(input);
+      if (/\/building-blocks(\?|$)/.test(url)) calls.push({ path: url, body: '' });
+      if (init?.body && url.includes('manifest-preview'))
+        calls.push({ path: url, body: String(init.body) });
       return fetch(input, init);
     });
     await screen.findByRole('heading', { level: 1, name: 'Registrer byggekloss' });
     const where = (await screen.findByLabelText('Hvor behandles dataene?')) as HTMLSelectElement;
     expect(where.value).toBe('norway');
-    fireEvent.change(where, { target: { value: 'eu-eea' } });
-    await waitFor(() => expect(bodies.at(-1)).toContain('"residency":"eu-eea"'));
+    fireEvent.change(where, { target: { value: 'eu' } });
+    await waitFor(() => expect(calls.at(-1)?.body).toContain('"residency":"eu"'));
+    expect(calls.filter((c) => !c.body)).toEqual([]);
+  });
+
+  it('shows how the block will look in Byggeklosser, built from the form', async () => {
+    await open('#/building-blocks/new');
+    await screen.findByRole('heading', { level: 1, name: 'Registrer byggekloss' });
+    fireEvent.change(screen.getByLabelText('Navn'), {
+      target: { value: 'Saksbehandlingssystemet' },
+    });
+    const card = within(
+      screen
+        .getByRole('heading', { name: 'Slik blir den seende ut' })
+        .closest('section') as HTMLElement,
+    );
+    expect(screen.getByRole('heading', { level: 2, name: 'Slik blir den seende ut' })).toBeTruthy();
+    expect(card.getByText('Saksbehandlingssystemet')).toBeTruthy();
+    expect(card.getByText('Data i Norge')).toBeTruthy();
+    expect(card.getByText('Verktøy · koblet til av Testetaten med MCP')).toBeTruthy();
+    expect(screen.queryByLabelText('Manifest')).toBeNull();
   });
 
   it('MCP defaults to Ingen, marks Maskinporten unavailable and picks a stored secret', async () => {
@@ -1159,11 +1170,6 @@ describe('Byggeklosser: legg til egen', () => {
     fireEvent.change(screen.getByLabelText('Navn på header (valgfritt)'), {
       target: { value: 'x-arkiv-key' },
     });
-    await waitFor(() =>
-      expect(screen.getByLabelText('Manifest', { selector: 'pre' }).textContent).toContain(
-        'secret: secret://tenant/999888777/saks-api',
-      ),
-    );
     fireEvent.click(screen.getByRole('button', { name: 'Kjør kontrakttest' }));
     expect(await screen.findByText('Kontrakttest bestått')).toBeTruthy();
     expectAccessible();
@@ -1260,11 +1266,13 @@ describe('Byggeklosser: legg til egen', () => {
     fireEvent.change(screen.getByLabelText('Adressen til agenten'), {
       target: { value: 'https://agent.skatt.example.no' },
     });
-    await waitFor(() =>
-      expect(screen.getByLabelText('Manifest', { selector: 'pre' }).textContent).toContain(
-        'endpoint: https://agent.skatt.example.no/.well-known/agent-card.json',
-      ),
-    );
+    expect(
+      within(
+        screen
+          .getByRole('heading', { name: 'Slik blir den seende ut' })
+          .closest('section') as HTMLElement,
+      ).getByText('Verktøy · koblet til av Testetaten med A2A'),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Hent agentkortet' }));
     expect(await screen.findByText('Kontrakttest bestått')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: 'Skatteveilederen' })).toBeTruthy();
@@ -1690,6 +1698,12 @@ describe('skills in Byggeklosser', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Klarspråk i brev' })).toBeTruthy();
   });
 
+  it('lists a Digdir skill not yet taken into use only in the catalogue, not also among skills in use', async () => {
+    await open('#/building-blocks/in-use?type=skill');
+    await screen.findByRole('heading', { level: 2, name: /^Utkast og andre ferdigheter/ });
+    expect(screen.queryByRole('link', { name: 'Klarspråk i brev' })).toBeNull();
+  });
+
   it('lists drafts and skills shared by others under Ferdigheter, and both open', async () => {
     await open('#/building-blocks/in-use?type=skill');
     const section = (
@@ -1740,7 +1754,11 @@ describe('a step flow in Byggeklosser', () => {
     expect(yaml.textContent).toContain('id: klassifiser');
   });
 
-  it('shows a Digdir step flow as a diagram and YAML from its block definition', async () => {
+  it('shows a Digdir step flow as a diagram and its YAML from the published definition', async () => {
+    const definition = {
+      ...exampleStepFlow.latest.definition,
+      metadata: { id: 'sf-hoering', name: 'Høringsoppsummering', version: 3 },
+    };
     await renderAt(
       '#/building-blocks/step_flow/sf-hoering',
       mockFetch(undefined, undefined, undefined, undefined, {
@@ -1748,13 +1766,12 @@ describe('a step flow in Byggeklosser', () => {
           blocks: {
             flowDefinitions: {
               'sf-hoering': {
+                id: 'sf-hoering',
                 owner: 'digdir',
                 version: 3,
                 publishedAt: '2026-10-01T10:00:00Z',
-                definition: {
-                  ...exampleStepFlow.latest.definition,
-                  metadata: { id: 'sf-hoering', name: 'Høringsoppsummering', version: 3 },
-                },
+                yaml: 'kind: StepFlow\nmetadata:\n  id: sf-hoering # as published\n',
+                definition,
               },
             },
           },
@@ -1767,24 +1784,27 @@ describe('a step flow in Byggeklosser', () => {
     expect(screen.queryByRole('link', { name: 'Åpne i stegflyteditoren' })).toBeNull();
     window.location.hash = '#/building-blocks/step_flow/sf-hoering/yaml';
     const yaml = await screen.findByRole('region', { name: 'Stegflyten som YAML' });
-    expect(yaml.textContent).toContain('id: sf-hoering');
+    expect(yaml.textContent).toContain('id: sf-hoering # as published');
   });
 
-  it('says calmly that a Digdir flow is not shared yet while the API has no definition for it', async () => {
+  it('hides Diagram and YAML on a flow the API does not show, without blaming the publisher', async () => {
+    await open('#/building-blocks/step_flow/sf-hoering/diagram');
+    await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
+    await waitFor(() =>
+      expect(screen.getAllByRole('tab').map((x) => x.textContent)).toEqual([
+        'Om',
+        'Brukes av',
+        'Versjoner',
+      ]),
+    );
+    expect(screen.queryByText(/Utgiveren har ikke delt/)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('offers Bruk i en tjeneste only on a flow that is in use or our own, not one still in the catalogue', async () => {
     await open('#/building-blocks/step_flow/sf-hoering');
     await screen.findByRole('heading', { level: 1, name: 'Høringsoppsummering' });
-    expect(
-      await screen.findByText(
-        'Utgiveren har ikke delt diagrammet og YAML-en for denne stegflyten ennå. Du kan bruke den i en tjeneste som før.',
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getAllByRole('tab').map((x) => x.textContent)).toEqual([
-      'Diagram',
-      'YAML',
-      'Brukes av',
-      'Versjoner',
-    ]);
+    expect(screen.queryByRole('button', { name: 'Bruk i en tjeneste' })).toBeNull();
   });
 
   it('offers Bruk i en tjeneste on a step flow, which puts it in a service draft', async () => {
@@ -1794,6 +1814,18 @@ describe('a step flow in Byggeklosser', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: /Postruting/ })).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Koble til tjenesten' })).toBeTruthy();
+  });
+
+  it('shows no Norwegian close button on the use-in-service dialog for an English user', async () => {
+    await renderAt(
+      '#/building-blocks/step_flow/postruting/used-by',
+      mockFetch(undefined, undefined, undefined, undefined, {
+        features: { preferences: { language: 'en' } },
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Use in a service' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: /Lukk/ })).toBeNull();
   });
 
   it('gives a step type no link to the step-flow editor', async () => {
@@ -1844,16 +1876,54 @@ describe('Byggeklosser: modell, verktøy og fart', () => {
     expect(screen.getByText('0,08 kr per 1 000 tokens')).toBeTruthy();
   });
 
-  it('shows who made and runs a model and when it was taken into use', async () => {
-    await open('#/building-blocks/model/aivar%2Fborealis-27b');
+  it('shows who made and runs a model from /models and when it was taken into use from the block', async () => {
+    const borealis = exampleBlocks.find((b) => b.id === 'aivar/borealis-27b') as CatalogItem;
+    await renderAt(
+      '#/building-blocks/model/aivar%2Fborealis-27b',
+      mockFetch(
+        undefined,
+        undefined,
+        [
+          {
+            id: 'aivar/borealis-27b',
+            residency: 'norway',
+            capabilities: [],
+            maker: 'AIVAR',
+            operator: { name: 'AIVAR', region: 'Norge' },
+          } as never,
+        ],
+        undefined,
+        {
+          features: {
+            buildingBlocks: {
+              items: [
+                ...exampleBlocks.filter((b) => b !== borealis),
+                {
+                  ...borealis,
+                  adoptedAt: '2026-09-02T10:00:00Z',
+                  adoptedByName: 'Kari Nordmann',
+                } as CatalogItem,
+              ],
+            },
+          },
+        },
+      ),
+    );
     await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
     const facts = screen
       .getByRole('heading', { name: 'Om modellen' })
       .closest('section') as HTMLElement;
-    expect(within(facts).getByText('Laget av')).toBeTruthy();
+    expect(await within(facts).findByText('Laget av')).toBeTruthy();
     expect(within(facts).getByText('Drives av')).toBeTruthy();
     expect(within(facts).getByText('AIVAR, Norge')).toBeTruthy();
     expect(within(facts).getByText(/2\. september 2026 av Kari Nordmann/)).toBeTruthy();
+  });
+
+  it('leaves out who made and runs a model while the API does not say', async () => {
+    await open('#/building-blocks/model/aivar%2Fborealis-27b');
+    await screen.findByRole('heading', { level: 1, name: 'Borealis-27B' });
+    expect(screen.queryByText('Laget av')).toBeNull();
+    expect(screen.queryByText('Drives av')).toBeNull();
   });
 
   it('has a single Byggeklosser back link instead of a slash breadcrumb', async () => {
@@ -1884,7 +1954,12 @@ describe('Byggeklosser: modell, verktøy og fart', () => {
     endpoint: 'https://mcp.testetaten.example.no/mcp',
     lastSync: { at: '2026-11-12T06:45:00Z', ok: true },
     toolDetails: [
-      { name: 'arkiv.sok', description: 'Søk i saksarkivet', state: 'approved' as const },
+      {
+        name: 'arkiv.sok',
+        description: 'Søk i saksarkivet',
+        state: 'approved' as const,
+        changes: false,
+      },
       {
         name: 'arkiv.opprett',
         description: 'Opprett journalpost',
@@ -1959,6 +2034,112 @@ describe('Byggeklosser: modell, verktøy og fart', () => {
     expect((screen.getByRole('checkbox', { name: /arkiv\.sok/ }) as HTMLInputElement).checked).toBe(
       false,
     );
+  });
+
+  it('approves a pending tool from the integrations list while the connection has no per-tool state, and cannot withdraw one yet', async () => {
+    const calls: { path: string; body: string }[] = [];
+    const fetch = mockFetch(undefined, undefined, undefined, undefined, {
+      integrations: {
+        connections: [
+          {
+            id: 'arkiv',
+            name: 'Arkivsøk',
+            endpoint: 'https://mcp.testetaten.example.no/mcp',
+            version: '1.0',
+            allow: [{ host: 'mcp.testetaten.example.no' }],
+            auth: null,
+            tools: [{ name: 'arkiv.sok', description: 'Søk i saksarkivet' }],
+            pending: [{ name: 'arkiv.opprett', description: 'Opprett journalpost' }],
+          },
+        ],
+        traces: { enabled: true, content: false },
+      },
+      features: {
+        blocks: {
+          connections: [
+            {
+              id: 'arkiv',
+              name: 'Arkivsøk',
+              endpoint: 'https://mcp.testetaten.example.no/mcp',
+              version: '1.0',
+              tools: ['arkiv.sok'],
+              lastSync: { at: '2026-11-12T06:45:00Z', ok: true },
+            },
+          ],
+        },
+      },
+    });
+    await renderAt('#/building-blocks/tool/arkiv', (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method === 'POST') calls.push({ path: url, body: String(init.body) });
+      return fetch(input, init);
+    });
+    const pending = (await screen.findByRole('checkbox', {
+      name: /arkiv\.opprett/,
+    })) as HTMLInputElement;
+    const approved = screen.getByRole('checkbox', { name: /arkiv\.sok/ }) as HTMLInputElement;
+    expect(approved.checked).toBe(true);
+    expect(approved.disabled).toBe(true);
+    expect(
+      screen.getByText('Et godkjent verktøy kan ikke trekkes tilbake herfra ennå.'),
+    ).toBeTruthy();
+    fireEvent.click(pending);
+    const bar = screen.getByRole('region', { name: 'Ulagrede endringer' });
+    fireEvent.change(within(bar).getByLabelText('Hvorfor endrer du dette?'), {
+      target: { value: 'Trengs for vedtaksutkast' },
+    });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText(/Endringen står i Logg, Endringer\./)).toBeTruthy();
+    expect(calls).toEqual([
+      {
+        path: expect.stringMatching(/\/tool-connections\/arkiv\/approve$/),
+        body: JSON.stringify({ tool: 'arkiv.opprett' }),
+      },
+    ]);
+  });
+
+  it('says when and by whom a tool was connected', async () => {
+    await renderAt(
+      '#/building-blocks/tool/arkiv',
+      toolFetch([{ ...arkiv, connectedAt: '2026-10-14T09:00:00Z', connectedByName: 'Per Hansen' }]),
+    );
+    const label = await screen.findByText('Koblet til', { selector: 'dt' });
+    expect(label.nextElementSibling?.textContent).toBe('14. oktober 2026 av Per Hansen');
+  });
+
+  it('says a tool changed meanwhile and reloads when the API no longer finds it pending', async () => {
+    const base = toolFetch();
+    let lists = 0;
+    await renderAt('#/building-blocks/tool/arkiv', (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/tool-connections') && !init?.method) lists += 1;
+      if (url.endsWith('/approve'))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              type: 'urn:genai:problem:tool-not-found',
+              title: 'No such tool',
+              status: 404,
+            }),
+            { status: 404, headers: { 'content-type': 'application/problem+json' } },
+          ),
+        );
+      return base(input, init);
+    });
+    fireEvent.click(await screen.findByRole('checkbox', { name: /arkiv\.opprett/ }));
+    const before = lists;
+    const bar = screen.getByRole('region', { name: 'Ulagrede endringer' });
+    fireEvent.change(within(bar).getByLabelText('Hvorfor endrer du dette?'), {
+      target: { value: 'Trengs for vedtaksutkast' },
+    });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Lagre' }));
+    expect(
+      await screen.findByText(
+        'Verktøyet arkiv.opprett er endret siden du åpnet siden. Vi har hentet listen på nytt.',
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(lists).toBeGreaterThan(before));
+    expect(screen.getByText(/Verktøyet arkiv\.opprett er endret/)).toBeTruthy();
   });
 
   it('Forkast puts the tool approvals back as they were', async () => {

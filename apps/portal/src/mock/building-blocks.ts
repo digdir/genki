@@ -572,6 +572,7 @@ export const buildingBlocksMock = (options: BuildingBlocksMockOptions = {}): Moc
         tenantOverrides: {},
         settingsVersion: 0,
         right: 'manage-services',
+        ...(input.residency ? { residency: input.residency } : {}),
       };
       items = [...items.filter((i) => keyOf(i) !== keyOf(item)), item];
       versions[keyOf(item)] = [{ source: 'publisher', version: '1' }];

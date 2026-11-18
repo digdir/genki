@@ -322,7 +322,6 @@ export const blocks = defineNamespace({
   registerLead:
     'Plattformen lager et manifest ut fra det du fyller inn, og kjører kontrakttestene. Byggeklossen kan registreres når testene er bestått. Den blir bare tilgjengelig for tjenestene til {tenant}.',
   whatToAdd: 'Hva vil du legge til?',
-  apiNotDecided: 'API ikke bestemt',
   setup: 'Oppsett',
   name: 'Navn',
   whenRun: 'Når skal den kjøres?',
@@ -357,8 +356,6 @@ export const blocks = defineNamespace({
   fixFailures:
     'Rett feilene under og kjør testen på nytt. Byggeklossen kan ikke registreres før alle testene er bestått.',
   requestedAccess: 'Tilgangene den ber om',
-  manifest: 'Manifest',
-  manifestNote: 'Laget av plattformen ut fra oppsettet. Oppdateres mens du fyller inn.',
   register: 'Registrer',
   registerLogged: 'Registreringen logges med begrunnelsen.',
   runContractFirst: 'Kjør kontrakttesten og få den bestått før du registrerer.',
@@ -485,6 +482,10 @@ export const blockTool = defineNamespace({
   approvalNote:
     'Tjenestene kan bare bruke verktøy som er godkjent. Verktøy som endrer noe, bør bare godkjennes når en tjeneste trenger dem.',
   approvedLegend: 'Godkjente verktøy',
+  connected: 'Koblet til',
+  connectedBy: '{date} av {name}',
+  toolMoved: 'Verktøyet {name} er endret siden du åpnet siden. Vi har hentet listen på nytt.',
+  revokeLater: 'Et godkjent verktøy kan ikke trekkes tilbake herfra ennå.',
   noToolsTitle: '{name} tilbyr ingen verktøy ennå',
   noToolsBody: 'Sjekk at serveren har verktøy satt opp, og synkroniser på nytt.',
   changesData: 'Endrer data',
@@ -498,6 +499,15 @@ export const blockTool = defineNamespace({
 });
 
 export const blockRegister = defineNamespace({
+  previewTitle: 'Slik blir den seende ut',
+  previewUnnamed: 'Uten navn',
+  previewConnected: 'Verktøy · koblet til av {tenant} med {type}',
+  previewTools: {
+    one: '{count} verktøy, ingen godkjent ennå',
+    other: '{count} verktøy, ingen godkjent ennå',
+  },
+  toolReads: '{name} (leser)',
+  toolChanges: '{name} (endrer)',
   residency: 'Hvor behandles dataene?',
   residencyHelp: 'Vises for alle som vurderer å bruke byggeklossen.',
   residencyNorway: 'I Norge',
@@ -509,8 +519,6 @@ export const blockFlow = defineNamespace({
   useInService: 'Bruk i en tjeneste',
   errorTitle: 'Vi fikk ikke hentet stegflyten',
   errorBody: 'Tjenestene som bruker den, virker som før. Det er bare visningen her som mangler.',
-  notShared:
-    'Utgiveren har ikke delt diagrammet og YAML-en for denne stegflyten ennå. Du kan bruke den i en tjeneste som før.',
 });
 
 export const blocksLane = {
