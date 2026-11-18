@@ -297,7 +297,8 @@ describe('an archived service', () => {
     expect(within(header).queryByRole('button', { name: 'Sett på pause' })).toBeNull();
     const tabs = screen.getByRole('navigation', { name: 'Tjenesten' });
     expect(within(tabs).queryByRole('link', { name: 'Oppsett' })).toBeNull();
-    expect(within(tabs).getByRole('link', { name: 'Versjoner' })).toBeTruthy();
+    // Versions and the log are read in Utviklerverktøy.
+    expect(within(tabs).getByRole('link', { name: 'Utviklerverktøy' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Gjenopprett' })).toBeTruthy();
   });
 });
