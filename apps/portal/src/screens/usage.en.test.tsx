@@ -28,7 +28,8 @@ describe('Usage in English', () => {
     expect(screen.getByText(/Last updated today at \d\d:\d\d\./)).toBeTruthy();
     expect(screen.getByRole('meter', { name: 'Quota used in October' })).toBeTruthy();
     expect(screen.getAllByRole('region', { name: 'Split by service' }).length).toBeGreaterThan(0);
-    expect(screen.getByRole('option', { name: 'October 2026 (to date)' })).toBeTruthy();
+    expect(screen.getByLabelText('Month')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'October 2026' })).toBeTruthy();
     expect(screen.queryByText('Kvote i oktober')).toBeNull();
   });
 });

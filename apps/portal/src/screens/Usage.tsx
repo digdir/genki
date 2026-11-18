@@ -45,7 +45,9 @@ import {
   monthUsage,
   nb,
   percentText,
+  monthOptions,
   periodLabels,
+  periodOf,
   quotaOf,
   runsOf,
   series,
@@ -68,7 +70,6 @@ type SortKey = 'name' | 'tok' | 'cost';
 type DialogState = { kind: 'export' } | undefined;
 type Sort = { key: SortKey; dir: 1 | -1 };
 
-const periods: readonly Period[] = ['current', 'previous', 'six'];
 const groups: readonly Group[] = ['service', 'model'];
 
 const slug = (s: string) =>
@@ -105,7 +106,7 @@ const UsageView = ({
   quota: number | null;
   period: Period;
   group: Group;
-  onView: (view: { period?: Period; group?: Group }) => void;
+  onView: (view: { group?: Group }) => void;
   sort: Sort;
   setSort: (update: (s: Sort) => Sort) => void;
   models: ModelOption[] | null;
@@ -114,7 +115,6 @@ const UsageView = ({
 }) => {
   const t = useT();
   const f = useFormat();
-  const ids = { period: useId() };
   const [selBar, setSelBar] = useState<number | null>(null);
   const [flash, setFlash] = useState('');
   const [format, setFormat] = useState<'csv' | 'json'>('csv');
@@ -131,39 +131,32 @@ const UsageView = ({
     () => categories(report, group, models ?? [], t),
     [report, group, models, t],
   );
-  const monthly = period === 'six';
   const maxTotal = Math.max(
     ...bars.map((b) => b.total),
-    quota === null ? 0 : monthly ? quota : quota / status.daysInMonth,
+    quota === null ? 0 : quota / status.daysInMonth,
     1,
   );
   const max = maxTotal * 1.08;
-  const fallbackSel = period === 'current' ? today(report).day - 1 : bars.length - 1;
+  const fallbackSel = period === 0 ? today(report).day - 1 : bars.length - 1;
   const selected = selBar !== null && bars[selBar] && !bars[selBar].future ? selBar : fallbackSel;
-  const range = labels.ranges[period];
+  const range = labels.range(period);
   const month = labels.month;
 
   const refLine =
-    quota === null
-      ? undefined
-      : monthly
-        ? { value: quota, label: t('usage.quotaLine', { quota: short(f, t, quota) }) }
-        : period === 'current'
-          ? {
-              value: quota / status.daysInMonth,
-              label: t('usage.averageLine', { value: short(f, t, quota / status.daysInMonth) }),
-            }
-          : undefined;
-  const barMonth = labels.monthShort(period !== 'previous');
-  const ticks = monthly
-    ? bars.map((b) => b.label)
-    : [
-        t('usage.tickMonth', { day: '1', month: barMonth }),
-        t('usage.tickDay', { day: '8' }),
-        t('usage.tickDay', { day: '15' }),
-        t('usage.tickDay', { day: '22' }),
-        t('usage.tickMonth', { day: String(bars.length), month: barMonth }),
-      ];
+    quota !== null && period === 0
+      ? {
+          value: quota / status.daysInMonth,
+          label: t('usage.averageLine', { value: short(f, t, quota / status.daysInMonth) }),
+        }
+      : undefined;
+  const barMonth = labels.monthShort(period);
+  const ticks = [
+    t('usage.tickMonth', { day: '1', month: barMonth }),
+    t('usage.tickDay', { day: '8' }),
+    t('usage.tickDay', { day: '15' }),
+    t('usage.tickDay', { day: '22' }),
+    t('usage.tickMonth', { day: String(bars.length), month: barMonth }),
+  ];
 
   const totalsByCat = aggregate(bars);
   const rows = cats
@@ -387,21 +380,6 @@ const UsageView = ({
             {t('usage.overTime')}
           </Heading>
           <div className="usage-controls">
-            <Field className="usage-period">
-              <Label htmlFor={ids.period}>{t('usage.period')}</Label>
-              <Select
-                id={ids.period}
-                value={period}
-                onChange={(e) => {
-                  onView({ period: e.target.value as Period });
-                  setSelBar(null);
-                }}
-              >
-                <option value="current">{labels.options.current}</option>
-                <option value="previous">{labels.options.previous}</option>
-                <option value="six">{labels.options.six}</option>
-              </Select>
-            </Field>
             <Fieldset>
               <Fieldset.Legend>{t('usage.groupBy')}</Fieldset.Legend>
               <div className="tag-row">
@@ -434,9 +412,8 @@ const UsageView = ({
           onSelect={setSelBar}
           max={max}
           {...(refLine ? { refLine } : {})}
-          label={t(monthly ? 'usage.chartMonthly' : 'usage.chartDaily', { range })}
+          label={t('usage.chartDaily', { range })}
           ticks={ticks}
-          monthly={monthly}
         />
       </section>
 
@@ -511,7 +488,11 @@ const UsageView = ({
                   <TableCell className="num">
                     {nb(f, group === 'model' ? r.u.requests : runsOf(r.u))}
                   </TableCell>
-                  <TableCell className="num">{money(f, t, r.cost, r.costAtLeast)}</TableCell>
+                  <TableCell className="num">
+                    {group === 'model' && r.cost === null && r.tok > 0
+                      ? t('usage.priceMissingFor', { model: r.label })
+                      : money(f, t, r.cost, r.costAtLeast)}
+                  </TableCell>
                   <TableCell className="num">
                     {percentText(f, sum.tin + sum.tout ? r.tok / (sum.tin + sum.tout) : 0)}
                   </TableCell>
@@ -520,7 +501,7 @@ const UsageView = ({
                       {r.price === undefined
                         ? t('usage.priceUnknown')
                         : r.price === null
-                          ? t('usage.notPriced')
+                          ? t('usage.priceMissingFor', { model: r.label })
                           : t('usage.modelPrice', {
                               input: f.number(r.price.inputPerThousand, {
                                 maximumFractionDigits: 4,
@@ -664,7 +645,7 @@ const UsageView = ({
               <Fieldset.Legend>{t('usage.detail')}</Fieldset.Legend>
               <Radio
                 name="niva"
-                label={t(monthly ? 'usage.rowPerMonth' : 'usage.rowPerDay')}
+                label={t('usage.rowPerDay')}
                 checked={level === 'rows'}
                 onChange={() => setLevel('rows')}
               />
@@ -692,16 +673,17 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
   const rights = useRights();
-  const ids = { project: useId(), environment: useId() };
-  const period = periods.find((p) => p === route.query.get('period')) ?? 'current';
+  const ids = { project: useId(), environment: useId(), month: useId() };
+  const month = route.query.get('month');
   const group = groups.find((g) => g === route.query.get('by')) ?? 'service';
   const [sort, setSort] = useState<Sort>({ key: 'tok', dir: -1 });
-  const onView = (view: { period?: Period; group?: Group }) => {
+  const onView = (view: { month?: string; group?: Group }) => {
     const query = new URLSearchParams(route.query);
-    const nextPeriod = view.period ?? period;
+    const nextMonth = view.month ?? month;
     const nextGroup = view.group ?? group;
-    if (nextPeriod === 'current') query.delete('period');
-    else query.set('period', nextPeriod);
+    query.delete('period');
+    if (!nextMonth) query.delete('month');
+    else query.set('month', nextMonth);
     if (nextGroup === 'service') query.delete('by');
     else query.set('by', nextGroup);
     const search = query.toString();
@@ -743,7 +725,7 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
     ? quotaFacts(report, settingsQuota, tokensOf(monthUsage(report).total))
     : undefined;
   const quotaAction =
-    facts?.alert && report
+    facts && report
       ? (forecast: number) => (
           <QuotaRequestAction
             api={api}
@@ -765,12 +747,35 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
           </Heading>
           <p className="lead">{t('usage.lead', { tenant: tenantName })}</p>
         </div>
-        {hasData ? (
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'export' })}>
-            <Icon icon={DownloadIcon} />
-            {t('usage.export')}
-          </Button>
-        ) : null}
+        <div className="usage-head-actions">
+          {report ? (
+            <Field className="usage-period">
+              <Label htmlFor={ids.month}>{t('usage.month')}</Label>
+              <Select
+                id={ids.month}
+                value={monthOptions(report, f)[periodOf(report, month)]?.value ?? ''}
+                onChange={(e) =>
+                  onView({
+                    month:
+                      e.target.value === monthOptions(report, f)[0]?.value ? '' : e.target.value,
+                  })
+                }
+              >
+                {monthOptions(report, f).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          {hasData ? (
+            <Button variant="secondary" onClick={() => setDialog({ kind: 'export' })}>
+              <Icon icon={DownloadIcon} />
+              {t('usage.export')}
+            </Button>
+          ) : null}
+        </div>
       </div>
       {environments.length > 1 || environment !== undefined ? (
         <div className="stack-sm">
@@ -883,6 +888,9 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
               ? t('usage.quotaUnknown')
               : t('usage.quotaIs', { tenant: tenantName, millions: nb(f, quota / 1e6) })}
           </p>
+          {quotaAction && facts ? (
+            <div className="usage-quota-action">{quotaAction(facts.used)}</div>
+          ) : null}
           {rights.has('manage-services') ? (
             <Button asChild>
               <a href="#/services/new">{t('usage.createService')}</a>
@@ -894,9 +902,10 @@ export const Usage = ({ api, tenant, tenantName, route }: ScreenProps) => {
       ) : null}
       {state.status === 'ready' && hasData ? (
         <UsageView
+          key={month ?? ''}
           report={state.data}
           tenantName={tenantName}
-          period={period}
+          period={periodOf(state.data, month)}
           group={group}
           onView={onView}
           sort={sort}

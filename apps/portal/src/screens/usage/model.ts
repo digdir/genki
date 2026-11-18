@@ -17,7 +17,10 @@ export const quotaOf = (settings: Record<string, EffectiveSetting>) => {
   return typeof value === 'number' && value > 0 ? value : null;
 };
 
-export type Period = 'current' | 'previous' | 'six';
+/** Months back from the report's current month: 0 is this month. */
+export type Period = number;
+
+export const monthsShown = 6;
 export type Group = 'service' | 'model';
 
 const monthName = (f: Format, year: number, month: number) =>
@@ -394,36 +397,13 @@ export const series = (
 ): Bar[] => {
   const now = today(report);
   const days = byDate(report);
-  if (period === 'six') {
-    return Array.from({ length: 6 }, (_, i) => {
-      const date = new Date(Date.UTC(now.year, now.month - 5 + i, 1));
-      const y = date.getUTCFullYear();
-      const m = date.getUTCMonth();
-      const values: Record<string, UsageTotals> = {};
-      for (let d = 1; d <= daysIn(y, m); d += 1) {
-        const entry = days.get(isoDate(y, m, d));
-        if (!entry) continue;
-        Object.entries(breakdown(report, entry, group)).forEach(([id, u]) => {
-          values[id] = add(values[id] ?? zeroUsage(), u);
-        });
-      }
-      const name = monthName(f, y, m);
-      const current = m === now.month && y === now.year;
-      return toBar(
-        `m${y}-${m}`,
-        capitalise(name.slice(0, 3)),
-        current ? t('usage.monthToDate', { month: name }) : name,
-        values,
-      );
-    });
-  }
-  const base = new Date(Date.UTC(now.year, now.month - (period === 'previous' ? 1 : 0), 1));
+  const base = new Date(Date.UTC(now.year, now.month - period, 1));
   const y = base.getUTCFullYear();
   const m = base.getUTCMonth();
   return Array.from({ length: daysIn(y, m) }, (_, i) => {
     const d = i + 1;
-    const isToday = period === 'current' && d === now.day;
-    const future = period === 'current' && d > now.day;
+    const isToday = period === 0 && d === now.day;
+    const future = period === 0 && d > now.day;
     const entry = days.get(isoDate(y, m, d));
     const values = future ? null : entry ? breakdown(report, entry, group) : {};
     return toBar(
@@ -439,35 +419,50 @@ export const series = (
   });
 };
 
+const monthKey = (year: number, month: number) => `${year}-${String(month + 1).padStart(2, '0')}`;
+
+export const monthOptions = (report: UsageReport, f: Format) => {
+  const now = today(report);
+  return Array.from({ length: monthsShown }, (_, back) => {
+    const date = new Date(Date.UTC(now.year, now.month - back, 1));
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    return {
+      back,
+      value: monthKey(year, month),
+      label: capitalise(f.month(new Date(Date.UTC(year, month, 15)), { year: true })),
+    };
+  });
+};
+
+/** The months back for a month in the address; this month when it is missing or out of range. */
+export const periodOf = (report: UsageReport, month: string | null): Period => {
+  const now = today(report);
+  const found = /^(\d{4})-(\d{2})$/.exec(month ?? '');
+  if (!found) return 0;
+  const back = now.year * 12 + now.month - (Number(found[1]) * 12 + Number(found[2]) - 1);
+  return back >= 0 && back < monthsShown ? back : 0;
+};
+
 export const periodLabels = (report: UsageReport, f: Format, t: T) => {
   const now = today(report);
-  const prev = new Date(Date.UTC(now.year, now.month - 1, 1));
-  const first = new Date(Date.UTC(now.year, now.month - 5, 1));
-  const cur = monthName(f, now.year, now.month);
-  const pm = monthName(f, prev.getUTCFullYear(), prev.getUTCMonth());
-  const range = (month: string, last: number, year: number) =>
-    t('usage.range', { last: String(last), month, year: String(year) });
+  const nameOf = (back: number) => {
+    const date = new Date(Date.UTC(now.year, now.month - back, 1));
+    return { year: date.getUTCFullYear(), month: date.getUTCMonth() };
+  };
   return {
-    options: {
-      current: t('usage.periodCurrent', { month: capitalise(cur), year: String(now.year) }),
-      previous: t('usage.periodPrevious', {
-        month: capitalise(pm),
-        year: String(prev.getUTCFullYear()),
-      }),
-      six: t('usage.periodSix'),
-    } satisfies Record<Period, string>,
-    ranges: {
-      current: range(cur, now.day, now.year),
-      previous: range(pm, daysIn(prev.getUTCFullYear(), prev.getUTCMonth()), prev.getUTCFullYear()),
-      six: t('usage.rangeSix', {
-        from: capitalise(monthName(f, first.getUTCFullYear(), first.getUTCMonth())),
-        month: cur,
-        year: String(now.year),
-      }),
-    } satisfies Record<Period, string>,
-    month: cur,
-    monthShort: (current: boolean) => {
-      const name = current ? cur : pm;
+    range: (back: Period) => {
+      const { year, month } = nameOf(back);
+      return t('usage.range', {
+        last: String(back === 0 ? now.day : daysIn(year, month)),
+        month: monthName(f, year, month),
+        year: String(year),
+      });
+    },
+    month: monthName(f, now.year, now.month),
+    monthShort: (back: Period) => {
+      const { year, month } = nameOf(back);
+      const name = monthName(f, year, month);
       return f.locale === 'en' ? capitalise(name.slice(0, 3)) : name.slice(0, 3).toLowerCase();
     },
   };
@@ -491,7 +486,7 @@ export const monthStatus = (
   t: T,
 ) => {
   const now = today(report);
-  const current = series(report, 'current', 'service', f, t).filter((b) => !b.future);
+  const current = series(report, 0, 'service', f, t).filter((b) => !b.future);
   const days = byDate(report);
   const dayTotals = Array.from(
     { length: now.day },
@@ -506,7 +501,7 @@ export const monthStatus = (
   const remaining = daysIn(now.year, now.month) - now.day;
   const forecast = used + average * remaining;
   const perService = aggregate(current);
-  const byModel = aggregate(series(report, 'current', 'model', f, t).filter((b) => !b.future));
+  const byModel = aggregate(series(report, 0, 'model', f, t).filter((b) => !b.future));
   const norway = Object.entries(byModel)
     .filter(([id]) => models?.find((m) => m.id === id)?.residency === 'norway')
     .reduce((n, [, u]) => n + tokensOf(u), 0);

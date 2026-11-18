@@ -128,7 +128,7 @@ describe('public start page', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet',
+        name: 'Brukermeny for Kari Nordmann, Testetaten',
       }),
     ).toBeTruthy();
   });

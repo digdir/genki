@@ -1,6 +1,7 @@
 import { resolveLocale } from '@genai/i18n';
 import { translator } from './i18n';
 import type { SilentAuthorize } from './silent-frame';
+import { hasOwnName } from './data/organisations';
 import type { Organisation, Session } from './types';
 
 export interface OidcAuthClient {
@@ -222,6 +223,15 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     return { tokens, id };
   };
 
+  const withRegisteredNames = async (listed: Organisation[], token: string) => {
+    if (!options.organisations || listed.every(hasOwnName)) return listed;
+    const registered = await options.organisations(token).catch(() => []);
+    const names = new Map(registered.filter(hasOwnName).map((o) => [o.orgNumber, o.name]));
+    return listed.map((o) =>
+      hasOwnName(o) ? o : { ...o, name: names.get(o.orgNumber) ?? o.name },
+    );
+  };
+
   const keep = async (
     tokens: TokenResponse,
     id: Record<string, unknown>,
@@ -242,7 +252,7 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     const organisations =
       listed.length === 0 && options.organisations
         ? await options.organisations(tokens.access_token)
-        : listed;
+        : await withRegisteredNames(listed, tokens.access_token);
     const refreshToken = tokens.refresh_token ?? previous?.refreshToken;
     const idToken = tokens.id_token ?? previous?.idToken;
     const session: StoredSession = {

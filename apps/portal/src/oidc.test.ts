@@ -459,6 +459,56 @@ describe('login with Entra ID through Ansattporten', () => {
     await expect(signIn(organisations)).rejects.toThrow(/oppsatte Entra-gruppene/);
   });
 
+  const numberOnly = jwt({
+    exp: 4_000_000_000,
+    authorization_details: [
+      {
+        type: 'ansattporten:altinn:resource',
+        resource,
+        authorized_parties: [
+          { orgno: { ID: '0192:312521172' }, name: '312521172', actions: ['read'] },
+        ],
+      },
+    ],
+  });
+
+  it('takes the organisation name from /me when the token party has only a number', async () => {
+    const { asked, organisations } = api();
+    issued = { access_token: numberOnly, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({ organisations });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      const session = await client.login();
+
+      expect(asked).toHaveLength(1);
+      expect(session.organisations).toEqual([
+        { orgNumber: '312521172', name: 'Plattformen', actions: ['read'] },
+      ]);
+    } finally {
+      issued = undefined;
+    }
+  });
+
+  it('keeps the login working with the number when /me cannot name the organisation', async () => {
+    const { organisations } = api(503, { title: 'Utilgjengelig' });
+    issued = { access_token: numberOnly, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({ organisations });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      const session = await client.login();
+
+      expect(session.organisations).toEqual([
+        { orgNumber: '312521172', name: '312521172', actions: ['read'] },
+      ]);
+    } finally {
+      issued = undefined;
+    }
+  });
+
   it('does not ask the API when the token lists the organisations', async () => {
     const { asked, organisations } = api();
     const { client, navigated, returnFromAnsattporten } = setup({ organisations });
