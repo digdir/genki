@@ -23,7 +23,8 @@ responsibilities:
   - Fire schedules from one worker at a time through a Postgres advisory lock
   - Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)
   - Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding
-  - Work knowledge.convert, 2 at once, with the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, and send the waiting records' index jobs (ADR 0042)
+  - Work knowledge.convert, KNOWLEDGE_CONVERT_CONCURRENCY at once (2 by default), with Docling when DOCLING_URL is set and else the text layer - fetch the file through its record, write native output to the native output store, store its pages or the converter's refusal, read a file Docling refuses with the text layer, and send the waiting records' index jobs (ADR 0042)
+  - Send a replacement run when a run ends with text-layer files, and work knowledge.replace - make the pipeline's records wait on Docling, with convert jobs for the night window (ADR 0042)
   - Work knowledge.seed - store a conversion for each native output in Blob under one sha256 prefix that has none, with pages from its derivation, skipping files it cannot read (ADR 0042)
   - Count records waiting on a conversion as open work of their runs, and hand a shared conversion to a waiting run when its sender is cancelled
   - Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them
@@ -164,7 +165,7 @@ edges:
       file: apps/worker/src/knowledge-handlers.ts
       imports: '@genai/port-embedding'
   - to: providers-documents
-    label: Converts documents with the text layer
+    label: Converts documents with the text layer, and what Docling refuses
     kind: call
     target: call
     witness:

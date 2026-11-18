@@ -270,4 +270,15 @@ describe.skipIf(!hasAz && !process.env.CI)('the Docling server in the template',
     };
     expect(terminationGracePeriodSeconds).toBe(600);
   });
+
+  it('the template gives the Docling server a 6-hour wait and the worker 8 conversions at once', () => {
+    // The worker's client waits a minute longer and asks Docling to stop after 5 h 50 min (issue 477).
+    expect(env()).toContain('{"name":"DOCLING_SERVE_MAX_SYNC_WAIT","value":"21600"}');
+    const worker = JSON.stringify(app('worker').properties.template);
+    // One conversion a replica, so as many at once as the server has replicas.
+    expect(worker).toContain(
+      "'KNOWLEDGE_CONVERT_CONCURRENCY', 'value', string(parameters('doclingMaxReplicas'))",
+    );
+    expect(read('infra/modules/containerapps.bicep')).toMatch(/param doclingMaxReplicas int = 8/);
+  });
 });

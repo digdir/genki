@@ -20,8 +20,13 @@ const vcoresProblems = (env: Record<string, string | undefined>) => {
     : ['KNOWLEDGE_VCORES is a positive whole number'];
 };
 
+/** Docling's server asks every request for its key; a worker without it would dead-letter every file. */
+const doclingProblems = (env: Record<string, string | undefined>) =>
+  env.DOCLING_URL && !env.DOCLING_API_KEY ? ['DOCLING_URL needs DOCLING_API_KEY'] : [];
+
 export const workerBootProblems = (env: Record<string, string | undefined>): string[] => [
   ...platformTenantProblems(env),
+  ...doclingProblems(env),
   ...unmetOutsideDevMode(env, [databaseRequirement(env), traceContentRequirement(env)]),
   ...markerTimeoutProblems(env),
   ...vcoresProblems(env),

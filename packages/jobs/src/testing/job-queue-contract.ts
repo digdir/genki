@@ -55,6 +55,7 @@ export const contractQueues = {
   alsoListed: contractQueue('also-listed'),
   givingWay: contractQueue('giving-way', { policy: 'exclusive', retryLimit: 2 }),
   retimed: contractQueue('retimed'),
+  retimedByPriority: contractQueue('retimed-by-priority'),
   concurrent: contractQueue('concurrent', { policy: 'exclusive' }),
 };
 
@@ -379,6 +380,28 @@ export const describeJobQueueContract = (
       expect(await target.queue.retime([q.retimed], new Date())).toBe(1);
       await waitFor(() => seen.length === 1);
       expect(seen).toEqual(['tonight']);
+    }, 30_000);
+
+    it('moving the start of waiting jobs of one priority leaves the others where they are', async () => {
+      const seen: string[] = [];
+      const later = new Date(Date.now() + 3_600_000);
+      await target.queue.send(
+        q.retimedByPriority,
+        { tenant: ORG_A, item: 'replacement' },
+        { startAfter: later, priority: 0 },
+      );
+      await target.queue.send(
+        q.retimedByPriority,
+        { tenant: ORG_A, item: 'run' },
+        { startAfter: later, priority: 2 },
+      );
+      await target.queue.work(q.retimedByPriority, async (job) => {
+        seen.push(job.data.item);
+      });
+      expect(await target.queue.retime([q.retimedByPriority], new Date(), { priority: 0 })).toBe(1);
+      await waitFor(() => seen.length === 1);
+      await pause(1_000);
+      expect(seen).toEqual(['replacement']);
     }, 30_000);
 
     it('an attempt that runs past its expiry is aborted and retried', async () => {

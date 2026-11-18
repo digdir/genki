@@ -91,6 +91,7 @@ const definerFunctions = [
   'apply_knowledge_job_request(text, text)',
   'end_job_ingestion_execution(text, text, text, jsonb, text)',
   'start_queued_job_ingestion_execution(text, text, text, text, text)',
+  'start_replacement_job_ingestion_execution(text, text, text)',
   'report_job_ingestion_execution(text, jsonb, boolean)',
   'stop_job_ingestion_execution_at_budget(text, text)',
   'find_api_key_policy(text)',
@@ -937,8 +938,22 @@ const migrations: string[] = [
      add column if not exists cancelled_by text`,
   `create unique index if not exists ingestion_executions_one_queued
      on ingestion_executions (dataset, pipeline) where status = 'queued'`,
+  // A replacement run converts its sender's text-layer files again with Docling (ADR 0042,
+  // "Conversion"). It is not its pipeline's open run, and a pipeline has one at a time.
+  `alter table ingestion_executions add column if not exists replaces text`,
+  // Under its old name, so a release before this one, whose migration creates the name if it does
+  // not exist, still starts beside a running replacement run.
+  `do $$ begin
+     if exists (select from pg_indexes where indexname = 'ingestion_executions_one_open'
+                  and indexdef not like '%replaces%') then
+       drop index ingestion_executions_one_open;
+     end if;
+   end $$`,
   `create unique index if not exists ingestion_executions_one_open
-     on ingestion_executions (dataset, pipeline) where status = 'running' and runs_as_jobs`,
+     on ingestion_executions (dataset, pipeline)
+     where status = 'running' and runs_as_jobs and replaces is null`,
+  `create unique index if not exists ingestion_executions_one_replacement
+     on ingestion_executions (dataset, pipeline) where status = 'running' and replaces is not null`,
   `create or replace function refuse_worker_admission() returns trigger
      language plpgsql as $$ begin
        if current_user = '${workerRole}' and (
@@ -969,6 +984,25 @@ const migrations: string[] = [
   `create or replace trigger ingestion_executions_generation
      before insert or update on ingestion_executions
      for each row execute function refuse_worker_generation()`,
+  // Started by the worker as its sender ends, with the sender's admission, generation and engine
+  // switch, which only the API sets: so through this function, never by the worker's own insert.
+  `create or replace function start_replacement_job_ingestion_execution(
+       p_sender text, p_id text, p_at text)
+     returns setof ingestion_executions
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query insert into ingestion_executions (id, scope, dataset, pipeline,
+           pipeline_version, backend, status, started_by, started_at, runs_as_jobs, admitted_at,
+           generation, engine_switch, replaces)
+         select p_id, s.scope, s.dataset, s.pipeline, s.pipeline_version, s.backend, 'running',
+                'replacement', p_at, true, s.admitted_at, s.generation, s.engine_switch, s.id
+           from ingestion_executions s
+          where s.id = p_sender and s.runs_as_jobs and s.replaces is null
+            and s.status in ('succeeded', 'failed') and s.admitted_at is not null
+         on conflict do nothing
+         returning *;
+     end $$`,
   `create table if not exists knowledge_job_requests (
      id text primary key,
      scope text not null,
@@ -1058,7 +1092,8 @@ const migrations: string[] = [
      as $$ begin
        perform require_platform_access();
        if exists (select from ingestion_executions where dataset = p_dataset
-                    and pipeline = p_pipeline and status = 'running' and runs_as_jobs) then
+                    and pipeline = p_pipeline and status = 'running' and runs_as_jobs
+                    and replaces is null) then
          return;
        end if;
        update ingestion_executions set status = 'failed', ended_at = p_now, error = p_expired

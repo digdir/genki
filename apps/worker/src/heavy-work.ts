@@ -1,5 +1,8 @@
 import {
+  convertPriority,
+  defaultMarkerTimeoutMs,
   heavyWorkStart,
+  knowledgeConvertQueue,
   inNightWindow,
   knowledgeBuildQueue,
   knowledgeCheckQueue,
@@ -14,6 +17,9 @@ import {
 } from '@genai/jobs';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { executionScope, type IngestionExecution } from '@genai/providers-postgres';
+
+/** The convert queue by its name, as the night window moves its waiting jobs. */
+const convertQueue = knowledgeConvertQueue(defaultMarkerTimeoutMs);
 
 /** Session settings of heavy work; the knowledge server's provider takes the same shape. */
 export interface MaintenanceOptions {
@@ -307,8 +313,9 @@ export const checkWork = (deps: HeavyDeps) =>
 
 /**
  * The worker's side of the night window: works `knowledge.build` and `knowledge.fill` only inside
- * it and stops at its end, and when the window setting changes, moves waiting heavy jobs to its
- * next start and schedules the nightly checks at it (ADR 0042, "Jobs").
+ * it and stops at its end, and when the window setting changes, moves waiting heavy jobs and
+ * replacement runs' convert jobs to its next start and schedules the nightly checks at it (ADR
+ * 0042, "Jobs").
  */
 export const heavyWindow = (deps: HeavyDeps, work: { build: QueueWork; fill: QueueWork }) => {
   let offs: (() => Promise<void>)[] | undefined;
@@ -322,17 +329,20 @@ export const heavyWindow = (deps: HeavyDeps, work: { build: QueueWork; fill: Que
       const window = deps.window();
       const now = nowOf(deps);
       if (window !== seen) {
-        const moved = await deps.queue.retime(
-          [knowledgeBuildQueue, knowledgeFillQueue],
-          heavyWorkStart(window, now),
-        );
+        const start = heavyWorkStart(window, now);
+        const moved = await deps.queue.retime([knowledgeBuildQueue, knowledgeFillQueue], start);
+        // A replacement run's convert jobs wait for the window too, and only they are sent at
+        // their priority; a run's own conversions keep their start (issue 477).
+        const conversions = await deps.queue.retime([convertQueue], start, {
+          priority: convertPriority.replacement,
+        });
         await deps.queue.schedule(
           knowledgeCheckQueue,
           nightlyCron(window),
           {},
           { tz: nightWindowZone, key: knowledgeKeys.check() },
         );
-        deps.log?.('knowledge night window', { window, moved });
+        deps.log?.('knowledge night window', { window, moved, conversions });
         seen = window;
       }
       const inside = inNightWindow(window, now);

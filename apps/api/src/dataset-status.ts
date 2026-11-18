@@ -74,8 +74,9 @@ export const datasetState = (pipelines: PipelineState[]): DatasetState => {
   return 'configured';
 };
 
+/** A pipeline's latest run; a replacement run converts in the background and is not one. */
 const latestOf = (executions: Execution[]) =>
-  [...executions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  executions.filter((r) => !r.replaces).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 
 export const publicDatasetState = async (
   ingestion: Pick<IngestionService, 'list' | 'executions'>,

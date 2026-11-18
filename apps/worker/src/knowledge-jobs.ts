@@ -179,7 +179,12 @@ export const admissionRefusal = (
 ): string | undefined => {
   if (!run) return 'the run is gone';
   if (!run.admittedAt) return notAdmittedMessage;
-  if (lockdown && Date.parse(run.admittedAt) < hoursAgo(now, admissionHours).getTime())
+  // A replacement run carries its sender's admission until its files are converted (ADR 0033).
+  if (
+    lockdown &&
+    !run.replaces &&
+    Date.parse(run.admittedAt) < hoursAgo(now, admissionHours).getTime()
+  )
     return admissionRanOutMessage;
   return undefined;
 };
@@ -315,7 +320,9 @@ export const conversionRunJobs = (
  */
 export const admittedConversion = <T extends JobData & { run: string }>(
   queue: QueueDefinition<T>,
-  handler: (job: KnowledgeJob<T> & { sender?: IngestionExecution }) => Promise<void>,
+  handler: (
+    job: KnowledgeJob<T> & { sender?: IngestionExecution; running: IngestionExecution[] },
+  ) => Promise<void>,
   deps: AdmissionDeps & { waiting(data: T): Promise<string[]> },
 ): QueueWork<T> =>
   queueWork(queue, async (job) => {
@@ -342,6 +349,7 @@ export const admittedConversion = <T extends JobData & { run: string }>(
       job,
       run,
       ...(sender ? { sender } : {}),
+      running: running.filter((r) => !admissionRefusal(r, now, deps.lockdown)),
       principal: withModelAdmission(system),
       cancelled: async () => Boolean((await deps.records.find(run.id))?.cancelRequestedAt),
     });

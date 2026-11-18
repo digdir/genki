@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "body": {
+    "document": {
+      "filename": "scan.pdf",
+      "md_content": null,
+      "json_content": null,
+      "html_content": null,
+      "text_content": null,
+      "doctags_content": null,
+      "doclang_content": null
+    },
+    "status": "failure",
+    "errors": [
+      {
+        "component_type": "user_input",
+        "module_name": "",
+        "error_message": "File size 316082 exceeds the max_file_size limit of 200000 bytes.",
+        "category": "policy",
+        "page_no": null
+      }
+    ],
+    "processing_time": 0.0008244660002674209,
+    "timings": {},
+    "confidence": null
+  }
+}
