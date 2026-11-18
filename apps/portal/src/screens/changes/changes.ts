@@ -60,6 +60,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.engine-switch.start': 'changes.engineSwitchStart',
   'platform.engine-switch.readmit': 'changes.engineSwitchReadmit',
   'platform.eval.run': 'changes.evalRun',
+  'platform.eval-run.cancel': 'changes.evalRunCancel',
   'platform.gate.delete': 'changes.gateDelete',
   'platform.gate.save': 'changes.gateSave',
   'platform.guardrail-rule.delete': 'changes.guardrailRuleDelete',

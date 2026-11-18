@@ -290,7 +290,7 @@ const TaskRow = TaskBase.extend({
     .enum(['api-key', 'interface', 'api', 'playground', 'batch'])
     .nullable()
     .describe(
-      "How the run came in: api-key (a key not bound to a frontend), interface (a key bound to a server frontend), api (a person's token on /v1, REST, MCP or A2A; a browser frontend's runs are not told apart), playground (a trial run), batch (an item of a batch run's latest attempt); null when the run records none of these, such as a trigger",
+      "How the run came in: api-key (a key not bound to a frontend), interface (a key bound to a server frontend), api (a token that is not an API key on /v1, REST, MCP or A2A: a person's, or a registered Maskinporten client's; a browser frontend's runs are not told apart), playground (a trial run), batch (an item of a batch run's latest attempt); null when the run records none of these, such as a trigger",
     ),
 }).openapi('TaskRow');
 

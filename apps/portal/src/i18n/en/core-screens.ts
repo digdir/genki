@@ -218,6 +218,7 @@ export const changes = {
   engineSwitchRetry: 'retried the search engine switch for',
   engineSwitchStart: 'started the search engine switch for',
   evalRun: 'ran the test set',
+  evalRunCancel: 'cancelled a test set run',
   gateDelete: 'deleted the quality gate',
   gateSave: 'saved the quality gate',
   guardrailRuleDelete: 'deleted the guardrail rule',
