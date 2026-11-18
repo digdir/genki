@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -115,21 +115,27 @@ const platform = (
   return { fetch, posts };
 };
 
-const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
+const openPublishPage = async (fetch: typeof globalThis.fetch) => {
   const auth = mockAnsattporten(kari);
   await auth.login();
   window.location.hash = '#/services/klarsprak';
   render(<App auth={auth} fetch={fetch} live />);
   await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
   expect(screen.queryByRole('button', { name: 'Publiser til test' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-  const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).queryByRole('button', { name: 'Publiser til test' })).toBeNull();
-  fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
+  fireEvent.click(await screen.findByRole('button', { name: 'Publiser ...' }));
+  await screen.findByRole('heading', { level: 1, name: 'Publiser Klarspråk, versjon 2' });
+  return document.body;
+};
+
+const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
+  const page = await openPublishPage(fetch);
+  expect(within(page).queryByRole('button', { name: 'Publiser til test' })).toBeNull();
+  await waitFor(() => expect(screen.queryByText('Sjekker utkastet mot plattformen …')).toBeNull());
+  fireEvent.change(within(page).getByLabelText(/^Hva endret du, og hvorfor\?/), {
     target: { value: 'Strammer inn instruksjonene' },
   });
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser' }));
-  return dialog;
+  fireEvent.click(within(page).getByRole('button', { name: 'Publiser versjon 2' }));
+  return page;
 };
 
 describe('publishing the draft in live mode', () => {
@@ -144,21 +150,15 @@ describe('publishing the draft in live mode', () => {
     expect(screen.queryByRole('button', { name: 'Publiser' })).toBeNull();
   });
 
-  it('names the production version without i test and closes on Avbryt', async () => {
+  it('names the next version on the publish page and goes back to Oppsett without publishing', async () => {
     const { fetch, posts } = platform({});
-    const auth = mockAnsattporten(kari);
-    await auth.login();
-    window.location.hash = '#/services/klarsprak';
-    render(<App auth={auth} fetch={fetch} live />);
-    await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
-    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    await openPublishPage(fetch);
+    expect(window.location.hash).toBe('#/services/klarsprak/setup/publish');
+    expect(screen.getByText(/Versjon 1 er i drift til du publiserer/)).toBeTruthy();
 
-    expect(
-      within(dialog).getByRole('heading', { name: 'Versjon 2, endret siden versjon 1' }),
-    ).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'Fortsett å redigere' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Klarspråk' })).toBeTruthy();
+    expect(window.location.hash).toBe('#/services/klarsprak/setup');
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
   });
 
@@ -194,17 +194,18 @@ describe('publishing the draft in live mode', () => {
     const { fetch, posts } = platform({
       validate: [{ path: 'spec.strategy.config.instructions', message: 'må fylles ut' }],
     });
-    const dialog = await publishFromHeader(fetch);
+    const page = await publishFromHeader(fetch);
 
     expect(
-      await within(dialog).findByRole('heading', { name: 'Plattformen godtar ikke utkastet ennå' }),
+      await within(page).findByRole('heading', { name: 'Plattformen godtar ikke utkastet ennå' }),
     ).toBeTruthy();
-    expect(within(dialog).getByText('Instruksjoner:').parentElement?.textContent).toBe(
+    expect(within(page).getByText('Instruksjoner:').parentElement?.textContent).toBe(
       'Instruksjoner: må fylles ut',
     );
-    expect(within(dialog).queryByText('Alle krav er bestått.')).toBeNull();
     expect(
-      within(dialog).getByRole('button', { name: 'Publiser' }).getAttribute('aria-disabled'),
+      within(page)
+        .getByRole('button', { name: 'Publiser versjon 2' })
+        .getAttribute('aria-disabled'),
     ).toBe('true');
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
   });
@@ -213,10 +214,10 @@ describe('publishing the draft in live mode', () => {
     const { fetch } = platform({
       publish: [{ path: 'spec.evaluation', message: 'refused by evaluation gates (sourceHit)' }],
     });
-    const dialog = await publishFromHeader(fetch);
+    const page = await publishFromHeader(fetch);
 
-    expect(await within(dialog).findByText(/Kvalitetskravene stoppet publiseringen/)).toBeTruthy();
-    expect(within(dialog).getByText(/refused by evaluation gates/)).toBeTruthy();
+    expect(await within(page).findByText(/Kvalitetskravene stoppet publiseringen/)).toBeTruthy();
+    expect(within(page).getByText(/refused by evaluation gates/)).toBeTruthy();
     expect(screen.queryByText('Versjon 2 er publisert.')).toBeNull();
   });
 });

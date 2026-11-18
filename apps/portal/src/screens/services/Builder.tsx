@@ -53,6 +53,7 @@ import {
   flowOf,
   renameService,
   riskConfirmationFor,
+  toolRefsOf,
   variantsOf,
   withExamples,
   withPublicName,
@@ -69,7 +70,20 @@ import { ImproveInstructions } from './assistant/ImproveInstructions';
 import { SuggestedTests } from './assistant/SuggestedTests';
 import { proposalKey, useAssistant, type TurnEntry } from './assistant/useAssistant';
 import type { InputOptionLookup } from './InputFormEditor';
-import { modelWord, SetupTab, type SectionId } from './SetupTab';
+import { areaSummaries, datasetName, modelWord, SetupTab, type SectionId } from './SetupTab';
+import { DraftBar, type SaveState } from './DraftBar';
+import { DiscardDialog } from './DiscardDialog';
+import { PublishDiff, type ModelFacts, type TestWarning } from './PublishDiff';
+import { SetupLayout, type AreaFact, type SidePane } from './setup-layout';
+import { changeLabel, changeText, type ChangeNames } from './setup-change-text';
+import { draftChecks } from './setup-checks';
+import {
+  advancedAreas,
+  areaOfPath,
+  draftChanges as diffDraft,
+  setupAreas,
+  type SetupArea,
+} from './setup-diff';
 import { initialTestState, scoreText, testKind, type TestState } from './testState';
 import {
   latestRunFact,
@@ -162,6 +176,25 @@ interface AssistedChange {
 }
 
 const draftDelayMs = 600;
+
+const areaOfSection: Partial<Record<string, SetupArea>> = {
+  purpose: 'purpose',
+  io: 'input',
+  instructions: 'purpose',
+  knowledge: 'sources',
+  tools: 'tools',
+  how: 'how',
+  model: 'model',
+  variants: 'variants',
+  guards: 'guards',
+};
+
+const areaOf = (detail: string | undefined): SetupArea | undefined =>
+  detail && (setupAreas as string[]).includes(detail)
+    ? (detail as SetupArea)
+    : detail
+      ? areaOfSection[detail]
+      : undefined;
 
 export const newDraftId = () => `utkast-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -380,6 +413,20 @@ export const Builder = ({
   const [flash, setFlash] = useState('');
   const [publish, setPublish] = useState<'test' | 'prod' | null>(openPublish ? 'prod' : null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [savedAt, setSavedAt] = useState<string | undefined>(
+    init.draftRevision ? init.opened?.at : undefined,
+  );
+  const [failedAt, setFailedAt] = useState<string>();
+  const [discarding, setDiscarding] = useState(false);
+  const [discardedTo, setDiscardedTo] = useState<number>();
+  const [baseline, setBaseline] = useState<{
+    version: number;
+    definition: Record<string, unknown>;
+    files?: Record<string, string>;
+  }>();
+  const [setupArea, setSetupArea] = useState<SetupArea>(() => areaOf(detail) ?? 'purpose');
+  const [sidePane, setSidePane] = useState<SidePane>('assistant');
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => {
@@ -389,6 +436,7 @@ export const Builder = ({
   const change = useCallback((next: (d: ServiceDefinition) => ServiceDefinition) => {
     if (readOnlyRef.current) return;
     unsaved.current = true;
+    setSaveState('unsaved');
     editsRef.current += 1;
     setEdits(editsRef.current);
     setService(next);
@@ -471,6 +519,7 @@ export const Builder = ({
     }
     go('setup');
     const section = c.section as SectionId;
+    setSetupArea(areaOfSection[section] ?? 'purpose');
     setOpen((o) => ({ ...o, [section]: true }));
     setHighlight(section);
     later(() => {
@@ -612,7 +661,7 @@ export const Builder = ({
       serverDraft && !isNew
         ? (await api.getDefinition(tenant, 'Service', id, signal)).latest
         : undefined,
-    [api, tenant, id, serverDraft, section],
+    [api, tenant, id, serverDraft],
     { keepPreviousFor: id },
   );
   const remoteDraft = remote.status === 'ready' ? remote.data?.draft : undefined;
@@ -725,6 +774,7 @@ export const Builder = ({
   const saveDraft = async (): Promise<void> => {
     if (!serverDraft || !unsaved.current || draftBlocked.current || saving.current) return;
     saving.current = true;
+    setSaveState('saving');
     const tick = editsRef.current;
     const first = isNew && revisionRef.current === 0;
     try {
@@ -739,18 +789,23 @@ export const Builder = ({
         tRef.current('services.draftSavedReason'),
       );
       keepRevision(saved.revision);
+      setSavedAt(saved.at);
       if (first)
         window.location.replace(
           window.location.hash.replace(/^#\/services\/new\b/, `#${servicePath(id)}`),
         );
       if (editsRef.current === tick) unsaved.current = false;
+      setSaveState(unsaved.current ? 'unsaved' : 'idle');
     } catch (error) {
       draftBlocked.current = error instanceof ApiError && error.status === 409;
-      setFlash(
-        draftBlocked.current
-          ? tRef.current('services.draftChangedElsewhere')
-          : tRef.current('services.draftSaveFailed'),
-      );
+      setSaveState(draftBlocked.current ? 'conflict' : 'failed');
+      setFailedAt(f.time(new Date()));
+      if (isNew)
+        setFlash(
+          draftBlocked.current
+            ? tRef.current('services.draftChangedElsewhere')
+            : tRef.current('services.draftSaveFailed'),
+        );
       return;
     } finally {
       saving.current = false;
@@ -767,9 +822,45 @@ export const Builder = ({
   useEffect(() => {
     if (!remoteDraft || remoteDraft.revision === revisionRef.current || unsaved.current) return;
     keepRevision(remoteDraft.revision);
+    setSavedAt(remoteDraft.at);
     setService(asServiceDefinition(remoteDraft.definition));
     setFiles(remoteDraft.files);
   }, [remoteDraft]);
+
+  const draftBar = serverDraft && !isNew;
+  const liveVersion = baseline ?? remoteLatest;
+  const publishedDefinition = useMemo(
+    () => (liveVersion ? asServiceDefinition(liveVersion.definition) : undefined),
+    [liveVersion],
+  );
+  const changeList = useMemo(
+    () => (publishedDefinition ? diffDraft(publishedDefinition, service) : []),
+    [publishedDefinition, service],
+  );
+  const hasDraft = draftRevision > 0 || changeList.length > 0;
+  const [checks, retryChecks] = useAsync(
+    (signal) =>
+      draftBar && draftRevision > 0 ? draftChecks(api, tenant, id, signal) : Promise.resolve(null),
+    [api, tenant, id, draftBar, draftRevision],
+  );
+  const checkProblems = checks.status === 'ready' && checks.data ? checks.data.problems : [];
+
+  useEffect(() => {
+    if (!draftBar || (saveState !== 'unsaved' && saveState !== 'saving' && saveState !== 'failed'))
+      return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [draftBar, saveState]);
+
+  useEffect(() => {
+    if (draftBar && openPublish) go('setup', '/publish');
+  }, []);
+
+  useEffect(() => {
+    const area = section === 'setup' ? areaOf(detail) : undefined;
+    if (area) setSetupArea(area);
+  }, [section, detail]);
 
   const applyProposal = (entry: TurnEntry, proposal: AssistantProposal) => {
     if (proposal.kind === 'interface' && proposal.blocks?.length) {
@@ -1086,6 +1177,17 @@ export const Builder = ({
       if (cleared) keepRevision(0);
     }
     const result = outcome.published;
+    if (draftBar && result.definition) {
+      setBaseline({
+        version: result.version,
+        definition: result.definition,
+        ...(result.files ? { files: result.files } : {}),
+      });
+      setService(asServiceDefinition(result.definition));
+      setSaveState('idle');
+      setSavedAt(undefined);
+      setDiscardedTo(undefined);
+    }
     record(
       result.version,
       'prod',
@@ -1145,6 +1247,36 @@ export const Builder = ({
     window.location.replace('#/services');
   };
 
+  const discardDraft = async () => {
+    if (!liveVersion) return;
+    draftBlocked.current = true;
+    try {
+      await api.quality.deleteDraft(
+        tenant,
+        id,
+        revisionRef.current,
+        tRef.current('serviceDraft.discardReason'),
+      );
+    } catch (error) {
+      draftBlocked.current = false;
+      throw new Error(
+        error instanceof ApiError && error.status === 409
+          ? tRef.current('serviceDraft.discardChangedElsewhere')
+          : tRef.current('serviceDraft.discardFailed'),
+        { cause: error },
+      );
+    }
+    unsaved.current = false;
+    draftBlocked.current = false;
+    keepRevision(0);
+    setService(asServiceDefinition(liveVersion.definition));
+    setFiles(liveVersion.files ?? {});
+    setSaveState('idle');
+    setSavedAt(undefined);
+    setDiscarding(false);
+    setDiscardedTo(liveVersion.version);
+  };
+
   const doPublishToTest = ({ reason }: PublishInput) => {
     record(current + 1, 'test', userName, reason);
   };
@@ -1171,7 +1303,88 @@ export const Builder = ({
   const sections = archived
     ? availableSections({ isNew }).filter((s) => archivedSections.includes(s))
     : availableSections({ isNew });
-  const withAssistant = !readOnly && (section === 'setup' || section === 'test');
+  const withAssistant = !readOnly && ((section === 'setup' && isNew) || section === 'test');
+  const datasetNames =
+    datasetOptions.status === 'ready'
+      ? new Map(datasetOptions.data.map((x) => [x.id, x.name] as const))
+      : undefined;
+  const changeNames: ChangeNames = {
+    dataset: (ref) => datasetName(ref, datasetNames),
+    model: (mid) =>
+      modelCatalog?.find((m) => m.id === mid)?.name ?? modelFor(mid, undefined, live).name,
+    tool: (ref) =>
+      (toolOptions.status === 'ready'
+        ? toolOptions.data.find((o) => o.ref === ref)?.name
+        : undefined) ?? ref,
+  };
+  const modelFacts = (mid: string): ModelFacts => {
+    const found =
+      operationCatalog.status === 'ready'
+        ? operationCatalog.data.find((m) => m.id === mid)
+        : undefined;
+    return { name: changeNames.model(mid), residency: found?.residency, price: found?.price };
+  };
+  const publishedVersion = liveVersion?.version ?? current;
+  const missingAreas = new Set(
+    live
+      ? checkProblems.flatMap((p) => {
+          const area = areaOfPath(p.path);
+          return area ? [area] : [];
+        })
+      : service.spec.riskClass && !riskConfirmed
+        ? ['risk']
+        : [],
+  );
+  const changedAreas = new Set<string>(changeList.map((c) => c.area));
+  const areaSummary = areaSummaries(t, service, riskConfirmed, modelCatalog, datasetNames);
+  const optionalArea = (area: SetupArea) =>
+    area === 'tools'
+      ? toolRefsOf(service.spec).length === 0 && !service.spec.skills?.length
+      : area === 'variants'
+        ? variantsOf(service.spec).length <= 1
+        : area === 'limits'
+          ? Object.keys(service.spec.settings ?? {}).length === 0
+          : false;
+  const areaFacts = Object.fromEntries(
+    setupAreas.map((area): [SetupArea, AreaFact] => [
+      area,
+      {
+        status: missingAreas.has(area)
+          ? 'missing'
+          : changedAreas.has(area)
+            ? 'changed'
+            : advancedAreas.includes(area) && optionalArea(area)
+              ? 'optional'
+              : 'done',
+        summary: areaSummary[area],
+        fromAssistant: Object.keys(fromAi).some((key) => areaOfSection[key] === area),
+      },
+    ]),
+  ) as Record<SetupArea, AreaFact>;
+  const modelChange = changeList.find((c) => c.topic === 'model');
+  const publishHref = `#${servicePath(routeId, 'setup', '/publish')}`;
+  const publishPage = draftBar && canPublish && section === 'setup' && detail === 'publish';
+  const draftRuns =
+    evalRuns.status === 'ready' && Array.isArray(evalRuns.data)
+      ? evalRuns.data.filter((r) => r.version === 'draft' && (!savedAt || r.startedAt >= savedAt))
+      : [];
+  const testWarning: TestWarning =
+    hasTestSet && changeList.length && draftRuns.length === 0
+      ? modelChange
+        ? 'model'
+        : 'draft'
+      : undefined;
+  const missingText = checkProblems.length
+    ? checkProblems.length === 1 && checkProblems[0]
+      ? t('serviceDraft.missingOne', { section: describeProblem(checkProblems[0], t).section })
+      : t('serviceDraft.missingMany', { count: checkProblems.length })
+    : '';
+
+  useEffect(() => {
+    if (!draftBar) return;
+    setPublish(publishPage ? 'prod' : null);
+    if (publishPage) void saveDraft();
+  }, [draftBar, publishPage]);
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -1213,8 +1426,27 @@ export const Builder = ({
       ? t('services.metaDraftBased', { n: latest.n })
       : t('services.metaNotPublishedAuto');
 
-  const setup = (only: SectionId[]) => (
+  const setup = (only: SectionId[], area?: SetupArea) => (
     <SetupTab
+      area={area}
+      {...(readOnly
+        ? {}
+        : {
+            ask: (question: string) => {
+              setSidePane('assistant');
+              send(question);
+            },
+          })}
+      modelNote={
+        modelChange && liveVersion ? (
+          <Paragraph data-size="sm" className="meta">
+            {t('setupList.modelChanged', {
+              n: liveVersion.version,
+              model: changeNames.model(modelChange.before ?? ''),
+            })}
+          </Paragraph>
+        ) : null
+      }
       serviceId={id}
       definition={service}
       patch={patch}
@@ -1416,6 +1648,41 @@ export const Builder = ({
           }
         />
       );
+    if (!isNew)
+      return (
+        <SetupLayout
+          current={setupArea}
+          onPick={setSetupArea}
+          facts={areaFacts}
+          {...(readOnly ? {} : { assistant: assistantPanel })}
+          tryPane={
+            <div className="setup-try">
+              <Paragraph data-size="sm" className="meta">
+                {t('setupList.tryNote', { n: publishedVersion })}
+              </Paragraph>
+              <PlaygroundPanel
+                layout="side"
+                context="service"
+                name={serviceId}
+                api={api}
+                tenant={tenant}
+                tenantName={tenantName}
+                serviceDraft={{ definition, files }}
+                onClose={() => setSidePane('assistant')}
+              />
+              <a href={`#${servicePath(routeId, 'test')}`}>{t('setupList.openPlayground')}</a>
+            </div>
+          }
+          pane={sidePane}
+          onPane={setSidePane}
+        >
+          {setupArea === 'limits' ? (
+            <SettingsSection {...screenProps} id={id} />
+          ) : (
+            setup(setupSections, setupArea)
+          )}
+        </SetupLayout>
+      );
     return (
       <div className="stack-sm">
         {setup(setupSections)}
@@ -1440,6 +1707,79 @@ export const Builder = ({
         body
       )}
     </div>
+  );
+
+  const publishNotes = (
+    <>
+      {hasTestSet ? null : (
+        <Alert data-color="warning" data-size="sm">
+          {t('services.noTestsetWarning')}
+        </Alert>
+      )}
+      {invalid ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Heading level={3} data-size="2xs">
+            {t('services.notAccepted')}
+          </Heading>
+          <ul className="bullets">
+            {validationErrors.map((e) => {
+              const problem = describeProblem(e, t);
+              return (
+                <li key={`${e.path}-${e.message}`}>
+                  <strong>{problem.section}:</strong> {problem.message}
+                </li>
+              );
+            })}
+          </ul>
+        </Alert>
+      ) : null}
+      {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
+        <Paragraph data-size="sm">
+          {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
+        </Paragraph>
+      ) : null}
+      {problems?.outdated ? (
+        <DraftOutdated
+          paths={problems.errors.map((e) => e.path)}
+          onRebase={rebaseDraft}
+          onResolve={resolveConflicts}
+        />
+      ) : problems ? (
+        <Alert data-color="danger" data-size="sm" role="alert">
+          <Paragraph data-size="sm">
+            {problems.refusedByGates
+              ? t('services.refusedByGates')
+              : t('services.notAcceptedShort')}
+          </Paragraph>
+          <ul className="bullets">
+            {problems.errors.map((e) => {
+              const problem = describeProblem(e, t);
+              return (
+                <li key={`${e.path}-${e.message}`}>
+                  <strong>{problem.section}:</strong> {problem.message}
+                </li>
+              );
+            })}
+          </ul>
+        </Alert>
+      ) : null}
+      {unmaskedTypeList.length ? (
+        <UnmaskedInputConsent
+          uses={unmaskedUses}
+          reasons={unmaskedReasons}
+          refused={unmaskedRefused.messages}
+          onReason={(mediaType, reason) => {
+            setUnmaskedReasons((given) => ({ ...given, [mediaType]: reason }));
+            setUnmaskedRefused(({ uses, messages }) => ({
+              uses,
+              messages: Object.fromEntries(
+                Object.entries(messages).filter(([m]) => m !== mediaType),
+              ),
+            }));
+          }}
+        />
+      ) : null}
+    </>
   );
 
   const page = (
@@ -1488,12 +1828,22 @@ export const Builder = ({
                 </Button>
               ) : null}
               {archived ? null : canPublish &&
-                !isNew &&
-                current > 0 &&
-                !changes.length &&
-                draftRevision === 0 &&
-                !edited ? (
+                (draftBar
+                  ? !hasDraft
+                  : !isNew && current > 0 && !changes.length && draftRevision === 0 && !edited) ? (
                 <span className="meta">{t('services.nothingToPublish')}</span>
+              ) : canPublish && draftBar ? (
+                <>
+                  {missingText ? <span className="meta service-missing">{missingText}</span> : null}
+                  <Button
+                    variant="primary"
+                    data-size="sm"
+                    aria-disabled={checkProblems.length > 0 || undefined}
+                    onClick={() => checkProblems.length === 0 && go('setup', '/publish')}
+                  >
+                    {t('serviceDraft.publishOpen')}
+                  </Button>
+                </>
               ) : canPublish ? (
                 <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
                   {t('services.publish')}
@@ -1533,6 +1883,39 @@ export const Builder = ({
           sections={sections}
           current={section}
         />
+        {draftBar && !archived && (section === 'setup' || section === 'interface') ? (
+          <DraftBar
+            state={saveState}
+            version={publishedVersion}
+            changes={changeList.length}
+            hasDraft={hasDraft}
+            savedAt={savedAt ? f.time(savedAt) : undefined}
+            failedAt={failedAt}
+            canEdit={!readOnly}
+            changesHref={publishHref}
+            onSave={() => void saveDraft()}
+            onDiscard={() => setDiscarding(true)}
+          />
+        ) : null}
+        {discardedTo !== undefined ? (
+          <Alert data-color="success" data-size="sm" role="status">
+            {t('serviceDraft.discarded', { n: discardedTo })}
+          </Alert>
+        ) : null}
+        {discarding && liveVersion ? (
+          <DiscardDialog
+            name={name}
+            version={liveVersion.version}
+            items={changeList.map((c) => ({
+              label: changeLabel(t, c),
+              text: changeText(t, c, changeNames),
+            }))}
+            savedAt={savedAt ? formatDateTime(savedAt, f) : undefined}
+            detailsHref={publishHref}
+            onKeep={() => setDiscarding(false)}
+            onConfirm={discardDraft}
+          />
+        ) : null}
         {archived && lifecycle ? (
           <ArchivedBanner
             api={api}
@@ -1586,7 +1969,7 @@ export const Builder = ({
             <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
           </Tabs>
         )}
-        {publish && canPublish ? (
+        {publish && canPublish && !draftBar ? (
           <Dialog
             open
             modal
@@ -1607,74 +1990,7 @@ export const Builder = ({
               <Paragraph>
                 {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
               </Paragraph>
-              {hasTestSet ? null : (
-                <Alert data-color="warning" data-size="sm">
-                  {t('services.noTestsetWarning')}
-                </Alert>
-              )}
-              {invalid ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
-                  <Heading level={3} data-size="2xs">
-                    {t('services.notAccepted')}
-                  </Heading>
-                  <ul className="bullets">
-                    {validationErrors.map((e) => {
-                      const problem = describeProblem(e, t);
-                      return (
-                        <li key={`${e.path}-${e.message}`}>
-                          <strong>{problem.section}:</strong> {problem.message}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Alert>
-              ) : null}
-              {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
-                <Paragraph data-size="sm">
-                  {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
-                </Paragraph>
-              ) : null}
-              {problems?.outdated ? (
-                <DraftOutdated
-                  paths={problems.errors.map((e) => e.path)}
-                  onRebase={rebaseDraft}
-                  onResolve={resolveConflicts}
-                />
-              ) : problems ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
-                  <Paragraph data-size="sm">
-                    {problems.refusedByGates
-                      ? t('services.refusedByGates')
-                      : t('services.notAcceptedShort')}
-                  </Paragraph>
-                  <ul className="bullets">
-                    {problems.errors.map((e) => {
-                      const problem = describeProblem(e, t);
-                      return (
-                        <li key={`${e.path}-${e.message}`}>
-                          <strong>{problem.section}:</strong> {problem.message}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Alert>
-              ) : null}
-              {unmaskedTypeList.length ? (
-                <UnmaskedInputConsent
-                  uses={unmaskedUses}
-                  reasons={unmaskedReasons}
-                  refused={unmaskedRefused.messages}
-                  onReason={(mediaType, reason) => {
-                    setUnmaskedReasons((given) => ({ ...given, [mediaType]: reason }));
-                    setUnmaskedRefused(({ uses, messages }) => ({
-                      uses,
-                      messages: Object.fromEntries(
-                        Object.entries(messages).filter(([m]) => m !== mediaType),
-                      ),
-                    }));
-                  }}
-                />
-              ) : null}
+              {publishNotes}
               <PublishSummary
                 tenantName={tenantName}
                 currentVersion={current}
@@ -1761,7 +2077,7 @@ export const Builder = ({
                         label: t('services.fixRisk'),
                         onClick: () => {
                           setPublish(null);
-                          go('setup', '/purpose');
+                          go('setup', isNew ? '/purpose' : '/risk');
                           showPane('tjeneste');
                           setOpen((o) => ({ ...o, purpose: true }));
                         },
@@ -1781,6 +2097,36 @@ export const Builder = ({
       </div>
     </ServicePageContext.Provider>
   );
+  const publishView =
+    publishPage && liveVersion && publishedDefinition ? (
+      <ServicePageContext.Provider value>
+        <div className="service-page">
+          <PublishDiff
+            name={name}
+            current={liveVersion.version}
+            published={publishedDefinition}
+            draft={service}
+            changes={changeList}
+            names={changeNames}
+            modelFacts={modelFacts}
+            checks={checks}
+            onRetryChecks={retryChecks}
+            testWarning={testWarning}
+            testHref={`#${servicePath(routeId, 'quality')}`}
+            backHref={`#${servicePath(routeId, 'setup')}`}
+            canPublish={canPublish}
+            blocked={!!blockedBy || checkProblems.length > 0 || unmaskedMissing > 0}
+            blockedReason={blockedBy}
+            onPublish={async (reason) => {
+              await doPublish({ reason, include: [] });
+              go('setup');
+            }}
+          >
+            {publishNotes}
+          </PublishDiff>
+        </div>
+      </ServicePageContext.Provider>
+    ) : null;
   // The «Grensesnitt» tab's try view goes on while the reader is on another tab of the page.
-  return <TryViewKeeper>{page}</TryViewKeeper>;
+  return <TryViewKeeper>{publishView ?? page}</TryViewKeeper>;
 };
