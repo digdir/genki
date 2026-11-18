@@ -11,15 +11,20 @@ import {
   type SearchRequest,
 } from '@genai/port-knowledge';
 import { fixtureFilters, memoryEngine, seedCorpus } from '@genai/port-knowledge/testing';
+import { uploadDocumentId, uploadPrefix } from '@genai/ingest';
+import { InMemoryBlobStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
 import type { Access } from './access.js';
 import { policyKind } from './building-blocks.js';
 import type { CatalogItem } from './catalog-registry.js';
 import { InMemoryConfigEntryStore, platformScope } from './config-store.js';
 import {
+  datasetDocumentNotFoundType,
   datasetDocumentsFailedType,
   datasetDocumentsPeopleOnlyType,
+  documentExcerptLength,
   mountDatasetSearch,
+  type DatasetDocumentDetail,
   type DatasetDocumentsPage,
   type DatasetSearchAnswer,
 } from './dataset-search.js';
@@ -87,6 +92,7 @@ const boot = async (
     clock?: () => number;
     pages?: Record<string, Record<string, number>>;
     refuse?: Error;
+    blobs?: InMemoryBlobStore;
   } = {},
 ) => {
   const engine = memoryEngine();
@@ -205,6 +211,7 @@ const boot = async (
     searchTask,
     logger: (message, fields) => logged.push({ message, fields }),
     ...(options.clock ? { clock: options.clock } : {}),
+    ...(options.blobs ? { blobs: options.blobs } : {}),
   });
   const search = (path: string, as: string, body: unknown) =>
     app.request(path, {
@@ -702,6 +709,102 @@ describe("listing a dataset's documents", () => {
 
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({ errors: [{ path: 'offset' }] });
+  });
+
+  it('applies filters across all documents, not only the page, and counts the matches', async () => {
+    const { app } = await boot();
+    const filters = encodeURIComponent(JSON.stringify({ kategori: 'Veiledning' }));
+
+    const page = (await (
+      await get(app, documentsPath('filer', digdir, `?limit=1&filters=${filters}`), 'kari')
+    ).json()) as DatasetDocumentsPage;
+    const all = (await (
+      await get(app, documentsPath('filer', digdir, '?limit=100'), 'kari')
+    ).json()) as DatasetDocumentsPage;
+
+    const matching = all.documents.filter((d) => d.fields.kategori === 'Veiledning');
+    expect(page.filters).toEqual({ kategori: 'Veiledning' });
+    expect(page.found).toBe(matching.length);
+    expect(page.documents.every((d) => d.fields.kategori === 'Veiledning')).toBe(true);
+  });
+
+  it('refuses filters on a field the dataset does not declare, and filters that are not a JSON object', async () => {
+    const { app } = await boot();
+
+    const undeclared = await get(
+      app,
+      documentsPath('filer', digdir, `?filters=${encodeURIComponent('{"hemmelig":"x"}')}`),
+      'kari',
+    );
+    const notObject = await get(app, documentsPath('filer', digdir, '?filters=%5B1%5D'), 'kari');
+
+    expect(undeclared.status).toBe(422);
+    expect(await undeclared.json()).toMatchObject({ errors: [{ path: 'filters.hemmelig' }] });
+    expect(notObject.status).toBe(422);
+    expect(await notObject.json()).toMatchObject({ errors: [{ path: 'filters' }] });
+  });
+
+  it('reads one document with the start of its text', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, `${documentsPath('filer')}/dok-1`, 'kari');
+    const doc = (await response.json()) as DatasetDocumentDetail;
+
+    expect(response.status).toBe(200);
+    expect(doc).toMatchObject({ id: 'dok-1', title: 'Tilskudd til digitalisering i kommunene' });
+    expect(doc.excerpt?.length).toBeGreaterThan(0);
+    expect(doc.excerpt?.length).toBeLessThanOrEqual(documentExcerptLength);
+  });
+
+  it("names the uploaded original of a document in the organisation's own dataset, and never in a shared one", async () => {
+    const blobs = new InMemoryBlobStore();
+    const prefix = uploadPrefix(`${digdir}/filer`, digdir);
+    await blobs.put(
+      { tenant: digdir, path: `${prefix}veileder.pdf` },
+      new Uint8Array(4),
+      'application/pdf',
+    );
+    const uploaded = uploadDocumentId(digdir, `${prefix}veileder.pdf`);
+    const { app, knowledge } = await boot({ blobs });
+    const open = knowledge.open.bind(knowledge);
+    knowledge.open = (ref, ctx) => ({
+      ...open(ref, ctx),
+      documents: async () => ({ documents: [{ id: uploaded, fields: {} }], found: 1 }),
+    });
+
+    const own = (await (
+      await get(app, documentsPath('filer'), 'kari')
+    ).json()) as DatasetDocumentsPage;
+    const shared = (await (
+      await get(app, documentsPath('digdir/felles'), 'kari')
+    ).json()) as DatasetDocumentsPage;
+
+    expect(own.documents[0]?.original).toEqual({
+      name: 'veileder.pdf',
+      size: 4,
+      type: 'application/pdf',
+    });
+    expect(shared.documents[0]?.original).toBeUndefined();
+  });
+
+  it('answers an unknown document with a typed 404', async () => {
+    const { app } = await boot();
+
+    const response = await get(app, `${documentsPath('filer')}/finnes-ikke`, 'kari');
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ type: datasetDocumentNotFoundType });
+  });
+
+  it("never reads a document of another tenant's dataset, and only people read one", async () => {
+    const { app } = await boot();
+
+    const own = await get(app, `${documentsPath(`${other}/hemmelig`)}/dok-1`, 'kari');
+    const outsider = await get(app, `${documentsPath('filer')}/dok-1`, 'ola');
+    const key = await get(app, `${documentsPath('filer')}/dok-1`, 'nokkel');
+
+    expect([own.status, outsider.status, key.status]).toEqual([404, 404, 403]);
+    expect(await own.text()).not.toContain('Tilskudd');
   });
 
   it('answers a failing engine with a typed problem and never its error text', async () => {

@@ -781,7 +781,10 @@ export const createBuildingBlocksModule =
               settingsSchema: settingsOf(),
             },
             uses: (ref) => ref.kind === 'dataset' && sameDataset(ref.id, item.id, tenant),
-            history: async () => fromEntries(await deps.catalog.history('dataset', item.id)),
+            history: async () =>
+              item.scope === tenant || item.scope === platformScope
+                ? fromEntries(await deps.catalog.history('dataset', item.id))
+                : [],
           });
         }
         if (item.kind === 'knowledge-endpoint') {

@@ -246,7 +246,14 @@ describe('deleting a dataset', () => {
 
     const detail = await json<{ usedBy: unknown[] }>(await booted.call(base('veiledere'), 'kari'));
     expect(detail.usedBy).toEqual([
-      { kind: 'service', tenant: digdir, id: 'leser', name: 'Klarspråk' },
+      {
+        kind: 'service',
+        tenant: digdir,
+        id: 'leser',
+        name: 'Klarspråk',
+        addedAt: expect.any(String),
+        addedBy: 'test',
+      },
     ]);
     const refused = await booted.call(base('veiledere'), 'kari', { method: 'DELETE' });
     expect(refused.status).toBe(409);

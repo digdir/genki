@@ -1,6 +1,6 @@
 # 0006 Configuration layers and resolution
 
-Status: accepted, 2026-10-12 (built; operator-only limits, 2026-11-12). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; operator-only limits, 2026-11-12; an organisation's dataset opened to all, 2026-11-18). Proposed 2026-10-06
 
 ## Decision
 
@@ -8,6 +8,8 @@ Every setting is defined once, with a schema, a default, a category, a sensitivi
 
 - **Dataset settings** (source, chunking, embedding, collection naming) are set only by the dataset's owner. A tenant that uses a shared dataset can never override them, and the owner's settings never override the consuming tenant's service.
 - **Service settings** resolve along the consumer path: platform default, then tenant, then service version, then call. The later layer wins.
+
+- **Who may search an organisation's dataset** is the owner's choice too: `searchScope` on its own dataset is `tenant` (the default, only the organisation) or `all` (every organisation on the platform). It needs `manage-datasets` like every other change to the dataset. Opened to all, other organisations see it read only in `GET /tenants/{tenant}/datasets` and may search it and list its documents; its pipelines, uploaded files, skipped documents and the services that read it stay with the owner. Platform datasets have no `searchScope`; the operator shares them with `tenants`.
 
 The resolver supports the dataset axis, but no registered setting uses it yet: source, chunking, embedding and collection naming live in the dataset's and pipeline's own definitions, owned by the dataset's tenant.
 

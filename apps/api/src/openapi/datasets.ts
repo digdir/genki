@@ -9,14 +9,18 @@ import {
   parameterRules,
   residencies,
 } from '@genai/port-model';
-import { catalogKinds } from '../catalog-registry.js';
+import { catalogKinds, datasetSearchScopes } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { datasetInUseType, datasetRunOpenType } from '../dataset-delete.js';
+import { originalNotKeptType, uploadPeopleOnlyType } from '../dataset-uploads.js';
+import { endpointNotAllowedType, endpointSource } from '../endpoint-source.js';
 import {
+  datasetDocumentNotFoundType,
   datasetDocumentsFailedType,
   datasetDocumentsPeopleOnlyType,
   datasetDocumentsUnsupportedType,
   datasetSearchBody,
+  documentExcerptLength,
   maxDocumentsLimit,
 } from '../dataset-search.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
@@ -120,12 +124,27 @@ const Dataset = z
     valueTypes: z.record(z.string(), z.enum(filterValueTypes)).optional(),
     maxFacetValues: z.number().int().optional(),
     links: z.enum(sourceLinkRules).optional(),
+    searchScope: z
+      .enum(datasetSearchScopes)
+      .optional()
+      .describe(
+        "Who may search an organisation's own dataset: tenant (default) only the organisation, all every organisation on the platform, which sees it read only (editable false, source none, lastExecution and nextRunAt null, and no change history; its pipelines, files and skipped documents stay with the owner). Platform datasets leave it out and are shared by the operator",
+      ),
   })
   .openapi('Dataset');
 
-const DatasetInput = datasetFields.extend({}).openapi('DatasetInput', {
-  description: 'Give the search engine as index, collection (older name) or endpoint',
-});
+const DatasetInput = datasetFields
+  .extend({
+    endpointSource: endpointSource
+      .optional()
+      .describe(
+        "An organisation's own search address, searched live and never copied into genki, in place of index. genki makes the connection endpoint-{id} with the http-search engine and, for api-key, keeps the key in the vault bound to the address's host (setting it needs manage-services or register-building-blocks as well). Every search goes over https to that host and port only, through the egress guard: never to a private or reserved address, and a redirect is refused, so the key is never sent twice. The key is never returned or logged.",
+      ),
+  })
+  .openapi('DatasetInput', {
+    description:
+      'Give the search engine as index, collection (older name) or endpoint, or, for a new dataset of an organisation, endpointSource',
+  });
 const DatasetChange = datasetFields
   .partial()
   .openapi('DatasetChange', { description: 'Only the fields to change; the rest are kept' });
@@ -170,6 +189,7 @@ const DatasetWithStatus = Dataset.extend({
     'database',
     'parquet',
     'episerver',
+    'endpoint',
     'none',
   ]),
   documents: z.number().int().nullable(),
@@ -184,6 +204,14 @@ const DatasetReader = z
     tenant: z.string(),
     id: z.string(),
     name: z.string(),
+    addedAt: z
+      .string()
+      .optional()
+      .describe(
+        'When the reader started reading the dataset: the first version of the newest unbroken run of published versions that name it, or of the adoption',
+      ),
+    addedBy: z.string().optional().describe('Who published that version or adopted the block'),
+    addedByName: z.string().optional().describe("That person's name, when known"),
   })
   .openapi('DatasetReader');
 
@@ -210,6 +238,11 @@ const DatasetDeleteResult = z
       pipelines: z.array(z.string()),
       uploads: z.array(z.string()),
       generations: z.array(z.string()),
+      endpoint: z
+        .string()
+        .optional()
+        .describe("The connection made for the dataset's endpoint source"),
+      secret: z.string().optional().describe('The API key kept for that connection'),
     }),
     kept: z.object({
       knowledgeRecords: z
@@ -1227,7 +1260,11 @@ const datasetRoutes = (base: Base): RouteConfig[] => {
         201: audited(Dataset, 'Created'),
         400: either('Invalid dataset or missing reason'),
         ...withoutNotFound(base, guarded(base, 'manage-datasets')),
-        409: either('A dataset with that id exists'),
+        409: either('A dataset with that id exists, or the connection endpoint-{id} does'),
+        422: {
+          description: `${endpointNotAllowedType}: the endpoint source's address is not a public https host name (an IP address, a reserved name, user name or password in it, or a host that resolves to a private address)`,
+          content: problemContent,
+        },
       },
     }),
     createRoute({
@@ -1454,6 +1491,38 @@ const uploadRoutes: RouteConfig[] = (() => {
         200: json(list(UploadedFile), 'Files'),
         401: failures[401],
         404: failures[404],
+      },
+    }),
+    createRoute({
+      method: 'get',
+      path: '/tenants/{tenant}/datasets/{id}/uploads/{name}',
+      summary:
+        'Download an uploaded file as it was sent (any person in the tenant, own datasets only; not audited)',
+      description:
+        "The bytes as stored, with the file type from its extension, content-disposition attachment, x-content-type-options nosniff and a sandbox content security policy, so the browser saves it and never runs it. A shared dataset's files stay with the organisation that owns it.",
+      request: { params: params.extend({ name: param('veileder.pdf') }) },
+      responses: {
+        200: {
+          description: 'The file',
+          content: Object.fromEntries(
+            [
+              'application/pdf',
+              'text/plain',
+              'text/markdown',
+              'text/html',
+              'application/octet-stream',
+            ].map((type) => [type, { schema: z.string().openapi({ format: 'binary' }) }]),
+          ),
+        },
+        401: failures[401],
+        403: {
+          description: `${uploadPeopleOnlyType}: an API key or system caller`,
+          content: problemContent,
+        },
+        404: {
+          description: `No such tenant for you or no such own dataset; or ${originalNotKeptType}: no file by that name is kept`,
+          content: problemContent,
+        },
       },
     }),
     createRoute({
@@ -1863,14 +1932,37 @@ const typedProblem = (type: string, description: string) => ({
   },
 });
 
+const OriginalFile = z
+  .object({
+    name: z.string().describe('The file name; download it from .../uploads/{name}'),
+    size: z.number().int(),
+    type: z.string(),
+  })
+  .openapi('DatasetOriginalFile');
+
 const DatasetDocument = z
   .object({
     id: z.string().describe('The document id'),
     title: z.string().optional(),
     url: z.string().optional().describe("The public source link, by the dataset's link rule"),
     fields: z.record(z.string(), z.unknown()).describe("The document's fields"),
+    original: OriginalFile.optional().describe(
+      "The uploaded file the document was read from, for the organisation's own datasets while the file is kept",
+    ),
   })
   .openapi('DatasetDocument');
+
+const DatasetDocumentDetail = DatasetDocument.extend({
+  excerpt: z
+    .string()
+    .optional()
+    .describe(
+      `The start of the document, at most ${documentExcerptLength} characters, when the engine reads passages in order`,
+    ),
+}).openapi('DatasetDocumentDetail');
+
+const documentsOrder =
+  "Documents come in a fixed order, the same for every page: by document id on the knowledge database, and in the collection's own order (its default sorting field, else the order they were indexed) on Typesense.";
 
 const documentRoutes: RouteConfig[] = [
   createRoute({
@@ -1878,8 +1970,7 @@ const documentRoutes: RouteConfig[] = [
     path: '/tenants/{tenant}/datasets/{id}/documents',
     summary:
       "One page of the documents in a dataset in the tenant's catalogue (any person in the tenant; not audited)",
-    description:
-      "The tenant's own datasets and the platform datasets shared with it, by id or alias, read through the dataset's knowledge port. No model is called.",
+    description: `The tenant's own datasets, the platform datasets shared with it and the datasets other organisations opened to all (searchScope all), by id or alias, read through the dataset's knowledge port. No model is called. ${documentsOrder}`,
     request: {
       params: z.object({ tenant, id: param('digdir/kudos') }),
       query: z.object({
@@ -1893,6 +1984,12 @@ const documentRoutes: RouteConfig[] = [
           .describe(
             'Documents to skip, default 0; a multiple of limit, since some engines read in whole pages',
           ),
+        filters: z
+          .string()
+          .optional()
+          .describe(
+            'A JSON object in the shape a search takes, on the fields the dataset declares as filters, such as {"type":"veileder","year":{"gte":2020}}; found counts the matching documents',
+          ),
       }),
     },
     responses: {
@@ -1902,7 +1999,15 @@ const documentRoutes: RouteConfig[] = [
             dataset: z.string().describe('The dataset, aliases resolved'),
             limit: z.number().int(),
             offset: z.number().int(),
-            found: z.number().int().optional().describe('All documents, when the engine counts'),
+            found: z
+              .number()
+              .int()
+              .optional()
+              .describe('All documents that match the filters, when the engine counts'),
+            filters: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe('The filters applied, as sent'),
             documents: z.array(DatasetDocument),
           })
           .openapi('DatasetDocumentsPage'),
@@ -1912,7 +2017,8 @@ const documentRoutes: RouteConfig[] = [
       403: typedProblem(datasetDocumentsPeopleOnlyType, 'An API key or system caller'),
       404: either("No such tenant for you, or no such dataset in the tenant's catalogue"),
       422: {
-        description: 'A limit or offset out of range, or an engine that cannot list documents',
+        description:
+          'A limit or offset out of range, filters that are not a JSON object or name a field the dataset does not declare, or an engine that cannot list documents',
         content: {
           'application/problem+json': {
             schema: z.union([
@@ -1922,6 +2028,32 @@ const documentRoutes: RouteConfig[] = [
           },
         },
       },
+      502: typedProblem(
+        datasetDocumentsFailedType,
+        'The search engine failed; its error text is never passed on',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/datasets/{id}/documents/{doc}',
+    summary:
+      "One document in a dataset in the tenant's catalogue, with the start of its text (any person in the tenant; not audited)",
+    description:
+      "The same datasets as the list: the tenant's own, the platform datasets shared with it and those other organisations opened to all. Read through the dataset's knowledge port by the document's id. No model is called.",
+    request: { params: z.object({ tenant, id: param('digdir/kudos'), doc: param('dok-2') }) },
+    responses: {
+      200: json(DatasetDocumentDetail, 'The document'),
+      401: either('Not signed in'),
+      403: typedProblem(datasetDocumentsPeopleOnlyType, 'An API key or system caller'),
+      404: {
+        description: `No such tenant for you or no such dataset in the tenant's catalogue; or ${datasetDocumentNotFoundType}: the dataset has no document with that id`,
+        content: problemContent,
+      },
+      422: typedProblem(
+        datasetDocumentsUnsupportedType,
+        'The engine behind the dataset cannot list documents',
+      ),
       502: typedProblem(
         datasetDocumentsFailedType,
         'The search engine failed; its error text is never passed on',
