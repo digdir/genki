@@ -271,16 +271,18 @@ describe('docling-parts', () => {
 
   it("a row's text_start and text_end cover its parts' text", () => {
     const { units } = doclingParts(
-      doc(2, (add) => {
+      doc(3, (add) => {
         add.text('text', 'Én.', 1);
         add.text('text', 'Og to.', 1);
         add.text('page_footer', 'Side 1', 1, { top: 780 });
         add.text('text', 'Tre.', 2);
+        add.text('page_footer', 'Side 3', 3, { top: 780 });
       }),
     );
     expect(units.map((unit) => [unit.textStart, unit.textEnd])).toEqual([
       [0, 11],
       [13, 17],
+      [null, null],
     ]);
   });
 
@@ -331,7 +333,7 @@ describe('docling-parts', () => {
     expect(partsOf(document)[0]).toMatchObject({ layer: 'body', start: 0, end: 8 });
   });
 
-  it("an item under the document's furniture is a furniture part", () => {
+  it("an item under the document's furniture is a part too", () => {
     const document = doc(1, (add) => {
       add.text('text', 'Avsnitt.', 1);
       add.text('page_footer', 'Side 1', 1, { top: 780 });
