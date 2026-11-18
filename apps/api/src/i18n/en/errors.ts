@@ -76,6 +76,7 @@ export const catalogErrors = {
   onlyTenantRegistersTools: 'only the tenant or an operator registers tools',
   onlyTenantSyncsTools: 'only the tenant or an operator syncs tools',
   onlyTenantApprovesTools: 'only the tenant or an operator approves tool changes',
+  onlyTenantRevokesTools: 'only the tenant or an operator revokes tools',
   onlyOperatorsPlatformSecrets: 'only operators set platform secrets',
   invalidSecretName: 'not a valid secret name',
   onlyTenantSecrets: 'only the tenant or an operator sets its secrets',

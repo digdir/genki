@@ -2,6 +2,7 @@ import type { Principal } from '@genai/contracts';
 import { serviceLifecycleKind } from '@genai/jobs';
 import type { Context } from 'hono';
 import { enterTenant } from './access.js';
+import { actorNames } from './actor-names.js';
 import { actorOf, type AdminHandler, type AdminOutcome } from './admin.js';
 import { appendVersion, serialized, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -17,6 +18,7 @@ export interface LifecycleView {
   state: Lifecycle;
   reason?: string;
   by?: string;
+  byName?: string;
   at?: string;
 }
 
@@ -104,6 +106,12 @@ export const serviceLifecycleModule: PlatformModuleFactory = (deps) => {
     id: 'service-lifecycle',
     handlers,
     mount: (app, mounted) => {
+      const names = actorNames(entries);
+      const shown = async (tenant: string, id: string): Promise<LifecycleView> => {
+        const view = await lifecycleOf(entries, tenant, id);
+        const name = view.by ? (await names.namesOf([view.by])).get(view.by) : undefined;
+        return name ? { ...view, byName: name } : view;
+      };
       const entered = async (c: Context, right: Right) => {
         const principal = await mounted.authenticate(c.req.raw);
         if (!principal) return { response: problem(c, 401, 'Unauthorized') };
@@ -118,7 +126,7 @@ export const serviceLifecycleModule: PlatformModuleFactory = (deps) => {
         const id = c.req.param('id') ?? '';
         if (!(await deps.definitions.get('Service', guard.tenant, id)))
           return problem(c, 404, 'Not found');
-        return c.json(await lifecycleOf(entries, guard.tenant, id));
+        return c.json(await shown(guard.tenant, id));
       });
 
       app.put('/tenants/:tenant/services/:id/lifecycle', async (c) => {
@@ -145,7 +153,7 @@ export const serviceLifecycleModule: PlatformModuleFactory = (deps) => {
           if (paths.has('id')) return problem(c, 404, 'Not found', result.errors);
           return problem(c, 400, 'Invalid request', result.errors);
         }
-        return c.json(await lifecycleOf(entries, guard.tenant, id));
+        return c.json(await shown(guard.tenant, id));
       });
     },
   };

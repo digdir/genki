@@ -87,4 +87,5 @@ export const services = defineNamespace({
     'Tjenesten har bare prod. Publiser en tidligere versjon på nytt i stedet for å fremme eller rulle tilbake.',
   environmentPinNotAllowed:
     'Versjon {version} kjører ikke i noe miljø denne nøkkelen eller frontenden kan bruke.',
+  costBasisRecentRuns: 'snittet av kjøringene hos eieren de siste 30 dagene, avrundet',
 });

@@ -87,6 +87,28 @@ describe('platform status for tenants', () => {
     );
   });
 
+  it("lists the resolved incidents that concerned the tenant as past incidents, never another tenant's", async () => {
+    const { write, send } = await boot();
+    const ours = await readJson<Incident>(await write('Treg modell', [digdir]));
+    const theirs = await readJson<Incident>(await write('Nøkkel utløpt', [other]));
+    await write('Fortsatt åpen');
+    for (const { id } of [ours, theirs])
+      await send(`/operator/incidents/${id}/resolve`, 'drift', {
+        method: 'POST',
+        reason: 'Leverandøren har rettet feilen',
+      });
+
+    const status = await readJson<{
+      incidents: { title: string }[];
+      pastIncidents: { date: string; title: string; text: string }[];
+    }>(await send(`/tenants/${digdir}/status`, 'kari'));
+
+    expect(status.incidents.map((i) => i.title)).toEqual(['Fortsatt åpen']);
+    expect(status.pastIncidents).toEqual([
+      { date: expect.any(String), title: 'Treg modell', text: 'Treg modell i dag' },
+    ]);
+  });
+
   it('shows the open incidents in the operator overview', async () => {
     const { write, send } = await boot();
     await write('Treg modell');

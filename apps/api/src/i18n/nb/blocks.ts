@@ -63,4 +63,28 @@ export const blocks = defineNamespace({
   sinkFieldOutput: 'svaret',
   sinkFieldExpected: 'kriteriene',
   skillRequirementsUnmet: 'Ferdigheten oppfyller ikke kravene for publisering',
+  guardPiiBeforeModel: 'Personopplysninger før modellen',
+  guardPiiBeforeModelText:
+    'Finner fødselsnumre, kontonumre og andre personopplysninger i spørsmålet og stopper eller maskerer dem før modellen ser dem.',
+  guardPiiOutOfLog: 'Personopplysninger ut av loggen',
+  guardPiiOutOfLogText: 'Maskerer personopplysninger før spørsmål og svar lagres i loggen.',
+  guardRequireSources: 'Krever kilder',
+  guardRequireSourcesText: 'Svarer ikke når søket ikke fant kilder som støtter et svar.',
+  guardLanguage: 'Språk og målform',
+  guardLanguageText:
+    'Svarer på bokmål, nynorsk eller samme språk som spørsmålet, etter innstillingen.',
+  guardRefuseTopics: 'Avviser emner',
+  guardRefuseTopicsText: 'Avviser spørsmål om emner tjenesten ikke skal svare på.',
+  guardHumanApproval: 'Godkjenning av en person',
+  guardHumanApprovalText: 'Holder svaret tilbake til en person har godkjent det.',
+  guardPurposeCheck: 'Formålssjekk',
+  guardPurposeCheckText:
+    'Sjekker at spørsmålet ligger innenfor formålet til tjenesten, og avviser eller sender det til en person ellers.',
+  judgeAnswerQuality: 'Svarkvalitet',
+  judgeAnswerQualityText:
+    'Vurderer om svaret er riktig, bygger på kildene og svarer på spørsmålet.',
+  judgePairwisePreference: 'Sammenligning av to svar',
+  judgePairwisePreferenceText: 'Sammenligner to svar på samme spørsmål og velger det beste.',
+  judgeCriteria: 'Kriterier fra testsettet',
+  judgeCriteriaText: 'Vurderer svaret mot kriteriene som står i hvert testtilfelle.',
 });

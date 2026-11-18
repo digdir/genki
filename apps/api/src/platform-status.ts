@@ -55,6 +55,20 @@ export const openIncidentsFor = async (store: Pick<ConfigEntryStore, 'latest'>, 
     .filter((i) => tenant === undefined || i.tenants.length === 0 || i.tenants.includes(tenant))
     .map((i) => ({ title: i.title, text: i.text }));
 
+const pastDays = 90;
+
+export const pastIncidentsFor = async (
+  store: Pick<ConfigEntryStore, 'latest'>,
+  tenant: string,
+  now: Date,
+) => {
+  const since = new Date(now.getTime() - pastDays * 86_400_000).toISOString();
+  return (await incidents(store))
+    .filter((i) => i.resolvedAt && i.resolvedAt >= since)
+    .filter((i) => i.tenants.length === 0 || i.tenants.includes(tenant))
+    .map((i) => ({ date: i.startedAt, title: i.title, text: i.text }));
+};
+
 type Status = 400 | 401 | 403 | 404 | 409;
 
 const problem = (
@@ -151,6 +165,7 @@ export const createPlatformStatusModule =
         return c.json({
           ...overview,
           incidents: await openIncidentsFor(deps.configEntries, tenant),
+          pastIncidents: await pastIncidentsFor(deps.configEntries, tenant, now()),
         });
       });
 

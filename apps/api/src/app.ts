@@ -41,6 +41,9 @@ const Health = z
       description: 'Degraded while model discovery has not yet succeeded; the API still answers',
     }),
     version: z.string(),
+    environment: z.string().optional().openapi({
+      description: 'The environment this API runs in, from GENAI_ENV; absent when it is not set',
+    }),
     lockdown: z.boolean(),
     builtAt: z.string().optional().openapi({
       description:
@@ -109,6 +112,7 @@ const withoutApiKeys = (caller: Caller): Authenticator => ({
 
 export interface AppOptions {
   builtAt?: string;
+  environment?: string;
   modelDiscovery?: () => DiscoveryState;
   platform?: PlatformOptions;
   requestTiming?: RequestTimingOptions;
@@ -142,6 +146,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       {
         status,
         version,
+        ...(options.environment ? { environment: options.environment } : {}),
         lockdown,
         ...builtAt,
         ...(discovery ? { modelDiscovery: discovery } : {}),

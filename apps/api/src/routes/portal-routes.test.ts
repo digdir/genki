@@ -146,6 +146,8 @@ const withPlaygroundRuns = () => {
     task('t1', digdir, '2026-10-05T09:00:00Z'),
     task('p1', digdir, '2026-10-06T09:00:00Z', 'completed', 'platform/draft/playground/p1'),
     task('p2', other, '2026-10-06T09:30:00Z', 'completed', 'platform/draft/playground/p2'),
+    task('b1', digdir, '2026-10-06T10:00:00Z', 'completed', 'platform/draft/trial/svar/b1'),
+    task('e1', digdir, '2026-10-06T10:30:00Z', 'completed', 'platform/draft/builder/svar/e1'),
   ];
   return setup({
     tasks: () =>
@@ -340,7 +342,20 @@ describe('portal routes', () => {
     );
 
     expect(services.data.map((t) => t.id)).toEqual(['t1']);
-    expect(playground.data.map((t) => t.id)).toEqual(['p1']);
+    expect(playground.data.map((t) => t.id)).toEqual(['b1', 'p1']);
+  });
+
+  it('lists the trial runs of a draft in the builder with the playground runs, but not test case runs', async () => {
+    const { send } = await withPlaygroundRuns();
+
+    const trials = await json<{ data: { id: string }[] }>(
+      await send(`/tenants/${digdir}/tasks?origin=playground`, 'kari'),
+    );
+    const one = await send(`/tenants/${digdir}/tasks/b1`, 'kari');
+
+    expect(trials.data.map((t) => t.id)).toContain('b1');
+    expect(trials.data.map((t) => t.id)).not.toContain('e1');
+    expect(one.status).toBe(200);
   });
 
   it('reads a playground run by id like a service run, but not one from another tenant', async () => {
@@ -403,6 +418,25 @@ describe('portal routes', () => {
     expect(body.daily.find((d) => d.date === '2026-10-04')?.byService).toEqual({});
     expect(body.totals.runs).toBe(2);
     expect(body.byService[0]?.usage.runs).toBe(2);
+  });
+
+  it('counts the failed runs next to the runs, in total, per service and per day', async () => {
+    const { send } = await setup();
+    type Runs = { runs: number; failedRequests: number };
+    const body = await json<{
+      totals: Runs;
+      daily: { date: string; byService: Record<string, Runs> }[];
+      byService: { service: string; usage: Runs }[];
+    }>(await send(`/tenants/${digdir}/usage?days=3`, 'kari'));
+
+    expect(body.totals).toMatchObject({ runs: 2, failedRequests: 1 });
+    expect(body.byService[0]?.usage).toMatchObject({ runs: 2, failedRequests: 1 });
+    expect(body.daily.find((d) => d.date === '2026-10-05')?.byService.klarsprak).toMatchObject({
+      failedRequests: 0,
+    });
+    expect(body.daily.find((d) => d.date === '2026-10-06')?.byService.klarsprak).toMatchObject({
+      failedRequests: 1,
+    });
   });
 
   it('gives operators the usage of this month for every tenant they ask about, and nobody else', async () => {
@@ -508,6 +542,67 @@ describe('portal routes', () => {
     expect(body.data).toEqual([
       expect.objectContaining({ id: 'delt-klarsprak', model: 'foundry/gpt-4o' }),
     ]);
+  });
+
+  it('tells what a shared service keeps, which languages it answers in and what a thousand runs cost', async () => {
+    const { send, store } = await setup({ retentionOf: () => ({ payloadDays: 90 }) });
+    const shared = klarsprak();
+    const published = await store.publish(
+      {
+        ...shared,
+        spec: {
+          ...shared.spec,
+          availableTo: '*',
+          languages: ['nb', 'nn'],
+          guardrails: { language: { mode: 'nn' } },
+        },
+      },
+      'employee:test:kari',
+      'shared',
+      files,
+    );
+
+    const body = await json<{ data: Record<string, unknown>[] }>(
+      await send('/shared-services', 'kari'),
+    );
+
+    expect(published.ok ? [] : published.errors).toEqual([]);
+
+    expect(body.data[0]).toMatchObject({
+      storage: { keepsText: true, logDays: 90 },
+      languages: { in: ['nb', 'nn'], out: 'nn' },
+    });
+  });
+
+  it('estimates the cost of a thousand runs only from at least 20 runs, rounded, so no single run can be worked out', async () => {
+    const runs = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        ...task(`r${i}`, digdir, '2026-10-05T09:00:00Z'),
+        usage: { inputTokens: 1000 + i, outputTokens: 200, requests: 1 },
+      }));
+    const shared = klarsprak();
+    const estimateFrom = async (count: number) => {
+      const { send, store } = await setup({ taskEnvelopes: async () => runs(count) });
+      await store.publish(
+        { ...shared, spec: { ...shared.spec, availableTo: '*' } },
+        'employee:test:kari',
+        'shared',
+        files,
+      );
+      const body = await json<{ data: Record<string, unknown>[] }>(
+        await send('/shared-services', 'kari'),
+      );
+      return body.data[0]?.estimatedCostPerThousandRuns as
+        { microNok: number; basis: string } | undefined;
+    };
+
+    const few = await estimateFrom(19);
+    const enough = await estimateFrom(20);
+    const one = await estimateFrom(21);
+
+    expect(few).toBeUndefined();
+    expect(enough).toEqual({ microNok: 43_000_000, basis: expect.not.stringContaining('20') });
+    expect(one?.microNok).toBe(enough?.microNok);
   });
 
   it('creates an API key shown once, stores only its digest, audits it, and lets it authenticate', async () => {
@@ -1423,7 +1518,7 @@ describe('usage totals with open units', () => {
 });
 
 describe('the failure cause on the run list', () => {
-  const failed = (task: string, message: string): Event =>
+  const failed = (task: string, message: string, code = 'deadline_exceeded'): Event =>
     ({
       task,
       seq: 4,
@@ -1432,7 +1527,7 @@ describe('the failure cause on the run list', () => {
       ts: '2026-10-06T08:00:02Z',
       actor: { kind: 'kernel', id: 'kernel' },
       audience: 'audit',
-      data: { code: 'deadline_exceeded', message },
+      data: { code, message },
     }) as Event;
   const leaky = 'provider said: invalid key sk-hemmelig-1234 for https://intern.example';
   const withErrors = () =>
@@ -1511,6 +1606,64 @@ describe('the failure cause on the run list', () => {
       code: 'deadline_exceeded',
       reason: failureReason({ code: 'deadline_exceeded' }),
     });
+  });
+
+  it('names the searches as the cause only when every search failed and that explains the failure, in fixed words and never with the engine text', async () => {
+    const searchNotice = (data: Record<string, unknown>) =>
+      ({
+        task: 't2',
+        seq: 2,
+        type: 'kernel.notice',
+        v: 1,
+        ts: '2026-10-06T08:00:01Z',
+        actor: { kind: 'kernel', id: 'kernel' },
+        audience: 'client',
+        data: { kind: 'retrieval', queries: ['ventetid'], hits: [], ...data },
+      }) as unknown as Event;
+    const failureWith = async (notice: Event, code: string) => {
+      const { send } = await setup({
+        events: async function* (id): AsyncIterable<Event> {
+          if (id !== 't2') return;
+          yield notice;
+          yield failed('t2', leaky, code);
+        },
+      });
+      const listed = await json<{ data: { id: string; failure?: Record<string, unknown> }[] }>(
+        await send(`/tenants/${digdir}/tasks`, 'leser'),
+      );
+      const one = await json<{ failure?: Record<string, unknown> }>(
+        await send(`/tenants/${digdir}/tasks/t2`, 'leser'),
+      );
+      expect(JSON.stringify(listed)).not.toContain('ventetid');
+      expect(one.failure).toEqual(listed.data.find((r) => r.id === 't2')?.failure);
+      return one.failure;
+    };
+
+    const timedOut = await failureWith(
+      searchNotice({ failedCompletely: 'timeout' }),
+      'deadline_exceeded',
+    );
+    const modelAfterPartial = await failureWith(
+      searchNotice({ failed: [{ strategy: 'content', reason: 'timeout' }] }),
+      'model_unavailable',
+    );
+    const deadlineAfterPartial = await failureWith(
+      searchNotice({ failed: [{ strategy: 'content', reason: 'timeout' }] }),
+      'deadline_exceeded',
+    );
+    const modelAfterAll = await failureWith(
+      searchNotice({ failedCompletely: 'timeout' }),
+      'model_unavailable',
+    );
+
+    expect(timedOut).toEqual({
+      code: 'deadline_exceeded',
+      reason: failureReason({ code: 'deadline_exceeded' }),
+      detail: 'Alle søkene tok for lang tid.',
+    });
+    expect(modelAfterPartial).not.toHaveProperty('detail');
+    expect(deadlineAfterPartial).not.toHaveProperty('detail');
+    expect(modelAfterAll).not.toHaveProperty('detail');
   });
 
   it("never lists another tenant's failed runs or their causes", async () => {

@@ -111,7 +111,11 @@ const BySource = z
   .array(z.object({ source: z.enum(['genki', 'gateway']), usage: Usage }))
   .optional()
   .describe('The sum split per source; only when an AI gateway is configured');
-const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
+const UsageWithRuns = Usage.extend({
+  runs: z.number().int(),
+  failedRequests: z.number().int().describe('The runs among runs that failed'),
+  bySource: BySource,
+});
 const PeriodTotals = UsageWithRuns.extend({
   unpricedModels: z
     .array(z.string())
@@ -254,6 +258,12 @@ const RunFailure = z
     code: z.string().describe('The run error code, such as deadline_exceeded'),
     reason: z.string().describe('A fixed sentence for the code; never provider or model text'),
     step: z.string().optional().describe('The step that failed, in a step flow'),
+    detail: z
+      .string()
+      .optional()
+      .describe(
+        "Set only when every search in the run failed and that explains the failure: on strategy_error, or on deadline_exceeded when the searches timed out, such as 'Every search timed out.'. A fixed translated sentence, never engine or model text",
+      ),
   })
   .openapi('RunFailure');
 
@@ -921,7 +931,9 @@ const taskRoutes: RouteConfig[] = [
         origin: z
           .enum(['playground'])
           .optional()
-          .describe('playground lists playground runs instead of service runs'),
+          .describe(
+            'playground lists trial runs instead of service runs: playground runs and the trial runs of a draft in the builder (POST /tenants/{tenant}/definitions/test-run)',
+          ),
         status: taskStatus.optional(),
         service: z.string().optional(),
         environment: z.string().optional().describe('Only runs in this service environment'),
@@ -2780,6 +2792,12 @@ const AuditRecord = z
 const OperationsOverview = z
   .object({
     incidents: z.array(z.object({ title: z.string(), text: z.string() })),
+    pastIncidents: z
+      .array(z.object({ date: z.string(), title: z.string(), text: z.string() }))
+      .optional()
+      .describe(
+        'Resolved incidents that concerned the tenant in the last 90 days, newest first; date is when it started',
+      ),
     components: z.array(
       z.object({
         name: z.string(),

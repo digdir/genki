@@ -28,7 +28,7 @@ A playground run whose model or step fails answers `502` as `application/problem
 6. `GET /tenants/{tenant}/definitions/services/{id}/versions/{version}`: read one version.
 7. `GET /tenants/{tenant}/audit`: the change log, with who published and why.
 
-Pause or archive with `PUT /tenants/{tenant}/services/{id}/lifecycle`. Validate without saving with `POST /definitions/validate`.
+Pause or archive with `PUT /tenants/{tenant}/services/{id}/lifecycle`. `GET` on the same path gives the state with `reason`, `by`, `at` and, when genki knows it, the person's name as `byName`. Validate without saving with `POST /definitions/validate`.
 
 ## Recipes: step flows with plain settings
 

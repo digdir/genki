@@ -15,6 +15,7 @@ import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './co
 import type { EndpointSourceDeps } from './endpoint-source.js';
 import { connectorConnectionOf } from './connectors.js';
 import type { DatasetReader } from './dataset-readers.js';
+import { actorNames } from './actor-names.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -138,6 +139,7 @@ export const createConfigurables = (
       ...(deps.usedBy ? { usedBy: deps.usedBy } : {}),
       ...(deps.usedByCounts ? { usedByCounts: deps.usedByCounts } : {}),
       ...(deps.endpointSources ? { endpointSources: deps.endpointSources } : {}),
+      names: actorNames(store),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
       connectorConnection: connectorConnectionOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),

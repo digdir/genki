@@ -6,6 +6,7 @@ export const runs = defineNamespace({
   failModelUnavailable: 'Modellen tjenesten bruker, er ikke tilgjengelig nå.',
   failStrategy: 'Tjenesten feilet underveis.',
   originBuilder: 'Byggeren (utkast)',
+  originTrial: 'Prøvekjøring i byggeren (utkast)',
   originPlayground: 'Prøveområdet (utkast)',
   originSkillTest: 'Test av ferdighet (utkast)',
   originAssistant: 'Byggeassistenten',
