@@ -39,7 +39,13 @@ const VersionYaml = ({
     [api, tenant, serviceId, version],
   );
   if (state.status === 'loading')
-    return <Loading label={t('serviceVersions.loadingVersion', { version })} />;
+    return (
+      <Loading
+        label={t('serviceVersions.loadingVersion', { version })}
+        shape="detail"
+        onRetry={retry}
+      />
+    );
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   return (
     <pre
@@ -56,7 +62,7 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
   const t = useT();
   const f = useFormat();
   const [round, setRound] = useState(0);
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     (signal) => api.getDefinition(tenant, 'Service', serviceId, signal),
     [api, tenant, serviceId, round],
     { keepPreviousFor: `${tenant}/${serviceId}` },
@@ -79,7 +85,8 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string }>();
 
-  if (state.status === 'loading') return <Loading label={t('serviceVersions.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('serviceVersions.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const current = state.data.latest.version;
   const versions = [...state.data.versions].reverse();
@@ -153,7 +160,11 @@ export const Versions = ({ api, tenant, serviceId, onPublished }: Props) => {
             </Alert>
           ) : null}
         </div>
-        <ol className="plain-list version-list" aria-label={t('serviceVersions.listLabel')}>
+        <ol
+          className="plain-list version-list"
+          aria-label={t('serviceVersions.listLabel')}
+          aria-busy={pending || undefined}
+        >
           {versions.map((v) => {
             const showing = open === v.version;
             const confirming = confirm === v.version;

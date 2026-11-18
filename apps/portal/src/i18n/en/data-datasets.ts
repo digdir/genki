@@ -580,6 +580,7 @@ export const searchEngine = {
   swCostNote:
     'The cost is an estimate and counts towards the usage of {tenant}. The transfer runs as a normal ingestion and is shown under Ingestions.',
   swStart: 'Start the transfer',
+  swStarting: 'Starting ...',
   swPercent: '{percent} percent',
   swStoppedHeading: 'The transfer stopped at {percent} percent',
   swStoppedText:
@@ -590,6 +591,7 @@ export const searchEngine = {
   swAdmissionSoon:
     'The ingestion is admitted only until {time}. Admit it again before then, or the transfer stops and must start over.',
   swReadmit: 'Admit again',
+  swReadmitting: 'Admitting ...',
   swReadmitReason: 'Admitted again from the portal',
   swPollRetrying: 'Could not fetch the status just now. We will try again on our own.',
   swMayClose:
@@ -620,6 +622,7 @@ export const searchEngine = {
     '{engine} is kept for {days} days <undecided/>, so you can go back without ingesting again.',
   swWorseReason: 'The results got worse on the test set. Explain why you switch anyway.',
   swAdopt: 'Adopt',
+  swAdopting: 'Adopting ...',
 };
 
 export const datasetsLane = { datasets, searchEngine } satisfies Translation<typeof source>;

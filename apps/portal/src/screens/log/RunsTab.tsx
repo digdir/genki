@@ -337,7 +337,20 @@ export const RunsTab = ({
         </div>
       )}
 
-      {state.status === 'loading' ? <Loading label={t('logRuns.loading')} /> : null}
+      {state.status === 'loading' ? (
+        <Loading
+          label={t('logRuns.loading')}
+          shape="table"
+          columns={[
+            t('logRuns.colTime'),
+            t('logRuns.colRun'),
+            t('logRuns.colStatus'),
+            t('logRuns.colDuration'),
+            t('logRuns.colCost'),
+          ]}
+          onRetry={retry}
+        />
+      ) : null}
 
       {never ? (
         <div className="log-empty">

@@ -126,7 +126,13 @@ export const LiveChanges = ({
   if (loaded.status === 'error')
     return <ErrorState error={loaded.error} onRetry={retryLoad} headingLevel={3} />;
   if ((paged && pages.first.status === 'loading') || loaded.status === 'loading')
-    return <Loading label={t('changes.loading')} />;
+    return (
+      <Loading
+        label={t('changes.loading')}
+        shape="list"
+        onRetry={paged ? pages.retry : retryLoad}
+      />
+    );
   const data = loaded.data;
   const all = paged ? collapseRepeats(newestFirst(pages.rows)) : (data?.entries ?? []);
   const entries = filters && !digdir ? all.filter((e) => !isDigdirCatalogChange(e)) : all;

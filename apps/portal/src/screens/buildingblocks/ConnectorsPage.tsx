@@ -39,7 +39,7 @@ export const ConnectorsPage = ({
         <Paragraph className="lead">{t('connectors.pageLead', { tenantName })}</Paragraph>
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('connectors.pageLoading')} />
+        <Loading label={t('connectors.pageLoading')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} />
       ) : (

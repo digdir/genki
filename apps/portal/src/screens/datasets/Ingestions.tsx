@@ -4,7 +4,6 @@ import {
   Dialog,
   Heading,
   Paragraph,
-  Spinner,
   Table,
   TableBody,
   TableCell,
@@ -119,7 +118,6 @@ export const Run = ({
           </span>
         </span>
         <Tag data-size="sm" data-color={status.color}>
-          {running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
           {status.text}
         </Tag>
         <span className="run-counts numeric">
@@ -252,7 +250,6 @@ export const RunTable = ({
                 <TableCell>{f.dateTime(run.startedAt)}</TableCell>
                 <TableCell>
                   <Tag data-size="sm" data-color={status.color}>
-                    {running ? <Spinner aria-hidden="true" data-size="2xs" /> : null}
                     {status.text}
                   </Tag>
                 </TableCell>

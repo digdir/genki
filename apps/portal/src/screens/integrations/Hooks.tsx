@@ -242,7 +242,8 @@ export const Hooks = ({
   const [state, retry] = useAsync((signal) => api.hooks.list(tenant, signal), [api, tenant]);
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
-  if (state.status === 'loading') return <Loading label={t('integHooks.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('integHooks.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const { data: own, platform, builtins } = state.data;
   const typeText = ({ handler }: Hook) =>
@@ -512,7 +513,7 @@ export const HookEditor = ({
     return (
       <div className="stack int">
         {head}
-        <Loading label={t('integHooks.loadingOne')} />
+        <Loading label={t('integHooks.loadingOne')} shape="form" onRetry={retry} />
       </div>
     );
   if (state.status === 'error')

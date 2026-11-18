@@ -109,7 +109,8 @@ export const LiveWorkspace = ({
     setFlows((all) => ({ ...all, ...Object.fromEntries(state.data.map((f) => [f.id, f])) }));
   }, [state]);
 
-  if (state.status === 'loading') return <Loading label={t('stepflows.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('stepflows.loading')} shape="list" onRetry={retry} />;
 
   const flyt = query.get('flyt') ?? '';
   const byService =

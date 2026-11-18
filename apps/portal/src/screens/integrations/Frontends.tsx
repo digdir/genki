@@ -64,7 +64,8 @@ export const Frontends = ({
   const [removeError, setRemoveError] = useState('');
   const [busy, setBusy] = useState<string>();
 
-  if (state.status === 'loading') return <Loading label={t('integFrontends.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('integFrontends.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const { clients, services } = state.data;
   const serviceName = (id: string) => services.find((s) => s.id === id)?.name ?? id;

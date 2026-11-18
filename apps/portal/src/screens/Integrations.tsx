@@ -67,7 +67,7 @@ const TriggersPage = ({ api, tenant }: { api: ApiClient; tenant: string }) => {
         </a>
       </PageLead>
       {state.status === 'loading' ? (
-        <Loading label={t('integrations.loadingTriggers')} />
+        <Loading label={t('integrations.loadingTriggers')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <PageError
           error={state.error}

@@ -102,7 +102,7 @@ export const CandidateReview = ({
       </Heading>
       <Paragraph data-size="sm">{t('quality.candidatesLead')}</Paragraph>
       {state.status === 'loading' ? (
-        <Loading label={t('quality.candidatesLoading')} />
+        <Loading label={t('quality.candidatesLoading')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : pending.length === 0 ? (

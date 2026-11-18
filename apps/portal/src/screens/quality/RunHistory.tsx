@@ -397,7 +397,7 @@ export const RunEstimate = ({
     [api, tenant, serviceId, fromRuns, canSeeUsage],
   );
   if (fromRuns === undefined && usage.status === 'loading')
-    return <Loading label={t('quality.estimateLoading')} />;
+    return <Loading label={t('quality.estimateLoading')} shape="list" rows={1} />;
   const perCase = fromRuns ?? (usage.status === 'ready' ? usage.data : undefined);
   if (perCase === undefined)
     return <Paragraph data-size="sm">{t('quality.estimateUnknown', { count: cases })}</Paragraph>;
@@ -439,7 +439,17 @@ const RunDetail = ({
         </Button>
       </div>
       {state.status === 'loading' ? (
-        <Loading label={t('quality.runLoading')} />
+        <Loading
+          label={t('quality.runLoading')}
+          shape="table"
+          columns={[
+            t('quality.runMetric'),
+            t('quality.runMean'),
+            t('quality.runInterval'),
+            t('quality.runCases'),
+          ]}
+          onRetry={retry}
+        />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
       ) : state.data.cases.length === 0 && state.data.status !== 'interrupted' ? (
@@ -740,7 +750,7 @@ export const RunHistory = ({
         </Alert>
       ) : null}
       {state.status === 'loading' && !seen.current ? (
-        <Loading label={t('quality.runsLoading')} />
+        <Loading label={t('quality.runsLoading')} shape="list" onRetry={retry} />
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={3} />
       ) : runs.length === 0 ? (

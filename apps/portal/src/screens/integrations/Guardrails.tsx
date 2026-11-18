@@ -92,7 +92,7 @@ export const Guardrails = ({
     return (
       <>
         {lead}
-        <Loading label={t('devGuardrails.loading')} />
+        <Loading label={t('devGuardrails.loading')} shape="list" onRetry={retry} />
       </>
     );
   if (state.status === 'error')

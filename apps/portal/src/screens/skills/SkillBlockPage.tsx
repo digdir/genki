@@ -97,7 +97,8 @@ export const SkillBlockPage = (props: ScreenProps & { id: string; tab: string | 
     },
     [api, tenant, id, owner],
   );
-  if (state.status === 'loading') return <Loading label={t('skills.editorLoading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('skills.editorLoading')} shape="detail" onRetry={retry} />;
   if (state.status === 'error')
     return (
       <div className="stack skills skill-page">

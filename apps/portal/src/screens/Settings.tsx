@@ -389,7 +389,8 @@ export const Settings = (props: ScreenProps & { context: SettingsContext }) => {
     },
     [api, tenant, context.kind, id, live],
   );
-  if (state.status === 'loading') return <Loading label={t('settings.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('settings.loading')} shape="form" onRetry={retry} />;
   if (state.status === 'error')
     return (
       <div className="stack">

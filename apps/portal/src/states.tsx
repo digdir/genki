@@ -1,20 +1,107 @@
-import { Alert, Button, Heading, Link, Paragraph, Spinner } from '@digdir/designsystemet-react';
-import type { ReactNode } from 'react';
+import { Alert, Button, Heading, Link, Paragraph, Skeleton } from '@digdir/designsystemet-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError } from './api';
+import { ShapeSkeleton, type SkeletonShape } from './components/Skeleton';
 import { translator, useT, type T } from './i18n';
 
 const nbT = translator('nb');
 
-export const Loading = ({ label }: { label: string }) => (
-  <div className="state loading" role="status">
-    <Spinner aria-label={label} data-size="md" />
-  </div>
+export const SKELETON_DELAY_MS = 300;
+export const SLOW_AFTER_MS = 10_000;
+export const GIVE_UP_AFTER_MS = 30_000;
+
+type Stage = 'quiet' | 'skeleton' | 'slow' | 'failed';
+
+const useLoadingStage = () => {
+  const [stage, setStage] = useState<Stage>('quiet');
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setStage('skeleton'), SKELETON_DELAY_MS),
+      setTimeout(() => setStage('slow'), SLOW_AFTER_MS),
+      setTimeout(() => setStage('failed'), GIVE_UP_AFTER_MS),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  return stage;
+};
+
+export interface LoadingProps {
+  label: string;
+  shape?: SkeletonShape;
+  rows?: number;
+  columns?: number | string[];
+  onRetry?: () => void;
+}
+
+const LoadingState = ({
+  label,
+  shape,
+  rows,
+  columns,
+  onRetry,
+  page,
+  onGiveUpRetry,
+}: LoadingProps & { shape: SkeletonShape; page: boolean; onGiveUpRetry: () => void }) => {
+  const t = useT();
+  const stage = useLoadingStage();
+  if (stage === 'failed')
+    return (
+      <div className="state">
+        <Alert data-color="danger">
+          <Heading level={2} data-size="xs">
+            {t('states.tooSlowTitle')}
+          </Heading>
+          <Paragraph>{t('states.tooSlowText')}</Paragraph>
+          <Button
+            variant="secondary"
+            data-size="sm"
+            onClick={() => {
+              onGiveUpRetry();
+              if (onRetry) onRetry();
+              else window.location.reload();
+            }}
+          >
+            {t('common.tryAgain')}
+          </Button>
+        </Alert>
+      </div>
+    );
+  return (
+    <div
+      className={page ? 'state loading page-loading' : 'state loading'}
+      role="status"
+      aria-label={label}
+      aria-busy="true"
+    >
+      {stage === 'quiet' ? null : (
+        <>
+          <span className="visually-hidden">{label}</span>
+          {stage === 'slow' ? <p className="loading-slow">{t('states.slow')}</p> : null}
+          {page ? (
+            <Skeleton variant="rectangle" width="40%" height={32} aria-hidden="true" />
+          ) : null}
+          <ShapeSkeleton
+            shape={shape}
+            {...(rows === undefined ? {} : { rows })}
+            {...(columns === undefined ? {} : { columns })}
+          />
+        </>
+      )}
+    </div>
+  );
+};
+
+const Restartable = (props: LoadingProps & { shape: SkeletonShape; page: boolean }) => {
+  const [round, setRound] = useState(0);
+  return <LoadingState key={round} {...props} onGiveUpRetry={() => setRound((n) => n + 1)} />;
+};
+
+export const Loading = ({ shape = 'list', ...props }: LoadingProps) => (
+  <Restartable {...props} shape={shape} page={false} />
 );
 
-export const PageLoading = ({ label }: { label: string }) => (
-  <div className="state loading page-loading" role="status">
-    <Spinner aria-label={label} data-size="md" />
-  </div>
+export const PageLoading = ({ shape = 'detail', ...props }: LoadingProps) => (
+  <Restartable {...props} shape={shape} page />
 );
 
 export const NavigationProgress = ({ label }: { label: string }) => (

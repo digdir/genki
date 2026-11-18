@@ -86,7 +86,7 @@ const ListPage = ({
       <div className="stack">
         <ListHeader tab={filters.tab} tenantName={tenantName} />
         {state.status === 'loading' ? (
-          <Loading label={t('blocks.loadingList')} />
+          <Loading label={t('blocks.loadingList')} shape="list" onRetry={retry} />
         ) : (
           <Alert data-color="danger" role="alert">
             <Heading level={2} data-size="xs">
@@ -173,7 +173,8 @@ const DetailPage = ({
         .catch((): ServiceRuns[] => []),
     [tenant],
   );
-  if (state.status === 'loading') return <Loading label={t('blocks.loadingOne')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('blocks.loadingOne')} shape="detail" onRetry={retry} />;
   if (state.status === 'error')
     return (
       <div className="stack">
@@ -243,7 +244,7 @@ export const BuildingBlocks = (props: ScreenProps) => {
   }, [alias, path]);
 
   let page;
-  if (alias) page = <Loading label={t('blocks.loadingOne')} />;
+  if (alias) page = <Loading label={t('blocks.loadingOne')} shape="detail" />;
   else if (kind === 'new')
     page = (
       <RegisterBlock

@@ -48,7 +48,7 @@ export const BatchDialog = ({
         {!canManage ? (
           <Paragraph data-size="sm">{needsRight('manage-services')}</Paragraph>
         ) : sources.status === 'loading' ? (
-          <Loading label={t('batch.loadingSources')} />
+          <Loading label={t('batch.loadingSources')} shape="form" onRetry={retry} />
         ) : sources.status === 'error' ? (
           <ErrorState error={sources.error} onRetry={retry} headingLevel={3} />
         ) : (

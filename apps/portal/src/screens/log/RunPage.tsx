@@ -143,7 +143,7 @@ export const RunPage = ({
     return (
       <div className="stack log-run-page">
         {crumb}
-        <Loading label={t('logRun.loading')} />
+        <Loading label={t('logRun.loading')} shape="detail" onRetry={retry} />
       </div>
     );
   if (state.status === 'error') {

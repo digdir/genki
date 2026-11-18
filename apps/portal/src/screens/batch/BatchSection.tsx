@@ -209,7 +209,7 @@ export const BatchSection = ({
         ) : detail.status === 'error' ? (
           <ErrorState error={detail.error} headingLevel={3} />
         ) : (
-          <Loading label={t('batch.loadingJob')} />
+          <Loading label={t('batch.loadingJob')} shape="detail" />
         )
       ) : null}
       {showList ? (
@@ -218,7 +218,17 @@ export const BatchSection = ({
             {t('batch.history')}
           </Heading>
           {runs.status === 'loading' && !seenRuns.current ? (
-            <Loading label={t('batch.loadingJobs')} />
+            <Loading
+              label={t('batch.loadingJobs')}
+              shape="table"
+              columns={[
+                t('batch.colSelection'),
+                t('batch.colStartedBy'),
+                t('batch.colDocuments'),
+                t('batch.colStatus'),
+              ]}
+              onRetry={retryRuns}
+            />
           ) : runs.status === 'error' ? (
             <ErrorState error={runs.error} onRetry={retryRuns} headingLevel={4} />
           ) : (seenRuns.current ?? []).length === 0 ? (

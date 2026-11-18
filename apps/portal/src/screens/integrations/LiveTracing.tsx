@@ -367,7 +367,8 @@ export const LiveTracing = ({
     }
   };
 
-  if (state.status === 'loading') return <Loading label={t('integLangfuse.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('integLangfuse.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error')
     return <ErrorState error={state.error} onRetry={retry} headingLevel={3} />;
   const { connections, services } = state.data;

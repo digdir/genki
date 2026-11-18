@@ -141,7 +141,16 @@ export const SharedServices = ({ api, tenant, route, live }: ScreenProps) => {
   );
   const id = route.segments[1];
   if (state.status === 'loading' || models.status === 'loading' || blocks.status === 'loading')
-    return <Loading label={t('sharedServices.loading')} />;
+    return id ? (
+      <Loading label={t('sharedServices.loading')} shape="detail" onRetry={retry} />
+    ) : (
+      <>
+        <Heading level={1} data-size="lg">
+          {t('sharedServices.title')}
+        </Heading>
+        <Loading label={t('sharedServices.loading')} shape="list" onRetry={retry} />
+      </>
+    );
   if (state.status === 'error')
     return (
       <>

@@ -71,7 +71,8 @@ export const StepFlowView = ({
   useEffect(() => {
     if (missing) onMissing();
   }, [missing, onMissing]);
-  if (state.status === 'loading' || missing) return <Loading label={t('blocks.flowLoading')} />;
+  if (state.status === 'loading' || missing)
+    return <Loading label={t('blocks.flowLoading')} shape="detail" onRetry={retry} />;
   if (state.status === 'error')
     return (
       <Alert data-color="danger" role="alert">

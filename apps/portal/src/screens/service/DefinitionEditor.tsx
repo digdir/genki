@@ -188,7 +188,8 @@ export const DefinitionEditor = ({ api, tenant, serviceId, onPublished }: Props)
     (signal) => api.getDefinition(tenant, 'Service', serviceId, signal),
     [api, tenant, serviceId, round],
   );
-  if (state.status === 'loading') return <Loading label={t('serviceEditor.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('serviceEditor.loading')} shape="form" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   return (
     <div className="stack-sm">

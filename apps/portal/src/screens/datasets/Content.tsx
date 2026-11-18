@@ -353,7 +353,15 @@ export const Content = ({
         <Paragraph data-size="sm">{t('datasets.endpointContent')}</Paragraph>
       </section>
     );
-  if (page.status === 'loading') return <Loading label={t('datasets.loadingDocuments')} />;
+  if (page.status === 'loading')
+    return (
+      <Loading
+        label={t('datasets.loadingDocuments')}
+        shape="table"
+        columns={[t('datasets.columnTitle'), t('datasets.columnType'), t('datasets.facetYear')]}
+        onRetry={retry}
+      />
+    );
   if (page.status === 'error' && unlistable(page.error))
     return (
       <section className="stack-sm" aria-labelledby="content-unlisted-h">

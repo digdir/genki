@@ -18,5 +18,5 @@ export const Skills = ({ route }: ScreenProps) => {
   useEffect(() => {
     window.location.replace(target);
   }, [target]);
-  return <Loading label={t('skills.editorLoading')} />;
+  return <Loading label={t('skills.editorLoading')} shape="detail" />;
 };

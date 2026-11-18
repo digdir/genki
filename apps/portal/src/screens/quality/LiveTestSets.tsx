@@ -315,7 +315,8 @@ export const LiveTestSets = ({
     }
   };
 
-  if (sets.status === 'loading') return <Loading label={t('quality.setsLoading')} />;
+  if (sets.status === 'loading')
+    return <Loading label={t('quality.setsLoading')} shape="detail" onRetry={retrySets} />;
   if (sets.status === 'error') return <ErrorState error={sets.error} onRetry={retrySets} />;
 
   const createSet = (name: string) =>
@@ -565,7 +566,7 @@ export const LiveTestSets = ({
           <Paragraph data-size="sm">{t('quality.markHint')}</Paragraph>
         ) : null}
         {cases.status === 'loading' ? (
-          <Loading label={t('quality.casesLoading')} />
+          <Loading label={t('quality.casesLoading')} shape="list" onRetry={retryCases} />
         ) : cases.status === 'error' ? (
           <ErrorState error={cases.error} onRetry={retryCases} headingLevel={3} />
         ) : (

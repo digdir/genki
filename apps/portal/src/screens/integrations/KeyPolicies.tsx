@@ -93,7 +93,8 @@ export const KeyPolicies = ({
   const [chooseReason, setChooseReason] = useState('');
   const [chooseError, setChooseError] = useState('');
 
-  if (state.status === 'loading') return <Loading label={t('integPolicies.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('integPolicies.loading')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
 
   const { policies, keys } = state.data;

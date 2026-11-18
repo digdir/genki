@@ -64,7 +64,8 @@ export const RunDetail = ({
   );
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
-  if (state.status === 'loading') return <Loading label={t('logRun.loading')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('logRun.loading')} shape="detail" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   const run: TaskTimeline = state.data;
   const started = relativeTime(run.startedAt, t, f);

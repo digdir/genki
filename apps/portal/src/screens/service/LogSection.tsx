@@ -43,7 +43,7 @@ export const LogSection = ({
   );
   const names = environments.status === 'ready' ? environments.data : [];
   const staged = names.length > 1;
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) =>
       (
         await api.tasks(tenant, { service: id, ...(environment ? { environment } : {}) }, signal)
@@ -86,7 +86,19 @@ export const LogSection = ({
           </Select>
         </Field>
       ) : null}
-      {state.status === 'loading' ? <Loading label={t('serviceLog.loading')} /> : null}
+      {state.status === 'loading' ? (
+        <Loading
+          label={t('serviceLog.loading')}
+          shape="table"
+          columns={[
+            t('serviceLog.colRun'),
+            t('serviceLog.colBy'),
+            t('serviceLog.colStatus'),
+            t('serviceLog.colStarted'),
+          ]}
+          onRetry={retry}
+        />
+      ) : null}
       {state.status === 'error' ? <ErrorState error={state.error} onRetry={retry} /> : null}
       {state.status === 'ready' && state.data.length === 0 ? (
         <EmptyState title={t('serviceLog.emptyTitle')}>
@@ -95,7 +107,7 @@ export const LogSection = ({
       ) : null}
       {state.status === 'ready' && state.data.length ? (
         <div tabIndex={0} role="region" aria-labelledby="svc-log-h" className="scroll-x">
-          <Table data-size="sm">
+          <Table data-size="sm" aria-busy={pending || undefined}>
             <Table.Head>
               <Table.Row>
                 <Table.HeaderCell scope="col">{t('serviceLog.colRun')}</Table.HeaderCell>

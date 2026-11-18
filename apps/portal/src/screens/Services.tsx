@@ -114,7 +114,8 @@ const ListScreen = ({ api, tenant, tenantName, live }: ScreenProps) => {
     },
     [api, tenant, live],
   );
-  if (state.status === 'loading') return <Loading label={t('servicesScreen.loadingServices')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('servicesScreen.loadingServices')} shape="list" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   return (
     <ServiceList
@@ -165,7 +166,8 @@ const BuilderScreen = (
     },
     [api, tenant, id, props.live, canManage],
   );
-  if (state.status === 'loading') return <Loading label={t('servicesScreen.loadingService')} />;
+  if (state.status === 'loading')
+    return <Loading label={t('servicesScreen.loadingService')} shape="service" onRetry={retry} />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
   if (state.data && 'unpublished' in state.data) {
     const { unpublished } = state.data;
@@ -318,7 +320,7 @@ export const Services = (props: ScreenProps) => {
     if (id === 'new' && props.live && route.query.get('skjema') === '1')
       return <LiveNewService api={props.api} tenant={props.tenant} />;
     if (starting?.error) return <ErrorState error={starting.error} />;
-    if (starting) return <Loading label={t('servicesScreen.loadingStart')} />;
+    if (starting) return <Loading label={t('servicesScreen.loadingStart')} shape="form" />;
     if (!draft)
       return (
         <NewService

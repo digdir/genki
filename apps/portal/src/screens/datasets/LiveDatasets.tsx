@@ -15,9 +15,13 @@ import { datasetHref, detailTabOf } from './model';
 const List = ({ api, tenant }: ScreenProps) => {
   const t = useT();
   const f = useFormat();
-  const [state, retry] = useAsync((signal) => api.datasets.list(tenant, signal), [api, tenant], {
-    keepPreviousFor: tenant,
-  });
+  const [state, retry, pending] = useAsync(
+    (signal) => api.datasets.list(tenant, signal),
+    [api, tenant],
+    {
+      keepPreviousFor: tenant,
+    },
+  );
   const canCreate = useRights().has('manage-datasets');
   const onRetry = async (fullId: string) => {
     const view = state.status === 'ready' ? state.data.find((d) => d.fullId === fullId) : undefined;
@@ -36,7 +40,30 @@ const List = ({ api, tenant }: ScreenProps) => {
     }
     retry();
   };
-  if (state.status === 'loading') return <Loading label={t('datasets.loading')} />;
+  if (state.status === 'loading')
+    return (
+      <div className="stack dataset-page">
+        <div className="page-head">
+          <div className="page-head-text">
+            <Heading level={1} data-size="lg">
+              {t('datasets.title')}
+            </Heading>
+            <p className="lead">{t('datasets.lead')}</p>
+          </div>
+        </div>
+        <Loading
+          label={t('datasets.loading')}
+          shape="table"
+          columns={[
+            t('datasets.columnDataset'),
+            t('datasets.columnStatus'),
+            t('datasets.factDocuments'),
+            t('datasets.columnLastStarted'),
+          ]}
+          onRetry={retry}
+        />
+      </div>
+    );
   if (state.status === 'error')
     return (
       <>
@@ -67,6 +94,7 @@ const List = ({ api, tenant }: ScreenProps) => {
       <DatasetList
         datasets={state.data.map((d) => listItemOf(t, f, d))}
         canCreate={canCreate}
+        pending={pending}
         {...(canCreate ? { onRetry } : {})}
       />
     </div>
